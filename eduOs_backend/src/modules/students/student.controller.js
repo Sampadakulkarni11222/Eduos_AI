@@ -1,0 +1,61 @@
+import { asyncHandler } from '../../utils/asyncHandler.js';
+import { sendSuccess } from '../../utils/response.js';
+import * as service from './student.service.js';
+
+export const list = asyncHandler(async (req, res) => {
+  const students = await service.list(req.actor, req.scope, req.query);
+  sendSuccess(res, students, 'Students fetched');
+});
+
+export const getById = asyncHandler(async (req, res) => {
+  const student = await service.getById(req.actor, req.scope, req.params.id);
+  sendSuccess(res, student, 'Student fetched');
+});
+
+export const create = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.create(req.body), 'Student created', 201);
+});
+
+export const update = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.update(req.params.id, req.body), 'Student updated');
+});
+
+export const remove = asyncHandler(async (req, res) => {
+  await service.softDelete(req.params.id);
+  sendSuccess(res, null, 'Student deactivated');
+});
+
+export const addGuardian = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.addGuardian(req.params.id, req.body), 'Guardian linked', 201);
+});
+
+export const listGuardians = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.listGuardians(req.params.id), 'Guardians fetched');
+});
+
+export const enroll = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.enroll(req.body), 'Student enrolled', 201);
+});
+
+export const listEnrollments = asyncHandler(async (req, res) => {
+  const { sectionId, academicYearId, studentId } = req.query;
+  const filter = {};
+  if (sectionId) filter.sectionId = sectionId;
+  if (academicYearId) filter.academicYearId = academicYearId;
+  if (studentId) filter.studentId = studentId;
+  sendSuccess(res, await service.listEnrollments(filter), 'Enrollments fetched');
+});
+
+export const getNextRollNo = asyncHandler(async (req, res) => {
+  const { sectionId, academicYearId } = req.query;
+  if (!sectionId || !academicYearId) {
+    return sendSuccess(res, { nextRollNo: 1 }, 'Next roll number');
+  }
+  const nextRollNo = await service.nextRollNo(sectionId, academicYearId);
+  sendSuccess(res, { nextRollNo }, 'Next roll number');
+});
+
+export const updateEnrollmentStatus = asyncHandler(async (req, res) => {
+  const enrollment = await service.updateEnrollmentStatus(req.params.id, req.body.status);
+  sendSuccess(res, enrollment, 'Enrollment status updated');
+});

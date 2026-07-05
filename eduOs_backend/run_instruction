@@ -1,0 +1,8 @@
+npm install
+npm run build:obfuscated
+npm run build
+npm run seed 
+npm run  start:obfuscated 
+npm run build
+npm run build:dev 
+npm run build:obfuscated 
