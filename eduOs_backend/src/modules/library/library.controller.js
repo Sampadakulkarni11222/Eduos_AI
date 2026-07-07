@@ -1,0 +1,48 @@
+import { asyncHandler } from '../../utils/asyncHandler.js';
+import { sendSuccess } from '../../utils/response.js';
+import * as service from './library.service.js';
+
+export const getSummary = asyncHandler(async (_req, res) => {
+  const summary = await service.getSummary();
+  sendSuccess(res, summary, 'Library summary fetched');
+});
+
+export const listBooks = asyncHandler(async (req, res) => {
+  const books = await service.listBooks(req.query);
+  sendSuccess(res, books, 'Books fetched');
+});
+
+export const getBookById = asyncHandler(async (req, res) => {
+  const book = await service.getBookById(req.params.id);
+  sendSuccess(res, book, 'Book fetched');
+});
+
+export const createBook = asyncHandler(async (req, res) => {
+  const book = await service.createBook(req.body);
+  sendSuccess(res, book, 'Book created', 201);
+});
+
+export const updateBook = asyncHandler(async (req, res) => {
+  const book = await service.updateBook(req.params.id, req.body);
+  sendSuccess(res, book, 'Book updated');
+});
+
+export const deleteBook = asyncHandler(async (req, res) => {
+  await service.deleteBook(req.params.id);
+  sendSuccess(res, null, 'Book deleted');
+});
+
+export const listIssues = asyncHandler(async (req, res) => {
+  const issues = await service.listIssues(req.query);
+  sendSuccess(res, issues, 'Issues fetched');
+});
+
+export const issueBook = asyncHandler(async (req, res) => {
+  const issue = await service.issueBook(req.body);
+  sendSuccess(res, issue, 'Book issued', 201);
+});
+
+export const returnBook = asyncHandler(async (req, res) => {
+  const issue = await service.returnBook(req.params.id);
+  sendSuccess(res, issue, 'Book returned');
+});

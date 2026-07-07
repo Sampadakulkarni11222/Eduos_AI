@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>School ERP — Password Encrypt/Decrypt Tool</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 1rem;
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 560px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.4);
+    }
+
+    .logo { font-size: 2rem; text-align: center; margin-bottom: 0.25rem; }
+
+    h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #94a3b8;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      text-align: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 0.8rem;
+      color: #475569;
+      margin-bottom: 1.75rem;
+    }
+
+    .tabs {
+      display: flex;
+      background: #0f172a;
+      border-radius: 0.6rem;
+      padding: 0.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 0.55rem;
+      border-radius: 0.45rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: #64748b;
+      transition: all 0.15s;
+      user-select: none;
+    }
+
+    .tab.active { background: #3b82f6; color: #fff; }
+
+    .field { margin-bottom: 1.1rem; }
+
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #64748b;
+      margin-bottom: 0.4rem;
+    }
+
+    textarea, input[type="text"], input[type="password"] {
+      width: 100%;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      padding: 0.65rem 0.8rem;
+      color: #e2e8f0;
+      font-size: 0.9rem;
+      font-family: 'SF Mono', Consolas, monospace;
+      resize: vertical;
+    }
+
+    textarea { min-height: 90px; }
+
+    textarea:focus, input:focus {
+      outline: none;
+      border-color: #3b82f6;
+    }
+
+    .pw-row { display: flex; gap: 0.5rem; }
+    .pw-row input { flex: 1; }
+
+    .icon-btn {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 0.5rem;
+      color: #94a3b8;
+      width: 42px;
+      cursor: pointer;
+      font-size: 0.95rem;
+    }
+    .icon-btn:hover { background: #1e293b; }
+
+    .actions { display: flex; gap: 0.75rem; margin-top: 1.25rem; }
+
+    .btn {
+      flex: 1;
+      padding: 0.65rem;
+      border-radius: 0.5rem;
+      border: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-ghost { background: #334155; color: #cbd5e1; }
+
+    .output-wrap { position: relative; margin-top: 1.25rem; }
+
+    .copy-btn {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      background: #334155;
+      border: none;
+      color: #cbd5e1;
+      font-size: 0.7rem;
+      padding: 0.3rem 0.6rem;
+      border-radius: 0.35rem;
+      cursor: pointer;
+    }
+    .copy-btn:hover { background: #475569; }
+
+    .status {
+      margin-top: 0.9rem;
+      font-size: 0.8rem;
+      padding: 0.6rem 0.8rem;
+      border-radius: 0.5rem;
+      display: none;
+    }
+    .status.show { display: block; }
+    .status.ok { background: #14532d33; color: #4ade80; border: 1px solid #14532d; }
+    .status.error { background: #450a0a33; color: #f87171; border: 1px solid #450a0a; }
+
+    .footer-note {
+      margin-top: 1.5rem;
+      font-size: 0.72rem;
+      color: #334155;
+      text-align: center;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">🔐</div>
+    <h1>Password Encrypt / Decrypt</h1>
+    <div class="subtitle">Client-side AES-256-GCM — nothing is sent to the server</div>
+
+    <div class="tabs">
+      <div class="tab active" data-mode="encrypt">Encrypt</div>
+      <div class="tab" data-mode="decrypt">Decrypt</div>
+    </div>
+
+    <div class="field">
+      <label id="input-label">Password / Text to encrypt</label>
+      <textarea id="input-text" placeholder="Enter the password or text..."></textarea>
+    </div>
+
+    <div class="field">
+      <label>Passphrase (used to derive the encryption key)</label>
+      <div class="pw-row">
+        <input type="password" id="passphrase" placeholder="Enter a passphrase" />
+        <button class="icon-btn" id="toggle-passphrase" title="Show/hide">👁</button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-primary" id="run-btn">Encrypt</button>
+      <button class="btn btn-ghost" id="clear-btn">Clear</button>
+    </div>
+
+    <div class="status" id="status"></div>
+
+    <div class="output-wrap">
+      <div class="field" style="margin-bottom: 0;">
+        <label id="output-label">Result</label>
+        <textarea id="output-text" readonly placeholder="Result will appear here..."></textarea>
+      </div>
+      <button class="copy-btn" id="copy-btn">Copy</button>
+    </div>
+
+    <div class="footer-note">
+      Uses PBKDF2 (150,000 iterations, SHA-256) to derive a key from your passphrase,<br />
+      then AES-256-GCM to encrypt. Salt + IV are embedded in the output, base64-encoded.<br />
+      The same passphrase is required to decrypt. Lose it and the data is unrecoverable.
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let mode = 'encrypt';
+
+    const inputText = $('input-text');
+    const passphrase = $('passphrase');
+    const outputText = $('output-text');
+    const statusEl = $('status');
+    const runBtn = $('run-btn');
+    const inputLabel = $('input-label');
+    const outputLabel = $('output-label');
+
+    document.querySelectorAll('.tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+        tab.classList.add('active');
+        mode = tab.dataset.mode;
+        runBtn.textContent = mode === 'encrypt' ? 'Encrypt' : 'Decrypt';
+        inputLabel.textContent = mode === 'encrypt' ? 'Password / Text to encrypt' : 'Encrypted text to decrypt';
+        outputLabel.textContent = mode === 'encrypt' ? 'Encrypted result (base64)' : 'Decrypted result';
+        inputText.placeholder = mode === 'encrypt' ? 'Enter the password or text...' : 'Paste the encrypted base64 string...';
+        inputText.value = '';
+        outputText.value = '';
+        hideStatus();
+      });
+    });
+
+    $('toggle-passphrase').addEventListener('click', () => {
+      passphrase.type = passphrase.type === 'password' ? 'text' : 'password';
+    });
+
+    $('clear-btn').addEventListener('click', () => {
+      inputText.value = '';
+      passphrase.value = '';
+      outputText.value = '';
+      hideStatus();
+    });
+
+    $('copy-btn').addEventListener('click', async () => {
+      if (!outputText.value) return;
+      await navigator.clipboard.writeText(outputText.value);
+      const btn = $('copy-btn');
+      const original = btn.textContent;
+      btn.textContent = 'Copied!';
+      setTimeout(() => (btn.textContent = original), 1200);
+    });
+
+    function showStatus(message, type) {
+      statusEl.textContent = message;
+      statusEl.className = `status show ${type}`;
+    }
+    function hideStatus() {
+      statusEl.className = 'status';
+    }
+
+    const PBKDF2_ITERATIONS = 150_000;
+    const enc = new TextEncoder();
+    const dec = new TextDecoder();
+
+    async function deriveKey(passphraseStr, salt) {
+      const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(passphraseStr), 'PBKDF2', false, ['deriveKey']);
+      return crypto.subtle.deriveKey(
+        { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+        keyMaterial,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+      );
+    }
+
+    function toBase64(bytes) {
+      return btoa(String.fromCharCode(...bytes));
+    }
+    function fromBase64(str) {
+      return Uint8Array.from(atob(str), (c) => c.charCodeAt(0));
+    }
+
+    async function encryptText(plainText, passphraseStr) {
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const key = await deriveKey(passphraseStr, salt);
+      const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(plainText));
+
+      const combined = new Uint8Array(salt.length + iv.length + ciphertext.byteLength);
+      combined.set(salt, 0);
+      combined.set(iv, salt.length);
+      combined.set(new Uint8Array(ciphertext), salt.length + iv.length);
+      return toBase64(combined);
+    }
+
+    async function decryptText(encoded, passphraseStr) {
+      const combined = fromBase64(encoded.trim());
+      const salt = combined.slice(0, 16);
+      const iv = combined.slice(16, 28);
+      const ciphertext = combined.slice(28);
+      const key = await deriveKey(passphraseStr, salt);
+      const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+      return dec.decode(plaintext);
+    }
+
+    runBtn.addEventListener('click', async () => {
+      hideStatus();
+      const text = inputText.value;
+      const pass = passphrase.value;
+
+      if (!text) return showStatus(`Enter the ${mode === 'encrypt' ? 'text to encrypt' : 'encrypted text'}.`, 'error');
+      if (!pass) return showStatus('Enter a passphrase.', 'error');
+
+      runBtn.disabled = true;
+      try {
+        if (mode === 'encrypt') {
+          outputText.value = await encryptText(text, pass);
+          showStatus('Encrypted successfully.', 'ok');
+        } else {
+          outputText.value = await decryptText(text, pass);
+          showStatus('Decrypted successfully.', 'ok');
+        }
+      } catch (err) {
+        outputText.value = '';
+        showStatus(
+          mode === 'decrypt'
+            ? 'Decryption failed — wrong passphrase, or the text was not produced by this tool.'
+            : `Encryption failed: ${err.message}`,
+          'error'
+        );
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

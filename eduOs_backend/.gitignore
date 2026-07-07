@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-obfuscated/
+logs/
+.env
+*.log
+.DS_Store
+Thumbs.db
+db/
+core-api/
+.claude/

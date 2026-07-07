@@ -1,0 +1,20 @@
+{
+  "name": "eduos",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r build",
+    "db:generate": "pnpm --filter @eduos/db generate",
+    "db:seed": "pnpm --filter @eduos/db seed"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma"
+    ]
+  }
+}
