@@ -2,6 +2,7 @@ services:
   - type: web
     name: school-erp-backend
     env: node
+    plan: free
     rootDir: backend
     buildCommand: npm install && npm run build
     startCommand: npm start
@@ -18,6 +19,7 @@ services:
   - type: web
     name: school-erp-frontend
     env: node
+    plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
     startCommand: npm start
