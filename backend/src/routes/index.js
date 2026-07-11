@@ -95,4 +95,55 @@ router.use('/transport', transportRoutes);
 router.use('/audit', auditRoutes);
 router.use('/uploads', uploadRoutes);
 
+// ─── One-time Seed Endpoint (protected by secret key) ───────────
+// Access via: GET /api/v1/admin-seed?secret=SEED_SECRET_KEY
+// Remove this endpoint after first seed is complete.
+router.get('/admin-seed', async (req, res) => {
+  const { secret } = req.query;
+  if (!secret || secret !== (process.env.SEED_SECRET_KEY || 'eduos-seed-2026')) {
+    return res.status(403).json({ success: false, message: 'Forbidden: invalid secret key' });
+  }
+  try {
+    const { Permission } = await import('../models/permission.model.js');
+    const { Role } = await import('../models/role.model.js');
+    const { Account } = await import('../models/account.model.js');
+    const { Profile } = await import('../models/profile.model.js');
+    const { PERMISSION_CATALOG, SYSTEM_ROLES } = await import('../constants/permissions.js');
+    const { DEMO_USERS } = await import('../constants/demoUsers.js');
+    const bcrypt = await import('bcryptjs');
+    const results = [];
+
+    for (const p of PERMISSION_CATALOG) {
+      await Permission.updateOne({ key: p.key }, { $set: { group: p.group, description: p.description, isSystem: true } }, { upsert: true });
+    }
+    results.push(`✔ Seeded ${PERMISSION_CATALOG.length} permissions`);
+
+    for (const r of SYSTEM_ROLES) {
+      await Role.updateOne({ key: r.key }, { $set: { name: r.name, description: r.description ?? '', isSystem: true, permissions: r.grants } }, { upsert: true });
+    }
+    results.push(`✔ Seeded ${SYSTEM_ROLES.length} roles`);
+
+    for (const u of DEMO_USERS) {
+      const role = await Role.findOne({ key: u.roleKey });
+      if (!role) { results.push(`✘ Skipped unknown role: ${u.roleKey}`); continue; }
+      let account = await Account.findOne({ phoneE164: u.phone });
+      if (!account) {
+        const passwordHash = u.password ? await bcrypt.default.hash(u.password, 10) : null;
+        account = await Account.create({ phoneE164: u.phone, ...(u.email && { email: u.email }), passwordHash });
+      }
+      const existingProfile = await Profile.findOne({ accountId: account._id, roleId: role._id });
+      if (!existingProfile) {
+        await Profile.create({ accountId: account._id, roleId: role._id, displayName: u.displayName });
+        results.push(`✔ Created user: ${u.roleKey} → ${u.email || u.phone}`);
+      } else {
+        results.push(`- User already exists: ${u.roleKey}`);
+      }
+    }
+
+    return res.json({ success: true, message: 'Seed complete!', results });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 export default router;
