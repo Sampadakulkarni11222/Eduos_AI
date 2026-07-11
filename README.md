@@ -10,7 +10,7 @@ EduOS AI is a multi-portal School/College ERP: one platform with dedicated, role
 
 ```
 Eduos-AI/
-├── eduOs_backend/          ← Express + MongoDB REST API   (the entire backend)
+├── backend/                ← Express + MongoDB REST API   (the entire backend)
 │   ├── src/
 │   │   ├── app.js              server bootstrap (helmet, CORS, rate limits, /uploads static)
 │   │   ├── config/             env, db, swagger
@@ -24,7 +24,7 @@ Eduos-AI/
 │   ├── uploads/                uploaded files (served at /uploads/…)
 │   └── .env                    backend configuration
 │
-├── Frontend/web/           ← Next.js 14 App Router frontend  (the entire frontend)
+├── frontend/               ← Next.js 14 App Router frontend  (the entire frontend)
 │   ├── src/
 │   │   ├── app/                one folder per portal: admin/ teacher/ parent/ student/ …
 │   │   │   ├── (auth)/         login + select-profile
@@ -37,10 +37,11 @@ Eduos-AI/
 │
 ├── AUDIT_REPORT.md         stabilization audit (what was broken and why)
 ├── COMPLETION_REPORT.md    final completion report (what was fixed, verified how)
+├── render.yaml             Render deployment blueprint
 └── package.json / *.yaml   ⚠ legacy leftovers from an earlier iteration — NOT used
 ```
 
-**Only `eduOs_backend/` and `Frontend/web/` are the product.** The root `package.json`, lockfiles, and root `.env` are dead leftovers; the sibling `eduosaisite/` folder (outside this repo) is a static design reference only.
+**Only `backend/` and `frontend/` are the product.** The root `package.json`, lockfiles, and root `.env` are dead leftovers; the sibling `eduosaisite/` folder (outside this repo) is a static design reference only.
 
 ---
 
@@ -67,7 +68,7 @@ Eduos-AI/
 ### 4.1 Backend
 
 ```bash
-cd eduOs_backend
+cd backend
 npm i                # first time only
 npm run seed         # roles, permissions, demo users, demo books/hostel rooms
 npm run migrate      # links demo data (enrollments, invoices, assignments, …)
@@ -83,7 +84,7 @@ Useful backend URLs:
 ### 4.2 Frontend
 
 ```bash
-cd Frontend/web
+cd frontend
 npm i                # first time only
 npm run dev          # → http://localhost:3000
 ```
@@ -153,20 +154,20 @@ Everything below works out of the box in **safe development modes**; going live 
 
 | Integration | Dev behavior (default) | To go live |
 |---|---|---|
-| **SMS OTP** | code logged + echoed as `devOtp` (shown in login UI) | implement the vendor case in `eduOs_backend/src/providers/notification.provider.js`, set `SMS_PROVIDER` |
+| **SMS OTP** | code logged + echoed as `devOtp` (shown in login UI) | implement the vendor case in `backend/src/providers/notification.provider.js`, set `SMS_PROVIDER` |
 | **Email OTP** | same as above | same file, set `EMAIL_PROVIDER` |
 | **Google Sign-In** | dev-only demo picker | set `GOOGLE_CLIENT_ID`(+`SECRET`), `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`; backend verifies the ID token audience via Google |
 | **Online payments** | `PAYMENT_PROVIDER=sandbox` — Pay Now captures instantly with `SANDBOX-…` refs on the **real** ledger, clearly labelled | add a gateway case in `src/providers/payment.provider.js` (Razorpay/Stripe), set `PAYMENT_PROVIDER`; `none` disables online payment cleanly |
 | **WhatsApp** | SIMULATION mode — the in-app phone frame drives the real bot brain as the logged-in user | set `WA_PHONE_NUMBER_ID`, `WA_ACCESS_TOKEN`, `WA_APP_SECRET`, point Meta's webhook at `/api/v1/whatsapp/webhook` |
 | **AI copilot** | deterministic, data-grounded answers from the caller's own scoped data (attendance, fees, homework, timetable, exams) | set `AI_PROVIDER` + an LLM API key and swap the `respond()` hook in `src/modules/ai/ai.service.js` |
-| **File uploads** | stored on local disk under `eduOs_backend/uploads/`, served at `/uploads/…` (type/size validated) | swap the handler in `src/modules/uploads/upload.routes.js` for S3/GCS — the `{ fileUrl }` contract is unchanged |
+| **File uploads** | stored on local disk under `backend/uploads/`, served at `/uploads/…` (type/size validated) | swap the handler in `backend/src/modules/uploads/upload.routes.js` for S3/GCS — the `{ fileUrl }` contract is unchanged |
 | **Growth/Risk scoring** | productized heuristics behind a service layer (deterministic, explainable) | replace the scoring services with an ML model when available |
 
 ---
 
 ## 9. Environment reference
 
-### `eduOs_backend/.env`
+### `backend/.env`
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -186,7 +187,7 @@ Everything below works out of the box in **safe development modes**; going live 
 | `WHATSAPP_VERIFY_TOKEN`, `WA_*` | — | WhatsApp webhook / live mode |
 | `SWAGGER_ENABLED`, `CORS_ORIGIN`, `LOG_LEVEL` | dev defaults | ops |
 
-### `Frontend/web/.env`
+### `frontend/.env`
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -219,7 +220,7 @@ Everything below works out of the box in **safe development modes**; going live 
 | No dev OTP shown after "Send OTP" (email) | that email has no account — unknown emails are answered identically on purpose (no user enumeration). Use a seeded email or create the user first |
 | `429 Too many sign-in attempts` | credential rate limit (30/15 min per IP) — wait or raise `RATE_LIMIT_AUTH_MAX` in dev |
 | Everything returns 403 | the role lacks that permission — check Admin → Access & Permissions |
-| Uploaded file 404s | file was uploaded before a change of `UPLOAD_DIR`; files live in `eduOs_backend/uploads/` |
+| Uploaded file 404s | file was uploaded before a change of `UPLOAD_DIR`; files live in `backend/uploads/` |
 
 ---
 
