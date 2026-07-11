@@ -40,10 +40,10 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.17.0",
-    "winston-daily-rotate-file": "^5.0.0"
+    "winston-daily-rotate-file": "^5.0.0",
+    "esbuild": "^0.24.2"
   },
   "devDependencies": {
-    "esbuild": "^0.24.2",
     "javascript-obfuscator": "^5.4.3",
     "nodemon": "^3.1.14"
   },
