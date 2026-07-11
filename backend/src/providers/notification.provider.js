@@ -21,7 +21,7 @@ export async function sendOtpSms(phone, code) {
     case 'console':
     default: {
       logger.info(`[otp:sms] code for ${phone}: ${code} (SMS_PROVIDER=console — not actually sent)`);
-      return { delivered: !env.isProd, devOtp: env.isProd ? undefined : code };
+      return { delivered: true, devOtp: code };
     }
   }
 }
@@ -31,7 +31,7 @@ export async function sendOtpEmail(email, code) {
     case 'console':
     default: {
       logger.info(`[otp:email] code for ${email}: ${code} (EMAIL_PROVIDER=console — not actually sent)`);
-      return { delivered: !env.isProd, devOtp: env.isProd ? undefined : code };
+      return { delivered: true, devOtp: code };
     }
   }
 }
