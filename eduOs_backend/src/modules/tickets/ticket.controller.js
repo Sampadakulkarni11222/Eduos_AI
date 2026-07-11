@@ -27,7 +27,7 @@ export const create = asyncHandler(async (req, res) => {
 });
 
 export const reply = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.reply(req.actor, req.body), 'Reply added', 201);
+  sendSuccess(res, await service.reply(req.actor, req.scope, req.body), 'Reply added', 201);
 });
 
 export const update = asyncHandler(async (req, res) => {

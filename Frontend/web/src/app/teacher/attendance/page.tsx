@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, SkeletonRows, cx } from '@/components/ui';
+import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api } from '@/lib/api';
 import type { AttStatus, AttendanceRoster, SectionDto } from '@/lib/types';
 
@@ -23,6 +24,7 @@ export default function AttendancePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [showBulk, setShowBulk] = useState(false);
 
   useEffect(() => {
     api.mySections().then((s) => { setSections(s); if (s[0]) setSectionId(s[0].id); }).catch(() => setSections([]));
@@ -78,7 +80,12 @@ export default function AttendancePage() {
   return (
     <PortalShell expectedSlug="teacher" topbar={{
       title: 'Attendance', desc: 'One-tap marking for your sections.',
-      actions: data ? <Button onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : saved ? '✓ Saved' : 'Save attendance'}</Button> : undefined,
+      actions: data ? (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="soft" onClick={() => setShowBulk(true)}>⇧ Bulk upload</Button>
+          <Button onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : saved ? '✓ Saved' : 'Save attendance'}</Button>
+        </div>
+      ) : undefined,
     }}>
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         <select className="input" value={sectionId} onChange={(e) => setSectionId(e.target.value)} aria-label="Section">
@@ -92,6 +99,18 @@ export default function AttendancePage() {
           </span>
         )}
       </div>
+
+      {showBulk && data && (
+        <BulkUploadModal
+          title="Bulk mark attendance"
+          description={`Upload a CSV of admission numbers (or roll numbers) with a status to mark attendance for "${data.section.name}" on ${date} in one go.`}
+          templateHeaders={['admissionNo', 'rollNo', 'status', 'note']}
+          templateSampleRow={['ADM-2026-0010', '12', 'PRESENT', '']}
+          onSubmit={(file) => api.bulkMarkAttendance(file, data.section.id, date)}
+          onClose={() => setShowBulk(false)}
+          onImported={() => { setShowBulk(false); void load(sectionId, date); }}
+        />
+      )}
 
       {saveErr && <div style={{ marginBottom: 12, padding: '10px 14px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, color: '#b91c1c', fontSize: 13.5 }}>{saveErr}</div>}
       {sections === null && <Card><SkeletonRows rows={5} /></Card>}

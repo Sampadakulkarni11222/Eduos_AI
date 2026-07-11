@@ -33,9 +33,16 @@ export async function getById(actor, scope, id) {
 export const create = (actor, data) =>
   Ticket.create({ ...data, raisedByProfileId: actor.profileId, status: 'NEW' });
 
-export async function reply(actor, { ticketId, body }) {
+export async function reply(actor, scope, { ticketId, body }) {
   const ticket = await Ticket.findById(ticketId);
   if (!ticket) throw new AppError('Ticket not found', 404);
+
+  if (scope === 'OWN') {
+    const owns =
+      ticket.raisedByProfileId?.toString() === actor.profileId ||
+      ticket.assigneeProfileId?.toString() === actor.profileId;
+    if (!owns) throw new AppError('Ticket not found', 404);
+  }
 
   const message = await TicketMessage.create({ ticketId, authorProfileId: actor.profileId, body });
 

@@ -10,8 +10,12 @@ export const createExamSubject = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.createExamSubject(req.body), 'Exam subject created', 201);
 });
 
+export const listExams = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.listExams(req.query.termId), 'Exams fetched');
+});
+
 export const listExamSubjects = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.listExamSubjects(req.query.examId), 'Exam subjects fetched');
+  sendSuccess(res, await service.listExamSubjects(req.actor, req.scope, req.query.examId), 'Exam subjects fetched');
 });
 
 export const getMarksGrid = asyncHandler(async (req, res) => {
@@ -25,9 +29,9 @@ export const getPerformance = asyncHandler(async (req, res) => {
 });
 
 export const enterMarks = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.enterMarks(req.actor, req.body), 'Marks entered', 201);
+  sendSuccess(res, await service.enterMarks(req.actor, req.scope, req.body), 'Marks entered', 201);
 });
 
 export const publishMarks = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.publishMarks(req.body.examSubjectId), 'Marks published');
+  sendSuccess(res, await service.publishMarks(req.actor, req.scope, req.body.examSubjectId), 'Marks published');
 });

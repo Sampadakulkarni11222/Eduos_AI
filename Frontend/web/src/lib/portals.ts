@@ -61,7 +61,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Admission CRM', '◌', '/admin/admissions', { ready: true }),
       ]},
       { title: 'ACADEMIC OPS', items: [
-        item('Classroom Mgmt', '▦', '/admin/classrooms'),
+        item('Classroom Mgmt', '▦', '/admin/classrooms', { ready: true }),
         item('Attendance', '☱', '/admin/attendance', { ready: true }),
         item('Calendar & Events', '▤', '/admin/calendar', { ready: true }),
         item('Timetable Builder', '▥', '/admin/timetable', { ready: true }),

@@ -1,5 +1,6 @@
 import { Exam, ExamSubject, Mark } from '../../models/exam.model.js';
 import { Enrollment } from '../../models/student.model.js';
+import { SubjectOffering } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 
@@ -11,8 +12,37 @@ export async function createExamSubject(data) {
   return ExamSubject.create(data);
 }
 
-export const listExamSubjects = (examId) =>
-  ExamSubject.find(examId ? { examId } : {}).populate('examId subjectOfferingId');
+export async function listExams(termId) {
+  const exams = await Exam.find(termId ? { termId } : {}).sort({ startsOn: -1 }).lean();
+  return exams.map((e) => ({ id: e._id, name: e.name, startsOn: e.startsOn, endsOn: e.endsOn }));
+}
+
+export async function listExamSubjects(actor, scope, examId) {
+  const filter = examId ? { examId } : {};
+  if (scope === 'OWN' && actor.roleKey === 'TEACHER') {
+    const sectionIds = await getTeacherSectionIds(actor.profileId);
+    const offerings = await SubjectOffering.find({ sectionId: { $in: sectionIds } }).select('_id');
+    filter.subjectOfferingId = { $in: offerings.map((o) => o._id) };
+  }
+  const examSubjects = await ExamSubject.find(filter)
+    .populate([
+      { path: 'examId' },
+      { path: 'subjectOfferingId', populate: [{ path: 'subjectId' }, { path: 'sectionId', populate: { path: 'gradeId' } }] },
+    ])
+    .lean();
+
+  return examSubjects.map((es) => ({
+    id: es._id,
+    examId: es.examId?._id ?? null,
+    examName: es.examId?.name ?? 'Exam',
+    subject: es.subjectOfferingId?.subjectId?.name ?? 'Subject',
+    class: es.subjectOfferingId?.sectionId
+      ? `${es.subjectOfferingId.sectionId.gradeId?.name ?? ''} ${es.subjectOfferingId.sectionId.name}`.trim()
+      : 'Unknown',
+    maxMarks: es.maxMarks ?? 100,
+    examDate: es.examDate ?? null,
+  }));
+}
 
 async function resolveEnrollmentIdsForOwn(actor) {
   if (actor.roleKey === 'TEACHER') {
@@ -33,13 +63,66 @@ async function resolveEnrollmentIdsForOwn(actor) {
   return [];
 }
 
-export async function getMarksGrid(actor, scope, examSubjectId) {
-  const filter = { examSubjectId };
-  if (scope === 'OWN') {
-    const ids = await resolveEnrollmentIdsForOwn(actor);
-    filter.enrollmentId = { $in: ids };
+/**
+ * Loads an exam subject with its class/subject context and, for a
+ * TEACHER acting OWN-scoped, verifies the subject's section is one of
+ * theirs. Throws 404/403 otherwise. Shared by the roster and marks-entry
+ * endpoints so a teacher can never read or write marks outside their classes.
+ */
+async function loadOwnedExamSubject(actor, scope, examSubjectId) {
+  const examSubject = await ExamSubject.findById(examSubjectId).populate([
+    { path: 'examId' },
+    { path: 'subjectOfferingId', populate: [{ path: 'subjectId' }, { path: 'sectionId', populate: { path: 'gradeId' } }] },
+  ]);
+  if (!examSubject) throw new AppError('Exam subject not found', 404);
+
+  const sectionId = examSubject.subjectOfferingId?.sectionId?._id;
+  if (scope === 'OWN' && actor.roleKey === 'TEACHER') {
+    const mySections = await getTeacherSectionIds(actor.profileId);
+    if (!mySections.includes(sectionId?.toString())) {
+      throw new AppError('This exam subject is not in your classes', 403);
+    }
   }
-  return Mark.find(filter).populate('enrollmentId');
+  return examSubject;
+}
+
+/** Full class roster for an exam subject — every enrolled student, marked or not (teacher/grader view). */
+export async function getMarksGrid(actor, scope, examSubjectId) {
+  const examSubject = await loadOwnedExamSubject(actor, scope, examSubjectId);
+  const sectionId = examSubject.subjectOfferingId?.sectionId?._id;
+
+  const enrollments = await Enrollment.find({ sectionId, status: 'ACTIVE' })
+    .populate({ path: 'studentId', select: 'firstName lastName admissionNo' })
+    .select('rollNo studentId')
+    .lean();
+
+  const marks = await Mark.find({ examSubjectId }).lean();
+  const markMap = Object.fromEntries(marks.map((m) => [m.enrollmentId.toString(), m]));
+
+  return {
+    examSubject: {
+      id: examSubject._id,
+      examName: examSubject.examId?.name ?? 'Exam',
+      subject: examSubject.subjectOfferingId?.subjectId?.name ?? 'Subject',
+      class: examSubject.subjectOfferingId?.sectionId
+        ? `${examSubject.subjectOfferingId.sectionId.gradeId?.name ?? ''} ${examSubject.subjectOfferingId.sectionId.name}`.trim()
+        : 'Unknown',
+      maxMarks: examSubject.maxMarks ?? 100,
+    },
+    rows: enrollments.map((e) => {
+      const m = markMap[e._id.toString()];
+      const student = e.studentId;
+      return {
+        enrollmentId: e._id,
+        rollNo: e.rollNo ?? null,
+        studentName: student ? `${student.firstName} ${student.lastName ?? ''}`.trim() : 'Unknown',
+        marks: m?.marks ?? null,
+        gradeLabel: m?.gradeLabel ?? null,
+        remarks: m?.remarks ?? null,
+        status: m?.status ?? 'PENDING',
+      };
+    }),
+  };
 }
 
 export async function getPerformance(actor, scope, { enrollmentId }) {
@@ -140,25 +223,39 @@ export async function getPerformance(actor, scope, { enrollmentId }) {
   };
 }
 
-export async function enterMarks(actor, { examSubjectId, entries }) {
-  const examSubject = await ExamSubject.findById(examSubjectId);
-  if (!examSubject) throw new AppError('Exam subject not found', 404);
+export async function enterMarks(actor, scope, { examSubjectId, entries }) {
+  const examSubject = await loadOwnedExamSubject(actor, scope, examSubjectId);
+  const sectionId = examSubject.subjectOfferingId?.sectionId?._id;
 
-  const ops = entries.map(({ enrollmentId, marks, gradeLabel, remarks }) => ({
+  // Never trust the client's enrollmentId list outright — an entry may only
+  // reference a student actually enrolled in this exam subject's section.
+  const enrolled = await Enrollment.find({ sectionId, status: 'ACTIVE' }).select('_id');
+  const allowedIds = new Set(enrolled.map((e) => e._id.toString()));
+
+  // Published marks are locked — re-entering must never silently downgrade
+  // a published result back to DRAFT (a resubmitted stale form, or the
+  // client simply not filtering, must not be able to undo a publish).
+  const published = await Mark.find({ examSubjectId, status: 'PUBLISHED' }).select('enrollmentId');
+  const publishedIds = new Set(published.map((m) => m.enrollmentId.toString()));
+
+  const validEntries = entries.filter((e) => allowedIds.has(String(e.enrollmentId)) && !publishedIds.has(String(e.enrollmentId)));
+  if (validEntries.length === 0) throw new AppError('No valid mark entries for this class', 400);
+
+  const ops = validEntries.map(({ enrollmentId, marks, gradeLabel, remarks }) => ({
     updateOne: {
       filter: { examSubjectId, enrollmentId },
       update: { $set: { marks, gradeLabel, remarks, status: 'DRAFT', enteredByProfileId: actor.profileId } },
       upsert: true,
     },
   }));
-  if (ops.length === 0) throw new AppError('No mark entries provided', 400);
   await Mark.bulkWrite(ops);
   return Mark.find({ examSubjectId });
 }
 
-export async function publishMarks(examSubjectId) {
+export async function publishMarks(actor, scope, examSubjectId) {
+  await loadOwnedExamSubject(actor, scope, examSubjectId);
   const result = await Mark.updateMany(
-    { examSubjectId },
+    { examSubjectId, status: { $ne: 'PUBLISHED' } },
     { status: 'PUBLISHED', publishedAt: new Date() }
   );
   return { matched: result.matchedCount, modified: result.modifiedCount };

@@ -103,6 +103,65 @@ export async function createLead(data) {
   return { id: lead._id };
 }
 
+const LEAD_SOURCES = new Set(['WHATSAPP', 'WEB', 'WALK_IN', 'REFERRAL']);
+const LEAD_STAGES = new Set(['NEW', 'CONTACTED', 'TOUR_SCHEDULED', 'APPLICATION', 'ENROLLED', 'LOST']);
+
+/**
+ * Bulk-imports leads from parsed CSV rows. Each row is validated and
+ * inserted independently so one bad row doesn't sink the whole batch —
+ * the caller gets back a per-row success/failure report.
+ */
+export async function bulkCreateLeads(rows) {
+  const results = { imported: 0, failed: 0, errors: [] };
+
+  for (let i = 0; i < rows.length; i++) {
+    const rowNo = i + 2; // header is row 1
+    const row = rows[i];
+    const childName = row.childname?.trim();
+    const guardianName = row.guardianname?.trim();
+    const phone = row.phone?.trim();
+
+    if (!childName || !guardianName || !phone) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: 'childName, guardianName, and phone are required' });
+      continue;
+    }
+
+    const source = row.source?.trim().toUpperCase();
+    const stage = row.stage?.trim().toUpperCase();
+    if (source && !LEAD_SOURCES.has(source)) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: `Invalid source "${row.source}"` });
+      continue;
+    }
+    if (stage && !LEAD_STAGES.has(stage)) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: `Invalid stage "${row.stage}"` });
+      continue;
+    }
+
+    try {
+      const lead = await Lead.create({
+        childName,
+        guardianName,
+        phone,
+        email: row.email?.trim() || null,
+        gradeApplying: row.gradeapplying?.trim() || null,
+        source: source || 'WALK_IN',
+        stage: stage || 'NEW',
+        notes: row.notes?.trim() || null,
+      });
+      await ensureStudentForEnrolledLead(lead);
+      results.imported++;
+    } catch (err) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: err.message });
+    }
+  }
+
+  return results;
+}
+
 export async function updateLead({ leadId, stage, notes, assigneeProfileId, nextActionAt, actorProfileId }) {
   const lead = await Lead.findById(leadId);
   if (!lead) throw new AppError('Lead not found', 404);

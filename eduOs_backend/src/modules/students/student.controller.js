@@ -1,5 +1,6 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
+import { parseCsvRows } from '../../utils/csvImport.js';
 import * as service from './student.service.js';
 
 export const list = asyncHandler(async (req, res) => {
@@ -35,6 +36,13 @@ export const listGuardians = asyncHandler(async (req, res) => {
 
 export const enroll = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.enroll(req.body), 'Student enrolled', 201);
+});
+
+export const bulkEnroll = asyncHandler(async (req, res) => {
+  const rows = parseCsvRows(req);
+  const { sectionId, academicYearId } = req.body;
+  const result = await service.bulkEnroll({ sectionId, academicYearId, rows });
+  sendSuccess(res, result, `Enrolled ${result.imported} of ${rows.length} students`, 201);
 });
 
 export const listEnrollments = asyncHandler(async (req, res) => {

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
+import { csvUploadSingle } from '../../utils/csvImport.js';
 import * as controller from './attendance.controller.js';
 
 const router = Router();
@@ -64,6 +65,35 @@ router.get('/roster', requirePermission('attendance.read'), controller.getRoster
  *         description: Attendance marked
  */
 router.post('/mark', requirePermission('attendance.mark'), controller.mark);
+
+/**
+ * @swagger
+ * /attendance/mark/bulk:
+ *   post:
+ *     summary: Bulk-mark attendance for a section on a date from a CSV file
+ *     tags: [Attendance]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [sectionId, date, file]
+ *             properties:
+ *               sectionId: { type: string }
+ *               date: { type: string, format: date }
+ *               periodNo: { type: integer, nullable: true }
+ *               file: { type: string, format: binary }
+ *     responses:
+ *       201:
+ *         description: Attendance marked (per-row success/failure report)
+ */
+router.post(
+  '/mark/bulk',
+  requirePermission('attendance.mark'),
+  csvUploadSingle('file'),
+  controller.markBulk
+);
 
 /**
  * @swagger

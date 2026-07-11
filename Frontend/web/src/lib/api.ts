@@ -4,7 +4,7 @@
  * Production hardening (Phase 7): move refresh into an httpOnly cookie
  * behind a BFF route handler so it never touches JS-readable storage.
  */
-import type { Me, Paged, ProfileSummary, StudentListItem, SectionDto, OfferingDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto } from './types';
+import type { Me, Paged, ProfileSummary, StudentListItem, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult } from './types';
 
 // Backend URL – default to localhost:5000. Can be overridden via NEXT_PUBLIC_BACKEND_URL.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
@@ -102,6 +102,26 @@ async function uploadFile(file: File): Promise<UploadResult> {
   return (json?.data ?? json) as UploadResult;
 }
 
+/** Multipart CSV upload (bulk imports). Extra non-file fields go alongside the file. */
+async function uploadCsv(path: string, file: File, fields: Record<string, string> = {}): Promise<BulkImportResult> {
+  const form = new FormData();
+  Object.entries(fields).forEach(([k, v]) => form.append(k, v));
+  form.append('file', file);
+  const res = await fetch(`${BACKEND_URL}/api/v1${path}`, {
+    method: 'POST',
+    headers: {
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body?.error?.code ?? 'UPLOAD_FAILED', body?.message ?? 'Upload failed');
+  }
+  const json = await res.json();
+  return (json?.data ?? json) as BulkImportResult;
+}
+
 /** Turn a stored fileUrl (which may be server-relative "/uploads/…") into an absolute link. */
 export function fileHref(fileUrl: string): string {
   if (!fileUrl) return '#';
@@ -155,6 +175,8 @@ export const api = {
   },
   createStudent: (body: { firstName: string; lastName?: string; admissionNo: string; sectionId?: string }) =>
     request<StudentListItem>('/students', { method: 'POST', body: JSON.stringify(body) }),
+  bulkAssignSection: (file: File, sectionId: string, academicYearId: string) =>
+    uploadCsv('/enrollments/bulk', file, { sectionId, academicYearId }),
 
   // ── audit ──
   auditLogs: (params: { cursor?: string; action?: string } = {}) => {
@@ -186,6 +208,42 @@ export const api = {
     const raw: any[] = await request<any[]>('/academics/years');
     return raw.map((y) => ({ id: y._id ?? y.id, name: y.name, isCurrent: y.isCurrent ?? false })) as { id: string; name: string; isCurrent: boolean }[];
   },
+  createAcademicYear: (body: { name: string; startsOn: string; endsOn: string; isCurrent?: boolean }) =>
+    request<{ id: string }>('/academics/years', { method: 'POST', body: JSON.stringify(body) }),
+
+  // ── classroom management (grades / sections / subjects / offerings) ──
+  listGrades: async () => {
+    const raw: any[] = await request<any[]>('/academics/grades');
+    return raw.map((g) => ({ id: g._id ?? g.id, name: g.name, level: g.level })) as GradeDto[];
+  },
+  createGrade: (body: { name: string; level: number }) =>
+    request<{ id: string }>('/academics/grades', { method: 'POST', body: JSON.stringify(body) }),
+  createSection: (body: { gradeId: string; name: string; classTeacherId?: string }) =>
+    request<{ id: string }>('/academics/sections', { method: 'POST', body: JSON.stringify(body) }),
+  listSubjects: async () => {
+    const raw: any[] = await request<any[]>('/academics/subjects');
+    return raw.map((s) => ({ id: s._id ?? s.id, name: s.name, code: s.code ?? null })) as SubjectDto[];
+  },
+  createSubject: (body: { name: string; code?: string }) =>
+    request<{ id: string }>('/academics/subjects', { method: 'POST', body: JSON.stringify(body) }),
+  listTerms: async (academicYearId?: string) => {
+    const qs = academicYearId ? `?academicYearId=${academicYearId}` : '';
+    const raw: any[] = await request<any[]>(`/academics/terms${qs}`);
+    return raw.map((t) => ({ id: t._id ?? t.id, academicYearId: t.academicYearId, name: t.name, startsOn: t.startsOn, endsOn: t.endsOn })) as TermDto[];
+  },
+  createTerm: (body: { academicYearId: string; name: string; startsOn: string; endsOn: string }) =>
+    request<{ id: string }>('/academics/terms', { method: 'POST', body: JSON.stringify(body) }),
+  listOfferings: (filter: { sectionId?: string; subjectId?: string; termId?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (filter.sectionId) q.set('sectionId', filter.sectionId);
+    if (filter.subjectId) q.set('subjectId', filter.subjectId);
+    if (filter.termId) q.set('termId', filter.termId);
+    const qs = q.toString();
+    return request<OfferingDto[]>(`/academics/offerings${qs ? `?${qs}` : ''}`);
+  },
+  createOffering: (body: { sectionId: string; subjectId: string; termId: string; teacherId?: string }) =>
+    request<{ id: string }>('/academics/offerings', { method: 'POST', body: JSON.stringify(body) }),
+  listTeachers: () => request<StaffAccountDto[]>('/users?roleKey=TEACHER'),
 
   // ── attendance ──
   attendanceRoster: (sectionId: string, date: string, periodNo?: number) => {
@@ -195,6 +253,8 @@ export const api = {
   },
   markAttendance: (body: { sectionId: string; date: string; periodNo?: number; entries: Array<{ enrollmentId: string; status: AttStatus; note?: string }> }) =>
     request<{ marked: number }>('/attendance/mark', { method: 'POST', body: JSON.stringify(body) }),
+  bulkMarkAttendance: (file: File, sectionId: string, date: string, periodNo?: number) =>
+    uploadCsv('/attendance/mark/bulk', file, { sectionId, date, ...(periodNo ? { periodNo: String(periodNo) } : {}) }),
   attendanceSummary: (enrollmentId: string, yearMonth: string) =>
     request<{ enrollmentId: string; yearMonth: string; PRESENT: number; ABSENT: number; LATE: number; EXCUSED: number; HALF_DAY: number; workingDays: number; pctPresent: number }>(`/attendance/summary?enrollmentId=${enrollmentId}&month=${yearMonth}`),
 
@@ -217,6 +277,13 @@ export const api = {
 
   // ── exams / performance ──
   performance: (enrollmentId: string) => request<PerformanceDto>(`/exams/performance?enrollmentId=${enrollmentId}`),
+  exams: () => request<ExamDto[]>('/exams'),
+  examSubjects: (examId: string) => request<ExamSubjectDto[]>(`/exams/subjects?examId=${examId}`),
+  marksGrid: (examSubjectId: string) => request<MarksGrid>(`/exams/marks-grid?examSubjectId=${examSubjectId}`),
+  enterMarks: (body: { examSubjectId: string; entries: Array<{ enrollmentId: string; marks: number; gradeLabel?: string; remarks?: string }> }) =>
+    request<{ id: string }[]>('/exams/marks', { method: 'POST', body: JSON.stringify(body) }),
+  publishMarks: (examSubjectId: string) =>
+    request<{ matched: number; modified: number }>('/exams/publish', { method: 'POST', body: JSON.stringify({ examSubjectId }) }),
 
   // ── calendar ──
   calendar: (from: string, to: string) => request<CalendarEventDto[]>(`/calendar?from=${from}&to=${to}`),
@@ -271,6 +338,7 @@ export const api = {
   pipeline: () => request<Pipeline>('/admissions/pipeline'),
   createLead: (body: object) => request<{ id: string }>('/admissions/leads', { method: 'POST', body: JSON.stringify(body) }),
   updateLead: (body: object) => request<{ id: string }>('/admissions/leads/update', { method: 'POST', body: JSON.stringify(body) }),
+  bulkImportLeads: (file: File) => uploadCsv('/admissions/leads/bulk', file),
 
   // ── AI layer ──
   growthScore: (enrollmentId: string) => request<GrowthScore>(`/growth/score?enrollmentId=${enrollmentId}`),

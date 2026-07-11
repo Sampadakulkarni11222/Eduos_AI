@@ -206,15 +206,27 @@ export async function listPayments(actor, scope, { invoiceId } = {}) {
 }
 
 export async function refundPayment(paymentId) {
-  const payment = await Payment.findById(paymentId);
-  if (!payment) throw new AppError('Payment not found', 404);
-  if (payment.status === 'REFUNDED') throw new AppError('Payment already refunded', 409);
+  // Atomically flip status only if it isn't already REFUNDED — the DB-level
+  // condition ensures two concurrent refund requests can't both "win" the
+  // check and double-deduct the invoice below.
+  const payment = await Payment.findOneAndUpdate(
+    { _id: paymentId, status: { $ne: 'REFUNDED' } },
+    { $set: { status: 'REFUNDED' } },
+    { new: true }
+  );
+  if (!payment) {
+    const exists = await Payment.exists({ _id: paymentId });
+    throw new AppError(exists ? 'Payment already refunded' : 'Payment not found', exists ? 409 : 404);
+  }
 
-  const invoice = await Invoice.findById(payment.invoiceId);
-  payment.status = 'REFUNDED';
-  await payment.save();
-
-  invoice.paidPaise = Math.max(0, invoice.paidPaise - payment.amountPaise);
+  // $inc is atomic, so concurrent refunds of different payments on the same
+  // invoice can't clobber each other's paidPaise update either.
+  const invoice = await Invoice.findByIdAndUpdate(
+    payment.invoiceId,
+    { $inc: { paidPaise: -payment.amountPaise } },
+    { new: true }
+  );
+  invoice.paidPaise = Math.max(0, invoice.paidPaise);
   invoice.status = invoice.paidPaise === 0 ? 'PENDING' : 'PARTIAL';
   await invoice.save();
 

@@ -41,7 +41,18 @@ export interface Paged<T> {
 }
 
 export interface SectionDto { id: string; name: string; gradeName: string; classTeacher?: string | null }
-export interface OfferingDto { id: string; subject: string; sectionId: string; sectionName: string }
+export interface OfferingDto { id: string; subject: string; subjectId?: string; sectionId: string; sectionName: string; teacherName?: string | null }
+export interface GradeDto { id: string; name: string; level: number }
+export interface SubjectDto { id: string; name: string; code?: string | null }
+export interface TermDto { id: string; academicYearId: string; name: string; startsOn: string; endsOn: string }
+
+// Actual shape of GET /users (account + nested profiles) — distinct from the
+// flattened UserDto below, which some pages construct client-side.
+export interface StaffAccountDto {
+  accountId: string;
+  displayName: string | null;
+  profiles: { profileId: string; displayName: string; role: string | null }[];
+}
 export interface RosterRow { enrollmentId: string; rollNo: number | null; studentName: string; status: AttStatus | null; note: string | null }
 export type AttStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY';
 export interface AttendanceRoster { section: { id: string; name: string }; date: string; periodNo: number | null; roster: RosterRow[] }
@@ -58,6 +69,10 @@ export interface PerformanceDto {
   needsSupport: { subject: string; pct: number | null } | null;
   results: Array<{ exam: string; subject: string; marks: number | null; maxMarks: number; pct: number | null }>;
 }
+export interface ExamDto { id: string; name: string; startsOn: string; endsOn: string }
+export interface ExamSubjectDto { id: string; examId: string; examName: string; subject: string; class: string; maxMarks: number; examDate: string | null }
+export interface MarkRow { enrollmentId: string; rollNo: number | null; studentName: string; marks: number | null; gradeLabel: string | null; remarks: string | null; status: 'PENDING' | 'DRAFT' | 'REVIEW' | 'PUBLISHED' }
+export interface MarksGrid { examSubject: { id: string; examName: string; subject: string; class: string; maxMarks: number }; rows: MarkRow[] }
 export interface CalendarEventDto { id: string; title: string; description: string | null; type: string; startsAt: string; endsAt: string }
 
 export interface InvoiceDto { id: string; invoiceNo: string; studentName: string; class: string | null; status: string; totalPaise: number; paidPaise: number; dueOn: string }
@@ -139,6 +154,13 @@ export interface CreateUserDto {
 
 // ── Uploads ──
 export interface UploadResult { fileUrl: string; filename: string; size: number; mimeType: string }
+
+// ── Bulk CSV import (leads / enrollments / attendance) ──
+export interface BulkImportResult {
+  imported: number;
+  failed: number;
+  errors: { row: number; error: string }[];
+}
 
 // ── Online payments ──
 export interface PayOnlineResult { receiptNo: string; gatewayRef: string; provider: string; sandbox: boolean; status: string; paidPaise: number }

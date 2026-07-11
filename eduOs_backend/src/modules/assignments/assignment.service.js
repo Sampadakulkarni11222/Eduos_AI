@@ -97,9 +97,28 @@ export async function create(actor, data) {
   return Assignment.create({ ...data, createdByProfileId: actor.profileId });
 }
 
-export async function gradeSubmission(actor, { assignmentId, enrollmentId, marks, feedback }) {
-  const assignment = await Assignment.findOne({ _id: assignmentId, deletedAt: null });
+export async function gradeSubmission(actor, scope, { assignmentId, enrollmentId, marks, feedback }) {
+  const assignment = await Assignment.findOne({ _id: assignmentId, deletedAt: null }).populate({
+    path: 'subjectOfferingId',
+    select: 'sectionId',
+  });
   if (!assignment) throw new AppError('Assignment not found', 404);
+
+  const sectionId = assignment.subjectOfferingId?.sectionId?.toString();
+
+  if (scope === 'OWN' && actor.roleKey === 'TEACHER') {
+    const mySections = await getTeacherSectionIds(actor.profileId);
+    if (!sectionId || !mySections.includes(sectionId)) {
+      throw new AppError('This assignment is not in your classes', 403);
+    }
+  }
+
+  // The enrollment being graded must actually be in this assignment's section,
+  // regardless of scope — prevents grading students from unrelated classes.
+  const enrollment = await Enrollment.findById(enrollmentId).select('sectionId');
+  if (!enrollment || enrollment.sectionId.toString() !== sectionId) {
+    throw new AppError('This student is not enrolled in this assignment\'s class', 400);
+  }
 
   return Submission.findOneAndUpdate(
     { assignmentId, enrollmentId },

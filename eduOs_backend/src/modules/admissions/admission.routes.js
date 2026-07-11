@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
+import { csvUploadSingle } from '../../utils/csvImport.js';
 import * as controller from './admission.controller.js';
 
 const router = Router();
@@ -36,6 +37,31 @@ router.get('/pipeline', requirePermission('admissions.read'), controller.getPipe
  *         description: Lead created
  */
 router.post('/leads', requirePermission('admissions.manage'), controller.createLead);
+
+/**
+ * @swagger
+ * /admissions/leads/bulk:
+ *   post:
+ *     summary: Bulk-import admission leads from a CSV file
+ *     tags: [Admissions]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file: { type: string, format: binary }
+ *     responses:
+ *       201:
+ *         description: Leads imported (per-row success/failure report)
+ */
+router.post(
+  '/leads/bulk',
+  requirePermission('admissions.manage'),
+  csvUploadSingle('file'),
+  controller.bulkCreateLeads
+);
 
 /**
  * @swagger

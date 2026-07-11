@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
+import { csvUploadSingle } from '../../utils/csvImport.js';
 import * as controller from './student.controller.js';
 
 const router = Router();
@@ -55,6 +56,34 @@ router.get('/', requirePermission('students.read'), controller.listEnrollments);
 router.get('/next-roll-no', requirePermission('students.read'), controller.getNextRollNo);
 
 router.post('/', requirePermission('enrollments.manage'), controller.enroll);
+
+/**
+ * @swagger
+ * /enrollments/bulk:
+ *   post:
+ *     summary: Bulk-assign students to a section for an academic year from a CSV file
+ *     tags: [Enrollments]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [sectionId, academicYearId, file]
+ *             properties:
+ *               sectionId: { type: string }
+ *               academicYearId: { type: string }
+ *               file: { type: string, format: binary }
+ *     responses:
+ *       201:
+ *         description: Students enrolled (per-row success/failure report)
+ */
+router.post(
+  '/bulk',
+  requirePermission('enrollments.manage'),
+  csvUploadSingle('file'),
+  controller.bulkEnroll
+);
 
 /**
  * @swagger

@@ -56,6 +56,16 @@ export async function markAttendance(actor, { date, periodNo = null, records, en
   const items = records || entries || [];
   if (items.length === 0) throw new AppError('No attendance records provided', 400);
 
+  // Every enrollmentId must actually belong to the authorized sectionId —
+  // otherwise a caller could smuggle in enrollmentIds from other sections.
+  const requestedIds = [...new Set(items.map((i) => i.enrollmentId?.toString()))];
+  const validEnrollments = await Enrollment.find({ _id: { $in: requestedIds }, sectionId }).select('_id');
+  const validIds = new Set(validEnrollments.map((e) => e._id.toString()));
+  const invalidIds = requestedIds.filter((id) => !validIds.has(id));
+  if (invalidIds.length > 0) {
+    throw new AppError('One or more students do not belong to this section', 403);
+  }
+
   const day = new Date(date);
   const ops = items.map(({ enrollmentId, status, note }) => ({
     updateOne: {
@@ -69,6 +79,58 @@ export async function markAttendance(actor, { date, periodNo = null, records, en
 
   await AttendanceRecord.bulkWrite(ops);
   return getRoster(actor, 'ALL', sectionId, date);
+}
+
+const VALID_STATUSES = new Set(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY']);
+
+/**
+ * Bulk-marks attendance for a section from parsed CSV rows (admissionNo or
+ * rollNo + status). Rows are resolved to enrollmentIds strictly within the
+ * given sectionId's active roster, then handed to markAttendance() so the
+ * same ownership + cross-section checks apply as the single-roster path.
+ */
+export async function markAttendanceBulk(actor, { date, periodNo = null, sectionId, rows }) {
+  if (!sectionId) throw new AppError('sectionId is required', 400);
+
+  const enrollments = await Enrollment.find({ sectionId, status: 'ACTIVE' })
+    .populate({ path: 'studentId', select: 'admissionNo' })
+    .select('rollNo studentId');
+
+  const byAdmissionNo = new Map();
+  const byRollNo = new Map();
+  for (const e of enrollments) {
+    if (e.studentId?.admissionNo) byAdmissionNo.set(e.studentId.admissionNo.toLowerCase(), e._id.toString());
+    if (e.rollNo != null) byRollNo.set(String(e.rollNo), e._id.toString());
+  }
+
+  const records = [];
+  const errors = [];
+  rows.forEach((row, idx) => {
+    const rowNo = idx + 2; // header is row 1
+    const admissionNo = row.admissionno?.trim();
+    const rollNo = row.rollno?.trim();
+    const status = row.status?.trim().toUpperCase();
+
+    const enrollmentId =
+      (admissionNo && byAdmissionNo.get(admissionNo.toLowerCase())) || (rollNo && byRollNo.get(rollNo));
+    if (!enrollmentId) {
+      errors.push({ row: rowNo, error: 'No matching active student in this section (check admissionNo/rollNo)' });
+      return;
+    }
+    if (!VALID_STATUSES.has(status)) {
+      errors.push({ row: rowNo, error: `Invalid status "${row.status ?? ''}"` });
+      return;
+    }
+
+    records.push({ enrollmentId, status, note: row.note?.trim() || undefined });
+  });
+
+  if (records.length === 0) {
+    throw new AppError('No valid attendance rows found in the file', 400, errors.map((e) => `Row ${e.row}: ${e.error}`));
+  }
+
+  const roster = await markAttendance(actor, { date, periodNo, sectionId, records });
+  return { ...roster, imported: records.length, failed: errors.length, errors };
 }
 
 async function resolveSummaryEnrollmentIds(actor, scope, enrollmentId) {

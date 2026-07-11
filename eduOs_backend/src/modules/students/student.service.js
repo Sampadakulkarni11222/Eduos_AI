@@ -131,6 +131,69 @@ export async function enroll(data) {
   }
 }
 
+/**
+ * Bulk-assigns students to a section for an academic year from parsed CSV
+ * rows (admissionNo + optional rollNo). Every row targets the same
+ * sectionId/academicYearId; rows without a rollNo get the next available
+ * one, assigned in file order so duplicates within the file still collide
+ * predictably. Each row is inserted independently so one bad row doesn't
+ * sink the whole batch.
+ */
+export async function bulkEnroll({ sectionId, academicYearId, rows }) {
+  if (!sectionId || !academicYearId) {
+    throw new AppError('sectionId and academicYearId are required', 400);
+  }
+
+  const results = { imported: 0, failed: 0, errors: [] };
+
+  for (let i = 0; i < rows.length; i++) {
+    const rowNo = i + 2; // header is row 1
+    const row = rows[i];
+    const admissionNo = row.admissionno?.trim();
+
+    if (!admissionNo) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: 'admissionNo is required' });
+      continue;
+    }
+
+    const student = await Student.findOne({ admissionNo, deletedAt: null }).select('_id');
+    if (!student) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: `No student found with admissionNo "${admissionNo}"` });
+      continue;
+    }
+
+    let rollNo;
+    if (row.rollno?.trim()) {
+      rollNo = Number(row.rollno);
+      if (!Number.isFinite(rollNo)) {
+        results.failed++;
+        results.errors.push({ row: rowNo, error: `Invalid rollNo "${row.rollno}"` });
+        continue;
+      }
+    } else {
+      rollNo = await nextRollNo(sectionId, academicYearId);
+    }
+
+    try {
+      await Enrollment.create({ studentId: student._id, sectionId, academicYearId, rollNo });
+      results.imported++;
+    } catch (err) {
+      results.failed++;
+      if (err.code === 11000 && err.keyPattern?.rollNo) {
+        results.errors.push({ row: rowNo, error: `Roll number ${rollNo} is already assigned in this section` });
+      } else if (err.code === 11000) {
+        results.errors.push({ row: rowNo, error: `Student "${admissionNo}" is already enrolled in the selected academic year` });
+      } else {
+        results.errors.push({ row: rowNo, error: err.message });
+      }
+    }
+  }
+
+  return results;
+}
+
 /** Returns the next suggested roll number for a given section+year (max existing + 1) */
 export async function nextRollNo(sectionId, academicYearId) {
   const last = await Enrollment.findOne({ sectionId, academicYearId, rollNo: { $ne: null } })

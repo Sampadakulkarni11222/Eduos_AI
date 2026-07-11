@@ -2,6 +2,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, Pill, SkeletonRows } from '@/components/ui';
+import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
@@ -29,6 +30,7 @@ export default function AdmissionsPage() {
   const [pipeline, setPipeline] = useState<any>(null);
   const [pipelineErr, setPipelineErr] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
   const [enrolledToast, setEnrolledToast] = useState<string | null>(null);
 
   const reload = () => {
@@ -79,9 +81,25 @@ export default function AdmissionsPage() {
   return (
     <PortalShell expectedSlug="admin" topbar={{
       title: 'Admission CRM', desc: 'Prospective families and their journey.',
-      actions: canAssign ? <Button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Close' : '+ Add lead'}</Button> : undefined,
+      actions: canAssign ? (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="soft" onClick={() => setShowBulk(true)}>⇧ Bulk upload</Button>
+          <Button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Close' : '+ Add lead'}</Button>
+        </div>
+      ) : undefined,
     }}>
       {showForm && <NewLead onDone={() => { setShowForm(false); reload(); }} />}
+      {showBulk && (
+        <BulkUploadModal
+          title="Bulk import leads"
+          description="Upload a CSV of prospective families to add them straight into the pipeline as NEW leads."
+          templateHeaders={['childName', 'guardianName', 'phone', 'email', 'gradeApplying', 'source', 'stage', 'notes']}
+          templateSampleRow={['Aarav Sharma', 'Rohit Sharma', '+919876500001', 'rohit@example.com', 'Class 5', 'WALK_IN', 'NEW', 'Interested in sports']}
+          onSubmit={(file) => api.bulkImportLeads(file)}
+          onClose={() => setShowBulk(false)}
+          onImported={() => reload()}
+        />
+      )}
       {enrolledToast && (
         <div style={{ marginBottom: 14, padding: '12px 16px', background: '#dcf5e7', border: '1px solid #a3dbb8', borderRadius: 8, fontSize: 13.5, color: '#1a6636', display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 18 }}>✓</span>

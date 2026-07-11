@@ -30,8 +30,11 @@ export const listLogs = asyncHandler(async (req, res) => {
     entityId: log.entityId,
     actorProfileId: log.actorProfileId?._id,
     actorName: log.actorProfileId?.displayName || 'System',
+    channel: log.channel || 'WEB',
+    ip: log.ip || null,
     createdAt: log.createdAt.toISOString(),
   }));
+
 
   // Match the Paged<T> structure for the frontend
   sendSuccess(res, { items: dtos, nextCursor }, 'Audit logs fetched successfully');

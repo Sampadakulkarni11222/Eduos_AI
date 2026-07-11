@@ -27,9 +27,21 @@ router.post('/', requirePermission('exams.manage'), controller.createExam);
 
 /**
  * @swagger
+ * /exams:
+ *   get:
+ *     summary: List exams (optionally by termId query param)
+ *     tags: [Exams]
+ *     responses:
+ *       200:
+ *         description: List of exams
+ */
+router.get('/', requirePermission('marks.read'), controller.listExams);
+
+/**
+ * @swagger
  * /exams/subjects:
  *   get:
- *     summary: List exam subjects (optionally by examId query param)
+ *     summary: List exam subjects (optionally by examId query param). Teachers only see subjects tied to their own classes.
  *     tags: [Exams]
  *     responses:
  *       200:
@@ -41,14 +53,14 @@ router.post('/', requirePermission('exams.manage'), controller.createExam);
  *       201:
  *         description: Exam subject created
  */
-router.get('/subjects', requirePermission('exams.manage'), controller.listExamSubjects);
+router.get('/subjects', requirePermission('marks.read'), controller.listExamSubjects);
 router.post('/subjects', requirePermission('exams.manage'), controller.createExamSubject);
 
 /**
  * @swagger
  * /exams/marks-grid:
  *   get:
- *     summary: Get the marks grid for an exam subject (scoped to OWN for teachers/parents/students)
+ *     summary: Get the full class roster with marks for an exam subject (every enrolled student, entered or not), scoped to OWN for teachers
  *     tags: [Exams]
  *     parameters:
  *       - in: query

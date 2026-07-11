@@ -32,8 +32,13 @@ import documentRoutes from '../modules/documents/document.routes.js';
 import transportRoutes from '../modules/transport/transport.routes.js';
 import auditRoutes from '../modules/audit/audit.routes.js';
 import uploadRoutes from '../modules/uploads/upload.routes.js';
+import { auditLogger } from '../middleware/auditLogger.js';
 
 const router = Router();
+
+// Global audit logging for state-modifying requests
+router.use(auditLogger);
+
 
 /**
  * @swagger

@@ -144,9 +144,21 @@ export async function listIssues({ status, bookId, studentId } = {}) {
 
 // Frontend sends: { bookId, studentId, dueAt }
 export async function issueBook({ bookId, studentId, borrowerProfileId, dueAt, dueDate, borrowerName }) {
-  const book = await Book.findOne({ _id: bookId, deletedAt: null });
-  if (!book) throw new AppError('Book not found', 404);
-  if (book.availableCopies < 1) throw new AppError('No copies available', 409);
+  const resolvedDueDate = dueAt ? new Date(dueAt) : dueDate ? new Date(dueDate) : null;
+  if (!resolvedDueDate) throw new AppError('dueAt is required', 400);
+
+  // Atomically claim a copy: the filter's availableCopies check and the $inc
+  // happen as one DB operation, so two concurrent requests can't both pass.
+  const book = await Book.findOneAndUpdate(
+    { _id: bookId, deletedAt: null, availableCopies: { $gte: 1 } },
+    { $inc: { availableCopies: -1 } },
+    { new: true }
+  );
+  if (!book) {
+    const exists = await Book.exists({ _id: bookId, deletedAt: null });
+    if (!exists) throw new AppError('Book not found', 404);
+    throw new AppError('No copies available', 409);
+  }
 
   // Resolve student — frontend passes studentId (Student._id)
   const resolvedStudentId = studentId ?? borrowerProfileId;
@@ -159,9 +171,6 @@ export async function issueBook({ bookId, studentId, borrowerProfileId, dueAt, d
     }
   }
 
-  const resolvedDueDate = dueAt ? new Date(dueAt) : dueDate ? new Date(dueDate) : null;
-  if (!resolvedDueDate) throw new AppError('dueAt is required', 400);
-
   const issue = await BookIssue.create({
     bookId,
     borrowerProfileId: resolvedStudentId ?? null,
@@ -169,9 +178,6 @@ export async function issueBook({ bookId, studentId, borrowerProfileId, dueAt, d
     dueDate: resolvedDueDate,
     status: 'ACTIVE',
   });
-
-  book.availableCopies -= 1;
-  await book.save();
 
   const populated = await BookIssue.findById(issue._id).populate('bookId', 'title author isbn');
   return toIssueDto(populated);

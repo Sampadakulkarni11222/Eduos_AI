@@ -149,6 +149,7 @@ export const SYSTEM_ROLES = [
       ['submissions.grade', 'OWN'],
       ['marks.read', 'OWN'],
       ['marks.enter', 'OWN'],
+      ['marks.publish', 'OWN'],
       ['timetable.read', 'OWN'],
       ['announcements.read', 'ALL'],
       ['announcements.publish', 'OWN'],

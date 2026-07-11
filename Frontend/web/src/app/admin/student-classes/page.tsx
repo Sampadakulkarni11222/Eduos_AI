@@ -2,6 +2,7 @@
 import { FormEvent, useEffect, useState, useCallback, useRef } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows } from '@/components/ui';
+import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api } from '@/lib/api';
 import type { StudentListItem, SectionDto } from '@/lib/types';
 
@@ -219,6 +220,62 @@ function AssignSectionModal({
   );
 }
 
+/* ─── bulk assign modal ──────────────────────────────────────── */
+function BulkAssignModal({ onClose, onImported }: { onClose: () => void; onImported: (msg: string) => void }) {
+  const [sections, setSections] = useState<SectionDto[] | null>(null);
+  const [years, setYears] = useState<{ id: string; name: string; isCurrent?: boolean }[]>([]);
+  const [sectionId, setSectionId] = useState('');
+  const [yearId, setYearId] = useState('');
+
+  useEffect(() => {
+    Promise.all([api.allSections(), api.allAcademicYears()])
+      .then(([secs, yrs]) => {
+        setSections(secs);
+        setYears(yrs);
+        const current = yrs.find((y) => y.isCurrent);
+        if (current) setYearId(current.id);
+      })
+      .catch(() => { setSections([]); setYears([]); });
+  }, []);
+
+  return (
+    <BulkUploadModal
+      title="Bulk assign students to a class"
+      description="Upload a CSV of admission numbers (with an optional roll no) to enroll many students into the section and year selected below in one go."
+      templateHeaders={['admissionNo', 'rollNo']}
+      templateSampleRow={['ADM-2026-0010', '12']}
+      canSubmit={!!sectionId && !!yearId}
+      extraFields={
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+          <div>
+            <div className="field-label">Section *</div>
+            <select className="field-input" value={sectionId} onChange={(e) => setSectionId(e.target.value)} style={{ width: '100%' }}>
+              <option value="">— select —</option>
+              {(sections ?? []).map((sec) => (
+                <option key={sec.id} value={sec.id}>
+                  {sec.gradeName ? `${sec.gradeName} – ${sec.name}` : sec.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <div className="field-label">Academic Year *</div>
+            <select className="field-input" value={yearId} onChange={(e) => setYearId(e.target.value)} style={{ width: '100%' }}>
+              <option value="">— select —</option>
+              {years.map((y) => (
+                <option key={y.id} value={y.id}>{y.name}{y.isCurrent ? ' (current)' : ''}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      }
+      onSubmit={(file) => api.bulkAssignSection(file, sectionId, yearId)}
+      onClose={onClose}
+      onImported={(r) => onImported(`Assigned ${r.imported} student${r.imported === 1 ? '' : 's'} to the class.`)}
+    />
+  );
+}
+
 /* ─── main page ──────────────────────────────────────────────── */
 export default function AdminStudentClasses() {
   const [students, setStudents] = useState<StudentListItem[] | null>(null);
@@ -226,6 +283,7 @@ export default function AdminStudentClasses() {
   const [showAdd, setShowAdd] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [assignTarget, setAssignTarget] = useState<StudentListItem | null>(null);
+  const [showBulkAssign, setShowBulkAssign] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -260,6 +318,7 @@ export default function AdminStudentClasses() {
           <Button variant="soft" onClick={load} disabled={refreshing}>
             {refreshing ? '↻ Refreshing…' : '↻ Refresh'}
           </Button>
+          <Button variant="soft" onClick={() => setShowBulkAssign(true)}>⇧ Bulk assign</Button>
           <Button onClick={() => setShowAdd((v) => !v)}>
             {showAdd ? 'Close' : '+ Add Student'}
           </Button>
@@ -268,6 +327,13 @@ export default function AdminStudentClasses() {
     }}>
       {showAdd && (
         <AddStudentForm onDone={() => { setShowAdd(false); load(); }} />
+      )}
+
+      {showBulkAssign && (
+        <BulkAssignModal
+          onClose={() => setShowBulkAssign(false)}
+          onImported={(msg) => { showToast(msg, true); load(); }}
+        />
       )}
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 14, alignItems: 'center' }}>

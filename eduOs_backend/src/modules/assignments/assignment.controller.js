@@ -11,7 +11,7 @@ export const create = asyncHandler(async (req, res) => {
 });
 
 export const grade = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.gradeSubmission(req.actor, req.body), 'Submission graded');
+  sendSuccess(res, await service.gradeSubmission(req.actor, req.scope, req.body), 'Submission graded');
 });
 
 export const submit = asyncHandler(async (req, res) => {
