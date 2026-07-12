@@ -8,7 +8,7 @@ import { signIn, useSession } from 'next-auth/react';
 import type { ProfileSummary } from '@/lib/types';
 
 /* ── types ────────────────────────────────────────────────────── */
-type LoginView = 'menu' | 'phone' | 'email';
+type LoginView = 'enter' | 'code';
 
 interface LoginResult {
   accessToken: string;
@@ -53,6 +53,23 @@ function errMsg(x: unknown): string {
     return map[x.code] ?? x.message ?? 'Sign-in failed. Please try again.';
   }
   return 'Cannot reach the server. Check your connection.';
+}
+
+function formatIdentifier(input: string): { value: string; isEmail: boolean } {
+  const trimmed = input.trim();
+  if (trimmed.includes('@')) {
+    return { value: trimmed.toLowerCase(), isEmail: true };
+  }
+  
+  let phone = trimmed.replace(/[\s\-\(\)]/g, ''); // strip spaces, dashes, parentheses
+  if (!phone.startsWith('+')) {
+    if (phone.length === 10) {
+      phone = `+91${phone}`;
+    } else {
+      phone = `+${phone}`;
+    }
+  }
+  return { value: phone, isEmail: false };
 }
 
 /* ── Shared premium input style ───────────────────────────────── */
@@ -179,182 +196,6 @@ function CodeInput({ id, value, onChange }: { id: string; value: string; onChang
   );
 }
 
-/* ── Phone OTP form ───────────────────────────────────────────── */
-function PhoneForm({ onBack }: { onBack: () => void }) {
-  const [step, setStep] = useState<'enter' | 'code'>('enter');
-  const [phone, setPhone] = useState('+91');
-  const [code, setCode] = useState('');
-  const [devOtp, setDevOtp] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const complete = useCompleteLogin();
-
-  const send = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true); setErr(null);
-    try {
-      const res = await api.requestOtp(phone.trim());
-      setDevOtp(res.devOtp ?? null);
-      setStep('code');
-    }
-    catch (x) { setErr(errMsg(x)); }
-    finally { setBusy(false); }
-  };
-
-  const verify = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true); setErr(null);
-    try {
-      await complete(await api.verifyOtp(phone.trim(), code.trim()));
-    }
-    catch (x) { setErr(errMsg(x)); setBusy(false); }
-  };
-
-  if (step === 'enter') return (
-    <form onSubmit={send} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div>
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#591620', marginBottom: 6, letterSpacing: '0.04em', textTransform: 'uppercase' }} htmlFor="login-phone">
-          Phone Number
-        </label>
-        <input
-          id="login-phone"
-          type="tel"
-          autoComplete="tel"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          placeholder="+91 98765 43210"
-          required
-          style={inputStyle}
-        />
-        <p style={{ fontSize: 11.5, color: '#9a8a7a', marginTop: 5 }}>
-          We'll send a 6-digit OTP to this number.
-        </p>
-      </div>
-      {err && <ErrBanner msg={err} />}
-      <PrimaryBtn disabled={busy}>
-        {busy ? (
-          <><Spinner /> Sending…</>
-        ) : (
-          <>Send OTP &nbsp;→</>
-        )}
-      </PrimaryBtn>
-      <button type="button" onClick={onBack} style={backBtnStyle}>
-        ← Back to sign-in options
-      </button>
-    </form>
-  );
-
-  return (
-    <form onSubmit={verify} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 13, color: '#6b5a50', marginBottom: 14, lineHeight: 1.6 }}>
-          Enter the 6-digit code sent to{' '}
-          <strong style={{ color: '#591620' }}>{phone}</strong>
-        </div>
-        <CodeInput id="login-otp" value={code} onChange={setCode} />
-      </div>
-      {devOtp && <DevOtpHint code={devOtp} />}
-      {err && <ErrBanner msg={err} />}
-      <PrimaryBtn disabled={busy}>
-        {busy ? <><Spinner /> Verifying…</> : <>Sign In &nbsp;→</>}
-      </PrimaryBtn>
-      <button
-        type="button"
-        onClick={() => { setStep('enter'); setCode(''); setErr(null); setDevOtp(null); }}
-        style={backBtnStyle}
-      >
-        ← Use a different number
-      </button>
-    </form>
-  );
-}
-
-/* ── Email OTP form ───────────────────────────────────────────── */
-function EmailOtpForm({ onBack }: { onBack: () => void }) {
-  const [step, setStep] = useState<'enter' | 'code'>('enter');
-  const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [devOtp, setDevOtp] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const complete = useCompleteLogin();
-
-  const send = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true); setErr(null);
-    try {
-      const res = await api.requestEmailOtp(email.trim());
-      setDevOtp(res.devOtp ?? null);
-      setStep('code');
-    }
-    catch (x) { setErr(errMsg(x)); }
-    finally { setBusy(false); }
-  };
-
-  const verify = async (e: FormEvent) => {
-    e.preventDefault();
-    setBusy(true); setErr(null);
-    try {
-      await complete(await api.verifyEmailOtp(email.trim(), code.trim()));
-    }
-    catch (x) { setErr(errMsg(x)); setBusy(false); }
-  };
-
-  if (step === 'enter') return (
-    <form onSubmit={send} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div>
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#591620', marginBottom: 6, letterSpacing: '0.04em', textTransform: 'uppercase' }} htmlFor="login-email">
-          Email Address
-        </label>
-        <input
-          id="login-email"
-          type="email"
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="name@school.com"
-          required
-          style={inputStyle}
-        />
-        <p style={{ fontSize: 11.5, color: '#9a8a7a', marginTop: 5 }}>
-          We'll send a 6-digit OTP verification code to your inbox.
-        </p>
-      </div>
-      {err && <ErrBanner msg={err} />}
-      <PrimaryBtn disabled={busy}>
-        {busy ? <><Spinner /> Sending…</> : <>Send OTP &nbsp;→</>}
-      </PrimaryBtn>
-      <button type="button" onClick={onBack} style={backBtnStyle}>
-        ← Back to sign-in options
-      </button>
-    </form>
-  );
-
-  return (
-    <form onSubmit={verify} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 13, color: '#6b5a50', marginBottom: 14, lineHeight: 1.6 }}>
-          Enter the 6-digit verification code sent to{' '}
-          <strong style={{ color: '#591620' }}>{email}</strong>
-        </div>
-        <CodeInput id="login-email-otp" value={code} onChange={setCode} />
-      </div>
-      {devOtp && <DevOtpHint code={devOtp} />}
-      {err && <ErrBanner msg={err} />}
-      <PrimaryBtn disabled={busy}>
-        {busy ? <><Spinner /> Verifying…</> : <>Sign In &nbsp;→</>}
-      </PrimaryBtn>
-      <button
-        type="button"
-        onClick={() => { setStep('enter'); setCode(''); setErr(null); setDevOtp(null); }}
-        style={backBtnStyle}
-      >
-        ← Use a different email
-      </button>
-    </form>
-  );
-}
-
 /* ── Tiny inline spinner ──────────────────────────────────────── */
 function Spinner() {
   return (
@@ -392,7 +233,15 @@ function ErrBanner({ msg }: { msg: string }) {
 
 /* ── Main login page ──────────────────────────────────────────── */
 export default function LoginPage() {
-  const [view, setView] = useState<LoginView>('menu');
+  const [step, setStep] = useState<'enter' | 'code'>('enter');
+  const [identifier, setIdentifier] = useState('');
+  const [code, setCode] = useState('');
+  const [devOtp, setDevOtp] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [isEmailType, setIsEmailType] = useState(true);
+  const [normalizedVal, setNormalizedVal] = useState('');
+  
   const [pageErr, setPageErr] = useState<string | null>(null);
   const { loading, me } = useAuth();
   const router = useRouter();
@@ -478,6 +327,51 @@ export default function LoginPage() {
     }
   };
 
+  const handleSendOtp = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!identifier.trim()) return;
+    setBusy(true);
+    setErr(null);
+    setPageErr(null);
+    try {
+      const { value, isEmail } = formatIdentifier(identifier);
+      setIsEmailType(isEmail);
+      setNormalizedVal(value);
+      
+      let res;
+      if (isEmail) {
+        res = await api.requestEmailOtp(value);
+      } else {
+        res = await api.requestOtp(value);
+      }
+      setDevOtp(res.devOtp ?? null);
+      setStep('code');
+    } catch (x) {
+      setErr(errMsg(x));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setErr(null);
+    setPageErr(null);
+    try {
+      let loginRes;
+      if (isEmailType) {
+        loginRes = await api.verifyEmailOtp(normalizedVal, code.trim());
+      } else {
+        loginRes = await api.verifyOtp(normalizedVal, code.trim());
+      }
+      await complete(loginRes);
+    } catch (x) {
+      setErr(errMsg(x));
+      setBusy(false);
+    }
+  };
+
   return (
     <>
       {/* Global keyframes */}
@@ -497,7 +391,7 @@ export default function LoginPage() {
           from { opacity: 0; transform: translateY(18px) scale(0.98); }
           to   { opacity: 1; transform: translateY(0) scale(1); }
         }
-        #login-phone:focus, #login-email:focus, #login-password:focus, #login-otp:focus, #login-email-otp:focus {
+        #login-identifier:focus, #login-password:focus, #login-otp:focus, #login-email-otp:focus {
           border-color: rgba(89,22,32,0.45) !important;
           box-shadow: 0 0 0 4px rgba(89,22,32,0.08) !important;
           background: rgba(255,255,255,0.9) !important;
@@ -589,101 +483,94 @@ export default function LoginPage() {
             {pageErr && <div style={{ marginBottom: 14 }}><ErrBanner msg={pageErr} /></div>}
 
             {/* Form area */}
-            {view === 'menu' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {/* 1. Continue with Google */}
+            {step === 'enter' ? (
+              <form onSubmit={handleSendOtp} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#591620', marginBottom: 6, letterSpacing: '0.04em', textTransform: 'uppercase' }} htmlFor="login-identifier">
+                    Email or Phone Number
+                  </label>
+                  <input
+                    id="login-identifier"
+                    type="text"
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
+                    placeholder="name@school.com or +91 98765 43210"
+                    required
+                    style={inputStyle}
+                  />
+                  <p style={{ fontSize: 11.5, color: '#9a8a7a', marginTop: 5 }}>
+                    We'll send a 6-digit OTP verification code.
+                  </p>
+                </div>
+                {err && <ErrBanner msg={err} />}
+                <PrimaryBtn disabled={busy}>
+                  {busy ? (
+                    <><Spinner /> Sending…</>
+                  ) : (
+                    <>Send OTP &nbsp;→</>
+                  )}
+                </PrimaryBtn>
+
+                {/* Google Sign-in */}
                 {(googleConfigured || mockGoogleAvailable) && (
-                  <button
-                    type="button"
-                    onClick={handleGoogleSignIn}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                      width: '100%', padding: '13px 20px', border: '1px solid rgba(0,0,0,0.12)',
-                      borderRadius: 12, fontSize: 14.5, fontWeight: 600, color: '#3c4043',
-                      background: '#ffffff', cursor: 'pointer', fontFamily: 'inherit',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.05)', transition: 'all 0.2s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#f8f9fa';
-                      e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.08)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = '#ffffff';
-                      e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
-                    }}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24">
-                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.22-.67-.35-1.37-.35-2.1z"/>
-                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-                    </svg>
-                    <span>Continue with Google{!googleConfigured ? ' (demo)' : ''}</span>
-                  </button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <hr style={{ flex: 1, border: 'none', borderTop: '1px solid rgba(89,22,32,0.08)' }} />
+                      <span style={{ fontSize: 11, color: '#b0a090', fontWeight: 600 }}>OR</span>
+                      <hr style={{ flex: 1, border: 'none', borderTop: '1px solid rgba(89,22,32,0.08)' }} />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleGoogleSignIn}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                        width: '100%', padding: '13px 20px', border: '1px solid rgba(0,0,0,0.12)',
+                        borderRadius: 12, fontSize: 14.5, fontWeight: 600, color: '#3c4043',
+                        background: '#ffffff', cursor: 'pointer', fontFamily: 'inherit',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.05)', transition: 'all 0.2s',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#f8f9fa';
+                        e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.08)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = '#ffffff';
+                        e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
+                      }}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.22-.67-.35-1.37-.35-2.1z"/>
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                      </svg>
+                      <span>Continue with Google{!googleConfigured ? ' (demo)' : ''}</span>
+                    </button>
+                  </div>
                 )}
-
-                {/* 2. Continue with Phone */}
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyOtp} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 13, color: '#6b5a50', marginBottom: 14, lineHeight: 1.6 }}>
+                    Enter the 6-digit verification code sent to{' '}
+                    <strong style={{ color: '#591620' }}>{normalizedVal}</strong>
+                  </div>
+                  <CodeInput id="login-otp" value={code} onChange={setCode} />
+                </div>
+                {devOtp && <DevOtpHint code={devOtp} />}
+                {err && <ErrBanner msg={err} />}
+                <PrimaryBtn disabled={busy}>
+                  {busy ? <><Spinner /> Verifying…</> : <>Sign In &nbsp;→</>}
+                </PrimaryBtn>
                 <button
                   type="button"
-                  onClick={() => setView('phone')}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                    width: '100%', padding: '13px 20px', border: 'none',
-                    borderRadius: 12, fontSize: 14.5, fontWeight: 700, color: '#fff',
-                    background: 'linear-gradient(135deg, #6b1a28 0%, #591620 100%)',
-                    cursor: 'pointer', fontFamily: 'inherit',
-                    boxShadow: '0 4px 14px rgba(89,22,32,.25)', transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'linear-gradient(135deg, #7a1e2e 0%, #591620 100%)';
-                    e.currentTarget.style.boxShadow = '0 6px 18px rgba(89,22,32,.35)';
-                    e.currentTarget.style.transform = 'translateY(-0.5px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'linear-gradient(135deg, #6b1a28 0%, #591620 100%)';
-                    e.currentTarget.style.boxShadow = '0 4px 14px rgba(89,22,32,.25)';
-                    e.currentTarget.style.transform = 'none';
-                  }}
+                  onClick={() => { setStep('enter'); setCode(''); setErr(null); setDevOtp(null); }}
+                  style={backBtnStyle}
                 >
-                  <span style={{ fontSize: 16 }}>📱</span>
-                  <span>Continue with Phone Number</span>
+                  ← Use a different email or phone number
                 </button>
-
-                {/* 3. Continue via Email */}
-                <button
-                  type="button"
-                  onClick={() => setView('email')}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                    width: '100%', padding: '13px 20px', border: 'none',
-                    borderRadius: 12, fontSize: 14.5, fontWeight: 700, color: '#fff',
-                    background: 'linear-gradient(135deg, #2c3e50 0%, #1a252f 100%)',
-                    cursor: 'pointer', fontFamily: 'inherit',
-                    boxShadow: '0 4px 14px rgba(44,62,80,.25)', transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'linear-gradient(135deg, #34495e 0%, #1a252f 100%)';
-                    e.currentTarget.style.boxShadow = '0 6px 18px rgba(44,62,80,.35)';
-                    e.currentTarget.style.transform = 'translateY(-0.5px)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'linear-gradient(135deg, #2c3e50 0%, #1a252f 100%)';
-                    e.currentTarget.style.boxShadow = '0 4px 14px rgba(44,62,80,.25)';
-                    e.currentTarget.style.transform = 'none';
-                  }}
-                >
-                  <span style={{ fontSize: 16 }}>✉️</span>
-                  <span>Continue via Email OTP</span>
-                </button>
-              </div>
-            )}
-
-            {view === 'phone' && (
-              <PhoneForm onBack={() => setView('menu')} />
-            )}
-
-            {view === 'email' && (
-              <EmailOtpForm onBack={() => setView('menu')} />
+              </form>
             )}
 
             {/* Footer note */}
@@ -708,3 +595,4 @@ export default function LoginPage() {
     </>
   );
 }
+
