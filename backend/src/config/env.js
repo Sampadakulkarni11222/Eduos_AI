@@ -4,7 +4,7 @@ export const env = {
   NODE_ENV: process.env.NODE_ENV ?? 'development',
   PORT: Number(process.env.PORT) || 5000,
   HOST: process.env.HOST ?? '0.0.0.0',
-  MONGO_URI: process.env.MONGO_URI ?? 'mongodb://localhost:27017/school_erp',
+  MONGO_URI: process.env.MONGO_URI_ATLAS ?? process.env.MONGO_URI ?? 'mongodb://localhost:27017/school_erp',
   LOG_LEVEL: process.env.LOG_LEVEL ?? 'info',
   LOG_DIR: process.env.LOG_DIR ?? 'logs',
   RATE_LIMIT_WINDOW_MS: Number(process.env.RATE_LIMIT_WINDOW_MS) || 900_000,
