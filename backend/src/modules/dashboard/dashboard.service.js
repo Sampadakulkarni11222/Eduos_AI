@@ -248,17 +248,24 @@ export async function getTeacherDashboard(profileId) {
         })
       : 0;
 
-  // 4. Today's timetable for those sections
+  // 4. Today's timetable for this teacher
   const dow = todayDow();
+  const teacherOfferings = await SubjectOffering.find({ teacherId: profileId }).select('_id').lean();
+  const teacherOfferingIds = teacherOfferings.map((o) => o._id);
+
   const todaySlots = await TimetableSlot.find({
-    sectionId: { $in: sectionObjectIds },
+    subjectOfferingId: { $in: teacherOfferingIds },
     dayOfWeek: dow,
   })
     .populate({
       path: 'subjectOfferingId',
       populate: [
         { path: 'subjectId', select: 'name code' },
-        { path: 'sectionId', select: 'name' },
+        {
+          path: 'sectionId',
+          select: 'name gradeId',
+          populate: { path: 'gradeId', select: 'name' }
+        },
       ],
     })
     .sort({ periodNo: 1 })
@@ -336,13 +343,18 @@ export async function getTeacherDashboard(profileId) {
       gradeName: s.gradeId?.name ?? '--',
     })),
     totalStudents,
-    todayTimetable: todaySlots.map((slot) => ({
-      periodNo: slot.periodNo,
-      startTime: slot.startTime,
-      endTime: slot.endTime,
-      subject: slot.subjectOfferingId?.subjectId?.name ?? 'Break',
-      section: slot.subjectOfferingId?.sectionId?.name ?? '',
-    })),
+    todayTimetable: todaySlots.map((slot) => {
+      const sectionDoc = slot.subjectOfferingId?.sectionId;
+      const gradeName = sectionDoc?.gradeId?.name ? `${sectionDoc.gradeId.name} – ` : '';
+      const sectionName = sectionDoc?.name ?? '';
+      return {
+        periodNo: slot.periodNo,
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        subject: slot.subjectOfferingId?.subjectId?.name ?? 'Break',
+        section: sectionDoc ? `${gradeName}${sectionName}`.trim() : '',
+      };
+    }),
     attendanceSummary,
     pendingAssignmentEvaluations: pendingGrading,
     upcomingExams: upcomingExams.map((es) => ({
