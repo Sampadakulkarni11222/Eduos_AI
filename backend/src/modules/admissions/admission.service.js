@@ -1,6 +1,7 @@
 import { Lead, LeadInteraction } from '../../models/lead.model.js';
 import { Student } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
+import { runInTransaction } from '../../utils/transaction.js';
 
 // Helper: map a raw Lead doc to the DTO the frontend expects
 function toLeadDto(lead) {
@@ -51,31 +52,31 @@ export async function getPipeline() {
 }
 
 
-async function ensureStudentForEnrolledLead(lead) {
+async function ensureStudentForEnrolledLead(lead, session = null) {
   if (lead.stage !== 'ENROLLED') return;
-  const existingStudent = await Student.findOne({ leadId: lead._id });
+  const existingStudent = await Student.findOne({ leadId: lead._id }).session(session);
   if (!existingStudent) {
     const nameParts = lead.childName.trim().split(/\s+/);
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ') || '';
 
-    const count = await Student.countDocuments();
+    const count = await Student.countDocuments({}).session(session);
     let admissionNo = `ADM-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
-    let checkStudent = await Student.findOne({ admissionNo });
+    let checkStudent = await Student.findOne({ admissionNo }).session(session);
     let attempts = 0;
     while (checkStudent && attempts < 100) {
       attempts++;
       admissionNo = `ADM-${new Date().getFullYear()}-${String(count + 1 + attempts).padStart(4, '0')}`;
-      checkStudent = await Student.findOne({ admissionNo });
+      checkStudent = await Student.findOne({ admissionNo }).session(session);
     }
 
-    await Student.create({
+    await Student.create([{
       admissionNo,
       firstName,
       lastName,
       leadId: lead._id,
       status: 'ACTIVE',
-    });
+    }], { session });
   }
 }
 
@@ -113,6 +114,7 @@ const LEAD_STAGES = new Set(['NEW', 'CONTACTED', 'TOUR_SCHEDULED', 'APPLICATION'
  */
 export async function bulkCreateLeads(rows) {
   const results = { imported: 0, failed: 0, errors: [] };
+  const validRows = [];
 
   for (let i = 0; i < rows.length; i++) {
     const rowNo = i + 2; // header is row 1
@@ -140,8 +142,9 @@ export async function bulkCreateLeads(rows) {
       continue;
     }
 
-    try {
-      const lead = await Lead.create({
+    validRows.push({
+      rowNo,
+      doc: {
         childName,
         guardianName,
         phone,
@@ -150,12 +153,28 @@ export async function bulkCreateLeads(rows) {
         source: source || 'WALK_IN',
         stage: stage || 'NEW',
         notes: row.notes?.trim() || null,
+      }
+    });
+  }
+
+  // Chunk and insert
+  const CHUNK_SIZE = 100;
+  for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
+    const chunk = validRows.slice(i, i + CHUNK_SIZE);
+    try {
+      await runInTransaction(async (session) => {
+        const docsToInsert = chunk.map(c => c.doc);
+        const createdLeads = await Lead.insertMany(docsToInsert, { session });
+        for (const lead of createdLeads) {
+          await ensureStudentForEnrolledLead(lead, session);
+        }
       });
-      await ensureStudentForEnrolledLead(lead);
-      results.imported++;
+      results.imported += chunk.length;
     } catch (err) {
-      results.failed++;
-      results.errors.push({ row: rowNo, error: err.message });
+      results.failed += chunk.length;
+      chunk.forEach(c => {
+        results.errors.push({ row: c.rowNo, error: err.message });
+      });
     }
   }
 

@@ -45,7 +45,7 @@ export function TicketsView({ canCreate, canRespond }: { canCreate: boolean; can
 }
 
 function ThreadPanel({ ticketId, canRespond, onChanged }: { ticketId: string; canRespond: boolean; onChanged: () => void }) {
-  const [thread, setThread] = useState<TicketThread | null>(null);
+  const [thread, setThread] = useState<any | null>(null);
   const [reply, setReply] = useState('');
   const [busy, setBusy] = useState(false);
   const load = () => api.ticketThread(ticketId).then(setThread).catch(() => setThread(null));
@@ -53,10 +53,42 @@ function ThreadPanel({ ticketId, canRespond, onChanged }: { ticketId: string; ca
 
   const [replyErr, setReplyErr] = useState<string | null>(null);
   const send = async (e: FormEvent) => {
-    e.preventDefault(); if (!reply.trim()) return; setBusy(true); setReplyErr(null);
-    try { await api.replyTicket({ ticketId, body: reply.trim() }); setReply(''); await load(); onChanged(); }
-    catch { setReplyErr('Failed to send reply. Please try again.'); }
-    finally { setBusy(false); }
+    e.preventDefault();
+    const text = reply.trim();
+    if (!text) return;
+    
+    setReply('');
+    setReplyErr(null);
+    setBusy(true);
+
+    const previousThread = thread;
+    const optimisticMessage = {
+      id: `optimistic-${Date.now()}`,
+      body: text,
+      mine: true,
+      channel: 'WEB',
+      createdAt: new Date().toISOString(),
+      sending: true
+    };
+
+    if (thread) {
+      setThread({
+        ...thread,
+        messages: [...thread.messages, optimisticMessage]
+      });
+    }
+
+    try {
+      await api.replyTicket({ ticketId, body: text });
+      await load();
+      onChanged();
+    } catch {
+      setThread(previousThread);
+      setReply(text);
+      setReplyErr('Failed to send reply. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (!thread) return <Card><SkeletonRows rows={5} /></Card>;
@@ -66,9 +98,19 @@ function ThreadPanel({ ticketId, canRespond, onChanged }: { ticketId: string; ca
         <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>{thread.subject}</strong>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {thread.messages.map((m) => (
-          <div key={m.id} className={`chat-bubble ${m.mine ? 'me' : 'them'}`} style={{ alignSelf: m.mine ? 'flex-end' : 'flex-start' }}>
+        {thread.messages.map((m: any) => (
+          <div key={m.id} 
+               className={`chat-bubble ${m.mine ? 'me' : 'them'}`} 
+               style={{ 
+                 alignSelf: m.mine ? 'flex-end' : 'flex-start',
+                 opacity: m.sending ? 0.6 : 1
+               }}>
             {m.body}
+            {m.sending && (
+              <span style={{ display: 'block', fontSize: '9px', opacity: 0.7, textAlign: 'right', marginTop: 2 }}>
+                Sending...
+              </span>
+            )}
             {m.channel === 'WHATSAPP' && <div className="wa-note">via WhatsApp</div>}
           </div>
         ))}

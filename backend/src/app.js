@@ -4,9 +4,82 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import compression from 'compression';
+import zlib from 'zlib';
 import swaggerUi from 'swagger-ui-express';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Setup Brotli / Gzip compression negotiator
+const gzipMiddleware = compression({
+  threshold: 1024,
+  filter: (req, res) => {
+    if (res.getHeader('Content-Encoding') || res.getHeader('Cache-Control')?.includes('no-transform')) {
+      return false;
+    }
+    return compression.filter(req, res);
+  }
+});
+
+function apiCompressionMiddleware(req, res, next) {
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  
+  if (acceptEncoding.includes('br')) {
+    const originalWrite = res.write;
+    const originalEnd = res.end;
+    const chunks = [];
+
+    res.write = function (chunk, encoding, callback) {
+      if (chunk) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding));
+      }
+      if (typeof callback === 'function') callback();
+      return true;
+    };
+
+    res.end = function (chunk, encoding, callback) {
+      if (chunk) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding));
+      }
+      
+      const buffer = Buffer.concat(chunks);
+      
+      const contentEncoding = res.getHeader('Content-Encoding');
+      const cacheControl = res.getHeader('Cache-Control');
+      const contentType = res.getHeader('Content-Type') || '';
+      
+      const isCompressible = /json|text|javascript|css|xml|html/i.test(contentType);
+      const isEventStream = contentType.includes('event-stream');
+      
+      const shouldCompress = !contentEncoding && 
+                             !isEventStream &&
+                             (!cacheControl || !cacheControl.includes('no-transform')) &&
+                             isCompressible && 
+                             buffer.length >= 1024;
+
+      if (!shouldCompress) {
+        res.write = originalWrite;
+        res.end = originalEnd;
+        return res.end(buffer, encoding, callback);
+      }
+
+      zlib.brotliCompress(buffer, (err, compressed) => {
+        res.write = originalWrite;
+        res.end = originalEnd;
+        if (err) {
+          return res.end(buffer, encoding, callback);
+        }
+        res.setHeader('Content-Encoding', 'br');
+        res.setHeader('Content-Length', compressed.length);
+        res.end(compressed, encoding, callback);
+      });
+    };
+
+    next();
+  } else {
+    gzipMiddleware(req, res, next);
+  }
+}
+
 
 import { env } from './config/env.js';
 import { connectDB } from './config/db.js';
@@ -28,7 +101,7 @@ app.use('/uploads', express.static(join(process.cwd(), env.UPLOAD_DIR)));
 // ─── Security & Compression ───────────────────────────────
 app.use(helmet());
 app.use(cors({ origin: env.CORS_ORIGIN }));
-app.use(compression());
+app.use(apiCompressionMiddleware);
 
 // ─── Body Parsing ─────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));

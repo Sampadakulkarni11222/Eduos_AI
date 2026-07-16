@@ -7,7 +7,7 @@ import { api, fileHref } from '@/lib/api';
 import type { DocumentDto } from '@/lib/types';
 
 export default function TeacherMaterial() {
-  const [docs, setDocs] = useState<DocumentDto[] | null>(null);
+  const [docs, setDocs] = useState<any[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const toast = useToast();
@@ -23,7 +23,6 @@ export default function TeacherMaterial() {
     setLoading(true);
     try {
       const res = await api.listDocuments();
-      // Filter only custom documents for course materials
       setDocs(res.filter(d => d.type === 'CUSTOM'));
     } catch {
       setDocs([]);
@@ -40,19 +39,45 @@ export default function TeacherMaterial() {
     e.preventDefault();
     if (!form.title || !form.fileUrl) return;
     setBusy(true);
+    
+    const formBackup = { ...form };
+    const backupDocs = docs;
+
+    const optimisticDoc = {
+      id: `optimistic-${Date.now()}`,
+      title: form.title,
+      type: 'CUSTOM',
+      fileUrl: form.fileUrl,
+      mimeType: form.mimeType || (form.fileUrl.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'),
+      visibleToRoles: form.visibleToRoles,
+      issuedAt: new Date().toISOString(),
+      sending: true
+    };
+
+    setShowUploadModal(false);
+    setForm({ title: '', fileUrl: '', mimeType: '', visibleToRoles: ['PARENT', 'STUDENT'] });
+    toast('Material upload started...');
+
+    if (docs) {
+      setDocs([optimisticDoc, ...docs]);
+    } else {
+      setDocs([optimisticDoc]);
+    }
+
     try {
       await api.createDocument({
-        title: form.title,
+        title: formBackup.title,
         type: 'CUSTOM',
-        fileUrl: form.fileUrl,
-        mimeType: form.mimeType || (form.fileUrl.endsWith('.pdf') ? 'application/pdf' : undefined),
-        visibleToRoles: form.visibleToRoles,
+        fileUrl: formBackup.fileUrl,
+        mimeType: formBackup.mimeType || (formBackup.fileUrl.endsWith('.pdf') ? 'application/pdf' : undefined),
+        visibleToRoles: formBackup.visibleToRoles,
       });
-      setShowUploadModal(false);
-      setForm({ title: '', fileUrl: '', mimeType: '', visibleToRoles: ['PARENT', 'STUDENT'] });
       toast('Material shared with your classes.');
       await loadDocs();
     } catch {
+      setDocs(backupDocs);
+      setForm(formBackup);
+      setShowUploadModal(true);
       toast('Could not upload the material. Please try again.', 'error');
     } finally {
       setBusy(false);
@@ -61,11 +86,16 @@ export default function TeacherMaterial() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this study material?')) return;
+    const backupDocs = docs;
+    if (docs) {
+      setDocs(docs.filter(d => d.id !== id));
+    }
+    toast('Material deleted.');
     try {
       await api.deleteDocument(id);
-      toast('Material deleted.');
       await loadDocs();
     } catch {
+      setDocs(backupDocs);
       toast('Could not delete the material.', 'error');
     }
   };
@@ -105,23 +135,29 @@ export default function TeacherMaterial() {
             </thead>
             <tbody>
               {docs.map((d) => (
-                <tr key={d.id}>
-                  <td className="cell-primary">{d.title}</td>
+                <tr key={d.id} style={{ opacity: d.sending ? 0.6 : 1 }}>
+                  <td className="cell-primary">
+                    {d.title} {d.sending && <span style={{ fontSize: 11, color: 'var(--text-faint)' }}> (Uploading...)</span>}
+                  </td>
                   <td>
-                    <a href={fileHref(d.fileUrl)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>
-                      View Resource
-                    </a>
+                    {d.sending ? (
+                      <span style={{ color: 'var(--text-faint)' }}>Uploading...</span>
+                    ) : (
+                      <a href={fileHref(d.fileUrl)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>
+                        View Resource
+                      </a>
+                    )}
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: 4 }}>
-                      {d.visibleToRoles.map((role) => (
+                      {d.visibleToRoles.map((role: string) => (
                         <Pill key={role} tone="gray">{role}</Pill>
                       ))}
                     </div>
                   </td>
                   <td style={{ color: 'var(--text-faint)' }}>{new Date(d.issuedAt).toLocaleDateString('en-IN')}</td>
                   <td>
-                    <Button variant="ghost" small onClick={() => void handleDelete(d.id)}>Delete</Button>
+                    <Button variant="ghost" small disabled={d.sending} onClick={() => void handleDelete(d.id)}>Delete</Button>
                   </td>
                 </tr>
               ))}

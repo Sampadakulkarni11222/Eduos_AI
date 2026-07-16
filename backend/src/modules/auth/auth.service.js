@@ -12,6 +12,8 @@ import { buildPermissionMap } from '../../utils/buildPermissionMap.js';
 import { logger } from '../../utils/logger.js';
 import { env } from '../../config/env.js';
 import { sendOtpSms, sendOtpEmail } from '../../providers/notification.provider.js';
+import { CircuitBreaker } from '../../utils/circuitBreaker.js';
+
 
 const toProfileSummary = (profile) => ({
   id: profile._id,
@@ -153,6 +155,12 @@ export async function verifyEmailOtp({ email, code }, opts) {
   return resolveSession(account, opts);
 }
 
+const googleAuthCircuitBreaker = new CircuitBreaker('google-auth', {
+  failureThreshold: 3,
+  cooldownPeriod: 10000,
+  timeoutMs: 3000
+});
+
 /**
  * Google Sign-In.
  * Verifies the Google ID token server-side (signature + audience via
@@ -167,9 +175,11 @@ export async function googleLogin({ idToken }, opts) {
 
   let payload;
   try {
-    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
-    if (!res.ok) throw new Error(`tokeninfo ${res.status}`);
-    payload = await res.json();
+    payload = await googleAuthCircuitBreaker.execute(async () => {
+      const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+      if (!res.ok) throw new Error(`tokeninfo status ${res.status}`);
+      return await res.json();
+    });
   } catch (err) {
     logger.warn(`Google token verification failed: ${err.message}`);
     throw new AppError('Could not verify Google sign-in', 401, [], 'GOOGLE_TOKEN_INVALID');

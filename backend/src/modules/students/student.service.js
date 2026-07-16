@@ -1,5 +1,6 @@
 import { Student, StudentGuardian, Enrollment } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
+import { runInTransaction } from '../../utils/transaction.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 
 /**
@@ -146,6 +147,20 @@ export async function bulkEnroll({ sectionId, academicYearId, rows }) {
 
   const results = { imported: 0, failed: 0, errors: [] };
 
+  // 1. Extract and normalize all admission numbers
+  const admissionNos = rows
+    .map(r => r.admissionno?.trim())
+    .filter(Boolean);
+
+  // 2. Fetch all matching students in one query
+  const students = await Student.find({ admissionNo: { $in: admissionNos }, deletedAt: null }).select('_id admissionNo');
+  const studentMap = new Map(students.map(s => [s.admissionNo.toLowerCase(), s._id]));
+
+  // 3. Keep track of starting suggestion roll number
+  let nextSuggestedRollNo = await nextRollNo(sectionId, academicYearId);
+
+  const validRows = [];
+
   for (let i = 0; i < rows.length; i++) {
     const rowNo = i + 2; // header is row 1
     const row = rows[i];
@@ -157,8 +172,8 @@ export async function bulkEnroll({ sectionId, academicYearId, rows }) {
       continue;
     }
 
-    const student = await Student.findOne({ admissionNo, deletedAt: null }).select('_id');
-    if (!student) {
+    const studentId = studentMap.get(admissionNo.toLowerCase());
+    if (!studentId) {
       results.failed++;
       results.errors.push({ row: rowNo, error: `No student found with admissionNo "${admissionNo}"` });
       continue;
@@ -173,21 +188,43 @@ export async function bulkEnroll({ sectionId, academicYearId, rows }) {
         continue;
       }
     } else {
-      rollNo = await nextRollNo(sectionId, academicYearId);
+      rollNo = nextSuggestedRollNo++;
     }
 
-    try {
-      await Enrollment.create({ studentId: student._id, sectionId, academicYearId, rollNo });
-      results.imported++;
-    } catch (err) {
-      results.failed++;
-      if (err.code === 11000 && err.keyPattern?.rollNo) {
-        results.errors.push({ row: rowNo, error: `Roll number ${rollNo} is already assigned in this section` });
-      } else if (err.code === 11000) {
-        results.errors.push({ row: rowNo, error: `Student "${admissionNo}" is already enrolled in the selected academic year` });
-      } else {
-        results.errors.push({ row: rowNo, error: err.message });
+    validRows.push({
+      rowNo,
+      admissionNo,
+      doc: {
+        studentId,
+        sectionId,
+        academicYearId,
+        rollNo
       }
+    });
+  }
+
+  // Chunk and insert
+  const CHUNK_SIZE = 100;
+  for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
+    const chunk = validRows.slice(i, i + CHUNK_SIZE);
+    try {
+      await runInTransaction(async (session) => {
+        const docsToInsert = chunk.map(c => c.doc);
+        await Enrollment.insertMany(docsToInsert, { session });
+      });
+      results.imported += chunk.length;
+    } catch (err) {
+      results.failed += chunk.length;
+      chunk.forEach(c => {
+        const rollNo = c.doc.rollNo;
+        if (err.code === 11000 && err.keyPattern?.rollNo) {
+          results.errors.push({ row: c.rowNo, error: `Roll number ${rollNo} is already assigned in this section` });
+        } else if (err.code === 11000) {
+          results.errors.push({ row: c.rowNo, error: `Student "${c.admissionNo}" is already enrolled in the selected academic year` });
+        } else {
+          results.errors.push({ row: c.rowNo, error: err.message });
+        }
+      });
     }
   }
 
