@@ -5,7 +5,7 @@ export default function OwnerPermissionsPage() {
   return (
     <PortalShell
       expectedSlug="owner"
-      topbar={{ title: 'Access & Permissions', desc: 'Control what each role can see and do across EduOS.' }}
+      topbar={{ title: 'Access & Permissions', desc: 'Control what each role can see and do across Oakridge.' }}
     >
       <AccessPermissionsContent />
     </PortalShell>

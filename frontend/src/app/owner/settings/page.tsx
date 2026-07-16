@@ -31,7 +31,7 @@ export default function OwnerSettings() {
             </div>
           </div>
           <div style={{ marginTop: 20, padding: '12px 14px', background: '#f5f5f0', borderRadius: 8, fontSize: 13, color: 'var(--text-2)' }}>
-            Advanced settings (branding, academic year, notification templates, fee configuration) are managed by the EduOS platform team. Contact support to make changes.
+            Advanced settings (branding, academic year, notification templates, fee configuration) are managed by the Oakridge platform team. Contact support to make changes.
           </div>
         </Card>
       )}

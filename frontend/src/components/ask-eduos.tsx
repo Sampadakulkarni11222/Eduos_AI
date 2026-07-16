@@ -5,7 +5,7 @@ import { Button, Spinner } from './ui';
 
 interface Msg { role: 'user' | 'assistant'; text: string; tools?: string[] }
 
-export function AskEduOS({ label = 'Ask EduOS' }: { label?: string }) {
+export function AskEduOS({ label = 'Ask Oakridge' }: { label?: string }) {
   const [open, setOpen] = useState(false);
   // msgs and convId are stored in refs so they persist across open/close cycles
   const msgsRef = useRef<Msg[]>([]);

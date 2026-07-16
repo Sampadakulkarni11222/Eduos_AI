@@ -179,7 +179,7 @@ export default function GoogleMockAuthPage() {
         {!showCustom ? (
           <>
             <h1 className="title">Choose an account</h1>
-            <p className="subtitle">to continue to EduOS AI</p>
+            <p className="subtitle">to continue to Oakridge Academy</p>
 
             <div className="account-list">
               {MOCK_GOOGLE_USERS.map((user) => (
@@ -211,7 +211,7 @@ export default function GoogleMockAuthPage() {
         ) : (
           <>
             <h1 className="title" style={{ textAlign: 'left', marginBottom: 16 }}>Sign in</h1>
-            <p className="subtitle" style={{ textAlign: 'left', marginBottom: 30 }}>to continue to EduOS AI</p>
+            <p className="subtitle" style={{ textAlign: 'left', marginBottom: 30 }}>to continue to Oakridge Academy</p>
 
             <input
               type="email"
@@ -237,7 +237,7 @@ export default function GoogleMockAuthPage() {
         )}
 
         <div className="footer">
-          To continue, Google will share your name, email address, language preference, and profile picture with EduOS AI.
+          To continue, Google will share your name, email address, language preference, and profile picture with Oakridge Academy.
         </div>
       </div>
     </div>

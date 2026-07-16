@@ -444,11 +444,11 @@ export default function LoginPage() {
               boxShadow: '0 6px 24px rgba(89,22,32,.32), 0 2px 6px rgba(89,22,32,.2)',
               letterSpacing: '-1px',
             }}>
-              E
+              O
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontFamily: 'Newsreader, serif', fontSize: 28, fontWeight: 700, color: '#2a0a0f', letterSpacing: '-0.5px', lineHeight: 1 }}>
-                EduOS AI
+                Oakridge Academy
               </div>
               <div style={{ fontSize: 12, color: '#9a8a7a', marginTop: 4, letterSpacing: '0.02em' }}>
                 The AI-native School OS
@@ -476,7 +476,7 @@ export default function LoginPage() {
                 Welcome back
               </h1>
               <p style={{ fontSize: 13, color: '#7a6a60', lineHeight: 1.5 }}>
-                Sign in to your EduOS account
+                Sign in to your Oakridge account
               </p>
             </div>
 
@@ -588,7 +588,7 @@ export default function LoginPage() {
 
           {/* Page footer */}
           <p style={{ textAlign: 'center', fontSize: 11, color: '#b0a090', marginTop: 22 }}>
-            © {new Date().getFullYear()} EduOS AI · All rights reserved
+            © {new Date().getFullYear()} Oakridge Academy · All rights reserved
           </p>
         </div>
       </div>

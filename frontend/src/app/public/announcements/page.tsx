@@ -8,7 +8,7 @@ function translateAnnouncements(announcements: any[], locale: string) {
   
   const dictionary: Record<string, Record<string, string>> = {
     hi: {
-      'Welcome to EduOS': 'EduOS में आपका स्वागत है',
+      'Welcome to Oakridge': 'Oakridge में आपका स्वागत है',
       'Parent-Teacher Meeting': 'अभिभावक-शिक्षक बैठक',
       'Final Exams Schedule': 'वार्षिक परीक्षा समय-सारणी',
       'Annual Sports Day': 'वार्षिक खेल दिवस',
@@ -21,7 +21,8 @@ function translateAnnouncements(announcements: any[], locale: string) {
       'important': 'महत्वपूर्ण'
     },
     mr: {
-      'Welcome to EduOS': 'EduOS मध्ये आपले स्वागत आहे',
+      'Welcome to Oakridge': 'Oakridge मध्ये आपले स्वागत आहे',
+
       'Parent-Teacher Meeting': 'पालक-शिक्षक सभा',
       'Final Exams Schedule': 'वार्षिक परीक्षा वेळापत्रक',
       'Annual Sports Day': 'वार्षिक क्रीडा दिन',
@@ -76,8 +77,9 @@ export default async function PublicAnnouncementsPage({
     rawAnnouncements = [
       {
         id: '1',
-        title: 'Welcome to EduOS Notice Board',
-        content: 'Welcome to the School ERP announcements portal. This is a fallback notice.',
+        title: 'Welcome to Oakridge Notice Board',
+        content: 'Welcome to the Oakridge Academy announcements portal. This is a fallback notice.',
+
         publishedAt: new Date().toISOString()
       }
     ];
