@@ -183,7 +183,9 @@ export default function UsersPage() {
                   <select className="field-input" value={sectionId} onChange={(e) => setSectionId(e.target.value)}>
                     <option value="">-- Choose Class --</option>
                     {sections.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
+                      <option key={s.id} value={s.id}>
+                        {s.gradeName ? `${s.gradeName} – ${s.name}` : s.name}
+                      </option>
                     ))}
                   </select>
                 </>

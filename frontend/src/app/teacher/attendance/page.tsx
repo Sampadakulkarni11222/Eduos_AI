@@ -89,7 +89,11 @@ export default function AttendancePage() {
     }}>
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         <select className="input" value={sectionId} onChange={(e) => setSectionId(e.target.value)} aria-label="Section">
-          {sections?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          {sections?.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.gradeName ? `${s.gradeName} – ${s.name}` : s.name}
+            </option>
+          ))}
         </select>
         <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Date" />
         {data && data.roster.length > 0 && <Button variant="soft" small onClick={allPresent}>Mark all present</Button>}

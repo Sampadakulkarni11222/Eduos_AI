@@ -31,7 +31,11 @@ export default function PrincipalAttendance() {
     <PortalShell expectedSlug="principal" topbar={{ title: 'Attendance Trends', desc: 'Daily attendance across all sections.' }}>
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <select className="input" value={sectionId} onChange={(e) => setSectionId(e.target.value)} aria-label="Section">
-          {sections?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          {sections?.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.gradeName ? `${s.gradeName} – ${s.name}` : s.name}
+            </option>
+          ))}
         </select>
         <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Date" style={{ maxWidth: 180 }} />
         {data && pct !== null && (
