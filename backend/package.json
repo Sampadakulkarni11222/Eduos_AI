@@ -13,6 +13,7 @@
     "build:obfuscated": "npm run build && npm run obfuscate",
     "start:obfuscated": "node dist-obfuscated/app.js",
     "seed": "node src/seed/seed.js",
+    "seed:school": "node src/seed/seed_school_data.js",
     "migrate": "node src/seed/migrate.js",
     "migrate:atlas": "node scripts/migrate_to_atlas.js"
   },

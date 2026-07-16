@@ -6,7 +6,7 @@ import { ToastProvider } from '@/components/ui';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'EduOS AI',
+  title: 'Oakridge Academy',
   description: 'The AI-native school operating system',
 };
 

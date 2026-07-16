@@ -68,7 +68,7 @@ export function PortalShell({
       {mobileOpen && (
         <div className="sidebar-overlay" onClick={() => setMobileOpen(false)} />
       )}
-      <Sidebar portal={portal} schoolName={active?.displayName ?? 'EduOS'} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+      <Sidebar portal={portal} schoolName={active?.displayName ?? 'Oakridge'} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
       <div className="main">
         <div className="topbar">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -123,10 +123,10 @@ function Sidebar({
   return (
     <aside className={cx('sidebar', mobileOpen && 'mobile-open')}>
       <div className="sidebar-brand">
-        <div className="sidebar-logo">E</div>
+        <div className="sidebar-logo">O</div>
         <div className="sidebar-school">
           <div className="sidebar-school-name">{schoolName}</div>
-          <div className="sidebar-school-sub">EduOS AI · {portal.sublabel}</div>
+          <div className="sidebar-school-sub">Oakridge Academy · {portal.sublabel}</div>
         </div>
         <button className="sidebar-close-btn" onClick={() => setMobileOpen(false)} aria-label="Close Menu">
           ✕
