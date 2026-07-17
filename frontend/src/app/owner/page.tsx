@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PortalShell } from '@/components/shell';
-import { AskEduOS } from '@/components/ask-eduos';
+
 import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { AuditLogDto, FeeSummary, Pipeline, StudentListItem } from '@/lib/types';
@@ -32,7 +32,6 @@ export default function OwnerDashboard() {
       topbar={{
         title: 'Dashboard',
         desc: 'Executive school intelligence & operations overview.',
-        actions: <AskEduOS />,
       }}
     >
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>

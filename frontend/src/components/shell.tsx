@@ -8,6 +8,7 @@ import { portalForRole, ROLE_TO_SLUG, type Portal } from '@/lib/portals';
 import type { RoleKey } from '@/lib/types';
 import { Spinner, cx } from './ui';
 import { usePermissions, getRequiredPermission } from '@/lib/permissions';
+import { AskEduOS } from './ask-eduos';
 
 /**
  * Per-role portal shell. Reads the active profile's role, renders that
@@ -80,7 +81,10 @@ export function PortalShell({
               {topbar.desc && <div className="topbar-desc">{topbar.desc}</div>}
             </div>
           </div>
-          {topbar.actions && <div className="topbar-actions">{topbar.actions}</div>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <AskEduOS label="Ask Agent" />
+            {topbar.actions && <div className="topbar-actions">{topbar.actions}</div>}
+          </div>
         </div>
         <div className="content">
           <div className="content-inner">

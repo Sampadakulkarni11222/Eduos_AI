@@ -1,6 +1,6 @@
 'use client';
 import { PortalShell } from '@/components/shell';
-import { AskEduOS } from '@/components/ask-eduos';
+
 import { StatCard, Card, EmptyState, SkeletonRows, rupees } from '@/components/ui';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
@@ -23,7 +23,6 @@ export default function FinanceDashboard() {
       topbar={{
         title: 'Finance Overview',
         desc: 'Payments, fees, and financial health.',
-        actions: <AskEduOS />,
       }}
     >
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 18 }}>

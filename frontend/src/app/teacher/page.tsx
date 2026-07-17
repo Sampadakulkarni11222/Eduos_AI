@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PortalShell } from '@/components/shell';
-import { AskEduOS } from '@/components/ask-eduos';
+
 import { Card, EmptyState, SkeletonRows, StatCard } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -22,7 +22,7 @@ export default function TeacherDashboard() {
   const slots = data?.todayTimetable.filter((s) => s.subject !== 'Break') ?? [];
 
   return (
-    <PortalShell expectedSlug="teacher" topbar={{ title: 'My Dashboard', desc: 'Your teaching day at a glance', actions: <AskEduOS label="Teacher Copilot" /> }}>
+    <PortalShell expectedSlug="teacher" topbar={{ title: 'My Dashboard', desc: 'Your teaching day at a glance' }}>
       <div className="card card-pad" style={{ background: 'var(--accent)', color: 'var(--on-accent)', marginBottom: 18 }}>
         <div style={{ fontFamily: 'Newsreader, serif', fontSize: 24, fontWeight: 600 }}>{greeting()}, {name ?? 'there'}!</div>
         <div style={{ fontSize: 13, opacity: 0.85, marginTop: 4 }}>

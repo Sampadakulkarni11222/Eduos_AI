@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PortalShell } from '@/components/shell';
-import { AskEduOS } from '@/components/ask-eduos';
+
 import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { BookDto, BookIssueDto } from '@/lib/types';
@@ -27,7 +27,6 @@ export default function LibrarianDashboard() {
       topbar={{
         title: 'Library Overview',
         desc: 'Lending catalog & student activity tracking.',
-        actions: <AskEduOS />,
       }}
     >
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 18 }}>

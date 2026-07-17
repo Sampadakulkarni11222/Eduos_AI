@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PortalShell } from '@/components/shell';
-import { AskEduOS } from '@/components/ask-eduos';
+
 import { Card, EmptyState, SkeletonRows, StatCard, rupees } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -26,7 +26,7 @@ export default function StudentDashboard() {
   const slots = data?.todayTimetable.filter((s) => s.subject !== 'Break') ?? [];
 
   return (
-    <PortalShell expectedSlug="student" topbar={{ title: 'Student Portal', desc: 'Your school day at a glance', actions: <AskEduOS /> }}>
+    <PortalShell expectedSlug="student" topbar={{ title: 'Student Portal', desc: 'Your school day at a glance' }}>
       {loading && <Card><SkeletonRows rows={4} /></Card>}
       {!loading && !student && (
         <EmptyState title="No student record linked" sub="Contact the administration office to link your student profile." />

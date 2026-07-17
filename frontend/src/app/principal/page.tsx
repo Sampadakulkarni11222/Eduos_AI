@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { AskEduOS } from '@/components/ask-eduos';
+
 import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { RiskScan } from '@/lib/types';
@@ -35,7 +35,7 @@ export default function PrincipalDashboard() {
   const medCount = scan?.counts?.['MEDIUM'] ?? 0;
 
   return (
-    <PortalShell expectedSlug="principal" topbar={{ title: 'School Intelligence', desc: 'Synthesized view of school health', actions: <AskEduOS label="Principal Copilot" /> }}>
+    <PortalShell expectedSlug="principal" topbar={{ title: 'School Intelligence', desc: 'Synthesized view of school health' }}>
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
         <StatCard
           label="High-Risk Students"
