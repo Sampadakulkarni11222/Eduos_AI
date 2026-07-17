@@ -188,6 +188,7 @@ export const SYSTEM_ROLES = [
     name: 'Student',
     description: 'Views their own records',
     grants: grants([
+      ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
       ['assignments.read', 'OWN'],
       ['submissions.submit', 'OWN'],
