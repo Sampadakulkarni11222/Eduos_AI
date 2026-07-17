@@ -205,73 +205,131 @@ async function seedSchool() {
     }
   }
 
-  // 8. Seed 30 Students and 30 Parents
-  logger.info('Creating 30 Students and Parents...');
-  const studentNames = [
-    { first: 'Aarav', last: 'Sharma' }, { first: 'Diya', last: 'Patel' }, { first: 'Kabir', last: 'Mehta' },
-    { first: 'Ananya', last: 'Rao' }, { first: 'Vivaan', last: 'Singh' }, { first: 'Ira', last: 'Joshi' },
-    { first: 'Aditya', last: 'Kumar' }, { first: 'Riya', last: 'Sen' }, { first: 'Reyansh', last: 'Gupta' },
-    { first: 'Saanvi', last: 'Nair' }, { first: 'Krishna', last: 'Iyer' }, { first: 'Myra', last: 'Reddy' },
-    { first: 'Ishaan', last: 'Choudhury' }, { first: 'Zoya', last: 'Khan' }, { first: 'Arjun', last: 'Varma' },
-    { first: 'Aanya', last: 'Sharma' }, { first: 'Dhruv', last: 'Bose' }, { first: 'Kiara', last: 'Kapoor' },
-    { first: 'Pranav', last: 'Shah' }, { first: 'Zara', last: 'Ali' }, { first: 'Atharv', last: 'Mishra' },
-    { first: 'Tanya', last: 'Verma' }, { first: 'Dev', last: 'Pathak' }, { first: 'Kriti', last: 'Saxena' },
-    { first: 'Arnav', last: 'Bhat' }, { first: 'Navya', last: 'Bhatt' }, { first: 'Ayaan', last: 'Deshmukh' },
-    { first: 'Siddhi', last: 'Kulkarni' }, { first: 'Shaurya', last: 'Dutt' }, { first: 'Avani', last: 'Trivedi' }
-  ];
+  // 8. Seed 60 Students and Parents per Division (720 total)
+  logger.info('Generating 60 students and parents per division (12 sections * 60 = 720 students total)...');
+  const accountsToInsert = [];
+  const profilesToInsert = [];
+  const studentsToInsert = [];
+  const guardiansToInsert = [];
+  const enrollmentsToInsert = [];
 
-  const studentProfiles = [];
-  const enrollments = [];
+  const firstNames = ['Aarav', 'Diya', 'Kabir', 'Ananya', 'Vivaan', 'Ira', 'Aditya', 'Riya', 'Reyansh', 'Saanvi', 'Krishna', 'Myra', 'Ishaan', 'Zoya', 'Arjun', 'Aanya', 'Dhruv', 'Kiara', 'Pranav', 'Zara', 'Atharv', 'Tanya', 'Dev', 'Kriti', 'Arnav', 'Navya', 'Ayaan', 'Siddhi', 'Shaurya', 'Avani'];
+  const lastNames = ['Sharma', 'Patel', 'Mehta', 'Rao', 'Singh', 'Joshi', 'Kumar', 'Sen', 'Gupta', 'Nair', 'Iyer', 'Reddy', 'Choudhury', 'Khan', 'Varma', 'Bose', 'Kapoor', 'Shah', 'Ali', 'Mishra', 'Verma', 'Pathak', 'Saxena', 'Bhat', 'Bhatt', 'Deshmukh', 'Kulkarni', 'Dutt', 'Trivedi', 'Jha'];
 
-  for (let i = 0; i < studentNames.length; i++) {
-    const sName = studentNames[i];
-    const admissionNo = `ADM-${new Date().getFullYear()}-${String(i + 1).padStart(4, '0')}`;
-    
-    // Create Student Account & Profile
-    const sPhone = `+9100000001${String(i).padStart(2, '0')}`;
-    const sEmail = `student${i + 1}@schoolerp.com`;
-    const sAcc = await Account.create({ phoneE164: sPhone, email: sEmail, passwordHash, status: 'ACTIVE' });
-    const sProfile = await Profile.create({ accountId: sAcc._id, roleId: roleMap.get('STUDENT'), displayName: `${sName.first} ${sName.last}` });
-    
-    // Create Student Document
-    const student = await Student.create({
-      admissionNo,
-      firstName: sName.first,
-      lastName: sName.last,
-      dob: new Date(2012, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1),
-      gender: i % 2 === 0 ? 'MALE' : 'FEMALE',
-      profileId: sProfile._id,
-      status: 'ACTIVE',
-    });
+  let count = 0;
+  for (let sIdx = 0; sIdx < sections.length; sIdx++) {
+    const section = sections[sIdx];
+    const grade = grades.find((g) => g._id.toString() === section.gradeId.toString());
+    const gradeLabel = grade ? grade.name : 'Class';
 
-    // Create Parent Account, Profile & Link
-    const pPhone = `+9100000002${String(i).padStart(2, '0')}`;
-    const pEmail = `parent${i + 1}@schoolerp.com`;
-    const pAcc = await Account.create({ phoneE164: pPhone, email: pEmail, passwordHash, status: 'ACTIVE' });
-    const pProfile = await Profile.create({ accountId: pAcc._id, roleId: roleMap.get('PARENT'), displayName: `Parent of ${sName.first}` });
-    
-    await StudentGuardian.create({
-      studentId: student._id,
-      guardianProfileId: pProfile._id,
-      relation: i % 2 === 0 ? 'FATHER' : 'MOTHER',
-      isPrimary: true,
-      pickupAuthorized: true,
-    });
+    for (let i = 1; i <= 60; i++) {
+      count++;
+      const first = firstNames[count % firstNames.length];
+      const last = lastNames[count % lastNames.length];
+      const displayName = `${first} ${last}`;
+      const admissionNo = `ADM-2026-${String(count).padStart(4, '0')}`;
 
-    // Distribute enrollments across sections (Class 5 to 10 A/B)
-    const section = sections[i % sections.length];
-    const rollNo = Math.floor(i / sections.length) + 1;
-    const enrollment = await Enrollment.create({
-      studentId: student._id,
-      sectionId: section._id,
-      academicYearId: acYear._id,
-      rollNo,
-      status: 'ACTIVE',
-    });
+      // Student Account & Profile IDs
+      const sAccId = new mongoose.Types.ObjectId();
+      const sProfId = new mongoose.Types.ObjectId();
+      const sStudentId = new mongoose.Types.ObjectId();
+      const sEnrollId = new mongoose.Types.ObjectId();
 
-    studentProfiles.push(sProfile);
-    enrollments.push(enrollment);
+      const sPhone = `+910000003${String(count).padStart(3, '0')}`;
+      const sEmail = `student.${count}@schoolerp.com`;
+
+      accountsToInsert.push({
+        _id: sAccId,
+        phoneE164: sPhone,
+        email: sEmail,
+        passwordHash,
+        status: 'ACTIVE',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      profilesToInsert.push({
+        _id: sProfId,
+        accountId: sAccId,
+        roleId: roleMap.get('STUDENT'),
+        displayName: `${displayName} (${gradeLabel}–${section.name} #${i})`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      studentsToInsert.push({
+        _id: sStudentId,
+        admissionNo,
+        firstName: first,
+        lastName: last,
+        dob: new Date(2012, Math.floor(Math.random() * 12), Math.floor(Math.random() * 28) + 1),
+        gender: i % 2 === 0 ? 'MALE' : 'FEMALE',
+        profileId: sProfId,
+        status: 'ACTIVE',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      enrollmentsToInsert.push({
+        _id: sEnrollId,
+        studentId: sStudentId,
+        sectionId: section._id,
+        academicYearId: acYear._id,
+        rollNo: i,
+        status: 'ACTIVE',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      // Parent Account & Profile IDs
+      const pAccId = new mongoose.Types.ObjectId();
+      const pProfId = new mongoose.Types.ObjectId();
+
+      const pPhone = `+910000004${String(count).padStart(3, '0')}`;
+      const pEmail = `parent.${count}@schoolerp.com`;
+
+      accountsToInsert.push({
+        _id: pAccId,
+        phoneE164: pPhone,
+        email: pEmail,
+        passwordHash,
+        status: 'ACTIVE',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      profilesToInsert.push({
+        _id: pProfId,
+        accountId: pAccId,
+        roleId: roleMap.get('PARENT'),
+        displayName: `Parent of ${first}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      guardiansToInsert.push({
+        studentId: sStudentId,
+        guardianProfileId: pProfId,
+        relation: i % 2 === 0 ? 'FATHER' : 'MOTHER',
+        isPrimary: true,
+        pickupAuthorized: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
   }
+
+  logger.info(`Inserting ${accountsToInsert.length} accounts...`);
+  await Account.insertMany(accountsToInsert);
+  logger.info(`Inserting ${profilesToInsert.length} profiles...`);
+  const studentProfiles = await Profile.insertMany(profilesToInsert);
+  logger.info(`Inserting ${studentsToInsert.length} students...`);
+  await Student.insertMany(studentsToInsert);
+  logger.info(`Inserting ${enrollmentsToInsert.length} enrollments...`);
+  const enrollments = await Enrollment.insertMany(enrollmentsToInsert);
+  logger.info(`Inserting ${guardiansToInsert.length} student guardian links...`);
+  await StudentGuardian.insertMany(guardiansToInsert);
+
 
   // 9. Seed Timetable Slots
   logger.info('Seeding weekly timetables for all sections...');
@@ -502,8 +560,8 @@ async function seedSchool() {
   logger.info(' - Principal: principal@schoolerp.com / ChangeMe@123!');
   logger.info(' - Teacher 1: teacher@schoolerp.com / ChangeMe@123! (+910000000003)');
   logger.info(' - Teacher 2: priya.science@schoolerp.com / ChangeMe@123! (+910000000011)');
-  logger.info(' - Student 1: student1@schoolerp.com / ChangeMe@123! (+910000000100)');
-  logger.info(' - Parent 1:  parent1@schoolerp.com / ChangeMe@123! (+910000000200)');
+  logger.info(' - Student 1: student.1@schoolerp.com / ChangeMe@123! (+910000003001)');
+  logger.info(' - Parent 1:  parent.1@schoolerp.com / ChangeMe@123! (+910000004001)');
   logger.info('====================================================');
 
   await mongoose.disconnect();
