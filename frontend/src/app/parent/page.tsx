@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PortalShell } from '@/components/shell';
-import { AskEduOS } from '@/components/ask-eduos';
+
 import { Card, EmptyState, Pill, SkeletonRows, StatCard } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -25,7 +25,7 @@ export default function ParentDashboard() {
   const announcements = data?.announcements ?? null;
 
   return (
-    <PortalShell expectedSlug="parent" topbar={{ title: 'My Children', desc: "Your family's school life in one place", actions: <AskEduOS /> }}>
+    <PortalShell expectedSlug="parent" topbar={{ title: 'My Children', desc: "Your family's school life in one place" }}>
       {kids === null && !err && <Card><SkeletonRows rows={3} /></Card>}
       {err && <EmptyState title="Couldn't load your children" sub="Check your connection and reload the page." />}
       {kids && kids.length === 0 && <EmptyState title="No children linked yet" sub="Ask the school office to link your wards to this phone number." />}

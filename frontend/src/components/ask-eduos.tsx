@@ -2,11 +2,15 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { Button, Spinner } from './ui';
+import { useAuth } from '@/lib/auth';
 
 interface Msg { role: 'user' | 'assistant'; text: string; tools?: string[] }
 
-export function AskEduOS({ label = 'Ask Oakridge' }: { label?: string }) {
+export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   const [open, setOpen] = useState(false);
+  const { me } = useAuth();
+  const role = me?.profile?.role;
+
   // msgs and convId are stored in refs so they persist across open/close cycles
   const msgsRef = useRef<Msg[]>([]);
   const convIdRef = useRef<string | undefined>();
@@ -53,9 +57,66 @@ export function AskEduOS({ label = 'Ask Oakridge' }: { label?: string }) {
     } finally { setBusy(false); }
   };
 
+  // Determine suggestions based on the user's profile role
+  let suggestions: string[] = [
+    'How is my child doing this month?',
+    "What's the attendance and any pending homework?",
+    'Show the growth score and explain it'
+  ];
+
+  if (role === 'TEACHER') {
+    suggestions = [
+      'What is my teaching schedule for today?',
+      'List any students with low attendance in my sections',
+      'Which assignments are currently pending evaluation?'
+    ];
+  } else if (role === 'STUDENT') {
+    suggestions = [
+      "What's my attendance percentage?",
+      'Do I have any pending assignments due soon?',
+      'Show my midterm exam marks'
+    ];
+  } else if (role === 'PARENT') {
+    suggestions = [
+      'How is my child doing this month?',
+      "What's the attendance and pending homework for my child?",
+      'Are there any pending fee payments?'
+    ];
+  } else if (role === 'LIBRARIAN') {
+    suggestions = [
+      'Which books are currently overdue?',
+      'List all issued books and their due dates',
+      'Are there any pending library tickets?'
+    ];
+  } else if (role === 'WARDEN') {
+    suggestions = [
+      'Show all empty hostel rooms in Block A',
+      "List student allocations in the girls' block",
+      'Are there any pending hostel tickets?'
+    ];
+  } else if (role === 'FINANCE') {
+    suggestions = [
+      'Show total collected fees vs pending fees',
+      'List recently paid fee invoices',
+      'Show all overdue invoices'
+    ];
+  } else if (role === 'PRINCIPAL' || role === 'OWNER' || role === 'ADMIN') {
+    suggestions = [
+      'What is the overall attendance rate of the school?',
+      'Show the budget health and collected fees summary',
+      'Show risk analysis summary of at-risk students'
+    ];
+  }
+
+  const handleSuggestionClick = (sText: string) => {
+    setInput(sText);
+  };
+
   return (
     <>
-      <Button onClick={handleOpen}>+ {label}</Button>
+      <Button onClick={handleOpen} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 14 }}>✨</span> {label}
+      </Button>
       {open && (
         <div className="ai-overlay" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label={label}>
           <aside className="ai-panel" onClick={(e) => e.stopPropagation()}>
@@ -69,11 +130,32 @@ export function AskEduOS({ label = 'Ask Oakridge' }: { label?: string }) {
             <div className="ai-body" ref={scrollRef}>
               {msgs.length === 0 && (
                 <div className="ai-empty">
-                  <p>Ask me things like:</p>
-                  <ul>
-                    <li>How is my child doing this month?</li>
-                    <li>What's the attendance and any pending homework?</li>
-                    <li>Show the growth score and explain it</li>
+                  <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-1)', marginBottom: 8 }}>Suggested queries for you:</p>
+                  <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {suggestions.map((sText, idx) => (
+                      <li key={idx}>
+                        <button
+                          type="button"
+                          onClick={() => handleSuggestionClick(sText)}
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            background: '#f8fafc',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: 8,
+                            padding: '8px 12px',
+                            fontSize: 12.5,
+                            color: 'var(--accent)',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                          }}
+                          onMouseOver={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                          onMouseOut={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                        >
+                          💬 &nbsp; {sText}
+                        </button>
+                      </li>
+                    ))}
                   </ul>
                 </div>
               )}

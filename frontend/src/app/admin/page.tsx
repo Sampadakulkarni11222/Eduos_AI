@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PortalShell } from '@/components/shell';
-import { AskEduOS } from '@/components/ask-eduos';
+
 import { Button, Card, EmptyState, Pill, SkeletonRows } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { AdminDashboardDto } from '@/lib/types';
@@ -39,7 +39,6 @@ export default function AdminDashboard() {
       topbar={{
         title: 'Dashboard',
         desc: 'School operations at a glance — ' + today(),
-        actions: <AskEduOS />,
       }}
     >
       {err && <EmptyState title="Couldn't load the dashboard" sub="The server didn't respond. Reload to try again." />}
