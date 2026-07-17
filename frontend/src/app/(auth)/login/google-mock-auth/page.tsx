@@ -9,12 +9,13 @@ interface MockAccount {
 }
 
 const MOCK_GOOGLE_USERS: MockAccount[] = [
-  { email: 'owner@schoolerp.com',     name: 'Default Owner',    role: 'Superadmin', avatar: '👑' },
-  { email: 'admin@schoolerp.com',     name: 'Demo Admin',       role: 'Admin',      avatar: '🏛️' },
-  { email: 'principal@schoolerp.com', name: 'Demo Principal',   role: 'Principal',  avatar: '🎓' },
-  { email: 'teacher@schoolerp.com',   name: 'Demo Teacher',     role: 'Teacher',    avatar: '👩‍🏫' },
-  { email: 'arjun.sharma@eduos.com',  name: 'Arjun Sharma',     role: 'Teacher',    avatar: '👨‍🏫' },
-  { email: 'student1@eduos.com',      name: 'Student One',      role: 'Student',    avatar: '🎒' },
+  { email: 'owner@schoolerp.com',         name: 'Default Owner',          role: 'Superadmin', avatar: '👑' },
+  { email: 'admin@schoolerp.com',         name: 'Demo Admin',             role: 'Admin',      avatar: '🏛️' },
+  { email: 'principal@schoolerp.com',     name: 'Demo Principal',         role: 'Principal',  avatar: '🎓' },
+  { email: 'teacher@schoolerp.com',       name: 'Arjun Sharma (Math)',    role: 'Teacher',    avatar: '👨‍🏫' },
+  { email: 'priya.science@schoolerp.com', name: 'Priya Patel (Science)',  role: 'Teacher',    avatar: '👩‍🏫' },
+  { email: 'student.1@schoolerp.com',     name: 'Student 1',              role: 'Student',    avatar: '🎒' },
+  { email: 'parent.1@schoolerp.com',      name: 'Parent of Student 1',    role: 'Parent',     avatar: '👪' },
 ];
 
 export default function GoogleMockAuthPage() {
