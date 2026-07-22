@@ -12,7 +12,7 @@ services:
       - key: PORT
         value: 5000
       - key: MONGO_URI
-        value: mongodb+srv://kulkarnisampada07_db_user:bPKMqeW8OWkoE6eQ@cluster0.alhw4up.mongodb.net/school_erp?appName=Cluster0
+        value: mongodb+srv://kulkarnisampada07_db_user:REDACTED-ROTATED@cluster0.alhw4up.mongodb.net/school_erp?appName=Cluster0
       - key: JWT_SECRET
         sync: false
 
