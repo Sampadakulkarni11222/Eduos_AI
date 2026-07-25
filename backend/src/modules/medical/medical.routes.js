@@ -43,5 +43,6 @@ router.use(authenticate);
  */
 router.get('/:studentId', requirePermission('medical.read'), controller.getByStudentId);
 router.put('/:studentId', requirePermission('medical.manage'), controller.upsert);
+router.delete('/:studentId', requirePermission('medical.manage'), controller.remove);
 
 export default router;

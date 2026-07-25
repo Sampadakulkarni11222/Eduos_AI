@@ -78,6 +78,24 @@ router.delete('/:id', requirePermission('students.manage'), controller.remove);
 
 /**
  * @swagger
+ * /students/{id}/overview:
+ *   get:
+ *     summary: Get a student's full profile in one call (address, guardians+phone, medical, attendance, exam performance, assignments)
+ *     tags: [Students]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Student overview fetched
+ */
+router.get('/:id/overview', requirePermission('students.read'), controller.getOverview);
+
+/**
+ * @swagger
  * /students/{id}/guardians:
  *   get:
  *     summary: List a student's guardians
@@ -106,5 +124,23 @@ router.delete('/:id', requirePermission('students.manage'), controller.remove);
  */
 router.get('/:id/guardians', requirePermission('students.read'), controller.listGuardians);
 router.post('/:id/guardians', requirePermission('students.manage'), controller.addGuardian);
+
+/**
+ * @swagger
+ * /students/{id}/id-card:
+ *   get:
+ *     summary: Generate the student's ID card as a PDF (streamed inline)
+ *     tags: [Students]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: ID card PDF
+ */
+router.get('/:id/id-card', requirePermission('students.read'), controller.getIdCard);
 
 export default router;

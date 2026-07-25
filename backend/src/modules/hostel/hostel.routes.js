@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
+import { csvUploadSingle } from '../../utils/csvImport.js';
 import * as controller from './hostel.controller.js';
 
 const router = Router();
@@ -50,6 +51,7 @@ router.get('/summary', requirePermission('hostel.read'), controller.getSummary);
  */
 router.get('/rooms', requirePermission('hostel.read'), controller.listRooms);
 router.post('/rooms', requirePermission('hostel.manage'), controller.createRoom);
+router.post('/rooms/bulk', requirePermission('hostel.manage'), csvUploadSingle('file'), controller.bulkCreateRooms);
 
 /**
  * @swagger
@@ -109,6 +111,7 @@ router.patch('/rooms/:id', requirePermission('hostel.manage'), controller.update
  */
 router.get('/allocations', requirePermission('hostel.read'), controller.listAllocations);
 router.post('/allocations', requirePermission('hostel.manage'), controller.allocate);
+router.post('/allocations/bulk', requirePermission('hostel.manage'), csvUploadSingle('file'), controller.bulkAllocate);
 
 /**
  * @swagger

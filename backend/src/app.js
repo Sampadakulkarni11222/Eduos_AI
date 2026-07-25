@@ -88,6 +88,7 @@ import { logger } from './utils/logger.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { sendError } from './utils/response.js';
 import apiRoutes from './routes/index.js';
 
 const app = express();
@@ -97,6 +98,12 @@ app.use(express.static(join(__dirname, '..', 'public')));
 
 // ─── Uploaded files (documents, course material, submissions) ──
 app.use('/uploads', express.static(join(process.cwd(), env.UPLOAD_DIR)));
+// A missing/evicted file falls through express.static's next() — answer with
+// a friendly JSON 404 here instead of letting it reach the generic API
+// notFoundHandler, which would otherwise leak "Cannot GET /uploads/…".
+app.use('/uploads', (req, res) => {
+  sendError(res, 'This file could not be found. It may have been removed or is temporarily unavailable.', 404, [], 'FILE_NOT_FOUND');
+});
 
 // ─── Security & Compression ───────────────────────────────
 app.use(helmet());
@@ -141,6 +148,38 @@ async function bootstrap() {
 
   // ── Database ──
   await connectDB();
+
+  // Auto-sync permissions and system roles on boot
+  try {
+    const { Permission } = await import('./models/permission.model.js');
+    const { Role } = await import('./models/role.model.js');
+    const { PERMISSION_CATALOG, SYSTEM_ROLES } = await import('./constants/permissions.js');
+
+    for (const p of PERMISSION_CATALOG) {
+      await Permission.updateOne(
+        { key: p.key },
+        { $set: { group: p.group, description: p.description, isSystem: true } },
+        { upsert: true }
+      );
+    }
+    for (const r of SYSTEM_ROLES) {
+      await Role.updateOne(
+        { key: r.key },
+        {
+          $set: {
+            name: r.name,
+            description: r.description ?? '',
+            isSystem: true,
+            permissions: r.grants,
+          },
+        },
+        { upsert: true }
+      );
+    }
+    logger.info('✔  System roles and permissions auto-synced with DB');
+  } catch (syncErr) {
+    logger.error(`✘  Failed to auto-sync roles/permissions: ${syncErr.message}`);
+  }
 
   // ── Logger ──
   logger.info(`✔  Logger initialized  →  level: ${env.LOG_LEVEL}, dir: ${env.LOG_DIR}/`);

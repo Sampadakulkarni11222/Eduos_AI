@@ -7,6 +7,7 @@ const studentSchema = new Schema(
     lastName: { type: String, trim: true },
     dob: { type: Date },
     gender: { type: String },
+    address: { type: String, trim: true },
     photoUrl: { type: String },
     profileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null }, // student's own login profile, powers OWN scope
     leadId: { type: Schema.Types.ObjectId, ref: 'Lead', default: null },

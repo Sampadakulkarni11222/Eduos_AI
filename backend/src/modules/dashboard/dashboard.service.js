@@ -12,6 +12,7 @@ import { Exam, ExamSubject, Mark } from '../../models/exam.model.js';
 import { TimetableSlot } from '../../models/timetableSlot.model.js';
 import { Book, BookIssue } from '../../models/library.model.js';
 import { HostelRoom, HostelAllocation, HostelInquiry } from '../../models/hostel.model.js';
+import { Document } from '../../models/document.model.js';
 import {
   getTeacherSectionIds,
   getGuardianStudentIds,
@@ -336,6 +337,12 @@ export async function getTeacherDashboard(profileId) {
   // 8. Recent announcements
   const announcementsArr = await recentAnnouncements(5);
 
+  // 9. Course materials this teacher has uploaded
+  const courseMaterialsCount = await Document.countDocuments({
+    authorProfileId: profileId,
+    type: 'CUSTOM',
+  });
+
   return {
     assignedClasses: assignedClassesRaw.map((s) => ({
       sectionId: s._id,
@@ -343,6 +350,8 @@ export async function getTeacherDashboard(profileId) {
       gradeName: s.gradeId?.name ?? '--',
     })),
     totalStudents,
+    totalOfferings: offeringIds.length,
+    courseMaterialsCount,
     todayTimetable: todaySlots.map((slot) => {
       const sectionDoc = slot.subjectOfferingId?.sectionId;
       const gradeName = sectionDoc?.gradeId?.name ? `${sectionDoc.gradeId.name} – ` : '';

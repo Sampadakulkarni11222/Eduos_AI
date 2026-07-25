@@ -9,3 +9,5 @@ Thumbs.db
 db/
 core-api/
 .claude/
+uploads/*
+!uploads/.gitkeep

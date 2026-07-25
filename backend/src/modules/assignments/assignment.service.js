@@ -26,8 +26,10 @@ export async function list(actor, scope, query = {}) {
 
   let ownEnrollmentIds = [];
   if (scope === 'OWN' && actor.roleKey === 'TEACHER') {
-    const sectionIds = await getTeacherSectionIds(actor.profileId);
-    const offerings = await SubjectOffering.find({ sectionId: { $in: sectionIds } }).select('_id');
+    // Scoped to subjects this teacher personally teaches — not every subject
+    // in a section they're merely class-teacher of (see timetable.service.js
+    // for the same fix).
+    const offerings = await SubjectOffering.find({ teacherId: actor.profileId }).select('_id');
     filter.subjectOfferingId = filter.subjectOfferingId ?? { $in: offerings.map((o) => o._id) };
   }
   if (scope === 'OWN' && (actor.roleKey === 'STUDENT' || actor.roleKey === 'PARENT')) {
@@ -120,10 +122,17 @@ export async function gradeSubmission(actor, scope, { assignmentId, enrollmentId
     throw new AppError('This student is not enrolled in this assignment\'s class', 400);
   }
 
+  // A grade can only be assigned once real work has been submitted —
+  // grading must follow reviewing the submission, never precede it.
+  const existing = await Submission.findOne({ assignmentId, enrollmentId });
+  if (!existing || existing.status === 'PENDING') {
+    throw new AppError('Cannot grade — no submission has been received for this student', 400);
+  }
+
   return Submission.findOneAndUpdate(
     { assignmentId, enrollmentId },
     { marks, feedback, status: 'GRADED' },
-    { upsert: true, new: true }
+    { upsert: false, new: true }
   );
 }
 

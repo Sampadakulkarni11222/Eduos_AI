@@ -35,7 +35,7 @@ router.post('/register', authController.register);
  * @swagger
  * /auth/otp/request:
  *   post:
- *     summary: Request a login OTP for a phone number (creates the account if new)
+ *     summary: Request a login OTP for a phone number (existing accounts only)
  *     tags: [Auth]
  *     security: []
  *     requestBody:
@@ -52,6 +52,8 @@ router.post('/register', authController.register);
  *           OTP sent (STAND-IN â€” no SMS provider configured; the code is
  *           logged server-side and echoed in the response as devOtp
  *           outside production only).
+ *       404:
+ *         description: PHONE_NOT_REGISTERED — no account exists for this phone number
  */
 router.post('/otp/request', authRateLimiter, authController.requestOtp);
 
@@ -72,7 +74,9 @@ router.post('/otp/request', authRateLimiter, authController.requestOtp);
  *             properties: { email: { type: string } }
  *     responses:
  *       200:
- *         description: OTP sent if the email is registered (devOtp echoed outside production)
+ *         description: OTP sent (devOtp echoed outside production)
+ *       404:
+ *         description: EMAIL_NOT_REGISTERED — no account exists for this email
  */
 router.post('/otp/email/request', authRateLimiter, authController.requestEmailOtp);
 

@@ -1,6 +1,7 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
 import { parseCsvRows } from '../../utils/csvImport.js';
+import { renderIdCardPdf } from '../../utils/idCardPdf.js';
 import * as service from './student.service.js';
 
 export const list = asyncHandler(async (req, res) => {
@@ -11,6 +12,18 @@ export const list = asyncHandler(async (req, res) => {
 export const getById = asyncHandler(async (req, res) => {
   const student = await service.getById(req.actor, req.scope, req.params.id);
   sendSuccess(res, student, 'Student fetched');
+});
+
+export const getOverview = asyncHandler(async (req, res) => {
+  const overview = await service.getOverview(req.actor, req.scope, req.params.id);
+  sendSuccess(res, overview, 'Student overview fetched');
+});
+
+export const getIdCard = asyncHandler(async (req, res) => {
+  const data = await service.getIdCardData(req.actor, req.scope, req.params.id);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="ID-Card-${data.admissionNo}.pdf"`);
+  renderIdCardPdf(res, data);
 });
 
 export const create = asyncHandler(async (req, res) => {

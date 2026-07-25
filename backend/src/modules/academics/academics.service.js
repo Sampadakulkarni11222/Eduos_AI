@@ -6,8 +6,36 @@ import {
   Subject,
   SubjectOffering,
 } from '../../models/academics.model.js';
+import { Account } from '../../models/account.model.js';
+import { Profile } from '../../models/profile.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { getTeacherSectionIds } from '../../utils/scope.js';
+import { runInTransaction } from '../../utils/transaction.js';
+
+const CHUNK_SIZE = 100;
+
+/** Chunked insertMany with per-chunk error collection, shared by the bulk importers below. */
+async function chunkedInsert(Model, validRows, dupField) {
+  const results = { imported: 0, failed: 0, errors: [] };
+  for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
+    const chunk = validRows.slice(i, i + CHUNK_SIZE);
+    try {
+      await runInTransaction(async (session) => {
+        await Model.insertMany(chunk.map((c) => c.doc), { session });
+      });
+      results.imported += chunk.length;
+    } catch (err) {
+      results.failed += chunk.length;
+      chunk.forEach((c) => {
+        const msg = err.code === 11000 && dupField
+          ? `"${c.doc[dupField]}" already exists`
+          : err.message;
+        results.errors.push({ row: c.rowNo, error: msg });
+      });
+    }
+  }
+  return results;
+}
 
 // ── Academic Years ──
 export const listYears = () => AcademicYear.find().sort({ startsOn: -1 });
@@ -21,6 +49,29 @@ export const createTerm = (data) => Term.create(data);
 // ── Grades ──
 export const listGrades = () => Grade.find().sort({ level: 1 });
 export const createGrade = (data) => Grade.create(data);
+
+export async function bulkCreateGrades(rows) {
+  const validRows = [];
+  const results = { imported: 0, failed: 0, errors: [] };
+  for (let i = 0; i < rows.length; i++) {
+    const rowNo = i + 2; // header is row 1
+    const row = rows[i];
+    const name = row.name?.trim();
+    const level = Number(row.level);
+    if (!name || !Number.isFinite(level)) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: 'name and a numeric level are required' });
+      continue;
+    }
+    validRows.push({ rowNo, doc: { name, level } });
+  }
+  const chunked = await chunkedInsert(Grade, validRows, 'name');
+  return {
+    imported: results.imported + chunked.imported,
+    failed: results.failed + chunked.failed,
+    errors: [...results.errors, ...chunked.errors],
+  };
+}
 
 // ── Sections ──
 export const listSections = (gradeId) =>
@@ -57,9 +108,77 @@ export async function createSection(data) {
   return Section.create(data);
 }
 
+export async function bulkCreateSections(rows) {
+  const grades = await Grade.find().lean();
+  const gradeMap = new Map(grades.map((g) => [g.name.toLowerCase(), g._id]));
+
+  const validRows = [];
+  const results = { imported: 0, failed: 0, errors: [] };
+  for (let i = 0; i < rows.length; i++) {
+    const rowNo = i + 2;
+    const row = rows[i];
+    const gradeName = row.gradename?.trim();
+    const name = row.name?.trim();
+    if (!gradeName || !name) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: 'gradeName and name are required' });
+      continue;
+    }
+    const gradeId = gradeMap.get(gradeName.toLowerCase());
+    if (!gradeId) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: `Grade "${gradeName}" not found` });
+      continue;
+    }
+
+    let classTeacherId;
+    const phone = row.classteacherphone?.trim();
+    if (phone) {
+      const account = await Account.findOne({ phoneE164: phone });
+      const profile = account ? await Profile.findOne({ accountId: account._id, deletedAt: null }) : null;
+      if (!profile) {
+        results.failed++;
+        results.errors.push({ row: rowNo, error: `No profile found for phone "${phone}"` });
+        continue;
+      }
+      classTeacherId = profile._id;
+    }
+
+    validRows.push({ rowNo, doc: { gradeId, name, classTeacherId } });
+  }
+  const chunked = await chunkedInsert(Section, validRows);
+  return {
+    imported: results.imported + chunked.imported,
+    failed: results.failed + chunked.failed,
+    errors: [...results.errors, ...chunked.errors],
+  };
+}
+
 // ── Subjects ──
 export const listSubjects = () => Subject.find().sort({ name: 1 });
 export const createSubject = (data) => Subject.create(data);
+
+export async function bulkCreateSubjects(rows) {
+  const validRows = [];
+  const results = { imported: 0, failed: 0, errors: [] };
+  for (let i = 0; i < rows.length; i++) {
+    const rowNo = i + 2;
+    const row = rows[i];
+    const name = row.name?.trim();
+    if (!name) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: 'name is required' });
+      continue;
+    }
+    validRows.push({ rowNo, doc: { name, code: row.code?.trim() || undefined } });
+  }
+  const chunked = await chunkedInsert(Subject, validRows, 'name');
+  return {
+    imported: results.imported + chunked.imported,
+    failed: results.failed + chunked.failed,
+    errors: [...results.errors, ...chunked.errors],
+  };
+}
 
 // ── Subject Offerings ──
 export const listOfferings = (filter = {}) =>

@@ -5,6 +5,18 @@ import { Section } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 
+export function parseDateToMidnight(dateStr) {
+  if (!dateStr) return null;
+  const match = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) {
+    const [_, y, m, d] = match;
+    return new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  }
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
 async function assertTeacherOwnsSection(actor, scope, sectionId) {
   if (scope !== 'OWN' || actor.roleKey !== 'TEACHER') return;
   const sectionIds = await getTeacherSectionIds(actor.profileId);
@@ -14,6 +26,12 @@ async function assertTeacherOwnsSection(actor, scope, sectionId) {
 }
 
 export async function getRoster(actor, scope, sectionId, date) {
+  if (!sectionId) throw new AppError('sectionId is required', 400);
+  if (!date) throw new AppError('date is required', 400);
+
+  const day = parseDateToMidnight(date);
+  if (!day) throw new AppError('Invalid date format', 400);
+
   await assertTeacherOwnsSection(actor, scope, sectionId);
 
   const section = await Section.findById(sectionId).populate('gradeId');
@@ -23,7 +41,6 @@ export async function getRoster(actor, scope, sectionId, date) {
     .populate('studentId')
     .sort({ rollNo: 1 });
 
-  const day = new Date(date);
   const records = await AttendanceRecord.find({
     enrollmentId: { $in: enrollments.map((e) => e._id) },
     date: day,
@@ -51,6 +68,12 @@ export async function getRoster(actor, scope, sectionId, date) {
 }
 
 export async function markAttendance(actor, { date, periodNo = null, records, entries, sectionId }) {
+  if (!sectionId) throw new AppError('sectionId is required', 400);
+  if (!date) throw new AppError('date is required', 400);
+
+  const day = parseDateToMidnight(date);
+  if (!day) throw new AppError('Invalid date format', 400);
+
   await assertTeacherOwnsSection(actor, 'OWN', sectionId);
 
   const items = records || entries || [];
@@ -66,12 +89,18 @@ export async function markAttendance(actor, { date, periodNo = null, records, en
     throw new AppError('One or more students do not belong to this section', 403);
   }
 
-  const day = new Date(date);
+  // Validate status
+  for (const item of items) {
+    if (!item.status || !VALID_STATUSES.has(item.status.toUpperCase())) {
+      throw new AppError(`Invalid status "${item.status ?? ''}"`, 400);
+    }
+  }
+
   const ops = items.map(({ enrollmentId, status, note }) => ({
     updateOne: {
       filter: { enrollmentId, date: day, periodNo },
       update: {
-        $set: { status, note, source: 'WEB', markedByProfileId: actor.profileId },
+        $set: { status: status.toUpperCase(), note, source: 'WEB', markedByProfileId: actor.profileId },
       },
       upsert: true,
     },
@@ -152,15 +181,15 @@ async function resolveSummaryEnrollmentIds(actor, scope, enrollmentId) {
 export async function getSummary(actor, scope, { enrollmentId, from, to, month }) {
   const enrollmentIds = await resolveSummaryEnrollmentIds(actor, scope, enrollmentId);
 
-  let dateFrom = from ? new Date(from) : null;
-  let dateTo = to ? new Date(to) : null;
+  let dateFrom = from ? parseDateToMidnight(from) : null;
+  let dateTo = to ? parseDateToMidnight(to) : null;
 
   if (month && !dateFrom && !dateTo) {
     const [yearStr, monthStr] = month.split('-');
     const year = parseInt(yearStr);
     const monthIdx = parseInt(monthStr) - 1;
-    dateFrom = new Date(year, monthIdx, 1);
-    dateTo = new Date(year, monthIdx + 1, 0, 23, 59, 59, 999);
+    dateFrom = new Date(Date.UTC(year, monthIdx, 1));
+    dateTo = new Date(Date.UTC(year, monthIdx + 1, 0, 23, 59, 59, 999));
   }
 
   const match = { enrollmentId: { $in: enrollmentIds.map((id) => new mongoose.Types.ObjectId(id)) } };

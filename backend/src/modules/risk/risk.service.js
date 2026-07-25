@@ -10,14 +10,19 @@ const LEVEL = (p) => (p >= 0.7 ? 'HIGH' : p >= 0.4 ? 'MEDIUM' : 'LOW');
  * STAND-IN implementation. core-api's risk module scores dropout/academic
  * risk with a trained model; here we use plain rule-based thresholds over
  * the last 30 days of attendance, published marks, and overdue invoices.
- * Swap the body of scanEnrollment() for a real model call later — the
- * route contract (GET /risk/scan) stays the same.
+ * Swap the per-enrollment scoring logic below for a real model call later —
+ * the route contract (GET /risk/scan) stays the same.
+ *
+ * Batched by design: the original version ran 3 queries + up to 3 upserts
+ * per enrollment inside a sequential loop, which meant ~6 round-trips to
+ * Atlas per student — for a school-wide scan (hundreds of students) that
+ * serialized into minutes and made the Principal dashboard look hung. This
+ * fetches attendance/marks/overdue-invoices for every enrollment in 3 bulk
+ * queries, scores everything in memory, then persists with one bulkWrite.
  */
-async function scanEnrollment(enrollment) {
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+function scoreEnrollment({ records, marks, overdueCount }) {
   const predictions = [];
 
-  const records = await AttendanceRecord.find({ enrollmentId: enrollment._id, date: { $gte: since }, periodNo: null });
   if (records.length > 0) {
     const presentPct = records.filter((r) => r.status === 'PRESENT').length / records.length;
     const probability = Math.max(0, 1 - presentPct / 0.75); // risk rises below 75% attendance
@@ -28,7 +33,6 @@ async function scanEnrollment(enrollment) {
     });
   }
 
-  const marks = await Mark.find({ enrollmentId: enrollment._id, status: 'PUBLISHED' }).populate('examSubjectId');
   const pcts = marks.filter((m) => m.marks != null && m.examSubjectId?.maxMarks).map((m) => m.marks / m.examSubjectId.maxMarks);
   if (pcts.length > 0) {
     const avgPct = pcts.reduce((a, b) => a + b, 0) / pcts.length;
@@ -40,30 +44,16 @@ async function scanEnrollment(enrollment) {
     });
   }
 
-  const overdueInvoices = await Invoice.countDocuments({
-    enrollmentId: enrollment._id,
-    status: { $in: ['PENDING', 'PARTIAL', 'OVERDUE'] },
-    dueOn: { $lt: new Date() },
-  });
-  if (overdueInvoices > 0) {
-    const probability = Math.min(1, 0.3 + overdueInvoices * 0.2);
+  if (overdueCount > 0) {
+    const probability = Math.min(1, 0.3 + overdueCount * 0.2);
     predictions.push({
       type: 'FEE_DEFAULT',
       probability,
-      topFeatures: [{ feature: 'overdue_invoice_count', value: overdueInvoices, contribution: probability }],
+      topFeatures: [{ feature: 'overdue_invoice_count', value: overdueCount, contribution: probability }],
     });
   }
 
-  const saved = [];
-  for (const p of predictions) {
-    const doc = await RiskPrediction.findOneAndUpdate(
-      { enrollmentId: enrollment._id, type: p.type },
-      { ...p, level: LEVEL(p.probability), computedAt: new Date() },
-      { upsert: true, new: true }
-    );
-    saved.push(doc);
-  }
-  return saved;
+  return predictions;
 }
 
 export async function scan({ enrollmentId, tenantId } = {}) {
@@ -73,10 +63,47 @@ export async function scan({ enrollmentId, tenantId } = {}) {
 
   const enrollments = await Enrollment.find(filter)
     .populate('studentId', 'firstName lastName')
-    .populate('sectionId', 'name gradeName');
+    .populate('sectionId', 'name gradeName')
+    .lean();
+
+  if (enrollments.length === 0) return { items: [], counts: {} };
+
+  const enrollmentIds = enrollments.map((e) => e._id);
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const now = new Date();
+
+  const [attendanceRecords, marks, overdueAgg] = await Promise.all([
+    AttendanceRecord.find({ enrollmentId: { $in: enrollmentIds }, date: { $gte: since }, periodNo: null })
+      .select('enrollmentId status')
+      .lean(),
+    Mark.find({ enrollmentId: { $in: enrollmentIds }, status: 'PUBLISHED' })
+      .populate('examSubjectId', 'maxMarks')
+      .select('enrollmentId marks examSubjectId')
+      .lean(),
+    Invoice.aggregate([
+      { $match: { enrollmentId: { $in: enrollmentIds }, status: { $in: ['PENDING', 'PARTIAL', 'OVERDUE'] }, dueOn: { $lt: now } } },
+      { $group: { _id: '$enrollmentId', count: { $sum: 1 } } },
+    ]),
+  ]);
+
+  const recordsByEnrollment = new Map();
+  for (const r of attendanceRecords) {
+    const key = r.enrollmentId.toString();
+    (recordsByEnrollment.get(key) ?? recordsByEnrollment.set(key, []).get(key)).push(r);
+  }
+  const marksByEnrollment = new Map();
+  for (const m of marks) {
+    const key = m.enrollmentId.toString();
+    (marksByEnrollment.get(key) ?? marksByEnrollment.set(key, []).get(key)).push(m);
+  }
+  const overdueByEnrollment = new Map(overdueAgg.map((o) => [o._id.toString(), o.count]));
 
   const items = [];
+  const bulkOps = [];
+  const counts = {};
+
   for (const enrollment of enrollments) {
+    const key = enrollment._id.toString();
     const student = enrollment.studentId;
     const section = enrollment.sectionId;
     const studentName = student
@@ -86,26 +113,37 @@ export async function scan({ enrollmentId, tenantId } = {}) {
       ? `${section.gradeName || ''} ${section.name || ''}`.trim() || 'Unknown'
       : 'Unknown';
 
-    const predictions = await scanEnrollment(enrollment);
-    for (const doc of predictions) {
+    const predictions = scoreEnrollment({
+      records: recordsByEnrollment.get(key) ?? [],
+      marks: marksByEnrollment.get(key) ?? [],
+      overdueCount: overdueByEnrollment.get(key) ?? 0,
+    });
+
+    for (const p of predictions) {
+      const level = LEVEL(p.probability);
+      const computedAt = new Date();
+      bulkOps.push({
+        updateOne: {
+          filter: { enrollmentId: enrollment._id, type: p.type },
+          update: { $set: { ...p, level, computedAt } },
+          upsert: true,
+        },
+      });
       items.push({
-        enrollmentId: doc.enrollmentId?.toString(),
+        enrollmentId: key,
         studentName,
         class: className,
-        type: doc.type,
-        level: doc.level,
-        probability: doc.probability,
-        topFeatures: doc.topFeatures || [],
-        summary: buildSummary(doc),
+        type: p.type,
+        level,
+        probability: p.probability,
+        topFeatures: p.topFeatures,
+        summary: buildSummary(p),
       });
+      counts[level] = (counts[level] ?? 0) + 1;
     }
   }
 
-  // Build counts by level
-  const counts = {};
-  for (const item of items) {
-    counts[item.level] = (counts[item.level] ?? 0) + 1;
-  }
+  if (bulkOps.length > 0) await RiskPrediction.bulkWrite(bulkOps);
 
   return { items, counts };
 }

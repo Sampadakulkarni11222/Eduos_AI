@@ -20,8 +20,10 @@ export async function listExams(termId) {
 export async function listExamSubjects(actor, scope, examId) {
   const filter = examId ? { examId } : {};
   if (scope === 'OWN' && actor.roleKey === 'TEACHER') {
-    const sectionIds = await getTeacherSectionIds(actor.profileId);
-    const offerings = await SubjectOffering.find({ sectionId: { $in: sectionIds } }).select('_id');
+    // Only subjects this teacher personally teaches — matches the write-side
+    // check in loadOwnedExamSubject, so nothing shows up here that they'd
+    // then be refused when actually entering marks for it.
+    const offerings = await SubjectOffering.find({ teacherId: actor.profileId }).select('_id');
     filter.subjectOfferingId = { $in: offerings.map((o) => o._id) };
   }
   const examSubjects = await ExamSubject.find(filter)
@@ -65,9 +67,12 @@ async function resolveEnrollmentIdsForOwn(actor) {
 
 /**
  * Loads an exam subject with its class/subject context and, for a
- * TEACHER acting OWN-scoped, verifies the subject's section is one of
- * theirs. Throws 404/403 otherwise. Shared by the roster and marks-entry
- * endpoints so a teacher can never read or write marks outside their classes.
+ * TEACHER acting OWN-scoped, verifies they are the teacher on that specific
+ * subject offering. Throws 404/403 otherwise. Shared by the roster and
+ * marks-entry endpoints so a teacher can never read or write marks for a
+ * subject someone else teaches — being that section's class teacher grants
+ * broader read access to performance (see getPerformance) but not write
+ * access to another teacher's marks.
  */
 async function loadOwnedExamSubject(actor, scope, examSubjectId) {
   const examSubject = await ExamSubject.findById(examSubjectId).populate([
@@ -76,11 +81,10 @@ async function loadOwnedExamSubject(actor, scope, examSubjectId) {
   ]);
   if (!examSubject) throw new AppError('Exam subject not found', 404);
 
-  const sectionId = examSubject.subjectOfferingId?.sectionId?._id;
   if (scope === 'OWN' && actor.roleKey === 'TEACHER') {
-    const mySections = await getTeacherSectionIds(actor.profileId);
-    if (!mySections.includes(sectionId?.toString())) {
-      throw new AppError('This exam subject is not in your classes', 403);
+    const teacherId = examSubject.subjectOfferingId?.teacherId;
+    if (!teacherId || teacherId.toString() !== actor.profileId) {
+      throw new AppError('You do not teach this subject for this class', 403);
     }
   }
   return examSubject;
@@ -127,7 +131,7 @@ export async function getMarksGrid(actor, scope, examSubjectId) {
 
 export async function getPerformance(actor, scope, { enrollmentId }) {
   const filter = {};
-  
+
   // If enrollmentId is not specified, resolve from scope if OWN
   let targetEnrollmentId = enrollmentId;
   if (!targetEnrollmentId) {
@@ -141,6 +145,42 @@ export async function getPerformance(actor, scope, { enrollmentId }) {
 
   if (!targetEnrollmentId) {
     throw new AppError('enrollmentId is required', 400);
+  }
+
+  // Get the enrollment to populate student details
+  const enrollment = await Enrollment.findById(targetEnrollmentId)
+    .populate('studentId')
+    .populate({
+      path: 'sectionId',
+      populate: { path: 'gradeId' }
+    });
+  if (!enrollment) throw new AppError('Enrollment not found', 404);
+
+  // A caller passing an arbitrary enrollmentId must still be checked against
+  // OWN scope explicitly — the resolveEnrollmentIdsForOwn() call above only
+  // runs when enrollmentId is omitted, so without this a teacher/parent could
+  // read any student's full results just by supplying any enrollment id.
+  let restrictToOfferingIds = null; // null = no subject restriction (full access)
+  if (scope === 'OWN') {
+    if (actor.roleKey === 'TEACHER') {
+      const mySectionIds = await getTeacherSectionIds(actor.profileId);
+      const sectionId = enrollment.sectionId?._id?.toString();
+      if (!sectionId || !mySectionIds.includes(sectionId)) {
+        throw new AppError('This student is not in your classes', 403);
+      }
+      const isClassTeacher = enrollment.sectionId?.classTeacherId?.toString() === actor.profileId;
+      if (!isClassTeacher) {
+        // Subject teacher (not this section's class teacher) — only see the
+        // subject(s) they actually teach here, not the whole student record.
+        const myOfferings = await SubjectOffering.find({ sectionId, teacherId: actor.profileId }).select('_id');
+        restrictToOfferingIds = myOfferings.map((o) => o._id.toString());
+      }
+    } else {
+      const ownedIds = await resolveEnrollmentIdsForOwn(actor);
+      if (!ownedIds.includes(targetEnrollmentId)) {
+        throw new AppError('You do not have access to this student', 403);
+      }
+    }
   }
 
   filter.enrollmentId = targetEnrollmentId;
@@ -157,14 +197,6 @@ export async function getPerformance(actor, scope, { enrollmentId }) {
       }
     ]
   });
-
-  // Get the enrollment to populate student details
-  const enrollment = await Enrollment.findById(targetEnrollmentId)
-    .populate('studentId')
-    .populate({
-      path: 'sectionId',
-      populate: { path: 'gradeId' }
-    });
 
   const studentName = enrollment?.studentId
     ? `${enrollment.studentId.firstName} ${enrollment.studentId.lastName || ''}`.trim()
@@ -184,6 +216,9 @@ export async function getPerformance(actor, scope, { enrollmentId }) {
   for (const m of marks) {
     const examSubject = m.examSubjectId;
     if (!examSubject) continue;
+    if (restrictToOfferingIds && !restrictToOfferingIds.includes(examSubject.subjectOfferingId?._id?.toString())) {
+      continue; // subject-only teacher for this section — hide subjects they don't teach
+    }
 
     const examName = examSubject.examId?.name || 'Exam';
     const subjectName = examSubject.subjectOfferingId?.subjectId?.name || 'Subject';

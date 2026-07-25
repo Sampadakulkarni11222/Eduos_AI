@@ -99,6 +99,106 @@ export async function createBook(data) {
   };
 }
 
+export async function bulkCreateBooks(rows) {
+  const results = { imported: 0, failed: 0, errors: [] };
+  const docs = [];
+  for (let i = 0; i < rows.length; i++) {
+    const rowNo = i + 2; // header is row 1
+    const row = rows[i];
+    const title = row.title?.trim();
+    const author = row.author?.trim();
+    if (!title || !author) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: 'title and author are required' });
+      continue;
+    }
+    const totalCopies = row.totalcopies?.trim() ? Number(row.totalcopies) : 1;
+    if (!Number.isFinite(totalCopies) || totalCopies < 0) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: `Invalid totalCopies "${row.totalcopies}"` });
+      continue;
+    }
+    docs.push({
+      rowNo,
+      title,
+      author,
+      isbn: row.isbn?.trim() || null,
+      category: row.category?.trim() || 'General',
+      totalCopies,
+      availableCopies: totalCopies,
+    });
+  }
+
+  const CHUNK_SIZE = 100;
+  for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
+    const chunk = docs.slice(i, i + CHUNK_SIZE);
+    try {
+      await Book.insertMany(chunk.map(({ rowNo, ...doc }) => doc));
+      results.imported += chunk.length;
+    } catch (err) {
+      results.failed += chunk.length;
+      chunk.forEach((c) => results.errors.push({ row: c.rowNo, error: err.message }));
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Bulk-issues books from CSV rows: admissionNo, isbn, dueAt. Each row calls
+ * the existing issueBook() (not a bulk insert) so the atomic
+ * availableCopies decrement stays race-safe per copy.
+ */
+export async function bulkIssueBooks(rows) {
+  const results = { imported: 0, failed: 0, errors: [] };
+
+  const admissionNos = rows.map((r) => r.admissionno?.trim()).filter(Boolean);
+  const students = await Student.find({ admissionNo: { $in: admissionNos }, deletedAt: null }).select('_id admissionNo').lean();
+  const studentIdByAdmissionNo = new Map(students.map((s) => [s.admissionNo.toLowerCase(), s._id]));
+
+  const isbns = rows.map((r) => r.isbn?.trim()).filter(Boolean);
+  const books = await Book.find({ isbn: { $in: isbns }, deletedAt: null }).select('_id isbn').lean();
+  const bookIdByIsbn = new Map(books.map((b) => [b.isbn, b._id]));
+
+  for (let i = 0; i < rows.length; i++) {
+    const rowNo = i + 2;
+    const row = rows[i];
+    const admissionNo = row.admissionno?.trim();
+    const isbn = row.isbn?.trim();
+    const dueAt = row.dueat?.trim();
+
+    if (!admissionNo || !isbn || !dueAt) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: 'admissionNo, isbn, and dueAt are required' });
+      continue;
+    }
+
+    const studentId = studentIdByAdmissionNo.get(admissionNo.toLowerCase());
+    if (!studentId) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: `No student found with admissionNo "${admissionNo}"` });
+      continue;
+    }
+
+    const bookId = bookIdByIsbn.get(isbn);
+    if (!bookId) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: `No book found with isbn "${isbn}"` });
+      continue;
+    }
+
+    try {
+      await issueBook({ bookId, studentId: studentId.toString(), dueAt });
+      results.imported++;
+    } catch (err) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: err.message });
+    }
+  }
+
+  return results;
+}
+
 export async function updateBook(id, updates) {
   const book = await Book.findOne({ _id: id, deletedAt: null });
   if (!book) throw new AppError('Book not found', 404);

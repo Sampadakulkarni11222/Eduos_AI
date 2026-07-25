@@ -1,6 +1,7 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
 import { AppError } from '../../utils/AppError.js';
+import { isValidEmail, isValidPhone } from '../../utils/validators.js';
 import * as authService from './auth.service.js';
 
 const sessionOpts = (req) => ({ userAgent: req.headers['user-agent'], ip: req.ip });
@@ -17,27 +18,36 @@ export const register = asyncHandler(async (req, res) => {
 
 export const requestOtp = asyncHandler(async (req, res) => {
   if (!req.body.phone) throw new AppError('phone is required', 400);
+  if (!isValidPhone(req.body.phone)) {
+    throw new AppError('Enter a valid phone number.', 400, [], 'INVALID_PHONE');
+  }
   sendSuccess(res, await authService.requestOtp(req.body), 'OTP sent');
 });
 
 export const verifyOtp = asyncHandler(async (req, res) => {
   const { phone, code } = req.body;
   if (!phone || !code) throw new AppError('phone and code are required', 400);
+  if (!isValidPhone(phone)) throw new AppError('Enter a valid phone number.', 400, [], 'INVALID_PHONE');
   sendSuccess(res, await authService.verifyOtp({ phone, code }, sessionOpts(req)), 'OTP verified');
 });
 
 export const login = asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) throw new AppError('email and password are required', 400);
+  if (!isValidEmail(email)) throw new AppError('Enter a valid email address.', 400, [], 'INVALID_EMAIL');
   sendSuccess(res, await authService.login(req.body, sessionOpts(req)), 'Login successful');
 });
 
 export const requestEmailOtp = asyncHandler(async (req, res) => {
   if (!req.body.email) throw new AppError('email is required', 400);
+  if (!isValidEmail(req.body.email)) throw new AppError('Enter a valid email address.', 400, [], 'INVALID_EMAIL');
   sendSuccess(res, await authService.requestEmailOtp(req.body), 'OTP sent');
 });
 
 export const verifyEmailOtp = asyncHandler(async (req, res) => {
   const { email, code } = req.body;
   if (!email || !code) throw new AppError('email and code are required', 400);
+  if (!isValidEmail(email)) throw new AppError('Enter a valid email address.', 400, [], 'INVALID_EMAIL');
   sendSuccess(res, await authService.verifyEmailOtp({ email, code }, sessionOpts(req)), 'OTP verified');
 });
 

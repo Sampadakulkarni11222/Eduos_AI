@@ -1,4 +1,8 @@
 import 'dotenv/config';
+import dns from 'dns';
+
+// Configure DNS to prevent querySrv ECONNREFUSED on some networks (e.g. for MongoDB Atlas)
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 export const env = {
   NODE_ENV: process.env.NODE_ENV ?? 'development',
@@ -44,6 +48,8 @@ export const env = {
   // File uploads
   UPLOAD_DIR: process.env.UPLOAD_DIR ?? 'uploads',
   UPLOAD_MAX_BYTES: Number(process.env.UPLOAD_MAX_BYTES) || 15 * 1024 * 1024,
+  // Branding used on generated documents (e.g. ID cards)
+  SCHOOL_NAME: process.env.SCHOOL_NAME ?? 'Oakridge Academy',
   // AI copilot: set ANTHROPIC_API_KEY (or compatible) to upgrade the
   // deterministic data-grounded assistant to a full LLM integration.
   AI_PROVIDER: process.env.AI_PROVIDER ?? 'rules',

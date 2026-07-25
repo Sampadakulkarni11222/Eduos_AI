@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
+import { csvUploadSingle } from '../../utils/csvImport.js';
 import * as controller from './library.controller.js';
 
 const router = Router();
@@ -59,6 +60,7 @@ router.get('/summary', requirePermission('library.read'), controller.getSummary)
  */
 router.get('/books', requirePermission('library.read'), controller.listBooks);
 router.post('/books', requirePermission('library.manage'), controller.createBook);
+router.post('/books/bulk', requirePermission('library.manage'), csvUploadSingle('file'), controller.bulkCreateBooks);
 
 /**
  * @swagger
@@ -133,6 +135,7 @@ router.delete('/books/:id', requirePermission('library.manage'), controller.dele
  */
 router.get('/issues', requirePermission('library.read'), controller.listIssues);
 router.post('/issues', requirePermission('library.manage'), controller.issueBook);
+router.post('/issues/bulk', requirePermission('library.manage'), csvUploadSingle('file'), controller.bulkIssueBooks);
 
 /**
  * @swagger

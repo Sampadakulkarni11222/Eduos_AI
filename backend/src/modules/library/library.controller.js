@@ -1,5 +1,6 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
+import { parseCsvRows } from '../../utils/csvImport.js';
 import * as service from './library.service.js';
 
 export const getSummary = asyncHandler(async (_req, res) => {
@@ -22,6 +23,12 @@ export const createBook = asyncHandler(async (req, res) => {
   sendSuccess(res, book, 'Book created', 201);
 });
 
+export const bulkCreateBooks = asyncHandler(async (req, res) => {
+  const rows = parseCsvRows(req);
+  const result = await service.bulkCreateBooks(rows);
+  sendSuccess(res, result, `Created ${result.imported} of ${rows.length} books`, 201);
+});
+
 export const updateBook = asyncHandler(async (req, res) => {
   const book = await service.updateBook(req.params.id, req.body);
   sendSuccess(res, book, 'Book updated');
@@ -40,6 +47,12 @@ export const listIssues = asyncHandler(async (req, res) => {
 export const issueBook = asyncHandler(async (req, res) => {
   const issue = await service.issueBook(req.body);
   sendSuccess(res, issue, 'Book issued', 201);
+});
+
+export const bulkIssueBooks = asyncHandler(async (req, res) => {
+  const rows = parseCsvRows(req);
+  const result = await service.bulkIssueBooks(rows);
+  sendSuccess(res, result, `Issued ${result.imported} of ${rows.length} books`, 201);
 });
 
 export const returnBook = asyncHandler(async (req, res) => {

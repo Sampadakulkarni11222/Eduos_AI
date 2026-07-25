@@ -1,7 +1,12 @@
 import { Student, StudentGuardian, Enrollment } from '../../models/student.model.js';
+import { SubjectOffering } from '../../models/academics.model.js';
+import { Submission } from '../../models/assignment.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { runInTransaction } from '../../utils/transaction.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
+import * as medicalService from '../medical/medical.service.js';
+import * as attendanceService from '../attendance/attendance.service.js';
+import * as examService from '../exams/exam.service.js';
 
 /**
  * Resolves the list of student IDs the actor is allowed to see when scope is OWN.
@@ -70,6 +75,8 @@ export async function list(actor, scope, query = {}) {
             class: enrollment.sectionId
               ? `${enrollment.sectionId.gradeId?.name ?? ''} ${enrollment.sectionId.name}`.trim()
               : 'Unknown',
+            sectionId: enrollment.sectionId?._id?.toString() ?? null,
+            academicYearId: enrollment.academicYearId?.toString() ?? null,
           }
         : null,
     };
@@ -85,6 +92,155 @@ export async function getById(actor, scope, id) {
     if (!ids.includes(id)) throw new AppError('Student not found', 404);
   }
   return student;
+}
+
+/**
+ * Aggregates everything a "view student" panel needs in one call: profile +
+ * address, guardians (with phone), medical record, this month's attendance,
+ * published exam performance, and assignment submissions. Each sub-section is
+ * best-effort — a section a caller isn't allowed to see (e.g. medical data for
+ * a non-class-teacher) is simply omitted (null/empty) rather than failing the
+ * whole request, since the underlying services already enforce their own
+ * narrower visibility rules (class-teacher-only medical, subject-teacher-only
+ * marks/assignments).
+ */
+export async function getOverview(actor, scope, id) {
+  const student = await getById(actor, scope, id); // throws 404 if not visible to this actor
+
+  const enrollment = await Enrollment.findOne({ studentId: id, status: 'ACTIVE' })
+    .sort({ createdAt: -1 })
+    .populate({ path: 'sectionId', populate: { path: 'gradeId' } });
+
+  const enrollmentDto = enrollment
+    ? {
+        id: enrollment._id.toString(),
+        rollNo: enrollment.rollNo ?? null,
+        class: enrollment.sectionId
+          ? `${enrollment.sectionId.gradeId?.name ?? ''} ${enrollment.sectionId.name}`.trim()
+          : 'Unknown',
+        sectionId: enrollment.sectionId?._id?.toString() ?? null,
+        academicYearId: enrollment.academicYearId?.toString() ?? null,
+      }
+    : null;
+
+  const guardianLinks = await StudentGuardian.find({ studentId: id }).populate({
+    path: 'guardianProfileId',
+    select: 'displayName accountId',
+    populate: { path: 'accountId', select: 'phoneE164 email' },
+  });
+  const guardians = guardianLinks.map((g) => ({
+    name: g.guardianProfileId?.displayName ?? 'Unknown',
+    relation: g.relation,
+    phone: g.guardianProfileId?.accountId?.phoneE164 ?? null,
+    email: g.guardianProfileId?.accountId?.email ?? null,
+    isPrimary: g.isPrimary,
+  }));
+
+  let medical = null;
+  try {
+    medical = await medicalService.getByStudentId(actor, scope, id);
+  } catch {
+    // No record, or (for a TEACHER) not this section's class teacher — omit.
+  }
+
+  let attendance = null;
+  let performance = null;
+  let assignments = [];
+  if (enrollment) {
+    try {
+      const now = new Date();
+      const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      attendance = await attendanceService.getSummary(actor, scope, {
+        enrollmentId: enrollment._id.toString(),
+        month: yearMonth,
+      });
+    } catch {
+      // leave null
+    }
+
+    try {
+      performance = await examService.getPerformance(actor, scope, { enrollmentId: enrollment._id.toString() });
+    } catch {
+      // leave null
+    }
+
+    // Same subject-teacher restriction exam.getPerformance applies to marks:
+    // a subject teacher (not this section's class teacher) only sees
+    // assignments from the offering(s) they actually teach here.
+    let restrictToOfferingIds = null;
+    if (scope === 'OWN' && actor.roleKey === 'TEACHER') {
+      const isClassTeacher = enrollment.sectionId?.classTeacherId?.toString() === actor.profileId;
+      if (!isClassTeacher) {
+        const myOfferings = await SubjectOffering.find({
+          sectionId: enrollment.sectionId?._id,
+          teacherId: actor.profileId,
+        }).select('_id');
+        restrictToOfferingIds = myOfferings.map((o) => o._id.toString());
+      }
+    }
+
+    const submissions = await Submission.find({ enrollmentId: enrollment._id })
+      .populate({ path: 'assignmentId', populate: { path: 'subjectOfferingId', populate: { path: 'subjectId' } } })
+      .sort({ createdAt: -1 });
+
+    assignments = submissions
+      .filter((sub) => {
+        if (!restrictToOfferingIds) return true;
+        const offeringId = sub.assignmentId?.subjectOfferingId?._id?.toString();
+        return offeringId && restrictToOfferingIds.includes(offeringId);
+      })
+      .map((sub) => ({
+        id: sub.assignmentId?._id?.toString() ?? sub._id.toString(),
+        title: sub.assignmentId?.title ?? 'Untitled',
+        subject: sub.assignmentId?.subjectOfferingId?.subjectId?.name ?? '—',
+        dueAt: sub.assignmentId?.dueAt ?? null,
+        status: sub.status,
+        marks: sub.marks ?? null,
+        maxMarks: sub.assignmentId?.maxMarks ?? null,
+      }));
+  }
+
+  return {
+    id: student._id.toString(),
+    admissionNo: student.admissionNo,
+    name: `${student.firstName} ${student.lastName || ''}`.trim(),
+    dob: student.dob,
+    gender: student.gender,
+    address: student.address ?? null,
+    photoUrl: student.photoUrl ?? null,
+    enrollment: enrollmentDto,
+    guardians,
+    medical,
+    attendance,
+    performance,
+    assignments,
+  };
+}
+
+/** Loads everything needed to render a student's ID card, enforcing the same OWN/ALL visibility as getById. */
+export async function getIdCardData(actor, scope, id) {
+  const student = await getById(actor, scope, id);
+
+  const enrollment = await Enrollment.findOne({ studentId: id, status: 'ACTIVE' })
+    .sort({ createdAt: -1 })
+    .populate({ path: 'sectionId', populate: { path: 'gradeId' } })
+    .populate('academicYearId');
+
+  if (!enrollment) {
+    throw new AppError('Your enrollment record is incomplete — contact the school office for an ID card.', 404, [], 'ENROLLMENT_MISSING');
+  }
+
+  return {
+    studentName: `${student.firstName} ${student.lastName || ''}`.trim(),
+    admissionNo: student.admissionNo,
+    dob: student.dob,
+    gender: student.gender,
+    className: enrollment.sectionId
+      ? `${enrollment.sectionId.gradeId?.name ?? ''} ${enrollment.sectionId.name}`.trim()
+      : null,
+    rollNo: enrollment.rollNo ?? null,
+    academicYear: enrollment.academicYearId?.name ?? null,
+  };
 }
 
 export const create = (data) => Student.create(data);
@@ -103,6 +259,9 @@ export async function softDelete(id) {
   student.deletedAt = new Date();
   student.status = 'INACTIVE';
   await student.save();
+
+  // Cascade soft delete / deactivation to active enrollments
+  await Enrollment.updateMany({ studentId: id, status: 'ACTIVE' }, { $set: { status: 'WITHDRAWN' } });
 }
 
 // ── Guardians ──
@@ -119,8 +278,23 @@ export const listGuardians = (studentId) =>
 export async function enroll(data) {
   const student = await Student.findOne({ _id: data.studentId, deletedAt: null });
   if (!student) throw new AppError('Student not found', 404);
+
+  // Find if there is already an enrollment for this student and academic year
+  const existing = await Enrollment.findOne({
+    studentId: data.studentId,
+    academicYearId: data.academicYearId,
+  });
+
   try {
-    return await Enrollment.create(data);
+    if (existing) {
+      existing.sectionId = data.sectionId;
+      if (data.rollNo !== undefined) existing.rollNo = data.rollNo;
+      existing.status = 'ACTIVE'; // Reset status if they were previously withdrawn/transferred
+      await existing.save();
+      return existing;
+    } else {
+      return await Enrollment.create(data);
+    }
   } catch (err) {
     if (err.code === 11000) {
       if (err.keyPattern?.rollNo) {
