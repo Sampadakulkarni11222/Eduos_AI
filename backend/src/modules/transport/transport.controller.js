@@ -3,6 +3,8 @@ import { AcademicYear } from '../../models/academics.model.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
 import { AppError } from '../../utils/AppError.js';
+import { parseCsvRows } from '../../utils/csvImport.js';
+import * as service from './transport.service.js';
 
 export const listRoutes = asyncHandler(async (req, res) => {
   const routes = await TransportRoute.find({ status: 'ACTIVE' }).sort({ name: 1 }).lean();
@@ -44,41 +46,8 @@ export const listStops = asyncHandler(async (req, res) => {
 });
 
 export const myBus = asyncHandler(async (req, res) => {
-  const { studentId } = req.query;
-  
-  if (!studentId) {
-    throw new AppError('studentId query param is required', 400);
-  }
-
-  const enrollment = await BusEnrollment.findOne({ studentId })
-    .populate('routeId')
-    .populate('stopId')
-    .sort({ createdAt: -1 })
-    .lean();
-    
-  if (!enrollment) {
-    return sendSuccess(res, null, 'No bus assigned');
-  }
-
-  const myBusDto = {
-    id: enrollment._id,
-    studentId: enrollment.studentId,
-    direction: enrollment.direction,
-    route: {
-      id: enrollment.routeId._id,
-      name: enrollment.routeId.name,
-      vehicleNo: enrollment.routeId.vehicleNo,
-      driverName: enrollment.routeId.driverName,
-      driverPhone: enrollment.routeId.driverPhone
-    },
-    stop: {
-      id: enrollment.stopId._id,
-      name: enrollment.stopId.name,
-      etaMinutesFromStart: enrollment.stopId.etaMinutesFromStart
-    }
-  };
-
-  sendSuccess(res, myBusDto, 'Bus enrollment fetched successfully');
+  const bus = await service.getOwnBus(req.actor, req.query.studentId);
+  sendSuccess(res, bus, bus ? 'Bus enrollment fetched successfully' : 'No bus assigned');
 });
 
 export const createRoute = asyncHandler(async (req, res) => {
@@ -99,6 +68,12 @@ export const createRoute = asyncHandler(async (req, res) => {
   sendSuccess(res, { id: route._id }, 'Route created successfully', 201);
 });
 
+export const bulkCreateRoutes = asyncHandler(async (req, res) => {
+  const rows = parseCsvRows(req);
+  const result = await service.bulkCreateRoutes(rows);
+  sendSuccess(res, result, `Created ${result.imported} of ${rows.length} routes`, 201);
+});
+
 export const createStop = asyncHandler(async (req, res) => {
   const { routeId, name, sequenceNo, etaMinutesFromStart } = req.body;
   
@@ -114,6 +89,12 @@ export const createStop = asyncHandler(async (req, res) => {
   });
   
   sendSuccess(res, { id: stop._id }, 'Stop created successfully', 201);
+});
+
+export const bulkCreateStops = asyncHandler(async (req, res) => {
+  const rows = parseCsvRows(req);
+  const result = await service.bulkCreateStops(rows);
+  sendSuccess(res, result, `Created ${result.imported} of ${rows.length} stops`, 201);
 });
 
 export const enrollStudent = asyncHandler(async (req, res) => {
@@ -136,4 +117,10 @@ export const enrollStudent = asyncHandler(async (req, res) => {
   );
   
   sendSuccess(res, { id: enrollment._id }, 'Student enrolled successfully', 201);
+});
+
+export const bulkEnrollStudents = asyncHandler(async (req, res) => {
+  const rows = parseCsvRows(req);
+  const result = await service.bulkEnrollStudents(rows);
+  sendSuccess(res, result, `Enrolled ${result.imported} of ${rows.length} students`, 201);
 });

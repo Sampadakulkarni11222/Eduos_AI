@@ -39,6 +39,10 @@ export const PERMISSION_CATALOG = [
   { key: 'submissions.submit', group: 'academics', description: "Submit a student's assignment" },
   { key: 'submissions.grade', group: 'academics', description: 'Grade assignment submissions' },
 
+  // course material
+  { key: 'materials.read', group: 'academics', description: 'View course materials' },
+  { key: 'materials.manage', group: 'academics', description: 'Upload/edit/delete course materials' },
+
   // exams & marks
   { key: 'exams.manage', group: 'academics', description: 'Create/update exams and exam subjects' },
   { key: 'marks.read', group: 'academics', description: 'View marks' },
@@ -81,6 +85,10 @@ export const PERMISSION_CATALOG = [
   { key: 'hostel.read', group: 'hostel', description: 'View hostel rooms, allocations, and student directory' },
   { key: 'hostel.manage', group: 'hostel', description: 'Manage hostel rooms and allocations' },
 
+  // Transport
+  { key: 'transport.read', group: 'transport', description: 'View transport routes, stops, and bus enrollments' },
+  { key: 'transport.manage', group: 'transport', description: 'Manage transport routes, stops, and bus enrollments' },
+
   // AI & analytics (stand-in integrations — see ARCHITECTURE.md)
   { key: 'ai.copilot.use', group: 'ai', description: 'Use the AI copilot/chat assistant' },
   { key: 'ai.insights.read', group: 'ai', description: "View AI-generated growth/risk insights" },
@@ -120,6 +128,8 @@ export const SYSTEM_ROLES = [
       ['marks.read', 'ALL'],
       ['marks.publish', 'ALL'],
       ['reportcards.read', 'ALL'],
+      ['materials.read', 'ALL'],
+      ['materials.manage', 'ALL'],
       ['fees.read', 'ALL'],
       ['timetable.read', 'ALL'],
       ['timetable.manage', 'ALL'],
@@ -147,9 +157,14 @@ export const SYSTEM_ROLES = [
       ['assignments.read', 'OWN'],
       ['assignments.manage', 'OWN'],
       ['submissions.grade', 'OWN'],
+      ['materials.read', 'OWN'],
+      ['materials.manage', 'OWN'],
       ['marks.read', 'OWN'],
       ['marks.enter', 'OWN'],
       ['marks.publish', 'OWN'],
+      // Read-only — allergy/emergency-contact visibility for a teacher's own
+      // students; medical.manage stays parent/admin-only.
+      ['medical.read', 'OWN'],
       ['timetable.read', 'OWN'],
       ['announcements.read', 'ALL'],
       ['announcements.publish', 'OWN'],
@@ -171,6 +186,7 @@ export const SYSTEM_ROLES = [
       ['assignments.read', 'OWN'],
       ['marks.read', 'OWN'],
       ['reportcards.read', 'OWN'],
+      ['materials.read', 'OWN'],
       ['fees.read', 'OWN'],
       ['fees.pay', 'OWN'],
       ['announcements.read', 'ALL'],
@@ -179,6 +195,7 @@ export const SYSTEM_ROLES = [
       ['tickets.read', 'OWN'],
       ['tickets.create', 'OWN'],
       ['medical.read', 'OWN'],
+      ['medical.manage', 'OWN'],
       ['ai.copilot.use', 'OWN'],
       ['analytics.child.read', 'OWN'],
     ]),
@@ -194,6 +211,7 @@ export const SYSTEM_ROLES = [
       ['submissions.submit', 'OWN'],
       ['marks.read', 'OWN'],
       ['reportcards.read', 'OWN'],
+      ['materials.read', 'OWN'],
       ['announcements.read', 'ALL'],
       ['calendar.read', 'ALL'],
       ['timetable.read', 'OWN'],
@@ -212,6 +230,7 @@ export const SYSTEM_ROLES = [
       ['fees.payments.refund', 'ALL'],
       ['announcements.read', 'ALL'],
       ['analytics.school.read', 'ALL'],
+      ['ai.copilot.use', 'ALL'],
     ]),
   },
   {
@@ -226,6 +245,7 @@ export const SYSTEM_ROLES = [
       ['calendar.read', 'ALL'],
       ['tickets.read', 'ALL'],
       ['tickets.respond', 'ALL'],
+      ['ai.copilot.use', 'ALL'],
     ]),
   },
   {
@@ -242,6 +262,7 @@ export const SYSTEM_ROLES = [
       ['tickets.read', 'ALL'],
       ['tickets.manage', 'ALL'],
       ['tickets.respond', 'ALL'],
+      ['ai.copilot.use', 'ALL'],
     ]),
   },
 ];

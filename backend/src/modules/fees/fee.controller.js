@@ -1,5 +1,6 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
+import { parseCsvRows } from '../../utils/csvImport.js';
 import * as service from './fee.service.js';
 
 export const createFeeHead = asyncHandler(async (req, res) => {
@@ -16,6 +17,12 @@ export const listInvoices = asyncHandler(async (req, res) => {
 
 export const createInvoice = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.createInvoice(req.body), 'Invoice created', 201);
+});
+
+export const bulkCreateInvoices = asyncHandler(async (req, res) => {
+  const rows = parseCsvRows(req);
+  const result = await service.bulkCreateInvoices(rows);
+  sendSuccess(res, result, `Created ${result.imported} of ${rows.length} invoices`, 201);
 });
 
 export const recordPayment = asyncHandler(async (req, res) => {

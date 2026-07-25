@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
+import { csvUploadSingle } from '../../utils/csvImport.js';
 import * as controller from './fee.controller.js';
 
 const router = Router();
@@ -55,6 +56,26 @@ router.post('/structures', requirePermission('fees.structure.manage'), controlle
  */
 router.get('/invoices', requirePermission('fees.read'), controller.listInvoices);
 router.post('/invoices', requirePermission('fees.manage'), controller.createInvoice);
+
+/**
+ * @swagger
+ * /fees/invoices/bulk:
+ *   post:
+ *     summary: Bulk-create one-line invoices from a CSV (admissionNo, invoiceNo, description, amount, dueOn)
+ *     tags: [Fees]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file: { type: string, format: binary }
+ *     responses:
+ *       201:
+ *         description: Bulk import result { imported, failed, errors }
+ */
+router.post('/invoices/bulk', requirePermission('fees.manage'), csvUploadSingle('file'), controller.bulkCreateInvoices);
 
 /**
  * @swagger

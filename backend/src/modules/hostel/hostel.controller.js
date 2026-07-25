@@ -1,5 +1,6 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
+import { parseCsvRows } from '../../utils/csvImport.js';
 import * as service from './hostel.service.js';
 
 export const getSummary = asyncHandler(async (_req, res) => {
@@ -22,6 +23,12 @@ export const createRoom = asyncHandler(async (req, res) => {
   sendSuccess(res, room, 'Room created', 201);
 });
 
+export const bulkCreateRooms = asyncHandler(async (req, res) => {
+  const rows = parseCsvRows(req);
+  const result = await service.bulkCreateRooms(rows);
+  sendSuccess(res, result, `Created ${result.imported} of ${rows.length} rooms`, 201);
+});
+
 export const updateRoom = asyncHandler(async (req, res) => {
   const room = await service.updateRoom(req.params.id, req.body);
   sendSuccess(res, room, 'Room updated');
@@ -35,6 +42,12 @@ export const listAllocations = asyncHandler(async (req, res) => {
 export const allocate = asyncHandler(async (req, res) => {
   const allocation = await service.allocate(req.body);
   sendSuccess(res, allocation, 'Student allocated', 201);
+});
+
+export const bulkAllocate = asyncHandler(async (req, res) => {
+  const rows = parseCsvRows(req);
+  const result = await service.bulkAllocate(rows);
+  sendSuccess(res, result, `Allocated ${result.imported} of ${rows.length} students`, 201);
 });
 
 export const vacate = asyncHandler(async (req, res) => {

@@ -18,10 +18,19 @@ export function errorHandler(err, req, res, next) {
     error = new AppError('Validation failed', 422, messages);
   }
 
-  // Mongoose duplicate key error
+  // Mongoose duplicate key error — map the raw DB field name to something a
+  // user filling out a form actually recognizes (e.g. creating a user with
+  // a phone/email that's already registered) instead of "Duplicate value
+  // for 'phoneE164'".
   if (err.code === 11000) {
     const field = Object.keys(err.keyValue ?? {})[0] ?? 'field';
-    error = new AppError(`Duplicate value for '${field}'`, 409);
+    const FRIENDLY_FIELD = {
+      phoneE164: 'phone number',
+      email: 'email address',
+      admissionNo: 'admission number',
+    };
+    const label = FRIENDLY_FIELD[field] ?? field;
+    error = new AppError(`This ${label} is already in use by another account.`, 409, [], 'DUPLICATE_VALUE');
   }
 
   const statusCode = error.statusCode ?? 500;

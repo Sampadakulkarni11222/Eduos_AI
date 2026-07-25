@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
+import { csvUploadSingle } from '../../utils/csvImport.js';
 import * as controller from './user.controller.js';
 
 const router = Router();
@@ -37,6 +38,27 @@ router.use(authenticate);
  *         description: Users fetched
  */
 router.get('/', requirePermission('users.read'), controller.list);
+router.post('/', requirePermission('users.manage'), controller.create);
+
+/**
+ * @swagger
+ * /users/bulk:
+ *   post:
+ *     summary: Bulk-create users from a CSV (roleKey, displayName, phone, email, password, admissionNo, gradeName, sectionName)
+ *     tags: [Users]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file: { type: string, format: binary }
+ *     responses:
+ *       201:
+ *         description: Bulk import result { imported, failed, errors }
+ */
+router.post('/bulk', requirePermission('users.manage'), csvUploadSingle('file'), controller.bulkCreate);
 
 /**
  * @swagger

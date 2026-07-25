@@ -12,6 +12,7 @@ const medicalRecordSchema = new Schema(
     allergiesEnc: { type: String }, // encrypted string[]
     medicationsEnc: { type: String },
     historyEnc: { type: String },
+    attachmentsEnc: { type: String }, // encrypted array of { name, fileUrl }
   },
   { timestamps: true }
 );

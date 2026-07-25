@@ -70,6 +70,109 @@ export async function createRoom(data) {
   return HostelRoom.create(data);
 }
 
+export async function bulkCreateRooms(rows) {
+  const results = { imported: 0, failed: 0, errors: [] };
+  const VALID_TYPES = new Set(['BOYS', 'GIRLS', 'STAFF', 'GENERAL']);
+  const docs = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const rowNo = i + 2; // header is row 1
+    const row = rows[i];
+    const roomNo = row.roomno?.trim();
+    const capacity = Number(row.capacity);
+    if (!roomNo || !Number.isFinite(capacity) || capacity <= 0) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: 'roomNo and a positive capacity are required' });
+      continue;
+    }
+    const type = row.type?.trim().toUpperCase() || 'GENERAL';
+    if (!VALID_TYPES.has(type)) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: `Invalid type "${row.type}" (expected BOYS, GIRLS, STAFF, or GENERAL)` });
+      continue;
+    }
+    docs.push({
+      rowNo,
+      roomNo,
+      block: row.block?.trim() || 'Main',
+      floor: row.floor?.trim() || null,
+      capacity,
+      type,
+    });
+  }
+
+  const CHUNK_SIZE = 100;
+  for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
+    const chunk = docs.slice(i, i + CHUNK_SIZE);
+    try {
+      await HostelRoom.insertMany(chunk.map(({ rowNo, ...doc }) => doc));
+      results.imported += chunk.length;
+    } catch (err) {
+      results.failed += chunk.length;
+      chunk.forEach((c) => {
+        const msg = err.code === 11000 ? `Room "${c.roomNo}" already exists` : err.message;
+        results.errors.push({ row: c.rowNo, error: msg });
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Bulk-allocates students to rooms from CSV rows: admissionNo, roomNo. Each
+ * row calls the existing allocate() (not a bulk insert) so the
+ * capacity/duplicate-active-allocation checks stay enforced per row.
+ */
+export async function bulkAllocate(rows) {
+  const results = { imported: 0, failed: 0, errors: [] };
+
+  const admissionNos = rows.map((r) => r.admissionno?.trim()).filter(Boolean);
+  const students = await Student.find({ admissionNo: { $in: admissionNos }, deletedAt: null }).select('_id admissionNo').lean();
+  const studentIdByAdmissionNo = new Map(students.map((s) => [s.admissionNo.toLowerCase(), s._id]));
+
+  const roomNos = rows.map((r) => r.roomno?.trim()).filter(Boolean);
+  const rooms = await HostelRoom.find({ roomNo: { $in: roomNos } }).select('_id roomNo').lean();
+  const roomIdByRoomNo = new Map(rooms.map((r) => [r.roomNo.toLowerCase(), r._id]));
+
+  for (let i = 0; i < rows.length; i++) {
+    const rowNo = i + 2;
+    const row = rows[i];
+    const admissionNo = row.admissionno?.trim();
+    const roomNo = row.roomno?.trim();
+
+    if (!admissionNo || !roomNo) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: 'admissionNo and roomNo are required' });
+      continue;
+    }
+
+    const studentId = studentIdByAdmissionNo.get(admissionNo.toLowerCase());
+    if (!studentId) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: `No student found with admissionNo "${admissionNo}"` });
+      continue;
+    }
+
+    const roomId = roomIdByRoomNo.get(roomNo.toLowerCase());
+    if (!roomId) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: `No room found with roomNo "${roomNo}"` });
+      continue;
+    }
+
+    try {
+      await allocate({ roomId: roomId.toString(), studentId: studentId.toString() });
+      results.imported++;
+    } catch (err) {
+      results.failed++;
+      results.errors.push({ row: rowNo, error: err.message });
+    }
+  }
+
+  return results;
+}
+
 export async function updateRoom(id, updates) {
   const room = await HostelRoom.findById(id);
   if (!room) throw new AppError('Room not found', 404);

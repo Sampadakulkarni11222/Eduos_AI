@@ -1,5 +1,6 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
+import { parseCsvRows } from '../../utils/csvImport.js';
 import * as service from './academics.service.js';
 
 export const listYears = asyncHandler(async (_req, res) => {
@@ -22,6 +23,11 @@ export const listGrades = asyncHandler(async (_req, res) => {
 export const createGrade = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.createGrade(req.body), 'Grade created', 201);
 });
+export const bulkCreateGrades = asyncHandler(async (req, res) => {
+  const rows = parseCsvRows(req);
+  const result = await service.bulkCreateGrades(rows);
+  sendSuccess(res, result, `Created ${result.imported} of ${rows.length} grades`, 201);
+});
 
 export const listSections = asyncHandler(async (req, res) => {
   const sections = await service.listSections(req.query.gradeId);
@@ -30,11 +36,17 @@ export const listSections = asyncHandler(async (req, res) => {
     gradeName: s.gradeId?.name || '',
     name: s.name,
     classTeacher: s.classTeacherId?.displayName || null,
+    classTeacherId: s.classTeacherId?._id?.toString() ?? null,
   }));
   sendSuccess(res, dtos, 'Sections fetched');
 });
 export const createSection = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.createSection(req.body), 'Section created', 201);
+});
+export const bulkCreateSections = asyncHandler(async (req, res) => {
+  const rows = parseCsvRows(req);
+  const result = await service.bulkCreateSections(rows);
+  sendSuccess(res, result, `Created ${result.imported} of ${rows.length} sections`, 201);
 });
 
 export const listSubjects = asyncHandler(async (_req, res) => {
@@ -42,6 +54,11 @@ export const listSubjects = asyncHandler(async (_req, res) => {
 });
 export const createSubject = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.createSubject(req.body), 'Subject created', 201);
+});
+export const bulkCreateSubjects = asyncHandler(async (req, res) => {
+  const rows = parseCsvRows(req);
+  const result = await service.bulkCreateSubjects(rows);
+  sendSuccess(res, result, `Created ${result.imported} of ${rows.length} subjects`, 201);
 });
 
 export const listOfferings = asyncHandler(async (req, res) => {
@@ -74,6 +91,7 @@ function toSectionDto(s) {
     gradeName: s.gradeId?.name || '',          // matches SectionDto.gradeName
     name: s.name,
     classTeacher: s.classTeacherId?.displayName || null,
+    classTeacherId: s.classTeacherId?._id?.toString() ?? null,
   };
 }
 
