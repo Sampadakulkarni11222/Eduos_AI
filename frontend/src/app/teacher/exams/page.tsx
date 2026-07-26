@@ -89,16 +89,16 @@ export default function TeacherExams() {
       )}
       {!loading && perf && perf.results.length > 0 && (
         <Card pad={false}>
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead><tr><th>Exam</th><th>Subject</th><th>Marks</th><th>Max</th><th>%</th></tr></thead>
             <tbody>
               {perf.results.map((r, i) => (
                 <tr key={i}>
-                  <td>{r.exam}</td>
-                  <td className="cell-primary">{r.subject}</td>
-                  <td style={{ fontWeight: 600 }}>{r.marks ?? '—'}</td>
-                  <td style={{ color: 'var(--text-faint)' }}>{r.maxMarks}</td>
-                  <td style={{ color: pctColor(r.pct), fontWeight: 600 }}>{r.pct != null ? `${r.pct}%` : '—'}</td>
+                  <td data-label="Exam">{r.exam}</td>
+                  <td className="cell-primary" data-label="Subject">{r.subject}</td>
+                  <td style={{ fontWeight: 600 }} data-label="Marks">{r.marks ?? '—'}</td>
+                  <td style={{ color: 'var(--text-faint)' }} data-label="Max">{r.maxMarks}</td>
+                  <td style={{ color: pctColor(r.pct), fontWeight: 600 }} data-label="%">{r.pct != null ? `${r.pct}%` : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -202,17 +202,23 @@ function MarksEntryModal({ examSubjectId, onClose, onSaved }: { examSubjectId: s
         {err && <EmptyState title="Couldn't load" sub={err} />}
         {!err && grid === null && <SkeletonRows rows={5} />}
 
+        {grid && grid.rows.length > 0 && grid.rows.every((r) => r.status === 'PUBLISHED') && (
+          <div style={{ background: 'var(--panel-bg)', border: '1px solid var(--input-border)', borderRadius: 10, padding: '10px 14px', fontSize: 12.5, color: 'var(--text-2)', marginBottom: 12 }}>
+            All marks for this exam are already published and locked. Select a different exam above to enter new marks.
+          </div>
+        )}
+
         {grid && (
           <form onSubmit={save}>
             <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
-              <table className="data-table">
+              <table className="data-table data-table-cards">
                 <thead><tr><th>Roll</th><th>Student</th><th style={{ width: 110 }}>Marks (of {grid.examSubject.maxMarks})</th><th style={{ width: 90 }}>Grade</th><th>Remarks</th><th>Status</th></tr></thead>
                 <tbody>
                   {grid.rows.map((r: MarkRow) => (
                     <tr key={r.enrollmentId}>
-                      <td>{r.rollNo ?? '—'}</td>
-                      <td className="cell-primary">{r.studentName}</td>
-                      <td>
+                      <td data-label="Roll">{r.rollNo ?? '—'}</td>
+                      <td className="cell-primary" data-label="Student">{r.studentName}</td>
+                      <td data-label="Marks">
                         <input
                           className="field-input" type="number" min={0} max={grid.examSubject.maxMarks} step="0.5"
                           value={draft[r.enrollmentId]?.marks ?? ''}
@@ -220,21 +226,21 @@ function MarksEntryModal({ examSubjectId, onClose, onSaved }: { examSubjectId: s
                           disabled={r.status === 'PUBLISHED'}
                         />
                       </td>
-                      <td>
+                      <td data-label="Grade">
                         <input
                           className="field-input" value={draft[r.enrollmentId]?.gradeLabel ?? ''}
                           onChange={(e) => setField(r.enrollmentId, 'gradeLabel', e.target.value)}
                           placeholder="A" disabled={r.status === 'PUBLISHED'}
                         />
                       </td>
-                      <td>
+                      <td data-label="Remarks">
                         <input
                           className="field-input" value={draft[r.enrollmentId]?.remarks ?? ''}
                           onChange={(e) => setField(r.enrollmentId, 'remarks', e.target.value)}
                           placeholder="Optional" disabled={r.status === 'PUBLISHED'}
                         />
                       </td>
-                      <td><Pill tone={MARK_TONE[r.status] ?? 'gray'}>{r.status.toLowerCase()}</Pill></td>
+                      <td data-label="Status"><Pill tone={MARK_TONE[r.status] ?? 'gray'}>{r.status.toLowerCase()}</Pill></td>
                     </tr>
                   ))}
                 </tbody>

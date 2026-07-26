@@ -110,10 +110,10 @@ export function TimetableGrid({ scopeLabel, canEdit = false }: { scopeLabel: str
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', flex: '1 1 auto' }}>
           {/* Grade Selector */}
-          <div style={{ minWidth: 180 }}>
+          <div style={{ minWidth: 140, flex: '1 1 160px', maxWidth: 220 }}>
             <select
               className="input"
               value={selectedGrade}
@@ -129,7 +129,7 @@ export function TimetableGrid({ scopeLabel, canEdit = false }: { scopeLabel: str
           </div>
 
           {/* Section Selector */}
-          <div style={{ minWidth: 160 }}>
+          <div style={{ minWidth: 120, flex: '1 1 140px', maxWidth: 200 }}>
             <select
               className="input"
               value={sectionId}
@@ -165,7 +165,7 @@ export function TimetableGrid({ scopeLabel, canEdit = false }: { scopeLabel: str
       )}
       {!loading && tt && periods.length > 0 && (
         <Card pad={false}>
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-scroll-desktop" style={{ overflowX: 'auto' }}>
             <table className="data-table" style={{ minWidth: 640 }}>
               <thead>
                 <tr>
@@ -202,6 +202,44 @@ export function TimetableGrid({ scopeLabel, canEdit = false }: { scopeLabel: str
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile: one day per card, periods listed top-to-bottom — a day x
+              period matrix can't stack into the generic data-table-cards
+              layout, so it gets its own agenda-style view instead. */}
+          <div className="table-scroll-mobile">
+            {usedDays.map((dow) => (
+              <div key={dow} style={{ borderTop: '1px solid var(--hairline)', padding: '12px 16px' }}>
+                <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8 }}>{DAYS[dow - 1] ?? `Day ${dow}`}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {periods.map((p) => {
+                    const c = cell(dow, p);
+                    return (
+                      <div
+                        key={p}
+                        onClick={() => handleCellClick(dow, p)}
+                        className={canEdit ? 'hover-bg' : ''}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+                          padding: '8px 10px', borderRadius: 8, cursor: canEdit ? 'pointer' : 'default',
+                          background: 'rgba(0,0,0,.015)',
+                        }}
+                      >
+                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', flexShrink: 0 }}>P{p}</span>
+                        {c && !c.isBreak ? (
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontWeight: 600, color: 'var(--text-1)', fontSize: 12.5 }}>{c.subject}</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{c.teacher ?? '—'} · {c.startTime}-{c.endTime}</div>
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-faint)' }}>—</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         </Card>
       )}

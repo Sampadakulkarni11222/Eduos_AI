@@ -53,7 +53,7 @@ export default function PrincipalAudit() {
         )}
         {logs && logs.length > 0 && (
           <>
-            <table className="data-table">
+            <table className="data-table data-table-cards">
               <thead>
                 <tr>
                   <th>Action</th>
@@ -68,13 +68,13 @@ export default function PrincipalAudit() {
               <tbody>
                 {logs.map((log) => (
                   <tr key={log.id}>
-                    <td className="cell-primary" style={{ fontWeight: 600 }}>{log.action}</td>
-                    <td>{log.entityType ?? '—'}</td>
-                    <td style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-faint)' }}>{log.entityId ?? '—'}</td>
-                    <td>{log.actorName ?? 'System'}</td>
-                    <td>{log.channel}</td>
-                    <td>{log.ip ?? '—'}</td>
-                    <td style={{ color: 'var(--text-faint)' }}>{new Date(log.createdAt).toLocaleString('en-IN')}</td>
+                    <td className="cell-primary" style={{ fontWeight: 600 }} data-label="Action">{log.action}</td>
+                    <td data-label="Target Entity">{log.entityType ?? '—'}</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-faint)' }} data-label="Target ID">{log.entityId ?? '—'}</td>
+                    <td data-label="Actor">{log.actorName ?? 'System'}</td>
+                    <td data-label="Channel">{log.channel}</td>
+                    <td data-label="IP Address">{log.ip ?? '—'}</td>
+                    <td style={{ color: 'var(--text-faint)' }} data-label="Timestamp">{new Date(log.createdAt).toLocaleString('en-IN')}</td>
                   </tr>
                 ))}
               </tbody>

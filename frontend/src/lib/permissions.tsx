@@ -64,6 +64,7 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   '/warden/medical': 'medical.read',
   '/teacher/medical': 'medical.read',
   '/parent/medical': 'medical.read',
+  '/admin/medical': 'medical.read',
 };
 
 export function getRequiredPermission(pathname: string): string | null {

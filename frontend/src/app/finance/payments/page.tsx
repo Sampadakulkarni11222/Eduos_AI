@@ -52,19 +52,19 @@ export default function FinancePayments() {
           {invoices?.length === 0 && <EmptyState title="No invoices yet" sub="Fee invoices appear here once fee structures are assigned." />}
           {invoices && invoices.length > 0 && (
             <Card pad={false}>
-              <table className="data-table">
+              <table className="data-table data-table-cards">
                 <thead><tr><th>Invoice</th><th>Student</th><th>Class</th><th>Total</th><th>Paid</th><th>Due On</th><th>Status</th><th></th></tr></thead>
                 <tbody>
                   {invoices.map((i) => (
                     <tr key={i.id}>
-                      <td className="cell-primary">{i.invoiceNo}</td>
-                      <td>{i.studentName}</td>
-                      <td>{i.class}</td>
-                      <td>{rupees(i.totalPaise)}</td>
-                      <td>{rupees(i.paidPaise)}</td>
-                      <td>{i.dueOn}</td>
-                      <td><Pill tone={STATUS_TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
-                      <td>{i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>}</td>
+                      <td className="cell-primary" data-label="Invoice">{i.invoiceNo}</td>
+                      <td data-label="Student">{i.studentName}</td>
+                      <td data-label="Class">{i.class}</td>
+                      <td data-label="Total">{rupees(i.totalPaise)}</td>
+                      <td data-label="Paid">{rupees(i.paidPaise)}</td>
+                      <td data-label="Due On">{i.dueOn}</td>
+                      <td data-label="Status"><Pill tone={STATUS_TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
+                      <td data-label="Actions">{i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -80,7 +80,7 @@ export default function FinancePayments() {
           {receipts?.length === 0 && <EmptyState title="No payment receipts" sub="No payments have been recorded yet." />}
           {receipts && receipts.length > 0 && (
             <Card pad={false}>
-              <table className="data-table">
+              <table className="data-table data-table-cards">
                 <thead>
                   <tr>
                     <th>Receipt No.</th>
@@ -96,14 +96,14 @@ export default function FinancePayments() {
                 <tbody>
                   {receipts.map((r) => (
                     <tr key={r.id}>
-                      <td className="cell-primary" style={{ fontWeight: 600 }}>{r.receiptNo}</td>
-                      <td>{r.invoiceNo}</td>
-                      <td>{r.studentName}</td>
-                      <td>{r.class}</td>
-                      <td>{rupees(r.amountPaise)}</td>
-                      <td><Pill tone="blue">{r.mode}</Pill></td>
-                      <td><Pill tone={r.status === 'SUCCESS' ? 'green' : 'gray'}>{r.status}</Pill></td>
-                      <td style={{ color: 'var(--text-faint)' }}>{new Date(r.createdAt).toLocaleDateString('en-IN')}</td>
+                      <td className="cell-primary" style={{ fontWeight: 600 }} data-label="Receipt No.">{r.receiptNo}</td>
+                      <td data-label="Invoice No.">{r.invoiceNo}</td>
+                      <td data-label="Student Name">{r.studentName}</td>
+                      <td data-label="Class">{r.class}</td>
+                      <td data-label="Amount Paid">{rupees(r.amountPaise)}</td>
+                      <td data-label="Mode"><Pill tone="blue">{r.mode}</Pill></td>
+                      <td data-label="Status"><Pill tone={r.status === 'SUCCESS' ? 'green' : 'gray'}>{r.status}</Pill></td>
+                      <td style={{ color: 'var(--text-faint)' }} data-label="Date">{new Date(r.createdAt).toLocaleDateString('en-IN')}</td>
                     </tr>
                   ))}
                 </tbody>

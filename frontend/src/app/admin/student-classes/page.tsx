@@ -64,16 +64,31 @@ function AssignSectionModal({
       .then(([secs, yrs]) => {
         setSections(secs);
         setYears(yrs);
-        const current = yrs.find((y) => y.isCurrent);
-        if (current) setYearId(current.id);
+        if (student.enrollment?.sectionId) {
+          setSectionId(student.enrollment.sectionId);
+        }
+        if (student.enrollment?.academicYearId) {
+          setYearId(student.enrollment.academicYearId);
+        } else {
+          const current = yrs.find((y) => y.isCurrent);
+          if (current) setYearId(current.id);
+        }
+        if (student.enrollment?.rollNo != null) {
+          setRollNo(String(student.enrollment.rollNo));
+        }
       })
       .catch(() => { setSections([]); setYears([]); });
-  }, []);
+  }, [student]);
 
   // Auto-fetch next roll no whenever section + year are both chosen
   useEffect(() => {
     if (!sectionId || !yearId) {
       setSuggestedRollNo(null);
+      return;
+    }
+    if (student.enrollment?.sectionId === sectionId && student.enrollment?.academicYearId === yearId && student.enrollment?.rollNo != null) {
+      setSuggestedRollNo(student.enrollment.rollNo);
+      setRollNo(String(student.enrollment.rollNo));
       return;
     }
     setFetchingRollNo(true);
@@ -84,7 +99,7 @@ function AssignSectionModal({
       })
       .catch(() => setSuggestedRollNo(null))
       .finally(() => setFetchingRollNo(false));
-  }, [sectionId, yearId]);
+  }, [sectionId, yearId, student]);
 
   const submit = async () => {
     if (!sectionId) return setError('Please select a section.');
@@ -336,13 +351,13 @@ export default function AdminStudentClasses() {
         />
       )}
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 14, alignItems: 'center' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 14, alignItems: 'center' }}>
         <input
           className="input"
           placeholder="Search by name or class…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ maxWidth: 320 }}
+          style={{ maxWidth: 320, width: '100%', flex: '1 1 200px' }}
         />
         {students && (
           <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>
@@ -364,7 +379,7 @@ export default function AdminStudentClasses() {
 
       {filtered.length > 0 && (
         <Card pad={false}>
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead>
               <tr>
                 <th>Student</th>
@@ -378,34 +393,29 @@ export default function AdminStudentClasses() {
             <tbody>
               {filtered.map((s) => (
                 <tr key={s.id}>
-                  <td className="cell-primary">{s.name}</td>
-                  <td style={{ color: 'var(--text-faint)' }}>{s.enrollment?.rollNo ?? '—'}</td>
-                  <td>
+                  <td className="cell-primary" data-label="Student">{s.name}</td>
+                  <td style={{ color: 'var(--text-faint)' }} data-label="Roll No">{s.enrollment?.rollNo ?? '—'}</td>
+                  <td data-label="Class / Section">
                     {s.enrollment?.class ?? (
                       <span style={{ color: 'var(--amber, #b08020)', fontSize: 12, fontWeight: 500 }}>
                         Awaiting class assignment
                       </span>
                     )}
                   </td>
-                  <td style={{ color: 'var(--text-faint)', fontSize: 12 }}>{s.admissionNo ?? '—'}</td>
-                  <td>
+                  <td style={{ color: 'var(--text-faint)', fontSize: 12 }} data-label="Admission No">{s.admissionNo ?? '—'}</td>
+                  <td data-label="Status">
                     <Pill tone={s.enrollment ? 'green' : 'amber'}>
                       {s.enrollment ? 'enrolled' : 'admitted'}
                     </Pill>
                   </td>
-                  <td>
-                    {!s.enrollment && (
-                      <Button
-                        variant="soft"
-                        onClick={() => setAssignTarget(s)}
-                        style={{ fontSize: 12, padding: '4px 12px' }}
-                      >
-                        Assign
-                      </Button>
-                    )}
-                    {s.enrollment && (
-                      <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>—</span>
-                    )}
+                  <td data-label="Action">
+                    <Button
+                      variant="soft"
+                      onClick={() => setAssignTarget(s)}
+                      style={{ fontSize: 12, padding: '4px 12px' }}
+                    >
+                      {s.enrollment ? 'Reassign' : 'Assign'}
+                    </Button>
                   </td>
                 </tr>
               ))}

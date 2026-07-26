@@ -51,14 +51,14 @@ export default function PrincipalAttendance() {
       {!loading && data && data.roster.length === 0 && <EmptyState title="No records" sub="No attendance marked for this section on this date." />}
       {!loading && data && data.roster.length > 0 && (
         <Card pad={false}>
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead><tr><th>Roll</th><th>Student</th><th>Status</th></tr></thead>
             <tbody>
               {data.roster.map((r) => (
                 <tr key={r.enrollmentId}>
-                  <td style={{ color: 'var(--text-faint)' }}>{r.rollNo ?? '—'}</td>
-                  <td className="cell-primary">{r.studentName}</td>
-                  <td style={{ color: statusColor(r.status), fontWeight: 600 }}>{r.status ?? 'Not marked'}</td>
+                  <td style={{ color: 'var(--text-faint)' }} data-label="Roll">{r.rollNo ?? '—'}</td>
+                  <td className="cell-primary" data-label="Student">{r.studentName}</td>
+                  <td style={{ color: statusColor(r.status), fontWeight: 600 }} data-label="Status">{r.status ?? 'Not marked'}</td>
                 </tr>
               ))}
             </tbody>

@@ -1,11 +1,12 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees } from '@/components/ui';
+import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees, useToast } from '@/components/ui';
+import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
-import type { FeeSummary, InvoiceDto, PaymentReceiptDto, StudentListItem } from '@/lib/types';
+import type { FeeSummary, InvoiceDto, PaymentReceiptDto, StudentListItem, GradeDto, SectionDto } from '@/lib/types';
 
 const STATUS_TONE: Record<string, 'green' | 'amber' | 'red' | 'gray' | 'blue'> = {
   PAID: 'green', PARTIAL: 'amber', PENDING: 'gray', OVERDUE: 'red', CANCELLED: 'gray',
@@ -18,7 +19,16 @@ export default function AdminPayments() {
   const [students, setStudents] = useState<StudentListItem[]>([]);
   const [paying, setPaying] = useState<InvoiceDto | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showBulkCreate, setShowBulkCreate] = useState(false);
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<'invoices' | 'receipts'>('invoices');
+
+  // Grade / Section / Student filter for the Invoices tab
+  const [grades, setGrades] = useState<GradeDto[]>([]);
+  const [filterGradeId, setFilterGradeId] = useState('');
+  const [sections, setSections] = useState<SectionDto[]>([]);
+  const [filterSectionId, setFilterSectionId] = useState('');
+  const [filterStudentId, setFilterStudentId] = useState('');
 
   const reload = useCallback(() => {
     api.feeSummary().then(setSummary).catch(() => {});
@@ -30,7 +40,25 @@ export default function AdminPayments() {
     reload();
     // Load ALL students (admitted + enrolled) so invoice creation covers everyone
     api.students().then((r) => setStudents(r.items)).catch(() => setStudents([]));
+    api.listGrades().then(setGrades).catch(() => setGrades([]));
   }, [reload]);
+
+  // Sections reload whenever the selected grade changes.
+  useEffect(() => {
+    if (!filterGradeId) { setSections([]); setFilterSectionId(''); return; }
+    api.allSections(filterGradeId).then(setSections).catch(() => setSections([]));
+    setFilterSectionId('');
+  }, [filterGradeId]);
+
+  useEffect(() => { setFilterStudentId(''); }, [filterSectionId]);
+
+  const studentsInSection = students.filter((s) => s.enrollment?.sectionId === filterSectionId);
+
+  // Invoices tab shows nothing until a specific student is picked — no
+  // browsing the full unfiltered list.
+  const filteredInvoices = filterStudentId
+    ? (invoices ?? []).filter((i) => i.studentId === filterStudentId)
+    : [];
 
   const { me } = useAuth();
   const { hasAccess } = usePermissions();
@@ -42,7 +70,10 @@ export default function AdminPayments() {
       title: 'Payments & Fees',
       desc: 'Manage fee items, view payment records, and issue receipts.',
       actions: canCreate ? (
-        <Button onClick={() => setShowCreate(true)}>+ Create Invoice</Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="soft" onClick={() => setShowBulkCreate(true)}>Bulk Upload</Button>
+          <Button onClick={() => setShowCreate(true)}>+ Create Invoice</Button>
+        </div>
       ) : undefined,
     }}>
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
@@ -59,23 +90,64 @@ export default function AdminPayments() {
 
       {activeTab === 'invoices' && (
         <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+            <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
+              <div className="field-label">Grade *</div>
+              <select className="field-input" style={{ marginBottom: 0 }} value={filterGradeId} onChange={(e) => setFilterGradeId(e.target.value)}>
+                <option value="">-- Choose grade --</option>
+                {grades.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </div>
+            <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
+              <div className="field-label">Section *</div>
+              <select
+                className="field-input"
+                style={{ marginBottom: 0 }}
+                value={filterSectionId}
+                onChange={(e) => setFilterSectionId(e.target.value)}
+                disabled={!filterGradeId || sections.length === 0}
+              >
+                <option value="">-- Choose section --</option>
+                {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+            <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
+              <div className="field-label">Student *</div>
+              <select
+                className="field-input"
+                style={{ marginBottom: 0 }}
+                value={filterStudentId}
+                onChange={(e) => setFilterStudentId(e.target.value)}
+                disabled={!filterSectionId || studentsInSection.length === 0}
+              >
+                <option value="">-- Choose student --</option>
+                {studentsInSection.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          </div>
+
           {invoices === null && <Card><SkeletonRows rows={5} /></Card>}
-          {invoices?.length === 0 && <EmptyState title="No invoices yet" sub="Click '+ Create Invoice' to raise a fee invoice for any student." />}
-          {invoices && invoices.length > 0 && (
+          {invoices !== null && !filterStudentId && (
+            <EmptyState title="Select a grade, section, and student" sub="Choose a student above to view their fee invoices and payment status." />
+          )}
+          {invoices !== null && filterStudentId && filteredInvoices.length === 0 && (
+            <EmptyState title="No invoices for this student" sub="This student has no fee invoices yet. Click '+ Create Invoice' to raise one." />
+          )}
+          {invoices !== null && filterStudentId && filteredInvoices.length > 0 && (
             <Card pad={false}>
-              <table className="data-table">
+              <table className="data-table data-table-cards">
                 <thead><tr><th>Invoice</th><th>Student</th><th>Class</th><th>Total</th><th>Paid</th><th>Due On</th><th>Status</th><th></th></tr></thead>
                 <tbody>
-                  {invoices.map((i) => (
+                  {filteredInvoices.map((i) => (
                     <tr key={i.id}>
-                      <td className="cell-primary">{i.invoiceNo}</td>
-                      <td>{i.studentName}</td>
-                      <td>{i.class}</td>
-                      <td>{rupees(i.totalPaise)}</td>
-                      <td>{rupees(i.paidPaise)}</td>
-                      <td>{i.dueOn}</td>
-                      <td><Pill tone={STATUS_TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
-                      <td>{i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>}</td>
+                      <td className="cell-primary" data-label="Invoice">{i.invoiceNo}</td>
+                      <td data-label="Student">{i.studentName}</td>
+                      <td data-label="Class">{i.class}</td>
+                      <td data-label="Total">{rupees(i.totalPaise)}</td>
+                      <td data-label="Paid">{rupees(i.paidPaise)}</td>
+                      <td data-label="Due On">{i.dueOn}</td>
+                      <td data-label="Status"><Pill tone={STATUS_TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
+                      <td data-label="Actions">{i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -91,7 +163,7 @@ export default function AdminPayments() {
           {receipts?.length === 0 && <EmptyState title="No payment receipts" sub="No payments have been recorded yet." />}
           {receipts && receipts.length > 0 && (
             <Card pad={false}>
-              <table className="data-table">
+              <table className="data-table data-table-cards">
                 <thead>
                   <tr>
                     <th>Receipt No.</th>
@@ -107,14 +179,14 @@ export default function AdminPayments() {
                 <tbody>
                   {receipts.map((r) => (
                     <tr key={r.id}>
-                      <td className="cell-primary" style={{ fontWeight: 600 }}>{r.receiptNo}</td>
-                      <td>{r.invoiceNo}</td>
-                      <td>{r.studentName}</td>
-                      <td>{r.class}</td>
-                      <td>{rupees(r.amountPaise)}</td>
-                      <td><Pill tone="blue">{r.mode}</Pill></td>
-                      <td><Pill tone={r.status === 'SUCCESS' ? 'green' : 'gray'}>{r.status}</Pill></td>
-                      <td style={{ color: 'var(--text-faint)' }}>{new Date(r.createdAt).toLocaleDateString('en-IN')}</td>
+                      <td className="cell-primary" style={{ fontWeight: 600 }} data-label="Receipt No.">{r.receiptNo}</td>
+                      <td data-label="Invoice No.">{r.invoiceNo}</td>
+                      <td data-label="Student Name">{r.studentName}</td>
+                      <td data-label="Class">{r.class}</td>
+                      <td data-label="Amount Paid">{rupees(r.amountPaise)}</td>
+                      <td data-label="Mode"><Pill tone="blue">{r.mode}</Pill></td>
+                      <td data-label="Status"><Pill tone={r.status === 'SUCCESS' ? 'green' : 'gray'}>{r.status}</Pill></td>
+                      <td style={{ color: 'var(--text-faint)' }} data-label="Date">{new Date(r.createdAt).toLocaleDateString('en-IN')}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -126,6 +198,17 @@ export default function AdminPayments() {
 
       {paying && <RecordModal invoice={paying} onClose={() => setPaying(null)} onDone={() => { setPaying(null); reload(); }} />}
       {showCreate && <CreateInvoiceModal students={students} onClose={() => setShowCreate(false)} onDone={() => { setShowCreate(false); reload(); }} />}
+      {showBulkCreate && (
+        <BulkUploadModal
+          title="Bulk upload invoices"
+          description="Upload a CSV to raise many one-line invoices at once. invoiceNo is optional — auto-generated if left blank."
+          templateHeaders={['admissionNo', 'invoiceNo', 'description', 'amount', 'dueOn']}
+          templateSampleRow={['ADM-2026-0010', '', 'Tuition Fee', '5000', '2026-08-15']}
+          onSubmit={(file) => api.bulkCreateInvoices(file)}
+          onClose={() => setShowBulkCreate(false)}
+          onImported={(r) => { toast(`Created ${r.imported} of ${r.imported + r.failed} invoices.`, r.failed > 0 ? 'error' : 'success'); reload(); }}
+        />
+      )}
     </PortalShell>
   );
 }

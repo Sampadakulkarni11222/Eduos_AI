@@ -80,7 +80,7 @@ export default function FinanceReports() {
                 {Object.keys(classBreakdown).length === 0 ? (
                   <EmptyState title="No data" sub="No billing records found to generate breakdown." />
                 ) : (
-                  <table className="data-table" style={{ width: '100%' }}>
+                  <table className="data-table data-table-cards" style={{ width: '100%' }}>
                     <thead>
                       <tr>
                         <th>Class</th>
@@ -93,11 +93,11 @@ export default function FinanceReports() {
                     <tbody>
                       {Object.entries(classBreakdown).map(([cls, data]) => (
                         <tr key={cls}>
-                          <td style={{ fontWeight: 600 }}>{cls}</td>
-                          <td>{data.count}</td>
-                          <td>{rupees(data.total)}</td>
-                          <td style={{ color: 'var(--green)' }}>{rupees(data.paid)}</td>
-                          <td style={{ color: 'var(--text-faint)' }}>{rupees(data.pending)}</td>
+                          <td style={{ fontWeight: 600 }} data-label="Class">{cls}</td>
+                          <td data-label="Invoices">{data.count}</td>
+                          <td data-label="Billed">{rupees(data.total)}</td>
+                          <td style={{ color: 'var(--green)' }} data-label="Collected">{rupees(data.paid)}</td>
+                          <td style={{ color: 'var(--text-faint)' }} data-label="Pending">{rupees(data.pending)}</td>
                         </tr>
                       ))}
                     </tbody>
