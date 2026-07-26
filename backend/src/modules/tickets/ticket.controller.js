@@ -3,23 +3,38 @@ import { sendSuccess } from '../../utils/response.js';
 import * as service from './ticket.service.js';
 
 export const list = asyncHandler(async (req, res) => {
-  const tickets = await service.list(req.actor, req.scope, req.query);
-  const dtos = tickets.map(t => ({
+  const rows = await service.list(req.actor, req.scope, req.query);
+  const dtos = rows.map(({ ticket: t, messageCount }) => ({
     id: t._id,
-    ticketNo: t.ticketNo || t._id.toString().substring(0, 6).toUpperCase(),
     subject: t.subject,
     status: t.status,
     priority: t.priority,
-    category: t.category,
-    openedBy: t.raisedByProfileId?.displayName || 'Unknown',
+    routedToRoleKey: t.routedToRoleKey ?? null,
+    raisedBy: t.raisedByProfileId?.displayName || 'Unknown',
     assignedTo: t.assigneeProfileId?.displayName || null,
+    studentName: t.studentId ? `${t.studentId.firstName} ${t.studentId.lastName ?? ''}`.trim() : null,
     createdAt: t.createdAt.toISOString(),
+    messageCount,
   }));
   sendSuccess(res, dtos, 'Tickets fetched');
 });
 
 export const getById = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.getById(req.actor, req.scope, req.params.id), 'Ticket fetched');
+  const { ticket, messages } = await service.getById(req.actor, req.scope, req.params.id);
+  sendSuccess(res, {
+    id: ticket._id,
+    subject: ticket.subject,
+    status: ticket.status,
+    routedToRoleKey: ticket.routedToRoleKey ?? null,
+    studentName: ticket.studentId ? `${ticket.studentId.firstName} ${ticket.studentId.lastName ?? ''}`.trim() : null,
+    messages: messages.map((m) => ({
+      id: m._id,
+      body: m.body,
+      channel: m.channel,
+      mine: m.authorProfileId?.toString() === req.actor.profileId,
+      createdAt: m.createdAt.toISOString(),
+    })),
+  }, 'Ticket fetched');
 });
 
 export const create = asyncHandler(async (req, res) => {

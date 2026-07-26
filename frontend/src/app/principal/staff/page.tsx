@@ -38,14 +38,14 @@ export default function PrincipalStaff() {
       {!loading && rows.length === 0 && offerings!.length > 0 && <EmptyState title="No match" sub="No subjects match your search." />}
       {rows.length > 0 && (
         <Card pad={false}>
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead><tr><th>Subject</th><th>Sections</th><th style={{ textAlign: 'center' }}>Count</th></tr></thead>
             <tbody>
               {rows.map((r, i) => (
                 <tr key={i}>
-                  <td className="cell-primary">{r.subject}</td>
-                  <td style={{ fontSize: 12, color: 'var(--text-2)' }}>{r.sections.join(', ')}</td>
-                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{r.sections.length}</td>
+                  <td className="cell-primary" data-label="Subject">{r.subject}</td>
+                  <td style={{ fontSize: 12, color: 'var(--text-2)' }} data-label="Sections">{r.sections.join(', ')}</td>
+                  <td style={{ textAlign: 'center', fontWeight: 600 }} data-label="Count">{r.sections.length}</td>
                 </tr>
               ))}
             </tbody>

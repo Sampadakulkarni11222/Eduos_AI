@@ -1,20 +1,29 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Card, EmptyState, SkeletonRows, Pill } from '@/components/ui';
-import { api, fileHref } from '@/lib/api';
+import { Card, EmptyState, SkeletonRows, Pill, useToast } from '@/components/ui';
+import { IdCardPanel } from '@/components/id-card-action';
+import { api, ApiError } from '@/lib/api';
 import type { DocumentDto } from '@/lib/types';
+
+const DOC_TYPES = ['ALL', 'REPORT_CARD', 'TC', 'LETTER', 'CUSTOM'];
 
 export default function StudentDocuments() {
   const [documents, setDocuments] = useState<DocumentDto[] | null>(null);
+  const [ownStudentId, setOwnStudentId] = useState<string | undefined>(undefined);
   const [activeTypeFilter, setActiveTypeFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     api.listDocuments()
-      .then(setDocuments)
+      // ID cards are generated live from the /students/:id/id-card endpoint,
+      // never from a stored fileUrl — legacy rows of this type are ignored.
+      .then((docs) => setDocuments(docs.filter((d) => d.type !== 'ID_CARD')))
       .catch(() => setDocuments([]))
       .finally(() => setLoading(false));
+    api.students().then((r) => setOwnStudentId(r.items[0]?.id)).catch(() => {});
   }, []);
 
   const filteredDocs = documents?.filter((d) => {
@@ -22,10 +31,23 @@ export default function StudentDocuments() {
     return d.type === activeTypeFilter;
   }) ?? [];
 
+  const openDoc = async (d: DocumentDto) => {
+    setOpeningId(d.id);
+    try {
+      await api.openDocumentFile(d.id);
+    } catch (e) {
+      toast(e instanceof ApiError ? e.message : "Couldn't open this document.", 'error');
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
   return (
-    <PortalShell expectedSlug="student" topbar={{ title: 'My Documents', desc: 'Your report cards, ID card files, and personal letters.' }}>
+    <PortalShell expectedSlug="student" topbar={{ title: 'My Documents', desc: 'Your ID card, report cards, and personal letters.' }}>
+      <IdCardPanel studentId={ownStudentId} />
+
       <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {['ALL', 'REPORT_CARD', 'ID_CARD', 'TC', 'LETTER', 'CUSTOM'].map((t) => (
+        {DOC_TYPES.map((t) => (
           <button key={t} className={`chip-tab ${activeTypeFilter === t ? 'active' : ''}`} onClick={() => setActiveTypeFilter(t)}>
             {t === 'ALL' ? 'All Files' : t.replace('_', ' ')}
           </button>
@@ -35,10 +57,10 @@ export default function StudentDocuments() {
       <Card pad={false}>
         {loading && <div style={{ padding: 20 }}><SkeletonRows rows={3} /></div>}
         {!loading && filteredDocs.length === 0 && (
-          <EmptyState title="No documents found" sub="Files published by the school will appear here." />
+          <EmptyState icon="📄" title="No documents found" sub="Files published by the school will appear here." />
         )}
         {!loading && filteredDocs.length > 0 && (
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead>
               <tr>
                 <th>Document Name</th>
@@ -50,13 +72,13 @@ export default function StudentDocuments() {
             <tbody>
               {filteredDocs.map((d) => (
                 <tr key={d.id}>
-                  <td className="cell-primary">{d.title}</td>
-                  <td><Pill tone="blue">{d.type}</Pill></td>
-                  <td>{new Date(d.issuedAt).toLocaleDateString('en-IN')}</td>
-                  <td>
-                    <a href={fileHref(d.fileUrl)} target="_blank" rel="noopener noreferrer" className="btn btn-soft btn-sm">
-                      Download / View
-                    </a>
+                  <td className="cell-primary" data-label="Document Name">{d.title}</td>
+                  <td data-label="Type"><Pill tone="blue">{d.type}</Pill></td>
+                  <td data-label="Issued Date">{new Date(d.issuedAt).toLocaleDateString('en-IN')}</td>
+                  <td data-label="Action">
+                    <button className="btn btn-soft btn-sm" onClick={() => openDoc(d)} disabled={openingId === d.id}>
+                      {openingId === d.id ? 'Opening…' : 'Download / View'}
+                    </button>
                   </td>
                 </tr>
               ))}

@@ -99,7 +99,7 @@ export default function LibrarianBooks() {
               <EmptyState title="No books found" sub="Refine your search or add a new book to the library." />
             )}
             {books && books.length > 0 && (
-              <table className="data-table">
+              <table className="data-table data-table-cards">
                 <thead>
                   <tr>
                     <th>Title</th>
@@ -113,14 +113,14 @@ export default function LibrarianBooks() {
                 <tbody>
                   {books.map((b) => (
                     <tr key={b.id}>
-                      <td className="cell-primary">{b.title}</td>
-                      <td>{b.author}</td>
-                      <td style={{ fontFamily: 'monospace' }}>{b.isbn ?? '—'}</td>
-                      <td><Pill tone="gray">{b.category}</Pill></td>
-                      <td>
+                      <td className="cell-primary" data-label="Title">{b.title}</td>
+                      <td data-label="Author">{b.author}</td>
+                      <td style={{ fontFamily: 'monospace' }} data-label="ISBN">{b.isbn ?? '—'}</td>
+                      <td data-label="Category"><Pill tone="gray">{b.category}</Pill></td>
+                      <td data-label="Availability">
                         <strong>{b.availableCopies}</strong> / {b.totalCopies} available
                       </td>
-                      <td>
+                      <td data-label="Action">
                         <Button variant="soft" small disabled={b.availableCopies < 1} onClick={() => {
                           setIssueForm({ ...issueForm, bookId: b.id });
                           setShowIssueModal(true);
@@ -142,7 +142,7 @@ export default function LibrarianBooks() {
             <EmptyState title="No issued books" sub="Active checked out books will appear here." />
           )}
           {issued && issued.length > 0 && (
-            <table className="data-table">
+            <table className="data-table data-table-cards">
               <thead>
                 <tr>
                   <th>Book Title</th>
@@ -157,17 +157,17 @@ export default function LibrarianBooks() {
               <tbody>
                 {issued.map((i) => (
                   <tr key={i.id}>
-                    <td className="cell-primary">{i.bookTitle}</td>
-                    <td>{i.studentName}</td>
-                    <td>{new Date(i.issuedAt).toLocaleDateString('en-IN')}</td>
-                    <td>{new Date(i.dueAt).toLocaleDateString('en-IN')}</td>
-                    <td>{i.returnedAt ? new Date(i.returnedAt).toLocaleDateString('en-IN') : '—'}</td>
-                    <td>
+                    <td className="cell-primary" data-label="Book Title">{i.bookTitle}</td>
+                    <td data-label="Student Name">{i.studentName}</td>
+                    <td data-label="Issued Date">{new Date(i.issuedAt).toLocaleDateString('en-IN')}</td>
+                    <td data-label="Due Date">{new Date(i.dueAt).toLocaleDateString('en-IN')}</td>
+                    <td data-label="Returned">{i.returnedAt ? new Date(i.returnedAt).toLocaleDateString('en-IN') : '—'}</td>
+                    <td data-label="Status">
                       <Pill tone={i.status === 'RETURNED' ? 'green' : i.status === 'OVERDUE' ? 'red' : 'amber'}>
                         {i.status}
                       </Pill>
                     </td>
-                    <td>
+                    <td data-label="Action">
                       {!i.returnedAt && (
                         <Button variant="ghost" small onClick={() => handleReturnBook(i.id)}>Return</Button>
                       )}

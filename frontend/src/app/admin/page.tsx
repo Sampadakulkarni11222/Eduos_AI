@@ -130,14 +130,14 @@ export default function AdminDashboard() {
                 <EmptyState title="No students yet" sub="Students appear here once enrollments are created." />
               )}
               {data && data.recentStudents.length > 0 && (
-                <table className="data-table">
+                <table className="data-table data-table-cards">
                   <thead><tr><th>Student</th><th>Admission No.</th><th>Added</th></tr></thead>
                   <tbody>
                     {data.recentStudents.map((s) => (
                       <tr key={s._id}>
-                        <td className="cell-primary">{`${s.firstName} ${s.lastName ?? ''}`.trim()}</td>
-                        <td style={{ color: 'var(--text-faint)' }}>{s.admissionNo}</td>
-                        <td>{new Date(s.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</td>
+                        <td className="cell-primary" data-label="Student">{`${s.firstName} ${s.lastName ?? ''}`.trim()}</td>
+                        <td style={{ color: 'var(--text-faint)' }} data-label="Admission No.">{s.admissionNo}</td>
+                        <td data-label="Added">{new Date(s.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -115,16 +115,18 @@ body.role-warden{
 .logout-btn svg{opacity:.85}
 
 .main{flex:1;display:flex;flex-direction:column;min-width:0;height:100%}
-.topbar{flex:none;background:rgba(251,246,236,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--input-border);padding:18px 28px;display:flex;align-items:flex-end;justify-content:space-between;gap:20px}
-.topbar-title{font-family:'Newsreader',serif;font-weight:600;font-size:25px;color:var(--header-title);line-height:1.1}
+.topbar{flex:none;background:rgba(251,246,236,.86);backdrop-filter:blur(8px);border-bottom:1px solid var(--input-border);padding:18px 28px;display:flex;flex-direction:column;gap:12px}
+.topbar-headrow{display:flex;align-items:center;justify-content:space-between;gap:14px 20px}
+.topbar-ask{flex:none}
+.topbar-title{font-family:'Newsreader',serif;font-weight:600;font-size:25px;color:var(--header-title);line-height:1.1;overflow-wrap:anywhere}
 .topbar-desc{font-size:13.5px;color:var(--text-2);margin-top:3px}
-.topbar-actions{display:flex;align-items:center;gap:10px;flex:none}
+.topbar-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:10px}
 .search-wrap{position:relative}
 .search-wrap .search-icon{position:absolute;left:11px;top:8px;color:#A99B82;font-size:14px}
 .input,.search-input,select.input,textarea.input{background:#fff;border:1px solid var(--input-border);border-radius:10px;padding:9px 12px;font-size:13px;font-family:inherit;color:var(--text-1)}
 .search-input{padding-left:32px}
 
-.content{flex:1;overflow-y:auto;padding:26px 28px 60px}
+.content{flex:1;overflow-y:auto;overflow-x:hidden;padding:26px 28px 60px}
 .content-inner{max-width:1180px}
 
 /* ===== Buttons ===== */
@@ -138,7 +140,7 @@ body.role-warden{
 .btn:disabled{opacity:.5;cursor:not-allowed}
 
 /* ===== Cards / stat grid ===== */
-.card{background:var(--card-bg);border:1px solid var(--card-border);border-radius:16px}
+.card{background:var(--card-bg);border:1px solid var(--card-border);border-radius:16px;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
 .card-pad{padding:20px}
 .stat-card{background:var(--card-bg);border:1px solid var(--card-border);border-radius:14px;padding:16px 17px}
 .stat-label{font-size:12px;color:var(--text-2b);font-weight:600}
@@ -200,10 +202,13 @@ body.role-warden{
 .wa-note{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--whatsapp);margin-top:4px}
 
 /* ===== Empty state ===== */
-.empty-state{text-align:center;padding:48px 20px;color:var(--text-2)}
-.empty-state .empty-icon{font-size:32px;margin-bottom:10px;opacity:.6}
-.empty-state .empty-title{font-weight:700;font-size:14px;color:var(--text-1);margin-bottom:4px}
-.empty-state .empty-sub{font-size:12.5px;color:var(--text-2b)}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:56px 24px;min-height:220px;color:var(--text-2);background:var(--card-bg);border:1px solid var(--card-border);border-radius:16px}
+.empty-state .empty-icon{font-size:38px;margin-bottom:12px;opacity:.55}
+.empty-state .empty-title{font-weight:700;font-size:14.5px;color:var(--text-1);margin-bottom:5px}
+.empty-state .empty-sub{font-size:12.5px;color:var(--text-2b);max-width:340px}
+/* When an EmptyState is placed inside a Card, the Card's own border/background
+   would double up — drop them so only the outer Card frame shows. */
+.card > .empty-state:only-child{border:none;background:transparent}
 
 /* ===== Misc widgets ===== */
 .gauge-ring{border-radius:50%;display:flex;align-items:center;justify-content:center}
@@ -282,6 +287,28 @@ body.role-warden{
   animation: eduFade 0.2s ease;
 }
 
+/* Intermediate breakpoint: reflow simple stat/dashboard grids to 2 columns
+   before the full 768px mobile collapse, so laptop-narrow and tablet
+   viewports don't force cards into their own horizontal scrollbar just to
+   fit 3-6 hardcoded columns. Wide, deliberately-scrollable components (the
+   RBAC permission matrix, etc.) opt out via .no-grid-collapse. */
+@media (max-width: 1100px) {
+  div[style*="grid-template-columns"]:not(.no-grid-collapse),
+  .card-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+}
+
+/* Desktop-default state for mobile-only alternate views (RBAC role list,
+   timetable agenda). The @media block below flips these to visible and
+   hides their desktop counterpart — must stay declared BEFORE that block so
+   the mobile override actually wins the cascade at narrow widths. */
+.rbac-mobile,
+.table-scroll-mobile {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .hamburger-btn {
     display: inline-flex;
@@ -312,8 +339,8 @@ body.role-warden{
   
   .topbar {
     padding: 14px 16px;
-    align-items: center;
-    gap: 12px;
+    align-items: stretch;
+    gap: 10px;
   }
   
   .topbar-title {
@@ -328,40 +355,127 @@ body.role-warden{
     padding: 16px 16px 40px;
   }
   
-  /* Make tables scrollable horizontally to prevent overflowing screen width */
-  .card {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  
-  /* Overwrite inline-style grid-template-columns dynamically */
-  div[style*="grid-template-columns"],
-  div[style*="gridTemplateColumns"],
+  /* Overwrite inline-style grid-template-columns dynamically — wide,
+     deliberately-scrollable components (the RBAC permission matrix, etc.)
+     opt out via .no-grid-collapse so they keep their intended horizontal
+     scroll instead of being squashed into an unreadable single column. */
+  div[style*="grid-template-columns"]:not(.no-grid-collapse),
   .card-grid {
     grid-template-columns: 1fr !important;
     gap: 12px !important;
   }
-  
+
   /* Adjust charts or other rigid widgets */
   .growth-ring {
     margin: 0 auto;
   }
-  
+
   /* Make inline styled flex layouts stack on mobile when appropriate */
   div[style*="display: flex"][style*="flex-direction: row"],
   div[style*="display:flex"][style*="flex-direction:row"] {
     flex-direction: column !important;
     align-items: stretch !important;
   }
-  
+
+  /* Blanket safety net: any inline flex row (button/tab/chip groups, filter
+     bars, etc.) that didn't already opt into wrapping gets it here, so
+     content that doesn't fit drops to a new line instead of overflowing
+     into a horizontal scrollbar. Rows that explicitly set flex-wrap already
+     (either value) are left alone. */
+  div[style*="display: flex"]:not([style*="flex-wrap"]),
+  div[style*="display:flex"]:not([style*="flex-wrap"]) {
+    flex-wrap: wrap !important;
+  }
+
   /* Fix buttons/actions to wrap nicely on smaller screens */
   .topbar-actions {
     gap: 8px;
   }
-  
-  /* CRM Column support */
-  div[style*="gridTemplateColumns*='repeat(6'"] {
-    grid-template-columns: 1fr !important;
+
+  /* Opt-in table -> stacked card layout so wide data-tables never force a
+     horizontal scrollbar on mobile. Apply .data-table-cards alongside
+     .data-table and add data-label="Column" to each <td> to label rows. */
+  .data-table-cards,
+  .data-table-cards tbody,
+  .data-table-cards tr,
+  .data-table-cards td {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  /* A table that also carries an inline min-width (used to size the
+     desktop/tablet horizontal-scroll case) must not keep that width once
+     it's stacked into cards, or it'll force the scrollbar right back. */
+  table.data-table-cards {
+    min-width: 0 !important;
+  }
+
+  .data-table-cards thead {
+    display: none;
+  }
+
+  .data-table-cards tbody tr {
+    /* width:auto (not 100%) so the row's box-model correctly shrinks to fit
+       within its container once the 10px horizontal margin is added below —
+       100% + margin would overflow the card and force a scrollbar back in. */
+    width: auto;
+    border: 1px solid var(--hairline);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin: 10px;
+  }
+
+  .data-table-cards tbody tr:hover {
+    background: transparent;
+  }
+
+  .data-table-cards td {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 7px 0 !important;
+    border-top: none !important;
+  }
+
+  .data-table-cards td::before {
+    content: attr(data-label);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .data-table-cards td:first-child::before {
+    content: none;
+  }
+
+  .data-table-cards td:first-child {
+    padding-bottom: 10px !important;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  /* The RBAC permission matrix is a genuine grid (permissions x roles) that
+     can't be stacked into cards like a normal table. On mobile it swaps to
+     a one-role-at-a-time list (.rbac-mobile) instead of scrolling sideways. */
+  .rbac-desktop {
+    display: none;
+  }
+
+  .rbac-mobile {
+    display: block;
+  }
+
+  /* Same idea for the day x period timetable grid. */
+  .table-scroll-desktop {
+    display: none;
+  }
+
+  .table-scroll-mobile {
+    display: block;
   }
 }
 

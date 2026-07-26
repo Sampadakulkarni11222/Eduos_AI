@@ -6,6 +6,7 @@ const assignmentSchema = new Schema(
     title: { type: String, required: true, trim: true },
     description: { type: String },
     type: { type: String, default: 'HOMEWORK' }, // HOMEWORK | PROJECT | WORKSHEET | LAB
+    chapter: { type: String, trim: true, default: null },
     dueAt: { type: Date, required: true },
     maxMarks: { type: Number },
     attachments: { type: [String], default: [] },

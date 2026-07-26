@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, SkeletonRows, Pill, useToast } from '@/components/ui';
 import { FileOrUrlInput } from '@/components/file-input';
-import { api, fileHref } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import type { DocumentDto, StudentListItem } from '@/lib/types';
 
 export default function AdminDocuments() {
@@ -11,6 +11,7 @@ export default function AdminDocuments() {
   const [students, setStudents] = useState<StudentListItem[] | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [openingId, setOpeningId] = useState<string | null>(null);
   const toast = useToast();
   const [form, setForm] = useState({
     title: '', type: 'CUSTOM', fileUrl: '', mimeType: '', studentId: '', visibleToRoles: ['PARENT', 'STUDENT']
@@ -49,6 +50,17 @@ export default function AdminDocuments() {
     }
   };
 
+  const openDoc = async (d: DocumentDto) => {
+    setOpeningId(d.id);
+    try {
+      await api.openDocumentFile(d.id);
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "Couldn't open this document.", 'error');
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this document?')) return;
     try {
@@ -82,7 +94,7 @@ export default function AdminDocuments() {
           <EmptyState title="No documents found" sub="Upload documents to share them with parents or students." />
         )}
         {documents && documents.length > 0 && (
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead>
               <tr>
                 <th>Title</th>
@@ -96,22 +108,26 @@ export default function AdminDocuments() {
             <tbody>
               {documents.map((d) => (
                 <tr key={d.id}>
-                  <td className="cell-primary">
-                    <a href={fileHref(d.fileUrl)} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'underline', color: 'var(--blue)' }}>
-                      {d.title}
-                    </a>
+                  <td className="cell-primary" data-label="Title">
+                    <button
+                      onClick={() => openDoc(d)}
+                      disabled={openingId === d.id}
+                      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline', color: 'var(--blue)', font: 'inherit' }}
+                    >
+                      {openingId === d.id ? 'Opening…' : d.title}
+                    </button>
                   </td>
-                  <td><Pill tone="blue">{d.type}</Pill></td>
-                  <td>{d.studentName ?? 'All Students'}</td>
-                  <td>
+                  <td data-label="Type"><Pill tone="blue">{d.type}</Pill></td>
+                  <td data-label="Target Student">{d.studentName ?? 'All Students'}</td>
+                  <td data-label="Visible To">
                     <div style={{ display: 'flex', gap: 4 }}>
                       {d.visibleToRoles.map((r) => (
                         <Pill key={r} tone="gray">{r}</Pill>
                       ))}
                     </div>
                   </td>
-                  <td>{new Date(d.issuedAt).toLocaleDateString('en-IN')}</td>
-                  <td>
+                  <td data-label="Issued Date">{new Date(d.issuedAt).toLocaleDateString('en-IN')}</td>
+                  <td data-label="Action">
                     <Button variant="ghost" small onClick={() => handleDelete(d.id)} style={{ color: 'var(--red)' }}>Delete</Button>
                   </td>
                 </tr>
@@ -136,11 +152,13 @@ export default function AdminDocuments() {
               <div className="field-label">Document Type</div>
               <select className="field-input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
                 <option value="REPORT_CARD">Report Card</option>
-                <option value="ID_CARD">ID Card</option>
                 <option value="TC">Transfer Certificate (TC)</option>
                 <option value="LETTER">Official Letter</option>
                 <option value="CUSTOM">Custom Document</option>
               </select>
+              <div style={{ fontSize: 11.5, color: 'var(--text-2b)', marginTop: -8, marginBottom: 12 }}>
+                ID cards aren&apos;t uploaded here — they&apos;re generated automatically from each student&apos;s record and can be viewed from their Documents page.
+              </div>
 
               <div className="field-label">File *</div>
               <FileOrUrlInput
