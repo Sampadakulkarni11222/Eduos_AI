@@ -27,6 +27,7 @@ router.post('/grades/bulk', manage, csvUploadSingle('file'), controller.bulkCrea
 router.get('/sections/mine', controller.mySections);
 router.get('/sections', controller.listSections);
 router.post('/sections', manage, controller.createSection);
+router.patch('/sections/:id', manage, controller.updateSection);
 router.post('/sections/bulk', manage, csvUploadSingle('file'), controller.bulkCreateSections);
 
 // ── Subjects ──

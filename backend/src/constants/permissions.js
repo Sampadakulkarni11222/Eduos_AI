@@ -144,6 +144,7 @@ export const SYSTEM_ROLES = [
       ['ai.insights.read', 'ALL'],
       ['analytics.school.read', 'ALL'],
       ['analytics.class.read', 'ALL'],
+      ['academics.structure.manage', 'ALL'],
     ]),
   },
   {

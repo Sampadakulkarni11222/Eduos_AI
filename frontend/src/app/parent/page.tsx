@@ -23,6 +23,7 @@ export default function ParentDashboard() {
   const kid = kids?.[activeKid];
   const kidStats = data?.linkedChildren.find((c) => c.studentId === kid?.id);
   const announcements = data?.announcements ?? null;
+  const kidTimetable = data?.timetable.filter((t) => t.sectionId === kid?.enrollment?.sectionId) ?? [];
 
   return (
     <PortalShell expectedSlug="parent" topbar={{ title: 'My Children', desc: "Your family's school life in one place" }}>
@@ -70,6 +71,59 @@ export default function ParentDashboard() {
             />
             <StatCard label="Upcoming Exams" value={data ? data.upcomingExams.length : '—'} delta="scheduled" deltaDir="flat" />
             <StatCard label="Announcements" value={announcements ? announcements.length : '—'} delta="recent notices" deltaDir="flat" />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+            <Card>
+              <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17, display: 'block', marginBottom: 12 }}>Today's Timetable</strong>
+              {kidTimetable.length === 0 ? (
+                <p style={{ fontSize: 12.5, color: 'var(--text-2b)' }}>No classes scheduled for today.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {kidTimetable.map((t, idx) => (
+                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: idx < kidTimetable.length - 1 ? '1px solid var(--hairline)' : 'none' }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13.5 }}>{t.subject}</div>
+                        <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>Period {t.periodNo}</div>
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'right' }}>
+                        <div>{t.startTime}</div>
+                        <div style={{ color: 'var(--text-faint)' }}>to {t.endTime}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+            <Card>
+              <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17, display: 'block', marginBottom: 12 }}>Class Information</strong>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-faint)', letterSpacing: '0.05em', marginBottom: 4 }}>CLASS TEACHER</div>
+                  {kidStats?.classTeacher ? (
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{kidStats.classTeacher.name}</div>
+                      {(kidStats.classTeacher.email || kidStats.classTeacher.phone) && (
+                        <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 2 }}>
+                          {kidStats.classTeacher.email} {kidStats.classTeacher.email && kidStats.classTeacher.phone ? '·' : ''} {kidStats.classTeacher.phone}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 13, color: 'var(--text-2b)' }}>Not assigned</div>
+                  )}
+                </div>
+                
+                <div>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-faint)', letterSpacing: '0.05em', marginBottom: 4 }}>CLASS REPRESENTATIVE</div>
+                  {kidStats?.classRepresentative ? (
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{kidStats.classRepresentative.name}</div>
+                  ) : (
+                    <div style={{ fontSize: 13, color: 'var(--text-2b)' }}>Not assigned</div>
+                  )}
+                </div>
+              </div>
+            </Card>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

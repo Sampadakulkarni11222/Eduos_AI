@@ -541,8 +541,23 @@ export async function getParentDashboard(profileId) {
     studentId: { $in: studentObjectIds },
     status: 'ACTIVE',
   })
-    .populate('sectionId', 'name')
+    .populate({
+      path: 'sectionId',
+      select: 'name classTeacherId classRepresentativeId',
+      populate: [
+        { 
+          path: 'classTeacherId', 
+          select: 'displayName accountId',
+          populate: { path: 'accountId', select: 'phoneE164 email' }
+        },
+        { path: 'classRepresentativeId', select: 'firstName lastName' }
+      ]
+    })
     .lean();
+
+  const enrollmentMap = Object.fromEntries(
+    enrollments.map((e) => [e.studentId.toString(), e])
+  );
 
   const enrollmentIds = enrollments.map((e) => e._id);
 
@@ -661,13 +676,27 @@ export async function getParentDashboard(profileId) {
   const announcementsArr = await recentAnnouncements(5);
 
   return {
-    linkedChildren: children.map((c) => ({
-      studentId: c._id,
-      name: `${c.firstName} ${c.lastName ?? ''}`.trim(),
-      admissionNo: c.admissionNo,
-      gender: c.gender,
-      attendance: attendanceMap[c._id.toString()] ?? { total: 0, present: 0, percentage: 0 },
-    })),
+    linkedChildren: children.map((c) => {
+      const e = enrollmentMap[c._id.toString()];
+      const sec = e?.sectionId;
+      const t = sec?.classTeacherId;
+      const r = sec?.classRepresentativeId;
+      return {
+        studentId: c._id,
+        name: `${c.firstName} ${c.lastName ?? ''}`.trim(),
+        admissionNo: c.admissionNo,
+        gender: c.gender,
+        attendance: attendanceMap[c._id.toString()] ?? { total: 0, present: 0, percentage: 0 },
+        classTeacher: t ? {
+          name: t.displayName ?? 'Unknown',
+          phone: t.accountId?.phoneE164 ?? null,
+          email: t.accountId?.email ?? null,
+        } : null,
+        classRepresentative: r ? {
+          name: `${r.firstName} ${r.lastName ?? ''}`.trim(),
+        } : null,
+      };
+    }),
     pendingFees: toRs(totalPaise - paidPaise),
     pendingFeesPaise: totalPaise - paidPaise,
     feeInvoices: recentInvoices.map((inv) => ({
@@ -689,6 +718,7 @@ export async function getParentDashboard(profileId) {
       endTime: s.endTime,
       subject: s.subjectOfferingId?.subjectId?.name ?? 'Break',
       section: s.sectionId?.name ?? '--',
+      sectionId: s.sectionId?._id?.toString() ?? null,
     })),
     recentResults: recentResults.map((m) => ({
       examName: m.examSubjectId?.examId?.name ?? '--',

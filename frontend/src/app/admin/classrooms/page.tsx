@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
-import type { GradeDto, SectionDto, SubjectDto, TermDto, OfferingDto, StaffAccountDto } from '@/lib/types';
+import type { GradeDto, SectionDto, SubjectDto, TermDto, OfferingDto, StaffAccountDto, StudentListItem } from '@/lib/types';
 
 type Tab = 'grades' | 'sections' | 'subjects' | 'offerings';
 
@@ -18,6 +18,7 @@ export default function ClassroomManagement() {
   const [years, setYears] = useState<{ id: string; name: string; isCurrent: boolean }[]>([]);
   const [terms, setTerms] = useState<TermDto[] | null>(null);
   const [teachers, setTeachers] = useState<StaffAccountDto[] | null>(null);
+  const [students, setStudents] = useState<StudentListItem[] | null>(null);
 
   const loadGrades = () => api.listGrades().then(setGrades).catch(() => setGrades([]));
   const loadSections = () => api.allSections().then(setSections).catch(() => setSections([]));
@@ -33,6 +34,7 @@ export default function ClassroomManagement() {
     loadTerms();
     api.allAcademicYears().then(setYears).catch(() => setYears([]));
     api.listTeachers().then(setTeachers).catch(() => setTeachers([]));
+    api.students().then((r) => setStudents(r.items)).catch(() => setStudents([]));
   }, []);
 
   const yearNameById: Record<string, string> = Object.fromEntries(years.map((y) => [y.id, y.name]));
@@ -43,6 +45,9 @@ export default function ClassroomManagement() {
 
   const [showSectionModal, setShowSectionModal] = useState(false);
   const [sectionForm, setSectionForm] = useState({ gradeId: '', name: '', classTeacherId: '' });
+
+  const [showEditSectionModal, setShowEditSectionModal] = useState(false);
+  const [editSectionForm, setEditSectionForm] = useState({ id: '', gradeId: '', name: '', classTeacherId: '', classRepresentativeId: '' });
 
   const [showSubjectModal, setShowSubjectModal] = useState(false);
   const [subjectForm, setSubjectForm] = useState({ name: '', code: '' });
@@ -81,6 +86,21 @@ export default function ClassroomManagement() {
       loadSections();
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'Could not create the section.', 'error');
+    }
+  };
+
+  const updateSection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.updateSection(editSectionForm.id, {
+        classTeacherId: editSectionForm.classTeacherId || undefined,
+        classRepresentativeId: editSectionForm.classRepresentativeId || undefined,
+      });
+      setShowEditSectionModal(false);
+      toast('Classroom updated.');
+      loadSections();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Could not update the section.', 'error');
     }
   };
 
@@ -135,6 +155,10 @@ export default function ClassroomManagement() {
     u.profiles.filter((p) => p.role === 'TEACHER').map((p) => ({ profileId: p.profileId, displayName: p.displayName }))
   );
 
+  const studentsInSection = (students ?? []).filter(
+    (s) => s.enrollment?.sectionId === editSectionForm.id
+  );
+
   return (
     <PortalShell expectedSlug="admin" topbar={{ title: 'Classroom Management', desc: 'Grades, sections, subjects, and subject-to-class assignments.' }}>
       <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
@@ -183,13 +207,31 @@ export default function ClassroomManagement() {
             )}
             {sections && sections.length > 0 && (
               <table className="data-table">
-                <thead><tr><th>Class</th><th>Section</th><th>Class Teacher</th></tr></thead>
+                <thead><tr><th>Class</th><th>Section</th><th>Class Teacher</th><th>Class Representative</th><th style={{ width: 80 }}></th></tr></thead>
                 <tbody>
                   {sections.map((s) => (
                     <tr key={s.id}>
                       <td className="cell-primary">{s.gradeName || '—'}</td>
                       <td>{s.name}</td>
                       <td>{s.classTeacher ?? <span style={{ color: 'var(--text-faint)' }}>Unassigned</span>}</td>
+                      <td>{s.classRepresentativeId ? <span style={{ color: 'var(--accent)' }}>Assigned</span> : <span style={{ color: 'var(--text-faint)' }}>Unassigned</span>}</td>
+                      <td>
+                        <button 
+                          className="chip-tab" 
+                          style={{ padding: '4px 10px', fontSize: 12 }}
+                          onClick={() => {
+                            setEditSectionForm({
+                              id: s.id,
+                              gradeId: '', // not needed for this UI
+                              name: s.name,
+                              classTeacherId: s.classTeacher ? teacherProfiles.find(t => t.displayName === s.classTeacher)?.profileId || '' : '',
+                              classRepresentativeId: s.classRepresentativeId || ''
+                            });
+                            setShowEditSectionModal(true);
+                          }}>
+                          Edit
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -307,6 +349,37 @@ export default function ClassroomManagement() {
               <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
                 <Button type="submit">Add Section</Button>
                 <Button variant="ghost" type="button" onClick={() => setShowSectionModal(false)}>Cancel</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Section Modal */}
+      {showEditSectionModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <div className="modal-title">Edit Section ({editSectionForm.name})</div>
+              <button className="modal-close" onClick={() => setShowEditSectionModal(false)}>×</button>
+            </div>
+            <form onSubmit={updateSection}>
+              <div className="field-label">Class Teacher</div>
+              <select className="field-input" value={editSectionForm.classTeacherId} onChange={(e) => setEditSectionForm({ ...editSectionForm, classTeacherId: e.target.value })}>
+                <option value="">-- Unassigned --</option>
+                {teacherProfiles.map((t) => <option key={t.profileId} value={t.profileId}>{t.displayName}</option>)}
+              </select>
+
+              <div className="field-label">Class Representative</div>
+              <select className="field-input" value={editSectionForm.classRepresentativeId} onChange={(e) => setEditSectionForm({ ...editSectionForm, classRepresentativeId: e.target.value })}>
+                <option value="">-- Unassigned --</option>
+                {studentsInSection.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.admissionNo})</option>)}
+              </select>
+              {studentsInSection.length === 0 && <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 4 }}>No students found in this section yet.</p>}
+
+              <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                <Button type="submit">Save Changes</Button>
+                <Button variant="ghost" type="button" onClick={() => setShowEditSectionModal(false)}>Cancel</Button>
               </div>
             </form>
           </div>
