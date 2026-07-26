@@ -37,11 +37,16 @@ export const listSections = asyncHandler(async (req, res) => {
     name: s.name,
     classTeacher: s.classTeacherId?.displayName || null,
     classTeacherId: s.classTeacherId?._id?.toString() ?? null,
+    classRepresentativeId: s.classRepresentativeId?._id?.toString() ?? null,
   }));
   sendSuccess(res, dtos, 'Sections fetched');
 });
 export const createSection = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.createSection(req.body), 'Section created', 201);
+});
+
+export const updateSection = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.updateSection(req.params.id, req.body), 'Section updated', 200);
 });
 export const bulkCreateSections = asyncHandler(async (req, res) => {
   const rows = parseCsvRows(req);
@@ -92,6 +97,7 @@ function toSectionDto(s) {
     name: s.name,
     classTeacher: s.classTeacherId?.displayName || null,
     classTeacherId: s.classTeacherId?._id?.toString() ?? null,
+    classRepresentativeId: s.classRepresentativeId?._id?.toString() ?? null,
   };
 }
 

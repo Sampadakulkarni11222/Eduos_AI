@@ -200,6 +200,10 @@ export const api = {
   mySections: () => request<SectionDto[]>('/academics/sections/mine'),
   myOfferings: () => request<OfferingDto[]>('/academics/offerings/mine'),
   allSections: () => request<SectionDto[]>('/academics/sections'),
+  createSection: (body: { gradeId: string; name: string; classTeacherId?: string }) =>
+    request<SectionDto>('/academics/sections', { method: 'POST', body: JSON.stringify(body) }),
+  updateSection: (id: string, body: { classTeacherId?: string; classRepresentativeId?: string }) =>
+    request<SectionDto>(`/academics/sections/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   assignSection: (body: { studentId: string; sectionId: string; academicYearId: string; rollNo?: string }) =>
     request<{ id: string }>('/enrollments', { method: 'POST', body: JSON.stringify(body) }),
   nextRollNo: (sectionId: string, academicYearId: string) =>
