@@ -213,8 +213,7 @@ function InfoField({ label, value }: { label: string; value: string }) {
 export default function MyClassesPage() {
   const [students, setStudents] = useState<StudentListItem[] | null>(null);
   const [err, setErr] = useState(false);
-  const [divisionSearch, setDivisionSearch] = useState('');
-  const [studentSearch, setStudentSearch] = useState('');
+  const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [viewingId, setViewingId] = useState<string | null>(null);
 
@@ -222,23 +221,24 @@ export default function MyClassesPage() {
 
   // Group by class label — scope already limits to sections this teacher teaches.
   const byClass = useMemo(() => {
-    const q = studentSearch.trim().toLowerCase();
-    const filteredStudents = q
-      ? (students ?? []).filter((s) => s.name.toLowerCase().includes(q))
-      : (students ?? []);
-    return filteredStudents.reduce<Record<string, StudentListItem[]>>((acc, s) => {
+    return (students ?? []).reduce<Record<string, StudentListItem[]>>((acc, s) => {
       const k = s.enrollment?.class ?? 'Unassigned';
       (acc[k] ??= []).push(s); return acc;
     }, {});
-  }, [students, studentSearch]);
+  }, [students]);
 
-  const divisionQuery = divisionSearch.trim().toLowerCase();
-  const visibleClasses = Object.entries(byClass).filter(([cls]) =>
-    !divisionQuery || cls.toLowerCase().includes(divisionQuery),
-  );
+  const query = search.trim().toLowerCase();
+  // A class matches on its own name (show every student) or on any student's name within it (show just those students).
+  const visibleClasses = Object.entries(byClass)
+    .map<[string, StudentListItem[]]>(([cls, list]) => {
+      if (!query) return [cls, list];
+      if (cls.toLowerCase().includes(query)) return [cls, list];
+      return [cls, list.filter((s) => s.name.toLowerCase().includes(query))];
+    })
+    .filter(([, list]) => list.length > 0);
 
-  // While either search is active, force every matching class open so results aren't hidden behind a collapsed card.
-  const searching = !!divisionQuery || !!studentSearch.trim();
+  // While search is active, force every matching class open so results aren't hidden behind a collapsed card.
+  const searching = !!query;
   const isOpen = (cls: string) => searching || !collapsed.has(cls);
 
   const toggleClass = (cls: string) => {
@@ -269,17 +269,10 @@ export default function MyClassesPage() {
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16, alignItems: 'center' }}>
             <input
               className="input"
-              placeholder="Search division…"
-              value={divisionSearch}
-              onChange={(e) => setDivisionSearch(e.target.value)}
-              style={{ maxWidth: 220, width: '100%', flex: '1 1 160px' }}
-            />
-            <input
-              className="input"
-              placeholder="Search student name…"
-              value={studentSearch}
-              onChange={(e) => setStudentSearch(e.target.value)}
-              style={{ maxWidth: 260, width: '100%', flex: '1 1 200px' }}
+              placeholder="Search division or student name…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ maxWidth: 320, width: '100%', flex: '1 1 220px' }}
             />
             {visibleClasses.length > 0 && (
               <Button variant="soft" small onClick={toggleAll} disabled={searching} style={{ marginLeft: 'auto' }}>
