@@ -33,6 +33,7 @@ const sectionSchema = new Schema(
     gradeId: { type: Schema.Types.ObjectId, ref: 'Grade', required: true },
     name: { type: String, required: true, trim: true }, // "A"
     classTeacherId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
+    classRepresentativeId: { type: Schema.Types.ObjectId, ref: 'Student', default: null },
   },
   { timestamps: true }
 );

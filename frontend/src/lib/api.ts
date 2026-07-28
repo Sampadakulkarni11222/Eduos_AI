@@ -224,6 +224,10 @@ export const api = {
   myOfferings: () => request<OfferingDto[]>('/academics/offerings/mine'),
   allSections: (gradeId?: string) =>
     request<SectionDto[]>(`/academics/sections${gradeId ? `?gradeId=${gradeId}` : ''}`),
+  createSection: (body: { gradeId: string; name: string; classTeacherId?: string }) =>
+    request<SectionDto>('/academics/sections', { method: 'POST', body: JSON.stringify(body) }),
+  updateSection: (id: string, body: { classTeacherId?: string; classRepresentativeId?: string }) =>
+    request<SectionDto>(`/academics/sections/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   assignSection: (body: { studentId: string; sectionId: string; academicYearId: string; rollNo?: string }) =>
     request<{ id: string }>('/enrollments', { method: 'POST', body: JSON.stringify(body) }),
   nextRollNo: (sectionId: string, academicYearId: string) =>
@@ -243,8 +247,6 @@ export const api = {
   createGrade: (body: { name: string; level: number }) =>
     request<{ id: string }>('/academics/grades', { method: 'POST', body: JSON.stringify(body) }),
   bulkCreateGrades: (file: File) => uploadCsv('/academics/grades/bulk', file),
-  createSection: (body: { gradeId: string; name: string; classTeacherId?: string }) =>
-    request<{ id: string }>('/academics/sections', { method: 'POST', body: JSON.stringify(body) }),
   bulkCreateSections: (file: File) => uploadCsv('/academics/sections/bulk', file),
   listSubjects: async () => {
     const raw: any[] = await request<any[]>('/academics/subjects');

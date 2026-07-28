@@ -75,7 +75,7 @@ export async function bulkCreateGrades(rows) {
 
 // ── Sections ──
 export const listSections = (gradeId) =>
-  Section.find(gradeId ? { gradeId } : {}).populate('gradeId classTeacherId').sort({ name: 1 });
+  Section.find(gradeId ? { gradeId } : {}).populate('gradeId classTeacherId classRepresentativeId').sort({ name: 1 });
 
 /**
  * Returns sections the actor is directly linked to:
@@ -85,7 +85,7 @@ export const listSections = (gradeId) =>
 export async function getMySections(actor) {
   if (actor.roleKey === 'TEACHER') {
     const sectionIds = await getTeacherSectionIds(actor.profileId);
-    return Section.find({ _id: { $in: sectionIds } }).populate('gradeId classTeacherId').sort({ name: 1 });
+    return Section.find({ _id: { $in: sectionIds } }).populate('gradeId classTeacherId classRepresentativeId').sort({ name: 1 });
   }
   return listSections();
 }
@@ -108,6 +108,19 @@ export async function createSection(data) {
   const grade = await Grade.findById(data.gradeId);
   if (!grade) throw new AppError('Grade not found', 404);
   return Section.create(data);
+}
+
+export async function updateSection(id, updates) {
+  const section = await Section.findById(id);
+  if (!section) throw new AppError('Section not found', 404);
+  
+  if (updates.name !== undefined) section.name = updates.name;
+  if (updates.gradeId !== undefined) section.gradeId = updates.gradeId;
+  if (updates.classTeacherId !== undefined) section.classTeacherId = updates.classTeacherId;
+  if (updates.classRepresentativeId !== undefined) section.classRepresentativeId = updates.classRepresentativeId;
+  
+  await section.save();
+  return section;
 }
 
 export async function bulkCreateSections(rows) {

@@ -59,7 +59,7 @@ export interface Paged<T> {
   nextCursor: string | null;
 }
 
-export interface SectionDto { id: string; name: string; gradeName: string; classTeacher?: string | null; classTeacherId?: string | null }
+export interface SectionDto { id: string; name: string; gradeName: string; classTeacher?: string | null; classTeacherId?: string | null; classRepresentativeId?: string | null }
 export interface OfferingDto { id: string; subject: string; subjectId?: string; sectionId: string; sectionName: string; gradeName?: string; teacherName?: string | null }
 export interface GradeDto { id: string; name: string; level: number }
 export interface SubjectDto { id: string; name: string; code?: string | null }
@@ -239,11 +239,11 @@ export interface TeacherDashboardDto {
   recentAnnouncements: Array<{ _id: string; title: string; content: string; publishedAt: string }>;
 }
 export interface ParentDashboardDto {
-  linkedChildren: Array<{ studentId: string; name: string; admissionNo: string; gender?: string; attendance: { total: number; present: number; percentage: number } }>;
+  linkedChildren: Array<{ studentId: string; name: string; admissionNo: string; gender?: string; attendance: { total: number; present: number; percentage: number }; classTeacher?: { name: string; phone: string | null; email: string | null } | null; classRepresentative?: { name: string } | null }>;
   pendingFees: number; pendingFeesPaise: number;
   feeInvoices: Array<{ invoiceNo: string; status: string; total: number; paid: number; due: number; dueOn: string }>;
   upcomingExams: Array<{ examName: string; subject: string; examDate: string }>;
-  timetable: Array<{ periodNo: number; startTime: string; endTime: string; subject: string; section: string }>;
+  timetable: Array<{ periodNo: number; startTime: string; endTime: string; subject: string; section: string; sectionId: string | null }>;
   recentResults: Array<{ examName: string; subject: string; marks: number; maxMarks: number; grade: string }>;
   announcements: Array<{ _id: string; title: string; content: string; publishedAt: string }>;
 }
