@@ -1,6 +1,6 @@
 'use client';
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { Button, Spinner } from './ui';
 import { useAuth } from '@/lib/auth';
 
@@ -50,8 +50,11 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
       const aiMsg: Msg = { role: 'assistant', text: res.reply, tools: res.toolsUsed };
       msgsRef.current = [...msgsRef.current, aiMsg];
       setMsgs([...msgsRef.current]);
-    } catch {
-      const errMsg: Msg = { role: 'assistant', text: 'Sorry — I could not reach the assistant just now.' };
+    } catch (err) {
+      const text = err instanceof ApiError && err.status === 403
+        ? "You don't have access to this feature."
+        : 'Sorry — I could not reach the assistant just now.';
+      const errMsg: Msg = { role: 'assistant', text };
       msgsRef.current = [...msgsRef.current, errMsg];
       setMsgs([...msgsRef.current]);
     } finally { setBusy(false); }
@@ -73,13 +76,15 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   } else if (role === 'STUDENT') {
     suggestions = [
       "What's my attendance percentage?",
-      'Do I have any pending assignments due soon?',
-      'Show my midterm exam marks'
+      'Do I have any assignments due?',
+      'Show my grades',
+      'What subjects do I have?'
     ];
   } else if (role === 'PARENT') {
     suggestions = [
       'How is my child doing this month?',
       "What's the attendance and pending homework for my child?",
+      "Show my child's grades",
       'Are there any pending fee payments?'
     ];
   } else if (role === 'LIBRARIAN') {

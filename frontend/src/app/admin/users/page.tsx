@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Avatar, Button, Card, EmptyState, Input, Pill, SkeletonRows, useToast } from '@/components/ui';
+import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api } from '@/lib/api';
 import type { UserDto, SectionDto } from '@/lib/types';
 
@@ -14,6 +15,7 @@ export default function UsersPage() {
 
   // Create User Modal states
   const [showModal, setShowModal] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
   const [roleKey, setRoleKey] = useState<'STUDENT' | 'TEACHER'>('STUDENT');
   const [displayName, setDisplayName] = useState('');
   const [phone, setPhone] = useState('');
@@ -84,12 +86,27 @@ export default function UsersPage() {
 
   return (
     <PortalShell expectedSlug="admin" topbar={{ title: 'User Management', desc: 'Phone-rooted accounts linked to one or more role profiles.' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div style={{ maxWidth: 320, width: '100%' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <div style={{ maxWidth: 320, width: '100%', flex: '1 1 220px' }}>
           <Input type="search" value={search} onChange={(e) => onSearch(e.target.value)} placeholder="Search by name..." aria-label="Search" />
         </div>
-        <Button onClick={() => setShowModal(true)}>Add User</Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button variant="soft" onClick={() => setShowBulkModal(true)}>Bulk Upload</Button>
+          <Button onClick={() => setShowModal(true)}>Add User</Button>
+        </div>
       </div>
+
+      {showBulkModal && (
+        <BulkUploadModal
+          title="Bulk create users"
+          description="Upload a CSV to create many users at once. Student rows may include gradeName + sectionName to assign a class immediately."
+          templateHeaders={['roleKey', 'displayName', 'phone', 'email', 'password', 'admissionNo', 'gradeName', 'sectionName']}
+          templateSampleRow={['STUDENT', 'Diya Tharian', '+919555000111', 'diya@example.com', '', 'CA-2026-005', 'Grade 5', 'A']}
+          onSubmit={(file) => api.bulkCreateUsers(file)}
+          onClose={() => setShowBulkModal(false)}
+          onImported={(r) => { toast(`Created ${r.imported} of ${r.imported + r.failed} users.`, r.failed > 0 ? 'error' : 'success'); void load(search); }}
+        />
+      )}
 
       <Card pad={false}>
         {items === null && !err && <div style={{ padding: 20 }}><SkeletonRows rows={6} /></div>}
@@ -98,7 +115,7 @@ export default function UsersPage() {
           <EmptyState title={search ? 'No matches' : 'No users yet'} sub={search ? `Nothing matches "${search}".` : 'Users appear here once records are created.'} />
         )}
         {items && items.length > 0 && (
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead>
               <tr>
                 <th>Name</th>
@@ -111,22 +128,22 @@ export default function UsersPage() {
             <tbody>
               {items.map((u) => (
                 <tr key={u.id}>
-                  <td>
+                  <td data-label="Name">
                     <span className="row-flex">
                       <Avatar name={u.displayName} />
                       <span className="cell-primary">{u.displayName}</span>
                     </span>
                   </td>
-                  <td>
+                  <td data-label="Role">
                     <Pill tone={u.roleKey === 'ADMIN' ? 'red' : u.roleKey === 'TEACHER' ? 'blue' : u.roleKey === 'STUDENT' ? 'green' : 'gray'}>
                       {u.roleKey}
                     </Pill>
                   </td>
-                  <td>
+                  <td data-label="Phone / Email">
                     <div style={{ fontSize: 13, fontWeight: 500 }}>{u.phone}</div>
                     {u.email && <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{u.email}</div>}
                   </td>
-                  <td>
+                  <td data-label="Class Details">
                     {u.roleKey === 'STUDENT' && u.studentDetails ? (
                       <div>
                         <div style={{ fontWeight: 600 }}>{u.studentDetails.class || 'No Class'}</div>
@@ -138,7 +155,7 @@ export default function UsersPage() {
                       <span style={{ color: 'var(--text-faint)' }}>—</span>
                     )}
                   </td>
-                  <td>
+                  <td data-label="Status">
                     <Pill tone="green">Active</Pill>
                   </td>
                 </tr>

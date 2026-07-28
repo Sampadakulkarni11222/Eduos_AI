@@ -7,5 +7,5 @@ export const list = asyncHandler(async (_req, res) => {
 });
 
 export const create = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.create(req.actor, req.body), 'Announcement published', 201);
+  sendSuccess(res, await service.create(req.actor, req.scope, req.body), 'Announcement published', 201);
 });

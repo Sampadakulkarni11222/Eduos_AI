@@ -4,7 +4,7 @@ import { AnnouncementsView } from '@/components/announcements-view';
 import { useAuth } from '@/lib/auth';
 export default function Announcements() {
   const { me } = useAuth();
-  const canPublish = ['ADMIN','OWNER','PRINCIPAL','TEACHER'].includes(me?.roleKey ?? '');
+  const canPublish = ['ADMIN','OWNER','PRINCIPAL','TEACHER'].includes(me?.profile?.role ?? '');
   return (
     <PortalShell expectedSlug="teacher" topbar={{ title: 'Announcements', desc: 'School notices and circulars.' }}>
       <AnnouncementsView canPublish={canPublish} />

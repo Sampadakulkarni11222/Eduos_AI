@@ -52,15 +52,15 @@ export default function PrincipalWorkload() {
       {!loading && rows.length === 0 && <EmptyState title="No data" sub="Workload data appears once sections and offerings are configured." />}
       {rows.length > 0 && (
         <Card pad={false}>
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead><tr><th>Grade</th><th style={{ textAlign: 'center' }}>Sections</th><th style={{ textAlign: 'center' }}>Offerings</th><th>Section Names</th></tr></thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.grade}>
-                  <td className="cell-primary">{r.grade}</td>
-                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{r.sections.length}</td>
-                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{r.totalOfferings}</td>
-                  <td style={{ fontSize: 12, color: 'var(--text-2)' }}>{r.sections.map((s) => s.name).join(', ')}</td>
+                  <td className="cell-primary" data-label="Grade">{r.grade}</td>
+                  <td style={{ textAlign: 'center', fontWeight: 600 }} data-label="Sections">{r.sections.length}</td>
+                  <td style={{ textAlign: 'center', fontWeight: 600 }} data-label="Offerings">{r.totalOfferings}</td>
+                  <td style={{ fontSize: 12, color: 'var(--text-2)' }} data-label="Section Names">{r.sections.map((s) => s.name).join(', ')}</td>
                 </tr>
               ))}
             </tbody>

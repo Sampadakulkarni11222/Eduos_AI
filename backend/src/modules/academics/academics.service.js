@@ -97,7 +97,9 @@ export async function getMySections(actor) {
  */
 export async function getMyOfferings(actor) {
   if (actor.roleKey === 'TEACHER') {
-    return SubjectOffering.find({ teacherId: actor.profileId }).populate('sectionId subjectId termId teacherId');
+    return SubjectOffering.find({ teacherId: actor.profileId })
+      .populate({ path: 'sectionId', populate: { path: 'gradeId' } })
+      .populate('subjectId termId teacherId');
   }
   return listOfferings();
 }
@@ -195,7 +197,9 @@ export async function bulkCreateSubjects(rows) {
 
 // ── Subject Offerings ──
 export const listOfferings = (filter = {}) =>
-  SubjectOffering.find(filter).populate('sectionId subjectId termId teacherId');
+  SubjectOffering.find(filter)
+    .populate({ path: 'sectionId', populate: { path: 'gradeId' } })
+    .populate('subjectId termId teacherId');
 
 export async function createOffering(data) {
   const [section, subject, term] = await Promise.all([

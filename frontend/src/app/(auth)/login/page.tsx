@@ -43,6 +43,10 @@ function errMsg(x: unknown): string {
       OTP_EXPIRED: 'This code has expired. Request a new one.',
       OTP_LOCKED: 'Too many wrong attempts. Please request a new code.',
       OTP_NOT_FOUND: 'No code was requested, or it was already used. Request a new one.',
+      EMAIL_NOT_REGISTERED: 'This email is not registered. Please check the address or contact your school admin.',
+      PHONE_NOT_REGISTERED: 'This phone number is not registered. Please check the number or contact your school admin.',
+      INVALID_EMAIL: 'Enter a valid email address.',
+      INVALID_PHONE: 'Enter a valid 10-digit phone number.',
       OTP_DELIVERY_UNAVAILABLE: 'Message delivery is not configured yet. Contact your administrator.',
       RATE_LIMITED: 'Too many attempts. Please wait a few minutes and try again.',
       BAD_CREDENTIALS: 'Email or password is incorrect.',
@@ -55,12 +59,27 @@ function errMsg(x: unknown): string {
   return 'Cannot reach the server. Check your connection.';
 }
 
-function formatIdentifier(input: string): { value: string; isEmail: boolean } {
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Mirrors the backend's isValidPhone (auth/validators.js): "+91" + exactly 10
+ * digits, any other "+<country code>" + 8-15 digits, or a bare 10-digit local
+ * number. Catches things like the 9-digit "+91000000004" before it ever hits
+ * the network.
+ */
+function isValidPhone(phone: string): boolean {
+  if (phone.startsWith('+91')) return /^\+91\d{10}$/.test(phone);
+  if (phone.startsWith('+')) return /^\+\d{8,15}$/.test(phone);
+  return /^\d{10}$/.test(phone);
+}
+
+function formatIdentifier(input: string): { value: string; isEmail: boolean; valid: boolean } {
   const trimmed = input.trim();
   if (trimmed.includes('@')) {
-    return { value: trimmed.toLowerCase(), isEmail: true };
+    const value = trimmed.toLowerCase();
+    return { value, isEmail: true, valid: EMAIL_RE.test(value) };
   }
-  
+
   let phone = trimmed.replace(/[\s\-\(\)]/g, ''); // strip spaces, dashes, parentheses
   if (!phone.startsWith('+')) {
     if (phone.length === 10) {
@@ -69,7 +88,7 @@ function formatIdentifier(input: string): { value: string; isEmail: boolean } {
       phone = `+${phone}`;
     }
   }
-  return { value: phone, isEmail: false };
+  return { value: phone, isEmail: false, valid: isValidPhone(phone) };
 }
 
 /* ── Shared premium input style ───────────────────────────────── */
@@ -330,14 +349,20 @@ export default function LoginPage() {
   const handleSendOtp = async (e: FormEvent) => {
     e.preventDefault();
     if (!identifier.trim()) return;
-    setBusy(true);
     setErr(null);
     setPageErr(null);
+
+    const { value, isEmail, valid } = formatIdentifier(identifier);
+    if (!valid) {
+      setErr(isEmail ? 'Enter a valid email address.' : 'Enter a valid 10-digit phone number.');
+      return;
+    }
+
+    setBusy(true);
     try {
-      const { value, isEmail } = formatIdentifier(identifier);
       setIsEmailType(isEmail);
       setNormalizedVal(value);
-      
+
       let res;
       if (isEmail) {
         res = await api.requestEmailOtp(value);

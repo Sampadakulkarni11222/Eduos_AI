@@ -1,8 +1,8 @@
 'use client';
 import { FormEvent, useEffect, useState } from 'react';
 import { Button, Card, EmptyState, Pill, SkeletonRows } from './ui';
-import { api } from '@/lib/api';
-import type { TicketDto, TicketThread } from '@/lib/types';
+import { api, ApiError } from '@/lib/api';
+import type { StudentListItem, TicketDto, TicketThread } from '@/lib/types';
 
 const STATUS_TONE: Record<string, 'green' | 'amber' | 'red' | 'gray' | 'blue'> = {
   NEW: 'blue', OPEN: 'amber', WAITING: 'gray', RESOLVED: 'green', CLOSED: 'gray',
@@ -32,7 +32,8 @@ export function TicketsView({ canCreate, canRespond }: { canCreate: boolean; can
                   <Pill tone={STATUS_TONE[t.status] ?? 'gray'}>{t.status.toLowerCase()}</Pill>
                 </div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 3 }}>
-                  {t.routedToRoleKey ? `Routed to ${t.routedToRoleKey.toLowerCase()}` : ''} · {t.messageCount} message{t.messageCount === 1 ? '' : 's'}
+                  {t.studentName ? `Re: ${t.studentName} · ` : ''}
+                  {t.routedToRoleKey ? `Routed to ${t.routedToRoleKey.replace('_', ' ').toLowerCase()}` : ''} · {t.messageCount} message{t.messageCount === 1 ? '' : 's'}
                 </div>
               </button>
             ))}
@@ -96,6 +97,7 @@ function ThreadPanel({ ticketId, canRespond, onChanged }: { ticketId: string; ca
     <Card pad={false} style={{ display: 'flex', flexDirection: 'column', maxHeight: '70vh' }}>
       <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--hairline)' }}>
         <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>{thread.subject}</strong>
+        {thread.studentName && <div style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 2 }}>Re: {thread.studentName}</div>}
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {thread.messages.map((m: any) => (
@@ -128,13 +130,24 @@ function NewTicket({ onDone }: { onDone: () => void }) {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [routedToRoleKey, setRoute] = useState('ADMIN');
+  const [studentId, setStudentId] = useState('');
+  const [kids, setKids] = useState<StudentListItem[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => { api.students().then((r) => { setKids(r.items); if (r.items[0]) setStudentId(r.items[0].id); }).catch(() => setKids([])); }, []);
+
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setBusy(true); setErr(null);
-    try { await api.createTicket({ subject, body, routedToRoleKey }); onDone(); }
-    catch { setErr('Failed to raise ticket. Please try again.'); }
-    finally { setBusy(false); }
+    try {
+      await api.createTicket({
+        subject, body, routedToRoleKey,
+        studentId: routedToRoleKey === 'CLASS_TEACHER' ? studentId : undefined,
+      });
+      onDone();
+    } catch (x) {
+      setErr(x instanceof ApiError ? x.message : 'Failed to raise ticket. Please try again.');
+    } finally { setBusy(false); }
   };
   return (
     <Card style={{ marginBottom: 14 }}>
@@ -145,8 +158,17 @@ function NewTicket({ onDone }: { onDone: () => void }) {
         <textarea className="field-input" rows={2} value={body} onChange={(e) => setBody(e.target.value)} required />
         <div className="field-label">Route to</div>
         <select className="field-input" value={routedToRoleKey} onChange={(e) => setRoute(e.target.value)}>
+          {kids && kids.length > 0 && <option value="CLASS_TEACHER">Class teacher</option>}
           <option value="ADMIN">Admin office</option><option value="WARDEN">Warden</option><option value="LIBRARIAN">Librarian</option><option value="PRINCIPAL">Principal</option>
         </select>
+        {routedToRoleKey === 'CLASS_TEACHER' && kids && kids.length > 0 && (
+          <>
+            <div className="field-label">Regarding</div>
+            <select className="field-input" value={studentId} onChange={(e) => setStudentId(e.target.value)} required>
+              {kids.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
+            </select>
+          </>
+        )}
         {err && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 8 }}>{err}</p>}
         <Button type="submit" disabled={busy}>{busy ? 'Raising…' : 'Raise ticket'}</Button>
       </form>

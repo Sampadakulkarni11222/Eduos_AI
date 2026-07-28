@@ -6,6 +6,19 @@ services:
     rootDir: backend
     buildCommand: npm install && npm run build
     startCommand: npm start
+    # NOTE — uploaded files (documents/course material/ID cards live under
+    # backend/uploads) do NOT persist across deploys/restarts on Render's
+    # free plan: it has no writable disk that survives a redeploy. To fix
+    # this properly, either (a) upgrade this service to a paid plan and add
+    # a `disk:` block here mounted at `backend/uploads`, e.g.:
+    #   disk:
+    #     name: uploads
+    #     mountPath: /opt/render/project/src/backend/uploads
+    #     sizeGB: 1
+    # or (b) move file storage to S3-compatible object storage. Left
+    # undeclared here (rather than added and silently failing to deploy on
+    # the free plan) — pick one and apply it before relying on uploads in
+    # production.
     envVars:
       - key: NODE_ENV
         value: production
