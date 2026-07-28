@@ -21,8 +21,14 @@ export default function AdminAttendance() {
     }).catch(() => setSections([]));
   }, []);
   useEffect(() => {
-    if (!sectionId) return; setLoading(true);
-    api.attendanceRoster(sectionId, date).then(setData).catch(() => setData(null)).finally(() => setLoading(false));
+    if (!sectionId) return;
+    let active = true;
+    setLoading(true);
+    api.attendanceRoster(sectionId, date)
+      .then((r) => { if (active) setData(r); })
+      .catch(() => { if (active) setData(null); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [sectionId, date]);
 
   return (
@@ -43,14 +49,14 @@ export default function AdminAttendance() {
       {!loading && data && data.roster.length === 0 && <EmptyState title="No records" sub="No attendance marked for this section and date." />}
       {data && data.roster.length > 0 && (
         <Card pad={false}>
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead><tr><th>Roll</th><th>Student</th><th>Status</th></tr></thead>
             <tbody>
               {data.roster.map((r) => (
                 <tr key={r.enrollmentId}>
-                  <td style={{ color: 'var(--text-faint)' }}>{r.rollNo ?? '—'}</td>
-                  <td className="cell-primary">{r.studentName}</td>
-                  <td style={{ color: statusColor(r.status) }}>{r.status ?? 'Not marked'}</td>
+                  <td style={{ color: 'var(--text-faint)' }} data-label="Roll">{r.rollNo ?? '—'}</td>
+                  <td className="cell-primary" data-label="Student">{r.studentName}</td>
+                  <td style={{ color: statusColor(r.status) }} data-label="Status">{r.status ?? 'Not marked'}</td>
                 </tr>
               ))}
             </tbody>

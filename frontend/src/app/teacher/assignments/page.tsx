@@ -1,5 +1,5 @@
 'use client';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from '@/components/ui';
 import { api, ApiError, fileHref } from '@/lib/api';
@@ -9,14 +9,44 @@ const SUB_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'gray'> = {
   PENDING: 'gray', SUBMITTED: 'blue', LATE: 'amber', GRADED: 'green', EXEMPT: 'gray',
 };
 
+const emptyFilters = { sectionId: '', subject: '', chapter: '', dateFrom: '', dateTo: '' };
+const CHAPTER_OPTIONS = Array.from({ length: 20 }, (_, i) => `Chapter ${i + 1}`);
+
 export default function AssignmentsPage() {
   const [items, setItems] = useState<AssignmentDto[] | null>(null);
   const [offerings, setOfferings] = useState<OfferingDto[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [filters, setFilters] = useState(emptyFilters);
 
   const reload = () => api.assignments().then(setItems).catch(() => setItems([]));
   useEffect(() => { void reload(); api.myOfferings().then(setOfferings).catch(() => {}); }, []);
+
+  // One combined "class" option per section — labeled with its grade so same-named sections across grades stay distinguishable.
+  const classes = useMemo(() => {
+    const seen = new Map<string, string>();
+    items?.forEach((a) => {
+      if (a.sectionId && a.sectionName) seen.set(a.sectionId, a.class || (a.gradeName ? `${a.gradeName} - ${a.sectionName}` : a.sectionName));
+    });
+    return [...seen.entries()];
+  }, [items]);
+  const subjects = useMemo(() => [...new Set(items?.map((a) => a.subject) ?? [])].sort(), [items]);
+  // Fixed Chapter 1..20 list, plus any legacy free-text chapter values already in use.
+  const chapters = useMemo(() => {
+    const extra = (items ?? []).map((a) => a.chapter).filter((c): c is string => !!c && !CHAPTER_OPTIONS.includes(c));
+    return [...CHAPTER_OPTIONS, ...new Set(extra)];
+  }, [items]);
+
+  const filtered = useMemo(() => items?.filter((a) => {
+    if (filters.sectionId && a.sectionId !== filters.sectionId) return false;
+    if (filters.subject && a.subject !== filters.subject) return false;
+    if (filters.chapter && a.chapter !== filters.chapter) return false;
+    if (filters.dateFrom && new Date(a.dueAt) < new Date(filters.dateFrom)) return false;
+    if (filters.dateTo && new Date(a.dueAt) > new Date(`${filters.dateTo}T23:59:59`)) return false;
+    return true;
+  }) ?? null, [items, filters]);
+
+  const hasFilters = Object.values(filters).some(Boolean);
 
   return (
     <PortalShell expectedSlug="teacher" topbar={{
@@ -24,22 +54,47 @@ export default function AssignmentsPage() {
       actions: <Button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Close' : '+ New assignment'}</Button>,
     }}>
       {showForm && <NewAssignment offerings={offerings} onCreated={() => { setShowForm(false); void reload(); }} />}
+
+      {items && items.length > 0 && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <select className="input" value={filters.sectionId} onChange={(e) => setFilters((f) => ({ ...f, sectionId: e.target.value }))} aria-label="Class">
+            <option value="">All classes</option>
+            {classes.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select>
+          <select className="input" value={filters.subject} onChange={(e) => setFilters((f) => ({ ...f, subject: e.target.value }))} aria-label="Subject">
+            <option value="">All subjects</option>
+            {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select className="input" value={filters.chapter} onChange={(e) => setFilters((f) => ({ ...f, chapter: e.target.value }))} aria-label="Chapter">
+            <option value="">All chapters</option>
+            {chapters.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <input className="input" type="date" value={filters.dateFrom} onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))} aria-label="Due from" title="Due from" />
+          <input className="input" type="date" value={filters.dateTo} onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value }))} aria-label="Due to" title="Due to" />
+          {hasFilters && <Button variant="ghost" small onClick={() => setFilters(emptyFilters)}>Clear filters</Button>}
+        </div>
+      )}
+
       {items === null && <Card><SkeletonRows rows={4} /></Card>}
       {items?.length === 0 && <EmptyState title="No assignments yet" sub="Create your first assignment — students can submit from their portal." />}
-      {items && items.length > 0 && (
+      {filtered && filtered.length === 0 && items && items.length > 0 && (
+        <EmptyState title="No matching assignments" sub="Try widening or clearing your filters." />
+      )}
+      {filtered && filtered.length > 0 && (
         <Card pad={false}>
-          <table className="data-table">
-            <thead><tr><th>Title</th><th>Class</th><th>Subject</th><th>Due</th><th>Type</th><th>Submitted</th><th></th></tr></thead>
+          <table className="data-table data-table-cards">
+            <thead><tr><th>Title</th><th>Class</th><th>Subject</th><th>Chapter</th><th>Due</th><th>Type</th><th>Submitted</th><th></th></tr></thead>
             <tbody>
-              {items.map((a) => (
+              {filtered.map((a) => (
                 <tr key={a.id}>
-                  <td className="cell-primary">{a.title}</td>
-                  <td>{a.class}</td>
-                  <td>{a.subject}</td>
-                  <td>{fmtDue(a.dueAt)}</td>
-                  <td><Pill tone="blue">{a.type.toLowerCase()}</Pill></td>
-                  <td>{a.submissionCount}</td>
-                  <td>
+                  <td className="cell-primary" data-label="Title">{a.title}</td>
+                  <td data-label="Class">{a.class}</td>
+                  <td data-label="Subject">{a.subject}</td>
+                  <td data-label="Chapter">{a.chapter || '—'}</td>
+                  <td data-label="Due">{fmtDue(a.dueAt)}</td>
+                  <td data-label="Type"><Pill tone="blue">{a.type.toLowerCase()}</Pill></td>
+                  <td data-label="Submitted">{a.submissionCount}</td>
+                  <td data-label="Actions">
                     <Button variant="soft" small onClick={() => setOpenId(a.id)}>Submissions</Button>
                   </td>
                 </tr>
@@ -88,22 +143,30 @@ function SubmissionsModal({ assignmentId, onClose, onGraded }: { assignmentId: s
 
         {roster && (
           <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-            <table className="data-table">
+            <table className="data-table data-table-cards">
               <thead><tr><th>Roll</th><th>Student</th><th>Status</th><th>Submitted</th><th>Work</th><th>Marks</th><th></th></tr></thead>
               <tbody>
                 {roster.rows.map((r) => (
                   <tr key={r.enrollmentId}>
-                    <td>{r.rollNo ?? '—'}</td>
-                    <td className="cell-primary">{r.studentName}</td>
-                    <td><Pill tone={SUB_TONE[r.status] ?? 'gray'}>{r.status.toLowerCase()}</Pill></td>
-                    <td style={{ fontSize: 12.5 }}>{r.submittedAt ? new Date(r.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}</td>
-                    <td>
-                      {r.attachments[0]
-                        ? <a href={fileHref(r.attachments[0])} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: 'var(--accent)', fontWeight: 600 }}>Open</a>
-                        : <span style={{ color: 'var(--text-faint)', fontSize: 12.5 }}>—</span>}
+                    <td data-label="Roll">{r.rollNo ?? '—'}</td>
+                    <td className="cell-primary" data-label="Student">{r.studentName}</td>
+                    <td data-label="Status"><Pill tone={SUB_TONE[r.status] ?? 'gray'}>{r.status.toLowerCase()}</Pill></td>
+                    <td style={{ fontSize: 12.5 }} data-label="Submitted">{r.submittedAt ? new Date(r.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—'}</td>
+                    <td data-label="Work">
+                      {r.attachments.length > 0
+                        ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            {r.attachments.map((att, i) => (
+                              <a key={att} href={fileHref(att)} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: 'var(--accent)', fontWeight: 600 }}>
+                                Open{r.attachments.length > 1 ? ` (${i + 1})` : ''}
+                              </a>
+                            ))}
+                          </div>
+                        )
+                        : <span style={{ color: 'var(--text-faint)', fontSize: 12.5 }}>Not submitted</span>}
                     </td>
-                    <td>{r.marks != null ? `${r.marks}${roster.assignment.maxMarks ? `/${roster.assignment.maxMarks}` : ''}` : '—'}</td>
-                    <td>
+                    <td data-label="Marks">{r.marks != null ? `${r.marks}${roster.assignment.maxMarks ? `/${roster.assignment.maxMarks}` : ''}` : '—'}</td>
+                    <td data-label="Actions">
                       {(r.status === 'SUBMITTED' || r.status === 'LATE' || r.status === 'GRADED') && (
                         <Button variant="soft" small onClick={() => setGrading(r)}>
                           {r.status === 'GRADED' ? 'Regrade' : 'Grade'}
@@ -182,6 +245,7 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
   const [offeringId, setOfferingId] = useState(offerings[0]?.id ?? '');
   const [title, setTitle] = useState('');
   const [type, setType] = useState('HOMEWORK');
+  const [chapter, setChapter] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [maxMarks, setMaxMarks] = useState('20');
   const [busy, setBusy] = useState(false);
@@ -192,7 +256,7 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
     e.preventDefault(); setBusy(true); setErr(null);
     try {
       await api.createAssignment({
-        subjectOfferingId: offeringId, title, type,
+        subjectOfferingId: offeringId, title, type, chapter: chapter || undefined,
         dueAt: new Date(dueAt).toISOString(), maxMarks: maxMarks ? parseInt(maxMarks, 10) : undefined,
       });
       onCreated();
@@ -222,8 +286,15 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
             <input className="field-input" type="number" min={1} value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} />
           </div>
         </div>
-        {err && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 8 }}>{err}</p>}
-        <Button type="submit" disabled={busy || !offeringId}>{busy ? 'Creating…' : 'Create assignment'}</Button>
+        <div style={{ marginTop: 12 }}>
+          <div className="field-label">Chapter (optional)</div>
+          <select className="field-input" value={chapter} onChange={(e) => setChapter(e.target.value)}>
+            <option value="">No chapter</option>
+            {CHAPTER_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        {err && <p style={{ color: 'var(--red)', fontSize: 13, marginTop: 8, marginBottom: 8 }}>{err}</p>}
+        <Button type="submit" disabled={busy || !offeringId} style={{ marginTop: 12 }}>{busy ? 'Creating…' : 'Create assignment'}</Button>
       </form>
     </Card>
   );

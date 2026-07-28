@@ -59,6 +59,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Student Classes', '◑', '/admin/student-classes', { ready: true }),
         item('Teacher Classes', '◐', '/admin/teacher-classes', { ready: true }),
         item('Admission CRM', '◌', '/admin/admissions', { ready: true }),
+        item('Medical Records', '✚', '/admin/medical', { ready: true }),
       ]},
       { title: 'ACADEMIC OPS', items: [
         item('Classroom Mgmt', '▦', '/admin/classrooms', { ready: true }),
@@ -113,6 +114,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Attendance', '☱', '/parent/attendance', { ready: true }),
         item('Assignments', '✐', '/parent/assignments', { ready: true }),
         item('Timetable', '▥', '/parent/timetable', { ready: true }),
+        item('Course Material', '▢', '/parent/material', { ready: true }),
       ]},
       { title: 'SCHOOL LIFE', items: [
         item('Calendar & Events', '▤', '/parent/calendar', { ready: true }),
@@ -138,6 +140,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Assignments', '✐', '/student/assignments', { ready: true }),
         item('Performance', '◉', '/student/performance', { ready: true }),
         item('Attendance', '☱', '/student/attendance', { ready: true }),
+        item('Course Material', '▢', '/student/material', { ready: true }),
       ]},
       { title: 'SCHOOL LIFE', items: [
         item('Calendar & Events', '▤', '/student/calendar', { ready: true }),

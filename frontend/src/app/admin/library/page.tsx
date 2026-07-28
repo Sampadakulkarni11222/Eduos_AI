@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, SkeletonRows, Pill, rupees, useToast } from '@/components/ui';
+import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api, ApiError } from '@/lib/api';
 import type { BookDto, BookIssueDto, StudentListItem } from '@/lib/types';
 
@@ -19,6 +20,9 @@ export default function AdminLibrary() {
 
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [issueForm, setIssueForm] = useState({ studentId: '', bookId: '', dueAt: '' });
+
+  const [showBulkBooks, setShowBulkBooks] = useState(false);
+  const [showBulkIssues, setShowBulkIssues] = useState(false);
 
   const loadBooks = () => {
     api.listBooks(searchQuery).then(setBooks).catch(() => setBooks([]));
@@ -91,7 +95,10 @@ export default function AdminLibrary() {
         <>
           <div style={{ display: 'flex', gap: 16, marginBottom: 16, alignItems: 'center', justifyContent: 'space-between' }}>
             <input className="input" style={{ maxWidth: 300 }} placeholder="Search title or author..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-            <Button onClick={() => setShowBookModal(true)}>Add Book</Button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button variant="soft" onClick={() => setShowBulkBooks(true)}>Bulk Upload</Button>
+              <Button onClick={() => setShowBookModal(true)}>Add Book</Button>
+            </div>
           </div>
 
           <Card pad={false}>
@@ -100,7 +107,7 @@ export default function AdminLibrary() {
               <EmptyState title="No books found" sub="Refine your search or add a new book to the library." />
             )}
             {books && books.length > 0 && (
-              <table className="data-table">
+              <table className="data-table data-table-cards">
                 <thead>
                   <tr>
                     <th>Title</th>
@@ -114,14 +121,14 @@ export default function AdminLibrary() {
                 <tbody>
                   {books.map((b) => (
                     <tr key={b.id}>
-                      <td className="cell-primary">{b.title}</td>
-                      <td>{b.author}</td>
-                      <td style={{ fontFamily: 'monospace' }}>{b.isbn ?? '—'}</td>
-                      <td><Pill tone="gray">{b.category}</Pill></td>
-                      <td>
+                      <td className="cell-primary" data-label="Title">{b.title}</td>
+                      <td data-label="Author">{b.author}</td>
+                      <td style={{ fontFamily: 'monospace' }} data-label="ISBN">{b.isbn ?? '—'}</td>
+                      <td data-label="Category"><Pill tone="gray">{b.category}</Pill></td>
+                      <td data-label="Availability">
                         <strong>{b.availableCopies}</strong> / {b.totalCopies} available
                       </td>
-                      <td>
+                      <td data-label="Action">
                         <Button variant="soft" small disabled={b.availableCopies < 1} onClick={() => {
                           setIssueForm({ ...issueForm, bookId: b.id });
                           setShowIssueModal(true);
@@ -137,13 +144,17 @@ export default function AdminLibrary() {
       )}
 
       {activeTab === 'issued' && (
-        <Card pad={false}>
+        <>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+            <Button variant="soft" onClick={() => setShowBulkIssues(true)}>Bulk Upload</Button>
+          </div>
+          <Card pad={false}>
           {issued === null && <div style={{ padding: 20 }}><SkeletonRows rows={4} /></div>}
           {issued !== null && issued.length === 0 && (
             <EmptyState title="No issued books" sub="Active checked out books will appear here." />
           )}
           {issued && issued.length > 0 && (
-            <table className="data-table">
+            <table className="data-table data-table-cards">
               <thead>
                 <tr>
                   <th>Book Title</th>
@@ -158,17 +169,17 @@ export default function AdminLibrary() {
               <tbody>
                 {issued.map((i) => (
                   <tr key={i.id}>
-                    <td className="cell-primary">{i.bookTitle}</td>
-                    <td>{i.studentName}</td>
-                    <td>{new Date(i.issuedAt).toLocaleDateString('en-IN')}</td>
-                    <td>{new Date(i.dueAt).toLocaleDateString('en-IN')}</td>
-                    <td>{i.returnedAt ? new Date(i.returnedAt).toLocaleDateString('en-IN') : '—'}</td>
-                    <td>
+                    <td className="cell-primary" data-label="Book Title">{i.bookTitle}</td>
+                    <td data-label="Student Name">{i.studentName}</td>
+                    <td data-label="Issued Date">{new Date(i.issuedAt).toLocaleDateString('en-IN')}</td>
+                    <td data-label="Due Date">{new Date(i.dueAt).toLocaleDateString('en-IN')}</td>
+                    <td data-label="Returned">{i.returnedAt ? new Date(i.returnedAt).toLocaleDateString('en-IN') : '—'}</td>
+                    <td data-label="Status">
                       <Pill tone={i.status === 'RETURNED' ? 'green' : i.status === 'OVERDUE' ? 'red' : 'amber'}>
                         {i.status}
                       </Pill>
                     </td>
-                    <td>
+                    <td data-label="Action">
                       {!i.returnedAt && (
                         <Button variant="ghost" small onClick={() => handleReturnBook(i.id)}>Return</Button>
                       )}
@@ -178,7 +189,8 @@ export default function AdminLibrary() {
               </tbody>
             </table>
           )}
-        </Card>
+          </Card>
+        </>
       )}
 
       {/* Add Book Modal */}
@@ -255,6 +267,30 @@ export default function AdminLibrary() {
             </form>
           </div>
         </div>
+      )}
+
+      {showBulkBooks && (
+        <BulkUploadModal
+          title="Bulk upload books"
+          description="Upload a CSV to add many books to the catalog at once."
+          templateHeaders={['title', 'author', 'isbn', 'category', 'totalCopies']}
+          templateSampleRow={['Introduction to Algorithms', 'Thomas H. Cormen', '9780262033848', 'TEXTBOOK', '3']}
+          onSubmit={(file) => api.bulkCreateBooks(file)}
+          onClose={() => setShowBulkBooks(false)}
+          onImported={(r) => { toast(`Added ${r.imported} of ${r.imported + r.failed} books.`, r.failed > 0 ? 'error' : 'success'); loadBooks(); }}
+        />
+      )}
+
+      {showBulkIssues && (
+        <BulkUploadModal
+          title="Bulk issue books"
+          description="Upload a CSV to issue many books at once. Books are matched by ISBN."
+          templateHeaders={['admissionNo', 'isbn', 'dueAt']}
+          templateSampleRow={['ADM-2026-0010', '9780262033848', '2026-08-15']}
+          onSubmit={(file) => api.bulkIssueBooks(file)}
+          onClose={() => setShowBulkIssues(false)}
+          onImported={(r) => { toast(`Issued ${r.imported} of ${r.imported + r.failed} books.`, r.failed > 0 ? 'error' : 'success'); loadIssues(); loadBooks(); }}
+        />
       )}
     </PortalShell>
   );

@@ -48,15 +48,15 @@ export default function ParentPerformance() {
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--hairline)' }}>
               <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Marks Breakdown</strong>
             </div>
-            <table className="data-table">
+            <table className="data-table data-table-cards">
               <thead><tr><th>Exam</th><th>Subject</th><th>Marks</th><th>%</th></tr></thead>
               <tbody>
                 {perf.results.map((r, i) => (
                   <tr key={i}>
-                    <td>{r.exam}</td>
-                    <td className="cell-primary">{r.subject}</td>
-                    <td>{r.marks ?? '—'} / {r.maxMarks}</td>
-                    <td style={{ color: pctColor(r.pct), fontWeight: 600 }}>{r.pct != null ? `${r.pct}%` : '—'}</td>
+                    <td data-label="Exam">{r.exam}</td>
+                    <td className="cell-primary" data-label="Subject">{r.subject}</td>
+                    <td data-label="Marks">{r.marks ?? '—'} / {r.maxMarks}</td>
+                    <td style={{ color: pctColor(r.pct), fontWeight: 600 }} data-label="%">{r.pct != null ? `${r.pct}%` : '—'}</td>
                   </tr>
                 ))}
               </tbody>

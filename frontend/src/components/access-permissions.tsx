@@ -75,6 +75,7 @@ export function AccessPermissionsContent() {
   const [err, setErr] = useState<string | null>(null);
   const [savingCell, setSavingCell] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [mobileRoleId, setMobileRoleId] = useState('');
 
   const load = () => {
     Promise.all([api.listRoles(), api.listPermissionCatalog()])
@@ -100,6 +101,8 @@ export function AccessPermissionsContent() {
   );
 
   const grantOf = (role: RoleDto, key: string) => role.permissions.find((g) => g.key === key) ?? null;
+
+  const mobileRole = shownRoles.find((r) => r._id === mobileRoleId) ?? shownRoles[0] ?? null;
 
   const mutate = async (role: RoleDto, perm: PermissionDto, action: 'toggle' | 'scope') => {
     const cellId = `${role._id}:${perm.key}`;
@@ -156,62 +159,112 @@ export function AccessPermissionsContent() {
         </div>
       )}
 
-      <Card pad={false} style={{ overflowX: 'auto' }}>
-        <div style={{ minWidth: 220 + shownRoles.length * colW }}>
-          {/* Header */}
-          <div style={{ display: 'grid', gridTemplateColumns: gridCols, background: 'rgba(89,22,32,0.05)', borderBottom: '2px solid rgba(89,22,32,0.1)', padding: '0 20px' }}>
-            <div style={{ padding: '14px 0', fontSize: 12, fontWeight: 700, color: '#591620', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Permission</div>
-            {shownRoles.map((r) => (
-              <div key={r._id} style={{ padding: '12px 0', display: 'flex', justifyContent: 'center' }}>
-                <span style={{
-                  padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700,
-                  background: (ROLE_COLORS[r.key] ?? '#43434c') + '18',
-                  color: ROLE_COLORS[r.key] ?? '#43434c',
-                  border: `1px solid ${(ROLE_COLORS[r.key] ?? '#43434c')}30`,
-                }}>
-                  {r.name}
-                </span>
-              </div>
-            ))}
-          </div>
-
-          {/* Groups */}
-          {groups.map(([group, perms]) => (
-            <div key={group}>
-              <div style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '0 20px', background: 'rgba(234,224,210,0.5)' }}>
-                <div style={{ padding: '10px 0', fontSize: 11, fontWeight: 800, color: '#8a6a5a', letterSpacing: '0.1em', textTransform: 'uppercase' }}>{group}</div>
-                {shownRoles.map((r) => <div key={r._id} />)}
-              </div>
-              {perms.map((perm) => (
-                <div key={perm._id} className="perm-row" style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '0 20px', borderBottom: '1px solid rgba(89,22,32,0.05)' }}>
-                  <div style={{ padding: '12px 16px 12px 0' }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#1a0a0d', fontFamily: 'ui-monospace, monospace' }}>{perm.key}</div>
-                    {perm.description && <div style={{ fontSize: 11.5, color: '#9a8a7a', marginTop: 2, lineHeight: 1.5 }}>{perm.description}</div>}
-                  </div>
-                  {shownRoles.map((role) => {
-                    const grant = grantOf(role, perm.key);
-                    const locked = role.key === 'OWNER';
-                    const cellId = `${role._id}:${perm.key}`;
-                    return (
-                      <div key={role._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: savingCell === cellId ? 0.5 : 1 }}>
-                        <Toggle
-                          value={Boolean(grant)}
-                          scope={grant?.scope ?? null}
-                          disabled={locked || savingCell === cellId}
-                          onToggle={() => void mutate(role, perm, 'toggle')}
-                          onScope={() => void mutate(role, perm, 'scope')}
-                        />
-                      </div>
-                    );
-                  })}
+      <div className="rbac-desktop">
+        <Card pad={false} style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: 220 + shownRoles.length * colW }}>
+            {/* Header */}
+            <div className="no-grid-collapse" style={{ display: 'grid', gridTemplateColumns: gridCols, background: 'rgba(89,22,32,0.05)', borderBottom: '2px solid rgba(89,22,32,0.1)', padding: '0 20px' }}>
+              <div style={{ padding: '14px 0', fontSize: 12, fontWeight: 700, color: '#591620', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Permission</div>
+              {shownRoles.map((r) => (
+                <div key={r._id} style={{ padding: '12px 0', display: 'flex', justifyContent: 'center' }}>
+                  <span style={{
+                    padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+                    background: (ROLE_COLORS[r.key] ?? '#43434c') + '18',
+                    color: ROLE_COLORS[r.key] ?? '#43434c',
+                    border: `1px solid ${(ROLE_COLORS[r.key] ?? '#43434c')}30`,
+                  }}>
+                    {r.name}
+                  </span>
                 </div>
               ))}
             </div>
-          ))}
-        </div>
-      </Card>
 
-      <div style={{ marginTop: 14, fontSize: 12, color: '#9a8a7a', display: 'flex', gap: 14, alignItems: 'center' }}>
+            {/* Groups */}
+            {groups.map(([group, perms]) => (
+              <div key={group}>
+                <div className="no-grid-collapse" style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '0 20px', background: 'rgba(234,224,210,0.5)' }}>
+                  <div style={{ padding: '10px 0', fontSize: 11, fontWeight: 800, color: '#8a6a5a', letterSpacing: '0.1em', textTransform: 'uppercase' }}>{group}</div>
+                  {shownRoles.map((r) => <div key={r._id} />)}
+                </div>
+                {perms.map((perm) => (
+                  <div key={perm._id} className="perm-row no-grid-collapse" style={{ display: 'grid', gridTemplateColumns: gridCols, padding: '0 20px', borderBottom: '1px solid rgba(89,22,32,0.05)' }}>
+                    <div style={{ padding: '12px 16px 12px 0' }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1a0a0d', fontFamily: 'ui-monospace, monospace' }}>{perm.key}</div>
+                      {perm.description && <div style={{ fontSize: 11.5, color: '#9a8a7a', marginTop: 2, lineHeight: 1.5 }}>{perm.description}</div>}
+                    </div>
+                    {shownRoles.map((role) => {
+                      const grant = grantOf(role, perm.key);
+                      const locked = role.key === 'OWNER';
+                      const cellId = `${role._id}:${perm.key}`;
+                      return (
+                        <div key={role._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: savingCell === cellId ? 0.5 : 1 }}>
+                          <Toggle
+                            value={Boolean(grant)}
+                            scope={grant?.scope ?? null}
+                            disabled={locked || savingCell === cellId}
+                            onToggle={() => void mutate(role, perm, 'toggle')}
+                            onScope={() => void mutate(role, perm, 'scope')}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+
+      {/* Mobile: a role x permission matrix can't stack into cards, so this
+          picks one role at a time via a dropdown instead of scrolling sideways. */}
+      <div className="rbac-mobile">
+        <div style={{ marginBottom: 12 }}>
+          <div className="field-label">Role</div>
+          <select className="field-input" style={{ marginBottom: 0 }} value={mobileRole?._id ?? ''} onChange={(e) => setMobileRoleId(e.target.value)}>
+            {shownRoles.map((r) => <option key={r._id} value={r._id}>{r.name}</option>)}
+          </select>
+        </div>
+
+        {mobileRole && groups.map(([group, perms]) => (
+          <div key={group} style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#8a6a5a', letterSpacing: '0.1em', textTransform: 'uppercase', margin: '0 0 6px 4px' }}>{group}</div>
+            <Card pad={false}>
+              {perms.map((perm, i) => {
+                const grant = grantOf(mobileRole, perm.key);
+                const locked = mobileRole.key === 'OWNER';
+                const cellId = `${mobileRole._id}:${perm.key}`;
+                return (
+                  <div
+                    key={perm._id}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                      padding: '12px 16px', borderTop: i ? '1px solid var(--hairline)' : 'none',
+                      opacity: savingCell === cellId ? 0.5 : 1,
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1a0a0d', fontFamily: 'ui-monospace, monospace' }}>{perm.key}</div>
+                      {perm.description && <div style={{ fontSize: 11.5, color: '#9a8a7a', marginTop: 2, lineHeight: 1.5 }}>{perm.description}</div>}
+                    </div>
+                    <div style={{ flexShrink: 0 }}>
+                      <Toggle
+                        value={Boolean(grant)}
+                        scope={grant?.scope ?? null}
+                        disabled={locked || savingCell === cellId}
+                        onToggle={() => void mutate(mobileRole, perm, 'toggle')}
+                        onScope={() => void mutate(mobileRole, perm, 'scope')}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </Card>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: 14, fontSize: 12, color: '#9a8a7a', display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
         <Pill tone="green">ALL — whole school</Pill>
         <Pill tone="amber">OWN — own classes / children / records</Pill>
         <span>Click a grant's scope label to switch between ALL and OWN.</span>

@@ -21,18 +21,18 @@ export default function ParentPayments() {
       {invoices?.length === 0 && <EmptyState title="No invoices" sub="Fee invoices for your children appear here." />}
       {invoices && invoices.length > 0 && (
         <Card pad={false}>
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead><tr><th>Invoice</th><th>Student</th><th>Total</th><th>Paid</th><th>Due Date</th><th>Status</th><th></th></tr></thead>
             <tbody>
               {invoices.map((i) => {
                 const due = i.totalPaise - i.paidPaise;
                 return (
                   <tr key={i.id}>
-                    <td className="cell-primary">{i.invoiceNo}</td><td>{i.studentName}</td>
-                    <td>{rupees(i.totalPaise)}</td><td>{rupees(i.paidPaise)}</td>
-                    <td>{fmtDate(i.dueOn)}</td>
-                    <td><Pill tone={TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
-                    <td>
+                    <td className="cell-primary" data-label="Invoice">{i.invoiceNo}</td><td data-label="Student">{i.studentName}</td>
+                    <td data-label="Total">{rupees(i.totalPaise)}</td><td data-label="Paid">{rupees(i.paidPaise)}</td>
+                    <td data-label="Due Date">{fmtDate(i.dueOn)}</td>
+                    <td data-label="Status"><Pill tone={TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
+                    <td data-label="Actions">
                       {due > 0 && i.status !== 'CANCELLED' ? (
                         <Button small onClick={() => setPaying(i)}>Pay {rupees(due)}</Button>
                       ) : (

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, SkeletonRows, Pill, useToast } from '@/components/ui';
+import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api, ApiError } from '@/lib/api';
 import type { HostelAllocationDto, HostelRoomDto, StudentListItem } from '@/lib/types';
 
@@ -19,6 +20,8 @@ export default function WardenRooms() {
   const [showAllocateModal, setShowAllocateModal] = useState(false);
   const [allocateForm, setAllocateForm] = useState({ studentId: '', roomId: '' });
   const [busy, setBusy] = useState(false);
+  const [showBulkRooms, setShowBulkRooms] = useState(false);
+  const [showBulkAllocate, setShowBulkAllocate] = useState(false);
 
   const load = () => {
     Promise.all([api.hostelRooms(), api.hostelAllocations()])
@@ -90,7 +93,9 @@ export default function WardenRooms() {
     <PortalShell expectedSlug="warden" topbar={{ title: 'Room Management', desc: 'Hostel room allocations and layouts.' }}>
       <div style={{ display: 'flex', gap: 16, marginBottom: 16, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
         <input className="input" style={{ maxWidth: 300 }} placeholder="Search Room or Block..." value={searchBlock} onChange={(e) => setSearchBlock(e.target.value)} />
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <Button variant="soft" onClick={() => setShowBulkRooms(true)}>Bulk Upload Rooms</Button>
+          <Button variant="soft" onClick={() => setShowBulkAllocate(true)}>Bulk Allocate</Button>
           <Button variant="soft" onClick={() => setShowAllocateModal(true)}>Allocate Student</Button>
           <Button onClick={() => setShowRoomModal(true)}>Add Room</Button>
         </div>
@@ -105,7 +110,7 @@ export default function WardenRooms() {
           <EmptyState title="No rooms found" sub={rooms.length === 0 ? 'Add your first hostel room to get started.' : 'Refine your search or register a new room.'} />
         )}
         {rooms !== null && filteredRooms.length > 0 && (
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead>
               <tr>
                 <th>Room / Block</th>
@@ -121,14 +126,14 @@ export default function WardenRooms() {
                 const pct = r.capacity > 0 ? (occupants.length / r.capacity) * 100 : 0;
                 return (
                   <tr key={r._id}>
-                    <td>
+                    <td data-label="Room / Block">
                       <span className="cell-primary">Room {r.roomNo}</span>
                       <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>{r.block}</div>
                     </td>
-                    <td>
+                    <td data-label="Bed Type">
                       <Pill tone={r.type === 'AC' ? 'blue' : 'gray'}>{r.type}</Pill>
                     </td>
-                    <td>
+                    <td data-label="Occupancy">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span style={{ fontWeight: 600 }}>{occupants.length} / {r.capacity}</span>
                         <div style={{ width: 60, height: 6, background: '#ECE7DB', borderRadius: 3, overflow: 'hidden' }}>
@@ -136,7 +141,7 @@ export default function WardenRooms() {
                         </div>
                       </div>
                     </td>
-                    <td>
+                    <td data-label="Occupants">
                       {occupants.length === 0 && <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>— Vacant —</span>}
                       {occupants.map((a) => (
                         <div key={a._id} style={{ display: 'inline-flex', alignItems: 'center', background: '#F3ECDC', padding: '2px 8px', borderRadius: 4, marginRight: 6, marginBottom: 4, fontSize: 12 }}>
@@ -145,7 +150,7 @@ export default function WardenRooms() {
                         </div>
                       ))}
                     </td>
-                    <td>
+                    <td data-label="Action">
                       <Button variant="soft" small disabled={occupants.length >= r.capacity} onClick={() => {
                         setAllocateForm({ ...allocateForm, roomId: r._id });
                         setShowAllocateModal(true);
@@ -234,6 +239,30 @@ export default function WardenRooms() {
             </form>
           </div>
         </div>
+      )}
+
+      {showBulkRooms && (
+        <BulkUploadModal
+          title="Bulk upload hostel rooms"
+          description="Upload a CSV to add many hostel rooms at once."
+          templateHeaders={['roomNo', 'block', 'floor', 'capacity', 'type']}
+          templateSampleRow={['104', 'Block A', '1', '4', 'BOYS']}
+          onSubmit={(file) => api.bulkCreateHostelRooms(file)}
+          onClose={() => setShowBulkRooms(false)}
+          onImported={(r) => { toast(`Added ${r.imported} of ${r.imported + r.failed} rooms.`, r.failed > 0 ? 'error' : 'success'); load(); }}
+        />
+      )}
+
+      {showBulkAllocate && (
+        <BulkUploadModal
+          title="Bulk allocate students"
+          description="Upload a CSV to allocate many students to rooms at once."
+          templateHeaders={['admissionNo', 'roomNo']}
+          templateSampleRow={['ADM-2026-0010', '104']}
+          onSubmit={(file) => api.bulkAllocateHostelRooms(file)}
+          onClose={() => setShowBulkAllocate(false)}
+          onImported={(r) => { toast(`Allocated ${r.imported} of ${r.imported + r.failed} students.`, r.failed > 0 ? 'error' : 'success'); load(); }}
+        />
       )}
     </PortalShell>
   );

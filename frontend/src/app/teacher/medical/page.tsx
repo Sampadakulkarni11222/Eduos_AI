@@ -2,94 +2,100 @@
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Card, EmptyState, SkeletonRows } from '@/components/ui';
+import { MedicalRecordPanel } from '@/components/medical-record-panel';
 import { api } from '@/lib/api';
-import type { MedicalDto, StudentListItem } from '@/lib/types';
+import { useAuth } from '@/lib/auth';
+import type { StudentListItem, SectionDto } from '@/lib/types';
 
 export default function TeacherMedical() {
+  const { me } = useAuth();
+  const [allSections, setAllSections] = useState<SectionDto[] | null>(null);
+  const [gradeName, setGradeName] = useState('');
+  const [sectionId, setSectionId] = useState('');
+
   const [students, setStudents] = useState<StudentListItem[] | null>(null);
-  const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<StudentListItem | null>(null);
-  const [rec, setRec] = useState<MedicalDto | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [studentId, setStudentId] = useState('');
 
-  useEffect(() => { api.students().then((r) => setStudents(r.items)).catch(() => setStudents([])); }, []);
+  useEffect(() => {
+    // mySections() covers class-teacher AND subject-teacher sections, but
+    // medical records are more sensitive than a subject roster — only this
+    // teacher's own homeroom (class-teacher) section(s) should be browsable
+    // here, so we filter down to classTeacherId === me below.
+    api.mySections().then(setAllSections).catch(() => setAllSections([]));
+    api.students().then((r) => setStudents(r.items)).catch(() => setStudents([]));
+  }, []);
 
-  const filtered = students?.filter((s) => s.name.toLowerCase().includes(search.toLowerCase())) ?? [];
-
-  const select = (s: StudentListItem) => {
-    setSelected(s); setRec(null); setLoading(true);
-    api.medical(s.id).then(setRec).catch(() => setRec(null)).finally(() => setLoading(false));
-  };
-
-  const field = (label: string, value: React.ReactNode) => (
-    <div>
-      <div style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 2 }}>{label}</div>
-      <div style={{ fontSize: 13.5, color: value ? 'var(--text-1)' : 'var(--text-faint)' }}>{value || 'Not recorded'}</div>
-    </div>
-  );
+  const sections = (allSections ?? []).filter((s) => s.classTeacherId === me?.profile?.id);
+  const loading = allSections === null || students === null;
+  const grades = [...new Set(sections.map((s) => s.gradeName))];
+  const sectionsInGrade = sections.filter((s) => s.gradeName === gradeName);
+  const studentsInSection = students?.filter((s) => s.enrollment?.sectionId === sectionId) ?? [];
+  const selected = studentsInSection.find((s) => s.id === studentId) ?? null;
 
   return (
-    <PortalShell expectedSlug="teacher" topbar={{ title: 'Medical Records', desc: 'Student health information (read-only).' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 16 }}>
-        <div>
-          <input className="input" placeholder="Search students…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ marginBottom: 10 }} />
-          {students === null && <Card><SkeletonRows rows={5} /></Card>}
-          {filtered.length === 0 && students !== null && <EmptyState icon="◌" title="No students" sub="No students in your classes." />}
-          <Card pad={false}>
-            {filtered.map((s, i) => (
-              <button key={s.id} onClick={() => select(s)}
-                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '12px 16px', borderTop: i ? '1px solid var(--hairline)' : 'none', background: selected?.id === s.id ? 'var(--accent-subtle, #f5ede0)' : 'transparent', cursor: 'pointer', border: 'none' }}>
-                <div style={{ fontWeight: 600, color: 'var(--text-1)', fontSize: 13.5 }}>{s.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>{s.enrollment?.class ?? 'No class'}</div>
-              </button>
-            ))}
-          </Card>
+    <PortalShell expectedSlug="teacher" topbar={{ title: 'Medical Records', desc: 'Student health information for your homeroom class only (read-only).' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+        <div style={{ flex: '1 1 220px', maxWidth: 280 }}>
+          <div className="field-label">Class / Grade</div>
+          <select
+            className="field-input"
+            style={{ marginBottom: 0 }}
+            value={gradeName}
+            onChange={(e) => { setGradeName(e.target.value); setSectionId(''); setStudentId(''); }}
+          >
+            <option value="">-- Choose grade --</option>
+            {grades.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
         </div>
 
-        <div>
-          {!selected && <EmptyState icon="✚" title="Select a student" sub="Choose a student on the left to view their health information." />}
-          {loading && <Card><SkeletonRows rows={4} /></Card>}
-          {!loading && selected && rec && (
-            <>
-              <Card style={{ marginBottom: 12 }}>
-                <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 16 }}>Basic Info</strong>
-                <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14 }}>
-                  {field('Blood group', rec.bloodGroup)}
-                  {field('Height', rec.heightCm ? `${rec.heightCm} cm` : null)}
-                  {field('Weight', rec.weightKg ? `${rec.weightKg} kg` : null)}
-                </div>
-              </Card>
-              <Card style={{ marginBottom: 12 }}>
-                <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 16 }}>Emergency Contact</strong>
-                <div style={{ marginTop: 10, fontSize: 13.5, color: 'var(--text-2)' }}>
-                  {rec.emergencyContact
-                    ? `${rec.emergencyContact.name} (${rec.emergencyContact.relation}) · ${rec.emergencyContact.phone}`
-                    : <span style={{ color: 'var(--text-faint)' }}>None recorded</span>}
-                </div>
-              </Card>
-              <Card style={{ marginBottom: 12 }}>
-                <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 16 }}>Allergies</strong>
-                <div style={{ marginTop: 10, fontSize: 13.5, color: 'var(--text-2)' }}>
-                  {rec.allergies.length ? rec.allergies.join(', ') : <span style={{ color: 'var(--text-faint)' }}>None recorded</span>}
-                </div>
-              </Card>
-              <Card>
-                <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 16 }}>Medications &amp; History</strong>
-                <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, fontSize: 13.5, color: 'var(--text-2)' }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 4 }}>Medications</div>
-                    {rec.medications.length ? rec.medications.join(', ') : <span style={{ color: 'var(--text-faint)' }}>None</span>}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 4 }}>History</div>
-                    {rec.history || <span style={{ color: 'var(--text-faint)' }}>None</span>}
-                  </div>
-                </div>
-              </Card>
-            </>
-          )}
+        <div style={{ flex: '1 1 220px', maxWidth: 280 }}>
+          <div className="field-label">Section</div>
+          <select
+            className="field-input"
+            style={{ marginBottom: 0 }}
+            value={sectionId}
+            onChange={(e) => { setSectionId(e.target.value); setStudentId(''); }}
+            disabled={!gradeName || sectionsInGrade.length === 0}
+          >
+            <option value="">-- Choose section --</option>
+            {sectionsInGrade.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+
+        <div style={{ flex: '1 1 220px', maxWidth: 280 }}>
+          <div className="field-label">Student</div>
+          <select
+            className="field-input"
+            style={{ marginBottom: 0 }}
+            value={studentId}
+            onChange={(e) => setStudentId(e.target.value)}
+            disabled={!sectionId || studentsInSection.length === 0}
+          >
+            <option value="">-- Choose student --</option>
+            {studentsInSection.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
         </div>
       </div>
+
+      {loading && <Card><SkeletonRows rows={5} /></Card>}
+
+      {!loading && sections.length === 0 && (
+        <EmptyState icon="◌" title="No homeroom class assigned" sub="Medical records are only visible to a section's class teacher — you'll see this once you're assigned one." />
+      )}
+
+      {!loading && sections.length > 0 && sectionId && studentsInSection.length === 0 && (
+        <EmptyState icon="◌" title="No students in this section" sub="No students are currently enrolled in this class/section." />
+      )}
+
+      {!loading && sections.length > 0 && !selected && studentsInSection.length > 0 && (
+        <EmptyState icon="✚" title="Select a student" sub="Choose a student above to view their health information." />
+      )}
+
+      {!loading && sections.length > 0 && !sectionId && (
+        <EmptyState icon="✚" title="Select a class and student" sub="Choose a grade/section, then a student, to view their health information." />
+      )}
+
+      {selected && <MedicalRecordPanel studentId={selected.id} canManage={false} />}
     </PortalShell>
   );
 }

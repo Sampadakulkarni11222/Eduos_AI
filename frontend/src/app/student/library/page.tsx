@@ -35,7 +35,7 @@ export default function StudentLibrary() {
             <EmptyState title="No active checkouts" sub="Borrow books from the librarian to see checkout info." />
           )}
           {!loading && issued && issued.length > 0 && (
-            <table className="data-table">
+            <table className="data-table data-table-cards">
               <thead>
                 <tr>
                   <th>Title</th>
@@ -47,10 +47,10 @@ export default function StudentLibrary() {
               <tbody>
                 {issued.map((i) => (
                   <tr key={i.id}>
-                    <td className="cell-primary">{i.bookTitle}</td>
-                    <td>{new Date(i.dueAt).toLocaleDateString('en-IN')}</td>
-                    <td>{i.finePaise > 0 ? rupees(i.finePaise) : '—'}</td>
-                    <td>
+                    <td className="cell-primary" data-label="Title">{i.bookTitle}</td>
+                    <td data-label="Due Date">{new Date(i.dueAt).toLocaleDateString('en-IN')}</td>
+                    <td data-label="Fine">{i.finePaise > 0 ? rupees(i.finePaise) : '—'}</td>
+                    <td data-label="Status">
                       <Pill tone={i.status === 'RETURNED' ? 'green' : i.status === 'OVERDUE' ? 'red' : 'amber'}>
                         {i.status}
                       </Pill>
@@ -73,15 +73,15 @@ export default function StudentLibrary() {
               <EmptyState title="No books matched" sub="Try searching for a different title." />
             )}
             {!loading && books && books.length > 0 && (
-              <table className="data-table">
+              <table className="data-table data-table-cards">
                 <tbody>
                   {books.map((b) => (
                     <tr key={b.id}>
-                      <td>
+                      <td data-label="Book">
                         <div style={{ fontWeight: 600, color: 'var(--text-1)' }}>{b.title}</div>
                         <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>{b.author}</div>
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td style={{ textAlign: 'right' }} data-label="Availability">
                         <Pill tone={b.availableCopies > 0 ? 'green' : 'red'}>
                           {b.availableCopies > 0 ? 'Available' : 'Out'}
                         </Pill>

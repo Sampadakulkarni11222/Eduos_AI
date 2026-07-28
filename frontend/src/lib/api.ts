@@ -4,7 +4,7 @@
  * Production hardening (Phase 7): move refresh into an httpOnly cookie
  * behind a BFF route handler so it never touches JS-readable storage.
  */
-import type { Me, Paged, ProfileSummary, StudentListItem, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult } from './types';
+import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult } from './types';
 
 // Backend URL – default to localhost:5000. Can be overridden via NEXT_PUBLIC_BACKEND_URL.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
@@ -128,6 +128,27 @@ export function fileHref(fileUrl: string): string {
   return fileUrl.startsWith('/') ? `${BACKEND_URL}${fileUrl}` : fileUrl;
 }
 
+/**
+ * Opens a protected (auth-gated) file endpoint in a new tab.
+ * Auth here is a Bearer token held in memory, not a cookie — a plain
+ * `<a href>` to an endpoint behind `authenticate` would 401. This fetches
+ * the bytes with the Authorization header attached, then opens the result
+ * as a blob URL, so the browser still renders/downloads it like a normal link.
+ */
+async function openProtectedFile(path: string): Promise<void> {
+  const res = await fetch(`${BACKEND_URL}/api/v1${path}`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body?.error?.code ?? 'FILE_ERROR', body?.message ?? 'Could not open this file.');
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank', 'noopener,noreferrer');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 export const api = {
   requestOtp: (phone: string) =>
     request<{ message: string; devOtp?: string }>('/auth/otp/request', { method: 'POST', body: JSON.stringify({ phone }) }),
@@ -175,6 +196,7 @@ export const api = {
   },
   createStudent: (body: { firstName: string; lastName?: string; admissionNo: string; sectionId?: string }) =>
     request<StudentListItem>('/students', { method: 'POST', body: JSON.stringify(body) }),
+  studentOverview: (id: string) => request<StudentOverviewDto>(`/students/${id}/overview`),
   bulkAssignSection: (file: File, sectionId: string, academicYearId: string) =>
     uploadCsv('/enrollments/bulk', file, { sectionId, academicYearId }),
 
@@ -194,12 +216,14 @@ export const api = {
   },
   createUser: (body: CreateUserDto) =>
     request<UserDto>('/users', { method: 'POST', body: JSON.stringify(body) }),
+  bulkCreateUsers: (file: File) => uploadCsv('/users/bulk', file),
 
 
   // ── academics helpers ──
   mySections: () => request<SectionDto[]>('/academics/sections/mine'),
   myOfferings: () => request<OfferingDto[]>('/academics/offerings/mine'),
-  allSections: () => request<SectionDto[]>('/academics/sections'),
+  allSections: (gradeId?: string) =>
+    request<SectionDto[]>(`/academics/sections${gradeId ? `?gradeId=${gradeId}` : ''}`),
   createSection: (body: { gradeId: string; name: string; classTeacherId?: string }) =>
     request<SectionDto>('/academics/sections', { method: 'POST', body: JSON.stringify(body) }),
   updateSection: (id: string, body: { classTeacherId?: string; classRepresentativeId?: string }) =>
@@ -222,14 +246,15 @@ export const api = {
   },
   createGrade: (body: { name: string; level: number }) =>
     request<{ id: string }>('/academics/grades', { method: 'POST', body: JSON.stringify(body) }),
-  createSection: (body: { gradeId: string; name: string; classTeacherId?: string }) =>
-    request<{ id: string }>('/academics/sections', { method: 'POST', body: JSON.stringify(body) }),
+  bulkCreateGrades: (file: File) => uploadCsv('/academics/grades/bulk', file),
+  bulkCreateSections: (file: File) => uploadCsv('/academics/sections/bulk', file),
   listSubjects: async () => {
     const raw: any[] = await request<any[]>('/academics/subjects');
     return raw.map((s) => ({ id: s._id ?? s.id, name: s.name, code: s.code ?? null })) as SubjectDto[];
   },
   createSubject: (body: { name: string; code?: string }) =>
     request<{ id: string }>('/academics/subjects', { method: 'POST', body: JSON.stringify(body) }),
+  bulkCreateSubjects: (file: File) => uploadCsv('/academics/subjects/bulk', file),
   listTerms: async (academicYearId?: string) => {
     const qs = academicYearId ? `?academicYearId=${academicYearId}` : '';
     const raw: any[] = await request<any[]>(`/academics/terms${qs}`);
@@ -256,7 +281,7 @@ export const api = {
     return request<AttendanceRoster>(`/attendance/roster?${q.toString()}`);
   },
   markAttendance: (body: { sectionId: string; date: string; periodNo?: number; entries: Array<{ enrollmentId: string; status: AttStatus; note?: string }> }) =>
-    request<{ marked: number }>('/attendance/mark', { method: 'POST', body: JSON.stringify(body) }),
+    request<AttendanceRoster>('/attendance/mark', { method: 'POST', body: JSON.stringify(body) }),
   bulkMarkAttendance: (file: File, sectionId: string, date: string, periodNo?: number) =>
     uploadCsv('/attendance/mark/bulk', file, { sectionId, date, ...(periodNo ? { periodNo: String(periodNo) } : {}) }),
   attendanceSummary: (enrollmentId: string, yearMonth: string) =>
@@ -270,7 +295,7 @@ export const api = {
   // ── assignments ──
   assignments: (offeringId?: string) =>
     request<AssignmentDto[]>(`/assignments${offeringId ? `?offeringId=${offeringId}` : ''}`),
-  createAssignment: (body: { subjectOfferingId: string; title: string; type?: string; dueAt: string; maxMarks?: number; description?: string }) =>
+  createAssignment: (body: { subjectOfferingId: string; title: string; type?: string; chapter?: string; dueAt: string; maxMarks?: number; description?: string }) =>
     request<{ id: string; seededSubmissions: number }>('/assignments', { method: 'POST', body: JSON.stringify(body) }),
   submitAssignment: (body: { assignmentId: string; attachments?: string[] }) =>
     request<{ status: string; submittedAt: string }>('/assignments/submit', { method: 'POST', body: JSON.stringify(body) }),
@@ -298,6 +323,7 @@ export const api = {
   invoices: (status?: string) => request<InvoiceDto[]>(`/fees/invoices${status ? `?status=${status}` : ''}`),
   createInvoice: (body: { enrollmentId: string; invoiceNo: string; dueOn: string; lines: { description: string; amountPaise: number; concessionPaise?: number }[] }) =>
     request<{ id: string }>('/fees/invoices', { method: 'POST', body: JSON.stringify(body) }),
+  bulkCreateInvoices: (file: File) => uploadCsv('/fees/invoices/bulk', file),
   listEnrollments: (studentId?: string) => {
     const qs = studentId ? `?studentId=${studentId}` : '';
     return request<{ id: string; studentName: string; class: string }[]>(`/enrollments${qs}`);
@@ -323,8 +349,11 @@ export const api = {
 
   // ── announcements ──
   announcements: () => request<AnnouncementDto[]>('/announcements'),
-  createAnnouncement: (body: { title: string; content: string; audience?: object }) =>
-    request<{ id: string }>('/announcements', { method: 'POST', body: JSON.stringify(body) }),
+  createAnnouncement: (body: {
+    title: string; content: string;
+    audience?: { all?: boolean; gradeIds?: string[]; sectionIds?: string[]; subjectIds?: string[] };
+    channels?: { app?: boolean; email?: boolean; whatsapp?: boolean };
+  }) => request<{ id: string }>('/announcements', { method: 'POST', body: JSON.stringify(body) }),
 
   // ── tickets ──
   tickets: (status?: string) => request<TicketDto[]>(`/tickets${status ? `?status=${status}` : ''}`),
@@ -336,7 +365,8 @@ export const api = {
 
   // ── medical ──
   medical: (studentId: string) => request<MedicalDto>(`/medical/${studentId}`),
-  saveMedical: (body: object) => request<{ studentId: string }>('/medical', { method: 'PUT', body: JSON.stringify(body) }),
+  saveMedical: (studentId: string, body: object) => request<{ studentId: string }>(`/medical/${studentId}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteMedical: (studentId: string) => request<void>(`/medical/${studentId}`, { method: 'DELETE' }),
 
   // ── admissions ──
   pipeline: () => request<Pipeline>('/admissions/pipeline'),
@@ -379,27 +409,38 @@ export const api = {
   myBus: (studentId?: string) => request<MyBusDto | null>(`/transport/my-bus${studentId ? `?studentId=${studentId}` : ''}`),
   createRoute: (body: { name: string; operatorName?: string; vehicleNo?: string; driverName?: string; driverPhone?: string }) =>
     request<{ id: string }>('/transport/routes', { method: 'POST', body: JSON.stringify(body) }),
+  bulkCreateRoutes: (file: File) => uploadCsv('/transport/routes/bulk', file),
   createStop: (body: { routeId: string; name: string; sequenceNo: number; etaMinutesFromStart: number }) =>
     request<{ id: string }>('/transport/stops', { method: 'POST', body: JSON.stringify(body) }),
+  bulkCreateStops: (file: File) => uploadCsv('/transport/stops/bulk', file),
   enrollStudent: (body: { studentId: string; routeId: string; stopId: string; academicYearId?: string; direction?: string }) =>
     request<{ id: string }>('/transport/enroll', { method: 'POST', body: JSON.stringify(body) }),
+  bulkEnrollStudents: (file: File) => uploadCsv('/transport/enroll/bulk', file),
 
   // ── library (Phase 8) ──
   listBooks: (search?: string) => request<BookDto[]>(`/library/books${search ? `?search=${encodeURIComponent(search)}` : ''}`),
   listIssued: (studentId?: string) => request<BookIssueDto[]>(`/library/issues${studentId ? `?studentId=${studentId}` : ''}`),
   createBook: (body: { title: string; author: string; isbn?: string; category: string; totalCopies?: number }) =>
     request<{ id: string }>('/library/books', { method: 'POST', body: JSON.stringify(body) }),
+  bulkCreateBooks: (file: File) => uploadCsv('/library/books/bulk', file),
   issueBook: (body: { bookId: string; studentId: string; dueAt: string }) =>
     request<BookIssueDto>('/library/issues', { method: 'POST', body: JSON.stringify(body) }),
+  bulkIssueBooks: (file: File) => uploadCsv('/library/issues/bulk', file),
   returnBook: (issueId: string) =>
     request<BookIssueDto>(`/library/issues/${issueId}/return`, { method: 'PATCH' }),
 
   // ── documents (Phase 8) ──
   listDocuments: (studentId?: string) => request<DocumentDto[]>(`/documents${studentId ? `?studentId=${studentId}` : ''}`),
-  createDocument: (body: { title: string; type: string; fileUrl: string; mimeType?: string; visibleToRoles?: string[]; studentId?: string; academicYearId?: string }) =>
+  createDocument: (body: { title: string; type: string; fileUrl: string; mimeType?: string; visibleToRoles?: string[]; studentId?: string; academicYearId?: string; sectionId?: string; subjectOfferingId?: string }) =>
     request<{ id: string }>('/documents', { method: 'POST', body: JSON.stringify(body) }),
+  updateDocument: (id: string, body: { title?: string; fileUrl?: string; mimeType?: string; visibleToRoles?: string[]; sectionId?: string | null; subjectOfferingId?: string | null }) =>
+    request<{ id: string }>(`/documents/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteDocument: (id: string) =>
     request<void>(`/documents/${id}`, { method: 'DELETE' }),
+  /** Opens a document's actual file (auth-checked server-side) in a new tab; throws ApiError on failure. */
+  openDocumentFile: (id: string) => openProtectedFile(`/documents/${id}/file`),
+  /** Generates and opens a student's ID card PDF in a new tab; throws ApiError (404) if it isn't available yet. */
+  openIdCard: (studentId: string) => openProtectedFile(`/students/${studentId}/id-card`),
 
   // ── uploads ──
   uploadFile,
@@ -409,10 +450,12 @@ export const api = {
   hostelRooms: () => request<HostelRoomDto[]>('/hostel/rooms'),
   createHostelRoom: (body: { roomNo: string; block: string; floor?: number; type?: string; capacity: number }) =>
     request<HostelRoomDto>('/hostel/rooms', { method: 'POST', body: JSON.stringify(body) }),
+  bulkCreateHostelRooms: (file: File) => uploadCsv('/hostel/rooms/bulk', file),
   hostelAllocations: (roomId?: string) =>
     request<HostelAllocationDto[]>(`/hostel/allocations${roomId ? `?roomId=${roomId}` : ''}`),
   allocateHostelRoom: (body: { roomId: string; studentId: string }) =>
     request<HostelAllocationDto>('/hostel/allocations', { method: 'POST', body: JSON.stringify(body) }),
+  bulkAllocateHostelRooms: (file: File) => uploadCsv('/hostel/allocations/bulk', file),
   vacateHostelRoom: (allocationId: string) =>
     request<HostelAllocationDto>(`/hostel/allocations/${allocationId}/vacate`, { method: 'PATCH' }),
   hostelStudents: () => request<HostelAllocationDto[]>('/hostel/students'),

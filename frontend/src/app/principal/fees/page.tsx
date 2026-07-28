@@ -44,18 +44,18 @@ export default function PrincipalFees() {
       {filtered.length === 0 && invoices && invoices.length > 0 && <EmptyState title="No matching invoices" sub="Try a different filter." />}
       {filtered.length > 0 && (
         <Card pad={false}>
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead><tr><th>Invoice</th><th>Student</th><th>Class</th><th>Total</th><th>Paid</th><th>Due Date</th><th>Status</th></tr></thead>
             <tbody>
               {filtered.map((i) => (
                 <tr key={i.id}>
-                  <td className="cell-primary">{i.invoiceNo}</td>
-                  <td>{i.studentName}</td>
-                  <td>{i.class}</td>
-                  <td>{rupees(i.totalPaise)}</td>
-                  <td>{rupees(i.paidPaise)}</td>
-                  <td style={{ color: i.status === 'OVERDUE' ? 'var(--red)' : 'var(--text-2)' }}>{i.dueOn}</td>
-                  <td><Pill tone={STATUS_TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
+                  <td className="cell-primary" data-label="Invoice">{i.invoiceNo}</td>
+                  <td data-label="Student">{i.studentName}</td>
+                  <td data-label="Class">{i.class}</td>
+                  <td data-label="Total">{rupees(i.totalPaise)}</td>
+                  <td data-label="Paid">{rupees(i.paidPaise)}</td>
+                  <td style={{ color: i.status === 'OVERDUE' ? 'var(--red)' : 'var(--text-2)' }} data-label="Due Date">{i.dueOn}</td>
+                  <td data-label="Status"><Pill tone={STATUS_TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
                 </tr>
               ))}
             </tbody>

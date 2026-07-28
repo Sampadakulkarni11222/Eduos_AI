@@ -76,17 +76,17 @@ export default function PrincipalDashboard() {
         {err && <EmptyState title="Scan failed" sub="Could not run the risk scan. Check your connection and retry." action={<Button variant="soft" small onClick={runScan}>Retry</Button>} />}
         {scan && scan.items.length === 0 && <EmptyState title="No risk alerts" sub="All enrolled students are within normal parameters." />}
         {scan && scan.items.length > 0 && (
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead><tr><th>Student</th><th>Class</th><th>Category</th><th>Level</th><th>Probability</th><th>Summary</th></tr></thead>
             <tbody>
               {scan.items.map((item, i) => (
                 <tr key={`${item.enrollmentId}-${item.type}-${i}`}>
-                  <td className="cell-primary">{item.studentName}</td>
-                  <td>{item.class}</td>
-                  <td>{TYPE_LABEL[item.type] ?? item.type}</td>
-                  <td><Pill tone={RISK_TONE[item.level] ?? 'gray'}>{item.level.toLowerCase()}</Pill></td>
-                  <td style={{ fontWeight: 600 }}>{Math.round(item.probability * 100)}%</td>
-                  <td style={{ fontSize: 12.5, color: 'var(--text-2b)' }}>{item.summary}</td>
+                  <td className="cell-primary" data-label="Student">{item.studentName}</td>
+                  <td data-label="Class">{item.class}</td>
+                  <td data-label="Category">{TYPE_LABEL[item.type] ?? item.type}</td>
+                  <td data-label="Level"><Pill tone={RISK_TONE[item.level] ?? 'gray'}>{item.level.toLowerCase()}</Pill></td>
+                  <td style={{ fontWeight: 600 }} data-label="Probability">{Math.round(item.probability * 100)}%</td>
+                  <td style={{ fontSize: 12.5, color: 'var(--text-2b)' }} data-label="Summary">{item.summary}</td>
                 </tr>
               ))}
             </tbody>

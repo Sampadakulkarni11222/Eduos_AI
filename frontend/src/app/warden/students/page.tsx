@@ -58,7 +58,7 @@ export default function WardenStudents() {
           <EmptyState title="No students found" sub={search ? `Nothing matches "${search}".` : 'No student allocations registered yet. Head to Room Management to assign beds.'} />
         )}
         {rows !== null && filtered.length > 0 && (
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead>
               <tr>
                 <th>Student Name</th>
@@ -72,12 +72,12 @@ export default function WardenStudents() {
             <tbody>
               {filtered.map((s) => (
                 <tr key={s.allocationId}>
-                  <td className="cell-primary">{s.name}</td>
-                  <td style={{ color: 'var(--text-faint)' }}>{s.admissionNo}</td>
-                  <td>{s.class}</td>
-                  <td>{s.block}</td>
-                  <td><strong>Room {s.roomNo}</strong></td>
-                  <td><Pill tone="green">In Residence</Pill></td>
+                  <td className="cell-primary" data-label="Student Name">{s.name}</td>
+                  <td style={{ color: 'var(--text-faint)' }} data-label="Admission No.">{s.admissionNo}</td>
+                  <td data-label="Academic Class">{s.class}</td>
+                  <td data-label="Hostel Block">{s.block}</td>
+                  <td data-label="Room Number"><strong>Room {s.roomNo}</strong></td>
+                  <td data-label="Status"><Pill tone="green">In Residence</Pill></td>
                 </tr>
               ))}
             </tbody>

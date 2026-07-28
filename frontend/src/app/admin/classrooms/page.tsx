@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from '@/components/ui';
+import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api, ApiError } from '@/lib/api';
 import type { GradeDto, SectionDto, SubjectDto, TermDto, OfferingDto, StaffAccountDto, StudentListItem } from '@/lib/types';
 
@@ -56,6 +57,10 @@ export default function ClassroomManagement() {
   const [offeringForm, setOfferingForm] = useState({ sectionId: '', subjectId: '', termId: '', teacherId: '' });
   const [showTermForm, setShowTermForm] = useState(false);
   const [termForm, setTermForm] = useState({ academicYearId: '', name: '', startsOn: '', endsOn: '' });
+
+  const [showBulkGrades, setShowBulkGrades] = useState(false);
+  const [showBulkSections, setShowBulkSections] = useState(false);
+  const [showBulkSubjects, setShowBulkSubjects] = useState(false);
 
   const createGrade = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -170,7 +175,8 @@ export default function ClassroomManagement() {
 
       {activeTab === 'grades' && (
         <>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 16 }}>
+            <Button variant="soft" onClick={() => setShowBulkGrades(true)}>Bulk Upload</Button>
             <Button onClick={() => setShowGradeModal(true)}>+ Add Grade</Button>
           </div>
           <Card pad={false}>
@@ -179,13 +185,13 @@ export default function ClassroomManagement() {
               <EmptyState title="No grades yet" sub="Add your first grade (e.g. Class 1, Class 2) to start building the academic structure." />
             )}
             {grades && grades.length > 0 && (
-              <table className="data-table">
+              <table className="data-table data-table-cards">
                 <thead><tr><th>Grade</th><th>Sort Level</th></tr></thead>
                 <tbody>
                   {grades.map((g) => (
                     <tr key={g.id}>
-                      <td className="cell-primary">{g.name}</td>
-                      <td>{g.level}</td>
+                      <td className="cell-primary" data-label="Grade">{g.name}</td>
+                      <td data-label="Sort Level">{g.level}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -197,7 +203,8 @@ export default function ClassroomManagement() {
 
       {activeTab === 'sections' && (
         <>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 16 }}>
+            <Button variant="soft" onClick={() => setShowBulkSections(true)}>Bulk Upload</Button>
             <Button onClick={() => setShowSectionModal(true)}>+ Add Section</Button>
           </div>
           <Card pad={false}>
@@ -206,16 +213,16 @@ export default function ClassroomManagement() {
               <EmptyState title="No sections yet" sub="Add a grade first, then create sections (classrooms) within it." />
             )}
             {sections && sections.length > 0 && (
-              <table className="data-table">
+              <table className="data-table data-table-cards">
                 <thead><tr><th>Class</th><th>Section</th><th>Class Teacher</th><th>Class Representative</th><th style={{ width: 80 }}></th></tr></thead>
                 <tbody>
                   {sections.map((s) => (
                     <tr key={s.id}>
-                      <td className="cell-primary">{s.gradeName || '—'}</td>
-                      <td>{s.name}</td>
-                      <td>{s.classTeacher ?? <span style={{ color: 'var(--text-faint)' }}>Unassigned</span>}</td>
-                      <td>{s.classRepresentativeId ? <span style={{ color: 'var(--accent)' }}>Assigned</span> : <span style={{ color: 'var(--text-faint)' }}>Unassigned</span>}</td>
-                      <td>
+                      <td className="cell-primary" data-label="Class">{s.gradeName || '—'}</td>
+                      <td data-label="Section">{s.name}</td>
+                      <td data-label="Class Teacher">{s.classTeacher ?? <span style={{ color: 'var(--text-faint)' }}>Unassigned</span>}</td>
+                      <td data-label="Class Representative">{s.classRepresentativeId ? <span style={{ color: 'var(--accent)' }}>Assigned</span> : <span style={{ color: 'var(--text-faint)' }}>Unassigned</span>}</td>
+                      <td data-label="Action">
                         <button 
                           className="chip-tab" 
                           style={{ padding: '4px 10px', fontSize: 12 }}
@@ -243,7 +250,8 @@ export default function ClassroomManagement() {
 
       {activeTab === 'subjects' && (
         <>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 16 }}>
+            <Button variant="soft" onClick={() => setShowBulkSubjects(true)}>Bulk Upload</Button>
             <Button onClick={() => setShowSubjectModal(true)}>+ Add Subject</Button>
           </div>
           <Card pad={false}>
@@ -252,13 +260,13 @@ export default function ClassroomManagement() {
               <EmptyState title="No subjects yet" sub="Add subjects (e.g. Mathematics, Science) to offer them to classes." />
             )}
             {subjects && subjects.length > 0 && (
-              <table className="data-table">
+              <table className="data-table data-table-cards">
                 <thead><tr><th>Subject</th><th>Code</th></tr></thead>
                 <tbody>
                   {subjects.map((s) => (
                     <tr key={s.id}>
-                      <td className="cell-primary">{s.name}</td>
-                      <td>{s.code ?? '—'}</td>
+                      <td className="cell-primary" data-label="Subject">{s.name}</td>
+                      <td data-label="Code">{s.code ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -279,14 +287,14 @@ export default function ClassroomManagement() {
               <EmptyState title="No subject offerings yet" sub="Assign a subject + teacher to a class section for a term." />
             )}
             {offerings && offerings.length > 0 && (
-              <table className="data-table">
+              <table className="data-table data-table-cards">
                 <thead><tr><th>Class</th><th>Subject</th><th>Teacher</th></tr></thead>
                 <tbody>
                   {offerings.map((o) => (
                     <tr key={o.id}>
-                      <td className="cell-primary">{o.sectionName}</td>
-                      <td><Pill tone="gray">{o.subject}</Pill></td>
-                      <td>{o.teacherName ?? <span style={{ color: 'var(--text-faint)' }}>Unassigned</span>}</td>
+                      <td className="cell-primary" data-label="Class">{o.sectionName}</td>
+                      <td data-label="Subject"><Pill tone="gray">{o.subject}</Pill></td>
+                      <td data-label="Teacher">{o.teacherName ?? <span style={{ color: 'var(--text-faint)' }}>Unassigned</span>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -479,6 +487,41 @@ export default function ClassroomManagement() {
             </form>
           </div>
         </div>
+      )}
+      {showBulkGrades && (
+        <BulkUploadModal
+          title="Bulk upload grades"
+          description="Upload a CSV to create many grades at once."
+          templateHeaders={['name', 'level']}
+          templateSampleRow={['Class 5', '5']}
+          onSubmit={(file) => api.bulkCreateGrades(file)}
+          onClose={() => setShowBulkGrades(false)}
+          onImported={(r) => { toast(`Created ${r.imported} of ${r.imported + r.failed} grades.`, r.failed > 0 ? 'error' : 'success'); loadGrades(); }}
+        />
+      )}
+
+      {showBulkSections && (
+        <BulkUploadModal
+          title="Bulk upload sections"
+          description="Upload a CSV to create many sections (classrooms) at once. classTeacherPhone is optional."
+          templateHeaders={['gradeName', 'name', 'classTeacherPhone']}
+          templateSampleRow={['Class 5', 'A', '']}
+          onSubmit={(file) => api.bulkCreateSections(file)}
+          onClose={() => setShowBulkSections(false)}
+          onImported={(r) => { toast(`Created ${r.imported} of ${r.imported + r.failed} sections.`, r.failed > 0 ? 'error' : 'success'); loadSections(); }}
+        />
+      )}
+
+      {showBulkSubjects && (
+        <BulkUploadModal
+          title="Bulk upload subjects"
+          description="Upload a CSV to create many subjects at once."
+          templateHeaders={['name', 'code']}
+          templateSampleRow={['Mathematics', 'MATH']}
+          onSubmit={(file) => api.bulkCreateSubjects(file)}
+          onClose={() => setShowBulkSubjects(false)}
+          onImported={(r) => { toast(`Created ${r.imported} of ${r.imported + r.failed} subjects.`, r.failed > 0 ? 'error' : 'success'); loadSubjects(); }}
+        />
       )}
     </PortalShell>
   );

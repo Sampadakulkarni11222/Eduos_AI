@@ -13,8 +13,16 @@ const STATUSES: { key: AttStatus; label: string; tone: string }[] = [
   { key: 'EXCUSED', label: 'E', tone: 'var(--blue)' },
 ];
 
+function getLocalDateString() {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function AttendancePage() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getLocalDateString();
   const [sections, setSections] = useState<SectionDto[] | null>(null);
   const [sectionId, setSectionId] = useState('');
   const [date, setDate] = useState(today);
@@ -68,7 +76,11 @@ export default function AttendancePage() {
         .filter((r) => marks[r.enrollmentId] !== undefined)
         .map((r) => ({ enrollmentId: r.enrollmentId, status: marks[r.enrollmentId]! }));
       if (!entries.length) { setSaveErr('Mark at least one student before saving.'); setSaving(false); return; }
-      await api.markAttendance({ sectionId: data.section.id, date, entries });
+      const updatedRoster = await api.markAttendance({ sectionId: data.section.id, date, entries });
+      setData(updatedRoster);
+      const nextMarks: Record<string, AttStatus> = {};
+      updatedRoster.roster.forEach((row) => { if (row.status) nextMarks[row.enrollmentId] = row.status; });
+      setMarks(nextMarks);
       setSaved(true);
     } catch (err: any) {
       setSaveErr(err?.message ?? 'Save failed. Please try again.');
@@ -95,8 +107,8 @@ export default function AttendancePage() {
             </option>
           ))}
         </select>
-        <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Date" />
-        {data && data.roster.length > 0 && <Button variant="soft" small onClick={allPresent}>Mark all present</Button>}
+        <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Date" disabled={saving} />
+        {data && data.roster.length > 0 && <Button variant="soft" small onClick={allPresent} disabled={saving}>Mark all present</Button>}
         {summary && (
           <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--text-2)' }}>
             {summary.PRESENT} present · {summary.ABSENT} absent · {summary.LATE} late
@@ -123,19 +135,20 @@ export default function AttendancePage() {
       {!loading && data && data.roster.length === 0 && <EmptyState title="No students in this section" sub="Add enrollments to begin marking attendance." />}
       {!loading && data && data.roster.length > 0 && (
         <Card pad={false}>
-          <table className="data-table">
+          <table className="data-table data-table-cards">
             <thead><tr><th>Roll</th><th>Student</th><th style={{ textAlign: 'right' }}>Status</th></tr></thead>
             <tbody>
               {data.roster.map((r) => (
                 <tr key={r.enrollmentId}>
-                  <td style={{ color: 'var(--text-faint)', width: 60 }}>{r.rollNo ?? '—'}</td>
-                  <td className="cell-primary">{r.studentName}</td>
-                  <td>
+                  <td style={{ color: 'var(--text-faint)', width: 60 }} data-label="Roll">{r.rollNo ?? '—'}</td>
+                  <td className="cell-primary" data-label="Student">{r.studentName}</td>
+                  <td data-label="Status">
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                       {STATUSES.map((s) => {
                         const active = (marks[r.enrollmentId] ?? null) === s.key;
                         return (
                           <button key={s.key}
+                            disabled={saving}
                             onClick={() => { setMarks((m) => ({ ...m, [r.enrollmentId]: s.key })); setSaved(false); }}
                             title={s.key} aria-pressed={active}
                             className={cx('btn', 'btn-sm')}
@@ -163,6 +176,9 @@ export default function AttendancePage() {
 
 function countStatuses(data: AttendanceRoster, marks: Record<string, AttStatus>) {
   const c = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
-  data.roster.forEach((r) => { const s = marks[r.enrollmentId] ?? 'PRESENT'; c[s] += 1; });
+  data.roster.forEach((r) => {
+    const s = marks[r.enrollmentId] ?? null;
+    if (s) c[s] += 1;
+  });
   return c;
 }

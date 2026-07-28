@@ -72,19 +72,19 @@ export function PortalShell({
       <Sidebar portal={portal} schoolName={active?.displayName ?? 'Oakridge'} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
       <div className="main">
         <div className="topbar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button className="hamburger-btn" onClick={() => setMobileOpen(true)} aria-label="Open Menu">
-              ☰
-            </button>
-            <div>
-              <div className="topbar-title">{topbar.title}</div>
-              {topbar.desc && <div className="topbar-desc">{topbar.desc}</div>}
+          <div className="topbar-headrow">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+              <button className="hamburger-btn" onClick={() => setMobileOpen(true)} aria-label="Open Menu">
+                ☰
+              </button>
+              <div style={{ minWidth: 0 }}>
+                <div className="topbar-title">{topbar.title}</div>
+                {topbar.desc && <div className="topbar-desc">{topbar.desc}</div>}
+              </div>
             </div>
+            <div className="topbar-ask"><AskEduOS label="Ask Agent" /></div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <AskEduOS label="Ask Agent" />
-            {topbar.actions && <div className="topbar-actions">{topbar.actions}</div>}
-          </div>
+          {topbar.actions && <div className="topbar-actions">{topbar.actions}</div>}
         </div>
         <div className="content">
           <div className="content-inner">

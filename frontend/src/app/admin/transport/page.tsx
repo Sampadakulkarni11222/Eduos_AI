@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, SkeletonRows, Pill, useToast } from '@/components/ui';
+import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api, ApiError } from '@/lib/api';
 import type { TransportRouteDto, TransportStopDto, StudentListItem } from '@/lib/types';
 
@@ -22,6 +23,10 @@ export default function AdminTransport() {
   const [showEnrollModal, setShowEnrollModal] = useState(false);
   const [enrollForm, setEnrollForm] = useState({ studentId: '', routeId: '', stopId: '', direction: 'BOTH' });
   const [enrollStops, setEnrollStops] = useState<TransportStopDto[]>([]);
+
+  const [showBulkRoutes, setShowBulkRoutes] = useState(false);
+  const [showBulkStops, setShowBulkStops] = useState(false);
+  const [showBulkEnroll, setShowBulkEnroll] = useState(false);
 
   const loadData = () => {
     api.listRoutes().then(setRoutes).catch(() => setRoutes([]));
@@ -103,9 +108,12 @@ export default function AdminTransport() {
 
   return (
     <PortalShell expectedSlug="admin" topbar={{ title: 'Transport Operations', desc: 'Manage school bus routes, stops, and student routing.' }}>
-      <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
         <Button onClick={() => setShowRouteModal(true)}>Add Route</Button>
         <Button variant="soft" onClick={() => setShowEnrollModal(true)}>Enroll Student</Button>
+        <Button variant="soft" onClick={() => setShowBulkRoutes(true)}>Bulk Upload Routes</Button>
+        <Button variant="soft" onClick={() => setShowBulkStops(true)}>Bulk Upload Stops</Button>
+        <Button variant="soft" onClick={() => setShowBulkEnroll(true)}>Bulk Enroll</Button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: selectedRoute ? '1.2fr 1fr' : '1fr', gap: 16 }}>
@@ -118,7 +126,7 @@ export default function AdminTransport() {
             <EmptyState title="No routes configured" sub="Create your first transport route to begin." />
           )}
           {routes && routes.length > 0 && (
-            <table className="data-table">
+            <table className="data-table data-table-cards">
               <thead>
                 <tr>
                   <th>Route Name</th>
@@ -131,14 +139,14 @@ export default function AdminTransport() {
               <tbody>
                 {routes.map((r) => (
                   <tr key={r.id} style={{ background: selectedRoute?.id === r.id ? 'var(--hairline)' : 'none' }}>
-                    <td className="cell-primary">{r.name}</td>
-                    <td>{r.vehicleNo ?? '—'}</td>
-                    <td>
+                    <td className="cell-primary" data-label="Route Name">{r.name}</td>
+                    <td data-label="Vehicle No.">{r.vehicleNo ?? '—'}</td>
+                    <td data-label="Driver Details">
                       <div>{r.driverName ?? '—'}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{r.driverPhone ?? ''}</div>
                     </td>
-                    <td>{r.stopCount} stops</td>
-                    <td>
+                    <td data-label="Stops">{r.stopCount} stops</td>
+                    <td data-label="Action">
                       <Button variant="ghost" small onClick={() => setSelectedRoute(r)}>View Stops</Button>
                     </td>
                   </tr>
@@ -167,7 +175,7 @@ export default function AdminTransport() {
               <EmptyState title="No stops defined" sub="Add stops to map out the route." />
             )}
             {stops && stops.length > 0 && (
-              <table className="data-table">
+              <table className="data-table data-table-cards">
                 <thead>
                   <tr>
                     <th>Seq</th>
@@ -178,9 +186,9 @@ export default function AdminTransport() {
                 <tbody>
                   {stops.map((s) => (
                     <tr key={s.id}>
-                      <td style={{ fontWeight: 600 }}>#{s.sequenceNo}</td>
-                      <td className="cell-primary">{s.name}</td>
-                      <td>{s.etaMinutesFromStart} mins</td>
+                      <td style={{ fontWeight: 600 }} data-label="Seq">#{s.sequenceNo}</td>
+                      <td className="cell-primary" data-label="Stop Name">{s.name}</td>
+                      <td data-label="ETA Offset">{s.etaMinutesFromStart} mins</td>
                     </tr>
                   ))}
                 </tbody>
@@ -298,6 +306,46 @@ export default function AdminTransport() {
             </form>
           </div>
         </div>
+      )}
+
+      {showBulkRoutes && (
+        <BulkUploadModal
+          title="Bulk upload routes"
+          description="Upload a CSV to create many bus routes at once."
+          templateHeaders={['name', 'operatorName', 'vehicleNo', 'driverName', 'driverPhone']}
+          templateSampleRow={['Route 10 - South Extension', '', 'MH-12-PQ-9876', 'Ramesh Kumar', '+919999900001']}
+          onSubmit={(file) => api.bulkCreateRoutes(file)}
+          onClose={() => setShowBulkRoutes(false)}
+          onImported={(r) => { toast(`Created ${r.imported} of ${r.imported + r.failed} routes.`, r.failed > 0 ? 'error' : 'success'); loadData(); }}
+        />
+      )}
+
+      {showBulkStops && (
+        <BulkUploadModal
+          title="Bulk upload stops"
+          description="Upload a CSV to add many stops at once, across one or more routes (matched by route name)."
+          templateHeaders={['routeName', 'name', 'sequenceNo', 'etaMinutesFromStart']}
+          templateSampleRow={['Route 10 - South Extension', 'Central Library Roundabout', '1', '10']}
+          onSubmit={(file) => api.bulkCreateStops(file)}
+          onClose={() => setShowBulkStops(false)}
+          onImported={(r) => {
+            toast(`Created ${r.imported} of ${r.imported + r.failed} stops.`, r.failed > 0 ? 'error' : 'success');
+            if (selectedRoute) api.listStops(selectedRoute.id).then(setStops).catch(() => {});
+            loadData();
+          }}
+        />
+      )}
+
+      {showBulkEnroll && (
+        <BulkUploadModal
+          title="Bulk enroll students"
+          description="Upload a CSV to enroll many students on bus routes at once."
+          templateHeaders={['admissionNo', 'routeName', 'stopName', 'direction']}
+          templateSampleRow={['ADM-2026-0010', 'Route 10 - South Extension', 'Central Library Roundabout', 'BOTH']}
+          onSubmit={(file) => api.bulkEnrollStudents(file)}
+          onClose={() => setShowBulkEnroll(false)}
+          onImported={(r) => { toast(`Enrolled ${r.imported} of ${r.imported + r.failed} students.`, r.failed > 0 ? 'error' : 'success'); }}
+        />
       )}
     </PortalShell>
   );
