@@ -60,7 +60,7 @@ export interface Paged<T> {
 }
 
 export interface SectionDto { id: string; name: string; gradeName: string; classTeacher?: string | null; classTeacherId?: string | null }
-export interface OfferingDto { id: string; subject: string; subjectId?: string; sectionId: string; sectionName: string; teacherName?: string | null }
+export interface OfferingDto { id: string; subject: string; subjectId?: string; sectionId: string; sectionName: string; gradeName?: string; teacherName?: string | null }
 export interface GradeDto { id: string; name: string; level: number }
 export interface SubjectDto { id: string; name: string; code?: string | null }
 export interface TermDto { id: string; academicYearId: string; name: string; startsOn: string; endsOn: string }
@@ -101,7 +101,12 @@ export interface CalendarEventDto { id: string; title: string; description: stri
 
 export interface InvoiceDto { id: string; invoiceNo: string; studentName: string; class: string | null; status: string; totalPaise: number; paidPaise: number; dueOn: string; sectionId?: string; studentId?: string }
 export interface FeeSummary { totalBilledPaise: number; totalCollectedPaise: number; pendingPaise: number; pendingCount: number; collectionPct: number }
-export interface AnnouncementDto { id: string; title: string; content: string; publishedAt: string; author: string | null }
+export interface AnnouncementAudience { all: boolean; gradeIds: string[]; sectionIds: string[]; subjectIds: string[] }
+export interface AnnouncementChannels { app: boolean; email: boolean; whatsapp: boolean }
+export interface AnnouncementDto {
+  id: string; title: string; content: string; publishedAt: string;
+  audience: AnnouncementAudience; audienceLabel: string; channels: AnnouncementChannels;
+}
 export interface TicketDto { id: string; subject: string; status: string; priority: string; routedToRoleKey: string | null; raisedBy: string; assignedTo?: string | null; studentName?: string | null; createdAt: string; messageCount: number }
 export interface TicketThread { id: string; subject: string; status: string; routedToRoleKey: string | null; studentName?: string | null; messages: Array<{ id: string; body: string; channel: string; mine: boolean; createdAt: string }> }
 export interface MedicalDto { studentId: string; bloodGroup: string | null; heightCm: number | null; weightKg: number | null; emergencyContact: { name: string; phone: string; relation: string } | null; allergies: string[]; medications: string[]; history: string | null; attachments?: Array<{ name: string; fileUrl: string }> | null }

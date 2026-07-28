@@ -9,7 +9,8 @@ const SUB_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'gray'> = {
   PENDING: 'gray', SUBMITTED: 'blue', LATE: 'amber', GRADED: 'green', EXEMPT: 'gray',
 };
 
-const emptyFilters = { gradeId: '', sectionId: '', subject: '', chapter: '', dateFrom: '', dateTo: '' };
+const emptyFilters = { sectionId: '', subject: '', chapter: '', dateFrom: '', dateTo: '' };
+const CHAPTER_OPTIONS = Array.from({ length: 20 }, (_, i) => `Chapter ${i + 1}`);
 
 export default function AssignmentsPage() {
   const [items, setItems] = useState<AssignmentDto[] | null>(null);
@@ -21,25 +22,25 @@ export default function AssignmentsPage() {
   const reload = () => api.assignments().then(setItems).catch(() => setItems([]));
   useEffect(() => { void reload(); api.myOfferings().then(setOfferings).catch(() => {}); }, []);
 
-  const grades = useMemo(() => {
-    const seen = new Map<string, string>();
-    items?.forEach((a) => { if (a.gradeId && a.gradeName) seen.set(a.gradeId, a.gradeName); });
-    return [...seen.entries()];
-  }, [items]);
-  const sections = useMemo(() => {
+  // One combined "class" option per section — labeled with its grade so same-named sections across grades stay distinguishable.
+  const classes = useMemo(() => {
     const seen = new Map<string, string>();
     items?.forEach((a) => {
-      if (a.sectionId && a.sectionName && (!filters.gradeId || a.gradeId === filters.gradeId)) seen.set(a.sectionId, a.sectionName);
+      if (a.sectionId && a.sectionName) seen.set(a.sectionId, a.class || (a.gradeName ? `${a.gradeName} - ${a.sectionName}` : a.sectionName));
     });
     return [...seen.entries()];
-  }, [items, filters.gradeId]);
+  }, [items]);
   const subjects = useMemo(() => [...new Set(items?.map((a) => a.subject) ?? [])].sort(), [items]);
+  // Fixed Chapter 1..20 list, plus any legacy free-text chapter values already in use.
+  const chapters = useMemo(() => {
+    const extra = (items ?? []).map((a) => a.chapter).filter((c): c is string => !!c && !CHAPTER_OPTIONS.includes(c));
+    return [...CHAPTER_OPTIONS, ...new Set(extra)];
+  }, [items]);
 
   const filtered = useMemo(() => items?.filter((a) => {
-    if (filters.gradeId && a.gradeId !== filters.gradeId) return false;
     if (filters.sectionId && a.sectionId !== filters.sectionId) return false;
     if (filters.subject && a.subject !== filters.subject) return false;
-    if (filters.chapter && !(a.chapter ?? '').toLowerCase().includes(filters.chapter.toLowerCase())) return false;
+    if (filters.chapter && a.chapter !== filters.chapter) return false;
     if (filters.dateFrom && new Date(a.dueAt) < new Date(filters.dateFrom)) return false;
     if (filters.dateTo && new Date(a.dueAt) > new Date(`${filters.dateTo}T23:59:59`)) return false;
     return true;
@@ -56,19 +57,18 @@ export default function AssignmentsPage() {
 
       {items && items.length > 0 && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-          <select className="input" value={filters.gradeId} onChange={(e) => setFilters((f) => ({ ...f, gradeId: e.target.value, sectionId: '' }))} aria-label="Grade">
-            <option value="">All grades</option>
-            {grades.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-          </select>
-          <select className="input" value={filters.sectionId} onChange={(e) => setFilters((f) => ({ ...f, sectionId: e.target.value }))} aria-label="Section">
-            <option value="">All sections</option>
-            {sections.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          <select className="input" value={filters.sectionId} onChange={(e) => setFilters((f) => ({ ...f, sectionId: e.target.value }))} aria-label="Class">
+            <option value="">All classes</option>
+            {classes.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
           </select>
           <select className="input" value={filters.subject} onChange={(e) => setFilters((f) => ({ ...f, subject: e.target.value }))} aria-label="Subject">
             <option value="">All subjects</option>
             {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
-          <input className="input" placeholder="Chapter…" value={filters.chapter} onChange={(e) => setFilters((f) => ({ ...f, chapter: e.target.value }))} aria-label="Chapter" style={{ width: 140 }} />
+          <select className="input" value={filters.chapter} onChange={(e) => setFilters((f) => ({ ...f, chapter: e.target.value }))} aria-label="Chapter">
+            <option value="">All chapters</option>
+            {chapters.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
           <input className="input" type="date" value={filters.dateFrom} onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))} aria-label="Due from" title="Due from" />
           <input className="input" type="date" value={filters.dateTo} onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value }))} aria-label="Due to" title="Due to" />
           {hasFilters && <Button variant="ghost" small onClick={() => setFilters(emptyFilters)}>Clear filters</Button>}
@@ -288,7 +288,10 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
         </div>
         <div style={{ marginTop: 12 }}>
           <div className="field-label">Chapter (optional)</div>
-          <input className="field-input" value={chapter} onChange={(e) => setChapter(e.target.value)} placeholder="e.g. Chapter 4 — Fractions" />
+          <select className="field-input" value={chapter} onChange={(e) => setChapter(e.target.value)}>
+            <option value="">No chapter</option>
+            {CHAPTER_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
         </div>
         {err && <p style={{ color: 'var(--red)', fontSize: 13, marginTop: 8, marginBottom: 8 }}>{err}</p>}
         <Button type="submit" disabled={busy || !offeringId} style={{ marginTop: 12 }}>{busy ? 'Creating…' : 'Create assignment'}</Button>

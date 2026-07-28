@@ -347,8 +347,11 @@ export const api = {
 
   // ── announcements ──
   announcements: () => request<AnnouncementDto[]>('/announcements'),
-  createAnnouncement: (body: { title: string; content: string; audience?: object }) =>
-    request<{ id: string }>('/announcements', { method: 'POST', body: JSON.stringify(body) }),
+  createAnnouncement: (body: {
+    title: string; content: string;
+    audience?: { all?: boolean; gradeIds?: string[]; sectionIds?: string[]; subjectIds?: string[] };
+    channels?: { app?: boolean; email?: boolean; whatsapp?: boolean };
+  }) => request<{ id: string }>('/announcements', { method: 'POST', body: JSON.stringify(body) }),
 
   // ── tickets ──
   tickets: (status?: string) => request<TicketDto[]>(`/tickets${status ? `?status=${status}` : ''}`),

@@ -101,6 +101,7 @@ function toOfferingDto(o) {
     id: o._id,
     sectionId: o.sectionId?._id || o.sectionId || '',
     sectionName: o.sectionId?.name || '',
+    gradeName: o.sectionId?.gradeId?.name || '',
     subject: o.subjectId?.name || '',          // matches OfferingDto.subject
     subjectId: o.subjectId?._id || o.subjectId || '',
     teacherName: o.teacherId?.displayName || null,
