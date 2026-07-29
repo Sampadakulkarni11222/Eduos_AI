@@ -34,6 +34,52 @@ function getClient() {
  * caller must present its own deterministic content rather than passing off
  * a placeholder as a model answer.
  */
+/**
+ * Reads an image alongside a prompt (used for the attendance-register OCR).
+ *
+ * Vision is the OCR engine here rather than a separate library: a phone photo
+ * of a handwritten register is exactly the messy, skewed, mixed-handwriting
+ * input classical OCR handles worst. `mediaType` must be one the API accepts.
+ */
+export async function generateFromImage({ system, message, imageBase64, mediaType, maxTokens = 4096 }) {
+  if (!isLlmEnabled()) {
+    return { text: null, generated: false, reason: 'LLM_NOT_CONFIGURED' };
+  }
+
+  try {
+    const response = await getClient().messages.create({
+      model: MODEL,
+      max_tokens: maxTokens,
+      // Transcription accuracy matters more here than token thrift, and a
+      // misread register writes wrong attendance onto real children.
+      output_config: { effort: 'high' },
+      system,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } },
+            { type: 'text', text: message },
+          ],
+        },
+      ],
+    });
+
+    if (response.stop_reason === 'refusal') {
+      logger.warn(`LLM refused an image request (category: ${response.stop_details?.category ?? 'unknown'})`);
+      return { text: null, generated: false, reason: 'REFUSED' };
+    }
+
+    const text = response.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+    if (!text) return { text: null, generated: false, reason: 'EMPTY_RESPONSE' };
+
+    return { text, generated: true, model: response.model, usage: response.usage };
+  } catch (err) {
+    logger.error(`LLM image generation failed: ${err.message}`);
+    return { text: null, generated: false, reason: 'PROVIDER_ERROR' };
+  }
+}
+
 export async function generate({ system, message, maxTokens = MAX_TOKENS }) {
   if (!isLlmEnabled()) {
     return { text: null, generated: false, reason: 'LLM_NOT_CONFIGURED' };
