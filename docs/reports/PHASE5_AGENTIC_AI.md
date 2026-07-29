@@ -65,7 +65,7 @@ Stated plainly rather than left to be discovered:
 
 | Item | Status |
 |---|---|
-| **OCR attendance from a photo of a paper register** | **Not built.** The brief's flagship teacher workflow. The agent scaffolding is ready (`mark_attendance` is registered, gated on `attendance.mark`, and requires confirmation), but there is no image ingestion, no OCR, and no roster-matching step. |
+| **OCR attendance from a photo of a paper register** | **Built** (`0fa2342`) — see the section below. |
 | **Voice input / multilingual responses** | **Not built.** The rule parser matches Hindi and Hinglish stems, and the tutor prompt targets an Indian school context — but there is no speech-to-text, and responses are not translated to the user's language. |
 | Payment-link generation from the agent | Not built (`record_fee_payment` is staff-only ledger recording, not a parent payment link). |
 | "Generate this week's homework" / "schedule a PTM" | Not built — no tool backs either yet. |
@@ -81,3 +81,67 @@ Stated plainly rather than left to be discovered:
 | Tutor mode | **24/24** |
 
 Two test failures during this phase turned out to be **my tests being wrong, not the code**: a librarian was expected to get 403 on the tutor (all roles hold `ai.copilot.use`, so 404 was correct), and an earlier "mark my attendance" case scored higher as a read than a write. Both are recorded rather than quietly corrected, because a careless "fix" to either would have loosened a working control.
+
+
+---
+
+## OCR attendance from a register photo (`0fa2342`) — 25/25 + 12/12
+
+`POST /attendance/ocr/draft` — photo → vision transcription → match against the
+**real** roster → confidence-classify every row → propose → teacher confirms →
+write through the ordinary `markAttendance()` path (which already enforces
+section ownership and rejects enrollmentIds smuggled in from other sections).
+
+Vision is the OCR engine rather than a classical library: a phone photo of a
+handwritten register — skewed, mixed handwriting, ticks and crosses — is exactly
+the input classical OCR handles worst.
+
+### Two invariants
+
+A misread register writes a wrong absence onto a real child's record, so the
+cost of being wrong is not symmetric with the convenience of being fast.
+
+1. **It never invents a student.** `enrollmentId`s come from the roster, never
+   from the photo. A name matching nobody is surfaced to the teacher, never
+   guessed into a record.
+2. **It never auto-commits a low-confidence read.** Only exact, unambiguous,
+   legible rows with an understood mark are attached to the confirmation token,
+   so even a teacher who confirms without reading cannot write anything
+   uncertain.
+
+Rows go to **review** when: flagged illegible by the reader, the mark is
+unreadable or blank, two rows claim the same student, the match was name-only
+(no roll number), or the roll number and handwritten name disagree.
+
+### Two bugs found by testing
+
+**The one that mattered.** The roll/name disagreement check compared the read
+name against the *best match anywhere in the roster* — so a name belonging to a
+**different real student** scored 1.0 and the check never fired. The
+confident-looking wrong row would have been committed. It now compares against
+the roll-matched student's own name. This was caught by the test written
+specifically for "confident-looking but wrong", which is why that case was
+worth writing a test for at all.
+
+**Ordering.** Provider-availability was checked before ownership, so a teacher
+probing a section they don't teach got `501` instead of `403`. Nothing leaked,
+but authorization must not be short-circuited by feature availability — or the
+answer to "may I touch this section?" depends on whether an unrelated
+integration is switched on. Ownership now runs first; verified `403` with
+"You do not teach this section".
+
+### Verified
+
+- **Matcher, 25/25** — clean reads commit; illegible rows, unknown marks and
+  blank cells never guess a status; duplicate rows cannot double-write one
+  student; students not on the roster are never created; name-only matches
+  still require review; name similarity handles slips, case and punctuation.
+- **Endpoint, 12/12** — students and parents refused (same `attendance.mark`
+  permission as marking by hand, so the photo path is never softer); validation
+  runs before any model call; honest `501` with a "use the roster instead"
+  message when unconfigured; `data:` URL prefixes accepted; `403` on a section
+  the teacher doesn't teach.
+
+**Not verified:** live vision transcription accuracy. No `ANTHROPIC_API_KEY` was
+available, so the model call itself is code-reviewed only — the matcher that
+consumes its output is fully tested against hand-built transcriptions.
