@@ -4,7 +4,7 @@ import { AuditLog } from '../../../models/auditLog.model.js';
 import { AppError } from '../../../utils/AppError.js';
 import { logger } from '../../../utils/logger.js';
 import { getTool, toolsAvailableTo } from './tools.js';
-import { parseIntent } from './intent.js';
+import { parseIntentWithLlm } from './intent.js';
 
 const CONFIRM_TTL_MINUTES = 10;
 
@@ -107,7 +107,7 @@ export async function runAgent({ message, actor, source = 'WEB' }) {
     };
   }
 
-  const intent = parseIntent(message, actor);
+  const intent = await parseIntentWithLlm(message, actor);
   if (!intent) {
     const available = toolsAvailableTo(actor);
     return {
