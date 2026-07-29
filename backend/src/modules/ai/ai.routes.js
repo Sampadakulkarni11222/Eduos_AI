@@ -98,4 +98,55 @@ router.post('/agent/confirm', requirePermission('ai.copilot.use'), controller.ag
  */
 router.get('/agent/capabilities', requirePermission('ai.copilot.use'), controller.agentCapabilities);
 
+/**
+ * @swagger
+ * /ai/tutor/status:
+ *   get:
+ *     summary: Whether LLM tutoring is configured, and the available modes
+ *     tags: [AI]
+ *     responses:
+ *       200: { description: Tutor status }
+ */
+router.get('/tutor/status', requirePermission('ai.copilot.use'), controller.tutorStatus);
+
+/**
+ * @swagger
+ * /ai/tutor/syllabus:
+ *   get:
+ *     summary: The caller's own subjects, resolved from their enrolment
+ *     description: >
+ *       There is no parameter for whose syllabus — it is always the caller's
+ *       (or, for a parent, their child's).
+ *     tags: [AI]
+ *     responses:
+ *       200: { description: Syllabus fetched }
+ */
+router.get('/tutor/syllabus', requirePermission('ai.copilot.use'), controller.tutorSyllabus);
+
+/**
+ * @swagger
+ * /ai/tutor:
+ *   post:
+ *     summary: Syllabus-aware tutoring grounded in the student's own subjects and results
+ *     description: >
+ *       A subject outside the student's own syllabus is refused. When no LLM is
+ *       configured the response carries `generated: false` and a study scaffold
+ *       built from real data rather than a fabricated explanation.
+ *     tags: [AI]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [topic]
+ *             properties:
+ *               topic: { type: string }
+ *               subject: { type: string, description: "Must be one of the student's own subjects" }
+ *               mode: { type: string, enum: [explain, questions, flashcards, notes, mindmap] }
+ *     responses:
+ *       200: { description: Tutor response }
+ */
+router.post('/tutor', requirePermission('ai.copilot.use'), controller.tutor);
+
 export default router;
