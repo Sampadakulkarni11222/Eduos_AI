@@ -66,7 +66,7 @@ Stated plainly rather than left to be discovered:
 | Item | Status |
 |---|---|
 | **OCR attendance from a photo of a paper register** | **Built** (`0fa2342`) — see the section below. |
-| **Voice input / multilingual responses** | **Not built.** The rule parser matches Hindi and Hinglish stems, and the tutor prompt targets an Indian school context — but there is no speech-to-text, and responses are not translated to the user's language. |
+| **Voice input / multilingual responses** | **Built** (`e5a1b0f`) — see the section below. WhatsApp *voice notes* remain unbuilt (they need server-side STT). |
 | Payment-link generation from the agent | Not built (`record_fee_payment` is staff-only ledger recording, not a parent payment link). |
 | "Generate this week's homework" / "schedule a PTM" | Not built — no tool backs either yet. |
 | Live LLM behaviour | **Never exercised.** No `ANTHROPIC_API_KEY` was available, so every test ran on the deterministic path. The provider, refusal handling, and model-proposal containment are code-reviewed, not runtime-verified. This is the largest untested surface in the phase. |
@@ -145,3 +145,74 @@ integration is switched on. Ownership now runs first; verified `403` with
 **Not verified:** live vision transcription accuracy. No `ANTHROPIC_API_KEY` was
 available, so the model call itself is code-reviewed only — the matcher that
 consumes its output is fully tested against hand-built transcriptions.
+
+
+---
+
+## Voice input and multilingual replies (`e5a1b0f`)
+
+### Multilingual
+
+Detection is **deterministic** — Unicode script ranges plus a short
+romanised-Hindi marker list — not model-based, because a parent must be
+answered in their own language whether or not an LLM is configured.
+
+Agent tools now return a **message key + params** rather than a finished
+English sentence, so the orchestrator renders the same result in any
+catalogued language. A tool still returning a literal string keeps working; it
+just stays English.
+
+**The catalogue covers English and Hindi only, deliberately.** Those are the two
+I can write to a standard a school would put in front of parents. Machine-
+translating the other nine detected languages and shipping them would look like
+more coverage while quietly putting bad Tamil in front of a Tamil-speaking
+parent. So: other languages are still *detected*, canned replies fall back to
+English, and LLM-generated prose (the tutor) is produced directly in the user's
+language, which a model does properly. Adding a language is a data change to
+`MESSAGES` and should be done by a native speaker.
+
+Applied across the web agent, WhatsApp — where it matters most, since parents
+are the least English-comfortable audience — and the tutor. An explicit `lang`
+from the UI overrides detection, so one English message doesn't flip a Hindi
+user back.
+
+### Voice
+
+`lib/speech.ts` wraps the Web Speech API with 10 Indian locales. Kept
+**client-side deliberately**: server-side STT would mean another provider, its
+credentials, and per-minute cost for something every Chromium and Safari browser
+already ships. Firefox has no support, so the button is hidden rather than shown
+broken. The spoken language drives the reply language, so a parent sets it once.
+
+### Two bugs found by testing
+
+**The one my own test hid.** JavaScript's `` is defined on `[A-Za-z0-9_]`, so
+every Devanagari pattern (`/छुट्टी/` and friends) **silently never
+matched**. Hindi questions were being answered *in Hindi* with "I'm not sure
+what you need" — and the first test **passed**, because it only asserted the
+reply's language, not that the question had been understood. The anchors are
+gone, the file carries a note explaining why they must not come back, and the
+tests now assert comprehension (`!UNSURE.test(reply)`) rather than script.
+
+**Validation in the wrong place.** `apply_leave` validated dates but not the
+reason the leave service requires, so a Hindi request was proposed, **confirmed
+by the user**, and only then failed. Confirm-before-commit is worthless if the
+thing you confirmed cannot succeed — validation now mirrors the service, so the
+user is asked for a reason *before* confirming.
+
+### Verified
+
+- **11/11** comprehension and end-to-end Hindi leave, including Devanagari
+  (`बुखार के कारण`) and Hinglish (`kyunki shaadi hai`) reason extraction, plus
+  English regression.
+- **25/26** detection and catalogue (the one failure was the leave bug above,
+  now fixed).
+- No regressions: agent core **30/30**, WhatsApp **19/19**, OCR matcher
+  **25/25**, `next build` 96/96.
+
+### Not built
+
+**WhatsApp voice notes.** They arrive as audio files on the webhook and cannot
+use a browser API; transcribing them needs a server-side STT provider. The
+webhook already answers non-text messages with a usable reply rather than
+silence, so the failure mode is graceful.
