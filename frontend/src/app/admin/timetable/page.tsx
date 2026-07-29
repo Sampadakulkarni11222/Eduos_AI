@@ -1,11 +1,11 @@
 'use client';
 import { PortalShell } from '@/components/shell';
-import { TimetableGrid } from '@/components/timetable-grid';
+import { TimetableCalendar } from '@/components/timetable/timetable-calendar';
 
 export default function AdminTimetable() {
   return (
     <PortalShell expectedSlug="admin" topbar={{ title: 'Timetable', desc: 'Class-wise weekly period schedules.' }}>
-      <TimetableGrid scopeLabel="Sections" canEdit={true} />
+      <TimetableCalendar scopeLabel="Sections" canEdit={true} />
     </PortalShell>
   );
 }

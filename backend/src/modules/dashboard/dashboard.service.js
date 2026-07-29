@@ -13,6 +13,7 @@ import { TimetableSlot } from '../../models/timetableSlot.model.js';
 import { Book, BookIssue } from '../../models/library.model.js';
 import { HostelRoom, HostelAllocation, HostelInquiry } from '../../models/hostel.model.js';
 import { Document } from '../../models/document.model.js';
+import { CalendarEvent } from '../../models/calendarEvent.model.js';
 import {
   getTeacherSectionIds,
   getGuardianStudentIds,
@@ -397,12 +398,42 @@ export async function getStudentDashboard(profileId) {
   const enrollmentId = enrollment._id;
   const sectionId = enrollment.sectionId?._id;
 
-  // 1. Attendance percentage
+  // 1. Attendance percentage (all-time)
   const [totalAtt, presentAtt] = await Promise.all([
     AttendanceRecord.countDocuments({ enrollmentId, periodNo: null }),
     AttendanceRecord.countDocuments({ enrollmentId, periodNo: null, status: { $in: ['PRESENT', 'LATE', 'HALF_DAY'] } }),
   ]);
   const attendancePct = pct(presentAtt, totalAtt);
+
+  // 1b. Attendance percentage (current calendar month)
+  // Uses local Y/M/D (not getUTC*) fed into Date.UTC — matching parseDateToMidnight's
+  // convention elsewhere in this module, where a stored UTC-midnight Date represents
+  // an abstract calendar day, not a real UTC instant. Using getUTC* here would drift
+  // "today"/"this month" by the server's UTC offset and mismatch stored records.
+  const todayForMonth = new Date();
+  const monthStart = new Date(Date.UTC(todayForMonth.getFullYear(), todayForMonth.getMonth(), 1));
+  const monthEnd = new Date(Date.UTC(todayForMonth.getFullYear(), todayForMonth.getMonth() + 1, 0, 23, 59, 59, 999));
+  const [totalAttMonth, presentAttMonth] = await Promise.all([
+    AttendanceRecord.countDocuments({ enrollmentId, periodNo: null, date: { $gte: monthStart, $lte: monthEnd } }),
+    AttendanceRecord.countDocuments({
+      enrollmentId, periodNo: null, date: { $gte: monthStart, $lte: monthEnd },
+      status: { $in: ['PRESENT', 'LATE', 'HALF_DAY'] },
+    }),
+  ]);
+  const monthlyAttendance = {
+    percentage: pct(presentAttMonth, totalAttMonth),
+    presentDays: presentAttMonth,
+    totalDays: totalAttMonth,
+  };
+
+  // 1c. Today's attendance status (cross-checked against holidays)
+  const dayStart = new Date(Date.UTC(todayForMonth.getFullYear(), todayForMonth.getMonth(), todayForMonth.getDate()));
+  const dayEnd = new Date(Date.UTC(todayForMonth.getFullYear(), todayForMonth.getMonth(), todayForMonth.getDate(), 23, 59, 59, 999));
+  const [todayRecord, todayHoliday] = await Promise.all([
+    AttendanceRecord.findOne({ enrollmentId, periodNo: null, date: dayStart }).select('status').lean(),
+    CalendarEvent.findOne({ type: 'HOLIDAY', deletedAt: null, startsAt: { $lte: dayEnd }, endsAt: { $gte: dayStart } }).select('_id').lean(),
+  ]);
+  const todayAttendanceStatus = todayRecord?.status ?? (todayHoliday ? 'HOLIDAY' : 'NOT_MARKED');
 
   // 2. Today's timetable
   const dow = todayDow();
@@ -470,18 +501,25 @@ export async function getStudentDashboard(profileId) {
     attendancePercentage: attendancePct,
     totalDays: totalAtt,
     presentDays: presentAtt,
+    monthlyAttendance,
+    todayAttendanceStatus,
     todayTimetable: todaySlots.map((s) => ({
       periodNo: s.periodNo,
       startTime: s.startTime,
       endTime: s.endTime,
       subject: s.subjectOfferingId?.subjectId?.name ?? 'Break',
+      room: s.room ?? null,
+      liveClassLink: s.liveClassLink ?? null,
     })),
     upcomingClasses: todaySlots
       .filter((s) => s.startTime > new Date().toTimeString().slice(0, 5))
       .map((s) => ({
         periodNo: s.periodNo,
         startTime: s.startTime,
+        endTime: s.endTime,
         subject: s.subjectOfferingId?.subjectId?.name ?? 'Break',
+        room: s.room ?? null,
+        liveClassLink: s.liveClassLink ?? null,
       })),
     pendingAssignments,
     examSchedule: examSchedule.map((es) => ({
@@ -512,6 +550,8 @@ function _emptyStudentDashboard() {
     attendancePercentage: 0,
     totalDays: 0,
     presentDays: 0,
+    monthlyAttendance: { percentage: 0, presentDays: 0, totalDays: 0 },
+    todayAttendanceStatus: 'NOT_MARKED',
     todayTimetable: [],
     upcomingClasses: [],
     pendingAssignments: 0,

@@ -8,6 +8,8 @@ const timetableSlotSchema = new Schema(
     startTime: { type: String, required: true }, // "09:00"
     endTime: { type: String, required: true },
     subjectOfferingId: { type: Schema.Types.ObjectId, ref: 'SubjectOffering', default: null }, // null = break
+    room: { type: String, default: null, trim: true },
+    liveClassLink: { type: String, default: null, trim: true },
   },
   { timestamps: true }
 );

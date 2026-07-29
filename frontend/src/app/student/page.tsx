@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PortalShell } from '@/components/shell';
 
-import { Card, EmptyState, SkeletonRows, StatCard, rupees } from '@/components/ui';
+import { Button, Card, EmptyState, SkeletonRows, StatCard, rupees, subjectColor } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { StudentDashboardDto, StudentListItem } from '@/lib/types';
@@ -41,12 +41,16 @@ export default function StudentDashboard() {
             </div>
           </div>
 
-          <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
+          <div className="card-grid" style={{ gridTemplateColumns: 'repeat(5,1fr)', marginBottom: data && data.monthlyAttendance.percentage < 75 ? 12 : 18 }}>
             <StatCard
-              label="Attendance"
-              value={data ? `${data.attendancePercentage}%` : '—'}
-              delta={data ? `${data.presentDays}/${data.totalDays} days` : undefined}
-              deltaDir={data && data.attendancePercentage < 75 ? 'down' : 'flat'}
+              label="Monthly Attendance"
+              value={data ? `${data.monthlyAttendance.percentage}%` : '—'}
+              delta={data ? `${data.monthlyAttendance.presentDays}/${data.monthlyAttendance.totalDays} days` : undefined}
+              deltaDir={data && data.monthlyAttendance.percentage < 75 ? 'down' : 'flat'}
+            />
+            <StatCard
+              label="Today's Attendance"
+              value={<span style={{ color: attendanceStatusColor(data?.todayAttendanceStatus) }}>{data ? attendanceStatusLabel(data.todayAttendanceStatus) : '—'}</span>}
             />
             <StatCard
               label="Pending Assignments"
@@ -55,31 +59,53 @@ export default function StudentDashboard() {
               deltaDir={data && data.pendingAssignments > 0 ? 'down' : 'flat'}
             />
             <StatCard label="Upcoming Exams" value={data ? data.examSchedule.length : '—'} delta="scheduled" deltaDir="flat" />
-            <StatCard
-              label="Fees Pending"
-              value={data ? rupees(Math.round(data.feeStatus.pendingFees * 100)) : '—'}
-              delta={data ? `${data.feeStatus.pendingInvoices} open invoice(s)` : undefined}
-              deltaDir="flat"
-            />
+            <div onClick={() => router.push('/student/payments')} style={{ cursor: 'pointer' }}>
+              <StatCard
+                label="Fees Pending"
+                value={data ? rupees(Math.round(data.feeStatus.pendingFees * 100)) : '—'}
+                delta={data ? `${data.feeStatus.pendingInvoices} open invoice(s)` : undefined}
+                deltaDir="flat"
+              />
+            </div>
           </div>
+
+          {data && data.monthlyAttendance.percentage < 75 && (
+            <div style={{ marginBottom: 18, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 13, color: '#b91c1c', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span>Your attendance this month is {data.monthlyAttendance.percentage}%, below the 75% requirement.</span>
+              <button onClick={() => router.push('/student/attendance')} style={{ fontSize: 12.5, fontWeight: 700, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', flexShrink: 0 }}>
+                View attendance →
+              </button>
+            </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <Card>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Today's Classes</strong>
+                <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Today's Schedule</strong>
                 <button onClick={() => router.push('/student/timetable')} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
                   Full timetable →
                 </button>
               </div>
               {data === null && <SkeletonRows rows={3} />}
               {data !== null && slots.length === 0 && <p style={{ fontSize: 12.5, color: 'var(--text-2b)' }}>No classes scheduled today.</p>}
-              {slots.map((sl, i) => (
-                <div key={sl.periodNo} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
-                  <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12.5, color: 'var(--text-2)', width: 44 }}>{sl.startTime}</span>
-                  <span style={{ width: 3, height: 26, borderRadius: 3, background: 'var(--accent)', flexShrink: 0 }} />
-                  <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-1)' }}>{sl.subject}</span>
-                </div>
-              ))}
+              {slots.map((sl, i) => {
+                const color = subjectColor(sl.subject);
+                return (
+                  <div key={sl.periodNo} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12.5, color: 'var(--text-2)', width: 44 }}>{sl.startTime}</span>
+                    <span style={{ width: 3, height: 26, borderRadius: 3, background: color.dot, flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-1)' }}>{sl.subject}</div>
+                      {sl.room && <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{sl.room}</div>}
+                    </div>
+                    {sl.liveClassLink && (
+                      <Button small variant="soft" onClick={(e) => { e.stopPropagation(); window.open(sl.liveClassLink!, '_blank', 'noopener,noreferrer'); }}>
+                        Live
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
                 <button className="btn btn-soft btn-block" onClick={() => router.push('/student/assignments')}>
@@ -89,6 +115,39 @@ export default function StudentDashboard() {
               </div>
             </Card>
 
+            <Card>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Upcoming Classes</strong>
+                <button onClick={() => router.push('/student/timetable')} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                  Full timetable →
+                </button>
+              </div>
+              {data === null && <SkeletonRows rows={3} />}
+              {data !== null && (data.upcomingClasses.filter((s) => s.subject !== 'Break').length === 0) && (
+                <p style={{ fontSize: 12.5, color: 'var(--text-2b)' }}>No more classes today.</p>
+              )}
+              {data?.upcomingClasses.filter((s) => s.subject !== 'Break').slice(0, 4).map((sl, i) => {
+                const color = subjectColor(sl.subject);
+                return (
+                  <div key={sl.periodNo} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12.5, color: 'var(--text-2)', width: 44 }}>{sl.startTime}</span>
+                    <span style={{ width: 3, height: 26, borderRadius: 3, background: color.dot, flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-1)' }}>{sl.subject}</div>
+                      {sl.room && <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{sl.room}</div>}
+                    </div>
+                    {sl.liveClassLink && (
+                      <Button small variant="soft" onClick={(e) => { e.stopPropagation(); window.open(sl.liveClassLink!, '_blank', 'noopener,noreferrer'); }}>
+                        Live
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+            </Card>
+          </div>
+
+          <div style={{ marginTop: 16 }}>
             <Card>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Recent Announcements</strong>
@@ -132,3 +191,16 @@ export default function StudentDashboard() {
 
 function greeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
 function today() { return new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
+
+function attendanceStatusLabel(status: string | undefined) {
+  return ({
+    PRESENT: 'Present', LATE: 'Present (Late)', ABSENT: 'Absent',
+    EXCUSED: 'Leave', HALF_DAY: 'Half Day', HOLIDAY: 'Holiday', NOT_MARKED: 'Not marked yet',
+  } as Record<string, string>)[status ?? ''] ?? '—';
+}
+function attendanceStatusColor(status: string | undefined) {
+  if (status === 'PRESENT' || status === 'LATE') return 'var(--green)';
+  if (status === 'ABSENT') return 'var(--red)';
+  if (status === 'EXCUSED' || status === 'HALF_DAY') return 'var(--amber)';
+  return 'var(--text-faint)';
+}

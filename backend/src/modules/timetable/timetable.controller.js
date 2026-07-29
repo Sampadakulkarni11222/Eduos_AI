@@ -18,6 +18,8 @@ export const getTimetable = asyncHandler(async (req, res) => {
       teacher: s.subjectOfferingId?.teacherId?.displayName || null,
       subjectOfferingId: s.subjectOfferingId?._id?.toString() ?? null,
       isBreak,
+      room: s.room ?? null,
+      liveClassLink: s.liveClassLink ?? null,
     };
   });
   sendSuccess(res, { sectionId: req.query.sectionId || '', slots: dtos }, 'Timetable fetched');

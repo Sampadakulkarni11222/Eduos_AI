@@ -162,7 +162,7 @@ export async function markAttendanceBulk(actor, { date, periodNo = null, section
   return { ...roster, imported: records.length, failed: errors.length, errors };
 }
 
-async function resolveSummaryEnrollmentIds(actor, scope, enrollmentId) {
+export async function resolveSummaryEnrollmentIds(actor, scope, enrollmentId) {
   if (enrollmentId) return [enrollmentId];
 
   if (scope === 'OWN' && actor.roleKey === 'PARENT') {
@@ -232,4 +232,82 @@ export async function getSummary(actor, scope, { enrollmentId, from, to, month }
   }
 
   return summary;
+}
+
+/** Resolve a single enrollmentId for actor-scoped endpoints (calendar/trend) — the
+ * student/parent's own record when none is given explicitly. */
+async function resolveSingleEnrollmentId(actor, scope, enrollmentId) {
+  if (enrollmentId) return enrollmentId;
+  const ids = await resolveSummaryEnrollmentIds(actor, scope, null);
+  if (ids.length === 0) throw new AppError('No enrollment found for this account', 404);
+  return ids[0];
+}
+
+export async function getCalendar(actor, scope, { enrollmentId, month }) {
+  const targetId = await resolveSingleEnrollmentId(actor, scope, enrollmentId);
+  if (!month) throw new AppError('month is required', 400);
+
+  const [yearStr, monthStr] = month.split('-');
+  const year = parseInt(yearStr, 10);
+  const monthIdx = parseInt(monthStr, 10) - 1;
+  const dateFrom = new Date(Date.UTC(year, monthIdx, 1));
+  const dateTo = new Date(Date.UTC(year, monthIdx + 1, 0, 23, 59, 59, 999));
+
+  const records = await AttendanceRecord.find({
+    enrollmentId: targetId,
+    periodNo: null,
+    date: { $gte: dateFrom, $lte: dateTo },
+  }).select('date status').sort({ date: 1 }).lean();
+
+  return {
+    enrollmentId: targetId,
+    month,
+    days: records.map((r) => ({ date: r.date.toISOString().slice(0, 10), status: r.status })),
+  };
+}
+
+export async function getTrend(actor, scope, { enrollmentId, months }) {
+  const targetId = await resolveSingleEnrollmentId(actor, scope, enrollmentId);
+  const n = Math.min(Math.max(parseInt(months, 10) || 6, 1), 12);
+
+  // Local Y/M feed Date.UTC — matching parseDateToMidnight's convention (a stored
+  // UTC-midnight Date represents an abstract calendar day, not a real UTC instant).
+  // Using getUTC* on `now` here would drift "current month" by the server's UTC offset.
+  const now = new Date();
+  const rangeStart = new Date(Date.UTC(now.getFullYear(), now.getMonth() - (n - 1), 1));
+
+  const rows = await AttendanceRecord.aggregate([
+    {
+      $match: {
+        enrollmentId: new mongoose.Types.ObjectId(targetId),
+        periodNo: null,
+        date: { $gte: rangeStart },
+      },
+    },
+    {
+      $group: {
+        _id: { ym: { $dateToString: { format: '%Y-%m', date: '$date' } }, status: '$status' },
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const byMonth = new Map();
+  for (const row of rows) {
+    const ym = row._id.ym;
+    if (!byMonth.has(ym)) byMonth.set(ym, { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 });
+    byMonth.get(ym)[row._id.status] = row.count;
+  }
+
+  const points = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(now.getFullYear(), now.getMonth() - i, 1));
+    const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const stats = byMonth.get(ym) ?? { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
+    const workingDays = stats.PRESENT + stats.ABSENT + stats.LATE + stats.EXCUSED + stats.HALF_DAY;
+    const presentCount = stats.PRESENT + stats.LATE + stats.EXCUSED + stats.HALF_DAY * 0.5;
+    const pctPresent = workingDays > 0 ? Math.round((presentCount / workingDays) * 100) : 0;
+    points.push({ month: ym, pctPresent, presentDays: stats.PRESENT + stats.LATE, workingDays });
+  }
+  return points;
 }
