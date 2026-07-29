@@ -85,8 +85,10 @@ Current: dashboard, payments & fees (invoice create, record payment, receipts li
 
 | Dimension | EduOS | ERPN | Fed | C365 | Entab | Gap severity |
 |---|---|---|---|---|---|---|
-| Fee structure engine (heads, class-wise plans, installments, late fines, concessions/scholarships, sibling discounts) | **Missing** — invoices are hand-created one at a time | **Strong** | Strong | Strong | Strong | **Critical** — this is the module bursars evaluate first; hand-created invoices don't survive a 720-student school (the seed data itself is 720 students) |
-| Bulk invoice generation (per class/term) | **Missing** | Strong | Strong | Strong | Strong | **Critical** (same root cause as above) |
+| Fee structure engine (heads, class-wise plans, installments, late fines, concessions/scholarships, sibling discounts) | **Partial** — see correction below | **Strong** | Strong | Strong | Strong | **Critical** — this is the module bursars evaluate first |
+| Bulk invoice generation (per class/term) | **Partial** — see correction below | Strong | Strong | Strong | Strong | **Critical** (same root cause as above) |
+
+> **Correction (2026-07-29, after live code inspection in Phase 4):** the two rows above originally read "Missing — invoices are hand-created one at a time". That overstated the gap. The `FeeHead` / `FeeStructure` / `InvoiceLine` (with `concessionPaise`) schemas already existed, as did **CSV-driven** bulk invoice creation (`POST /fees/invoices/bulk`). The real gaps were narrower: fee heads and structures could be *created but never listed* (no GET endpoints), and nothing generated invoices *from* the structures — the "define a plan for Class 5, bill all 120 students" path. Those specific gaps have now been built and tested (see PHASE4_QA_REPORT §8). Still genuinely missing: installments, automatic late fines, concession/scholarship rules, and sibling discounts.
 | Receipts/invoice PDFs | **Missing (in-flight — `utils/receiptPdf.js`, `invoicePdf.js` exist uncommitted)** | Strong | Strong | Strong | Strong | High |
 | Payment gateway | Sandbox abstraction (real ledger) | Strong | Strong | Strong | Strong | Low — credentials-only by design |
 | Reconciliation / defaulter tracking / dunning | Weak (fee health stats only) | Strong | Moderate | Strong | Strong | High — auto-reminders to defaulters is the #1 WhatsApp use-case competitors sell; Phase 5 does it agentically |

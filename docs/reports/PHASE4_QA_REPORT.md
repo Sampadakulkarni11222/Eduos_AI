@@ -106,6 +106,38 @@ Both new rate limits also proved themselves by accident: my own test volume trip
 
 No service/business logic was touched — all changes are route-level guards, so no previously-verified flow was refactored.
 
+## 8. Wave-1 build started: fee structure engine · **built & tested**
+
+Phase 1 ranked this first because everything else in the fee track (student/parent Fee Portal, receipts, defaulter workflows) sits on top of it.
+
+**Correction to Phase 1 first.** Reading the module properly showed the gap was narrower than my benchmark claimed. Already present: `FeeHead`/`FeeStructure`/`InvoiceLine` schemas (with `concessionPaise`) and **CSV-driven** bulk invoicing. Actually missing: fee heads and structures could be *created but never listed*, and nothing generated invoices *from* structures. The Phase 1 report has been corrected rather than left to read better than reality.
+
+**Built** (`fee.service.js` / `fee.controller.js` / `fee.routes.js`):
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /fees/heads` | list the fee-head catalog (was write-only) |
+| `GET /fees/structures?academicYearId&gradeId` | list structures; a grade filter also returns `gradeId: null` structures, which apply to every grade |
+| `POST /fees/invoices/generate` | **the engine** — bill every active enrollment in scope from the matching structures; `dryRun` previews without writing |
+
+Design decisions worth flagging:
+
+- **Idempotency is per fee structure, not per run.** Re-running after adding a structure bills only the new one and never double-charges a family. This is the granularity that matches how the endpoint will actually be used (re-run whenever something changes), and it's the behaviour I'd most expect to be wrong, so it's explicitly tested.
+- Enrollments are scoped by `academicYearId` **and** status, so billing year X can't touch year Y's enrollments.
+- The new listing endpoints use `requirePermission('fees.read', 'ALL')` — the scope guard added earlier this phase — so a parent's `fees.read: OWN` cannot enumerate the school's fee plans.
+
+**Verified live — 18/18 passing** against the 720-student database:
+
+- 120 Class-5 students billed **₹30,00,000** (₹25,000 each) in one call; dry-run count matched the real run exactly, and wrote nothing.
+- **Idempotency:** immediate re-run → `0 generated, 120 already billed`.
+- **Incremental billing:** adding a Term-2 structure (₹15,000) and re-running charged **₹18,00,000** — exactly the new structure, not the old one again.
+- **Authorization:** parent gets 403 on both generate and the new listing endpoints.
+- **Input handling:** missing `academicYearId` → 400; no matching structures → 404 `NO_FEE_STRUCTURES`.
+
+> **Not committed — needs your review.** These three fee files also contain your in-flight work (invoice detail, invoice/receipt PDFs, refunds). As in Phase 3, I did not commit your work-in-progress under my commit message. My additions are in your working tree; commit them together with your own changes when you're ready.
+
+**Still missing from a complete fee engine** (not built): installments/instalment plans, automatic late fines, concession & scholarship rules, sibling discounts, and Tally/GST export.
+
 ## 7. What remains in Phase 4
 
 1. **Your issues sheet** → mapped closure log (blocked on the sheet).
