@@ -71,8 +71,8 @@ export const PORTALS: Record<string, Portal> = {
       { title: 'COMMUNICATION', items: [
         item('Announcements', '◍', '/admin/announcements', { ready: true }),
         item('Library Books', '▢', '/admin/library', { ready: true }),
-        item('Transport Routes', '☱', '/admin/transport', { ready: true }),
-        item('Documents', '▢', '/admin/documents', { ready: true }),
+        item('Transport Routes', '⛒', '/admin/transport', { ready: true }),
+        item('Documents', '🗎', '/admin/documents', { ready: true }),
         item('WhatsApp Assistant', '◆', '/admin/whatsapp', { ready: true }),
       ]},
       { title: 'SYSTEM', items: [
@@ -94,7 +94,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Assignments', '✎', '/teacher/assignments', { ready: true }),
         item('Exams & Performance', '◌', '/teacher/exams', { ready: true }),
       ]},
-      { title: 'CONTENT', items: [ item('Course Material', '▢', '/teacher/material', { ready: true }) ]},
+      { title: 'CONTENT', items: [ item('Course Material', '❑', '/teacher/material', { ready: true }) ]},
       { title: 'COMMUNICATION', items: [
         item('Announcements', '◍', '/teacher/announcements', { ready: true }),
         item('Calendar', '▤', '/teacher/calendar', { ready: true }),
@@ -114,18 +114,18 @@ export const PORTALS: Record<string, Portal> = {
         item('Attendance', '☱', '/parent/attendance', { ready: true }),
         item('Assignments', '✐', '/parent/assignments', { ready: true }),
         item('Timetable', '▥', '/parent/timetable', { ready: true }),
-        item('Course Material', '▢', '/parent/material', { ready: true }),
+        item('Course Material', '❑', '/parent/material', { ready: true }),
       ]},
       { title: 'SCHOOL LIFE', items: [
         item('Calendar & Events', '▤', '/parent/calendar', { ready: true }),
         item('Announcements', '◍', '/parent/announcements', { ready: true }),
         item('Medical Records', '✚', '/parent/medical', { ready: true }),
         item('Library', '▢', '/parent/library', { ready: true }),
-        item('Transport', '☱', '/parent/transport', { ready: true }),
+        item('Transport', '⛒', '/parent/transport', { ready: true }),
       ]},
       { title: 'ACCOUNT', items: [
         item('Payments', '₹', '/parent/payments', { ready: true }),
-        item('Documents', '▢', '/parent/documents', { ready: true }),
+        item('Documents', '🗎', '/parent/documents', { ready: true }),
         item('Support', '✉', '/parent/tickets', { ready: true }),
       ]},
     ],
@@ -140,14 +140,17 @@ export const PORTALS: Record<string, Portal> = {
         item('Assignments', '✐', '/student/assignments', { ready: true }),
         item('Performance', '◉', '/student/performance', { ready: true }),
         item('Attendance', '☱', '/student/attendance', { ready: true }),
-        item('Course Material', '▢', '/student/material', { ready: true }),
+        item('Course Material', '❑', '/student/material', { ready: true }),
       ]},
       { title: 'SCHOOL LIFE', items: [
         item('Calendar & Events', '▤', '/student/calendar', { ready: true }),
         item('Announcements', '◍', '/student/announcements', { ready: true }),
         item('Library', '▢', '/student/library', { ready: true }),
-        item('Transport', '☱', '/student/transport', { ready: true }),
-        item('Documents', '▢', '/student/documents', { ready: true }),
+        item('Transport', '⛒', '/student/transport', { ready: true }),
+        item('Documents', '🗎', '/student/documents', { ready: true }),
+      ]},
+      { title: 'ACCOUNT', items: [
+        item('Payments', '₹', '/student/payments', { ready: true }),
       ]},
     ],
   },
@@ -223,6 +226,9 @@ export const PORTALS: Record<string, Portal> = {
     role: 'FINANCE', slug: 'finance', themeClass: 'role-admin',
     label: 'Finance Portal', sublabel: 'Finance Operations', icon: '💰',
     nav: [
+      { title: 'WORKSPACE', items: [
+        { label: 'Dashboard', icon: '◫', href: '/finance', ready: true },
+      ]},
       { title: 'FINANCE', items: [
         { label: 'Payments & Fees', icon: '₹', href: '/finance/payments', ready: true },
         { label: 'Reports', icon: '📊', href: '/finance/reports', ready: true }

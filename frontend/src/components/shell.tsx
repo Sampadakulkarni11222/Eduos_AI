@@ -79,7 +79,9 @@ export function PortalShell({
                 ☰
               </button>
               <div style={{ minWidth: 0 }}>
-                <div className="topbar-title">{topbar.title}</div>
+                {/* The page title is the document's h1 — every portal page
+                    previously started at h2 or lower with no h1 at all. */}
+                <h1 className="topbar-title">{topbar.title}</h1>
                 {topbar.desc && <div className="topbar-desc">{topbar.desc}</div>}
               </div>
             </div>
@@ -167,18 +169,19 @@ function Sidebar({
                     key={it.href}
                     href={it.href}
                     className={cx('nav-item', isActive && 'active')}
+                    aria-current={isActive ? 'page' : undefined}
                     onClick={() => setMobileOpen(false)}
                   >
                     {content}
                   </Link>
                 ) : (
-                  <span
-                    key={it.href}
-                    className="nav-item"
-                    title="Ships in an upcoming phase"
-                    style={{ opacity: 0.45, cursor: 'not-allowed' }}
-                  >
-                    {content}
+                  // Not a link and not focusable: there is nowhere to go yet.
+                  // The "soon" chip replaces a title tooltip that keyboard and
+                  // touch users could never see.
+                  <span key={it.href} className="nav-item not-ready">
+                    <span className="nav-icon" aria-hidden>{it.icon}</span>
+                    <span className="nav-label">{it.label}</span>
+                    <span className="nav-soon">Soon</span>
                   </span>
                 );
               })}

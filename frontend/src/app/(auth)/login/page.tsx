@@ -196,6 +196,8 @@ function CodeInput({ id, value, onChange }: { id: string; value: string; onChang
     <input
       id={id}
       inputMode="numeric"
+      autoComplete="one-time-code"
+      aria-label="6-digit verification code"
       maxLength={6}
       value={value}
       onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
@@ -232,7 +234,7 @@ function Spinner() {
 /* ── Small error banner ───────────────────────────────────────── */
 function ErrBanner({ msg }: { msg: string }) {
   return (
-    <div style={{
+    <div role="alert" style={{
       background: 'rgba(254,242,242,0.9)',
       border: '1px solid #fca5a5',
       borderRadius: 10,

@@ -1,5 +1,5 @@
 'use client';
-import { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, createContext, useCallback, useContext, useRef, useState } from 'react';
+import { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, cloneElement, createContext, isValidElement, useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
 
 export function cx(...parts: Array<string | false | undefined | null>) {
   return parts.filter(Boolean).join(' ');
@@ -86,6 +86,17 @@ function hash(s: string): number {
   return h;
 }
 
+/** Deterministic per-subject color, used to color-code timetable calendar entries. */
+const SUBJECT_TINTS = [
+  '#2c6049', '#4a5e8c', '#946312', '#7A1F2B', '#0f4c5c',
+  '#5f0f40', '#3d2f26', '#1f4a3a', '#54131b', '#2f3c5c',
+];
+export function subjectColor(name: string | null | undefined): { bg: string; text: string; dot: string } {
+  const safeName = name ?? '';
+  const tint = SUBJECT_TINTS[hash(safeName) % SUBJECT_TINTS.length];
+  return { bg: tint + '1A', text: tint, dot: tint };
+}
+
 /* ── Toast notifications ─────────────────────────────────────────
    Lightweight success/error feedback for mutations, replacing alert(). */
 type ToastKind = 'success' | 'error' | 'info';
@@ -145,4 +156,108 @@ export function rupees(paise: number | null | undefined): string {
     minimumFractionDigits: hasDecimals ? 2 : 0,
     maximumFractionDigits: 2,
   });
+}
+
+/* ── Accessible form field ───────────────────────────────────────
+   Associates a visible label with its control. The app previously had a
+   single htmlFor in the whole codebase, so screen readers announced most
+   inputs as an unnamed "edit text". Wrap any control:
+     <Field label="Due date"><input type="date" … /></Field>            */
+export function Field({
+  label, hint, error, required, children, id,
+}: {
+  label: string; hint?: string; error?: string; required?: boolean;
+  children: ReactNode; id?: string;
+}) {
+  const auto = useId();
+  const fieldId = id ?? auto;
+  const hintId = hint ? `${fieldId}-hint` : undefined;
+  const errorId = error ? `${fieldId}-error` : undefined;
+
+  const control = isValidElement(children)
+    ? cloneElement(children as React.ReactElement<Record<string, unknown>>, {
+        id: fieldId,
+        'aria-describedby': [hintId, errorId].filter(Boolean).join(' ') || undefined,
+        'aria-invalid': error ? true : undefined,
+        required,
+      })
+    : children;
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <label className="field-label" htmlFor={fieldId} style={{ display: 'block' }}>
+        {label}
+        {required && <span aria-hidden="true" style={{ color: 'var(--red)' }}> *</span>}
+      </label>
+      {control}
+      {hint && !error && (
+        <div id={hintId} style={{ fontSize: 11.5, color: 'var(--text-2)', marginTop: 3 }}>{hint}</div>
+      )}
+      {error && (
+        <div id={errorId} role="alert" style={{ fontSize: 11.5, color: 'var(--red)', marginTop: 3 }}>{error}</div>
+      )}
+    </div>
+  );
+}
+
+/* ── Accessible modal ────────────────────────────────────────────
+   Dialog semantics, Escape to close, focus moved in on open and returned to
+   the trigger on close, and focus kept inside while open. No modal in the app
+   did any of this, so keyboard users could tab out into the page behind. */
+export function Modal({
+  title, onClose, children, footer, wide,
+}: {
+  title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const focusables = () =>
+      Array.from(
+        panelRef.current?.querySelectorAll<HTMLElement>(
+          'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+        ) ?? []
+      );
+
+    focusables()[0]?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+      if (e.key !== 'Tab') return;
+      const items = focusables();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      previouslyFocused?.focus();
+    };
+  }, [onClose]);
+
+  return (
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div
+        ref={panelRef}
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        style={wide ? { width: 640 } : undefined}
+      >
+        <div className="modal-header">
+          <span className="modal-title" id={titleId}>{title}</span>
+          <button className="modal-close" onClick={onClose} aria-label="Close dialog">×</button>
+        </div>
+        {children}
+        {footer && <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>{footer}</div>}
+      </div>
+    </div>
+  );
 }
