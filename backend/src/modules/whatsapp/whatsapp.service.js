@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { chat } from '../ai/ai.service.js';
+import { handleInboundMessage, converse } from './whatsapp.agent.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 
@@ -47,9 +47,105 @@ export function verifySignature(rawBody, signatureHeader) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-export function receiveWebhook(payload) {
-  logger.info(`WhatsApp webhook received: ${JSON.stringify(payload).slice(0, 500)}`);
-  return { received: true };
+/**
+ * Extracts inbound text messages from Meta's webhook envelope.
+ * Non-text messages (images, audio) are surfaced with their type so the
+ * caller can answer usefully instead of silently ignoring them.
+ */
+export function extractMessages(payload) {
+  const out = [];
+  for (const entry of payload?.entry ?? []) {
+    for (const change of entry?.changes ?? []) {
+      for (const msg of change?.value?.messages ?? []) {
+        out.push({
+          from: msg.from?.startsWith('+') ? msg.from : `+${msg.from}`,
+          type: msg.type,
+          text: msg.text?.body ?? msg.button?.text ?? msg.interactive?.button_reply?.title ?? null,
+          id: msg.id,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Processes an inbound webhook: every text message is answered by the shared
+ * agent core, so WhatsApp is not a second implementation of anything.
+ */
+export async function receiveWebhook(payload) {
+  const messages = extractMessages(payload);
+  if (!messages.length) {
+    // Delivery receipts and status callbacks land here too; acknowledge them.
+    return { received: true, handled: 0 };
+  }
+
+  const replies = [];
+  for (const msg of messages) {
+    if (!msg.text) {
+      replies.push({
+        to: msg.from,
+        reply:
+          msg.type === 'image'
+            ? 'I can read photos of attendance registers in the app, but not over WhatsApp yet. Please send your question as text.'
+            : 'Please send your question as a text message.',
+      });
+      continue;
+    }
+    try {
+      const result = await handleInboundMessage({ from: msg.from, text: msg.text });
+      replies.push({ to: msg.from, reply: result.reply });
+      await sendMessage(msg.from, result.reply);
+    } catch (err) {
+      // A refusal ("you don't have permission to do that") is a legitimate,
+      // expected answer and must reach the user as itself — burying it under
+      // a generic failure leaves people retrying something that will never
+      // work. Only genuinely unexpected errors get the vague message.
+      const expected = err?.statusCode >= 400 && err?.statusCode < 500;
+      const reply = expected
+        ? err.message
+        : 'Something went wrong handling that. Please try again.';
+      if (!expected) logger.error(`WhatsApp agent failed for ${msg.from}: ${err.message}`);
+      replies.push({ to: msg.from, reply });
+      await sendMessage(msg.from, reply);
+    }
+  }
+
+  return { received: true, handled: replies.length, replies };
+}
+
+/**
+ * Outbound send. In simulation mode this logs rather than calling Meta, so the
+ * whole flow can be exercised without credentials.
+ */
+export async function sendMessage(to, text) {
+  if (!isLiveMode()) {
+    logger.info(`[WhatsApp SIMULATION] → ${to}: ${String(text).slice(0, 200)}`);
+    return { sent: false, simulated: true };
+  }
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/v20.0/${process.env.WA_PHONE_NUMBER_ID}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.WA_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: to.replace(/^\+/, ''),
+          type: 'text',
+          text: { body: String(text).slice(0, 4096) },
+        }),
+      }
+    );
+    if (!res.ok) throw new Error(`WhatsApp send failed: ${res.status}`);
+    return { sent: true };
+  } catch (err) {
+    logger.error(`WhatsApp send error: ${err.message}`);
+    return { sent: false, error: err.message };
+  }
 }
 
 /** Quick-reply buttons offered after each answer, mirroring WA interactive replies. */
@@ -59,12 +155,22 @@ const SUGGESTIONS = [
   { id: 'assignments', title: 'Assignments' },
 ];
 
+/**
+ * In-app WhatsApp simulator.
+ *
+ * Drives the same agent core as the real webhook, as the logged-in user, so
+ * what an admin previews here is exactly what a parent would get on their
+ * phone — including confirmation prompts for anything that writes.
+ */
 export async function simulate({ text, message }, actor) {
-  const inbound = text ?? message ?? '';
-  const result = await chat({ message: inbound }, actor);
+  const result = await converse({ actor, text: text ?? message ?? '' });
+
   return {
     reply: result.reply,
-    buttons: SUGGESTIONS,
+    buttons: result.awaitingConfirmation
+      ? [{ id: 'yes', title: 'YES' }, { id: 'no', title: 'NO' }]
+      : SUGGESTIONS,
+    awaitingConfirmation: Boolean(result.awaitingConfirmation),
     mode: isLiveMode() ? 'LIVE' : 'SIMULATION',
     isStandIn: !isLiveMode(),
   };

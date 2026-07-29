@@ -554,3 +554,20 @@ body.role-warden{
 
 /* Larger avatar for the student profile header */
 .profile-avatar-lg{width:64px;height:64px;font-size:22px}
+
+/* ===== Agent confirmation prompt (in-app assistant) ===== */
+.ai-confirm{margin-top:8px;max-width:88%;background:#1d1f1c;border:1px solid rgba(255,255,255,.14);
+  border-radius:12px;padding:11px 13px;align-self:flex-start}
+.ai-confirm-summary{font-size:12.5px;line-height:1.5;color:#ECE6D8}
+.ai-confirm-warn{display:block;font-size:10.5px;font-weight:800;letter-spacing:.05em;
+  text-transform:uppercase;color:#F0B429;margin-bottom:4px}
+.ai-confirm-actions{display:flex;gap:8px;margin-top:10px}
+.ai-confirm-yes,.ai-confirm-no{flex:1;min-height:38px;border-radius:9px;font-family:inherit;
+  font-size:12.5px;font-weight:700;cursor:pointer;border:1px solid transparent}
+.ai-confirm-yes{background:#25D366;color:#06251a}
+.ai-confirm-yes:hover:not(:disabled){background:#1fbb5a}
+.ai-confirm-no{background:transparent;border-color:rgba(255,255,255,.22);color:#cfc9bb}
+.ai-confirm-no:hover:not(:disabled){background:rgba(255,255,255,.08)}
+.ai-confirm-yes:disabled,.ai-confirm-no:disabled{opacity:.55;cursor:not-allowed}
+.ai-confirm-expiry{font-size:10.5px;color:#8b867c;margin-top:7px}
+@media (pointer: coarse){.ai-confirm-yes,.ai-confirm-no{min-height:44px}}

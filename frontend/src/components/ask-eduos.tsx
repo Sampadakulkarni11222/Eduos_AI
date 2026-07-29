@@ -3,8 +3,17 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import { Button, Spinner } from './ui';
 import { useAuth } from '@/lib/auth';
+import type { AgentProposedAction } from '@/lib/types';
 
-interface Msg { role: 'user' | 'assistant'; text: string; tools?: string[] }
+interface Msg {
+  role: 'user' | 'assistant';
+  text: string;
+  tools?: string[];
+  /** Set when the assistant is proposing a write that needs confirmation. */
+  action?: AgentProposedAction | null;
+  /** Once resolved, the buttons are replaced by the outcome. */
+  resolved?: 'done' | 'cancelled';
+}
 
 export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   const [open, setOpen] = useState(false);
@@ -45,17 +54,41 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
     msgsRef.current = [...msgsRef.current, userMsg];
     setInput(''); setMsgs([...msgsRef.current]); setBusy(true);
     try {
-      const res = await api.aiChat(text, convIdRef.current);
-      convIdRef.current = res.conversationId;
-      const aiMsg: Msg = { role: 'assistant', text: res.reply, tools: res.toolsUsed };
+      // The agent endpoint answers questions AND proposes actions; anything
+      // that writes comes back as `action` and is only performed once the
+      // user confirms the summary below.
+      const res = await api.agentAsk(text);
+      const aiMsg: Msg = { role: 'assistant', text: res.reply, action: res.action };
       msgsRef.current = [...msgsRef.current, aiMsg];
       setMsgs([...msgsRef.current]);
     } catch (err) {
+      // A 403 here is a real answer — the user asked for something their role
+      // cannot do — so show the server's reason rather than a generic failure.
       const text = err instanceof ApiError && err.status === 403
-        ? "You don't have access to this feature."
+        ? err.message
         : 'Sorry — I could not reach the assistant just now.';
       const errMsg: Msg = { role: 'assistant', text };
       msgsRef.current = [...msgsRef.current, errMsg];
+      setMsgs([...msgsRef.current]);
+    } finally { setBusy(false); }
+  };
+
+  /** Confirms or declines a proposed write. */
+  const resolveAction = async (idx: number, accept: boolean) => {
+    const msg = msgsRef.current[idx];
+    if (!msg?.action || busy) return;
+    setBusy(true);
+    try {
+      const res = await api.agentConfirm(msg.action.confirmToken, accept);
+      msgsRef.current = msgsRef.current.map((m, i) =>
+        i === idx ? { ...m, action: null, resolved: accept ? 'done' : 'cancelled' } : m
+      );
+      msgsRef.current = [...msgsRef.current, { role: 'assistant', text: res.reply }];
+      setMsgs([...msgsRef.current]);
+    } catch (err) {
+      const text = err instanceof ApiError ? err.message : 'That could not be completed.';
+      msgsRef.current = msgsRef.current.map((m, i) => (i === idx ? { ...m, action: null } : m));
+      msgsRef.current = [...msgsRef.current, { role: 'assistant', text }];
       setMsgs([...msgsRef.current]);
     } finally { setBusy(false); }
   };
@@ -168,6 +201,30 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                 <div key={i} className={`ai-msg ${m.role}`}>
                   <div className="ai-bubble">{m.text}</div>
                   {m.tools && m.tools.length > 0 && <div className="ai-tools">used: {Array.from(new Set(m.tools)).join(', ')}</div>}
+
+                  {/* Nothing is written until this is confirmed. The summary
+                      shown here is the server's, not re-composed on the
+                      client, so the user approves exactly what will run. */}
+                  {m.action && (
+                    <div className="ai-confirm" role="group" aria-label="Confirm action">
+                      <div className="ai-confirm-summary">
+                        {m.action.affectsOthers && <span className="ai-confirm-warn">Affects other people&apos;s records</span>}
+                        {m.action.summary}
+                      </div>
+                      <div className="ai-confirm-actions">
+                        <button type="button" className="ai-confirm-yes" disabled={busy} onClick={() => void resolveAction(i, true)}>
+                          Confirm
+                        </button>
+                        <button type="button" className="ai-confirm-no" disabled={busy} onClick={() => void resolveAction(i, false)}>
+                          Cancel
+                        </button>
+                      </div>
+                      <div className="ai-confirm-expiry">Expires in {m.action.expiresInMinutes} min</div>
+                    </div>
+                  )}
+                  {m.resolved && (
+                    <div className="ai-tools">{m.resolved === 'done' ? '✓ confirmed' : '✕ cancelled'}</div>
+                  )}
                 </div>
               ))}
               {busy && <div className="ai-msg assistant"><div className="ai-bubble"><Spinner /></div></div>}

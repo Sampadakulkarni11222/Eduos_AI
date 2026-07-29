@@ -346,3 +346,22 @@ export interface GenerateInvoicesResult {
 export interface AcademicYearDto {
   _id: string; name: string; startsOn: string; endsOn: string; isCurrent?: boolean;
 }
+
+export interface AgentTool { name: string; description: string; mutates: boolean }
+
+export interface AgentProposedAction {
+  id: string;
+  confirmToken: string;
+  summary: string;
+  tool: string;
+  affectsOthers: boolean;
+  expiresInMinutes: number;
+}
+
+export interface AgentReply {
+  reply: string;
+  data?: unknown;
+  action: AgentProposedAction | null;
+  flagged?: string;
+  suggestions?: string[];
+}

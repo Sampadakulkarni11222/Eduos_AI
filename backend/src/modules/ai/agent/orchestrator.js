@@ -137,6 +137,15 @@ export async function runAgent({ message, actor, source = 'WEB' }) {
   const token = crypto.randomBytes(24).toString('hex');
   const summary = tool.summarise ? tool.summarise(intent.args ?? {}, actor) : tool.description;
 
+  // Only ever one proposal outstanding per person. On WhatsApp a bare "yes"
+  // resolves whatever is pending, so a forgotten proposal from earlier could
+  // otherwise be executed by a "yes" the user meant for something else.
+  // Superseding here fixes that for every surface at once.
+  await AgentAction.updateMany(
+    { actorProfileId: actor.profileId, status: 'PENDING' },
+    { $set: { status: 'EXPIRED' } }
+  );
+
   const pending = await AgentAction.create({
     actorProfileId: actor.profileId,
     tool: intent.tool,
