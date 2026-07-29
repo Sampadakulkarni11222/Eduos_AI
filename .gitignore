@@ -2,6 +2,13 @@
 **/.next/
 **/dist/
 **/build/
+
+# Secrets — never commit environment or credential files (any directory)
 .env
-.env.local
+.env.*
+*.env
+!.env.example
+!**/.env.example
+credentials.md
+
 session

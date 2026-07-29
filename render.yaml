@@ -24,12 +24,16 @@ services:
         value: production
       - key: PORT
         value: 5000
+      # Secrets are NEVER committed here. `sync: false` means the value is
+      # entered once in the Render dashboard (Environment tab) and stays there.
       - key: MONGO_URI
-        value: mongodb+srv://kulkarnisampada07_db_user:REDACTED-ROTATED@cluster0.alhw4up.mongodb.net/school_erp?appName=Cluster0
+        sync: false
       - key: JWT_SECRET
         sync: false
+      - key: MEDICAL_ENCRYPTION_KEY
+        sync: false
       - key: SWAGGER_ENABLED
-        value: "true"
+        value: "false"
 
   - type: web
     name: school-erp-frontend
