@@ -2,12 +2,116 @@ import crypto from 'crypto';
 import mongoose from 'mongoose';
 import { FeeHead, FeeStructure, Invoice, InvoiceLine, Payment } from '../../models/fee.model.js';
 import { Student, Enrollment } from '../../models/student.model.js';
+import { Section } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
-import { chargeOnline, isOnlinePaymentEnabled, paymentMode } from '../../providers/payment.provider.js';
+import { chargeOnline, createPaymentLink, isOnlinePaymentEnabled, paymentMode } from '../../providers/payment.provider.js';
 
 export const createFeeHead = (data) => FeeHead.create(data);
 export const createFeeStructure = (data) => FeeStructure.create(data);
+
+export const listFeeHeads = () => FeeHead.find().sort({ name: 1 }).lean();
+
+export function listFeeStructures({ academicYearId, gradeId } = {}) {
+  const filter = {};
+  if (academicYearId) filter.academicYearId = academicYearId;
+  // A structure with gradeId: null applies to every grade, so a grade filter
+  // must include those as well as the ones targeted at this grade.
+  if (gradeId) filter.$or = [{ gradeId }, { gradeId: null }];
+  return FeeStructure.find(filter)
+    .populate('feeHeadId', 'name category')
+    .populate('gradeId', 'name')
+    .sort({ dueOn: 1 })
+    .lean();
+}
+
+/**
+ * Generates invoices for every active enrollment in scope from the fee
+ * structures that apply to it — the "define once, bill the whole class" path.
+ * Previously invoices could only be made one at a time or from a CSV, which
+ * does not scale past a few students.
+ *
+ * Idempotency is per fee structure, not per run: a structure already billed to
+ * an enrollment is skipped, so re-running after adding a new structure bills
+ * only the new one and never double-charges a family. This matters because the
+ * natural way to use this endpoint is to re-run it whenever something changes.
+ *
+ * Pass dryRun to preview totals without writing anything.
+ */
+export async function generateInvoices({ academicYearId, gradeId = null, dueOn, dryRun = false }) {
+  if (!academicYearId) throw new AppError('academicYearId is required', 400);
+
+  const structures = await listFeeStructures({ academicYearId, gradeId });
+  if (!structures.length) {
+    throw new AppError('No fee structures match that academic year/grade', 404, [], 'NO_FEE_STRUCTURES');
+  }
+
+  // Active enrollments for the year being billed. Enrollment carries the
+  // section, and the section carries the grade, so a grade filter resolves
+  // through sections.
+  const enrollmentFilter = { status: 'ACTIVE', academicYearId };
+  if (gradeId) {
+    const sections = await Section.find({ gradeId }).select('_id').lean();
+    enrollmentFilter.sectionId = { $in: sections.map((s) => s._id) };
+  }
+  const enrollments = await Enrollment.find(enrollmentFilter).select('_id sectionId').lean();
+  if (!enrollments.length) {
+    throw new AppError('No active enrollments match that grade', 404, [], 'NO_ENROLLMENTS');
+  }
+
+  const enrollmentIds = enrollments.map((e) => e._id);
+  const structureIds = structures.map((s) => s._id);
+
+  // Which (enrollment, structure) pairs have already been billed?
+  const existingInvoices = await Invoice.find({ enrollmentId: { $in: enrollmentIds } }).select('_id enrollmentId').lean();
+  const invoiceOwner = new Map(existingInvoices.map((i) => [i._id.toString(), i.enrollmentId.toString()]));
+  const existingLines = await InvoiceLine.find({
+    invoiceId: { $in: existingInvoices.map((i) => i._id) },
+    feeStructureId: { $in: structureIds },
+  }).select('invoiceId feeStructureId').lean();
+
+  const alreadyBilled = new Set(
+    existingLines.map((l) => `${invoiceOwner.get(l.invoiceId.toString())}:${l.feeStructureId}`)
+  );
+
+  const result = { generated: 0, skipped: 0, totalPaise: 0, dryRun, invoices: [] };
+  const stamp = Date.now();
+
+  for (const enrollment of enrollments) {
+    const due = structures.filter((s) => !alreadyBilled.has(`${enrollment._id}:${s._id}`));
+    if (!due.length) {
+      result.skipped++;
+      continue;
+    }
+
+    const lines = due.map((s) => ({
+      feeStructureId: s._id,
+      description: `${s.feeHeadId?.name ?? 'Fee'} — ${s.name}`,
+      amountPaise: s.amountPaise,
+    }));
+    const totalPaise = lines.reduce((sum, l) => sum + l.amountPaise, 0);
+
+    result.generated++;
+    result.totalPaise += totalPaise;
+
+    if (dryRun) continue;
+
+    // Latest due date across the billed structures, unless the caller pinned one.
+    const invoiceDueOn = dueOn
+      ? new Date(dueOn)
+      : due.reduce((latest, s) => (s.dueOn > latest ? s.dueOn : latest), due[0].dueOn);
+
+    const invoice = await createInvoice({
+      enrollmentId: enrollment._id,
+      invoiceNo: `INV-${stamp}-${result.generated}`,
+      dueOn: invoiceDueOn,
+      lines,
+    });
+    result.invoices.push({ invoiceNo: invoice.invoiceNo, enrollmentId: enrollment._id, totalPaise });
+  }
+
+  return result;
+}
 
 async function resolveEnrollmentIdsForOwn(actor) {
   const studentIds =
@@ -16,6 +120,63 @@ async function resolveEnrollmentIdsForOwn(actor) {
       : [await getOwnStudentId(actor.profileId)].filter(Boolean);
   const enrollments = await Enrollment.find({ studentId: { $in: studentIds } }).select('_id');
   return enrollments.map((e) => e._id.toString());
+}
+
+/**
+ * Payment links for the caller's own outstanding invoices.
+ *
+ * Reads only — it hands back links, it never moves money. That separation is
+ * the point: the assistant may surface a way to pay, but the decision to pay
+ * stays with the human, on a page where they can see what they are paying for.
+ *
+ * Scoping goes through listInvoices(), so a parent can only ever be handed a
+ * link for their own children's invoices.
+ */
+export async function getPaymentLinks(actor, scope, { invoiceId } = {}) {
+  if (!isOnlinePaymentEnabled()) {
+    throw new AppError(
+      'Online payment is not enabled for this school. Please pay at the school office.',
+      501, [], 'PAYMENTS_DISABLED'
+    );
+  }
+
+  const invoices = await listInvoices(actor, scope, {});
+  const outstanding = invoices
+    .filter((inv) => (invoiceId ? String(inv.id) === String(invoiceId) : true))
+    .filter((inv) => inv.status !== 'PAID' && inv.status !== 'CANCELLED')
+    .filter((inv) => (inv.totalPaise ?? 0) - (inv.paidPaise ?? 0) > 0);
+
+  if (invoiceId && !outstanding.length) {
+    throw new AppError('That invoice is not outstanding, or is not yours.', 404, [], 'INVOICE_NOT_PAYABLE');
+  }
+
+  const portalSlug = actor.roleKey === 'STUDENT' ? 'student' : 'parent';
+  const links = [];
+  for (const inv of outstanding) {
+    const duePaise = (inv.totalPaise ?? 0) - (inv.paidPaise ?? 0);
+    const link = await createPaymentLink({
+      invoiceId: inv.id,
+      invoiceNo: inv.invoiceNo,
+      amountPaise: duePaise,
+      portalSlug,
+    });
+    links.push({
+      invoiceId: inv.id,
+      invoiceNo: inv.invoiceNo,
+      studentName: inv.studentName ?? null,
+      duePaise,
+      dueOn: inv.dueOn,
+      status: inv.status,
+      url: link.url,
+      linkKind: link.kind,
+    });
+  }
+
+  return {
+    totalDuePaise: links.reduce((sum, l) => sum + l.duePaise, 0),
+    count: links.length,
+    links,
+  };
 }
 
 export async function listInvoices(actor, scope, query = {}) {
@@ -276,6 +437,108 @@ export async function listPayments(actor, scope, { invoiceId } = {}) {
   });
 }
 
+/**
+ * Single invoice with its line items and ordered payment history — backs
+ * both the student-facing payment-status timeline and the invoice PDF.
+ */
+export async function getInvoiceDetail(actor, scope, invoiceId) {
+  const invoice = await Invoice.findById(invoiceId);
+  if (!invoice) throw new AppError('Invoice not found', 404);
+  if (scope === 'OWN') await assertInvoiceOwnership(actor, invoice);
+
+  await invoice.populate({
+    path: 'enrollmentId',
+    populate: [
+      { path: 'studentId' },
+      { path: 'sectionId', populate: { path: 'gradeId' } },
+    ],
+  });
+
+  const [lines, payments] = await Promise.all([
+    InvoiceLine.find({ invoiceId }).sort({ createdAt: 1 }).lean(),
+    Payment.find({ invoiceId }).sort({ createdAt: 1 }).lean(),
+  ]);
+
+  const obj = invoice.toObject();
+  obj.id = obj._id.toString();
+  const enrollment = obj.enrollmentId;
+  const student = enrollment?.studentId;
+  const section = enrollment?.sectionId;
+  const grade = section?.gradeId;
+  if (student) {
+    obj.studentName = `${student.firstName} ${student.lastName || ''}`.trim();
+    obj.studentId = student._id.toString();
+  }
+  if (section) {
+    obj.class = grade ? `${grade.name} - ${section.name}` : section.name;
+    obj.sectionId = section._id.toString();
+  }
+  obj.enrollmentId = enrollment?._id?.toString();
+
+  return {
+    ...obj,
+    lines: lines.map((l) => ({
+      id: l._id.toString(),
+      description: l.description,
+      amountPaise: l.amountPaise,
+      concessionPaise: l.concessionPaise ?? 0,
+    })),
+    payments: payments.map((p) => ({
+      id: p._id.toString(),
+      receiptNo: p.receiptNo ?? '—',
+      invoiceNo: obj.invoiceNo,
+      studentName: obj.studentName ?? '—',
+      class: obj.class ?? '—',
+      amountPaise: p.amountPaise,
+      mode: p.mode,
+      status: p.status ?? 'SUCCESS',
+      createdAt: p.createdAt,
+    })),
+  };
+}
+
+/** Single payment receipt, ownership-checked — backs the receipt PDF download. */
+export async function getPaymentReceipt(actor, scope, paymentId) {
+  const payment = await Payment.findById(paymentId)
+    .populate({
+      path: 'invoiceId',
+      select: 'invoiceNo enrollmentId',
+      populate: {
+        path: 'enrollmentId',
+        select: 'studentId sectionId',
+        populate: [
+          { path: 'studentId', select: 'firstName lastName' },
+          { path: 'sectionId', select: 'name', populate: { path: 'gradeId', select: 'name' } },
+        ],
+      },
+    })
+    .lean();
+  if (!payment) throw new AppError('Payment not found', 404);
+
+  if (scope === 'OWN') {
+    const ids = await resolveEnrollmentIdsForOwn(actor);
+    const enrollmentId = payment.invoiceId?.enrollmentId?._id?.toString();
+    if (!enrollmentId || !ids.includes(enrollmentId)) {
+      throw new AppError('This payment does not belong to your account', 403);
+    }
+  }
+
+  const inv = payment.invoiceId;
+  const enrollment = inv?.enrollmentId;
+  const student = enrollment?.studentId;
+  const section = enrollment?.sectionId;
+  return {
+    receiptNo: payment.receiptNo ?? '—',
+    invoiceNo: inv?.invoiceNo ?? '—',
+    studentName: student ? `${student.firstName} ${student.lastName ?? ''}`.trim() : '—',
+    class: section ? [section.gradeId?.name, section.name].filter(Boolean).join(' - ') : '—',
+    amountPaise: payment.amountPaise,
+    mode: payment.mode,
+    status: payment.status ?? 'SUCCESS',
+    createdAt: payment.createdAt,
+  };
+}
+
 export async function refundPayment(paymentId) {
   // Atomically flip status only if it isn't already REFUNDED — the DB-level
   // condition ensures two concurrent refund requests can't both "win" the
@@ -315,6 +578,7 @@ export async function getSummary(actor, scope, query = {}) {
   if (query.enrollmentId) filter.enrollmentId = toObjectId(query.enrollmentId);
 
   // Aggregate in the DB instead of loading every invoice into memory.
+  const now = new Date();
   const [agg] = await Invoice.aggregate([
     { $match: Object.keys(filter).length ? filter : {} },
     {
@@ -324,6 +588,24 @@ export async function getSummary(actor, scope, query = {}) {
         paidPaise: { $sum: '$paidPaise' },
         invoiceCount: { $sum: 1 },
         unpaidCount: { $sum: { $cond: [{ $ne: ['$status', 'PAID'] }, 1, 0] } },
+        overduePaise: {
+          $sum: {
+            $cond: [
+              { $and: [{ $lt: ['$dueOn', now] }, { $not: [{ $in: ['$status', ['PAID', 'CANCELLED']] }] }] },
+              { $subtract: ['$totalPaise', '$paidPaise'] },
+              0,
+            ],
+          },
+        },
+        overdueCount: {
+          $sum: {
+            $cond: [
+              { $and: [{ $lt: ['$dueOn', now] }, { $not: [{ $in: ['$status', ['PAID', 'CANCELLED']] }] }] },
+              1,
+              0,
+            ],
+          },
+        },
       },
     },
   ]);
@@ -332,6 +614,8 @@ export async function getSummary(actor, scope, query = {}) {
   const paidPaise = agg?.paidPaise ?? 0;
   const outstandingPaise = totalPaise - paidPaise;
   const unpaidCount = agg?.unpaidCount ?? 0;
+  const overduePaise = agg?.overduePaise ?? 0;
+  const overdueCount = agg?.overdueCount ?? 0;
   const invoices = { length: agg?.invoiceCount ?? 0 };
 
   const total = totalPaise / 100;
@@ -362,6 +646,8 @@ export async function getSummary(actor, scope, query = {}) {
     unpaidCount,
     pendingCount: unpaidCount,
     outstandingCount: unpaidCount,
-    unpaidInvoices: unpaidCount
+    unpaidInvoices: unpaidCount,
+    overduePaise,
+    overdueCount,
   };
 }

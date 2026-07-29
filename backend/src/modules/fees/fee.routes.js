@@ -28,6 +28,18 @@ router.post('/heads', requirePermission('fees.structure.manage'), controller.cre
 
 /**
  * @swagger
+ * /fees/heads:
+ *   get:
+ *     summary: List fee heads
+ *     tags: [Fees]
+ *     responses:
+ *       200:
+ *         description: Fee heads fetched
+ */
+router.get('/heads', requirePermission('fees.read', 'ALL'), controller.listFeeHeads);
+
+/**
+ * @swagger
  * /fees/structures:
  *   post:
  *     summary: Create a fee structure under a fee head for an academic year
@@ -37,6 +49,55 @@ router.post('/heads', requirePermission('fees.structure.manage'), controller.cre
  *         description: Fee structure created
  */
 router.post('/structures', requirePermission('fees.structure.manage'), controller.createFeeStructure);
+
+/**
+ * @swagger
+ * /fees/structures:
+ *   get:
+ *     summary: List fee structures, optionally filtered by academic year and grade
+ *     tags: [Fees]
+ *     parameters:
+ *       - in: query
+ *         name: academicYearId
+ *         schema: { type: string }
+ *       - in: query
+ *         name: gradeId
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Fee structures fetched
+ */
+router.get('/structures', requirePermission('fees.read', 'ALL'), controller.listFeeStructures);
+
+/**
+ * @swagger
+ * /fees/invoices/generate:
+ *   post:
+ *     summary: Generate invoices for every active enrollment from the matching fee structures
+ *     description: >
+ *       Idempotent per fee structure — a structure already billed to an
+ *       enrollment is skipped, so this can be safely re-run after adding a new
+ *       structure. Pass dryRun to preview totals without writing.
+ *     tags: [Fees]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [academicYearId]
+ *             properties:
+ *               academicYearId: { type: string }
+ *               gradeId: { type: string, description: "Omit to bill every grade" }
+ *               dueOn: { type: string, format: date }
+ *               dryRun: { type: boolean }
+ *     responses:
+ *       201:
+ *         description: Invoices generated
+ *       200:
+ *         description: Dry-run preview
+ */
+router.post('/invoices/generate', requirePermission('fees.manage'), controller.generateInvoices);
 
 /**
  * @swagger
@@ -56,6 +117,40 @@ router.post('/structures', requirePermission('fees.structure.manage'), controlle
  */
 router.get('/invoices', requirePermission('fees.read'), controller.listInvoices);
 router.post('/invoices', requirePermission('fees.manage'), controller.createInvoice);
+
+/**
+ * @swagger
+ * /fees/invoices/{id}:
+ *   get:
+ *     summary: Get a single invoice with its line items and payment history (scoped to OWN for parents/students)
+ *     tags: [Fees]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Invoice detail fetched
+ */
+router.get('/invoices/:id', requirePermission('fees.read'), controller.getInvoiceDetail);
+
+/**
+ * @swagger
+ * /fees/invoices/{id}/pdf:
+ *   get:
+ *     summary: Download the invoice as a PDF (scoped to OWN for parents/students)
+ *     tags: [Fees]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Invoice PDF stream
+ */
+router.get('/invoices/:id/pdf', requirePermission('fees.read'), controller.getInvoicePdf);
 
 /**
  * @swagger
@@ -125,6 +220,23 @@ router.post('/payments', requirePermission('fees.pay'), controller.recordPayment
  *         description: List of payment receipts
  */
 router.get('/payments', requirePermission('fees.read'), controller.listPayments);
+
+/**
+ * @swagger
+ * /fees/payments/{id}/pdf:
+ *   get:
+ *     summary: Download the payment receipt as a PDF (scoped to OWN for parents/students)
+ *     tags: [Fees]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Receipt PDF stream
+ */
+router.get('/payments/:id/pdf', requirePermission('fees.read'), controller.getReceiptPdf);
 
 /**
  * @swagger
