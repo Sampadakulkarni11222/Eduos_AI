@@ -1,6 +1,19 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
+import { renderReportCardPdf } from '../../utils/reportCardPdf.js';
 import * as service from './exam.service.js';
+
+export const getReportCard = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.getReportCard(req.actor, req.scope, req.query), 'Report card fetched');
+});
+
+export const getReportCardPdf = asyncHandler(async (req, res) => {
+  const card = await service.getReportCard(req.actor, req.scope, req.query);
+  const safeName = String(card.student?.name ?? 'student').replace(/[^a-zA-Z0-9]+/g, '-');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="ReportCard-${safeName}.pdf"`);
+  renderReportCardPdf(res, card);
+});
 
 export const createExam = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.createExam(req.body), 'Exam created', 201);

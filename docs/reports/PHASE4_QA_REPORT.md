@@ -138,6 +138,43 @@ Design decisions worth flagging:
 
 **Still missing from a complete fee engine** (not built): installments/instalment plans, automatic late fines, concession & scholarship rules, sibling discounts, and Tally/GST export.
 
+## 9. Wave-1 build: grading, report cards & a marks-entry bug · **built & tested**
+
+**Second correction to Phase 1.** The benchmark listed "Gradebook / marks entry — **Missing (UI)**" as the cheapest Critical fix, quoting COMPLETION_REPORT §11.4. That is out of date: a working `MarksEntryModal` exists in `teacher/exams/page.tsx`, and I drove it end-to-end (teacher → 4 papers → 60-student grid → marks saved). Marks entry is **done**. What was genuinely missing was everything *downstream* of the raw score.
+
+### QA-7 — Marks above the paper maximum were accepted · **High** · FIXED
+
+While testing, I saved **77 marks on a paper whose maximum is 50** and the API returned `201`. `enterMarks` never validated against `examSubject.maxMarks`. Every percentage, letter grade, GPA and rank computed downstream would inherit the corruption — silently, since nothing else re-checks.
+
+- **Fix:** the batch is rejected with `400 MARKS_OUT_OF_RANGE` (listing the offending entries) if any score is `< 0` or `> maxMarks`. Rejecting the batch rather than dropping bad rows means the teacher sees the mistake instead of losing an entry.
+
+### Built
+
+| Item | Detail |
+|---|---|
+| `utils/grading.js` | CBSE-style 10-point scale as **data, not conditionals** (A1…E with grade points + descriptors), `percentage()`, and `summarise()` for totals/GPA/pass-fail |
+| Auto letter grades | `enterMarks` now derives `gradeLabel` from the score. It was previously accepted **from the client**, so the same score could carry different grades for different students |
+| `GET /exams/report-card` | Per-subject marks, %, letter grade, grade points; summary with total, %, overall grade, GPA, pass/fail and failed-subject list. Optional `?exam=` filter |
+| `GET /exams/report-card/pdf` | Printable A4 report card (pdfkit, no template assets — same approach as the existing ID-card/receipt renderers), including a grading-scale key |
+
+Design decisions worth flagging:
+
+- **The report card is built on `getPerformance()` rather than querying marks directly.** That function already encodes the full ownership model — a parent sees only their child, and a *subject* teacher sees only the subjects they teach in that section, not the whole record. Re-implementing that query would have been the single easiest place in this codebase to introduce a data leak.
+- **Unmarked ≠ zero.** A subject with no mark is excluded from totals and GPA rather than counted as 0, so a partly-marked exam shows an honest interim result; the PDF says "Interim result — N of M subjects published."
+- Only `PUBLISHED` marks appear — a report card must never show a draft the teacher is still editing.
+
+### Verified live — 32/32
+
+- **Scale unit tests:** band boundaries (91→A1, 90.5→A2 — no gap), pass mark (33→D), fail (32→E, 0 points), `null` percentage stays `null`.
+- **Aggregation:** totals exclude the unmarked subject (75/100), GPA 7.5 from points 9 and 6, interim flag "2 of 3", failing-subject detection.
+- **The bug:** `maxMarks + 27` → **400** (was 201); negative → 400; valid → 201.
+- **Auto grades:** 100% → `A1`, 60% → `C1`, derived server-side.
+- **Report card:** real student (Diya Sharma) — 77.82%, GPA 8.33, grade B1; exam filter works; unknown exam → 404.
+- **PDF:** 200 `application/pdf`, valid `%PDF` header, 2,530 bytes.
+- **Authorization:** parent gets their own child with no id passed; a parent requesting **Kabir Sharma** (verified to be a different family's child) gets **403** on both JSON and PDF; librarian (no `marks.read`) → 403.
+
+**Not built:** rank/class position, term-over-term comparison, co-scholastic/attendance blocks on the report card, and school-configurable grading scales (the scale is a shared constant — it becomes a per-tenant setting the moment multi-school ships).
+
 ## 7. What remains in Phase 4
 
 1. **Your issues sheet** → mapped closure log (blocked on the sheet).

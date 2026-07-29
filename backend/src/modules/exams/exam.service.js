@@ -3,6 +3,7 @@ import { Enrollment } from '../../models/student.model.js';
 import { SubjectOffering } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
+import { gradeForPercentage, percentage, summarise } from '../../utils/grading.js';
 
 export const createExam = (data) => Exam.create(data);
 
@@ -258,6 +259,56 @@ export async function getPerformance(actor, scope, { enrollmentId }) {
   };
 }
 
+/**
+ * Report card for one enrollment: per-subject marks with letter grades, plus
+ * totals, percentage and GPA.
+ *
+ * Deliberately built on getPerformance() rather than querying marks directly —
+ * that function already enforces the full ownership model (a parent only their
+ * own child, a subject teacher only the subjects they teach in that section),
+ * and duplicating that logic here would be the easiest place in this codebase
+ * to introduce a data leak.
+ *
+ * Only PUBLISHED marks are included, inherited from the same source: a report
+ * card must never show a draft the teacher is still editing.
+ */
+export async function getReportCard(actor, scope, { enrollmentId, exam }) {
+  const performance = await getPerformance(actor, scope, { enrollmentId });
+
+  const results = exam
+    ? performance.results.filter((r) => r.exam?.toLowerCase() === String(exam).toLowerCase())
+    : performance.results;
+
+  if (exam && !results.length) {
+    throw new AppError(`No published results found for "${exam}"`, 404, [], 'NO_RESULTS_FOR_EXAM');
+  }
+
+  const subjects = results.map((r) => {
+    const pct = percentage(r.marks, r.maxMarks);
+    const band = gradeForPercentage(pct);
+    return {
+      exam: r.exam,
+      subject: r.subject,
+      marks: r.marks,
+      maxMarks: r.maxMarks,
+      percentage: pct,
+      grade: band?.label ?? null,
+      gradePoints: band?.points ?? null,
+      descriptor: band?.descriptor ?? null,
+    };
+  });
+
+  return {
+    student: performance.student,
+    exam: exam ?? 'All exams',
+    generatedAt: new Date().toISOString(),
+    subjects,
+    summary: summarise(subjects),
+    bestSubject: performance.bestSubject,
+    needsSupport: performance.needsSupport,
+  };
+}
+
 export async function enterMarks(actor, scope, { examSubjectId, entries }) {
   const examSubject = await loadOwnedExamSubject(actor, scope, examSubjectId);
   const sectionId = examSubject.subjectOfferingId?.sectionId?._id;
@@ -276,10 +327,36 @@ export async function enterMarks(actor, scope, { examSubjectId, entries }) {
   const validEntries = entries.filter((e) => allowedIds.has(String(e.enrollmentId)) && !publishedIds.has(String(e.enrollmentId)));
   if (validEntries.length === 0) throw new AppError('No valid mark entries for this class', 400);
 
-  const ops = validEntries.map(({ enrollmentId, marks, gradeLabel, remarks }) => ({
+  // A score above the paper's maximum (or below zero) is always a data-entry
+  // slip, and it silently corrupts every percentage, grade and GPA computed
+  // downstream — reject the whole batch so the teacher sees and fixes it.
+  const maxMarks = examSubject.maxMarks ?? 100;
+  const outOfRange = validEntries.filter(
+    (e) => e.marks !== null && e.marks !== undefined && (Number(e.marks) < 0 || Number(e.marks) > maxMarks)
+  );
+  if (outOfRange.length) {
+    throw new AppError(
+      `Marks must be between 0 and ${maxMarks} for this paper — ${outOfRange.length} entr${outOfRange.length === 1 ? 'y is' : 'ies are'} outside that range`,
+      400,
+      outOfRange.map((e) => ({ enrollmentId: String(e.enrollmentId), marks: e.marks })),
+      'MARKS_OUT_OF_RANGE'
+    );
+  }
+
+  // Letter grades are derived from the scale, never taken from the client, so
+  // the same score can't carry different grades for different students.
+  const ops = validEntries.map(({ enrollmentId, marks, remarks }) => ({
     updateOne: {
       filter: { examSubjectId, enrollmentId },
-      update: { $set: { marks, gradeLabel, remarks, status: 'DRAFT', enteredByProfileId: actor.profileId } },
+      update: {
+        $set: {
+          marks,
+          gradeLabel: gradeForPercentage(percentage(marks, maxMarks))?.label ?? null,
+          remarks,
+          status: 'DRAFT',
+          enteredByProfileId: actor.profileId,
+        },
+      },
       upsert: true,
     },
   }));

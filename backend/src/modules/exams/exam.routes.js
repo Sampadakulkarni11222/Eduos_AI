@@ -88,6 +88,50 @@ router.get('/performance', requirePermission('marks.read'), controller.getPerfor
 
 /**
  * @swagger
+ * /exams/report-card:
+ *   get:
+ *     summary: Report card for one enrollment — per-subject grades, totals, percentage and GPA
+ *     description: >
+ *       Includes published marks only, scoped exactly like /performance: a
+ *       parent sees only their own child, a subject teacher only the subjects
+ *       they teach in that section.
+ *     tags: [Exams]
+ *     parameters:
+ *       - in: query
+ *         name: enrollmentId
+ *         schema: { type: string }
+ *         description: Omit for parents/students — resolved from the session
+ *       - in: query
+ *         name: exam
+ *         schema: { type: string }
+ *         description: Limit to a single exam by name (e.g. "Unit Test 1")
+ *     responses:
+ *       200:
+ *         description: Report card fetched
+ */
+router.get('/report-card', requirePermission('marks.read'), controller.getReportCard);
+
+/**
+ * @swagger
+ * /exams/report-card/pdf:
+ *   get:
+ *     summary: Download the report card as a PDF
+ *     tags: [Exams]
+ *     parameters:
+ *       - in: query
+ *         name: enrollmentId
+ *         schema: { type: string }
+ *       - in: query
+ *         name: exam
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Report card PDF stream
+ */
+router.get('/report-card/pdf', requirePermission('marks.read'), controller.getReportCardPdf);
+
+/**
+ * @swagger
  * /exams/marks:
  *   post:
  *     summary: Bulk-enter draft marks for an exam subject

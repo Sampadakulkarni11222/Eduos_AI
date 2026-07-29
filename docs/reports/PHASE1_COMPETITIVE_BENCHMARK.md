@@ -20,7 +20,7 @@ Current EduOS state: dashboard (single fetch), classes, one-tap attendance, time
 | Dimension | EduOS | PS | TM | GC | Canvas | Fed/C365 | Gap severity |
 |---|---|---|---|---|---|---|---|
 | Attendance marking | **Strong** (one-tap, OWN-scoped) | Strong | Strong | — | — | Strong | — |
-| Gradebook / marks entry | **Missing (UI)** | Strong | Strong | Moderate | Strong | Strong | **Critical** — backend exists; this is the cheapest Critical fix in the app |
+| Gradebook / marks entry | ~~Missing (UI)~~ → **Present** (corrected 2026-07-29) | Strong | Strong | Moderate | Strong | Strong | ~~Critical~~ — a working marks-entry modal exists and was driven end-to-end in Phase 4; COMPLETION_REPORT §11.4 was out of date. The real gap was downstream: letter grades, GPA and report cards — now built (PHASE4_QA_REPORT §9) |
 | Lesson planning / syllabus tracker | **Missing** | Moderate | Strong | Moderate | Strong | Moderate | High |
 | Assignment lifecycle | Strong (create→roster→grade) | Strong | Strong | Strong | Strong | Moderate | Low (rich text + multi-attachment still pending, per student analysis) |
 | Question-paper / quiz generation (AI) | **Missing** | — | Strong (AI) | Moderate | Moderate | — | High — TM/MagicSchool/Quizizz AI all ship this; Phase 5 tutor core covers it |
