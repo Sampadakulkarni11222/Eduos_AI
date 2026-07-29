@@ -207,6 +207,17 @@ async function bootstrap() {
       );
     }
     logger.info('✔  System roles and permissions auto-synced with DB');
+
+    // An agent tool naming a permission that doesn't exist fails closed for
+    // everyone and looks identical to "you lack that permission" at the call
+    // site, so surface it loudly at boot rather than as a silent dead tool.
+    const { validateToolPermissions } = await import('./modules/ai/agent/tools.js');
+    const badTools = validateToolPermissions(PERMISSION_CATALOG.map((p) => p.key));
+    if (badTools.length) {
+      logger.error(`✘  Agent tools reference unknown permissions: ${badTools.join(', ')}`);
+    } else {
+      logger.info('✔  Agent tool permissions validated against the catalog');
+    }
   } catch (syncErr) {
     logger.error(`✘  Failed to auto-sync roles/permissions: ${syncErr.message}`);
   }
