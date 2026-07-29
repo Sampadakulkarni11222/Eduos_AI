@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
-import { requirePermission } from '../../middleware/permission.js';
+import { requirePermission, requireRole } from '../../middleware/permission.js';
 import * as ctrl from './dashboard.controller.js';
 
 const router = Router();
@@ -20,7 +20,7 @@ router.use(authenticate);
  *       200:
  *         description: Owner dashboard data
  */
-router.get('/owner', requirePermission('analytics.school.read'), ctrl.ownerDashboard);
+router.get('/owner', requireRole('OWNER', 'ADMIN'), requirePermission('analytics.school.read', 'ALL'), ctrl.ownerDashboard);
 
 /**
  * @swagger
@@ -34,7 +34,7 @@ router.get('/owner', requirePermission('analytics.school.read'), ctrl.ownerDashb
  *       200:
  *         description: Admin dashboard data
  */
-router.get('/admin', requirePermission('students.read'), ctrl.adminDashboard);
+router.get('/admin', requireRole('OWNER', 'ADMIN', 'PRINCIPAL'), requirePermission('students.read', 'ALL'), ctrl.adminDashboard);
 
 /**
  * @swagger
@@ -48,7 +48,7 @@ router.get('/admin', requirePermission('students.read'), ctrl.adminDashboard);
  *       200:
  *         description: Finance dashboard data
  */
-router.get('/finance', requirePermission('fees.read'), ctrl.financeDashboard);
+router.get('/finance', requireRole('OWNER', 'ADMIN', 'PRINCIPAL', 'FINANCE'), requirePermission('fees.read', 'ALL'), ctrl.financeDashboard);
 
 /**
  * @swagger
@@ -62,7 +62,7 @@ router.get('/finance', requirePermission('fees.read'), ctrl.financeDashboard);
  *       200:
  *         description: Teacher dashboard data
  */
-router.get('/teacher', requirePermission('timetable.read'), ctrl.teacherDashboard);
+router.get('/teacher', requireRole('TEACHER'), requirePermission('timetable.read'), ctrl.teacherDashboard);
 
 /**
  * @swagger
@@ -76,7 +76,7 @@ router.get('/teacher', requirePermission('timetable.read'), ctrl.teacherDashboar
  *       200:
  *         description: Student dashboard data
  */
-router.get('/student', requirePermission('attendance.read'), ctrl.studentDashboard);
+router.get('/student', requireRole('STUDENT'), requirePermission('attendance.read'), ctrl.studentDashboard);
 
 /**
  * @swagger
@@ -90,7 +90,7 @@ router.get('/student', requirePermission('attendance.read'), ctrl.studentDashboa
  *       200:
  *         description: Parent dashboard data
  */
-router.get('/parent', requirePermission('students.read'), ctrl.parentDashboard);
+router.get('/parent', requireRole('PARENT'), requirePermission('students.read'), ctrl.parentDashboard);
 
 /**
  * @swagger
@@ -104,7 +104,7 @@ router.get('/parent', requirePermission('students.read'), ctrl.parentDashboard);
  *       200:
  *         description: Warden dashboard data
  */
-router.get('/warden', requirePermission('hostel.read'), ctrl.wardenDashboard);
+router.get('/warden', requireRole('OWNER', 'ADMIN', 'WARDEN'), requirePermission('hostel.read'), ctrl.wardenDashboard);
 
 /**
  * @swagger
@@ -118,6 +118,6 @@ router.get('/warden', requirePermission('hostel.read'), ctrl.wardenDashboard);
  *       200:
  *         description: Librarian dashboard data
  */
-router.get('/librarian', requirePermission('library.read'), ctrl.librarianDashboard);
+router.get('/librarian', requireRole('OWNER', 'ADMIN', 'LIBRARIAN'), requirePermission('library.read'), ctrl.librarianDashboard);
 
 export default router;
