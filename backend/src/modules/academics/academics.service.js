@@ -9,7 +9,8 @@ import {
 import { Account } from '../../models/account.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { AppError } from '../../utils/AppError.js';
-import { getTeacherSectionIds } from '../../utils/scope.js';
+import { Enrollment } from '../../models/student.model.js';
+import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 import { runInTransaction } from '../../utils/transaction.js';
 
 const CHUNK_SIZE = 100;
@@ -82,18 +83,61 @@ export const listSections = (gradeId) =>
  * - TEACHER: sections they are classTeacher of + sections they have offerings in
  * - ALL other roles: all sections (unscoped)
  */
+/**
+ * Section IDs a student or parent is actually attached to — the student's own
+ * enrolled sections, or every section their children are enrolled in.
+ *
+ * Returns null for any other role, meaning "not a family member", so callers
+ * can tell an empty result apart from a role this does not apply to.
+ */
+async function getFamilySectionIds(actor) {
+  let studentIds;
+  if (actor.roleKey === 'STUDENT') {
+    const own = await getOwnStudentId(actor.profileId);
+    studentIds = own ? [own] : [];
+  } else if (actor.roleKey === 'PARENT') {
+    studentIds = await getGuardianStudentIds(actor.profileId);
+  } else {
+    return null;
+  }
+
+  if (!studentIds.length) return [];
+  const enrollments = await Enrollment.find({ studentId: { $in: studentIds } }).select('sectionId');
+  return [...new Set(enrollments.map((e) => e.sectionId?.toString()).filter(Boolean))];
+}
+
+/**
+ * Returns the sections the actor is attached to.
+ *
+ * These `/mine` endpoints are the ones open to any authenticated user, so they
+ * must genuinely be own-scoped. They used to fall through to the *full* section
+ * list for every role except TEACHER, which meant a student or parent could
+ * read the school's entire section roster from `/academics/sections/mine` —
+ * gating `/academics/sections` alone would just have moved that one URL over.
+ *
+ * Staff still get the full list: they hold `academics.read` for it anyway.
+ */
 export async function getMySections(actor) {
   if (actor.roleKey === 'TEACHER') {
     const sectionIds = await getTeacherSectionIds(actor.profileId);
     return Section.find({ _id: { $in: sectionIds } }).populate('gradeId classTeacherId classRepresentativeId').sort({ name: 1 });
   }
+
+  const familySectionIds = await getFamilySectionIds(actor);
+  if (familySectionIds) {
+    return Section.find({ _id: { $in: familySectionIds } })
+      .populate('gradeId classTeacherId classRepresentativeId')
+      .sort({ name: 1 });
+  }
+
   return listSections();
 }
 
 /**
  * Returns subject offerings the actor can see:
  * - TEACHER: only their own offerings
- * - ALL other roles: unscoped offerings
+ * - STUDENT/PARENT: offerings for their own (or their children's) sections
+ * - staff: unscoped offerings
  */
 export async function getMyOfferings(actor) {
   if (actor.roleKey === 'TEACHER') {
@@ -101,6 +145,14 @@ export async function getMyOfferings(actor) {
       .populate({ path: 'sectionId', populate: { path: 'gradeId' } })
       .populate('subjectId termId teacherId');
   }
+
+  const familySectionIds = await getFamilySectionIds(actor);
+  if (familySectionIds) {
+    return SubjectOffering.find({ sectionId: { $in: familySectionIds } })
+      .populate({ path: 'sectionId', populate: { path: 'gradeId' } })
+      .populate('subjectId termId teacherId');
+  }
+
   return listOfferings();
 }
 
