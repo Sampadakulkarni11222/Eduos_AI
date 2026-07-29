@@ -38,7 +38,7 @@ git filter-repo --invert-paths --path credentials.md \
   --path backend/check_atlas.js --path backend/debug_databases.js \
   --path backend/force_migrate_to_atlas.js --path backend/inspect_atlas.js \
   --path backend/list_teachers.js --path backend/test_student_dashboard.js \
-  --replace-text <(echo "REDACTED-ROTATED==>REDACTED")
+  --replace-text <(echo "<the-old-rotated-password>==>REDACTED")
 git remote add origin https://github.com/Sampadakulkarni11222/Eduos_AI.git
 git push origin --force --all && git push origin --force --tags
 ```
