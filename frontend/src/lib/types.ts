@@ -84,7 +84,7 @@ export interface AssignmentDto {
 }
 export interface SubmissionRow { enrollmentId: string; rollNo: number | null; studentName: string; status: string; submittedAt: string | null; marks: number | null; feedback: string | null; attachments: string[] }
 export interface SubmissionRoster { assignment: { id: string; title: string; dueAt: string | null; maxMarks: number | null }; rows: SubmissionRow[] }
-export interface TimetableSlotDto { id: string; dayOfWeek: number; periodNo: number; startTime: string; endTime: string; subject: string | null; teacher: string | null; subjectOfferingId: string | null; isBreak: boolean }
+export interface TimetableSlotDto { id: string; dayOfWeek: number; periodNo: number; startTime: string; endTime: string; subject: string | null; teacher: string | null; subjectOfferingId: string | null; isBreak: boolean; room: string | null; liveClassLink: string | null }
 export interface TimetableDto { sectionId: string; slots: TimetableSlotDto[] }
 export interface PerformanceDto {
   student: { name: string; class: string };
@@ -99,8 +99,20 @@ export interface MarkRow { enrollmentId: string; rollNo: number | null; studentN
 export interface MarksGrid { examSubject: { id: string; examName: string; subject: string; class: string; maxMarks: number }; rows: MarkRow[] }
 export interface CalendarEventDto { id: string; title: string; description: string | null; type: string; startsAt: string; endsAt: string }
 
-export interface InvoiceDto { id: string; invoiceNo: string; studentName: string; class: string | null; status: string; totalPaise: number; paidPaise: number; dueOn: string; sectionId?: string; studentId?: string }
-export interface FeeSummary { totalBilledPaise: number; totalCollectedPaise: number; pendingPaise: number; pendingCount: number; collectionPct: number }
+// ── Attendance calendar & trend ──
+export interface AttendanceDayDto { date: string; status: AttStatus }
+export interface AttendanceCalendarDto { enrollmentId: string; month: string; days: AttendanceDayDto[] }
+export interface AttendanceTrendPointDto { month: string; pctPresent: number; presentDays: number; workingDays: number }
+
+// ── Leave applications ──
+export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export interface LeaveApplicationDto {
+  _id: string; enrollmentId: string; fromDate: string; toDate: string; reason: string;
+  status: LeaveStatus; remarks: string | null; createdAt: string;
+}
+
+export interface InvoiceDto { id: string; invoiceNo: string; studentName: string; class: string | null; status: string; totalPaise: number; paidPaise: number; dueOn: string; sectionId?: string; studentId?: string; createdAt?: string }
+export interface FeeSummary { totalBilledPaise: number; totalCollectedPaise: number; pendingPaise: number; pendingCount: number; collectionPct: number; overduePaise: number; overdueCount: number }
 export interface AnnouncementAudience { all: boolean; gradeIds: string[]; sectionIds: string[]; subjectIds: string[] }
 export interface AnnouncementChannels { app: boolean; email: boolean; whatsapp: boolean }
 export interface AnnouncementDto {
@@ -143,6 +155,13 @@ export interface AuditLogDto {
   channel: string;
   ip: string | null;
   createdAt: string;
+}
+
+export interface InvoiceLineDto { id: string; description: string; amountPaise: number; concessionPaise: number }
+export interface InvoiceDetailDto extends InvoiceDto {
+  createdAt: string;
+  lines: InvoiceLineDto[];
+  payments: PaymentReceiptDto[];
 }
 
 export interface PaymentReceiptDto {
@@ -219,8 +238,10 @@ export interface AdminDashboardDto {
 }
 export interface StudentDashboardDto {
   attendancePercentage: number; totalDays: number; presentDays: number;
-  todayTimetable: Array<{ periodNo: number; startTime: string; endTime: string; subject: string }>;
-  upcomingClasses: Array<{ periodNo: number; startTime: string; subject: string }>;
+  monthlyAttendance: { percentage: number; presentDays: number; totalDays: number };
+  todayAttendanceStatus: AttStatus | 'NOT_MARKED' | 'HOLIDAY';
+  todayTimetable: Array<{ periodNo: number; startTime: string; endTime: string; subject: string; room: string | null; liveClassLink: string | null }>;
+  upcomingClasses: Array<{ periodNo: number; startTime: string; endTime: string; subject: string; room: string | null; liveClassLink: string | null }>;
   pendingAssignments: number;
   examSchedule: Array<{ examName: string; subject: string; examDate: string; maxMarks?: number }>;
   feeStatus: { totalFees: number; paidFees: number; pendingFees: number; pendingInvoices: number };
@@ -273,3 +294,24 @@ export interface FinanceDashboardDto {
 
 
 
+
+export type NotificationType =
+  | 'ANNOUNCEMENT' | 'ASSIGNMENT' | 'MARKS' | 'ATTENDANCE'
+  | 'FEES' | 'LIBRARY' | 'TICKET' | 'LEAVE' | 'SYSTEM';
+
+export interface NotificationDto {
+  _id: string;
+  type: NotificationType;
+  title: string;
+  body?: string;
+  link?: string;
+  readAt: string | null;
+  createdAt: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface NotificationPage {
+  items: NotificationDto[];
+  nextCursor: string | null;
+  unreadCount: number;
+}

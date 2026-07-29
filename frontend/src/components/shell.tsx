@@ -9,6 +9,7 @@ import type { RoleKey } from '@/lib/types';
 import { Spinner, cx } from './ui';
 import { usePermissions, getRequiredPermission } from '@/lib/permissions';
 import { AskEduOS } from './ask-eduos';
+import { NotificationBell } from './notification-bell';
 
 /**
  * Per-role portal shell. Reads the active profile's role, renders that
@@ -82,7 +83,10 @@ export function PortalShell({
                 {topbar.desc && <div className="topbar-desc">{topbar.desc}</div>}
               </div>
             </div>
-            <div className="topbar-ask"><AskEduOS label="Ask Agent" /></div>
+            <div className="topbar-ask" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <NotificationBell portalSlug={expectedSlug} />
+              <AskEduOS label="Ask Agent" />
+            </div>
           </div>
           {topbar.actions && <div className="topbar-actions">{topbar.actions}</div>}
         </div>

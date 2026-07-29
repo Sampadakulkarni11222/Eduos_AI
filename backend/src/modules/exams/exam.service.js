@@ -1,9 +1,10 @@
 import { Exam, ExamSubject, Mark } from '../../models/exam.model.js';
-import { Enrollment } from '../../models/student.model.js';
+import { Enrollment, Student, StudentGuardian } from '../../models/student.model.js';
 import { SubjectOffering } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 import { gradeForPercentage, percentage, summarise } from '../../utils/grading.js';
+import { notify } from '../notifications/notification.service.js';
 
 export const createExam = (data) => Exam.create(data);
 
@@ -365,10 +366,52 @@ export async function enterMarks(actor, scope, { examSubjectId, entries }) {
 }
 
 export async function publishMarks(actor, scope, examSubjectId) {
-  await loadOwnedExamSubject(actor, scope, examSubjectId);
+  const examSubject = await loadOwnedExamSubject(actor, scope, examSubjectId);
+
+  // Capture who is affected before publishing — afterwards the "not yet
+  // published" filter no longer identifies this batch.
+  const publishing = await Mark.find({ examSubjectId, status: { $ne: 'PUBLISHED' } }).select('enrollmentId').lean();
+
   const result = await Mark.updateMany(
     { examSubjectId, status: { $ne: 'PUBLISHED' } },
     { status: 'PUBLISHED', publishedAt: new Date() }
   );
+
+  await notifyMarksPublished(examSubject, publishing.map((m) => m.enrollmentId));
+
   return { matched: result.matchedCount, modified: result.modifiedCount };
+}
+
+/**
+ * Tells each affected student and their guardians that a result is out.
+ *
+ * Notification failures are swallowed by notify() itself: publishing marks is
+ * the operation the teacher asked for, and it must not fail or roll back
+ * because an inbox write did.
+ */
+async function notifyMarksPublished(examSubject, enrollmentIds) {
+  if (!enrollmentIds.length) return;
+
+  const enrollments = await Enrollment.find({ _id: { $in: enrollmentIds } }).select('studentId').lean();
+  const studentIds = enrollments.map((e) => e.studentId);
+
+  const [students, guardianLinks] = await Promise.all([
+    Student.find({ _id: { $in: studentIds } }).select('profileId').lean(),
+    StudentGuardian.find({ studentId: { $in: studentIds } }).select('guardianProfileId').lean(),
+  ]);
+
+  const subjectName = examSubject.subjectOfferingId?.subjectId?.name ?? 'a subject';
+  const examName = examSubject.examId?.name ?? 'an exam';
+
+  await notify({
+    recipientProfileIds: [
+      ...students.map((s) => s.profileId),
+      ...guardianLinks.map((g) => g.guardianProfileId),
+    ],
+    type: 'MARKS',
+    title: `${examName} results published`,
+    body: `${subjectName} results are now available.`,
+    link: '/performance',
+    meta: { examSubjectId: examSubject._id },
+  });
 }

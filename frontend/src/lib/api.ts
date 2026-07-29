@@ -4,7 +4,7 @@
  * Production hardening (Phase 7): move refresh into an httpOnly cookie
  * behind a BFF route handler so it never touches JS-readable storage.
  */
-import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult } from './types';
+import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage } from './types';
 
 // Backend URL – default to localhost:5000. Can be overridden via NEXT_PUBLIC_BACKEND_URL.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
@@ -286,10 +286,19 @@ export const api = {
     uploadCsv('/attendance/mark/bulk', file, { sectionId, date, ...(periodNo ? { periodNo: String(periodNo) } : {}) }),
   attendanceSummary: (enrollmentId: string, yearMonth: string) =>
     request<{ enrollmentId: string; yearMonth: string; PRESENT: number; ABSENT: number; LATE: number; EXCUSED: number; HALF_DAY: number; workingDays: number; pctPresent: number }>(`/attendance/summary?enrollmentId=${enrollmentId}&month=${yearMonth}`),
+  attendanceCalendar: (enrollmentId: string, month: string) =>
+    request<AttendanceCalendarDto>(`/attendance/calendar?enrollmentId=${enrollmentId}&month=${month}`),
+  attendanceTrend: (enrollmentId: string, months = 6) =>
+    request<AttendanceTrendPointDto[]>(`/attendance/trend?enrollmentId=${enrollmentId}&months=${months}`),
+
+  // ── leave ──
+  applyLeave: (body: { fromDate: string; toDate: string; reason: string }) =>
+    request<LeaveApplicationDto>('/leave/apply', { method: 'POST', body: JSON.stringify(body) }),
+  myLeaveApplications: () => request<LeaveApplicationDto[]>('/leave/mine'),
 
   // ── timetable ──
   timetable: (sectionId: string) => request<TimetableDto>(`/timetable?sectionId=${sectionId}`),
-  upsertTimetableSlot: (body: { sectionId: string; dayOfWeek: number; periodNo: number; startTime: string; endTime: string; subjectOfferingId: string | null }) =>
+  upsertTimetableSlot: (body: { sectionId: string; dayOfWeek: number; periodNo: number; startTime: string; endTime: string; subjectOfferingId: string | null; room?: string | null; liveClassLink?: string | null }) =>
     request<{ id: string }>('/timetable/slot', { method: 'POST', body: JSON.stringify(body) }),
 
   // ── assignments ──
@@ -321,6 +330,7 @@ export const api = {
 
   // ── fees ──
   invoices: (status?: string) => request<InvoiceDto[]>(`/fees/invoices${status ? `?status=${status}` : ''}`),
+  invoiceDetail: (id: string) => request<InvoiceDetailDto>(`/fees/invoices/${id}`),
   createInvoice: (body: { enrollmentId: string; invoiceNo: string; dueOn: string; lines: { description: string; amountPaise: number; concessionPaise?: number }[] }) =>
     request<{ id: string }>('/fees/invoices', { method: 'POST', body: JSON.stringify(body) }),
   bulkCreateInvoices: (file: File) => uploadCsv('/fees/invoices/bulk', file),
@@ -338,6 +348,8 @@ export const api = {
       pendingPaise: raw.outstandingPaise ?? raw.outstandingBalancePaise ?? raw.pendingPaise ?? 0,
       pendingCount: raw.pendingCount ?? raw.unpaidCount ?? raw.outstandingCount ?? 0,
       collectionPct: raw.collectionRate ?? raw.collectionRatePercentage ?? raw.collectionPct ?? 0,
+      overduePaise: raw.overduePaise ?? 0,
+      overdueCount: raw.overdueCount ?? 0,
     } as FeeSummary;
   },
   recordPayment: (body: { invoiceId: string; amountPaise: number; mode: string; gatewayRef?: string }) =>
@@ -346,6 +358,8 @@ export const api = {
     request<PaymentReceiptDto[]>(`/fees/payments${invoiceId ? `?invoiceId=${invoiceId}` : ''}`),
   payOnline: (body: { invoiceId: string; amountPaise?: number }) =>
     request<PayOnlineResult>('/fees/pay', { method: 'POST', body: JSON.stringify(body) }),
+  downloadInvoicePdf: (invoiceId: string) => openProtectedFile(`/fees/invoices/${invoiceId}/pdf`),
+  downloadReceiptPdf: (paymentId: string) => openProtectedFile(`/fees/payments/${paymentId}/pdf`),
 
   // ── announcements ──
   announcements: () => request<AnnouncementDto[]>('/announcements'),
@@ -356,6 +370,21 @@ export const api = {
   }) => request<{ id: string }>('/announcements', { method: 'POST', body: JSON.stringify(body) }),
 
   // ── tickets ──
+  // ── notifications (per-profile inbox) ──
+  notifications: (opts: { unreadOnly?: boolean; limit?: number; before?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (opts.unreadOnly) q.set('unreadOnly', 'true');
+    if (opts.limit) q.set('limit', String(opts.limit));
+    if (opts.before) q.set('before', opts.before);
+    const qs = q.toString();
+    return request<NotificationPage>(`/notifications${qs ? `?${qs}` : ''}`);
+  },
+  unreadNotificationCount: () => request<{ unreadCount: number }>('/notifications/unread-count'),
+  markNotificationsRead: (ids: string[]) =>
+    request<{ updated: number; unreadCount: number }>('/notifications/read', { method: 'POST', body: JSON.stringify({ ids }) }),
+  markAllNotificationsRead: () =>
+    request<{ updated: number; unreadCount: number }>('/notifications/read-all', { method: 'POST' }),
+
   tickets: (status?: string) => request<TicketDto[]>(`/tickets${status ? `?status=${status}` : ''}`),
   ticketThread: (id: string) => request<TicketThread>(`/tickets/${id}`),
   createTicket: (body: { subject: string; body: string; routedToRoleKey?: string; studentId?: string }) =>
