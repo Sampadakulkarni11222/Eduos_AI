@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Card, EmptyState, SkeletonRows, StatCard } from '@/components/ui';
+import { ReportCardView } from '@/components/report-card-view';
 import { api } from '@/lib/api';
 import type { PerformanceDto, StudentListItem } from '@/lib/types';
 
@@ -41,6 +42,9 @@ export default function StudentPerformance() {
             <StatCard label="Overall average" value={perf.overallAvgPct != null ? `${perf.overallAvgPct}%` : '—'} />
             <StatCard label="Best subject" value={perf.bestSubject?.subject ?? '—'} delta={perf.bestSubject?.pct != null ? `${perf.bestSubject.pct}%` : undefined} deltaDir="up" />
             <StatCard label="Needs support" value={perf.needsSupport?.subject ?? '—'} delta={perf.needsSupport?.pct != null ? `${perf.needsSupport.pct}%` : undefined} deltaDir="down" />
+          </div>
+          <div style={{ marginBottom: 18 }}>
+            <ReportCardView />
           </div>
           <Card pad={false}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--hairline)' }}>

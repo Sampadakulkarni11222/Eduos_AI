@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
 import type { FeeSummary, InvoiceDto, PaymentReceiptDto, StudentListItem, GradeDto, SectionDto } from '@/lib/types';
+import { FeeStructuresPanel } from '@/components/fees/fee-structures-panel';
 
 const STATUS_TONE: Record<string, 'green' | 'amber' | 'red' | 'gray' | 'blue'> = {
   PAID: 'green', PARTIAL: 'amber', PENDING: 'gray', OVERDUE: 'red', CANCELLED: 'gray',
@@ -21,7 +22,7 @@ export default function AdminPayments() {
   const [showCreate, setShowCreate] = useState(false);
   const [showBulkCreate, setShowBulkCreate] = useState(false);
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<'invoices' | 'receipts'>('invoices');
+  const [activeTab, setActiveTab] = useState<'invoices' | 'receipts' | 'plans'>('invoices');
 
   // Grade / Section / Student filter for the Invoices tab
   const [grades, setGrades] = useState<GradeDto[]>([]);
@@ -86,6 +87,7 @@ export default function AdminPayments() {
       <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
         <button className={`chip-tab ${activeTab === 'invoices' ? 'active' : ''}`} onClick={() => setActiveTab('invoices')}>Invoices</button>
         <button className={`chip-tab ${activeTab === 'receipts' ? 'active' : ''}`} onClick={() => setActiveTab('receipts')}>Payment Receipts</button>
+        <button className={`chip-tab ${activeTab === 'plans' ? 'active' : ''}`} onClick={() => setActiveTab('plans')}>Fee Plans</button>
       </div>
 
       {activeTab === 'invoices' && (
@@ -156,6 +158,8 @@ export default function AdminPayments() {
           )}
         </>
       )}
+
+      {activeTab === 'plans' && <FeeStructuresPanel />}
 
       {activeTab === 'receipts' && (
         <>

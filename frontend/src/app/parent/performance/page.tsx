@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Card, EmptyState, SkeletonRows, StatCard } from '@/components/ui';
+import { ReportCardView } from '@/components/report-card-view';
 import { api } from '@/lib/api';
 import type { PerformanceDto, StudentListItem } from '@/lib/types';
 
@@ -36,6 +37,13 @@ export default function ParentPerformance() {
       {loading && <Card><SkeletonRows rows={4} /></Card>}
       {!loading && perf && perf.results.length === 0 && (
         <EmptyState title="No published results yet" sub="Marks appear here once teachers publish them for the term." />
+      )}
+      {!loading && kid?.enrollment && perf && perf.results.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          {/* Keyed on the child so switching children refetches rather than
+              showing the previous child's card while the new one loads. */}
+          <ReportCardView key={kid.enrollment.id} enrollmentId={kid.enrollment.id} />
+        </div>
       )}
       {!loading && perf && perf.results.length > 0 && (
         <>

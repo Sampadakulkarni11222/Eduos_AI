@@ -315,3 +315,34 @@ export interface NotificationPage {
   nextCursor: string | null;
   unreadCount: number;
 }
+
+export interface ReportCardSubject {
+  exam: string; subject: string; marks: number | null; maxMarks: number;
+  percentage: number | null; grade: string | null; gradePoints: number | null; descriptor: string | null;
+}
+export interface ReportCardDto {
+  student: { name: string; class: string };
+  exam: string;
+  generatedAt: string;
+  subjects: ReportCardSubject[];
+  summary: {
+    totalMarks: number; totalMaxMarks: number; percentage: number | null;
+    grade: { label: string; points: number; descriptor: string } | null;
+    gpa: number | null; subjectsMarked: number; subjectsTotal: number;
+    passed: boolean | null; failedSubjects: string[];
+  };
+}
+export interface FeeHeadDto { _id: string; name: string; category: string }
+export interface FeeStructureDto {
+  _id: string; name: string; amountPaise: number; dueOn: string;
+  feeHeadId?: { _id: string; name: string; category: string } | null;
+  gradeId?: { _id: string; name: string } | null;
+}
+export interface GenerateInvoicesResult {
+  generated: number; skipped: number; totalPaise: number; dryRun: boolean;
+  invoices: Array<{ invoiceNo: string; enrollmentId: string; totalPaise: number }>;
+}
+
+export interface AcademicYearDto {
+  _id: string; name: string; startsOn: string; endsOn: string; isCurrent?: boolean;
+}

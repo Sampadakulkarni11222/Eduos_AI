@@ -4,7 +4,7 @@
  * Production hardening (Phase 7): move refresh into an httpOnly cookie
  * behind a BFF route handler so it never touches JS-readable storage.
  */
-import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage } from './types';
+import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto } from './types';
 
 // Backend URL – default to localhost:5000. Can be overridden via NEXT_PUBLIC_BACKEND_URL.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
@@ -370,6 +370,42 @@ export const api = {
   }) => request<{ id: string }>('/announcements', { method: 'POST', body: JSON.stringify(body) }),
 
   // ── tickets ──
+  academicYears: () => request<AcademicYearDto[]>('/academics/years'),
+
+  // ── report cards ──
+  reportCard: (enrollmentId?: string, exam?: string) => {
+    const q = new URLSearchParams();
+    if (enrollmentId) q.set('enrollmentId', enrollmentId);
+    if (exam) q.set('exam', exam);
+    const qs = q.toString();
+    return request<ReportCardDto>(`/exams/report-card${qs ? `?${qs}` : ''}`);
+  },
+  downloadReportCardPdf: (enrollmentId?: string, exam?: string) => {
+    const q = new URLSearchParams();
+    if (enrollmentId) q.set('enrollmentId', enrollmentId);
+    if (exam) q.set('exam', exam);
+    const qs = q.toString();
+    // Uses the same authenticated blob-fetch as the invoice/receipt PDFs —
+    // a plain link would not carry the Bearer token.
+    return openProtectedFile(`/exams/report-card/pdf${qs ? `?${qs}` : ''}`);
+  },
+
+  // ── fee structures & invoice generation ──
+  feeHeads: () => request<FeeHeadDto[]>('/fees/heads'),
+  feeStructures: (academicYearId?: string, gradeId?: string) => {
+    const q = new URLSearchParams();
+    if (academicYearId) q.set('academicYearId', academicYearId);
+    if (gradeId) q.set('gradeId', gradeId);
+    const qs = q.toString();
+    return request<FeeStructureDto[]>(`/fees/structures${qs ? `?${qs}` : ''}`);
+  },
+  createFeeHead: (body: { name: string; category?: string }) =>
+    request<FeeHeadDto>('/fees/heads', { method: 'POST', body: JSON.stringify(body) }),
+  createFeeStructure: (body: { feeHeadId: string; academicYearId: string; gradeId?: string | null; name: string; amountPaise: number; dueOn: string }) =>
+    request<FeeStructureDto>('/fees/structures', { method: 'POST', body: JSON.stringify(body) }),
+  generateInvoices: (body: { academicYearId: string; gradeId?: string | null; dueOn?: string; dryRun?: boolean }) =>
+    request<GenerateInvoicesResult>('/fees/invoices/generate', { method: 'POST', body: JSON.stringify(body) }),
+
   // ── notifications (per-profile inbox) ──
   notifications: (opts: { unreadOnly?: boolean; limit?: number; before?: string } = {}) => {
     const q = new URLSearchParams();
