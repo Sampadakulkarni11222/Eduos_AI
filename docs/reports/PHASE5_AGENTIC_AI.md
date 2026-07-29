@@ -67,8 +67,9 @@ Stated plainly rather than left to be discovered:
 |---|---|
 | **OCR attendance from a photo of a paper register** | **Built** (`0fa2342`) — see the section below. |
 | **Voice input / multilingual responses** | **Built** (`e5a1b0f`) — see the section below. WhatsApp *voice notes* remain unbuilt (they need server-side STT). |
-| Payment-link generation from the agent | Not built (`record_fee_payment` is staff-only ledger recording, not a parent payment link). |
-| "Generate this week's homework" / "schedule a PTM" | Not built — no tool backs either yet. |
+| Payment-link generation from the agent | **Built** — see the section below. |
+| "Generate this week's homework" | **Built** — see the section below. |
+| "Schedule a PTM" | Not built — no scheduling service backs it yet. |
 | Live LLM behaviour | **Never exercised.** No `ANTHROPIC_API_KEY` was available, so every test ran on the deterministic path. The provider, refusal handling, and model-proposal containment are code-reviewed, not runtime-verified. This is the largest untested surface in the phase. |
 
 ## Verification summary
@@ -216,3 +217,102 @@ user is asked for a reason *before* confirming.
 use a browser API; transcribing them needs a server-side STT provider. The
 webhook already answers non-text messages with a usable reply rather than
 silence, so the failure mode is graceful.
+
+---
+
+## Payment links and homework generation — 29/29
+
+Two tools, deliberately built to opposite designs, because they carry opposite
+risks.
+
+### `get_payment_link` — a read, not a payment
+
+`fees.pay` · **does not mutate** · no confirmation step
+
+A parent asking "I want to pay my fees" gets back their outstanding invoices
+and a link into the payment page of their own portal. It never charges
+anything.
+
+That is a judgment call worth stating outright: an agent that can *take a
+payment* from a chat message is a different and much worse product, and
+confirm-before-commit is not a good enough guard for money moving on the back
+of a sentence someone typed. A one-word "yes" against a summary is not the same
+as a payer seeing an itemised invoice on a page they navigated to. So the tool
+hands over a link and stops; the existing payment screen does the rest, with
+its own UI and its own audit trail. `record_fee_payment` remains separate and
+staff-only — that is a cashier recording money already received at a counter,
+not a parent being charged.
+
+Links are produced by `payment.provider.createPaymentLink()`, kept distinct
+from `chargeOnline()` so the two can never be confused at a call site, and are
+labelled honestly: `linkKind: 'IN_APP'` when it points at the portal,
+`'NONE'` when no gateway is configured. No fake gateway URL is ever returned.
+
+Scoping is inherited, not re-implemented: `fees.getPaymentLinks()` reads
+through the same `listInvoices()` the REST API uses, so a parent sees only
+their own children's invoices for the same reason the fees page does.
+
+### `generate_homework` — a write, and it refuses to guess
+
+`assignments.manage` · **mutates** · `affectsOthers: true` · confirmation required
+
+Two-step by design. `prepare()` drafts the homework when the *proposal* is
+made and the draft is stored server-side on the pending action, so the summary
+the teacher approves describes homework that already exists in full. Without
+that split, a teacher would be confirming a promise to generate something
+unseen, and the text finally written could differ from what they agreed to.
+
+The more interesting behaviour is what it does when it is *not sure*. Asked to
+"create homework on fractions for Mathematics", for a teacher who teaches
+Mathematics to four classes, it does not pick one. It refuses with
+`OFFERING_AMBIGUOUS` and names the real options:
+
+> Which class did you mean? You teach: Mathematics — Class 5 A; Mathematics —
+> Class 6 B; Mathematics — Class 8 A; Mathematics — Class 9 B.
+
+A confirmation prompt does not save you here — the teacher would be shown one
+plausible class and would very likely say yes. The fix has to be upstream of
+the confirmation, in refusing to guess at all. Missing topic and missing due
+date are likewise rejected at *propose* time, not at execution, for the same
+reason: approving a summary that then fails makes the confirmation step feel
+like theatre.
+
+### Pre-existing High fixed along the way
+
+`assignment.create` checked that the subject offering **existed** but never
+that the caller **taught it**. A live probe confirmed it: one teacher created
+an assignment on another teacher's offering and got HTTP 200. This predates
+the agent work — it was reachable from the plain REST API — and the agent tool
+would have inherited it.
+
+**Before:** any user with `assignments.manage` at `OWN` scope could set
+homework for any class in the school by passing another teacher's
+`subjectOfferingId`.
+**After:** `scope === 'OWN'` requires `offering.teacherId === actor.profileId`,
+else `403 NOT_YOUR_CLASS`. `ALL` scope (admin) is unchanged.
+**Verified:** the probe now returns `403 NOT_YOUR_CLASS`; admin still gets
+`201`; the probe row created during discovery was deleted.
+
+### Verified
+
+29/29, live against `eduos_qa`:
+
+- Payment link is a read — invoice count and payment ledger unchanged after the
+  call; `action` is `null`, so no confirmation is even offered.
+- Per-role URLs: `/parent/payments?invoice=…` and `/student/payments?invoice=…`.
+- Another family's invoice ID → `404 INVOICE_NOT_PAYABLE`. Teacher (no
+  `fees.pay`) → `403`.
+- Hindi request answered in Hindi: `3 बिल में कुल ₹85,000 बकाया है…`.
+- Homework: ambiguity refused with the real class list; proposed only once the
+  class is explicit; **nothing written** on propose or on decline; the created
+  assignment matches the confirmed summary.
+- Capabilities are role-shaped: parent sees `get_payment_link` and not
+  `generate_homework`; teacher, the reverse.
+- No regressions: agent core **30/30**, WhatsApp **19/19**, OCR matcher
+  **25/25**, Phase 3 security **10/10**.
+
+**One test failure that was mine, not the code's.** The suite initially
+asserted that "create homework on fractions for Mathematics" would produce a
+proposal. It produced the ambiguity refusal instead — which is the designed
+and safer behaviour. The test was corrected to assert the refusal; the code was
+not touched.

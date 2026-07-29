@@ -7,7 +7,7 @@ export const list = asyncHandler(async (req, res) => {
 });
 
 export const create = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.create(req.actor, req.body), 'Assignment created', 201);
+  sendSuccess(res, await service.create(req.actor, req.scope, req.body), 'Assignment created', 201);
 });
 
 export const grade = asyncHandler(async (req, res) => {

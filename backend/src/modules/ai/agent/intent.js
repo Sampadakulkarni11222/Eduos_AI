@@ -16,8 +16,8 @@ import { logger } from '../../../utils/logger.js';
  * match on stems that survive transliteration, because parents in this market
  * routinely type Hinglish ("fees kitna pending hai").
  *
- * NOTE — non-Latin patterns deliberately carry no  anchors. JavaScript
- * defines  in terms of [A-Za-z0-9_], so छुट्टी never matches inside
+ * NOTE — non-Latin patterns deliberately carry no \b anchors. JavaScript
+ * defines \b in terms of [A-Za-z0-9_], so \bछुट्टी\b never matches inside
  * Devanagari text: the pattern looks correct and silently never fires. Adding
  * word boundaries "for consistency" would re-break Hindi intent matching.
  */
@@ -54,7 +54,11 @@ const RULES = [
       /\bfee(s)?\b/i, /\bdue\b/i, /\binvoice\b/i, /\bpayment\b/i, /\bpending amount\b/i,
       /\bshulk\b/i, /फीस/, /बकाया/,
     ],
-    exclude: [/\brecord\b.*\bpayment\b/i, /\bmark\b.*\bpaid\b/i, /\bpaid\b.*\btoday\b/i],
+    exclude: [
+      /\brecord\b.*\bpayment\b/i, /\bmark\b.*\bpaid\b/i, /\bpaid\b.*\btoday\b/i,
+      // "pay my fees" wants a payment link, not a balance read.
+      /\bpay\b/i, /\bpayment link\b/i, /भुगतान/,
+    ],
     args: () => ({}),
   },
   {
@@ -85,6 +89,43 @@ const RULES = [
         ...(dates[0] && { fromDate: dates[0] }),
         ...(dates[1] ? { toDate: dates[1] } : dates[0] && { toDate: dates[0] }),
         ...(reason && { reason }),
+      };
+    },
+  },
+  {
+    tool: 'get_payment_link',
+    patterns: [
+      /\bpay\b.*\bfee/i, /\bpay now\b/i, /\bpayment link\b/i, /\bhow (do|can) i pay\b/i,
+      /फीस.*भुगतान/, /भुगतान.*लिंक/, /\bfees?\b.*\bpay\b/i, /\bbhugtan\b/i,
+    ],
+    // Staff recording someone else's payment is a different, staff-only tool.
+    exclude: [/\brecord\b/i, /\bhas paid\b/i, /\bmark\b.*\bpaid\b/i],
+    args: (msg) => {
+      const invoiceId = msg.match(/\b([a-f0-9]{24})\b/i)?.[1];
+      return invoiceId ? { invoiceId } : {};
+    },
+  },
+  {
+    tool: 'generate_homework',
+    patterns: [
+      /\b(generate|create|set|assign|make)\b.*\b(homework|assignment|worksheet)\b/i,
+      /\bhomework\b.*\b(for|on)\b/i, /होमवर्क/, /गृहकार्य/,
+    ],
+    args: (msg) => {
+      const topic =
+        msg.match(/\bon\s+(.{3,80}?)(?:\s+for\b|\s+due\b|$)/i)?.[1]?.trim() ??
+        msg.match(/\babout\s+(.{3,80}?)(?:\s+for\b|\s+due\b|$)/i)?.[1]?.trim() ??
+        null;
+      const dueAt = msg.match(/\b(\d{4}-\d{2}-\d{2})\b/)?.[1] ?? null;
+      const subject = msg.match(/\bfor\s+([A-Za-z ]{3,30}?)(?:\s+class\b|\s+due\b|\s+on\b|$)/i)?.[1]?.trim() ?? null;
+      const className = msg.match(/\b(class\s*\w+\s*\w?)\b/i)?.[1]?.trim() ?? null;
+      const maxMarks = msg.match(/\b(\d{1,3})\s*marks\b/i)?.[1];
+      return {
+        ...(topic && { topic }),
+        ...(dueAt && { dueAt }),
+        ...(subject && { subject }),
+        ...(className && { className }),
+        ...(maxMarks && { maxMarks: Number(maxMarks) }),
       };
     },
   },

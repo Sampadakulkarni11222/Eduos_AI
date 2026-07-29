@@ -14,6 +14,14 @@ const agentActionSchema = new Schema(
     actorProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', required: true, index: true },
     tool: { type: String, required: true },
     args: { type: Schema.Types.Mixed },
+    /**
+     * Output of a tool's prepare() step, captured at proposal time.
+     *
+     * Stored rather than recomputed so that what the user confirmed is exactly
+     * what gets written. Regenerating at confirmation time would let an LLM
+     * produce different content from the summary the human approved.
+     */
+    prepared: { type: Schema.Types.Mixed, default: null },
     summary: { type: String, required: true },
     source: { type: String, enum: ['WEB', 'WHATSAPP'], default: 'WEB' },
     status: {

@@ -23,6 +23,41 @@ export function paymentMode() {
   return env.PAYMENT_PROVIDER;
 }
 
+/**
+ * Produces a link a payer can open to settle an invoice.
+ *
+ * Distinct from chargeOnline() on purpose: a link hands the decision back to
+ * the human, whereas a charge moves money on the spot. The assistant is only
+ * ever allowed to hand out links — an agent that can charge a card from a
+ * chat message is a different, much worse product.
+ *
+ * With no real gateway configured this returns a deep link into the portal's
+ * own payment screen, which genuinely works today. A gateway that supports
+ * hosted payment links (Razorpay/Stripe) plugs in as another case and the
+ * callers do not change.
+ */
+export async function createPaymentLink({ invoiceId, invoiceNo, amountPaise, portalSlug = 'parent' }) {
+  const appUrl = process.env.APP_PUBLIC_URL ?? '';
+  const inAppLink = `${appUrl}/${portalSlug}/payments?invoice=${encodeURIComponent(invoiceId)}`;
+
+  switch (env.PAYMENT_PROVIDER) {
+    case 'sandbox':
+      return {
+        url: inAppLink,
+        // Named honestly so the UI (and the user) can tell a portal deep link
+        // from a real hosted gateway page.
+        kind: 'IN_APP',
+        provider: 'sandbox',
+        amountPaise,
+        invoiceNo,
+      };
+    case 'none':
+      return { url: null, kind: 'NONE', error: 'Online payments are not enabled', code: 'PAYMENTS_DISABLED' };
+    default:
+      return { url: null, kind: 'NONE', error: `Unknown payment provider: ${env.PAYMENT_PROVIDER}`, code: 'PAYMENTS_MISCONFIGURED' };
+  }
+}
+
 export async function chargeOnline({ amountPaise, invoiceNo, payerProfileId }) {
   switch (env.PAYMENT_PROVIDER) {
     case 'sandbox': {

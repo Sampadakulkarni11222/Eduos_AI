@@ -158,8 +158,14 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
   }
 
   // Writes are proposed, never performed, on the first turn.
+  //
+  // A tool may prepare its payload now (drafting homework, for example) so the
+  // summary describes something that already exists in full rather than a
+  // promise to generate it later. The result is stored with the proposal.
+  const prepared = tool.prepare ? await tool.prepare(actor, scope, intent.args ?? {}) : null;
+
   const token = crypto.randomBytes(24).toString('hex');
-  const summary = tool.summarise ? tool.summarise(intent.args ?? {}, actor) : tool.description;
+  const summary = tool.summarise ? tool.summarise(intent.args ?? {}, actor, prepared) : tool.description;
 
   // Only ever one proposal outstanding per person. On WhatsApp a bare "yes"
   // resolves whatever is pending, so a forgotten proposal from earlier could
@@ -174,6 +180,7 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
     actorProfileId: actor.profileId,
     tool: intent.tool,
     args: intent.args ?? {},
+    prepared,
     summary,
     source,
     tokenHash: crypto.createHash('sha256').update(token).digest('hex'),
@@ -238,7 +245,7 @@ export async function confirmAction({ confirmToken, actor, source = 'WEB', accep
   const scope = checkAuthorization(actor, tool);
 
   try {
-    const result = await tool.execute(actor, scope, pending.args ?? {});
+    const result = await tool.execute(actor, scope, pending.args ?? {}, pending.prepared ?? null);
     pending.status = 'EXECUTED';
     pending.executedAt = new Date();
     await pending.save();

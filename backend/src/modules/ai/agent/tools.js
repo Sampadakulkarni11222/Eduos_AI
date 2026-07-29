@@ -2,6 +2,7 @@ import * as attendance from '../../attendance/attendance.service.js';
 import * as fees from '../../fees/fee.service.js';
 import * as leave from '../../leave/leave.service.js';
 import * as announcements from '../../announcements/announcement.service.js';
+import * as homework from '../../assignments/homework.service.js';
 import * as dashboard from '../../dashboard/dashboard.service.js';
 import * as exams from '../../exams/exam.service.js';
 import { AppError } from '../../../utils/AppError.js';
@@ -93,6 +94,33 @@ export const TOOLS = {
     },
   },
 
+  get_payment_link: {
+    description: 'Get a link to pay an outstanding fee invoice',
+    permission: 'fees.pay',
+    mutates: false,
+    params: { invoiceId: 'specific invoice, optional' },
+    /**
+     * Deliberately a read. It returns links; it does not move money. An agent
+     * that can charge a card from a chat message is a different and much worse
+     * product, and confirm-before-commit is not a good enough guard for a
+     * payment the user never saw itemised.
+     */
+    async execute(actor, scope, args) {
+      const result = await fees.getPaymentLinks(actor, scope, { invoiceId: args.invoiceId });
+      return result.count === 0
+        ? { speakKey: 'fees.clear', data: result }
+        : {
+            speakKey: 'fees.payLink',
+            params: {
+              amount: (result.totalDuePaise / 100).toLocaleString('en-IN'),
+              count: result.count,
+              url: result.links[0].url,
+            },
+            data: result,
+          };
+    },
+  },
+
   // ── Writes: never execute without confirmation ───────────
   apply_leave: {
     description: 'Submit a leave application for the caller',
@@ -137,6 +165,36 @@ export const TOOLS = {
     async execute(actor, scope, args) {
       const result = await attendance.markAttendance(actor, args);
       return { speakKey: 'attendance.marked', params: { count: args.entries.length }, data: result };
+    },
+  },
+
+  generate_homework: {
+    description: 'Draft and set homework for a class you teach',
+    permission: 'assignments.manage',
+    mutates: true,
+    affectsOthers: true,
+    params: { subject: 'subject name', className: 'class, optional', topic: 'what it is about', dueAt: 'YYYY-MM-DD', maxMarks: 'optional' },
+    validate(args) {
+      if (!args.topic?.trim()) throw new AppError('What should the homework be about?', 400, [], 'TOPIC_REQUIRED');
+      if (!args.dueAt) throw new AppError('When is the homework due?', 400, [], 'DUE_DATE_REQUIRED');
+    },
+    /**
+     * Two-step on purpose: the draft is produced when the proposal is made, so
+     * the summary the teacher confirms describes homework that already exists
+     * in full — not a promise to generate something unseen afterwards.
+     */
+    async prepare(actor, scope, args) {
+      return homework.draftHomework(actor, args);
+    },
+    summarise: (args, _actor, prepared) => prepared?.summary ?? `Set homework "${args.topic}"`,
+    async execute(actor, scope, args, prepared) {
+      const draft = prepared ?? (await homework.draftHomework(actor, args));
+      const created = await homework.commitHomework(actor, scope, draft);
+      return {
+        speakKey: 'homework.created',
+        params: { title: draft.title, className: draft.className, due: draft.dueAt.slice(0, 10) },
+        data: created,
+      };
     },
   },
 
