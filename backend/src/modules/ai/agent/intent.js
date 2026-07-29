@@ -15,6 +15,11 @@ import { logger } from '../../../utils/logger.js';
  * The rules below are intentionally simple and multilingual-friendly: they
  * match on stems that survive transliteration, because parents in this market
  * routinely type Hinglish ("fees kitna pending hai").
+ *
+ * NOTE — non-Latin patterns deliberately carry no  anchors. JavaScript
+ * defines  in terms of [A-Za-z0-9_], so छुट्टी never matches inside
+ * Devanagari text: the pattern looks correct and silently never fires. Adding
+ * word boundaries "for consistency" would re-break Hindi intent matching.
  */
 
 const RULES = [
@@ -22,7 +27,7 @@ const RULES = [
     tool: 'get_attendance',
     patterns: [
       /\battendance\b/i, /\bpresent\b/i, /\babsent\b/i, /\bhaazri\b/i, /\bhajri\b/i,
-      /\bupasthiti\b/i, /\bकितने दिन\b/, /\bउपस्थिति\b/,
+      /\bupasthiti\b/i, /कितने दिन/, /उपस्थिति/,
     ],
     // "who is absent today" is a different, school-wide question, and
     // "mark ... attendance" is a write — neither should land on this read.
@@ -47,7 +52,7 @@ const RULES = [
     tool: 'get_fees',
     patterns: [
       /\bfee(s)?\b/i, /\bdue\b/i, /\binvoice\b/i, /\bpayment\b/i, /\bpending amount\b/i,
-      /\bshulk\b/i, /\bफीस\b/, /\bबकाया\b/,
+      /\bshulk\b/i, /फीस/, /बकाया/,
     ],
     exclude: [/\brecord\b.*\bpayment\b/i, /\bmark\b.*\bpaid\b/i, /\bpaid\b.*\btoday\b/i],
     args: () => ({}),
@@ -56,7 +61,7 @@ const RULES = [
     tool: 'get_results',
     patterns: [
       /\bresult(s)?\b/i, /\bmarks\b/i, /\bgrade(s)?\b/i, /\breport card\b/i, /\bgpa\b/i,
-      /\bexam\b.*\bscore\b/i, /\bपरिणाम\b/, /\bअंक\b/,
+      /\bexam\b.*\bscore\b/i, /परिणाम/, /अंक/,
     ],
     args: (msg) => {
       const m = msg.match(/\b(unit test \d|midterm|final|term \d)\b/i);
@@ -65,10 +70,17 @@ const RULES = [
   },
   {
     tool: 'apply_leave',
-    patterns: [/\bapply\b.*\bleave\b/i, /\bleave\b.*\bapplication\b/i, /\btake leave\b/i, /\bchutti\b/i, /\bछुट्टी\b/],
+    patterns: [/\bapply\b.*\bleave\b/i, /\bleave\b.*\bapplication\b/i, /\btake leave\b/i, /\bchutti\b/i, /छुट्टी/],
     args: (msg) => {
       const dates = [...msg.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g)].map((m) => m[1]);
-      const reason = msg.match(/\b(?:because|reason|for|due to)\s+(.{3,80})/i)?.[1]?.trim();
+      // Reason markers in English, romanised Hindi, and Devanagari. Hindi puts
+      // the reason BEFORE the marker ("बुखार के कारण"), so that form captures
+      // to the left; English puts it after.
+      const reason =
+        msg.match(/(?:because of|because|due to|reason\s*[:-]?|for)\s+(.{3,80})/i)?.[1]?.trim() ??
+        msg.match(/(.{3,80}?)\s*(?:के कारण|की वजह से|कारण)/)?.[1]?.trim() ??
+        msg.match(/(?:kyunki|kyuki|wajah se|karan)\s+(.{3,80})/i)?.[1]?.trim() ??
+        null;
       return {
         ...(dates[0] && { fromDate: dates[0] }),
         ...(dates[1] ? { toDate: dates[1] } : dates[0] && { toDate: dates[0] }),

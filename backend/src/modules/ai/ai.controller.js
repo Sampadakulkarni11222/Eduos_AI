@@ -16,17 +16,22 @@ export const chat = asyncHandler(async (req, res) => {
    Shared by the in-app assistant and WhatsApp; `source` only affects the
    audit trail, never the authorization. */
 export const agent = asyncHandler(async (req, res) => {
-  const { message, source } = req.body;
+  const { message, source, lang } = req.body;
   if (!message) throw new AppError('message is required', 400);
   sendSuccess(
     res,
-    await agentCore.runAgent({ message, actor: req.actor, source: source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB' }),
+    await agentCore.runAgent({
+      message,
+      actor: req.actor,
+      source: source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB',
+      lang,
+    }),
     'Agent response'
   );
 });
 
 export const agentConfirm = asyncHandler(async (req, res) => {
-  const { confirmToken, accept, source } = req.body;
+  const { confirmToken, accept, source, lang } = req.body;
   sendSuccess(
     res,
     await agentCore.confirmAction({
@@ -34,6 +39,7 @@ export const agentConfirm = asyncHandler(async (req, res) => {
       actor: req.actor,
       accept: accept !== false,
       source: source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB',
+      lang,
     }),
     'Agent action processed'
   );
@@ -55,6 +61,6 @@ export const tutorSyllabus = asyncHandler(async (req, res) => {
 });
 
 export const tutor = asyncHandler(async (req, res) => {
-  const { subject, topic, mode } = req.body;
-  sendSuccess(res, await tutorService.tutor(req.actor, { subject, topic, mode }), 'Tutor response');
+  const { subject, topic, mode, lang } = req.body;
+  sendSuccess(res, await tutorService.tutor(req.actor, { subject, topic, mode, lang }), 'Tutor response');
 });

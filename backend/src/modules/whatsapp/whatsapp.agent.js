@@ -4,6 +4,7 @@ import { AgentAction } from '../../models/agentAction.model.js';
 import { buildPermissionMap } from '../../utils/buildPermissionMap.js';
 import { logger } from '../../utils/logger.js';
 import { runAgent, confirmAction } from '../ai/agent/orchestrator.js';
+import { detectLanguage, t } from '../../utils/language.js';
 
 /**
  * WhatsApp → agent bridge.
@@ -78,8 +79,9 @@ export async function handleInboundMessage({ from, text }) {
   const resolved = await resolveActorByPhone(from);
   if (!resolved) {
     return {
-      reply:
-        "This number isn't registered with the school. Please ask the school office to add it to your record.",
+      // Detected from their own message, so an unregistered Hindi speaker is
+      // still told why in Hindi.
+      reply: t('agent.notRegistered', detectLanguage(text).lang),
       unknownSender: true,
     };
   }
@@ -95,14 +97,15 @@ export async function handleInboundMessage({ from, text }) {
  */
 export async function converse({ actor, multipleProfiles = false, roleLabel = '', text }) {
   const message = String(text ?? '').trim();
-  if (!message) return { reply: 'Send me a question — for example "attendance" or "fees".' };
+  const lang = detectLanguage(message).lang;
+  if (!message) return { reply: t('agent.sendText', lang), lang };
 
   // A bare yes/no answers the outstanding proposal rather than starting a new
   // request, which is how people actually reply on WhatsApp.
   if (YES.test(message) || NO.test(message)) {
     const pending = await latestPending(actor);
     if (!pending) {
-      return { reply: "There's nothing waiting for your confirmation right now." };
+      return { reply: t('agent.nothingPending', lang), lang };
     }
     // The stored token is hashed, so re-issuing is not possible; confirm via
     // the action id path instead.
@@ -110,25 +113,30 @@ export async function converse({ actor, multipleProfiles = false, roleLabel = ''
       actionId: pending._id,
       actor,
       accept: YES.test(message),
+      lang,
     });
-    return { reply: result.reply };
+    return { reply: result.reply, lang };
   }
 
-  const result = await runAgent({ message, actor, source: 'WHATSAPP' });
+  const result = await runAgent({ message, actor, source: 'WHATSAPP', lang });
 
   let reply = result.reply;
   if (result.action) {
     // WhatsApp cannot carry a hidden token, so the reply asks for a plain
     // yes/no and the pending action is matched from the actor's own queue.
-    reply = `${result.action.summary}.\n\nReply YES to confirm or NO to cancel. (Expires in ${result.action.expiresInMinutes} minutes.)`;
+    reply = t('agent.confirm.whatsapp', lang, {
+      summary: result.action.summary,
+      minutes: result.action.expiresInMinutes,
+    });
   }
 
   if (multipleProfiles) {
-    reply += `\n\n(You're chatting as ${roleLabel}. To act as another role, use the web portal.)`;
+    reply += `\n\n${t('agent.actingAs', lang, { role: roleLabel })}`;
   }
 
   return {
     reply,
+    lang,
     awaitingConfirmation: Boolean(result.action),
     flagged: result.flagged ?? null,
   };
@@ -141,7 +149,7 @@ export async function converse({ actor, multipleProfiles = false, roleLabel = ''
  * still runs through the orchestrator, so authorization is re-checked at
  * execution time exactly as it is on the web.
  */
-export async function confirmActionById({ actionId, actor, accept }) {
+export async function confirmActionById({ actionId, actor, accept, lang = 'en' }) {
   const pending = await AgentAction.findById(actionId);
   if (!pending) return { reply: "I couldn't find that request any more. Please ask again." };
   if (String(pending.actorProfileId) !== String(actor.profileId)) {
@@ -157,7 +165,7 @@ export async function confirmActionById({ actionId, actor, accept }) {
     pending.tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     await pending.save();
 
-    const result = await confirmAction({ confirmToken: token, actor, accept, source: 'WHATSAPP' });
+    const result = await confirmAction({ confirmToken: token, actor, accept, source: 'WHATSAPP', lang });
     return { reply: result.reply, executed: result.executed };
   } catch (err) {
     return { reply: err.message ?? 'That could not be completed.' };

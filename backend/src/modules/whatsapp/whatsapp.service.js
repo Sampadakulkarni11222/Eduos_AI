@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { handleInboundMessage, converse } from './whatsapp.agent.js';
+import { t } from '../../utils/language.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 
@@ -85,10 +86,8 @@ export async function receiveWebhook(payload) {
     if (!msg.text) {
       replies.push({
         to: msg.from,
-        reply:
-          msg.type === 'image'
-            ? 'I can read photos of attendance registers in the app, but not over WhatsApp yet. Please send your question as text.'
-            : 'Please send your question as a text message.',
+        // No text to detect from, so English is the only honest default.
+        reply: msg.type === 'image' ? t('agent.imageNotSupported', 'en') : t('agent.sendText', 'en'),
       });
       continue;
     }
@@ -102,9 +101,7 @@ export async function receiveWebhook(payload) {
       // a generic failure leaves people retrying something that will never
       // work. Only genuinely unexpected errors get the vague message.
       const expected = err?.statusCode >= 400 && err?.statusCode < 500;
-      const reply = expected
-        ? err.message
-        : 'Something went wrong handling that. Please try again.';
+      const reply = expected ? err.message : t('agent.failed', 'en');
       if (!expected) logger.error(`WhatsApp agent failed for ${msg.from}: ${err.message}`);
       replies.push({ to: msg.from, reply });
       await sendMessage(msg.from, reply);

@@ -360,6 +360,8 @@ export interface AgentProposedAction {
 
 export interface AgentReply {
   reply: string;
+  /** Language the assistant answered in, echoed back by the server. */
+  lang?: string;
   data?: unknown;
   action: AgentProposedAction | null;
   flagged?: string;

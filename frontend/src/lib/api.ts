@@ -373,12 +373,12 @@ export const api = {
   academicYears: () => request<AcademicYearDto[]>('/academics/years'),
 
   // ── agentic assistant (shared core with WhatsApp) ──
-  agentAsk: (message: string) =>
-    request<AgentReply>('/ai/agent', { method: 'POST', body: JSON.stringify({ message, source: 'WEB' }) }),
-  agentConfirm: (confirmToken: string, accept: boolean) =>
+  agentAsk: (message: string, lang?: string) =>
+    request<AgentReply>('/ai/agent', { method: 'POST', body: JSON.stringify({ message, source: 'WEB', lang }) }),
+  agentConfirm: (confirmToken: string, accept: boolean, lang?: string) =>
     request<{ reply: string; executed?: boolean }>('/ai/agent/confirm', {
       method: 'POST',
-      body: JSON.stringify({ confirmToken, accept, source: 'WEB' }),
+      body: JSON.stringify({ confirmToken, accept, source: 'WEB', lang }),
     }),
   agentCapabilities: () => request<{ tools: AgentTool[] }>('/ai/agent/capabilities'),
 

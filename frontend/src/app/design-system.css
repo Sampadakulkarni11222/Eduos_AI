@@ -571,3 +571,16 @@ body.role-warden{
 .ai-confirm-yes:disabled,.ai-confirm-no:disabled{opacity:.55;cursor:not-allowed}
 .ai-confirm-expiry{font-size:10.5px;color:#8b867c;margin-top:7px}
 @media (pointer: coarse){.ai-confirm-yes,.ai-confirm-no{min-height:44px}}
+
+/* ===== Voice input (assistant panel) ===== */
+.ai-mic{flex:none;width:38px;height:38px;border-radius:10px;cursor:pointer;font-size:15px;
+  background:#1d1f1c;border:1px solid rgba(255,255,255,.14);color:#ECE6D8}
+.ai-mic:hover:not(:disabled){background:#282b26}
+.ai-mic.listening{background:#A8322E;border-color:#A8322E;color:#fff;animation:aiPulse 1.2s ease infinite}
+.ai-mic:disabled{opacity:.5;cursor:not-allowed}
+@keyframes aiPulse{0%,100%{box-shadow:0 0 0 0 rgba(168,50,46,.55)}50%{box-shadow:0 0 0 6px rgba(168,50,46,0)}}
+.ai-lang{flex:none;max-width:104px;background:#1d1f1c;border:1px solid rgba(255,255,255,.14);
+  border-radius:10px;color:#ECE6D8;font-family:inherit;font-size:12.5px;padding:8px 6px}
+.ai-voice-note{padding:8px 12px;font-size:12px;color:#F0B429;background:#1d1f1c;
+  border-top:1px solid rgba(255,255,255,.08)}
+@media (pointer: coarse){.ai-mic{width:44px;height:44px}.ai-lang{min-height:44px}}

@@ -4,6 +4,7 @@ import { AppError } from '../../utils/AppError.js';
 import { getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
 import { generate, isLlmEnabled } from '../../providers/ai.provider.js';
 import * as exams from '../exams/exam.service.js';
+import { detectLanguage, languageInstruction, LANGUAGE_NAMES } from '../../utils/language.js';
 
 /**
  * Student tutor mode.
@@ -132,7 +133,7 @@ export const TUTOR_MODES = Object.entries(MODES).map(([key, m]) => ({ key, label
  * Main entry point. `subject` and `topic` come from the student; everything
  * that determines *what they are allowed to be taught* comes from the server.
  */
-export async function tutor(actor, { subject, topic, mode = 'explain' }) {
+export async function tutor(actor, { subject, topic, mode = 'explain', lang: langOverride } = {}) {
   if (!topic?.trim()) throw new AppError('What topic would you like help with?', 400);
 
   const config = MODES[mode];
@@ -182,7 +183,13 @@ export async function tutor(actor, { subject, topic, mode = 'explain' }) {
     ? `Subject: ${resolvedSubject}\nTopic: ${topic.trim()}`
     : `Topic: ${topic.trim()}`;
 
-  const result = await generate({ system, message: userMessage });
+  // A student who writes the topic in their own language should be taught in
+  // it. An explicit lang (from the UI/voice picker) wins over detection.
+  const lang = langOverride ?? detectLanguage(topic).lang;
+  const result = await generate({
+    system: system + languageInstruction(lang),
+    message: userMessage,
+  });
 
   if (result.generated) {
     return {
@@ -191,6 +198,8 @@ export async function tutor(actor, { subject, topic, mode = 'explain' }) {
       subject: resolvedSubject,
       topic: topic.trim(),
       className: syllabus.className,
+      language: lang,
+      languageName: LANGUAGE_NAMES[lang] ?? lang,
       content: result.text,
       generated: true,
       groundedOn: {
@@ -208,6 +217,8 @@ export async function tutor(actor, { subject, topic, mode = 'explain' }) {
     subject: resolvedSubject,
     topic: topic.trim(),
     className: syllabus.className,
+    language: lang,
+    languageName: LANGUAGE_NAMES[lang] ?? lang,
     content: null,
     generated: false,
     reason: result.reason,

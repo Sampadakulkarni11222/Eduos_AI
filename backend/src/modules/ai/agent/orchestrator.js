@@ -5,6 +5,7 @@ import { AppError } from '../../../utils/AppError.js';
 import { logger } from '../../../utils/logger.js';
 import { getTool, toolsAvailableTo } from './tools.js';
 import { parseIntentWithLlm } from './intent.js';
+import { detectLanguage, t } from '../../../utils/language.js';
 
 const CONFIRM_TTL_MINUTES = 10;
 
@@ -84,9 +85,30 @@ async function auditAgentAction({ actor, tool, args, source, status, error, resu
   }
 }
 
+/**
+ * Renders a tool result in the caller's language.
+ *
+ * Tools return a message key plus parameters rather than a finished sentence,
+ * so the same result reads correctly in every catalogued language. A tool that
+ * still returns a literal `speak` string keeps working — it just stays English.
+ */
+function speakOf(result, lang) {
+  if (result?.speakKey) {
+    const rendered = t(result.speakKey, lang, result.params ?? {});
+    if (rendered) return rendered;
+  }
+  return result?.speak ?? '';
+}
+
 /* ── Entry point ───────────────────────────────────────────── */
-export async function runAgent({ message, actor, source = 'WEB' }) {
+export async function runAgent({ message, actor, source = 'WEB', lang: langOverride } = {}) {
   if (!actor?.profileId) throw new AppError('Select a profile first', 403);
+
+  // An explicit language (from the voice picker or a UI preference) wins over
+  // detection — a user who has chosen Hindi should not be flipped back to
+  // English by one message they happened to type in English.
+  const detected = detectLanguage(message);
+  const lang = langOverride ?? detected.lang;
 
   const injection = detectInjection(message);
   if (injection.detected) {
@@ -100,8 +122,8 @@ export async function runAgent({ message, actor, source = 'WEB' }) {
       source, status: 'BLOCKED',
     });
     return {
-      reply:
-        "I can only do the things your account is allowed to do, and I can't change those rules. Ask me about attendance, fees, homework or results.",
+      reply: t('agent.injection', lang),
+      lang,
       action: null,
       flagged: 'PROMPT_INJECTION',
     };
@@ -111,10 +133,12 @@ export async function runAgent({ message, actor, source = 'WEB' }) {
   if (!intent) {
     const available = toolsAvailableTo(actor);
     return {
-      reply:
-        `I'm not sure what you need. I can help with: ${available.map((t) => t.description.toLowerCase()).slice(0, 5).join('; ')}.`,
+      reply: t('agent.unsure', lang, {
+        capabilities: available.map((tool) => tool.description.toLowerCase()).slice(0, 5).join('; '),
+      }),
+      lang,
       action: null,
-      suggestions: available.slice(0, 5).map((t) => t.name),
+      suggestions: available.slice(0, 5).map((tool) => tool.name),
     };
   }
 
@@ -130,7 +154,7 @@ export async function runAgent({ message, actor, source = 'WEB' }) {
   if (!tool.mutates) {
     const result = await tool.execute(actor, scope, intent.args ?? {});
     await auditAgentAction({ actor, tool: intent.tool, args: intent.args, source, status: 'READ' });
-    return { reply: result.speak, data: result.data, action: null };
+    return { reply: speakOf(result, lang), data: result.data, lang, action: null };
   }
 
   // Writes are proposed, never performed, on the first turn.
@@ -157,7 +181,8 @@ export async function runAgent({ message, actor, source = 'WEB' }) {
   });
 
   return {
-    reply: `${summary}. Shall I go ahead?`,
+    reply: t('agent.confirm', lang, { summary }),
+    lang,
     action: {
       id: pending._id,
       confirmToken: token,
@@ -176,7 +201,7 @@ export async function runAgent({ message, actor, source = 'WEB' }) {
  * caller's permissions may have been revoked between proposal and confirmation,
  * and this is the moment data actually changes.
  */
-export async function confirmAction({ confirmToken, actor, source = 'WEB', accept = true }) {
+export async function confirmAction({ confirmToken, actor, source = 'WEB', accept = true, lang = 'en' }) {
   if (!actor?.profileId) throw new AppError('Select a profile first', 403);
   if (!confirmToken) throw new AppError('Nothing to confirm.', 400);
 
@@ -204,7 +229,7 @@ export async function confirmAction({ confirmToken, actor, source = 'WEB', accep
     pending.status = 'REJECTED';
     await pending.save();
     await auditAgentAction({ actor, tool: pending.tool, args: pending.args, source, status: 'REJECTED' });
-    return { reply: 'No problem — I have not made any changes.', executed: false };
+    return { reply: t('agent.cancelled', lang), lang, executed: false };
   }
 
   const tool = getTool(pending.tool);
@@ -221,7 +246,7 @@ export async function confirmAction({ confirmToken, actor, source = 'WEB', accep
       actor, tool: pending.tool, args: pending.args, source,
       status: 'EXECUTED', resultId: pending._id,
     });
-    return { reply: result.speak, data: result.data, executed: true };
+    return { reply: speakOf(result, lang), data: result.data, lang, executed: true };
   } catch (err) {
     pending.status = 'FAILED';
     pending.error = err.message;

@@ -35,12 +35,13 @@ export const TOOLS = {
     params: { month: 'YYYY-MM, optional' },
     async execute(actor, scope, args) {
       const summary = await attendance.getSummary(actor, scope, { month: args.month });
-      return {
-        speak: summary?.pctPresent != null
-          ? `Attendance is ${summary.pctPresent}% (${summary.PRESENT ?? 0} present of ${summary.workingDays ?? 0} working days).`
-          : 'No attendance has been recorded yet.',
-        data: summary,
-      };
+      return summary?.pctPresent != null
+        ? {
+            speakKey: 'attendance.summary',
+            params: { pct: summary.pctPresent, present: summary.PRESENT ?? 0, days: summary.workingDays ?? 0 },
+            data: summary,
+          }
+        : { speakKey: 'attendance.none', data: summary };
     },
   },
 
@@ -52,12 +53,13 @@ export const TOOLS = {
     async execute(actor, scope) {
       const summary = await fees.getSummary(actor, scope, {});
       const pending = summary?.pendingAmountPaise ?? summary?.pendingAmount ?? 0;
-      return {
-        speak: pending > 0
-          ? `There is ₹${(pending / 100).toLocaleString('en-IN')} outstanding.`
-          : 'There are no outstanding fees.',
-        data: summary,
-      };
+      return pending > 0
+        ? {
+            speakKey: 'fees.outstanding',
+            params: { amount: (pending / 100).toLocaleString('en-IN') },
+            data: summary,
+          }
+        : { speakKey: 'fees.clear', data: summary };
     },
   },
 
@@ -69,12 +71,13 @@ export const TOOLS = {
     async execute(actor, scope, args) {
       const card = await exams.getReportCard(actor, scope, { exam: args.exam });
       const s = card.summary;
-      return {
-        speak: s?.percentage != null
-          ? `${card.student.name}: ${s.percentage}% overall, grade ${s.grade?.label ?? '—'}, GPA ${s.gpa ?? '—'}.`
-          : 'No results have been published yet.',
-        data: card,
-      };
+      return s?.percentage != null
+        ? {
+            speakKey: 'results.summary',
+            params: { name: card.student.name, pct: s.percentage, grade: s.grade?.label ?? '—', gpa: s.gpa ?? '—' },
+            data: card,
+          }
+        : { speakKey: 'results.none', data: card };
     },
   },
 
@@ -86,10 +89,7 @@ export const TOOLS = {
     params: {},
     async execute(actor) {
       const data = await dashboard.getAdminDashboard();
-      return {
-        speak: `There are ${data?.totalStudents ?? 0} students on roll. Open the Attendance Trends page for today's absentee list by class.`,
-        data,
-      };
+      return { speakKey: 'absent.today', params: { total: data?.totalStudents ?? 0 }, data };
     },
   },
 
@@ -105,11 +105,18 @@ export const TOOLS = {
       if (new Date(args.toDate) < new Date(args.fromDate)) {
         throw new AppError('The end date cannot be before the start date.', 400);
       }
+      // The leave service requires a reason. Validating it here rather than
+      // letting execution fail means the user is asked BEFORE they confirm —
+      // otherwise they approve a summary for something that cannot succeed,
+      // which makes the confirmation step feel untrustworthy.
+      if (!args.reason?.trim()) {
+        throw new AppError('What is the reason for the leave?', 400, [], 'LEAVE_REASON_REQUIRED');
+      }
     },
     summarise: (args) => `Apply for leave from ${args.fromDate} to ${args.toDate}${args.reason ? ` — "${args.reason}"` : ''}`,
     async execute(actor, scope, args) {
       const created = await leave.apply(actor, args);
-      return { speak: 'Your leave application has been submitted.', data: created };
+      return { speakKey: 'leave.submitted', data: created };
     },
   },
 
@@ -129,7 +136,7 @@ export const TOOLS = {
       `Mark attendance for ${args.entries.length} student(s) on ${args.date ?? 'today'}`,
     async execute(actor, scope, args) {
       const result = await attendance.markAttendance(actor, args);
-      return { speak: `Attendance recorded for ${args.entries.length} student(s).`, data: result };
+      return { speakKey: 'attendance.marked', params: { count: args.entries.length }, data: result };
     },
   },
 
@@ -150,7 +157,7 @@ export const TOOLS = {
       `Record a ₹${(Number(args.amountPaise) / 100).toLocaleString('en-IN')} payment against invoice ${args.invoiceId}`,
     async execute(actor, scope, args) {
       const payment = await fees.recordPayment(actor, scope, args);
-      return { speak: 'Payment recorded against the invoice.', data: payment };
+      return { speakKey: 'fees.recorded', data: payment };
     },
   },
 
@@ -170,7 +177,7 @@ export const TOOLS = {
         content: args.content ?? args.title,
         audience: args.audience ?? { all: true },
       });
-      return { speak: 'The announcement has been posted.', data: created };
+      return { speakKey: 'announcement.posted', data: created };
     },
   },
 };

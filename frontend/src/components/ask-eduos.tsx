@@ -1,9 +1,10 @@
 'use client';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
-import { Button, Spinner } from './ui';
+import { Button, Spinner, cx } from './ui';
 import { useAuth } from '@/lib/auth';
 import type { AgentProposedAction } from '@/lib/types';
+import { SPEECH_LANGUAGES, isSpeechSupported, startDictation } from '@/lib/speech';
 
 interface Msg {
   role: 'user' | 'assistant';
@@ -27,6 +28,18 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Voice input. `speechLang` drives both the recogniser and the language the
+  // assistant replies in, so a parent who speaks Hindi is answered in Hindi
+  // without having to set anything twice.
+  const [speechLang, setSpeechLang] = useState(SPEECH_LANGUAGES[0]);
+  const [listening, setListening] = useState(false);
+  const [voiceNote, setVoiceNote] = useState<string | null>(null);
+  const stopRef = useRef<(() => void) | null>(null);
+  const [voiceAvailable, setVoiceAvailable] = useState(false);
+  // Checked in an effect, not at render: the API is absent during SSR and a
+  // direct check would desync the server and client markup.
+  useEffect(() => { setVoiceAvailable(isSpeechSupported()); }, []);
 
   // Sync ref → state on open so the panel renders persisted history
   const handleOpen = () => {
@@ -57,7 +70,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
       // The agent endpoint answers questions AND proposes actions; anything
       // that writes comes back as `action` and is only performed once the
       // user confirms the summary below.
-      const res = await api.agentAsk(text);
+      const res = await api.agentAsk(text, speechLang.lang);
       const aiMsg: Msg = { role: 'assistant', text: res.reply, action: res.action };
       msgsRef.current = [...msgsRef.current, aiMsg];
       setMsgs([...msgsRef.current]);
@@ -79,7 +92,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
     if (!msg?.action || busy) return;
     setBusy(true);
     try {
-      const res = await api.agentConfirm(msg.action.confirmToken, accept);
+      const res = await api.agentConfirm(msg.action.confirmToken, accept, speechLang.lang);
       msgsRef.current = msgsRef.current.map((m, i) =>
         i === idx ? { ...m, action: null, resolved: accept ? 'done' : 'cancelled' } : m
       );
@@ -92,6 +105,25 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
       setMsgs([...msgsRef.current]);
     } finally { setBusy(false); }
   };
+
+  const toggleDictation = () => {
+    if (listening) { stopRef.current?.(); return; }
+    setVoiceNote(null);
+    const stop = startDictation(speechLang.code, {
+      onPartial: (t) => setInput(t),
+      onFinal: (t) => setInput(t),
+      onError: (m) => { setVoiceNote(m); setListening(false); },
+      onEnd: () => { setListening(false); stopRef.current = null; },
+    });
+    if (!stop) { setVoiceNote('Voice input is not available in this browser.'); return; }
+    stopRef.current = stop;
+    setListening(true);
+  };
+
+  // Stop the microphone if the panel closes mid-dictation.
+  useEffect(() => {
+    if (!open && stopRef.current) { stopRef.current(); stopRef.current = null; setListening(false); }
+  }, [open]);
 
   // Determine suggestions based on the user's profile role
   let suggestions: string[] = [
@@ -229,8 +261,43 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
               ))}
               {busy && <div className="ai-msg assistant"><div className="ai-bubble"><Spinner /></div></div>}
             </div>
+            {voiceNote && <div className="ai-voice-note" role="status">{voiceNote}</div>}
             <form className="ai-input" onSubmit={send}>
-              <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask anything…" disabled={busy} aria-label="Message input" />
+              {voiceAvailable && (
+                <>
+                  <label className="sr-only" htmlFor="ai-speech-lang">Voice language</label>
+                  <select
+                    id="ai-speech-lang"
+                    className="ai-lang"
+                    value={speechLang.code}
+                    disabled={listening}
+                    onChange={(e) =>
+                      setSpeechLang(SPEECH_LANGUAGES.find((l) => l.code === e.target.value) ?? SPEECH_LANGUAGES[0])
+                    }
+                  >
+                    {SPEECH_LANGUAGES.map((l) => (
+                      <option key={l.code} value={l.code}>{l.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className={cx('ai-mic', listening && 'listening')}
+                    onClick={toggleDictation}
+                    disabled={busy}
+                    aria-label={listening ? 'Stop dictation' : `Speak your question in ${speechLang.label}`}
+                    aria-pressed={listening}
+                  >
+                    {listening ? '■' : '🎤'}
+                  </button>
+                </>
+              )}
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={listening ? 'Listening…' : 'Ask anything…'}
+                disabled={busy}
+                aria-label="Message input"
+              />
               <Button type="submit" disabled={busy || !input.trim()}>Send</Button>
             </form>
           </aside>
