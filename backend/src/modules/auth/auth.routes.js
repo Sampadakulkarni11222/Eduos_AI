@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
+import { requirePermission } from '../../middleware/permission.js';
 import { authRateLimiter } from '../../middleware/rateLimiter.js';
 import * as authController from './auth.controller.js';
 
@@ -10,8 +11,11 @@ const router = Router();
  * /auth/register:
  *   post:
  *     summary: Attach a new role-bound profile to an account (admin-driven onboarding)
+ *     description: >
+ *       Requires an authenticated caller holding `users.manage`. This endpoint
+ *       mints profiles bound to any role, so leaving it public allowed anyone
+ *       to self-issue an OWNER profile and take over the tenant.
  *     tags: [Auth]
- *     security: []
  *     requestBody:
  *       required: true
  *       content:
@@ -29,7 +33,7 @@ const router = Router();
  *       201:
  *         description: Profile registered
  */
-router.post('/register', authController.register);
+router.post('/register', authenticate, requirePermission('users.manage'), authController.register);
 
 /**
  * @swagger
@@ -214,7 +218,7 @@ router.post('/profile/select', authenticate, authController.selectProfile);
  *       200:
  *         description: Token refreshed
  */
-router.post('/refresh', authController.refresh);
+router.post('/refresh', authRateLimiter, authController.refresh);
 
 /**
  * @swagger

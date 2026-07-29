@@ -80,7 +80,28 @@ async function resolveSession(account, opts) {
   };
 }
 
+// Per-account ceiling on OTP issuance. The IP rate limiter alone doesn't stop
+// a distributed attacker from flooding one victim's phone/inbox with codes
+// (and running up SMS cost) — this caps it at the account level too.
+const OTP_MAX_PER_WINDOW = 5;
+const OTP_WINDOW_MINUTES = 15;
+
 async function issueOtpForAccount(account, purpose = 'LOGIN') {
+  const since = new Date(Date.now() - OTP_WINDOW_MINUTES * 60 * 1000);
+  const recent = await OtpCode.countDocuments({
+    accountId: account._id,
+    purpose,
+    createdAt: { $gte: since },
+  });
+  if (recent >= OTP_MAX_PER_WINDOW) {
+    throw new AppError(
+      'Too many codes requested. Please wait a few minutes before trying again.',
+      429,
+      [],
+      'OTP_THROTTLED'
+    );
+  }
+
   const code = generateOtp();
   await OtpCode.create({
     accountId: account._id,
@@ -242,7 +263,24 @@ export async function refresh(refreshTokenValue, opts) {
   const tokenHash = hashRefreshToken(refreshTokenValue);
   const stored = await RefreshToken.findOne({ tokenHash });
 
-  if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
+  if (!stored) throw new AppError('Invalid or expired refresh token', 401);
+
+  // Reuse detection: tokens rotate on every refresh, so a *revoked* token being
+  // presented again means either a stolen token is being replayed or the real
+  // user's token was stolen and already used. We can't tell which, so we end
+  // every session on the account and force a fresh sign-in.
+  if (stored.revokedAt) {
+    await RefreshToken.updateMany(
+      { accountId: stored.accountId, revokedAt: null },
+      { revokedAt: new Date() }
+    );
+    logger.warn(
+      `Refresh token reuse detected for account ${stored.accountId} (ip: ${opts?.ip ?? 'unknown'}) — all sessions revoked`
+    );
+    throw new AppError('Session expired, please sign in again', 401, [], 'REFRESH_REUSE_DETECTED');
+  }
+
+  if (stored.expiresAt < new Date()) {
     throw new AppError('Invalid or expired refresh token', 401);
   }
 

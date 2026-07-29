@@ -93,11 +93,34 @@ import apiRoutes from './routes/index.js';
 
 const app = express();
 
+// Render/any reverse proxy terminates TLS and forwards the real client IP in
+// X-Forwarded-For. Without this, req.ip is the proxy's address, so every user
+// shares a single rate-limit bucket (one noisy client locks out the school).
+app.set('trust proxy', 1);
+
+// ─── Security headers ─────────────────────────────────────
+// Must be mounted BEFORE any static handler, or uploaded files and the status
+// page are served with no security headers at all.
+app.use(helmet());
+app.use(cors({ origin: env.CORS_ORIGIN }));
+
 // ─── Status Page (public/) ────────────────────────────────
 app.use(express.static(join(__dirname, '..', 'public')));
 
 // ─── Uploaded files (documents, course material, submissions) ──
-app.use('/uploads', express.static(join(process.cwd(), env.UPLOAD_DIR)));
+// User-supplied content served from our own origin: force a download instead
+// of inline rendering and forbid MIME sniffing, so an uploaded HTML/SVG file
+// can't execute script in this origin's context.
+app.use(
+  '/uploads',
+  (_req, res, next) => {
+    res.setHeader('Content-Disposition', 'attachment');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    next();
+  },
+  express.static(join(process.cwd(), env.UPLOAD_DIR))
+);
 // A missing/evicted file falls through express.static's next() — answer with
 // a friendly JSON 404 here instead of letting it reach the generic API
 // notFoundHandler, which would otherwise leak "Cannot GET /uploads/…".
@@ -105,13 +128,20 @@ app.use('/uploads', (req, res) => {
   sendError(res, 'This file could not be found. It may have been removed or is temporarily unavailable.', 404, [], 'FILE_NOT_FOUND');
 });
 
-// ─── Security & Compression ───────────────────────────────
-app.use(helmet());
-app.use(cors({ origin: env.CORS_ORIGIN }));
+// ─── Compression ──────────────────────────────────────────
 app.use(apiCompressionMiddleware);
 
 // ─── Body Parsing ─────────────────────────────────────────
-app.use(express.json({ limit: '10mb' }));
+// The raw body is retained so the WhatsApp webhook can verify Meta's
+// X-Hub-Signature-256 HMAC, which is computed over the exact bytes sent.
+app.use(
+  express.json({
+    limit: '10mb',
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ─── Request Logging ──────────────────────────────────────

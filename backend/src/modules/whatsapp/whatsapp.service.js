@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { chat } from '../ai/ai.service.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
@@ -21,6 +22,29 @@ export function verifyWebhook({ mode, token, challenge }) {
     return challenge;
   }
   return null;
+}
+
+/**
+ * Validates Meta's X-Hub-Signature-256 over the raw request body.
+ *
+ * Without this, anyone who learns the webhook URL can POST arbitrary "inbound
+ * messages" that appear to come from any phone number. That is only noisy
+ * today (the handler logs), but Phase 5 makes webhook payloads drive real
+ * actions, so the check belongs here before that lands.
+ *
+ * Returns true when no WA_APP_SECRET is configured (simulation mode) — the
+ * webhook has nothing to impersonate until live credentials exist.
+ */
+export function verifySignature(rawBody, signatureHeader) {
+  const appSecret = process.env.WA_APP_SECRET;
+  if (!appSecret) return true;
+  if (!signatureHeader || !rawBody) return false;
+
+  const expected =
+    'sha256=' + crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
+  const a = Buffer.from(expected);
+  const b = Buffer.from(String(signatureHeader));
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 export function receiveWebhook(payload) {

@@ -18,8 +18,10 @@ import { env } from '../../config/env.js';
  * changing this handler — callers keep the same { fileUrl } contract.
  */
 
+// SVG is deliberately excluded: it is an active-content format (it can carry
+// <script>), and these files are served from our own origin.
 const ALLOWED_EXTENSIONS = new Set([
-  'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg',
+  'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp',
   'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv', 'txt', 'md',
   'zip', 'mp3', 'mp4',
 ]);

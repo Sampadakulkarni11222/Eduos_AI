@@ -14,6 +14,9 @@ export const verifyWebhook = asyncHandler(async (req, res) => {
 });
 
 export const receiveWebhook = asyncHandler(async (req, res) => {
+  if (!service.verifySignature(req.rawBody, req.headers['x-hub-signature-256'])) {
+    throw new AppError('Invalid webhook signature', 401, [], 'WEBHOOK_SIGNATURE_INVALID');
+  }
   sendSuccess(res, service.receiveWebhook(req.body), 'Webhook received');
 });
 

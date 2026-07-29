@@ -1,5 +1,24 @@
 import { AuditLog } from '../models/auditLog.model.js';
 
+// The audit trail stores request bodies verbatim, so credential-bearing fields
+// would otherwise be written to the database in plaintext (POST /auth/login
+// carries the password; OTP verify carries the live code).
+const SENSITIVE_FIELDS = new Set([
+  'password', 'newPassword', 'currentPassword', 'confirmPassword',
+  'code', 'otp', 'token', 'accessToken', 'refreshToken', 'idToken', 'secret',
+]);
+
+export function redact(value, depth = 0) {
+  if (!value || typeof value !== 'object' || depth > 4) return value;
+  if (Array.isArray(value)) return value.map((v) => redact(v, depth + 1));
+
+  const out = {};
+  for (const [key, val] of Object.entries(value)) {
+    out[key] = SENSITIVE_FIELDS.has(key) ? '[REDACTED]' : redact(val, depth + 1);
+  }
+  return out;
+}
+
 const mapRouteToAction = (method, path, reqBody, resData) => {
   // Normalize path by removing /api/v1 and prefix/suffix slashes
   let p = path.replace(/^\/api\/v1/, '').replace(/^\/|\/$/g, '');
@@ -154,14 +173,15 @@ export const auditLogger = (req, res, next) => {
           }
 
           const ip = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
+          const safeBody = redact(req.body);
 
           await AuditLog.create({
             actorProfileId,
             action,
             entityType,
             entityId: entityId ? String(entityId) : null,
-            before: req.method !== 'POST' ? req.body : undefined,
-            after: req.method !== 'DELETE' ? req.body : undefined,
+            before: req.method !== 'POST' ? safeBody : undefined,
+            after: req.method !== 'DELETE' ? safeBody : undefined,
             channel: 'WEB',
             ip,
           });

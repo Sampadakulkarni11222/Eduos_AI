@@ -56,3 +56,27 @@ export const env = {
   isDev: (process.env.NODE_ENV ?? 'development') === 'development',
   isProd: process.env.NODE_ENV === 'production',
 };
+
+// ─── Production safety gate ───────────────────────────────
+// The development defaults above are deliberately weak so the app runs out of
+// the box. Booting production with any of them still set means anyone holding
+// a copy of this repo can forge sessions, decrypt medical records, or pass the
+// WhatsApp webhook handshake — so refuse to start instead.
+if (env.isProd) {
+  const insecure = [];
+  if (env.JWT_SECRET === 'change-this-secret-in-production') insecure.push('JWT_SECRET');
+  if (env.JWT_SECRET.length < 32) insecure.push('JWT_SECRET (must be ≥32 characters)');
+  if (env.MEDICAL_ENCRYPTION_KEY === 'change-this-medical-key-in-production') insecure.push('MEDICAL_ENCRYPTION_KEY');
+  if (env.WHATSAPP_VERIFY_TOKEN === 'change-this-verify-token') insecure.push('WHATSAPP_VERIFY_TOKEN');
+  if (env.CORS_ORIGIN === '*') insecure.push('CORS_ORIGIN (must name your frontend origin)');
+
+  if (insecure.length) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `\nFATAL: refusing to start in production with insecure defaults:\n` +
+        insecure.map((k) => `  • ${k}`).join('\n') +
+        `\nSet these to real values in the environment and restart.\n`
+    );
+    process.exit(1);
+  }
+}
