@@ -32,6 +32,8 @@ export const PERMISSION_CATALOG = [
   { key: 'attendance.read', group: 'academics', description: 'View attendance' },
   { key: 'attendance.mark', group: 'academics', description: 'Mark attendance' },
   { key: 'attendance.regularize', group: 'academics', description: 'Correct/regularize past attendance' },
+  { key: 'leave.apply', group: 'academics', description: 'Apply for a leave of absence' },
+  { key: 'leave.read', group: 'academics', description: 'View leave application status' },
 
   // assignments
   { key: 'assignments.read', group: 'academics', description: 'View assignments' },
@@ -124,6 +126,7 @@ export const SYSTEM_ROLES = [
       ['students.read', 'ALL'],
       ['attendance.read', 'ALL'],
       ['attendance.regularize', 'ALL'],
+      ['leave.read', 'ALL'],
       ['assignments.read', 'ALL'],
       ['marks.read', 'ALL'],
       ['marks.publish', 'ALL'],
@@ -155,6 +158,7 @@ export const SYSTEM_ROLES = [
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
       ['attendance.mark', 'OWN'],
+      ['leave.read', 'OWN'],
       ['assignments.read', 'OWN'],
       ['assignments.manage', 'OWN'],
       ['submissions.grade', 'OWN'],
@@ -184,6 +188,7 @@ export const SYSTEM_ROLES = [
     grants: grants([
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
+      ['leave.read', 'OWN'],
       ['assignments.read', 'OWN'],
       ['marks.read', 'OWN'],
       ['reportcards.read', 'OWN'],
@@ -208,14 +213,22 @@ export const SYSTEM_ROLES = [
     grants: grants([
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
+      ['leave.apply', 'OWN'],
+      ['leave.read', 'OWN'],
       ['assignments.read', 'OWN'],
       ['submissions.submit', 'OWN'],
       ['marks.read', 'OWN'],
       ['reportcards.read', 'OWN'],
       ['materials.read', 'OWN'],
+      ['fees.read', 'OWN'],
+      ['fees.pay', 'OWN'],
       ['announcements.read', 'ALL'],
       ['calendar.read', 'ALL'],
       ['timetable.read', 'OWN'],
+      // Helpdesk: students raise and follow their own tickets. OWN scope keeps
+      // them to their own threads; replying to others stays staff-only.
+      ['tickets.read', 'OWN'],
+      ['tickets.create', 'OWN'],
       ['ai.copilot.use', 'OWN'],
     ]),
   },

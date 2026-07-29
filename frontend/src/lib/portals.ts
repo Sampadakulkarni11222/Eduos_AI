@@ -151,6 +151,8 @@ export const PORTALS: Record<string, Portal> = {
       ]},
       { title: 'ACCOUNT', items: [
         item('Payments', '₹', '/student/payments', { ready: true }),
+        item('My Profile', '◉', '/student/profile', { ready: true }),
+        item('Help & Support', '✉', '/student/tickets', { ready: true }),
       ]},
     ],
   },

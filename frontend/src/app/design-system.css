@@ -551,3 +551,6 @@ body.role-warden{
 .nav-item .nav-soon{font-size:9px;font-weight:800;letter-spacing:.06em;
   text-transform:uppercase;border:1px solid currentColor;border-radius:5px;
   padding:1px 4px;opacity:.85}
+
+/* Larger avatar for the student profile header */
+.profile-avatar-lg{width:64px;height:64px;font-size:22px}
