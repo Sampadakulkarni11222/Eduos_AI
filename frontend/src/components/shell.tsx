@@ -10,6 +10,7 @@ import { Spinner, cx } from './ui';
 import { usePermissions, getRequiredPermission } from '@/lib/permissions';
 import { AskEduOS } from './ask-eduos';
 import { NotificationBell } from './notification-bell';
+import { ModalA11yBridge } from './modal-a11y-bridge';
 
 /**
  * Per-role portal shell. Reads the active profile's role, renders that
@@ -67,6 +68,7 @@ export function PortalShell({
 
   return (
     <div className={cx('app-shell', portal.themeClass)}>
+      <ModalA11yBridge />
       {mobileOpen && (
         <div className="sidebar-overlay" onClick={() => setMobileOpen(false)} />
       )}

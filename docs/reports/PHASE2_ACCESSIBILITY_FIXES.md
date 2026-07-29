@@ -65,9 +65,36 @@ Under `@media (pointer: coarse)`: buttons, tabs and nav items to a 44px minimum,
 
 | Item | Status |
 |---|---|
-| Migrate remaining ~14 modals to `<Modal>` | primitive ready, migrations pending |
+| Migrate remaining ~20 modals to `<Modal>` | **behaviour delivered via `ModalA11yBridge`** (below); the structural migration is still worth doing but is no longer an accessibility blocker |
 | Migrate 40+ `<select>`/inputs to `<Field>` | primitive ready, migrations pending |
 | Tabs → `role="tablist"` + arrow-key navigation | not started |
 | Parent multi-child switcher in the shell | **needs a product decision** (global switch vs per-page) — flagged, not chosen unilaterally |
 | Manual NVDA/VoiceOver pass on login, pay-invoice, assignment submit | cannot be automated here |
 | 375px device pass per portal | pending (Phase 4 device matrix) |
+
+
+---
+
+## Follow-up: `ModalA11yBridge`
+
+21 screens still render dialogs as raw `.modal-overlay` markup. Rewriting all of
+them at once is a large, risky diff, and leaving them unfixed meant keyboard and
+screen-reader users kept waiting on that migration. So the behaviour is now
+applied at the DOM level instead: a single component mounted in `PortalShell`
+watches for `.modal` / `.side-panel` / `.ai-panel` nodes and gives each one
+dialog semantics, focus management and Escape-to-close.
+
+It is **strictly additive** — it never overrides a `role` or label a component
+already declares, so screens migrated to `<Modal>` are untouched. Escape works by
+clicking the dialog's own `.modal-close` button rather than unmounting anything,
+so component state updates normally and a dialog that deliberately cannot be
+dismissed (no close button, or a disabled one) is left alone.
+
+**Verified 12/12 against real DOM (jsdom) using the app's actual legacy markup:**
+`role="dialog"` and `aria-modal` applied; the dialog named from its `.modal-title`;
+focus moved in on open; Tab and Shift+Tab wrapping at both ends; focus pulled back
+when it escapes; Escape clicking the close button; **focus returned to the
+triggering element** on close; and an already-correct dialog left unmodified.
+
+This is a bridge, not the destination — delete it once
+`grep -rl "modal-overlay"` comes back empty.
