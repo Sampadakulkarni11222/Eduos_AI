@@ -813,6 +813,7 @@ export async function getWardenDashboard() {
     recentAllocations,
     openTickets,
     pendingLeave,
+    pendingLeaveCount,
   ] = await Promise.all([
     HostelRoom.countDocuments({ status: { $ne: 'CLOSED' } }),
     HostelAllocation.countDocuments({ status: 'ACTIVE' }),
@@ -871,6 +872,11 @@ export async function getWardenDashboard() {
       .limit(10)
       .populate({ path: 'enrollmentId', populate: { path: 'studentId', select: 'firstName lastName admissionNo' } })
       .lean(),
+
+    // The list above is capped at 10. Without a total, a warden looking at ten
+    // rows has no way to tell whether that is all of them or the first ten of
+    // forty — which is the difference between "nothing to do" and a backlog.
+    LeaveApplication.countDocuments({ status: 'PENDING' }),
   ]);
 
   const capacityData = vacantCount[0] ?? { totalCapacity: 0, totalOccupied: 0 };
@@ -899,6 +905,7 @@ export async function getWardenDashboard() {
       raisedBy: t.raisedByProfileId?.displayName ?? null,
       createdAt: t.createdAt,
     })),
+    pendingLeaveCount,
     leaveRequests: pendingLeave.map((l) => {
       const student = l.enrollmentId?.studentId;
       return {

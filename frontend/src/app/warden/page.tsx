@@ -73,8 +73,13 @@ export default function WardenDashboard() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Card pad={false}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--hairline)' }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--hairline)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Leave Awaiting Approval</strong>
+              {/* The list is capped, so show the real total — ten rows must not
+                  look like "all of them" when there are forty. */}
+              {data !== null && data.pendingLeaveCount > (leave?.length ?? 0) && (
+                <Pill tone="amber">{data.pendingLeaveCount} pending</Pill>
+              )}
             </div>
             <div style={{ padding: leave === null ? 20 : 0 }}>
               {leave === null && <SkeletonRows rows={2} />}

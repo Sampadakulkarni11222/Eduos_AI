@@ -316,3 +316,125 @@ asserted that "create homework on fractions for Mathematics" would produce a
 proposal. It produced the ambiguity refusal instead — which is the designed
 and safer behaviour. The test was corrected to assert the refusal; the code was
 not touched.
+
+---
+
+## §5.4 guardrails: audit state, rate limiting, injection monitoring — 24/24
+
+Re-reading your brief against what was actually built, two of the three §5.4
+guardrails were only partly done. Both are now closed.
+
+### "Log every agentic action (who, what, source, **before/after state**)"
+
+Who, what and source were logged from the start. **Before/after state was not.**
+The audit entry recorded the *request* — the tool name and its arguments — which
+answers a different question from the one an audit exists to answer. Knowing
+`agent.record_fee_payment` was called with some arguments does not tell you what
+the invoice said beforehand, and that is exactly what a parent disputing a
+payment, or an auditor checking a cashier, needs.
+
+Tools now opt in with a `snapshot()` hook, captured either side of the write:
+
+| Tool | Snapshot |
+|---|---|
+| `record_fee_payment` | invoice status, total, paid total, payment count |
+| `mark_attendance` | per-status tally for the section/date, plus the status of each row this call touches |
+| creations (`generate_homework`, `apply_leave`, `create_announcement`) | `before: null` — nothing existed, and faking a before-state would be worse than admitting it |
+
+A real entry, from the test run:
+
+```
+before: { invoiceNo: "INV-…-60", status: "PENDING", totalPaise: 2500000, paidPaise: 0,     paymentCount: 0 }
+after:  { request: {…}, status: "EXECUTED",
+          state: { invoiceNo: "INV-…-60", status: "PARTIAL", totalPaise: 2500000, paidPaise: 10000, paymentCount: 1 } }
+```
+
+`before` is recorded on failures too — it shows the state a half-applied write
+would have started from. A snapshot that throws degrades to a logged `null`
+rather than blocking a write the user already authorized.
+
+**A second bug found while verifying this.** The state was being written and
+then **thrown away by the read API**: `GET /audit/logs` built a DTO that omitted
+`before` and `after` entirely, so every consumer could see *that* something
+happened and never *what changed*. Fixed, passed through the same redactor the
+request logger uses, since these payloads can carry OTPs and medical fields.
+That endpoint also hardcoded `limit = 20` while accepting a `limit` query
+parameter it silently ignored; it now honours it, capped at 200.
+
+### "Rate-limit … specifically on this surface"
+
+There was **no agent-specific limit at all** — only the general 2000-per-15-min
+API limiter, on the most expensive and most abusable surface in the product.
+
+Two layers now, and the important one is not the middleware:
+
+- **`agent/throttle.js`, in the core** — 20 calls/minute **per actor**, enforced
+  inside `runAgent()`. It lives here rather than in Express because both the web
+  and WhatsApp surfaces call `runAgent()` and only one of them passes through
+  middleware; a guard in the route would be bypassed by the webhook.
+- **`aiRateLimiter` on `/ai/*`** — 30/minute, keyed on the resolved profile,
+  as cheap early rejection.
+
+**Keying is the design decision worth stating.** Both key on profile, not IP.
+The general limiter keys on `req.ip`, which is right for a browser and useless
+here: every WhatsApp message arrives from Meta's infrastructure, so the whole
+school shares one address. IP keying would be either so loose it never fires or
+so tight that one chatty parent locks out everybody. Keying on the actor also
+means the limit follows a person across surfaces.
+
+**Known limitation:** counters are in process memory — correct for one instance,
+per-instance behind a load balancer. Moving to Redis is a change to two `Map`
+operations, and is required before running a second replica.
+
+### "…and monitor for prompt-injection attempts"
+
+Attempts were logged individually, but nothing counted them, so a probing
+attacker was indistinguishable from noise. Attempts are now counted per actor:
+three inside a minute escalates to an **error**-level log (so it surfaces in
+monitoring rather than a warn stream nobody reads), is marked
+`BLOCKED_REPEATED` in the audit trail with the attempt count, and cools the
+surface off for that actor.
+
+**I shortened that cool-off from 15 minutes to 60 seconds after building it, and
+the reasoning matters more than the number.** A prompt injection on this surface
+cannot actually achieve anything — the tool layer authorizes every action against
+live permissions, so the detector is defence in depth, not the defence. The
+security benefit of a long lockout is therefore near zero, while the cost of a
+false positive is a parent who quoted an unlucky sentence losing attendance and
+fee lookups for a quarter of an hour. A minute breaks a scripted probe loop,
+which is the thing worth stopping. The durable response is the log and the audit
+entry.
+
+### Verified
+
+24/24 against a **default-configured** server, so the limits were exercised at
+their real values rather than the relaxed ones the other suites use:
+
+- Payment write: `before` matches the invoice's pre-write paid total, `after`
+  shows the money moved (`0 → 10000`), request preserved alongside, actor and
+  channel recorded.
+- Creation: `before` is `null`, not fabricated; status `EXECUTED`.
+- Injection: refused on attempts 1 and 2, escalates on 3, then `429
+  AGENT_TEMPORARILY_BLOCKED` — and **a different actor is unaffected**, so the
+  block is per-account, not a global outage.
+- Flood: `429 AGENT_RATE_LIMITED` for the flooding actor, others unaffected.
+- No regressions: agent core **30/30**, WhatsApp **19/19**, tools **29/29**,
+  fee engine **18/18**, OCR **25/25**, QA-4/5/8 **22/22**, QA-6 **32/32**,
+  Phase 3 security **10/10**, RBAC matrix 0 violations, dashboard matrix 0
+  exposures, `next build` clean.
+
+**One regression I caused and fixed.** The strike limit initially broke the
+existing WhatsApp and tools suites: `agent-test` legitimately probes injection
+several times, which blocked that actor for the following suite. That is the
+guardrail working, but it revealed the 15-minute block was too blunt — see
+above. The suites now run with the escalation relaxed via
+`AGENT_INJECTION_STRIKES`, exactly as they already relax the HTTP rate limiter,
+and the guardrail itself is verified at defaults by its own suite.
+
+**One test flaw it exposed in the QA-6 probe.** That probe asserted the warden's
+pending-leave list *grew* by one. The list is capped at 10, so once there were
+more than ten pending it could never grow and the check silently stopped testing
+anything. Fixed to assert a new `pendingLeaveCount` total — which the endpoint
+did not previously return, meaning a warden looking at ten rows had no way to
+tell whether that was all of them or the first ten of forty. The dashboard now
+shows the total when the list is capped.

@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { AgentAction } from '../../../models/agentAction.model.js';
 import { AuditLog } from '../../../models/auditLog.model.js';
+import { checkAgentRate, recordInjectionAttempt } from './throttle.js';
 import { AppError } from '../../../utils/AppError.js';
 import { logger } from '../../../utils/logger.js';
 import { getTool, toolsAvailableTo } from './tools.js';
@@ -68,20 +69,52 @@ export function checkAuthorization(actor, tool) {
   return scope;
 }
 
-async function auditAgentAction({ actor, tool, args, source, status, error, resultId }) {
+/**
+ * Writes one agent action to the Phase 3 audit log.
+ *
+ * `before`/`after` carry the **state of the affected record**, not the request
+ * — that distinction is the whole point of auditing a write. Knowing that
+ * `agent.mark_attendance` was called with some arguments does not answer the
+ * question an audit exists to answer, which is what the register said before
+ * and what it says now. Tools opt in by implementing `snapshot()`; creations
+ * legitimately have `before: null` because nothing existed.
+ *
+ * `request` keeps the arguments alongside, so a reviewer can see what was asked
+ * for as well as what changed.
+ */
+async function auditAgentAction({
+  actor, tool, args, source, status, error, resultId, before = null, after = null,
+}) {
   try {
     await AuditLog.create({
       actorProfileId: actor?.profileId ?? null,
       action: `agent.${tool}`,
       entityType: 'AgentAction',
       entityId: resultId ? String(resultId) : null,
-      after: { tool, args, status, ...(error && { error }) },
+      before,
+      after: { request: args, status, ...(after && { state: after }), ...(error && { error }) },
       channel: source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB',
       ip: null,
     });
   } catch (err) {
     // Never let an audit write failure swallow the user's actual result.
     logger.error(`Agent audit log failed for ${tool}: ${err.message}`);
+  }
+}
+
+/**
+ * Captures a tool's view of the records it is about to touch.
+ *
+ * Failure here must never block the write the user authorized, so a broken
+ * snapshot degrades to a recorded null with a log line rather than an error.
+ */
+async function snapshotState(tool, actor, scope, args, prepared, phase) {
+  if (!tool.snapshot) return null;
+  try {
+    return await tool.snapshot(actor, scope, args ?? {}, prepared ?? null);
+  } catch (err) {
+    logger.warn(`Agent ${phase} snapshot failed: ${err.message}`);
+    return null;
   }
 }
 
@@ -110,16 +143,25 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
   const detected = detectLanguage(message);
   const lang = langOverride ?? detected.lang;
 
+  // Per-actor pace limit, enforced in the core so it holds on every surface.
+  // Throws 429, and also refuses an actor currently blocked for repeated
+  // injection attempts.
+  checkAgentRate(actor.profileId);
+
   const injection = detectInjection(message);
   if (injection.detected) {
-    // Logged for monitoring; the request still proceeds through the normal
-    // authorization path, which is what actually protects the data.
+    // Individual attempts were always logged. What was missing was any notion
+    // of repetition — one unlucky phrase is not an attack, three in a minute
+    // is somebody probing — so attempts are now counted per actor and the
+    // surface closes for them on the third.
+    const strike = recordInjectionAttempt(actor.profileId, { source });
     logger.warn(
-      `Prompt-injection attempt (${injection.count} pattern(s)) from profile ${actor.profileId} via ${source}`
+      `Prompt-injection attempt ${strike.count} (${injection.count} pattern(s)) from profile ${actor.profileId} via ${source}`
     );
     await auditAgentAction({
       actor, tool: 'injection_attempt', args: { message: String(message).slice(0, 300) },
-      source, status: 'BLOCKED',
+      source, status: strike.blocked ? 'BLOCKED_REPEATED' : 'BLOCKED',
+      after: { attemptsInWindow: strike.count, surfaceBlocked: strike.blocked },
     });
     return {
       reply: t('agent.injection', lang),
@@ -244,23 +286,30 @@ export async function confirmAction({ confirmToken, actor, source = 'WEB', accep
 
   const scope = checkAuthorization(actor, tool);
 
+  // Captured before the write, so the audit entry can show what the record
+  // looked like beforehand rather than only what was requested.
+  const before = await snapshotState(tool, actor, scope, pending.args, pending.prepared, 'before');
+
   try {
     const result = await tool.execute(actor, scope, pending.args ?? {}, pending.prepared ?? null);
     pending.status = 'EXECUTED';
     pending.executedAt = new Date();
     await pending.save();
+    const after = await snapshotState(tool, actor, scope, pending.args, pending.prepared, 'after');
     await auditAgentAction({
       actor, tool: pending.tool, args: pending.args, source,
-      status: 'EXECUTED', resultId: pending._id,
+      status: 'EXECUTED', resultId: pending._id, before, after,
     });
     return { reply: speakOf(result, lang), data: result.data, lang, executed: true };
   } catch (err) {
     pending.status = 'FAILED';
     pending.error = err.message;
     await pending.save();
+    // `before` is still worth recording on a failure: it shows the state a
+    // half-applied write would have started from.
     await auditAgentAction({
       actor, tool: pending.tool, args: pending.args, source,
-      status: 'FAILED', error: err.message,
+      status: 'FAILED', error: err.message, before,
     });
     throw err;
   }

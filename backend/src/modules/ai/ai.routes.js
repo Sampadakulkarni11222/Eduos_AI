@@ -1,10 +1,14 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
+import { aiRateLimiter } from '../../middleware/rateLimiter.js';
 import * as controller from './ai.controller.js';
 
 const router = Router();
+// authenticate first, so the limiter can key on the resolved profile rather
+// than on an IP shared by a whole school.
 router.use(authenticate);
+router.use(aiRateLimiter);
 
 /**
  * @swagger

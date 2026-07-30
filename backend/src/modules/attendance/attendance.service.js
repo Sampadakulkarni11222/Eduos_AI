@@ -113,6 +113,27 @@ export async function markAttendance(actor, { date, periodNo = null, records, en
 const VALID_STATUSES = new Set(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY']);
 
 /**
+ * Raw attendance rows already recorded for a section on a date.
+ *
+ * Read-only and unscoped by design: it backs the agent's before/after audit
+ * snapshot, which runs *after* markAttendance's own ownership check has
+ * authorized the same section. It is not exposed over HTTP.
+ */
+export async function findExisting(sectionId, date, periodNo = null) {
+  const day = parseDateToMidnight(date);
+  if (!sectionId || !day) return [];
+
+  const enrollments = await Enrollment.find({ sectionId }).select('_id');
+  return AttendanceRecord.find({
+    enrollmentId: { $in: enrollments.map((e) => e._id) },
+    date: day,
+    periodNo,
+  })
+    .select('enrollmentId status')
+    .lean();
+}
+
+/**
  * Bulk-marks attendance for a section from parsed CSV rows (admissionNo or
  * rollNo + status). Rows are resolved to enrollmentIds strictly within the
  * given sectionId's active roster, then handed to markAttendance() so the

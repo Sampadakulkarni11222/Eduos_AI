@@ -162,6 +162,26 @@ export const TOOLS = {
     },
     summarise: (args) =>
       `Mark attendance for ${args.entries.length} student(s) on ${args.date ?? 'today'}`,
+    /**
+     * Attendance is the tool most likely to be disputed later ("my child was
+     * present that day"), so the audit entry records the register as it stood
+     * before and after — a tally by status plus the per-enrollment values for
+     * the rows this call touches.
+     */
+    async snapshot(actor, scope, args) {
+      const records = await attendance.findExisting(args.sectionId, args.date, args.periodNo);
+      const touched = new Set((args.entries ?? []).map((e) => String(e.enrollmentId)));
+      const tally = {};
+      for (const r of records) tally[r.status] = (tally[r.status] ?? 0) + 1;
+      return {
+        sectionId: String(args.sectionId),
+        date: args.date ?? null,
+        tally,
+        rows: records
+          .filter((r) => touched.has(String(r.enrollmentId)))
+          .map((r) => ({ enrollmentId: String(r.enrollmentId), status: r.status })),
+      };
+    },
     async execute(actor, scope, args) {
       const result = await attendance.markAttendance(actor, args);
       return { speakKey: 'attendance.marked', params: { count: args.entries.length }, data: result };
@@ -213,6 +233,22 @@ export const TOOLS = {
     },
     summarise: (args) =>
       `Record a ₹${(Number(args.amountPaise) / 100).toLocaleString('en-IN')} payment against invoice ${args.invoiceId}`,
+    /**
+     * Money moving on an invoice is the other case where "what did it say
+     * before" is the question an audit has to answer. Records the invoice's
+     * paid total and status either side of the write.
+     */
+    async snapshot(actor, scope, args) {
+      const invoice = await fees.getInvoiceDetail(actor, scope, args.invoiceId);
+      return {
+        invoiceId: String(args.invoiceId),
+        invoiceNo: invoice.invoiceNo,
+        status: invoice.status,
+        totalPaise: invoice.totalPaise,
+        paidPaise: invoice.paidPaise,
+        paymentCount: invoice.payments?.length ?? 0,
+      };
+    },
     async execute(actor, scope, args) {
       const payment = await fees.recordPayment(actor, scope, args);
       return { speakKey: 'fees.recorded', data: payment };

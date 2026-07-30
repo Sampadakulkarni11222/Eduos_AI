@@ -272,6 +272,7 @@ export interface WardenDashboardDto {
   hostelStudents: number; occupiedRooms: number; vacantBeds: number; totalCapacity: number; occupancyRate: number;
   maintenanceRooms: number; maintenanceRequests: number; openInquiries: number;
   openTickets: Array<{ id: string; subject: string; status: string; priority: string | null; raisedBy: string | null; createdAt: string }>;
+  pendingLeaveCount: number;
   leaveRequests: Array<{ id: string; studentName: string; admissionNo: string; fromDate: string; toDate: string; reason: string; status: string }>;
   recentAllocations: Array<{ allocationId: string; studentName: string; admissionNo: string; roomNo: string; block: string; allottedAt: string }>;
 }
