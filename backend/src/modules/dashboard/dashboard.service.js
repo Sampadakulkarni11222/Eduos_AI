@@ -14,6 +14,8 @@ import { Book, BookIssue } from '../../models/library.model.js';
 import { HostelRoom, HostelAllocation, HostelInquiry } from '../../models/hostel.model.js';
 import { Document } from '../../models/document.model.js';
 import { CalendarEvent } from '../../models/calendarEvent.model.js';
+import { AuditLog } from '../../models/auditLog.model.js';
+import { LeaveApplication } from '../../models/leaveApplication.model.js';
 import {
   getTeacherSectionIds,
   getGuardianStudentIds,
@@ -51,7 +53,7 @@ export async function getOwnerDashboard() {
     activeCRMLeads,
     feeAgg,
     unpaidCount,
-    recentTickets,
+    auditEntries,
     announcementsArr,
     admissionsByStage,
   ] = await Promise.all([
@@ -71,10 +73,14 @@ export async function getOwnerDashboard() {
 
     Invoice.countDocuments({ status: { $in: ['PENDING', 'PARTIAL', 'OVERDUE'] } }),
 
-    Ticket.find({ status: { $in: ['NEW', 'OPEN', 'WAITING'] } })
+    // Real audit log entries. This used to return open tickets under the name
+    // `recentAuditLogs` — a proxy that made the owner portal's audit panel
+    // render blank fields, because tickets have no action/actor/channel.
+    AuditLog.find({})
       .sort({ createdAt: -1 })
       .limit(5)
-      .select('subject status priority createdAt routedToRoleKey')
+      .populate('actorProfileId', 'displayName')
+      .select('action entityType channel createdAt actorProfileId')
       .lean(),
 
     recentAnnouncements(5),
@@ -97,11 +103,21 @@ export async function getOwnerDashboard() {
     pendingFees: toRs(pendingPaise),
     pendingFeesPaise: pendingPaise,
     unpaidInvoices: unpaidCount,
+    // The owner portal shows a collection rate; without this it had to fetch
+    // /fees/summary separately just to compute one percentage.
+    collectionRate: pct(paidPaise, totalPaise),
     admissionsSummary: admissionsByStage.map((s) => ({
       stage: s._id,
       count: s.count,
     })),
-    recentAuditLogs: recentTickets, // using tickets as proxy for recent activity
+    recentAuditLogs: auditEntries.map((log) => ({
+      _id: log._id,
+      action: log.action,
+      entityType: log.entityType ?? null,
+      actorName: log.actorProfileId?.displayName ?? null,
+      channel: log.channel,
+      createdAt: log.createdAt,
+    })),
     recentAnnouncements: announcementsArr,
   };
 }
@@ -795,6 +811,8 @@ export async function getWardenDashboard() {
     maintenanceTickets,
     openInquiries,
     recentAllocations,
+    openTickets,
+    pendingLeave,
   ] = await Promise.all([
     HostelRoom.countDocuments({ status: { $ne: 'CLOSED' } }),
     HostelAllocation.countDocuments({ status: 'ACTIVE' }),
@@ -837,6 +855,22 @@ export async function getWardenDashboard() {
       .sort({ allottedAt: -1 })
       .limit(10)
       .lean(),
+
+    // The warden portal lists open tickets, so return them here rather than
+    // making the page fetch /tickets separately and filter client-side.
+    Ticket.find({ routedToRoleKey: 'WARDEN', status: { $in: ['NEW', 'OPEN', 'WAITING'] } })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .populate('raisedByProfileId', 'displayName')
+      .select('subject status priority createdAt raisedByProfileId')
+      .lean(),
+
+    // Was hardcoded to [] with the comment "no leave model". There is one now.
+    LeaveApplication.find({ status: 'PENDING' })
+      .sort({ fromDate: 1 })
+      .limit(10)
+      .populate({ path: 'enrollmentId', populate: { path: 'studentId', select: 'firstName lastName admissionNo' } })
+      .lean(),
   ]);
 
   const capacityData = vacantCount[0] ?? { totalCapacity: 0, totalOccupied: 0 };
@@ -850,10 +884,33 @@ export async function getWardenDashboard() {
     occupancyRate: pct(occupiedBeds, capacityData.totalCapacity),
     maintenanceRooms,
     maintenanceRequests: maintenanceTickets,
-    visitorLogs: [], // no visitor model — return empty per spec
-    leaveRequests: [], // no leave model — return empty per spec
-    recentIncidents: openInquiries, // using open inquiries as incidents proxy
+    // `visitorLogs: []` and `recentIncidents` used to be returned here. The
+    // first was a permanent empty array for a model that does not exist —
+    // better to omit a field than to promise data the system cannot produce —
+    // and the second was `openInquiries` under a second name, so a caller
+    // reading `recentIncidents.length` on what is actually a number got
+    // `undefined`.
     openInquiries,
+    openTickets: openTickets.map((t) => ({
+      id: t._id,
+      subject: t.subject,
+      status: t.status,
+      priority: t.priority ?? null,
+      raisedBy: t.raisedByProfileId?.displayName ?? null,
+      createdAt: t.createdAt,
+    })),
+    leaveRequests: pendingLeave.map((l) => {
+      const student = l.enrollmentId?.studentId;
+      return {
+        id: l._id,
+        studentName: student ? `${student.firstName} ${student.lastName ?? ''}`.trim() : '--',
+        admissionNo: student?.admissionNo ?? '--',
+        fromDate: l.fromDate,
+        toDate: l.toDate,
+        reason: l.reason,
+        status: l.status,
+      };
+    }),
     recentAllocations: recentAllocations.map((a) => ({
       allocationId: a._id,
       studentName: `${a.studentId?.firstName ?? ''} ${a.studentId?.lastName ?? ''}`.trim(),

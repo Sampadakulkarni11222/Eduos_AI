@@ -271,6 +271,8 @@ export interface ParentDashboardDto {
 export interface WardenDashboardDto {
   hostelStudents: number; occupiedRooms: number; vacantBeds: number; totalCapacity: number; occupancyRate: number;
   maintenanceRooms: number; maintenanceRequests: number; openInquiries: number;
+  openTickets: Array<{ id: string; subject: string; status: string; priority: string | null; raisedBy: string | null; createdAt: string }>;
+  leaveRequests: Array<{ id: string; studentName: string; admissionNo: string; fromDate: string; toDate: string; reason: string; status: string }>;
   recentAllocations: Array<{ allocationId: string; studentName: string; admissionNo: string; roomNo: string; block: string; allottedAt: string }>;
 }
 export interface LibrarianDashboardDto {
@@ -281,9 +283,9 @@ export interface LibrarianDashboardDto {
 }
 export interface OwnerDashboardDto {
   totalStudents: number; activeCRMLeads: number;
-  feesCollectedPaise: number; pendingFeesPaise: number; unpaidInvoices: number;
+  feesCollectedPaise: number; pendingFeesPaise: number; unpaidInvoices: number; collectionRate: number;
   admissionsSummary: Array<{ stage: string; count: number }>;
-  recentAuditLogs: Array<{ _id: string; subject?: string; status?: string; createdAt: string }>;
+  recentAuditLogs: Array<{ _id: string; action: string; entityType: string | null; actorName: string | null; channel: string; createdAt: string }>;
   recentAnnouncements: Array<{ _id: string; title: string; content: string; publishedAt: string }>;
 }
 export interface FinanceDashboardDto {

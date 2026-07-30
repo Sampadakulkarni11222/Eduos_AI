@@ -5,19 +5,21 @@ import { PortalShell } from '@/components/shell';
 
 import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard } from '@/components/ui';
 import { api } from '@/lib/api';
-import type { HostelSummaryDto, TicketDto } from '@/lib/types';
+import type { WardenDashboardDto } from '@/lib/types';
 
 export default function WardenDashboard() {
   const router = useRouter();
-  const [tickets, setTickets] = useState<TicketDto[] | null>(null);
-  const [summary, setSummary] = useState<HostelSummaryDto | null>(null);
+  // One scoped call instead of /tickets + /hostel/summary. Tickets now arrive
+  // already filtered to open ones routed to the warden, rather than the page
+  // pulling every ticket and filtering client-side.
+  const [data, setData] = useState<WardenDashboardDto | null>(null);
 
   useEffect(() => {
-    api.tickets().then(setTickets).catch(() => setTickets([]));
-    api.hostelSummary().then(setSummary).catch(() => setSummary(null));
+    api.wardenDashboard().then(setData).catch(() => setData(null));
   }, []);
 
-  const openTickets = tickets?.filter((t) => t.status !== 'RESOLVED' && t.status !== 'CLOSED') ?? [];
+  const tickets = data?.openTickets ?? null;
+  const leave = data?.leaveRequests ?? null;
 
   return (
     <PortalShell
@@ -28,15 +30,20 @@ export default function WardenDashboard() {
       }}
     >
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
-        <StatCard label="Total Rooms" value={summary ? summary.totalRooms : '—'} delta={summary ? 'registered rooms' : undefined} deltaDir="flat" />
+        <StatCard label="Total Rooms" value={data ? data.occupiedRooms + data.vacantBeds : '—'} delta={data ? `${data.totalCapacity} beds` : undefined} deltaDir="flat" />
         <StatCard
           label="Occupied Beds"
-          value={summary ? `${summary.occupiedBeds} / ${summary.totalCapacity}` : '—'}
-          delta={summary ? `${summary.occupancyRate}% occupancy rate` : undefined}
+          value={data ? `${data.hostelStudents} / ${data.totalCapacity}` : '—'}
+          delta={data ? `${data.occupancyRate}% occupancy rate` : undefined}
           deltaDir="flat"
         />
-        <StatCard label="Hostel Inquiries" value={tickets ? openTickets.length : '—'} delta="routed to Warden" deltaDir="flat" />
-        <StatCard label="Maintenance Requests" value={summary ? summary.maintenanceRequests : '—'} delta={summary && summary.maintenanceRequests > 0 ? 'active issues' : 'none open'} deltaDir={summary && summary.maintenanceRequests > 0 ? 'down' : 'flat'} />
+        <StatCard label="Hostel Inquiries" value={data ? data.openInquiries : '—'} delta="open enquiries" deltaDir="flat" />
+        <StatCard
+          label="Maintenance Requests"
+          value={data ? data.maintenanceRequests : '—'}
+          delta={data && data.maintenanceRequests > 0 ? 'active issues' : 'none open'}
+          deltaDir={data && data.maintenanceRequests > 0 ? 'down' : 'flat'}
+        />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 16 }}>
@@ -47,10 +54,10 @@ export default function WardenDashboard() {
           </div>
           <div style={{ padding: tickets === null ? 20 : 0 }}>
             {tickets === null && <SkeletonRows rows={3} />}
-            {tickets !== null && openTickets.length === 0 && (
+            {tickets !== null && tickets.length === 0 && (
               <EmptyState title="No active requests" sub="All student tickets are resolved." />
             )}
-            {openTickets.slice(0, 5).map((t, i) => (
+            {tickets?.slice(0, 5).map((t, i) => (
               <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text-1)' }}>{t.subject}</div>
@@ -64,18 +71,40 @@ export default function WardenDashboard() {
           </div>
         </Card>
 
-        <Card style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Quick Actions</strong>
-          <Button onClick={() => router.push('/warden/rooms')}>
-            Manage Room Allocations
-          </Button>
-          <Button variant="soft" onClick={() => router.push('/warden/students')}>
-            Hostel Students Directory
-          </Button>
-          <Button variant="ghost" onClick={() => router.push('/warden/medical')}>
-            Emergency Medical Lookup
-          </Button>
-        </Card>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Card pad={false}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--hairline)' }}>
+              <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Leave Awaiting Approval</strong>
+            </div>
+            <div style={{ padding: leave === null ? 20 : 0 }}>
+              {leave === null && <SkeletonRows rows={2} />}
+              {leave !== null && leave.length === 0 && (
+                <EmptyState title="Nothing pending" sub="No leave applications are awaiting a decision." />
+              )}
+              {leave?.slice(0, 4).map((l, i) => (
+                <div key={l.id} style={{ padding: '12px 20px', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-1)' }}>{l.studentName}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-2b)' }}>
+                    {new Date(l.fromDate).toLocaleDateString('en-IN')} – {new Date(l.toDate).toLocaleDateString('en-IN')} · {l.reason}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Quick Actions</strong>
+            <Button onClick={() => router.push('/warden/rooms')}>
+              Manage Room Allocations
+            </Button>
+            <Button variant="soft" onClick={() => router.push('/warden/students')}>
+              Hostel Students Directory
+            </Button>
+            <Button variant="ghost" onClick={() => router.push('/warden/medical')}>
+              Emergency Medical Lookup
+            </Button>
+          </Card>
+        </div>
       </div>
     </PortalShell>
   );
