@@ -438,3 +438,131 @@ anything. Fixed to assert a new `pendingLeaveCount` total — which the endpoint
 did not previously return, meaning a warden looking at ten rows had no way to
 tell whether that was all of them or the first ten of forty. The dashboard now
 shows the total when the list is capped.
+
+---
+
+## AI credit metering and paid top-ups — 41/41
+
+Free monthly allowance for AI-generated answers, paid packs beyond it.
+
+### Four decisions, taken with you rather than for you
+
+| Decision | Chosen |
+|---|---|
+| Who is metered | **Students and parents only.** Staff are not. |
+| What costs a credit | **Only AI-generated answers.** |
+| Free tier | **50 per month**, resetting on the 1st. |
+| Payment | **Separate credit packs**, not fee invoices. |
+
+**Why staff are exempt, and why permissions could not express it.** Every role
+holds `ai.copilot.use`, so metering by permission would have started charging
+teachers, the librarian and the warden. A teacher hitting a paywall mid-lesson
+is a support call, not a revenue event — the school is already paying for their
+tools. Metering is therefore decided by role explicitly, in one named set.
+
+**Why credits stay out of the fee ledger.** Folding them into `Invoice` would
+have been less code — the PDFs, payment screens and reconciliation already
+exist. But AI credits are an optional software add-on, and putting them in
+`Invoice` puts them into statutory fee records, outstanding-dues totals and
+arrears reports, where a school accountant would have to explain why a family
+"owes" money for a chatbot. They get their own order type and reuse only the
+payment provider.
+
+### What is actually charged — and the surprise in the answer
+
+**Only tutor mode can cost a credit today, and that is correct.** While wiring
+this up I checked every AI surface for where a model is actually called:
+
+| Surface | Charged? | Why |
+|---|---|---|
+| `/ai/tutor` | **1 credit** | The only endpoint that calls the model to write something. |
+| `/ai/agent` (attendance, fees, results, homework, payment links) | Free | Deterministic database reads rendered from the message catalogue. No model output reaches the user. |
+| `/ai/chat` | Free | **It never calls a model at all** — it is a rule-based intent matcher over the caller's own facts. |
+| Refusals, validation errors, rate limits, provider failures | Free | Nobody is billed for being told no, or for our outage. |
+
+Charging for the agent would mean charging a parent a credit to read their own
+child's attendance. That is not an AI product, it is a toll on their own
+records.
+
+### Ordering, which is where paywalls usually go wrong
+
+The credit gate is deliberately the **last** check in the tutor, after the
+syllabus and off-subject checks. A student who is out of credits *and* asks for
+a subject they do not study gets the off-syllabus refusal, not a demand for
+money — verified: `400`, not `402`. Selling someone a credit to then be told no
+is the failure mode this ordering prevents.
+
+It is also skipped entirely when no model is configured, because the fallback is
+a study plan assembled from the student's own timetable and marks. That is a
+database read; charging for it would be charging for something that cost nothing.
+
+**`402 Payment Required`, not `403`.** This is not "you may not" — it is "this
+needs paying for", and a client has to be able to tell the difference to decide
+between a top-up prompt and an access error.
+
+### Money-handling invariants
+
+- **Free allowance spends first.** Never burn a purchased credit while a free one
+  is available.
+- **Purchased credits never expire** at the month boundary. The free counter
+  resets; the paid balance does not. Expiring what somebody paid for would be
+  taking their money.
+- **The month rolls lazily, on read.** No cron — a scheduled job that has to run
+  for billing to be correct is a job whose failure silently overcharges people.
+- **Spending is a conditional atomic update**, so two concurrent requests cannot
+  both take the last credit and the balance cannot go negative.
+- **The order row is written before the charge**, mirroring `fees.payOnline()`.
+  A gateway success followed by a local failure leaves a `PENDING` row to
+  reconcile, not a family who paid and got nothing.
+- **Granting is idempotent.** A replayed gateway callback does not grant twice.
+- **Charged only after generation.** `spend()` runs on `generated: true`, so an
+  outage or a model refusal costs the user nothing.
+
+### A bug found in my own code while testing
+
+The controller accepted `beneficiaryProfileId` and **silently dropped it**. The
+service had an ownership check, but it never saw the field — so a request to top
+up somebody else's account returned `201` having credited the caller's own
+wallet. A success response for something that did not happen. The field is now
+passed through and the check fires: `403 BENEFICIARY_NOT_ALLOWED`.
+
+### Verified
+
+**41/41** live, including 5 assertions that only run with an LLM configured
+(exercised with a deliberately invalid key so the gate engages and the provider
+fails):
+
+- Metering by role: student and parent metered; teacher and admin get
+  `metered: false` with no numbers and no packs.
+- Free surfaces charge nothing: agent lookups, syllabus, rule-based chat.
+- Refusals charge nothing: off-syllabus and missing-topic.
+- Exhausted student → `402 AI_CREDITS_EXHAUSTED`; off-syllabus still returns
+  `400` first.
+- Provider failure → `200` with `generated: false`, **and no credit taken**.
+- Purchase → `201`, 150 credits banked, order `PAID`, audited with the resulting
+  balance, and **no fee invoice created**.
+- Spend order `FREE` then `PAID`; month roll clears free use and preserves the
+  purchased balance; two concurrent spends cannot both take the last credit;
+  replayed callback does not double-grant.
+- Wallet isolation: topping up another account refused with nothing granted to
+  either wallet, each account reads only its own balance, anonymous gets `401`.
+- Pack pricing improves with size (₹1.98 → ₹1.66 → ₹1.40 per answer), so no pack
+  is worse value than a smaller one.
+- No regressions: agent core **30/30**, WhatsApp **19/19**, tools **29/29**, fee
+  engine **18/18**, OCR **25/25**, QA-4/5/8 **22/22**, QA-6 **32/32**, both
+  matrices clean, `next build` clean with `/student/ai-credits` and
+  `/parent/ai-credits` routed.
+
+### Not built
+
+**There is still no tutor UI.** Tutor mode has had a tested API since `4e261b0`
+but no screen in any portal, so the paywall a student would hit is currently
+only reachable through the API. The credits pages are live and honest about what
+costs what; the thing they meter has no front end yet. That is the next piece of
+work if you want this earning money.
+
+**Staff-side reporting.** No admin view of credit consumption or revenue, and no
+way for the office to grant credits after taking cash — the purchase path
+assumes the family pays online. With `PAYMENT_PROVIDER=none` the order is still
+created and the user is told to pay at the office, but an admin then has no
+button to settle it.

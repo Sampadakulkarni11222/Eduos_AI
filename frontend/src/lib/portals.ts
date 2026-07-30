@@ -125,6 +125,7 @@ export const PORTALS: Record<string, Portal> = {
       ]},
       { title: 'ACCOUNT', items: [
         item('Payments', '₹', '/parent/payments', { ready: true }),
+        item('AI Credits', '✦', '/parent/ai-credits', { ready: true }),
         item('Documents', '🗎', '/parent/documents', { ready: true }),
         item('Support', '✉', '/parent/tickets', { ready: true }),
       ]},
@@ -151,6 +152,7 @@ export const PORTALS: Record<string, Portal> = {
       ]},
       { title: 'ACCOUNT', items: [
         item('Payments', '₹', '/student/payments', { ready: true }),
+        item('AI Credits', '✦', '/student/ai-credits', { ready: true }),
         item('My Profile', '◉', '/student/profile', { ready: true }),
         item('Help & Support', '✉', '/student/tickets', { ready: true }),
       ]},

@@ -298,6 +298,35 @@ export interface FinanceDashboardDto {
 
 
 
+export interface AiCreditPackDto { key: string; label: string; credits: number; amountPaise: number }
+/**
+ * `metered: false` is returned for staff — the school covers their AI usage —
+ * so the balance fields are absent rather than zero. A UI that shows "0 credits
+ * left" to a teacher would be reporting a limit that does not exist.
+ */
+export interface AiCreditStatusDto {
+  metered: boolean;
+  reason?: string;
+  freeAllowance?: number; freeUsed?: number; freeRemaining?: number;
+  paidBalance?: number; totalRemaining?: number;
+  periodKey?: string; freeResetsOn?: string;
+  lifetimeSpent?: number; lifetimePurchased?: number;
+  onlinePaymentEnabled?: boolean;
+  packs: AiCreditPackDto[];
+}
+export interface AiCreditOrderDto {
+  id: string; orderNo: string; packKey: string; credits: number;
+  amountPaise: number; status: 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED'; paidAt: string | null;
+}
+export interface AiCreditPurchaseDto {
+  order: AiCreditOrderDto;
+  paid: boolean;
+  linkKind?: 'IN_APP' | 'NONE';
+  url?: string | null;
+  message?: string;
+  wallet?: { totalRemaining: number; paidBalance: number; freeRemaining: number };
+}
+
 export type NotificationType =
   | 'ANNOUNCEMENT' | 'ASSIGNMENT' | 'MARKS' | 'ATTENDANCE'
   | 'FEES' | 'LIBRARY' | 'TICKET' | 'LEAVE' | 'SYSTEM';

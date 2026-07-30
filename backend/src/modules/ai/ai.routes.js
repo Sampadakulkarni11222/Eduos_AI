@@ -153,4 +153,69 @@ router.get('/tutor/syllabus', requirePermission('ai.copilot.use'), controller.tu
  */
 router.post('/tutor', requirePermission('ai.copilot.use'), controller.tutor);
 
+/**
+ * @swagger
+ * /ai/credits:
+ *   get:
+ *     summary: AI credit balance for the caller (free allowance, purchased balance, reset date)
+ *     description: >
+ *       Staff are not metered and receive `metered: false`. Students and parents
+ *       receive their free monthly allowance, remaining purchased credits, and
+ *       the packs they can buy.
+ *     tags: [AI]
+ *     responses:
+ *       200: { description: AI credit status }
+ */
+router.get('/credits', requirePermission('ai.copilot.use'), controller.creditStatus);
+
+/**
+ * @swagger
+ * /ai/credits/packs:
+ *   get:
+ *     summary: Purchasable credit packs and the free monthly allowance
+ *     tags: [AI]
+ *     responses:
+ *       200: { description: Credit packs }
+ */
+router.get('/credits/packs', requirePermission('ai.copilot.use'), controller.creditPacks);
+
+/**
+ * @swagger
+ * /ai/credits/orders:
+ *   get:
+ *     summary: The caller's own top-up history
+ *     tags: [AI]
+ *     responses:
+ *       200: { description: Credit orders fetched }
+ */
+router.get('/credits/orders', requirePermission('ai.copilot.use'), controller.creditOrders);
+
+/**
+ * @swagger
+ * /ai/credits/purchase:
+ *   post:
+ *     summary: Buy a credit pack for your own account
+ *     description: >
+ *       Credits are added only after the gateway captures the payment. With no
+ *       gateway configured the order is created and the caller is told to pay at
+ *       the school office — no fake success. Credits are deliberately not billed
+ *       through fee invoices, so they never appear in the school's fee ledger or
+ *       a family's outstanding dues.
+ *     tags: [AI]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [packKey]
+ *             properties:
+ *               packKey: { type: string, enum: [STARTER, STANDARD, TERM] }
+ *     responses:
+ *       201: { description: Credits added }
+ *       200: { description: Order created, payment pending }
+ *       402: { description: Not applicable — see /ai/tutor for the exhausted case }
+ */
+router.post('/credits/purchase', requirePermission('ai.copilot.use'), controller.buyCredits);
+
 export default router;
