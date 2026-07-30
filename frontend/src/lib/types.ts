@@ -298,6 +298,32 @@ export interface FinanceDashboardDto {
 
 
 
+export interface TutorModeDto { key: string; label: string }
+export interface TutorStatusDto { llmEnabled: boolean; modes: TutorModeDto[] }
+export interface TutorSyllabusDto {
+  enrollmentId: string;
+  className: string;
+  gradeName: string | null;
+  subjects: Array<{ id: string; name: string; code: string | null }>;
+}
+/**
+ * `generated: false` means no model produced this — `content` is null and
+ * `scaffold` holds a study plan built from the student's own timetable and
+ * results. The UI must label that difference rather than presenting a scaffold
+ * as if it were a tutor's answer.
+ */
+export interface TutorReplyDto {
+  mode: string; modeLabel: string;
+  subject: string | null; topic: string; className: string;
+  language: string; languageName: string;
+  content: string | null;
+  generated: boolean;
+  reason?: string;
+  scaffold?: string;
+  groundedOn: { subjects: string[]; performance: { overall: number; weakest: string | null } | null };
+  credits?: { charged: number; source: string; remaining: number };
+}
+
 export interface AiCreditPackDto { key: string; label: string; credits: number; amountPaise: number }
 /**
  * `metered: false` is returned for staff — the school covers their AI usage —

@@ -4,6 +4,26 @@ import dns from 'dns';
 // Configure DNS to prevent querySrv ECONNREFUSED on some networks (e.g. for MongoDB Atlas)
 dns.setServers(['8.8.8.8', '1.1.1.1']);
 
+/**
+ * Reads a numeric setting, treating a configured **0 as a real value**.
+ *
+ * The usual `Number(process.env.X) || fallback` idiom silently discards 0,
+ * because 0 is falsy. That is harmless for a port or a TTL, where 0 is
+ * meaningless anyway — but not for a quota. `AI_FREE_MONTHLY_CREDITS=0` means
+ * "no free tier", and the `|| 50` form quietly handed out 50 free AI answers
+ * instead. A billing setting that ignores what you configured is worse than one
+ * that refuses to start.
+ *
+ * Anything non-numeric or negative falls back, since those are typos rather
+ * than intent.
+ */
+export function numFromEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
 export const env = {
   NODE_ENV: process.env.NODE_ENV ?? 'development',
   PORT: Number(process.env.PORT) || 5000,

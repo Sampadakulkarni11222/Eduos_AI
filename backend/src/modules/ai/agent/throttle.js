@@ -1,5 +1,6 @@
 import { AppError } from '../../../utils/AppError.js';
 import { logger } from '../../../utils/logger.js';
+import { numFromEnv } from '../../../config/env.js';
 
 /**
  * Per-actor throttling and prompt-injection monitoring for the agent surface.
@@ -27,7 +28,7 @@ import { logger } from '../../../utils/logger.js';
 const WINDOW_MS = 60_000;
 
 /** Sustained conversational pace. Generous for a human, hostile to a script. */
-const MAX_CALLS_PER_WINDOW = Number(process.env.AGENT_RATE_LIMIT_PER_MIN) || 20;
+const MAX_CALLS_PER_WINDOW = numFromEnv('AGENT_RATE_LIMIT_PER_MIN', 20);
 
 /**
  * Injection attempts tolerated in the window before the surface closes for
@@ -38,7 +39,7 @@ const MAX_CALLS_PER_WINDOW = Number(process.env.AGENT_RATE_LIMIT_PER_MIN) || 20;
  * unlucky sentence is worse than useless. Repetition is the signal — nobody
  * probes a chatbot three times in a minute by accident.
  */
-const MAX_INJECTION_ATTEMPTS = Number(process.env.AGENT_INJECTION_STRIKES) || 3;
+const MAX_INJECTION_ATTEMPTS = numFromEnv('AGENT_INJECTION_STRIKES', 3);
 
 /**
  * Cool-off after the strike limit — deliberately short.
@@ -55,7 +56,7 @@ const MAX_INJECTION_ATTEMPTS = Number(process.env.AGENT_INJECTION_STRIKES) || 3;
  * response is the error-level log and the audit entry, which is what "monitor
  * for injection attempts" actually asks for.
  */
-const INJECTION_BLOCK_MS = Number(process.env.AGENT_INJECTION_BLOCK_MS) || 60_000;
+const INJECTION_BLOCK_MS = numFromEnv('AGENT_INJECTION_BLOCK_MS', 60_000);
 
 /** profileId → number[] of call timestamps within the window */
 const calls = new Map();

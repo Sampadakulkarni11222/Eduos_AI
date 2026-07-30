@@ -115,6 +115,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Assignments', '✐', '/parent/assignments', { ready: true }),
         item('Timetable', '▥', '/parent/timetable', { ready: true }),
         item('Course Material', '❑', '/parent/material', { ready: true }),
+        item('Study Help', '✦', '/parent/study-help', { ready: true }),
       ]},
       { title: 'SCHOOL LIFE', items: [
         item('Calendar & Events', '▤', '/parent/calendar', { ready: true }),
@@ -142,6 +143,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Performance', '◉', '/student/performance', { ready: true }),
         item('Attendance', '☱', '/student/attendance', { ready: true }),
         item('Course Material', '❑', '/student/material', { ready: true }),
+        item('Study Help', '✦', '/student/study-help', { ready: true }),
       ]},
       { title: 'SCHOOL LIFE', items: [
         item('Calendar & Events', '▤', '/student/calendar', { ready: true }),

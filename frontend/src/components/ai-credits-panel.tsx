@@ -94,10 +94,24 @@ export function AiCreditsPanel({ portalSlug }: { portalSlug: 'student' | 'parent
 
       {exhausted && (
         <Card style={{ borderColor: 'var(--danger, #b42318)' }}>
-          <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 16 }}>You have used this month&apos;s free AI answers</strong>
-          <p style={{ fontSize: 13.5, color: 'var(--text-2b)', marginTop: 6 }}>
-            Your free allowance returns on {resets}. Everything except AI-written answers still works as normal in the meantime.
-          </p>
+          {/* A school can set the free allowance to 0 and sell credits outright,
+              in which case there is no monthly reset to wait for and saying
+              otherwise would be misleading. */}
+          {(status.freeAllowance ?? 0) > 0 ? (
+            <>
+              <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 16 }}>You have used this month&apos;s free AI answers</strong>
+              <p style={{ fontSize: 13.5, color: 'var(--text-2b)', marginTop: 6 }}>
+                Your free allowance returns on {resets}. Everything except AI-written answers still works as normal in the meantime.
+              </p>
+            </>
+          ) : (
+            <>
+              <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 16 }}>AI answers need credits</strong>
+              <p style={{ fontSize: 13.5, color: 'var(--text-2b)', marginTop: 6 }}>
+                This school does not include a free monthly allowance. Everything except AI-written answers still works as normal.
+              </p>
+            </>
+          )}
         </Card>
       )}
 

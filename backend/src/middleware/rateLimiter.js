@@ -1,5 +1,5 @@
 import rateLimit from 'express-rate-limit';
-import { env } from '../config/env.js';
+import { env, numFromEnv } from '../config/env.js';
 import { sendError } from '../utils/response.js';
 
 /** General API limiter — sized for normal interactive dashboard usage. */
@@ -28,7 +28,7 @@ export const rateLimiter = rateLimit({
  */
 export const aiRateLimiter = rateLimit({
   windowMs: 60_000,
-  max: Number(process.env.RATE_LIMIT_AI_MAX) || 30,
+  max: numFromEnv('RATE_LIMIT_AI_MAX', 30),
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => String(req.actor?.profileId ?? req.ip),

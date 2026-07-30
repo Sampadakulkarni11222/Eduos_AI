@@ -4,6 +4,7 @@ import { AuditLog } from '../../models/auditLog.model.js';
 import { chargeOnline, createPaymentLink, isOnlinePaymentEnabled } from '../../providers/payment.provider.js';
 import { AppError } from '../../utils/AppError.js';
 import { logger } from '../../utils/logger.js';
+import { numFromEnv } from '../../config/env.js';
 
 /**
  * AI credit metering.
@@ -29,7 +30,7 @@ import { logger } from '../../utils/logger.js';
 const METERED_ROLES = new Set(['STUDENT', 'PARENT']);
 
 /** Free AI answers per metered profile per calendar month. */
-export const FREE_MONTHLY_CREDITS = Number(process.env.AI_FREE_MONTHLY_CREDITS) || 50;
+export const FREE_MONTHLY_CREDITS = numFromEnv('AI_FREE_MONTHLY_CREDITS', 50);
 
 /**
  * Purchasable packs.
@@ -137,12 +138,15 @@ export async function assertCanSpend(actor) {
   const freeRemaining = Math.max(0, FREE_MONTHLY_CREDITS - wallet.freeUsed);
 
   if (freeRemaining + wallet.paidBalance <= 0) {
-    throw new AppError(
-      `You have used all ${FREE_MONTHLY_CREDITS} free AI answers for this month. Add credits to carry on, or wait for the monthly reset.`,
-      402,
-      [],
-      'AI_CREDITS_EXHAUSTED'
-    );
+    // A school can set the free allowance to 0 to sell credits outright, and
+    // "you have used all 0 free AI answers" is nonsense to read. Say the true
+    // thing for each case instead.
+    const message =
+      FREE_MONTHLY_CREDITS > 0
+        ? `You have used all ${FREE_MONTHLY_CREDITS} free AI answers for this month. Add credits to carry on, or wait for the monthly reset.`
+        : 'AI answers need credits at this school. Add credits to carry on.';
+
+    throw new AppError(message, 402, [], 'AI_CREDITS_EXHAUSTED');
   }
 
   return wallet;
