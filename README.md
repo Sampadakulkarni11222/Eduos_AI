@@ -159,7 +159,9 @@ Everything below works out of the box in **safe development modes**; going live 
 | **Google Sign-In** | dev-only demo picker | set `GOOGLE_CLIENT_ID`(+`SECRET`), `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`; backend verifies the ID token audience via Google |
 | **Online payments** | `PAYMENT_PROVIDER=sandbox` — Pay Now captures instantly with `SANDBOX-…` refs on the **real** ledger, clearly labelled | add a gateway case in `src/providers/payment.provider.js` (Razorpay/Stripe), set `PAYMENT_PROVIDER`; `none` disables online payment cleanly |
 | **WhatsApp** | SIMULATION mode — the in-app phone frame drives the real bot brain as the logged-in user | set `WA_PHONE_NUMBER_ID`, `WA_ACCESS_TOKEN`, `WA_APP_SECRET`, point Meta's webhook at `/api/v1/whatsapp/webhook` |
-| **AI copilot** | deterministic, data-grounded answers from the caller's own scoped data (attendance, fees, homework, timetable, exams) | set `AI_PROVIDER` + an LLM API key and swap the `respond()` hook in `src/modules/ai/ai.service.js` |
+| **AI copilot / agent** | deterministic, data-grounded answers from the caller's own scoped data (attendance, fees, homework, timetable, exams), with confirm-before-commit on every write. **Needs no API key** | nothing — this is production behaviour, not a stub |
+| **AI-written answers** (tutor explanations, register OCR, intent fallback) | off unless a provider is configured | `AI_PROVIDER=gemini` + `GEMINI_API_KEY`, or `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`. Nothing else is implemented. Without one, tutor returns a labelled study plan from real data and charges no credits |
+| **AI credits** | students/parents get `AI_FREE_MONTHLY_CREDITS` (default 50) free AI answers a month, then buy packs; staff are never metered | set `AI_FREE_MONTHLY_CREDITS=0` to sell credits outright; add a real gateway for the top-up charge |
 | **File uploads** | stored on local disk under `backend/uploads/`, served at `/uploads/…` (type/size validated) | swap the handler in `backend/src/modules/uploads/upload.routes.js` for S3/GCS — the `{ fileUrl }` contract is unchanged |
 | **Growth/Risk scoring** | productized heuristics behind a service layer (deterministic, explainable) | replace the scoring services with an ML model when available |
 
@@ -172,7 +174,7 @@ Everything below works out of the box in **safe development modes**; going live 
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT` / `HOST` | `5000` / `localhost` | server bind |
-| `MONGO_URI` | `mongodb://localhost:27017/school_erp` | database |
+| `MONGO_URI_ATLAS` / `MONGO_URI` | `mongodb://localhost:27017/school_erp` | database. **`MONGO_URI_ATLAS` wins when set** — if it is present in `.env`, setting `MONGO_URI` has no effect and your command silently talks to the Atlas cluster instead. Override `MONGO_URI_ATLAS` to point at a local database, and check the `MongoDB connected → …` boot line before trusting a seed or migration |
 | `NODE_ENV` | `development` | in production, `devOtp` is never returned and Swagger defaults off |
 | `JWT_SECRET` | change-me | **must change in production** |
 | `ACCESS_TOKEN_EXPIRES_IN` / `REFRESH_TOKEN_TTL_DAYS` | `15m` / `30` | session lifetimes |
@@ -184,7 +186,14 @@ Everything below works out of the box in **safe development modes**; going live 
 | `PAYMENT_PROVIDER` | `sandbox` | `sandbox` \| `none` \| future gateway |
 | `GOOGLE_CLIENT_ID` | — | enables real Google sign-in verification |
 | `UPLOAD_DIR` / `UPLOAD_MAX_BYTES` | `uploads` / 15 MB | file uploads |
-| `WHATSAPP_VERIFY_TOKEN`, `WA_*` | — | WhatsApp webhook / live mode |
+| `WHATSAPP_VERIFY_TOKEN`, `WA_*` | — | WhatsApp webhook / live mode. Setting `WA_APP_SECRET` makes signature verification mandatory for **every** inbound request |
+| `AI_PROVIDER` | `rules` | `rules` (no model) \| `gemini` \| `anthropic`. No other value is implemented |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | — / `gemini-1.5-flash` | required by `AI_PROVIDER=gemini` |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | — / `claude-opus-5` | required by `AI_PROVIDER=anthropic` |
+| `AI_FREE_MONTHLY_CREDITS` | `50` | free AI answers per student/parent per month. **`0` is honoured** and means credits must be bought |
+| `RATE_LIMIT_AI_MAX` | `30`/min | HTTP limit on `/ai/*`, keyed on profile |
+| `AGENT_RATE_LIMIT_PER_MIN` | `20` | per-**actor** agent limit, enforced in the core so it also covers WhatsApp |
+| `AGENT_INJECTION_STRIKES` / `AGENT_INJECTION_BLOCK_MS` | `3` / `60000` | prompt-injection attempts before a cool-off, and its length |
 | `SWAGGER_ENABLED`, `CORS_ORIGIN`, `LOG_LEVEL` | dev defaults | ops |
 
 ### `frontend/.env`

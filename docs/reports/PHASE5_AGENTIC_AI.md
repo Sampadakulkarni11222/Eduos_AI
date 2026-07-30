@@ -49,7 +49,9 @@ The differentiator is **grounding, not the chat**. Subjects come from the studen
 
 ## LLM provider + intent parsing (`1703da2`)
 
-`ai.provider.js` follows the same shape as the payment and notification providers: real behaviour with credentials, an honest labelled fallback without. Uses `claude-opus-5` with adaptive thinking, checks `stop_reason` for a refusal **before** reading content, and degrades rather than throwing on provider errors.
+`ai.provider.js` follows the same shape as the payment and notification providers: real behaviour with credentials, an honest labelled fallback without. It checks `stop_reason` for a refusal **before** reading content, and degrades rather than throwing on provider errors.
+
+> **Updated 2026-07-30.** The provider now supports **Gemini as well as Anthropic** (`AI_PROVIDER=gemini` + `GEMINI_API_KEY`, default model `gemini-1.5-flash`; or `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`, default `claude-opus-5`). Anything else — including `openai`, which is *not* implemented despite what `API_KEYS_REQUIRED.md` used to claim — leaves generation off. The seam held: adding a second provider changed no caller.
 
 Intent parsing tries the deterministic rules **first** — cheaper, instant, predictable — and only falls through to the model for phrasings they miss. Three containments, none of which rely on the model behaving:
 
@@ -70,7 +72,8 @@ Stated plainly rather than left to be discovered:
 | Payment-link generation from the agent | **Built** — see the section below. |
 | "Generate this week's homework" | **Built** — see the section below. |
 | "Schedule a PTM" | Not built — no scheduling service backs it yet. |
-| Live LLM behaviour | **Never exercised.** No `ANTHROPIC_API_KEY` was available, so every test ran on the deterministic path. The provider, refusal handling, and model-proposal containment are code-reviewed, not runtime-verified. This is the largest untested surface in the phase. |
+| Tutor UI | **Built** (`5a2bb58`) — `/student/study-help`, `/parent/study-help`. |
+| A **successful** LLM generation | **Still never observed.** Initially there was no key at all; the deployment now has `AI_PROVIDER=gemini` with a key Google rejects (`API_KEY_INVALID`), so every call 400s and falls back. Tutor generation, vision OCR, model-proposal containment and the *charged* credit path remain code-reviewed, not runtime-verified. **What is now proven against a live-but-failing provider:** the credit gate refuses before any provider call, a provider failure charges nothing and degrades to a labelled study plan, and the full suite passes in that state. |
 
 ## Verification summary
 
@@ -555,14 +558,84 @@ fails):
 
 ### Not built
 
-**There is still no tutor UI.** Tutor mode has had a tested API since `4e261b0`
-but no screen in any portal, so the paywall a student would hit is currently
-only reachable through the API. The credits pages are live and honest about what
-costs what; the thing they meter has no front end yet. That is the next piece of
-work if you want this earning money.
+~~**There is still no tutor UI.**~~ **Built** in `5a2bb58` — see the section
+below.
 
 **Staff-side reporting.** No admin view of credit consumption or revenue, and no
 way for the office to grant credits after taking cash — the purchase path
 assumes the family pays online. With `PAYMENT_PROVIDER=none` the order is still
 created and the user is told to pay at the office, but an admin then has no
 button to settle it.
+
+---
+
+## Tutor UI (`5a2bb58`) — 28/28
+
+`/student/study-help` and `/parent/study-help`. This is what the credit metering
+was gating: until now, tutor mode had a tested API since `4e261b0` and no screen
+in any portal, so the paywall was reachable only over HTTP.
+
+### Two choices that are security, not styling
+
+**Model output is rendered as text, never as HTML.** It goes into a
+`white-space: pre-wrap` block, not `dangerouslySetInnerHTML`. Model output is
+shaped by whatever the student typed, so piping it through an HTML parser is a
+self-inflicted XSS on the one surface where the input is adversarial by nature.
+
+**A study plan is never dressed up as a tutor's answer.** When generation does
+not happen the card is badged amber **"study plan"**, states plainly that it is
+not AI-written and that nothing was charged, while a real answer is badged green
+**"AI answer"** with the credit cost in the footer. This is the same principle
+the tutor service was written with: a student cannot tell a plausible wrong
+answer from a right one, so the interface must not blur which is which.
+
+The paywall is detected from `ApiError.status === 402` / code
+`AI_CREDITS_EXHAUSTED`, not by matching words in the message — copy changes must
+not silently break the top-up prompt.
+
+### A bug in my own credit code, found by trying to reach the paywall
+
+`FREE_MONTHLY_CREDITS` read `Number(process.env.AI_FREE_MONTHLY_CREDITS) || 50`.
+**`0` is falsy**, so a school setting the allowance to zero — to sell credits
+outright — silently got 50 free answers per student per month instead. A billing
+setting that ignores what you configured is worse than one that refuses to
+start.
+
+Fixed with `numFromEnv()` in `config/env.js`, which treats a configured `0` as a
+real value and falls back only on non-numeric or negative input. Applied to the
+credit allowance and all three agent throttle knobs. It also surfaced copy that
+read as nonsense at zero — *"You have used all 0 free AI answers"* — now
+corrected in the API message and both UI cards.
+
+### Verified
+
+**28/28** against the live API — every field the panel reads, all five modes,
+the off-syllabus refusal naming the student's real subjects, missing topic and
+unknown mode rejected, parent gets their child's class, and a teacher with no
+student record gets a clean `404 NO_STUDENT_RECORD` the page can show as a setup
+message rather than a crash. Plus `402` with a working **Add credits** link, and
+`400` still winning over `402` for an off-syllabus request from an account with
+no credits.
+
+No regressions: credits **41/41**, agent core **30/30**, WhatsApp **19/19**,
+tools **29/29**, fee engine **18/18**, OCR **25/25**, QA-4/5/8 **22/22**, QA-6
+**32/32**, Phase 3 security **10/10**, both matrices clean, `next build` clean.
+
+### Two test suites that broke for correct reasons
+
+The deployment's `.env` changed mid-session — a Gemini key and `WA_APP_SECRET`
+were added — and two suites failed as a direct result. Neither was a code fault:
+
+- **`wa-test` 4/19.** With `WA_APP_SECRET` set, the webhook correctly rejects
+  unsigned payloads. The suite had been posting unsigned bodies, which only ever
+  worked because the verifier fails open when no secret is configured (by
+  design, for simulation mode). The Phase 3 signature check was doing its job.
+  The suite now HMAC-signs from the same `.env` the server reads.
+- **`credits-test` 35/36.** A key being present flips `llmEnabled` to true, so
+  the credit gate engages and an exhausted student gets `402` — correct, but the
+  suite was asserting the un-metered branch. It now asks `/ai/tutor/status`
+  whether a model is live instead of trusting an env flag.
+
+Both now follow the deployment rather than assuming it, which is the general
+lesson: a test that hardcodes configuration tests the wrong branch the moment
+configuration changes.

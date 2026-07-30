@@ -59,22 +59,44 @@ production. Local `eduos_local` is already seeded with it.
 | 2 | **Phase 4 issues sheet** | Your brief said *"attach your issues sheet here before running this phase."* It never arrived, so Phase 4 was closed against the 11 issues I found myself, with no mapping to your list. |
 | 3 | Parent multi-child switcher | Product decision: global switch in the shell vs per-page. Flagged, not chosen unilaterally. |
 | 4 | Git history purge of `backend/uploads/` | You chose to skip. Tracking stopped in `5ff2862`; the old blobs (two ~1 MB AWS certificate PDFs) remain in history. |
-| 5 | An `ANTHROPIC_API_KEY` | See below — the single biggest untested surface. |
+| 5 | **A working `GEMINI_API_KEY`** | The one in `.env` is rejected by Google — see below. This is the only thing standing between you and a working AI layer. |
+| 6 | Commit or discard the Gemini provider work | `backend/src/providers/ai.provider.js`, `package.json` and `package-lock.json` are modified in your tree and left uncommitted — that is your change, not mine. |
+
+### The Gemini key in `.env` is invalid
+
+`AI_PROVIDER=gemini` with a `GEMINI_API_KEY` that Google rejects:
+
+```
+Gemini generation failed: [400 Bad Request] API key not valid. Please pass a valid API key.
+reason: API_KEY_INVALID
+```
+
+**What that looks like from the outside, and why it is confusing:** `llmEnabled`
+reports `true` (a key is present), so the credit gate engages and an exhausted
+student correctly gets `402`. But every generation then fails and falls back to
+the deterministic study plan, so AI answers never appear. Nobody is charged —
+the charge only happens after a model actually produces text — but if you were
+debugging this without the logs you would reasonably conclude the feature was
+broken. Replace the key and the whole AI layer comes alive with no code change.
+
+`@google/generative-ai` was declared in `package.json` but not installed, so the
+backend would not boot at all (`ERR_MODULE_NOT_FOUND`). Fixed by `npm install`;
+run it after pulling.
 
 ### Cannot be verified in this environment
 
 | Item | Blocker |
 |---|---|
-| **Live LLM behaviour** | No API key. Every test ran the deterministic path. The provider, refusal handling (`stop_reason`), model-proposal containment, tutor generation and the *charged* credit path are code-reviewed, not runtime-verified. I proved the credit **gate** with a deliberately invalid key, which exercises refusal-before-provider-call and no-charge-on-failure — but never a successful generation. |
+| **A successful LLM generation** | Never observed. Without a key the deterministic path runs; with the current invalid key every call 400s. So tutor generation, vision OCR, model-proposal containment and the *charged* credit path remain code-reviewed, not runtime-verified. What **is** proven: the credit gate refuses before any provider call, a provider failure charges nothing and degrades to a labelled study plan, and both suites pass against a live-but-failing provider. |
+| Manual NVDA/VoiceOver pass | Screen-reader announcement order and focus-trap feel cannot be automated. Targets: login, pay-invoice, assignment submit. |
+| 375px device sweep | Needs real devices. |
 | Manual NVDA/VoiceOver pass | Screen-reader announcement order and focus-trap feel cannot be automated. Targets: login, pay-invoice, assignment submit. |
 | 375px device sweep | Needs real devices. |
 
 ### Next build items, in the order I would do them
 
-1. **Tutor UI — blocks revenue.** Tutor mode has a tested API since `4e261b0`
-   and **no screen in any portal**. The credits feature meters something a
-   student cannot currently reach. Build this first if the paywall is meant to
-   earn anything.
+1. ~~Tutor UI~~ — **built** (`5a2bb58`). `/student/study-help` and
+   `/parent/study-help`, with the paywall wired to the top-up page.
 2. **Credits admin surface.** No staff view of consumption or revenue, and with
    `PAYMENT_PROVIDER=none` an order is created telling the family to pay at the
    office — but no one has a button to settle it afterwards.
@@ -196,7 +218,9 @@ Password for every account: `ChangeMe@123!`
 | `AGENT_INJECTION_BLOCK_MS` | 60000 | Cool-off length. |
 | `RATE_LIMIT_AI_MAX` | 30 | HTTP limiter on `/ai/*`. |
 | `PAYMENT_PROVIDER` | `sandbox` | `none` to test the "pay at the office" path. |
-| `AI_PROVIDER` + `ANTHROPIC_API_KEY` | unset | Both required for any real AI generation. |
+| `AI_PROVIDER` | `rules` in code, **`gemini` in your `.env`** | `gemini`, `anthropic`, or `rules` to switch generation off. No other value works. |
+| `GEMINI_API_KEY` / `ANTHROPIC_API_KEY` | set (Gemini, invalid) | Required by the matching provider. |
+| `WA_APP_SECRET` | set in your `.env` | **Once set, every webhook request must be HMAC-signed** — including test scripts. |
 
 **Throttle counters live in memory — restart the backend to clear them.** If
 credit or injection tests behave oddly, that is usually leftover state from a
@@ -237,14 +261,25 @@ AI_FREE_MONTHLY_CREDITS=2 MONGO_URI_ATLAS="mongodb://localhost:27017/eduos_local
 7. **Confirm credits are not in the fee ledger.** As admin or finance, open
    Payments/Invoices — no `AIC-…` order appears among fee invoices.
 
-**The paywall itself needs an API key.** Without `AI_PROVIDER=anthropic` +
-`ANTHROPIC_API_KEY`, `/ai/tutor` returns a free study plan built from the
-student's own timetable and marks (`generated: false`) and charges nothing —
-which is the designed behaviour, not a fault. To see the `402`:
+**The paywall only engages when a provider is configured.** With
+`AI_PROVIDER=rules` (or no key), `/ai/tutor` returns a free study plan built
+from the student's own timetable and marks (`generated: false`) and charges
+nothing — designed behaviour, not a fault.
+
+Your `.env` already sets `AI_PROVIDER=gemini` with a key, so the gate is live
+today. To force the `402` on demand, set the free allowance to zero — **0 is
+honoured**, it is not treated as "unset":
 
 ```bash
-# Deliberately invalid key: the gate engages, generation then fails.
-AI_PROVIDER=anthropic ANTHROPIC_API_KEY="sk-ant-invalid" AI_FREE_MONTHLY_CREDITS=0 \
+AI_FREE_MONTHLY_CREDITS=0 \
+MONGO_URI_ATLAS="mongodb://localhost:27017/eduos_local" PORT=5055 npm run dev
+```
+
+Any invalid key produces the same gate, which is how this was verified before a
+real one existed:
+
+```bash
+AI_PROVIDER=gemini GEMINI_API_KEY="not-a-real-key" AI_FREE_MONTHLY_CREDITS=0 \
 MONGO_URI_ATLAS="mongodb://localhost:27017/eduos_local" PORT=5055 npm run dev
 ```
 
@@ -261,6 +296,29 @@ curl -s -X POST http://127.0.0.1:5055/api/v1/ai/tutor -H "Authorization: Bearer 
 curl -s -X POST http://127.0.0.1:5055/api/v1/ai/tutor -H "Authorization: Bearer $TOK" \
   -H 'Content-Type: application/json' -d '{"subject":"Astrophysics","topic":"quasars"}'
 ```
+
+### A2. Tutor / Study Help (the thing credits pay for)
+
+Log in as **`student.1@schoolerp.com`** → **Academics → Study Help**.
+
+1. The subject dropdown lists **only that student's own subjects**, and the
+   header shows their class. Pick a topic ("fractions") and a mode.
+2. Press **Get help**. What you should see depends on the provider:
+   - **Working key:** an AI answer, badged green **"AI answer"**, and the credit
+     pill drops by 1 with "1 credit used" in the footer.
+   - **No key, or an invalid one (your current state):** a study plan, badged
+     amber **"study plan"**, with "This is not an AI-written answer… Nothing was
+     charged for it." The credit pill does **not** move.
+   That badge is the whole point — a student must never mistake a plan for a
+   tutor's answer.
+3. Try all five modes; each returns something usable either way.
+4. Ask for a subject they do not study (type one into the URL/API — the dropdown
+   will not offer it): refused with a message naming their real subjects.
+5. **Paywall:** restart with `AI_FREE_MONTHLY_CREDITS=0`, ask again, and you get
+   a red card titled *"Credits needed to continue"* with an **Add credits**
+   button that lands on `/student/ai-credits`.
+6. As **`teacher@schoolerp.com`**, `/ai/tutor/syllabus` returns `404
+   NO_STUDENT_RECORD` — the page shows that as a setup message, not a crash.
 
 ### B. Agent guardrails (§5.4)
 
@@ -324,7 +382,20 @@ RATE_LIMIT_AI_MAX=100000` to the backend, because they legitimately probe
 injection repeatedly and would trip the guardrail. `guardrails-test.mjs` must run
 against **default** limits to be meaningful.
 
-Last full run, all green: credits 41/41 (with LLM gate) · guardrails 24/24 ·
+**Two suites read your configuration rather than assuming it**, after both broke
+when `.env` changed mid-session:
+
+- `wa-test.mjs` HMAC-signs its webhook payloads with `WA_APP_SECRET` read from
+  `backend/.env`. It went 4/19 the moment you set a real secret, because
+  unsigned requests are correctly rejected — the signature check working, not a
+  bug. If you rotate the secret, the suite follows automatically.
+- `credits-test.mjs` asks `/ai/tutor/status` whether a model is live instead of
+  taking an env flag, because the credit gate only engages when one is. It
+  now runs its metered branch (41 assertions) automatically when a provider is
+  configured, and the un-metered branch when not.
+
+Last full run, all green, against `AI_PROVIDER=gemini` with an invalid key and
+`WA_APP_SECRET` set: tutor UI 28/28 · credits 41/41 (metered branch) ·
 agent 30/30 · WhatsApp 19/19 · tools 29/29 · fee engine 18/18 · OCR 25/25 ·
 QA-4/5/8 22/22 · QA-6 32/32 · Phase 3 security 10/10 · RBAC matrix 0 violations ·
-dashboard matrix 0 exposures · `next build` clean, 96 routes.
+dashboard matrix 0 exposures · `next build` clean, 98 routes.

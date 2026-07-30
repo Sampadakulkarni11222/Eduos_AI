@@ -69,9 +69,15 @@ This document lists all API keys, credentials, and configuration variables neede
 
 | Variable | Required | Description | Options |
 |----------|----------|-------------|---------|
-| `AI_PROVIDER` | No | AI copilot provider | `rules` (default), `anthropic`, `openai` |
+| `AI_PROVIDER` | No | AI provider | `rules` (default), `gemini`, `anthropic` |
+| `GEMINI_API_KEY` | Conditional* | Google Gemini API key | (get from https://aistudio.google.com/apikey) |
+| `GEMINI_MODEL` | No | Gemini model | `gemini-1.5-flash` (default) |
 | `ANTHROPIC_API_KEY` | Conditional* | Anthropic Claude API key | (get from https://console.anthropic.com) |
-| `OPENAI_API_KEY` | Conditional* | OpenAI API key | (get from https://platform.openai.com) |
+| `ANTHROPIC_MODEL` | No | Claude model | `claude-opus-5` (default) |
+| `AI_FREE_MONTHLY_CREDITS` | No | Free AI answers per student/parent per month. **`0` is honoured** and means credits must be bought | `50` (default) |
+| `WA_PHONE_NUMBER_ID` | No | Meta WhatsApp Business phone number ID | — |
+| `WA_ACCESS_TOKEN` | No | Meta WhatsApp Business access token | — |
+| `WA_APP_SECRET` | No | Verifies inbound webhook signatures. **Once set, every request must be signed** | — |
 | `SMS_PROVIDER` | No | SMS OTP delivery service | `console` (dev-only), `twilio`, `msg91`, `aws-sns` |
 | `EMAIL_PROVIDER` | No | Email OTP delivery service | `console` (dev-only), `sendgrid`, `aws-ses`, `resend` |
 | `PAYMENT_PROVIDER` | No | Payment gateway | `sandbox` (dev), `none`, `razorpay`, `stripe` |
@@ -170,18 +176,43 @@ This document lists all API keys, credentials, and configuration variables neede
 
 **In development:** `WHATSAPP_VERIFY_TOKEN=change-this-verify-token` (simulation mode only)
 
-### 6. **AI/LLM APIs** (Optional - for advanced copilot features)
+### 6. **AI/LLM APIs** (Optional)
 
-**Provider options:**
+**Provider options — only these are implemented:**
+- **Google Gemini** → `AI_PROVIDER=gemini`
+  - Get API key: https://aistudio.google.com/apikey
+  - Requires: `GEMINI_API_KEY` (optional `GEMINI_MODEL`, default `gemini-1.5-flash`)
+
 - **Anthropic Claude** → `AI_PROVIDER=anthropic`
   - Get API key: https://console.anthropic.com/
-  - Requires: `ANTHROPIC_API_KEY`
-  
-- **OpenAI GPT** → `AI_PROVIDER=openai`
-  - Get API key: https://platform.openai.com/
-  - Requires: `OPENAI_API_KEY`
+  - Requires: `ANTHROPIC_API_KEY` (optional `ANTHROPIC_MODEL`, default `claude-opus-5`)
 
-**In development:** `AI_PROVIDER=rules` (uses deterministic rule-based responses, no API key needed)
+Setting `AI_PROVIDER` to anything else — including `openai`, which this project
+does **not** implement — leaves generation switched off.
+
+**What a key actually buys you.** Most of the assistant needs no model at all:
+attendance, fees, results, timetable, homework, leave, payment links and
+announcements are deterministic database reads, and `/ai/chat` is a rule-based
+intent matcher. A key adds exactly three things:
+
+1. **Tutor mode** — AI-written explanations, practice questions, flashcards,
+   notes and mind maps (`/ai/tutor`). This is the only surface that consumes AI
+   credits.
+2. **OCR of paper attendance registers** — vision transcription of a photo.
+3. **Intent fallback** — phrasings the rule parser misses.
+
+**Without a key** (`AI_PROVIDER=rules`, or a provider with no key): tutor
+requests return `generated: false` with a study plan built from the student's
+own timetable and marks, **and charge nothing**. Nothing breaks; the AI-written
+parts are simply absent and labelled as such.
+
+**A key that is present but invalid** behaves differently and is worth knowing:
+`llmEnabled` reports `true`, the credit gate engages, then every call fails and
+falls back to the same study plan. Users are still not charged — the charge only
+happens after a model actually produces text — but you will see
+`Gemini generation failed` / `LLM generation failed` in the logs. If AI answers
+are silently never appearing, check the logs for that before assuming the code
+is wrong.
 
 ### 7. **MongoDB** (Required)
 
