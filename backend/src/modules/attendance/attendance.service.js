@@ -26,12 +26,28 @@ async function assertTeacherOwnsSection(actor, scope, sectionId) {
   }
 }
 
-export async function getRoster(actor, scope, sectionId, date) {
+/**
+ * Roster for a section on a date, optionally for one timetabled period.
+ *
+ * `periodNo` null means whole-day attendance, which is all this used to
+ * support — the roster hardcoded `periodNo: null`, so even though marking
+ * accepted a period, there was no way to read one back and no way for a
+ * teacher to mark one. That is why every attendance record in the system is
+ * day-level, and in turn why per-subject attendance could only ever be
+ * inferred (see getSubjectWiseSummary).
+ *
+ * The response also lists the periods timetabled for that weekday, so the
+ * caller can offer the choice without a second request.
+ */
+export async function getRoster(actor, scope, sectionId, date, periodNo = null) {
   if (!sectionId) throw new AppError('sectionId is required', 400);
   if (!date) throw new AppError('date is required', 400);
 
   const day = parseDateToMidnight(date);
   if (!day) throw new AppError('Invalid date format', 400);
+
+  const period = periodNo === null || periodNo === undefined || periodNo === '' ? null : Number(periodNo);
+  if (period !== null && !Number.isInteger(period)) throw new AppError('periodNo must be a whole number', 400);
 
   await assertTeacherOwnsSection(actor, scope, sectionId);
 
@@ -42,10 +58,29 @@ export async function getRoster(actor, scope, sectionId, date) {
     .populate('studentId')
     .sort({ rollNo: 1 });
 
+  // getUTCDay(): 0=Sun..6=Sat; the timetable uses 1=Mon..7=Sun.
+  const dow = day.getUTCDay() === 0 ? 7 : day.getUTCDay();
+  const slots = await TimetableSlot.find({ sectionId, dayOfWeek: dow })
+    .populate({ path: 'subjectOfferingId', populate: { path: 'subjectId', select: 'name' } })
+    .sort({ periodNo: 1 });
+
+  const periods = slots
+    .filter((s) => s.subjectOfferingId?.subjectId?.name)
+    .map((s) => ({
+      periodNo: s.periodNo,
+      subject: s.subjectOfferingId.subjectId.name,
+      startTime: s.startTime ?? null,
+      endTime: s.endTime ?? null,
+    }));
+
+  if (period !== null && !periods.some((p) => p.periodNo === period)) {
+    throw new AppError(`Period ${period} is not timetabled for this section on that day.`, 400, [], 'PERIOD_NOT_SCHEDULED');
+  }
+
   const records = await AttendanceRecord.find({
     enrollmentId: { $in: enrollments.map((e) => e._id) },
     date: day,
-    periodNo: null,
+    periodNo: period,
   });
   const recordByEnrollment = new Map(records.map((r) => [r.enrollmentId.toString(), r]));
 
@@ -63,7 +98,9 @@ export async function getRoster(actor, scope, sectionId, date) {
       name: `${section.gradeId?.name ?? ''} ${section.name}`.trim(),
     },
     date,
-    periodNo: null,
+    periodNo: period,
+    subject: period === null ? null : periods.find((p) => p.periodNo === period)?.subject ?? null,
+    periods,
     roster,
   };
 }
@@ -108,7 +145,9 @@ export async function markAttendance(actor, { date, periodNo = null, records, en
   }));
 
   await AttendanceRecord.bulkWrite(ops);
-  return getRoster(actor, 'ALL', sectionId, date);
+  // Same period back, so the caller sees what it just wrote rather than the
+  // whole-day roster.
+  return getRoster(actor, 'ALL', sectionId, date, periodNo);
 }
 
 const VALID_STATUSES = new Set(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY']);

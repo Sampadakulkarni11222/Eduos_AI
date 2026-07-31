@@ -33,6 +33,10 @@ export default function AttendancePage() {
   const [saved, setSaved] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [showBulk, setShowBulk] = useState(false);
+  // null = whole day. Marking a period is what produces genuine per-subject
+  // attendance; without it every record is day-level and subject breakdowns
+  // can only be inferred from the timetable.
+  const [periodNo, setPeriodNo] = useState<number | null>(null);
 
   useEffect(() => {
     api.mySections().then((s) => { setSections(s); if (s[0]) setSectionId(s[0].id); }).catch(() => setSections([]));
@@ -41,12 +45,12 @@ export default function AttendancePage() {
   // Guards against an older in-flight roster response overwriting a newer one
   // when the teacher switches section/date quickly.
   const loadSeq = useRef(0);
-  const load = useCallback(async (sid: string, d: string) => {
+  const load = useCallback(async (sid: string, d: string, p: number | null) => {
     if (!sid) return;
     const seq = ++loadSeq.current;
     setLoading(true); setSaved(false); setSaveErr(null);
     try {
-      const r = await api.attendanceRoster(sid, d);
+      const r = await api.attendanceRoster(sid, d, p ?? undefined);
       if (seq !== loadSeq.current) return;
       setData(r);
       const initial: Record<string, AttStatus> = {};
@@ -59,7 +63,14 @@ export default function AttendancePage() {
     }
   }, []);
 
-  useEffect(() => { if (sectionId) void load(sectionId, date); }, [sectionId, date, load]);
+  useEffect(() => { if (sectionId) void load(sectionId, date, periodNo); }, [sectionId, date, periodNo, load]);
+
+  // A period only exists on the day it is timetabled, so switching to a day
+  // that lacks the selected one falls back to whole-day rather than erroring.
+  useEffect(() => {
+    if (periodNo === null || !data) return;
+    if (!data.periods.some((p) => p.periodNo === periodNo)) setPeriodNo(null);
+  }, [data, periodNo]);
 
   const allPresent = () => {
     if (!data) return;
@@ -76,7 +87,12 @@ export default function AttendancePage() {
         .filter((r) => marks[r.enrollmentId] !== undefined)
         .map((r) => ({ enrollmentId: r.enrollmentId, status: marks[r.enrollmentId]! }));
       if (!entries.length) { setSaveErr('Mark at least one student before saving.'); setSaving(false); return; }
-      const updatedRoster = await api.markAttendance({ sectionId: data.section.id, date, entries });
+      const updatedRoster = await api.markAttendance({
+        sectionId: data.section.id,
+        date,
+        ...(periodNo !== null && { periodNo }),
+        entries,
+      });
       setData(updatedRoster);
       const nextMarks: Record<string, AttStatus> = {};
       updatedRoster.roster.forEach((row) => { if (row.status) nextMarks[row.enrollmentId] = row.status; });
@@ -108,6 +124,23 @@ export default function AttendancePage() {
           ))}
         </select>
         <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Date" disabled={saving} />
+        {data && data.periods.length > 0 && (
+          <select
+            className="input"
+            value={periodNo ?? ''}
+            onChange={(e) => setPeriodNo(e.target.value === '' ? null : Number(e.target.value))}
+            aria-label="Period"
+            disabled={saving}
+            title="Mark the whole day, or one timetabled period for per-subject attendance"
+          >
+            <option value="">Whole day</option>
+            {data.periods.map((p) => (
+              <option key={p.periodNo} value={p.periodNo}>
+                P{p.periodNo} · {p.subject}{p.startTime ? ` (${p.startTime})` : ''}
+              </option>
+            ))}
+          </select>
+        )}
         {data && data.roster.length > 0 && <Button variant="soft" small onClick={allPresent} disabled={saving}>Mark all present</Button>}
         {summary && (
           <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--text-2)' }}>
@@ -122,9 +155,9 @@ export default function AttendancePage() {
           description={`Upload a CSV of admission numbers (or roll numbers) with a status to mark attendance for "${data.section.name}" on ${date} in one go.`}
           templateHeaders={['admissionNo', 'rollNo', 'status', 'note']}
           templateSampleRow={['ADM-2026-0010', '12', 'PRESENT', '']}
-          onSubmit={(file) => api.bulkMarkAttendance(file, data.section.id, date)}
+          onSubmit={(file) => api.bulkMarkAttendance(file, data.section.id, date, periodNo ?? undefined)}
           onClose={() => setShowBulk(false)}
-          onImported={() => { setShowBulk(false); void load(sectionId, date); }}
+          onImported={() => { setShowBulk(false); void load(sectionId, date, periodNo); }}
         />
       )}
 

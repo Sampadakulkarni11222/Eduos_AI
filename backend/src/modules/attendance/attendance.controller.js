@@ -4,8 +4,8 @@ import { parseCsvRows } from '../../utils/csvImport.js';
 import * as service from './attendance.service.js';
 
 export const getRoster = asyncHandler(async (req, res) => {
-  const { sectionId, date } = req.query;
-  const roster = await service.getRoster(req.actor, req.scope, sectionId, date);
+  const { sectionId, date, periodNo } = req.query;
+  const roster = await service.getRoster(req.actor, req.scope, sectionId, date, periodNo ?? null);
   sendSuccess(res, roster, 'Roster fetched');
 });
 

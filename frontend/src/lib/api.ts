@@ -348,6 +348,10 @@ export const api = {
   // it turned a renamed field into a silent ₹0 instead of a visible failure,
   // which is how a broken dashboard went unnoticed.
   feeSummary: () => request<FeeSummary>('/fees/summary'),
+  verifyCheckout: (body: { orderId: string; paymentId: string; signature: string }) =>
+    request<{ handled: boolean; idempotent?: boolean; receiptNo?: string; invoiceNo?: string; invoiceStatus?: string; paidPaise?: number }>(
+      '/fees/pay/verify', { method: 'POST', body: JSON.stringify(body) }
+    ),
   recordPayment: (body: { invoiceId: string; amountPaise: number; mode: string; gatewayRef?: string }) =>
     request<{ receiptNo: string; status: string; paidPaise: number }>('/fees/payments', { method: 'POST', body: JSON.stringify(body) }),
   listPayments: (invoiceId?: string) =>

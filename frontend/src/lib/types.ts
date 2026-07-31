@@ -79,7 +79,16 @@ export interface StaffAccountDto {
 }
 export interface RosterRow { enrollmentId: string; rollNo: number | null; studentName: string; status: AttStatus | null; note: string | null }
 export type AttStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY';
-export interface AttendanceRoster { section: { id: string; name: string }; date: string; periodNo: number | null; roster: RosterRow[] }
+export interface TimetabledPeriod { periodNo: number; subject: string; startTime: string | null; endTime: string | null }
+/** `periodNo: null` is whole-day attendance; `periods` lists what is timetabled that weekday. */
+export interface AttendanceRoster {
+  section: { id: string; name: string };
+  date: string;
+  periodNo: number | null;
+  subject: string | null;
+  periods: TimetabledPeriod[];
+  roster: RosterRow[];
+}
 export interface MySubmission { status: 'PENDING' | 'SUBMITTED' | 'LATE' | 'GRADED' | 'EXEMPT'; submittedAt: string | null; marks: number | null; feedback: string | null; attachments: string[] }
 export interface AssignmentDto {
   id: string; title: string; description?: string | null; type: string; chapter?: string | null;
