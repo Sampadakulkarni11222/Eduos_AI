@@ -50,7 +50,9 @@ export const agent = asyncHandler(async (req, res) => {
   if (!message) throw new AppError('message is required', 400);
   sendSuccess(
     res,
-    await agentCore.runAgent({
+    // Safe variant: a provider outage degrades to the rule-based answer rather
+    // than a 500 the client can only render as "could not reach the assistant".
+    await agentCore.runAgentSafely({
       message,
       actor: req.actor,
       source: source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB',

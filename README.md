@@ -188,7 +188,7 @@ Everything below works out of the box in **safe development modes**; going live 
 | `UPLOAD_DIR` / `UPLOAD_MAX_BYTES` | `uploads` / 15 MB | file uploads |
 | `WHATSAPP_VERIFY_TOKEN`, `WA_*` | — | WhatsApp webhook / live mode. Setting `WA_APP_SECRET` makes signature verification mandatory for **every** inbound request |
 | `AI_PROVIDER` | `rules` | `rules` (no model) \| `gemini` \| `anthropic`. No other value is implemented |
-| `GEMINI_API_KEY` / `GEMINI_MODEL` | — / `gemini-1.5-flash` | required by `AI_PROVIDER=gemini` |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | — / `gemini-3.6-flash` | required by `AI_PROVIDER=gemini` |
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | — / `claude-opus-5` | required by `AI_PROVIDER=anthropic` |
 | `AI_FREE_MONTHLY_CREDITS` | `50` | free AI answers per student/parent per month. **`0` is honoured** and means credits must be bought |
 | `RATE_LIMIT_AI_MAX` | `30`/min | HTTP limit on `/ai/*`, keyed on profile |

@@ -71,7 +71,7 @@ This document lists all API keys, credentials, and configuration variables neede
 |----------|----------|-------------|---------|
 | `AI_PROVIDER` | No | AI provider | `rules` (default), `gemini`, `anthropic` |
 | `GEMINI_API_KEY` | Conditional* | Google Gemini API key | (get from https://aistudio.google.com/apikey) |
-| `GEMINI_MODEL` | No | Gemini model | `gemini-1.5-flash` (default) |
+| `GEMINI_MODEL` | No | Gemini model | `gemini-3.6-flash` (default) |
 | `ANTHROPIC_API_KEY` | Conditional* | Anthropic Claude API key | (get from https://console.anthropic.com) |
 | `ANTHROPIC_MODEL` | No | Claude model | `claude-opus-5` (default) |
 | `AI_FREE_MONTHLY_CREDITS` | No | Free AI answers per student/parent per month. **`0` is honoured** and means credits must be bought | `50` (default) |
@@ -181,7 +181,7 @@ This document lists all API keys, credentials, and configuration variables neede
 **Provider options — only these are implemented:**
 - **Google Gemini** → `AI_PROVIDER=gemini`
   - Get API key: https://aistudio.google.com/apikey
-  - Requires: `GEMINI_API_KEY` (optional `GEMINI_MODEL`, default `gemini-1.5-flash`)
+  - Requires: `GEMINI_API_KEY` (optional `GEMINI_MODEL`, default `gemini-3.6-flash`)
 
 - **Anthropic Claude** → `AI_PROVIDER=anthropic`
   - Get API key: https://console.anthropic.com/

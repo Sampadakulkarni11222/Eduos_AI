@@ -5,7 +5,7 @@ import { checkAgentRate, recordInjectionAttempt } from './throttle.js';
 import { AppError } from '../../../utils/AppError.js';
 import { logger } from '../../../utils/logger.js';
 import { getTool, toolsAvailableTo } from './tools.js';
-import { parseIntentWithLlm } from './intent.js';
+import { parseIntentWithLlm, parseIntent } from './intent.js';
 import { detectLanguage, t } from '../../../utils/language.js';
 
 const CONFIRM_TTL_MINUTES = 10;
@@ -134,6 +134,81 @@ function speakOf(result, lang) {
 }
 
 /* ── Entry point ───────────────────────────────────────────── */
+/**
+ * Errors that are *answers*, not faults.
+ *
+ * "You may not do that" and "I need a date" are the assistant working
+ * correctly, and must keep their status codes. Everything else — a provider
+ * outage, a timeout, a bug — is an infrastructure failure the user should not
+ * be made to care about.
+ */
+function isMeaningfulRefusal(err) {
+  const status = err?.statusCode ?? err?.status;
+  return typeof status === 'number' && status >= 400 && status < 500;
+}
+
+/**
+ * runAgent() with a floor under it.
+ *
+ * The assistant previously surfaced any unexpected failure as a raw 500, which
+ * the web client rendered as "Sorry — I could not reach the assistant just
+ * now." — a dead end that told the user nothing and offered no way forward,
+ * even when the question was one the deterministic rules could have answered
+ * without the model at all.
+ *
+ * So on an infrastructure failure this retries the same message through the
+ * rule-based path only (no LLM), and answers from live school data if a read
+ * tool matches. Failing that, it says plainly that the AI service is
+ * unavailable and lists what still works. Either way the endpoint returns 200:
+ * the user's question was received and handled, and a degraded answer is not
+ * an HTTP error.
+ */
+export async function runAgentSafely(opts) {
+  try {
+    return await runAgent(opts);
+  } catch (err) {
+    if (isMeaningfulRefusal(err)) throw err;
+
+    const { message, actor, lang: langOverride } = opts ?? {};
+    const lang = langOverride ?? detectLanguage(message ?? '');
+    logger.error(`Agent failed, falling back to rules: ${err?.message}`);
+
+    try {
+      const intent = parseIntent(message ?? '', actor);
+      const tool = intent ? getTool(intent.tool) : null;
+
+      // Reads only. A write needs a confirmation round-trip, and proposing one
+      // while the system is already misbehaving is how a bad state gets
+      // committed.
+      if (tool && !tool.mutates) {
+        const scope = checkAuthorization(actor, tool);
+        const result = await tool.execute(actor, scope, intent.args ?? {});
+        return {
+          reply: speakOf(result, lang),
+          data: result.data,
+          lang,
+          action: null,
+          tool: intent.tool,
+          degraded: true,
+        };
+      }
+    } catch (fallbackErr) {
+      logger.error(`Rule-based fallback also failed: ${fallbackErr?.message}`);
+    }
+
+    const available = toolsAvailableTo(actor);
+    return {
+      reply: t('agent.degraded', lang, {
+        capabilities: available.map((tool) => tool.description.toLowerCase()).slice(0, 5).join('; '),
+      }),
+      lang,
+      action: null,
+      degraded: true,
+      suggestions: available.slice(0, 5).map((tool) => tool.name),
+    };
+  }
+}
+
 export async function runAgent({ message, actor, source = 'WEB', lang: langOverride } = {}) {
   if (!actor?.profileId) throw new AppError('Select a profile first', 403);
 
@@ -190,13 +265,32 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
   // Authorize FIRST — before validation, execution, or proposing anything.
   const scope = checkAuthorization(actor, tool);
 
-  if (tool.validate) tool.validate(intent.args ?? {});
+  if (tool.validate) {
+    try {
+      tool.validate(intent.args ?? {});
+    } catch (err) {
+      // A missing detail becomes a question, not a failure — the caller stays
+      // in the conversation and can just answer it.
+      if (err?.code === 'AGENT_NEEDS_INPUT') {
+        return {
+          reply: (err.speakKey && t(err.speakKey, lang)) || err.message,
+          lang,
+          action: null,
+          needsInput: true,
+          intendedTool: intent.tool,
+        };
+      }
+      throw err;
+    }
+  }
 
   // Reads run straight away.
   if (!tool.mutates) {
     const result = await tool.execute(actor, scope, intent.args ?? {});
     await auditAgentAction({ actor, tool: intent.tool, args: intent.args, source, status: 'READ' });
-    return { reply: speakOf(result, lang), data: result.data, lang, action: null };
+    // `tool` is reported so callers (and tests) can see which capability
+    // answered, rather than having to infer it from the wording of the reply.
+    return { reply: speakOf(result, lang), data: result.data, lang, action: null, tool: intent.tool };
   }
 
   // Writes are proposed, never performed, on the first turn.

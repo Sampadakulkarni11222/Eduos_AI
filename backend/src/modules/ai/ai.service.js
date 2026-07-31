@@ -126,7 +126,8 @@ function answerFees(facts, toolsUsed) {
   if (facts.feeSummary) {
     toolsUsed.push('fees.summary');
     const f = facts.feeSummary;
-    return `School fee health: ${rupees(f.paid)} collected of ${rupees(f.total)} billed (${f.collectionRate}% collection rate), ${f.pendingCount} invoice(s) still open.`;
+    // getSummary speaks paise throughout; rupees() expects rupees.
+    return `School fee health: ${rupees(f.totalCollectedPaise / 100)} collected of ${rupees(f.totalBilledPaise / 100)} billed (${f.collectionPct}% collection rate), ${f.pendingCount} invoice(s) still open.`;
   }
   return 'Fee information is available to parents, students, and school staff.';
 }
