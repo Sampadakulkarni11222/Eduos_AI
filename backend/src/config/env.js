@@ -24,11 +24,50 @@ export function numFromEnv(name, fallback) {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
+const LOCAL_MONGO_FALLBACK = 'mongodb://localhost:27017/school_erp';
+
+/**
+ * Chooses the MongoDB URI, and refuses to reach production from a dev box.
+ *
+ * This used to be `MONGO_URI_ATLAS ?? MONGO_URI ?? local`, which meant a single
+ * stray value in a committed `.env` silently pointed every local run — and every
+ * `npm run seed`, which drops collections — at the live cluster. It also broke
+ * file downloads in a way that looked unrelated: records came from Atlas while
+ * the referenced uploads only ever existed on the server's disk.
+ *
+ * Atlas is now opt-in by environment, not by variable presence: outside
+ * production `MONGO_URI_ATLAS` is ignored even when set. Returns the source
+ * alongside the URI so startup can say out loud which database it picked.
+ */
+export function resolveMongoUri(processEnv = process.env) {
+  const nodeEnv = processEnv.NODE_ENV ?? 'development';
+  const atlas = processEnv.MONGO_URI_ATLAS;
+  const local = processEnv.MONGO_URI;
+
+  if (nodeEnv === 'production') {
+    if (atlas) return { uri: atlas, source: 'MONGO_URI_ATLAS', atlasIgnored: false };
+    if (local) return { uri: local, source: 'MONGO_URI', atlasIgnored: false };
+    return { uri: LOCAL_MONGO_FALLBACK, source: 'default', atlasIgnored: false };
+  }
+
+  return {
+    uri: local ?? LOCAL_MONGO_FALLBACK,
+    source: local ? 'MONGO_URI' : 'default',
+    // Surfaced so the connection log can explain the override rather than
+    // leaving someone to wonder why their Atlas URI "did nothing".
+    atlasIgnored: Boolean(atlas),
+  };
+}
+
+const mongo = resolveMongoUri();
+
 export const env = {
   NODE_ENV: process.env.NODE_ENV ?? 'development',
   PORT: Number(process.env.PORT) || 5000,
   HOST: process.env.HOST ?? '0.0.0.0',
-  MONGO_URI: process.env.MONGO_URI_ATLAS ?? process.env.MONGO_URI ?? 'mongodb://localhost:27017/school_erp',
+  MONGO_URI: mongo.uri,
+  MONGO_URI_SOURCE: mongo.source,
+  MONGO_ATLAS_IGNORED: mongo.atlasIgnored,
   LOG_LEVEL: process.env.LOG_LEVEL ?? 'info',
   LOG_DIR: process.env.LOG_DIR ?? 'logs',
   RATE_LIMIT_WINDOW_MS: Number(process.env.RATE_LIMIT_WINDOW_MS) || 900_000,
@@ -65,6 +104,14 @@ export const env = {
   // with a SANDBOX- reference (clearly labeled in the UI); 'none' disables
   // online payment; real gateways plug in via this same interface.
   PAYMENT_PROVIDER: process.env.PAYMENT_PROVIDER ?? 'sandbox',
+  // Razorpay (PAYMENT_PROVIDER=razorpay). The key secret signs API calls; the
+  // webhook secret is a *separate* value set in the Razorpay dashboard and is
+  // what proves an incoming "payment captured" event is genuine.
+  RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID ?? '',
+  RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET ?? '',
+  RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET ?? '',
+  RAZORPAY_API_BASE: process.env.RAZORPAY_API_BASE ?? 'https://api.razorpay.com/v1',
+  RAZORPAY_CURRENCY: process.env.RAZORPAY_CURRENCY ?? 'INR',
   // File uploads
   UPLOAD_DIR: process.env.UPLOAD_DIR ?? 'uploads',
   UPLOAD_MAX_BYTES: Number(process.env.UPLOAD_MAX_BYTES) || 15 * 1024 * 1024,
@@ -89,6 +136,15 @@ if (env.isProd) {
   if (env.MEDICAL_ENCRYPTION_KEY === 'change-this-medical-key-in-production') insecure.push('MEDICAL_ENCRYPTION_KEY');
   if (env.WHATSAPP_VERIFY_TOKEN === 'change-this-verify-token') insecure.push('WHATSAPP_VERIFY_TOKEN');
   if (env.CORS_ORIGIN === '*') insecure.push('CORS_ORIGIN (must name your frontend origin)');
+  // A sandbox gateway in production marks invoices Paid without money moving.
+  if (env.PAYMENT_PROVIDER === 'sandbox') insecure.push('PAYMENT_PROVIDER=sandbox (simulates payments — use a real gateway or "none")');
+  if (env.PAYMENT_PROVIDER === 'razorpay') {
+    if (!env.RAZORPAY_KEY_ID) insecure.push('RAZORPAY_KEY_ID');
+    if (!env.RAZORPAY_KEY_SECRET) insecure.push('RAZORPAY_KEY_SECRET');
+    // Without this, webhook signatures cannot be checked, and an unauthenticated
+    // POST could mark any invoice paid.
+    if (!env.RAZORPAY_WEBHOOK_SECRET) insecure.push('RAZORPAY_WEBHOOK_SECRET (required to authenticate payment webhooks)');
+  }
 
   if (insecure.length) {
     // eslint-disable-next-line no-console

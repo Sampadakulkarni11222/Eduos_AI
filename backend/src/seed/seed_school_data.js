@@ -32,11 +32,31 @@ const DEMO_PASSWORD = 'ChangeMe@123!';
 
 async function seedSchool() {
   logger.info('Connecting to MongoDB for full school seeding...');
-  // Must match env.js's precedence (MONGO_URI_ATLAS first) — the running
-  // backend server connects via env.js, so seeding against a different URI
-  // here would silently write to a database nothing actually serves from.
-  const uri = process.env.MONGO_URI_ATLAS ?? process.env.MONGO_URI ?? 'mongodb://localhost:27017/school_erp';
-  await mongoose.connect(uri);
+  // Uses env.MONGO_URI rather than re-deriving the URI, so this script cannot
+  // drift from the app's resolution rules. It previously hand-rolled
+  // `MONGO_URI_ATLAS ?? MONGO_URI`, which meant the one script that deletes
+  // thirty collections still pointed at the production cluster whenever that
+  // variable was set — the exact failure the gate in env.js exists to prevent,
+  // reintroduced by the most destructive file in the repo.
+  const safeUri = env.MONGO_URI.replace(/\/\/[^@/]*@/, '//[credentials-redacted]@');
+  logger.info(`Target → ${safeUri} (source=${env.MONGO_URI_SOURCE}, NODE_ENV=${env.NODE_ENV})`);
+  if (env.MONGO_ATLAS_IGNORED) {
+    logger.warn('MONGO_URI_ATLAS is set but was IGNORED — Atlas is only used when NODE_ENV=production.');
+  }
+
+  // Checked BEFORE connecting: deleting thirty collections is not something to
+  // do by accident against a remote cluster, and a database we are going to
+  // refuse is one we should not dial at all.
+  const isLocal = /localhost|127\.0\.0\.1/.test(env.MONGO_URI);
+  if (!isLocal && process.argv.indexOf('--allow-remote') === -1) {
+    logger.error(
+      `REFUSING to wipe a non-local database (${safeUri}). This seed deletes every school collection. ` +
+        'Re-run with --allow-remote if you are certain.'
+    );
+    process.exit(1);
+  }
+
+  await mongoose.connect(env.MONGO_URI);
   logger.info('Connected. Cleaning database for a fresh seed...');
 
   // Clear existing school collections
