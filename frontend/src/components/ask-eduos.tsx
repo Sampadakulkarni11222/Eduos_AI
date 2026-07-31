@@ -1,5 +1,6 @@
 'use client';
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api, ApiError } from '@/lib/api';
 import { Button, Spinner, cx } from './ui';
 import { useAuth } from '@/lib/auth';
@@ -18,6 +19,20 @@ interface Msg {
 
 export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   const [open, setOpen] = useState(false);
+  // Minimising keeps the conversation alive but gets the panel out of the way,
+  // which is the whole point: the assistant used to render inside a full-screen
+  // scrim, so opening it made the page underneath unclickable — including the
+  // assignment Submit button it was most often opened next to.
+  const [minimized, setMinimized] = useState(false);
+  // The launcher lives inside .topbar, which sets backdrop-filter. That makes
+  // the topbar a containing block for position:fixed descendants, so the panel
+  // was being positioned against the topbar instead of the viewport — on
+  // narrow screens the bottom sheet ended up mostly above the fold. Portalling
+  // to <body> puts it back in the viewport's coordinate space.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const portal = (node: ReactNode) => (mounted ? createPortal(node, document.body) : null);
+
   const { me } = useAuth();
   const role = me?.profile?.role;
 
@@ -44,8 +59,22 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   // Sync ref → state on open so the panel renders persisted history
   const handleOpen = () => {
     setMsgs([...msgsRef.current]);
+    setMinimized(false);
     setOpen(true);
   };
+
+  /**
+   * Reserves the docked panel's space on <body> while it is open, so page
+   * content reflows beside it instead of hiding underneath. Cleared on close,
+   * on minimise, and on unmount — a stale class here would leave every page
+   * permanently indented.
+   */
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const docked = open && !minimized;
+    document.body.classList.toggle('ai-docked', docked);
+    return () => document.body.classList.remove('ai-docked');
+  }, [open, minimized]);
 
   useEffect(() => {
     if (open) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -187,15 +216,39 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
       <Button onClick={handleOpen} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 14 }}>✨</span> {label}
       </Button>
-      {open && (
-        <div className="ai-overlay" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label={label}>
-          <aside className="ai-panel" onClick={(e) => e.stopPropagation()}>
+      {open && minimized && portal(
+        <button
+          type="button"
+          className="ai-fab"
+          onClick={() => setMinimized(false)}
+          aria-label={`${label} (minimised — click to reopen)`}
+          title={`${label} — click to reopen`}
+        >
+          <span aria-hidden="true">✨</span>
+        </button>
+      )}
+      {open && !minimized && portal(
+        // No scrim and no aria-modal: this is a docked panel, not a modal. The
+        // page behind it stays live and focusable on purpose.
+        <aside className="ai-dock" role="complementary" aria-label={label}>
+          <div className="ai-panel-inner">
             <div className="ai-header">
               <div>
                 <div className="ai-title">{label}</div>
                 <div className="ai-sub">Answers from your school data</div>
               </div>
-              <button className="modal-close" onClick={() => setOpen(false)} aria-label="Close">×</button>
+              <div className="ai-header-actions">
+                <button
+                  type="button"
+                  className="ai-minimize"
+                  onClick={() => setMinimized(true)}
+                  aria-label="Minimise assistant"
+                  title="Minimise"
+                >
+                  −
+                </button>
+                <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Close">×</button>
+              </div>
             </div>
             <div className="ai-body" ref={scrollRef}>
               {msgs.length === 0 && (
@@ -300,8 +353,8 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
               />
               <Button type="submit" disabled={busy || !input.trim()}>Send</Button>
             </form>
-          </aside>
-        </div>
+          </div>
+        </aside>
       )}
     </>
   );

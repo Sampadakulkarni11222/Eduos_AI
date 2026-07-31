@@ -230,7 +230,52 @@ body.role-warden{
 /* ===== Phase 5/6 components ===== */
 
 /* Ask EduOS panel */
-.ai-overlay{position:fixed;inset:0;background:rgba(20,16,10,.35);z-index:60;display:flex;justify-content:flex-end}
+/* ===== Ask Agent — docked assistant =====
+   Was a full-screen scrim (.ai-overlay) with a drawer inside it, which made
+   every control on the page unclickable while the assistant was open. It is now
+   a dock: the panel occupies a reserved strip and the page reflows out of the
+   way, so primary actions such as the assignment Submit button stay reachable.
+   .ai-overlay is intentionally gone rather than left unused. */
+:root{--ai-dock-w:400px;--ai-dock-h:60vh}
+
+.ai-dock{position:fixed;top:0;right:0;width:var(--ai-dock-w);max-width:100vw;height:100vh;z-index:60;display:flex;flex-direction:column;background:var(--panel-bg);border-left:1px solid var(--input-border);box-shadow:-24px 0 60px rgba(40,20,15,.16);animation:eduPanel .25s ease}
+.ai-panel-inner{display:flex;flex-direction:column;height:100%;min-height:0}
+.ai-header-actions{display:flex;align-items:center;gap:4px}
+.ai-minimize{background:none;border:none;cursor:pointer;color:rgba(255,255,255,.8);font-size:22px;line-height:1;padding:0 8px;border-radius:6px}
+.ai-minimize:hover{background:rgba(255,255,255,.14);color:#fff}
+/* Both header controls get a ≥32px hit target — the close "×" was previously a
+   bare glyph and genuinely hard to hit. */
+.ai-minimize,.ai-header .modal-close{min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center}
+
+/* Page reflow. Applied to <body> only while the panel is docked. Targets
+   .main (topbar + content) rather than .app-shell so the sidebar keeps its
+   position and only the working area narrows. */
+body.ai-docked .main{padding-right:var(--ai-dock-w);transition:padding-right .2s ease}
+/* Modals are fixed to the viewport, so padding .main does not move them — they
+   would still centre underneath the dock. Shrinking the centring box keeps
+   dialogs (and their Submit buttons) beside the panel rather than behind it. */
+body.ai-docked .modal-overlay{padding-right:var(--ai-dock-w)}
+
+/* Minimised launcher. Sits clear of the content flow and restores on click. */
+.ai-fab{position:fixed;right:20px;bottom:20px;z-index:61;width:56px;height:56px;border-radius:999px;border:none;cursor:pointer;background:linear-gradient(120deg,var(--accent),var(--accent-2));color:var(--on-accent);font-size:22px;box-shadow:0 8px 24px rgba(40,20,15,.28);display:flex;align-items:center;justify-content:center}
+.ai-fab:hover{filter:brightness(1.07)}
+.ai-fab:focus-visible,.ai-minimize:focus-visible{outline:2px solid var(--accent-2);outline-offset:2px}
+
+@media (max-width:900px){
+  /* No room for a side dock — become a bottom sheet and reserve height instead
+     of width, so the page can still scroll its actions into view. */
+  /* Narrow screens have no room for a side dock, so it becomes a bottom sheet
+     and reserves height instead of width. 50vh rather than 60vh leaves a
+     dialog enough room to stay usable above it. */
+  :root{--ai-dock-h:50vh}
+  .ai-dock{width:100vw;height:var(--ai-dock-h);top:auto;bottom:0;border-left:none;border-top:1px solid var(--input-border);box-shadow:0 -18px 44px rgba(40,20,15,.22)}
+  body.ai-docked .main{padding-right:0;padding-bottom:var(--ai-dock-h)}
+  body.ai-docked .modal-overlay{padding-right:0;padding-bottom:var(--ai-dock-h)}
+  /* The remaining strip can be shorter than a dialog, so let it scroll inside
+     itself rather than overflow behind the sheet. */
+  body.ai-docked .modal{max-height:calc(100vh - var(--ai-dock-h) - 24px);overflow-y:auto}
+  .ai-fab{right:14px;bottom:14px}
+}
 .ai-header{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.08);background:#128C3E}
 .ai-header .ai-title{font-family:Newsreader,serif;font-size:18px;font-weight:600;color:#fff}
 .ai-header .ai-sub{font-size:11.5px;color:rgba(255,255,255,.75)}
