@@ -10,7 +10,7 @@ import { Profile } from '../models/profile.model.js';
 import { Student } from '../models/student.model.js';
 import { Book, BookIssue } from '../models/library.model.js';
 import { HostelRoom, HostelAllocation } from '../models/hostel.model.js';
-import { seedDocuments, auditDocumentFiles } from './seed_documents.js';
+import { seedDocuments, auditDocumentFiles, pruneStaleDocuments } from './seed_documents.js';
 import { PERMISSION_CATALOG, SYSTEM_ROLES } from '../constants/permissions.js';
 import { DEMO_USERS } from '../constants/demoUsers.js';
 
@@ -159,6 +159,7 @@ async function seed() {
 
   // ─── Course Materials / Documents ─────────────────────────
   logger.info('Seeding course material documents...');
+  await pruneStaleDocuments();
   const docResult = await seedDocuments();
   if (docResult.created) logger.info(`  ✔  ${docResult.created} document(s) seeded with real files on disk`);
 

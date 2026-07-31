@@ -429,6 +429,24 @@ async function seedSchool() {
   logger.info(`Inserting ${medicalRecordsToInsert.length} medical records...`);
   await MedicalRecord.insertMany(medicalRecordsToInsert);
 
+  // Appoint a class representative per section — the roll-1 student.
+  //
+  // Sections are created before enrolments exist, so this could not be set at
+  // creation time and never got set at all: every section had a null CR, so
+  // the field was invisible in a fresh environment even though the student and
+  // parent portals both render it.
+  logger.info('Appointing class representatives...');
+  let crCount = 0;
+  for (const section of sections) {
+    const rep = enrollments.find(
+      (e) => e.sectionId.toString() === section._id.toString() && e.rollNo === 1
+    );
+    if (!rep) continue;
+    await Section.updateOne({ _id: section._id }, { $set: { classRepresentativeId: rep.studentId } });
+    crCount++;
+  }
+  logger.info(`  ✔  ${crCount} class representatives appointed`);
+
 
   // 9. Seed Timetable Slots
   logger.info('Seeding weekly timetables for all sections...');
@@ -625,9 +643,26 @@ async function seedSchool() {
       createdByProfileId: offering.teacherId || teacherProfiles[0]._id,
     });
 
+    // A second assignment that nobody has handed in yet.
+    //
+    // Every seeded submission used to be GRADED, which meant no student could
+    // submit anything — the API refuses to change a graded submission — and no
+    // teacher had anything to grade. A demo dataset where the two main actions
+    // in the module are both impossible is not a useful demo, and it made the
+    // submission flow untestable without hand-editing the database.
+    const openAssignment = await Assignment.create({
+      subjectOfferingId: offering._id,
+      title: 'Chapter 2 Worksheet',
+      description: 'Complete the practice worksheet for Chapter 2 and attach your work.',
+      type: 'HOMEWORK',
+      dueAt: new Date('2026-09-30'),
+      maxMarks: 20,
+      createdByProfileId: offering.teacherId || teacherProfiles[0]._id,
+    });
+
     // Find enrolled students in the section
     const secEnrollments = enrollments.filter(e => e.sectionId.toString() === offering.sectionId.toString());
-    for (const e of secEnrollments) {
+    for (const [i, e] of secEnrollments.entries()) {
       const marks = Math.floor(Math.random() * 8) + 12; // 12 - 20 marks
       await Submission.create({
         assignmentId: assignment._id,
@@ -637,6 +672,19 @@ async function seedSchool() {
         marks,
         feedback: marks > 16 ? 'Excellent analysis' : 'Review chapters again',
       });
+
+      // A third of the class has handed the new one in but not been marked, so
+      // the teacher's grading queue is non-empty; the rest have nothing
+      // recorded, so those students can actually submit.
+      if (i % 3 === 0) {
+        await Submission.create({
+          assignmentId: openAssignment._id,
+          enrollmentId: e._id,
+          status: 'SUBMITTED',
+          submittedAt: new Date('2026-09-20'),
+          attachments: [],
+        });
+      }
     }
   }
 

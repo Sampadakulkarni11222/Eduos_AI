@@ -145,3 +145,50 @@ export async function auditDocumentFiles() {
   }
   return { total: docs.length, broken };
 }
+
+/**
+ * Removes document rows that can no longer be served.
+ *
+ * Two kinds:
+ *
+ *   - Ad-hoc test rows: placeholder paths that were never written, and links to
+ *     domains that are not ours. Indistinguishable from real course material in
+ *     the UI until someone clicks one and gets a 404 (or leaves the site).
+ *   - Orphans: rows whose section, offering or author no longer exists. A full
+ *     re-seed drops those collections and rebuilds them with new ids, so
+ *     documents created beforehand end up pointing at nothing. They are still
+ *     *listed*, but the class-scoping filter excludes them from every student,
+ *     so the Course Materials tab silently goes empty — which is exactly what
+ *     happened the first time this seeder ran after seed:school.
+ */
+export async function pruneStaleDocuments() {
+  const byUrl = await Document.find({
+    $or: [
+      { fileUrl: { $in: ['/uploads/test.pdf', '/uploads/x.pdf'] } },
+      { fileUrl: /^https?:\/\/(?:www\.)?aravid\.com/i },
+    ],
+  }).lean();
+
+  // Orphan check. Only rows that name a reference are candidates — a document
+  // with no sectionId is school-wide, not broken.
+  const orphans = [];
+  for (const doc of await Document.find().lean()) {
+    if (byUrl.some((d) => String(d._id) === String(doc._id))) continue;
+    const [section, offering, author] = await Promise.all([
+      doc.sectionId ? Section.exists({ _id: doc.sectionId }) : true,
+      doc.subjectOfferingId ? SubjectOffering.exists({ _id: doc.subjectOfferingId }) : true,
+      doc.authorProfileId ? Profile.exists({ _id: doc.authorProfileId }) : true,
+    ]);
+    if (!section || !offering || !author) {
+      orphans.push({ ...doc, _why: !section ? 'section' : !offering ? 'offering' : 'author' });
+    }
+  }
+
+  const stale = [...byUrl, ...orphans];
+  if (stale.length === 0) return { removed: 0 };
+
+  await Document.deleteMany({ _id: { $in: stale.map((d) => d._id) } });
+  for (const d of byUrl) logger.info(`  ✔  removed stale document "${d.title}" → ${d.fileUrl}`);
+  for (const d of orphans) logger.info(`  ✔  removed orphaned document "${d.title}" (its ${d._why} no longer exists)`);
+  return { removed: stale.length };
+}
