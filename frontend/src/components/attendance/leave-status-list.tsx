@@ -1,5 +1,6 @@
 'use client';
 import { Pill } from '../ui';
+import { formatCalendarDate } from '@/lib/timetable-dates';
 import type { LeaveApplicationDto, LeaveStatus } from '@/lib/types';
 
 const STATUS_TONE: Record<LeaveStatus, 'amber' | 'green' | 'red'> = {
@@ -8,9 +9,8 @@ const STATUS_TONE: Record<LeaveStatus, 'amber' | 'green' | 'red'> = {
   REJECTED: 'red',
 };
 
-function fmt(d: string) {
-  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
+// Leave dates are calendar days, so they render in UTC — see formatCalendarDate.
+const fmt = (d: string) => formatCalendarDate(d);
 
 export function LeaveStatusList({ applications }: { applications: LeaveApplicationDto[] }) {
   if (applications.length === 0) {

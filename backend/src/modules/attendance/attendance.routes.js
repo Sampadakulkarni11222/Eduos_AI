@@ -129,6 +129,29 @@ router.get('/calendar', requirePermission('attendance.read'), controller.getCale
 
 /**
  * @swagger
+ * /attendance/subject-wise:
+ *   get:
+ *     summary: Per-subject attendance for one enrollment, grouped by subject offering
+ *     description: >
+ *       `basis` reports where the numbers come from: PERIOD (real per-period
+ *       records), DAY (day-level records attributed to the subjects timetabled
+ *       that day), or MIXED. Percentages are presentCount/totalSessions.
+ *     tags: [Attendance]
+ *     parameters:
+ *       - in: query
+ *         name: enrollmentId
+ *         schema: { type: string }
+ *       - in: query
+ *         name: month
+ *         schema: { type: string, example: '2026-07' }
+ *     responses:
+ *       200:
+ *         description: Subject-wise attendance fetched
+ */
+router.get('/subject-wise', requirePermission('attendance.read'), controller.getSubjectWise);
+
+/**
+ * @swagger
  * /attendance/trend:
  *   get:
  *     summary: Get monthly attendance percentage trend for the last N months

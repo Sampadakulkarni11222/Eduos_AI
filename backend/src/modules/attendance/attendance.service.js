@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { AttendanceRecord } from '../../models/attendanceRecord.model.js';
 import { Enrollment } from '../../models/student.model.js';
 import { Section } from '../../models/academics.model.js';
+import { TimetableSlot } from '../../models/timetableSlot.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 
@@ -232,15 +233,26 @@ export async function getSummary(actor, scope, { enrollmentId, from, to, month }
     summary[key][row._id.status] = row.count;
   }
 
-  // If the query was for a single enrollmentId, return a flat object as expected by frontend
-  if (enrollmentId && enrollmentIds.includes(enrollmentId)) {
-    const stats = summary[enrollmentId] ?? { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
+  // Flat object (with pctPresent) whenever the query resolves to exactly one
+  // enrollment — not only when the caller named it explicitly.
+  //
+  // A student asking "what's my attendance percentage?" passes no
+  // enrollmentId, so this used to fall through to the keyed map below, and
+  // every caller that looked for `pctPresent` found undefined. That is why the
+  // assistant answered "No attendance has been recorded yet" for a student who
+  // had eight records.
+  const singleId = enrollmentId && enrollmentIds.includes(enrollmentId)
+    ? enrollmentId
+    : (enrollmentIds.length === 1 ? enrollmentIds[0] : null);
+
+  if (singleId) {
+    const stats = summary[singleId] ?? { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
     const workingDays = stats.PRESENT + stats.ABSENT + stats.LATE + stats.EXCUSED + stats.HALF_DAY;
     const presentCount = stats.PRESENT + stats.LATE + stats.EXCUSED + (stats.HALF_DAY * 0.5);
     const pctPresent = workingDays > 0 ? Math.round((presentCount / workingDays) * 100) : 0;
 
     return {
-      enrollmentId,
+      enrollmentId: singleId,
       yearMonth: month || 'custom',
       PRESENT: stats.PRESENT,
       ABSENT: stats.ABSENT,
@@ -253,6 +265,120 @@ export async function getSummary(actor, scope, { enrollmentId, from, to, month }
   }
 
   return summary;
+}
+
+/**
+ * Per-subject attendance, grouped by subject offering.
+ *
+ * Two sources, and the difference is reported rather than hidden:
+ *
+ *   PERIOD — a record carries a periodNo, so the timetable says exactly which
+ *     subject that period was. This is a true per-subject figure.
+ *   DAY    — the record is day-level (periodNo null), the only kind this
+ *     deployment currently captures. The day's status is attributed to each
+ *     subject scheduled that weekday.
+ *
+ * The DAY case is why every subject used to read 75%: when a subject is on the
+ * timetable every weekday, its denominator is every marked day, so it restates
+ * the overall percentage. That is now visible in `basis` and `derived` instead
+ * of being presented as a per-subject fact — and subjects that are NOT
+ * scheduled daily now differ, because each is counted only on the days it is
+ * actually taught.
+ */
+export async function getSubjectWiseSummary(actor, scope, { enrollmentId, month, from, to } = {}) {
+  const targetId = await resolveSingleEnrollmentId(actor, scope, enrollmentId);
+
+  const enrollment = await Enrollment.findById(targetId).select('sectionId');
+  if (!enrollment) throw new AppError('Enrollment not found', 404);
+
+  let dateFrom = from ? parseDateToMidnight(from) : null;
+  let dateTo = to ? parseDateToMidnight(to) : null;
+  if (month && !dateFrom && !dateTo) {
+    const [y, m] = month.split('-');
+    dateFrom = new Date(Date.UTC(Number(y), Number(m) - 1, 1));
+    dateTo = new Date(Date.UTC(Number(y), Number(m), 0, 23, 59, 59, 999));
+  }
+
+  const slots = await TimetableSlot.find({ sectionId: enrollment.sectionId }).populate({
+    path: 'subjectOfferingId',
+    populate: { path: 'subjectId', select: 'name' },
+  });
+
+  // (dayOfWeek, periodNo) → offering, plus which subjects run on each weekday.
+  const byDowPeriod = new Map();
+  const subjectsByDow = new Map();
+  for (const slot of slots) {
+    const offering = slot.subjectOfferingId;
+    const name = offering?.subjectId?.name;
+    if (!name) continue; // breaks and free periods have no offering
+    byDowPeriod.set(`${slot.dayOfWeek}:${slot.periodNo}`, offering);
+    if (!subjectsByDow.has(slot.dayOfWeek)) subjectsByDow.set(slot.dayOfWeek, new Map());
+    subjectsByDow.get(slot.dayOfWeek).set(String(offering._id), offering);
+  }
+
+  const match = { enrollmentId: new mongoose.Types.ObjectId(String(targetId)) };
+  if (dateFrom || dateTo) {
+    match.date = {};
+    if (dateFrom) match.date.$gte = dateFrom;
+    if (dateTo) match.date.$lte = dateTo;
+  }
+  const records = await AttendanceRecord.find(match).select('date periodNo status').lean();
+
+  const buckets = new Map(); // offeringId → tally
+  const tallyFor = (offering) => {
+    const key = String(offering._id);
+    if (!buckets.has(key)) {
+      buckets.set(key, {
+        subjectOfferingId: key,
+        subject: offering.subjectId?.name ?? 'Subject',
+        subjectId: offering.subjectId?._id ? String(offering.subjectId._id) : null,
+        present: 0, absent: 0, leave: 0, totalSessions: 0, periodBacked: 0,
+      });
+    }
+    return buckets.get(key);
+  };
+
+  const applyStatus = (bucket, status, fromPeriod) => {
+    bucket.totalSessions++;
+    if (fromPeriod) bucket.periodBacked++;
+    if (status === 'PRESENT' || status === 'LATE') bucket.present++;
+    else if (status === 'ABSENT') bucket.absent++;
+    else bucket.leave++; // EXCUSED / HALF_DAY
+  };
+
+  for (const rec of records) {
+    // getUTCDay(): 0=Sun..6=Sat; the timetable uses 1=Mon..7=Sun.
+    const dow = rec.date.getUTCDay() === 0 ? 7 : rec.date.getUTCDay();
+
+    if (rec.periodNo != null) {
+      const offering = byDowPeriod.get(`${dow}:${rec.periodNo}`);
+      if (offering) applyStatus(tallyFor(offering), rec.status, true);
+      continue;
+    }
+
+    for (const offering of (subjectsByDow.get(dow) ?? new Map()).values()) {
+      applyStatus(tallyFor(offering), rec.status, false);
+    }
+  }
+
+  const subjects = [...buckets.values()]
+    .map((b) => ({
+      ...b,
+      pctPresent: b.totalSessions > 0 ? Math.round((b.present / b.totalSessions) * 100) : null,
+      // True only when every session counted came from a real period record.
+      derived: b.periodBacked < b.totalSessions,
+    }))
+    .sort((a, b) => a.subject.localeCompare(b.subject));
+
+  const anyPeriod = subjects.some((s) => s.periodBacked > 0);
+  const allPeriod = subjects.length > 0 && subjects.every((s) => s.periodBacked === s.totalSessions);
+
+  return {
+    enrollmentId: String(targetId),
+    yearMonth: month ?? 'custom',
+    basis: allPeriod ? 'PERIOD' : anyPeriod ? 'MIXED' : 'DAY',
+    subjects,
+  };
 }
 
 /** Resolve a single enrollmentId for actor-scoped endpoints (calendar/trend) — the

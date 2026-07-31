@@ -5,6 +5,7 @@ import { PortalShell } from '@/components/shell';
 
 import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard } from '@/components/ui';
 import { api } from '@/lib/api';
+import { formatCalendarDate } from '@/lib/timetable-dates';
 import type { WardenDashboardDto } from '@/lib/types';
 
 export default function WardenDashboard() {
@@ -90,7 +91,7 @@ export default function WardenDashboard() {
                 <div key={l.id} style={{ padding: '12px 20px', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
                   <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-1)' }}>{l.studentName}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--text-2b)' }}>
-                    {new Date(l.fromDate).toLocaleDateString('en-IN')} – {new Date(l.toDate).toLocaleDateString('en-IN')} · {l.reason}
+                    {formatCalendarDate(l.fromDate, { day: 'numeric', month: 'numeric', year: 'numeric' })} – {formatCalendarDate(l.toDate, { day: 'numeric', month: 'numeric', year: 'numeric' })} · {l.reason}
                   </div>
                 </div>
               ))}

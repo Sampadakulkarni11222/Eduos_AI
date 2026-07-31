@@ -92,6 +92,28 @@ export function formatWeekRangeLabel(dates: Date[]): string {
   return `${firstStr} – ${lastStr}`;
 }
 
+/**
+ * Formats a **calendar date** (leave dates, due dates, holidays) — a day on a
+ * calendar, not an instant in time.
+ *
+ * The API stores these at UTC midnight, so rendering them with the viewer's
+ * local timezone moves them backwards a day for anyone west of UTC: a leave
+ * booked for 15 August displayed as 14 August in New York. Formatting in UTC
+ * keeps the date the user picked as the date everyone sees.
+ *
+ * Use this for date-only values. For real timestamps (createdAt, submittedAt)
+ * local time is correct and this is the wrong helper.
+ */
+export function formatCalendarDate(
+  value: string | Date,
+  opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', year: 'numeric' }
+): string {
+  if (!value) return '—';
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-IN', { ...opts, timeZone: 'UTC' });
+}
+
 /** Duration in minutes between "HH:MM" strings, formatted like "45 min" or "1h 15min". */
 export function formatDuration(startTime: string, endTime: string): string {
   const [sh, sm] = startTime.split(':').map(Number);

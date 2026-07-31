@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button, Card, EmptyState, SkeletonRows, StatCard, subjectColor } from '../ui';
 import { api } from '@/lib/api';
-import type { StudentListItem, TimetableDto, CalendarEventDto, LeaveApplicationDto, AttendanceTrendPointDto } from '@/lib/types';
+import type { StudentListItem, TimetableDto, CalendarEventDto, LeaveApplicationDto, AttendanceTrendPointDto, SubjectAttendanceDto } from '@/lib/types';
 import { addMonths, formatMonthLabel, isToday, startOfMonth, endOfMonth, toDow, toISODate } from '@/lib/timetable-dates';
 import { AttendanceMonthGrid } from './attendance-month-grid';
 import { AttendanceTrendChart } from './attendance-trend-chart';
@@ -23,6 +23,7 @@ export function AttendanceCalendar() {
   const [holidays, setHolidays] = useState<CalendarEventDto[]>([]);
   const [summary, setSummary] = useState<MonthSummary | null>(null);
   const [trend, setTrend] = useState<AttendanceTrendPointDto[]>([]);
+  const [subjectAttendance, setSubjectAttendance] = useState<SubjectAttendanceDto | null>(null);
   const [leaveApps, setLeaveApps] = useState<LeaveApplicationDto[] | null>(null);
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -57,6 +58,7 @@ export function AttendanceCalendar() {
       api.calendar(from, to).then((events) => setHolidays(events.filter((e) => e.type === 'HOLIDAY'))).catch(() => setHolidays([])),
       api.attendanceSummary(enrollmentId, month).then(setSummary).catch(() => setSummary(null)),
       api.attendanceTrend(enrollmentId, 6).then(setTrend).catch(() => setTrend([])),
+      api.attendanceSubjectWise(enrollmentId, month).then(setSubjectAttendance).catch(() => setSubjectAttendance(null)),
     ]).finally(() => setLoading(false));
   }, [enrollmentId, anchorDate]);
 
@@ -117,24 +119,12 @@ export function AttendanceCalendar() {
     return map;
   }, [days, holidays, nonSchoolDows, subjectsByDow, anchorDate]);
 
-  const subjectBreakdown = useMemo(() => {
-    if (allSubjects.length === 0) return [];
-    const from = startOfMonth(anchorDate);
-    const to = endOfMonth(anchorDate);
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    return allSubjects.map((subject) => {
-      let present = 0, absent = 0, leave = 0, total = 0;
-      for (let d = new Date(from); d <= to && d <= today; d.setDate(d.getDate() + 1)) {
-        const info = dayInfoByDate.get(toISODate(d));
-        if (!info || info.isHoliday || !info.subjects.includes(subject) || !info.status) continue;
-        total++;
-        if (info.status === 'PRESENT' || info.status === 'LATE') present++;
-        else if (info.status === 'ABSENT') absent++;
-        else leave++;
-      }
-      return { subject, present, absent, leave, total };
-    });
-  }, [allSubjects, dayInfoByDate, anchorDate]);
+  // Per-subject attendance now comes from the server, which groups real
+  // attendance records by subject offering. It used to be derived here by
+  // replaying each day's overall status onto every subject on that day's
+  // timetable — which, for a subject taught daily, just restated the overall
+  // percentage, so every subject showed the same number and looked hardcoded.
+  const subjectBreakdown = subjectAttendance?.subjects ?? [];
 
   const selectedDayInfo = selectedDate ? dayInfoByDate.get(toISODate(selectedDate)) : null;
 
@@ -245,21 +235,29 @@ export function AttendanceCalendar() {
             <Card>
               <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 16 }}>Subject-wise Attendance</strong>
               <p style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 2, marginBottom: 12 }}>
-                Derived from your timetable — each day's overall attendance status is applied to the subjects scheduled that day.
+                {subjectAttendance?.basis === 'PERIOD'
+                  ? 'From per-period attendance records.'
+                  : subjectAttendance?.basis === 'MIXED'
+                    ? 'Subjects marked “approx.” have no per-period record yet — for those, the day’s overall status is applied to every subject timetabled that day.'
+                    : 'Approximate: attendance here is recorded once per day, not per period, so each day’s status is applied to every subject timetabled that day.'}
               </p>
               <div className="card-grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-                {subjectBreakdown.map(({ subject, present, absent, leave, total }) => {
+                {subjectBreakdown.map(({ subject, present, absent, leave, totalSessions, pctPresent, derived }) => {
                   const color = subjectColor(subject);
-                  const pct = total > 0 ? Math.round((present / total) * 100) : 0;
                   return (
                     <div key={subject} style={{ padding: '12px 14px', borderRadius: 10, border: '1px solid var(--hairline)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: color.dot }} />
                         <span style={{ fontWeight: 700, fontSize: 12.5, color: 'var(--text-1)' }}>{subject}</span>
                       </div>
-                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-1)' }}>{total > 0 ? `${pct}%` : '—'}</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-1)' }}>
+                        {pctPresent !== null ? `${pctPresent}%` : '—'}
+                      </div>
                       <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>
                         {present}P · {absent}A · {leave}L
+                        {/* Marked rather than silently blended, so an exact figure is
+                            never mistaken for an inferred one. */}
+                        {derived && totalSessions > 0 && <span title="Derived from day-level attendance"> · approx.</span>}
                       </div>
                     </div>
                   );
