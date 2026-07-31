@@ -5,6 +5,23 @@ import { csvUploadSingle } from '../../utils/csvImport.js';
 import * as controller from './fee.controller.js';
 
 const router = Router();
+
+/**
+ * @swagger
+ * /fees/webhooks/razorpay:
+ *   post:
+ *     summary: Razorpay payment webhook (authenticated by HMAC signature, not JWT)
+ *     tags: [Fees]
+ *     responses:
+ *       200:
+ *         description: Webhook processed or acknowledged
+ *       401:
+ *         description: Signature verification failed
+ */
+// Mounted above `authenticate` on purpose: the gateway cannot present a bearer
+// token, and its signature is the stronger check anyway.
+router.post('/webhooks/razorpay', controller.razorpayWebhook);
+
 router.use(authenticate);
 
 /**

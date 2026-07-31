@@ -79,6 +79,20 @@ function PayModal({ invoice, onClose, onPaid }: {
     try {
       const amountPaise = Math.round(Number(amount) * 100);
       const res = await api.payOnline({ invoiceId: invoice.id, amountPaise });
+
+      // A real gateway returns an order, not a receipt: the money has not moved
+      // yet. Showing the success dialog here would tell a parent their fees were
+      // paid when nothing has been charged. The browser checkout step for
+      // Razorpay is not built yet, so say so plainly rather than pretend.
+      if (res.requiresClientAction) {
+        setErr(
+          'Online card payment is not finished being set up for this school. ' +
+          'Nothing has been charged — please pay at the school office for now.'
+        );
+        setBusy(false);
+        return;
+      }
+
       onPaid(res.receiptNo, res.sandbox);
     } catch (x) {
       if (x instanceof ApiError && x.code === 'PAYMENTS_DISABLED') {

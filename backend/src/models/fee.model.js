@@ -50,6 +50,11 @@ const paymentSchema = new Schema(
     amountPaise: { type: Number, required: true },
     mode: { type: String, enum: ['GATEWAY', 'CASH', 'CHEQUE', 'BANK'], required: true },
     gatewayRef: { type: String },
+    // The gateway's *order* id, kept separately from gatewayRef (which ends up
+    // holding the payment id once captured). Webhooks identify the payment by
+    // order, so this is what settlement matches on — indexed because every
+    // webhook delivery looks it up.
+    gatewayOrderRef: { type: String, index: true },
     status: { type: String, enum: ['INITIATED', 'SUCCESS', 'FAILED', 'REFUNDED'], default: 'SUCCESS' },
     receiptNo: { type: String },
     reconciledAt: { type: Date },

@@ -5,7 +5,14 @@ import { Student, Enrollment } from '../../models/student.model.js';
 import { Section } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
-import { chargeOnline, createPaymentLink, isOnlinePaymentEnabled, paymentMode } from '../../providers/payment.provider.js';
+import {
+  chargeOnline,
+  createPaymentLink,
+  isOnlinePaymentEnabled,
+  paymentMode,
+  fetchGatewayPayment,
+} from '../../providers/payment.provider.js';
+import { logger } from '../../utils/logger.js';
 
 export const createFeeHead = (data) => FeeHead.create(data);
 export const createFeeStructure = (data) => FeeStructure.create(data);
@@ -360,6 +367,33 @@ export async function payOnline(actor, scope, { invoiceId, amountPaise }) {
   if (amount > duePaise) throw new AppError('Amount exceeds the outstanding balance', 400);
 
   const charge = await chargeOnline({ amountPaise: amount, invoiceNo: invoice.invoiceNo, payerProfileId: actor.profileId });
+
+  // Real gateway: an order exists but no money has moved. Record the intent so
+  // the webhook has something to match against, and hand the order to the
+  // client. The invoice is deliberately left untouched.
+  if (charge.requiresClientAction) {
+    const pending = await Payment.create({
+      invoiceId,
+      amountPaise: amount,
+      mode: 'GATEWAY',
+      gatewayRef: charge.gatewayRef,
+      gatewayOrderRef: charge.order.orderId,
+      status: 'INITIATED',
+    });
+
+    return {
+      requiresClientAction: true,
+      provider: charge.provider,
+      orderId: charge.order.orderId,
+      keyId: charge.order.keyId,
+      currency: charge.order.currency,
+      amountPaise: charge.order.amountPaise,
+      paymentIntentId: pending._id,
+      invoiceNo: invoice.invoiceNo,
+      status: invoice.status,
+    };
+  }
+
   if (!charge.captured) {
     throw new AppError(charge.error ?? 'Payment could not be processed', 502, [], charge.code ?? 'PAYMENT_FAILED');
   }
@@ -383,6 +417,111 @@ export async function payOnline(actor, scope, { invoiceId, amountPaise }) {
     sandbox: charge.provider === 'sandbox',
     status: invoice.status,
     paidPaise: invoice.paidPaise,
+  };
+}
+
+/**
+ * Settles a payment from a gateway webhook that has **already been signature
+ * verified** by the controller. Never call this with unverified input.
+ *
+ * Three things make this safe to expose to the internet:
+ *
+ *  1. The amount is taken from the payment intent we created, not from the
+ *     event — a forged or replayed event cannot inflate what gets credited,
+ *     and a mismatch is refused outright rather than reconciled.
+ *  2. Settlement is claimed with an atomic status transition, so duplicate
+ *     deliveries (which Razorpay does on retry) credit the ledger exactly
+ *     once. This matters more than usual here: the local dev database is a
+ *     standalone mongod, so multi-document transactions are unavailable.
+ *  3. The invoice total is moved with $inc rather than a read-modify-write,
+ *     so two invoices settling at once cannot clobber each other.
+ */
+export async function settleGatewayPayment({ event, orderId, gatewayPaymentId, amountPaise, verifyWithGateway = true }) {
+  if (event && event !== 'payment.captured') {
+    return { handled: false, reason: `Ignoring unhandled event: ${event}` };
+  }
+  if (!orderId) return { handled: false, reason: 'Event carried no order id' };
+
+  const intent = await Payment.findOne({ gatewayOrderRef: orderId }).lean()
+    ?? await Payment.findOne({ gatewayRef: orderId }).lean();
+
+  if (!intent) {
+    // Genuinely possible: a payment made against an order this environment
+    // never created (e.g. a webhook from another deployment sharing a secret).
+    logger.warn(`Razorpay webhook for unknown order ${orderId} — ignored`);
+    return { handled: false, reason: 'No matching payment intent' };
+  }
+
+  if (intent.status === 'SUCCESS') {
+    return { handled: true, idempotent: true, paymentId: intent._id, reason: 'Already settled' };
+  }
+
+  // The event says one amount; we ordered another. Refusing is the only safe
+  // move — crediting either figure would be guessing about real money.
+  if (Number(amountPaise) !== Number(intent.amountPaise)) {
+    logger.error(
+      `Razorpay amount mismatch on order ${orderId}: event=${amountPaise} intent=${intent.amountPaise} — refusing to settle`
+    );
+    await Payment.updateOne({ _id: intent._id }, { $set: { status: 'FAILED' } });
+    return { handled: false, reason: 'AMOUNT_MISMATCH', expected: intent.amountPaise, received: Number(amountPaise) };
+  }
+
+  // Ask the gateway directly rather than believing the payload. A valid
+  // signature proves the message came from Razorpay, not that it is current.
+  if (verifyWithGateway && gatewayPaymentId) {
+    try {
+      const live = await fetchGatewayPayment(gatewayPaymentId);
+      if (!live.captured) {
+        return { handled: false, reason: `Gateway reports status "${live.status}", not captured` };
+      }
+      if (Number(live.amountPaise) !== Number(intent.amountPaise)) {
+        return { handled: false, reason: 'AMOUNT_MISMATCH_AT_GATEWAY' };
+      }
+    } catch (err) {
+      logger.error(`Could not confirm payment ${gatewayPaymentId} with Razorpay: ${err.message}`);
+      return { handled: false, reason: 'GATEWAY_UNREACHABLE' };
+    }
+  }
+
+  // Atomic claim: only the delivery that flips INITIATED→SUCCESS credits the
+  // ledger. Retries find nothing to update and fall through as idempotent.
+  const claimed = await Payment.findOneAndUpdate(
+    { _id: intent._id, status: 'INITIATED' },
+    {
+      $set: {
+        status: 'SUCCESS',
+        gatewayRef: gatewayPaymentId ?? intent.gatewayRef,
+        gatewayOrderRef: orderId,
+        receiptNo: intent.receiptNo ?? `RCPT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+        reconciledAt: new Date(),
+      },
+    },
+    { new: true }
+  );
+
+  if (!claimed) {
+    return { handled: true, idempotent: true, paymentId: intent._id, reason: 'Concurrent delivery already settled this payment' };
+  }
+
+  await Invoice.updateOne({ _id: claimed.invoiceId }, { $inc: { paidPaise: claimed.amountPaise } });
+
+  // Status is derived after the increment so it reflects the committed total.
+  const invoice = await Invoice.findById(claimed.invoiceId);
+  invoice.status = invoice.paidPaise >= invoice.totalPaise ? 'PAID' : 'PARTIAL';
+  await invoice.save();
+
+  logger.info(
+    `Razorpay settled ${claimed.amountPaise} paise on invoice ${invoice.invoiceNo} → ${invoice.status} (payment ${gatewayPaymentId})`
+  );
+
+  return {
+    handled: true,
+    paymentId: claimed._id,
+    receiptNo: claimed.receiptNo,
+    invoiceNo: invoice.invoiceNo,
+    invoiceStatus: invoice.status,
+    paidPaise: invoice.paidPaise,
+    totalPaise: invoice.totalPaise,
   };
 }
 
@@ -618,36 +757,25 @@ export async function getSummary(actor, scope, query = {}) {
   const overdueCount = agg?.overdueCount ?? 0;
   const invoices = { length: agg?.invoiceCount ?? 0 };
 
-  const total = totalPaise / 100;
-  const paid = paidPaise / 100;
-  const outstanding = outstandingPaise / 100;
-  const collectionRate = total > 0 ? Math.round((paid / total) * 100) : 0;
+  const collectionPct = totalPaise > 0 ? Math.round((paidPaise / totalPaise) * 100) : 0;
 
+  // One name per concept, matching the `FeeSummary` type the portals already
+  // declare in frontend/src/lib/types.ts.
+  //
+  // This used to return twenty-five keys — nine spellings of "outstanding"
+  // alone — and still not the four the dashboards actually read, so every stat
+  // card rendered a dash. The aliases were not a compatibility layer; they were
+  // guesses, and having many of them is what let the real names stay missing
+  // without anyone noticing. Adding a name here is now a contract change:
+  // update types.ts and the consumers with it.
   return {
-    totalPaise,
-    paidPaise,
-    outstandingPaise,
-    invoiceCount: invoices.length,
-    total,
-    paid,
-    outstanding,
-    totalAmount: total,
-    paidAmount: paid,
-    outstandingAmount: outstanding,
-    billedTarget: total,
-    billedTargetPaise: totalPaise,
-    realizedRevenue: paid,
-    realizedRevenuePaise: paidPaise,
-    outstandingBalance: outstanding,
-    outstandingBalances: outstanding,
-    outstandingBalancePaise: outstandingPaise,
-    collectionRate,
-    collectionRatePercentage: collectionRate,
-    unpaidCount,
+    totalBilledPaise: totalPaise,
+    totalCollectedPaise: paidPaise,
+    pendingPaise: outstandingPaise,
     pendingCount: unpaidCount,
-    outstandingCount: unpaidCount,
-    unpaidInvoices: unpaidCount,
+    collectionPct,
     overduePaise,
     overdueCount,
+    invoiceCount: invoices.length,
   };
 }
