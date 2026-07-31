@@ -4,7 +4,7 @@
  * Production hardening (Phase 7): move refresh into an httpOnly cookie
  * behind a BFF route handler so it never touches JS-readable storage.
  */
-import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, TutorStatusDto, TutorSyllabusDto, TutorReplyDto } from './types';
+import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, TutorStatusDto, TutorSyllabusDto, TutorReplyDto } from './types';
 
 // Backend URL – default to localhost:5000. Can be overridden via NEXT_PUBLIC_BACKEND_URL.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
@@ -197,6 +197,8 @@ export const api = {
   createStudent: (body: { firstName: string; lastName?: string; admissionNo: string; sectionId?: string }) =>
     request<StudentListItem>('/students', { method: 'POST', body: JSON.stringify(body) }),
   studentOverview: (id: string) => request<StudentOverviewDto>(`/students/${id}/overview`),
+  setStudentPhoto: (id: string, photoUrl: string) =>
+    request<{ id: string; photoUrl: string }>(`/students/${id}/photo`, { method: 'PATCH', body: JSON.stringify({ photoUrl }) }),
   bulkAssignSection: (file: File, sectionId: string, academicYearId: string) =>
     uploadCsv('/enrollments/bulk', file, { sectionId, academicYearId }),
 
@@ -290,6 +292,8 @@ export const api = {
     request<AttendanceCalendarDto>(`/attendance/calendar?enrollmentId=${enrollmentId}&month=${month}`),
   attendanceTrend: (enrollmentId: string, months = 6) =>
     request<AttendanceTrendPointDto[]>(`/attendance/trend?enrollmentId=${enrollmentId}&months=${months}`),
+  attendanceSubjectWise: (enrollmentId: string, month: string) =>
+    request<SubjectAttendanceDto>(`/attendance/subject-wise?enrollmentId=${enrollmentId}&month=${month}`),
 
   // ── leave ──
   applyLeave: (body: { fromDate: string; toDate: string; reason: string }) =>
@@ -338,20 +342,12 @@ export const api = {
     const qs = studentId ? `?studentId=${studentId}` : '';
     return request<{ id: string; studentName: string; class: string }[]>(`/enrollments${qs}`);
   },
-  feeSummary: async () => {
-    const raw: any = await request<any>('/fees/summary');
-    // Backend returns: totalPaise, paidPaise, outstandingPaise, collectionRate, pendingCount
-    // Frontend expects: totalBilledPaise, totalCollectedPaise, pendingPaise, collectionPct, pendingCount
-    return {
-      totalBilledPaise: raw.totalPaise ?? raw.billedTargetPaise ?? raw.totalBilledPaise ?? 0,
-      totalCollectedPaise: raw.paidPaise ?? raw.realizedRevenuePaise ?? raw.totalCollectedPaise ?? 0,
-      pendingPaise: raw.outstandingPaise ?? raw.outstandingBalancePaise ?? raw.pendingPaise ?? 0,
-      pendingCount: raw.pendingCount ?? raw.unpaidCount ?? raw.outstandingCount ?? 0,
-      collectionPct: raw.collectionRate ?? raw.collectionRatePercentage ?? raw.collectionPct ?? 0,
-      overduePaise: raw.overduePaise ?? 0,
-      overdueCount: raw.overdueCount ?? 0,
-    } as FeeSummary;
-  },
+  // /fees/summary returns FeeSummary directly — the backend and this type are
+  // the same contract. The alias-guessing that used to live here (three
+  // candidate spellings per field, each defaulting to 0) is gone on purpose:
+  // it turned a renamed field into a silent ₹0 instead of a visible failure,
+  // which is how a broken dashboard went unnoticed.
+  feeSummary: () => request<FeeSummary>('/fees/summary'),
   recordPayment: (body: { invoiceId: string; amountPaise: number; mode: string; gatewayRef?: string }) =>
     request<{ receiptNo: string; status: string; paidPaise: number }>('/fees/payments', { method: 'POST', body: JSON.stringify(body) }),
   listPayments: (invoiceId?: string) =>

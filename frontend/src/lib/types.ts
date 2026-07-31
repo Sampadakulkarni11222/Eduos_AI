@@ -46,7 +46,12 @@ export interface StudentOverviewDto {
   gender: string | null;
   address: string | null;
   photoUrl: string | null;
-  enrollment: { id: string; rollNo: number | null; class: string; sectionId?: string | null; academicYearId?: string | null } | null;
+  enrollment: {
+    id: string; rollNo: number | null; class: string;
+    sectionId?: string | null; academicYearId?: string | null;
+    classTeacher?: { name: string; phone: string | null; email: string | null } | null;
+    classRepresentative?: { name: string } | null;
+  } | null;
   guardians: StudentGuardianInfo[];
   medical: MedicalDto | null;
   attendance: AttendanceSummaryDto | null;
@@ -103,6 +108,23 @@ export interface CalendarEventDto { id: string; title: string; description: stri
 export interface AttendanceDayDto { date: string; status: AttStatus }
 export interface AttendanceCalendarDto { enrollmentId: string; month: string; days: AttendanceDayDto[] }
 export interface AttendanceTrendPointDto { month: string; pctPresent: number; presentDays: number; workingDays: number }
+
+/**
+ * `basis` says where these numbers come from — PERIOD is a true per-subject
+ * figure; DAY means the day's status was attributed to each subject timetabled
+ * that day, so subjects taught daily will legitimately read alike.
+ */
+export interface SubjectAttendanceRow {
+  subjectOfferingId: string; subject: string; subjectId: string | null;
+  present: number; absent: number; leave: number;
+  totalSessions: number; periodBacked: number;
+  pctPresent: number | null; derived: boolean;
+}
+export interface SubjectAttendanceDto {
+  enrollmentId: string; yearMonth: string;
+  basis: 'PERIOD' | 'DAY' | 'MIXED';
+  subjects: SubjectAttendanceRow[];
+}
 
 // ── Leave applications ──
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -211,7 +233,20 @@ export interface BulkImportResult {
 }
 
 // ── Online payments ──
-export interface PayOnlineResult { receiptNo: string; gatewayRef: string; provider: string; sandbox: boolean; status: string; paidPaise: number }
+/**
+ * Result of POST /fees/pay.
+ *
+ * A real gateway cannot capture from the server, so it answers with an order
+ * for the browser to complete (`requiresClientAction: true`) and no receipt —
+ * the ledger only moves once the signed webhook arrives. The sandbox provider
+ * captures immediately and returns the receipt fields. Callers must branch on
+ * `requiresClientAction` before showing any confirmation.
+ */
+export interface PayOnlineResult {
+  requiresClientAction?: boolean;
+  orderId?: string; keyId?: string; currency?: string; amountPaise?: number;
+  receiptNo: string; gatewayRef: string; provider: string; sandbox: boolean; status: string; paidPaise: number;
+}
 
 // ── Hostel ──
 export interface HostelRoomDto { _id: string; roomNo: string; block: string; floor?: number | null; type: string; capacity: number; status: string; occupied: number; available: number }
