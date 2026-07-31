@@ -107,9 +107,27 @@ export async function getById(actor, scope, id) {
 export async function getOverview(actor, scope, id) {
   const student = await getById(actor, scope, id); // throws 404 if not visible to this actor
 
+  // Class teacher and CR are populated the same way the parent dashboard does
+  // it (dashboard.service.js), so a student sees exactly what their guardian
+  // already sees — the data was on the section all along, just never read here.
   const enrollment = await Enrollment.findOne({ studentId: id, status: 'ACTIVE' })
     .sort({ createdAt: -1 })
-    .populate({ path: 'sectionId', populate: { path: 'gradeId' } });
+    .populate({
+      path: 'sectionId',
+      populate: [
+        { path: 'gradeId' },
+        {
+          path: 'classTeacherId',
+          select: 'displayName accountId',
+          populate: { path: 'accountId', select: 'phoneE164 email' },
+        },
+        { path: 'classRepresentativeId', select: 'firstName lastName' },
+      ],
+    });
+
+  const section = enrollment?.sectionId;
+  const teacher = section?.classTeacherId;
+  const rep = section?.classRepresentativeId;
 
   const enrollmentDto = enrollment
     ? {
@@ -120,6 +138,16 @@ export async function getOverview(actor, scope, id) {
           : 'Unknown',
         sectionId: enrollment.sectionId?._id?.toString() ?? null,
         academicYearId: enrollment.academicYearId?.toString() ?? null,
+        classTeacher: teacher
+          ? {
+              name: teacher.displayName ?? 'Unknown',
+              phone: teacher.accountId?.phoneE164 ?? null,
+              email: teacher.accountId?.email ?? null,
+            }
+          : null,
+        classRepresentative: rep
+          ? { name: `${rep.firstName} ${rep.lastName ?? ''}`.trim() }
+          : null,
       }
     : null;
 
@@ -240,7 +268,37 @@ export async function getIdCardData(actor, scope, id) {
       : null,
     rollNo: enrollment.rollNo ?? null,
     academicYear: enrollment.academicYearId?.name ?? null,
+    // Carried through so the card prints the real photo instead of falling
+    // back to initials whenever one has been uploaded.
+    photoUrl: student.photoUrl ?? null,
   };
+}
+
+/**
+ * Sets a student's profile photo.
+ *
+ * Separate from update() because that requires `students.manage` — staff-only.
+ * A student needs to be able to supply their own photo for their ID card
+ * without being handed permission to edit their admission record, so this
+ * writes exactly one field and re-uses getById's OWN check to confirm the
+ * caller owns (or is guardian of) the record.
+ */
+export async function setPhoto(actor, scope, id, photoUrl) {
+  const url = String(photoUrl ?? '').trim();
+  if (!url) throw new AppError('photoUrl is required', 400);
+
+  // Only accept a path produced by our own upload endpoint. A remote URL here
+  // would be fetched by the ID-card renderer, turning this into an SSRF and a
+  // way to put arbitrary third-party images on a school document.
+  if (!/^\/?uploads\/[A-Za-z0-9._-]+$/.test(url)) {
+    throw new AppError('photoUrl must reference a file uploaded to this system', 400, [], 'INVALID_PHOTO_URL');
+  }
+
+  const student = await getById(actor, scope, id); // 404s if not visible to this actor
+  student.photoUrl = url.startsWith('/') ? url : `/${url}`;
+  await student.save();
+
+  return { id: student._id.toString(), photoUrl: student.photoUrl };
 }
 
 export const create = (data) => Student.create(data);

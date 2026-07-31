@@ -30,6 +30,11 @@ export const create = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.create(req.body), 'Student created', 201);
 });
 
+export const setPhoto = asyncHandler(async (req, res) => {
+  const result = await service.setPhoto(req.actor, req.scope, req.params.id, req.body?.photoUrl);
+  sendSuccess(res, result, 'Profile photo updated');
+});
+
 export const update = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.update(req.params.id, req.body), 'Student updated');
 });

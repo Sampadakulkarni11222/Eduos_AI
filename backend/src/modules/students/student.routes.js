@@ -73,6 +73,32 @@ router.post('/', requirePermission('students.manage'), controller.create);
  *         description: Student deactivated
  */
 router.get('/:id', requirePermission('students.read'), controller.getById);
+/**
+ * @swagger
+ * /students/{id}/photo:
+ *   patch:
+ *     summary: Set a student's profile photo (used on their ID card)
+ *     description: >
+ *       Guarded by `students.read` rather than `students.manage` so a student
+ *       can supply their own photo without gaining edit rights over their
+ *       admission record. OWN scope restricts it to their own record; the
+ *       service accepts only paths from this system's upload endpoint.
+ *     tags: [Students]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [photoUrl]
+ *             properties:
+ *               photoUrl: { type: string, example: /uploads/uuid-photo.jpg }
+ *     responses:
+ *       200:
+ *         description: Profile photo updated
+ */
+router.patch('/:id/photo', requirePermission('students.read'), controller.setPhoto);
+
 router.patch('/:id', requirePermission('students.manage'), controller.update);
 router.delete('/:id', requirePermission('students.manage'), controller.remove);
 

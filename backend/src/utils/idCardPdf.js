@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import PDFDocument from 'pdfkit';
 import { env } from '../config/env.js';
 
@@ -18,7 +20,7 @@ function initialsFor(name) {
  * No external template/asset dependency — everything is drawn with pdfkit
  * primitives from live student/enrollment data.
  */
-export function renderIdCardPdf(res, { studentName, admissionNo, className, rollNo, dob, gender, academicYear }) {
+export function renderIdCardPdf(res, { studentName, admissionNo, className, rollNo, dob, gender, academicYear, photoUrl }) {
   const doc = new PDFDocument({ size: [280, 440], margin: 0 });
   doc.pipe(res);
 
@@ -29,10 +31,35 @@ export function renderIdCardPdf(res, { studentName, admissionNo, className, roll
   doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(15).text(env.SCHOOL_NAME, 18, 22, { width: 244, align: 'center' });
   doc.font('Helvetica').fontSize(9).fillColor('#ffffffcc').text('Student Identity Card', 18, 44, { width: 244, align: 'center' });
 
-  // Avatar (initials disc)
+  // Photo when one has been uploaded, initials otherwise. Resolved from local
+  // storage rather than fetched — photoUrl is validated on write to be a path
+  // into our own uploads directory, and this keeps the renderer offline.
   const cx = 140, cy = 150, r = 40;
-  doc.circle(cx, cy, r).fill(tint + '22');
-  doc.fillColor(tint).font('Helvetica-Bold').fontSize(28).text(initialsFor(studentName), cx - r, cy - 16, { width: r * 2, align: 'center' });
+  let drewPhoto = false;
+  if (photoUrl) {
+    try {
+      const rel = String(photoUrl).replace(/^\//, '');
+      const abs = path.resolve(process.cwd(), rel);
+      const uploadRoot = path.resolve(process.cwd(), env.UPLOAD_DIR);
+      // Defence in depth against a stored "../../etc/passwd" style path.
+      if (abs.startsWith(uploadRoot + path.sep) && fs.existsSync(abs)) {
+        doc.save();
+        doc.circle(cx, cy, r).clip();
+        doc.image(abs, cx - r, cy - r, { cover: [r * 2, r * 2], align: 'center', valign: 'center' });
+        doc.restore();
+        doc.circle(cx, cy, r).lineWidth(2).strokeColor(tint).stroke();
+        drewPhoto = true;
+      }
+    } catch {
+      // An unreadable or non-image file must not break the whole card.
+      drewPhoto = false;
+    }
+  }
+
+  if (!drewPhoto) {
+    doc.circle(cx, cy, r).fill(tint + '22');
+    doc.fillColor(tint).font('Helvetica-Bold').fontSize(28).text(initialsFor(studentName), cx - r, cy - 16, { width: r * 2, align: 'center' });
+  }
 
   // Name + core details
   doc.fillColor('#1a1a1a').font('Helvetica-Bold').fontSize(16).text(studentName, 18, 206, { width: 244, align: 'center' });

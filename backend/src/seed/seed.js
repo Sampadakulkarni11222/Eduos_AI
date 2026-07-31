@@ -10,6 +10,7 @@ import { Profile } from '../models/profile.model.js';
 import { Student } from '../models/student.model.js';
 import { Book, BookIssue } from '../models/library.model.js';
 import { HostelRoom, HostelAllocation } from '../models/hostel.model.js';
+import { seedDocuments, auditDocumentFiles } from './seed_documents.js';
 import { PERMISSION_CATALOG, SYSTEM_ROLES } from '../constants/permissions.js';
 import { DEMO_USERS } from '../constants/demoUsers.js';
 
@@ -154,6 +155,22 @@ async function seed() {
     logger.info(`  ✔  ${allocated} students allocated to hostel rooms`);
   } else {
     logger.info(`  -  Hostel already has ${roomCount} rooms, skipping`);
+  }
+
+  // ─── Course Materials / Documents ─────────────────────────
+  logger.info('Seeding course material documents...');
+  const docResult = await seedDocuments();
+  if (docResult.created) logger.info(`  ✔  ${docResult.created} document(s) seeded with real files on disk`);
+
+  // Any document whose file is missing is reported now rather than discovered
+  // later as a 404 by a student trying to open their syllabus.
+  const audit = await auditDocumentFiles();
+  if (audit.broken.length) {
+    logger.warn(`  ✘  ${audit.broken.length} of ${audit.total} document(s) reference a file that is NOT in local storage:`);
+    for (const b of audit.broken) logger.warn(`       ${b.title} → ${b.fileUrl}  (id ${b.id})`);
+    logger.warn('       These will 404 on view/download. Re-upload them, or remove the stale rows.');
+  } else {
+    logger.info(`  ✔  all ${audit.total} document file(s) present in local storage`);
   }
 
   logger.info('Seed complete.');

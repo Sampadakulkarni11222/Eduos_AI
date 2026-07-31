@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Avatar, Card, EmptyState, Pill, SkeletonRows } from '@/components/ui';
 import { IdCardPanel } from '@/components/id-card-action';
-import { api } from '@/lib/api';
+import { api, ApiError, fileHref } from '@/lib/api';
 import type { StudentOverviewDto } from '@/lib/types';
 
 const RELATION_LABEL: Record<string, string> = {
@@ -23,6 +23,27 @@ function formatDate(iso: string | null) {
 export default function StudentProfile() {
   const [overview, setOverview] = useState<StudentOverviewDto | null>(null);
   const [loading, setLoading] = useState(true);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoErr, setPhotoErr] = useState<string | null>(null);
+
+  /**
+   * Uploads the file, then points the student record at the stored path.
+   * Two steps because /uploads is generic storage — it has no idea the bytes
+   * are meant to become someone's ID-card photo.
+   */
+  const uploadPhoto = async (file: File) => {
+    setPhotoBusy(true);
+    setPhotoErr(null);
+    try {
+      const { fileUrl } = await api.uploadFile(file);
+      const saved = await api.setStudentPhoto(overview!.id, fileUrl);
+      setOverview((prev) => (prev ? { ...prev, photoUrl: saved.photoUrl } : prev));
+    } catch (e) {
+      setPhotoErr(e instanceof ApiError ? e.message : 'Could not update your photo. Please try again.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
 
   useEffect(() => {
     let stale = false;
@@ -67,7 +88,35 @@ export default function StudentProfile() {
       {!loading && overview && (
         <>
           <Card style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-            <Avatar name={overview.name} className="profile-avatar-lg" />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+              {overview.photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={fileHref(overview.photoUrl)}
+                  alt={`${overview.name}'s profile photo`}
+                  className="profile-avatar-lg"
+                  style={{ objectFit: 'cover', borderRadius: '50%' }}
+                />
+              ) : (
+                <Avatar name={overview.name} className="profile-avatar-lg" />
+              )}
+
+              <label className="btn btn-soft btn-sm" style={{ cursor: photoBusy ? 'wait' : 'pointer' }}>
+                {photoBusy ? 'Uploading…' : overview.photoUrl ? 'Change photo' : 'Upload photo'}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  style={{ display: 'none' }}
+                  disabled={photoBusy}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = ''; // allows re-picking the same file after an error
+                    if (file) void uploadPhoto(file);
+                  }}
+                />
+              </label>
+              {photoErr && <div style={{ fontSize: 11.5, color: '#991b1b', maxWidth: 160, textAlign: 'center' }}>{photoErr}</div>}
+            </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontFamily: 'Newsreader, serif', fontSize: 22, fontWeight: 600, color: 'var(--text-1b)' }}>
                 {overview.name}
@@ -81,6 +130,40 @@ export default function StudentProfile() {
               </div>
             </div>
           </Card>
+
+          {(overview.enrollment?.classTeacher || overview.enrollment?.classRepresentative) && (
+            <Card pad={false} style={{ marginBottom: 16 }}>
+              <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--hairline)' }}>
+                <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Your class</strong>
+              </div>
+              <table className="data-table data-table-cards">
+                <tbody>
+                  {overview.enrollment?.classTeacher && (
+                    <tr>
+                      <td className="cell-primary" data-label="Role" style={{ width: '38%' }}>Class teacher</td>
+                      <td data-label="Name">
+                        <span className="row-flex" style={{ flexWrap: 'wrap', gap: 8 }}>
+                          {overview.enrollment.classTeacher.name}
+                          {overview.enrollment.classTeacher.phone && (
+                            <a href={`tel:${overview.enrollment.classTeacher.phone}`}>{overview.enrollment.classTeacher.phone}</a>
+                          )}
+                          {overview.enrollment.classTeacher.email && (
+                            <a href={`mailto:${overview.enrollment.classTeacher.email}`}>{overview.enrollment.classTeacher.email}</a>
+                          )}
+                        </span>
+                      </td>
+                    </tr>
+                  )}
+                  {overview.enrollment?.classRepresentative && (
+                    <tr>
+                      <td className="cell-primary" data-label="Role">Class representative</td>
+                      <td data-label="Name">{overview.enrollment.classRepresentative.name}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </Card>
+          )}
 
           <IdCardPanel studentId={overview.id} />
 
