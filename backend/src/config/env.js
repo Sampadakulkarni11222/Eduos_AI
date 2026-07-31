@@ -93,6 +93,14 @@ export const env = {
   BCRYPT_SALT_ROUNDS: Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
   MEDICAL_ENCRYPTION_KEY: process.env.MEDICAL_ENCRYPTION_KEY ?? 'change-this-medical-key-in-production',
   WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN ?? 'change-this-verify-token',
+  // ── WhatsApp (Meta Cloud API) ──
+  // Live mode is inferred from the phone number + access token; the app secret
+  // is what authenticates inbound webhooks. All three live here rather than
+  // being read straight from process.env so the placeholder check below can
+  // see them.
+  WA_PHONE_NUMBER_ID: process.env.WA_PHONE_NUMBER_ID ?? '',
+  WA_ACCESS_TOKEN: process.env.WA_ACCESS_TOKEN ?? '',
+  WA_APP_SECRET: process.env.WA_APP_SECRET ?? '',
   // ── Provider abstractions (all optional — safe fallbacks in dev) ──
   // Google Sign-In: when set, /auth/google verifies the ID token audience.
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? '',
@@ -124,6 +132,42 @@ export const env = {
   isProd: process.env.NODE_ENV === 'production',
 };
 
+/**
+ * Placeholder secrets shipped so the app runs out of the box.
+ *
+ * These have to be recognised, not merely non-empty: `WA_APP_SECRET` was left
+ * at `change-this-app-secret`, which is truthy, so signature verification ran
+ * against a value Meta has never seen and rejected every genuine webhook with
+ * a 401. A secret that is present but wrong is worse than one that is absent —
+ * absence is at least detectable.
+ */
+const PLACEHOLDERS = new Set([
+  'change-this-secret-in-production',
+  'change-this-medical-key-in-production',
+  'change-this-verify-token',
+  'change-this-app-secret',
+  '',
+]);
+
+/** True when a secret is unset or still one of the shipped defaults. */
+export function isPlaceholderSecret(value) {
+  return PLACEHOLDERS.has(String(value ?? '').trim());
+}
+
+/**
+ * WhatsApp is "live" once it has a number and a token to send with — that is
+ * also the point at which Meta starts POSTing real webhooks at us, so it is
+ * the point from which the app secret must be real.
+ */
+export function isWhatsappLive() {
+  return Boolean(env.WA_PHONE_NUMBER_ID && env.WA_ACCESS_TOKEN);
+}
+
+/** True when inbound webhook signatures can actually be checked. */
+export function isWhatsappSignatureConfigured() {
+  return !isPlaceholderSecret(env.WA_APP_SECRET);
+}
+
 // ─── Production safety gate ───────────────────────────────
 // The development defaults above are deliberately weak so the app runs out of
 // the box. Booting production with any of them still set means anyone holding
@@ -135,6 +179,13 @@ if (env.isProd) {
   if (env.JWT_SECRET.length < 32) insecure.push('JWT_SECRET (must be ≥32 characters)');
   if (env.MEDICAL_ENCRYPTION_KEY === 'change-this-medical-key-in-production') insecure.push('MEDICAL_ENCRYPTION_KEY');
   if (env.WHATSAPP_VERIFY_TOKEN === 'change-this-verify-token') insecure.push('WHATSAPP_VERIFY_TOKEN');
+  // Only demanded once WhatsApp is actually live: a deployment that never
+  // receives webhooks has nothing to authenticate. Once it is live, an
+  // unverifiable webhook lets anyone who learns the URL post messages that
+  // appear to come from any parent's number.
+  if (isWhatsappLive() && !isWhatsappSignatureConfigured()) {
+    insecure.push('WA_APP_SECRET (WhatsApp is live — inbound webhooks cannot be authenticated without it)');
+  }
   if (env.CORS_ORIGIN === '*') insecure.push('CORS_ORIGIN (must name your frontend origin)');
   // A sandbox gateway in production marks invoices Paid without money moving.
   if (env.PAYMENT_PROVIDER === 'sandbox') insecure.push('PAYMENT_PROVIDER=sandbox (simulates payments — use a real gateway or "none")');

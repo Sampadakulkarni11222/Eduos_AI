@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { handleInboundMessage, converse } from './whatsapp.agent.js';
 import { t } from '../../utils/language.js';
-import { env } from '../../config/env.js';
+import { env, isWhatsappLive, isWhatsappSignatureConfigured } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 
 /**
@@ -15,7 +15,7 @@ import { logger } from '../../utils/logger.js';
  */
 
 export function isLiveMode() {
-  return Boolean(process.env.WA_PHONE_NUMBER_ID && process.env.WA_ACCESS_TOKEN);
+  return isWhatsappLive();
 }
 
 export function verifyWebhook({ mode, token, challenge }) {
@@ -29,23 +29,41 @@ export function verifyWebhook({ mode, token, challenge }) {
  * Validates Meta's X-Hub-Signature-256 over the raw request body.
  *
  * Without this, anyone who learns the webhook URL can POST arbitrary "inbound
- * messages" that appear to come from any phone number. That is only noisy
- * today (the handler logs), but Phase 5 makes webhook payloads drive real
- * actions, so the check belongs here before that lands.
+ * messages" that appear to come from any phone number — and those payloads now
+ * drive real agent actions, not just log lines.
  *
- * Returns true when no WA_APP_SECRET is configured (simulation mode) — the
- * webhook has nothing to impersonate until live credentials exist.
+ * Two failure modes this had to grow out of:
+ *
+ *   1. It returned true whenever WA_APP_SECRET was empty, so the shipped
+ *      `.env.example` (which leaves it blank) produced an unauthenticated
+ *      webhook. Absence of a secret is no longer permission — outside
+ *      development it is a refusal, and production will not boot that way.
+ *   2. `.env` carried `change-this-app-secret`, which is truthy, so every
+ *      genuine webhook was checked against a secret Meta had never seen and
+ *      rejected 401. Inbound WhatsApp was dead and nothing said so. Shipped
+ *      placeholders now count as "not configured" rather than as a real key.
+ *
+ * Returns { ok, reason } rather than a bare boolean so the caller can log why
+ * a webhook was refused — "no secret configured" and "bad signature" need very
+ * different responses from whoever is on call.
  */
 export function verifySignature(rawBody, signatureHeader) {
-  const appSecret = process.env.WA_APP_SECRET;
-  if (!appSecret) return true;
-  if (!signatureHeader || !rawBody) return false;
+  if (!isWhatsappSignatureConfigured()) {
+    // Fail closed anywhere that could plausibly be reachable from the internet.
+    if (!env.isDev) {
+      return { ok: false, reason: 'SECRET_NOT_CONFIGURED' };
+    }
+    return { ok: true, reason: 'SIMULATION_UNVERIFIED' };
+  }
+
+  if (!signatureHeader || !rawBody) return { ok: false, reason: 'MISSING_SIGNATURE' };
 
   const expected =
-    'sha256=' + crypto.createHmac('sha256', appSecret).update(rawBody).digest('hex');
+    'sha256=' + crypto.createHmac('sha256', env.WA_APP_SECRET).update(rawBody).digest('hex');
   const a = Buffer.from(expected);
   const b = Buffer.from(String(signatureHeader));
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
+  return ok ? { ok: true, reason: 'VERIFIED' } : { ok: false, reason: 'SIGNATURE_MISMATCH' };
 }
 
 /**

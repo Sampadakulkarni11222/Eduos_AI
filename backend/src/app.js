@@ -81,7 +81,7 @@ function apiCompressionMiddleware(req, res, next) {
 }
 
 
-import { env } from './config/env.js';
+import { env, isWhatsappLive, isWhatsappSignatureConfigured } from './config/env.js';
 import { connectDB } from './config/db.js';
 import { swaggerSpec } from './config/swagger.js';
 import { logger } from './utils/logger.js';
@@ -232,6 +232,30 @@ async function bootstrap() {
 
   // ── CORS ──
   logger.info(`✔  CORS enabled  →  origin: ${env.CORS_ORIGIN}`);
+
+  // ── WhatsApp ──
+  // Said out loud at boot because the failure is otherwise silent: webhooks
+  // just stop arriving, and nothing in the app looks wrong.
+  if (isWhatsappLive()) {
+    if (isWhatsappSignatureConfigured()) {
+      logger.info('✔  WhatsApp live  →  inbound webhook signatures verified');
+    } else if (env.isDev) {
+      logger.warn(
+        '✘  WhatsApp is LIVE but WA_APP_SECRET is unset or still a placeholder. ' +
+          'Inbound webhooks are being accepted UNVERIFIED because this is development — ' +
+          'any deployment reachable from the internet must set it to the App Secret ' +
+          'from the Meta app dashboard.'
+      );
+    } else {
+      logger.error(
+        '✘  WhatsApp is LIVE but WA_APP_SECRET is unset or still a placeholder — ' +
+          'inbound webhooks cannot be authenticated and are being REFUSED. ' +
+          'Set it to the App Secret from the Meta app dashboard.'
+      );
+    }
+  } else {
+    logger.info('-  WhatsApp simulation mode  →  set WA_PHONE_NUMBER_ID / WA_ACCESS_TOKEN to go live');
+  }
 
   // ── Swagger ──
   if (env.SWAGGER_ENABLED) {
