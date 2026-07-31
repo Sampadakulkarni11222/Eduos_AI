@@ -279,6 +279,36 @@ router.post('/pay', requirePermission('fees.pay'), controller.payOnline);
 
 /**
  * @swagger
+ * /fees/pay/verify:
+ *   post:
+ *     summary: Confirm a checkout the payer just completed in the browser
+ *     description: >
+ *       Verifies Razorpay Checkout's `order_id|payment_id` signature and then
+ *       settles through the same path the webhook uses, so it cannot double-credit
+ *       and cannot bypass the amount check. The webhook remains authoritative —
+ *       this only spares the payer a wait.
+ *     tags: [Fees]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [orderId, paymentId, signature]
+ *             properties:
+ *               orderId: { type: string }
+ *               paymentId: { type: string }
+ *               signature: { type: string }
+ *     responses:
+ *       200:
+ *         description: Payment confirmed (or already confirmed)
+ *       400:
+ *         description: Signature verification failed
+ */
+router.post('/pay/verify', requirePermission('fees.pay'), controller.verifyCheckout);
+
+/**
+ * @swagger
  * /fees/payments/{id}/refund:
  *   post:
  *     summary: Refund a payment

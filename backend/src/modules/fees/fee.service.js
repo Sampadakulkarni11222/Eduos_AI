@@ -11,6 +11,7 @@ import {
   isOnlinePaymentEnabled,
   paymentMode,
   fetchGatewayPayment,
+  verifyCheckoutSignature,
 } from '../../providers/payment.provider.js';
 import { logger } from '../../utils/logger.js';
 
@@ -523,6 +524,62 @@ export async function settleGatewayPayment({ event, orderId, gatewayPaymentId, a
     paidPaise: invoice.paidPaise,
     totalPaise: invoice.totalPaise,
   };
+}
+
+/**
+ * Confirms a checkout the payer just completed in their browser.
+ *
+ * Razorpay hands the browser back `order_id|payment_id|signature`, signed with
+ * the API key secret. This exists so the payer gets an immediate answer rather
+ * than staring at a spinner until the webhook lands.
+ *
+ * It is deliberately NOT a second way to move money. The signature is checked,
+ * and then settlement goes through exactly the same settleGatewayPayment() the
+ * webhook uses — same amount check against the intent we created, same atomic
+ * claim, same confirmation with the gateway. So this racing the webhook is
+ * harmless: whichever arrives first settles, the other returns idempotent.
+ *
+ * A closed browser tab therefore costs nothing; the webhook remains the
+ * authority. This is a latency optimisation wearing a seatbelt.
+ */
+export async function verifyCheckout(actor, scope, { orderId, paymentId, signature }) {
+  if (!orderId || !paymentId || !signature) {
+    throw new AppError('orderId, paymentId and signature are required', 400);
+  }
+
+  if (!verifyCheckoutSignature({ orderId, paymentId, signature })) {
+    logger.warn(`Rejected checkout callback with a bad signature for order ${orderId}`);
+    throw new AppError('Payment could not be verified', 400, [], 'CHECKOUT_SIGNATURE_INVALID');
+  }
+
+  // Ownership: the intent must belong to an invoice this actor may pay.
+  const intent = await Payment.findOne({ gatewayOrderRef: orderId });
+  if (!intent) throw new AppError('No payment found for that order', 404);
+  if (scope === 'OWN') {
+    const invoice = await Invoice.findById(intent.invoiceId);
+    if (!invoice) throw new AppError('Invoice not found', 404);
+    await assertInvoiceOwnership(actor, invoice);
+  }
+
+  const result = await settleGatewayPayment({
+    event: 'payment.captured',
+    orderId,
+    gatewayPaymentId: paymentId,
+    amountPaise: intent.amountPaise,
+  });
+
+  if (!result.handled) {
+    throw new AppError(
+      result.reason === 'GATEWAY_UNREACHABLE'
+        ? 'Your payment is being confirmed. It will appear on your invoice shortly.'
+        : 'Payment could not be confirmed.',
+      502,
+      [],
+      result.reason ?? 'PAYMENT_UNCONFIRMED'
+    );
+  }
+
+  return result;
 }
 
 /** List payment receipts (scoped: parents/students see only their own). */

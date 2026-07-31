@@ -92,6 +92,11 @@ export const payOnline = asyncHandler(async (req, res) => {
   );
 });
 
+export const verifyCheckout = asyncHandler(async (req, res) => {
+  const result = await service.verifyCheckout(req.actor, req.scope, req.body);
+  sendSuccess(res, result, result.idempotent ? 'Payment already confirmed' : 'Payment confirmed');
+});
+
 /**
  * Razorpay webhook. Unauthenticated by necessity (Razorpay holds no JWT), so
  * the HMAC signature over the raw body is the *only* authentication — it is

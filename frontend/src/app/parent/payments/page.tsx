@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, rupees, useToast } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
+import { loadRazorpay, openCheckout } from '@/lib/razorpay';
 import type { InvoiceDto } from '@/lib/types';
 
 const TONE: Record<string, 'green' | 'amber' | 'red' | 'gray'> = { PAID: 'green', PARTIAL: 'amber', PENDING: 'gray', OVERDUE: 'red' };
@@ -80,16 +81,35 @@ function PayModal({ invoice, onClose, onPaid }: {
       const amountPaise = Math.round(Number(amount) * 100);
       const res = await api.payOnline({ invoiceId: invoice.id, amountPaise });
 
-      // A real gateway returns an order, not a receipt: the money has not moved
-      // yet. Showing the success dialog here would tell a parent their fees were
-      // paid when nothing has been charged. The browser checkout step for
-      // Razorpay is not built yet, so say so plainly rather than pretend.
+      // A real gateway returns an order, not a receipt — the money has not
+      // moved yet. The payer completes it in Razorpay's own modal, and only a
+      // signed result counts as payment.
       if (res.requiresClientAction) {
-        setErr(
-          'Online card payment is not finished being set up for this school. ' +
-          'Nothing has been charged — please pay at the school office for now.'
-        );
-        setBusy(false);
+        await loadRazorpay();
+        const result = await openCheckout({
+          key: res.keyId!,
+          amount: res.amountPaise!,
+          currency: res.currency ?? 'INR',
+          name: 'School fees',
+          description: `Invoice ${invoice.invoiceNo}`,
+          order_id: res.orderId!,
+          notes: { invoiceNo: invoice.invoiceNo },
+        });
+
+        // Closed the modal without paying. Not an error — the order simply
+        // stays unsettled and they can try again.
+        if (!result) {
+          setErr('Payment cancelled. Nothing has been charged.');
+          setBusy(false);
+          return;
+        }
+
+        const confirmed = await api.verifyCheckout({
+          orderId: result.razorpay_order_id,
+          paymentId: result.razorpay_payment_id,
+          signature: result.razorpay_signature,
+        });
+        onPaid(confirmed.receiptNo ?? '—', false);
         return;
       }
 
