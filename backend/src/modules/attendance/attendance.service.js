@@ -223,20 +223,61 @@ export async function markAttendanceBulk(actor, { date, periodNo = null, section
   return { ...roster, imported: records.length, failed: errors.length, errors };
 }
 
-export async function resolveSummaryEnrollmentIds(actor, scope, enrollmentId) {
-  if (enrollmentId) return [enrollmentId];
-
-  if (scope === 'OWN' && actor.roleKey === 'PARENT') {
+/** Every enrollment an OWN-scoped actor is entitled to see. */
+async function ownEnrollmentIds(actor) {
+  if (actor.roleKey === 'PARENT') {
     const studentIds = await getGuardianStudentIds(actor.profileId);
     const enrollments = await Enrollment.find({ studentId: { $in: studentIds } }).select('_id');
     return enrollments.map((e) => e._id.toString());
   }
-  if (scope === 'OWN' && actor.roleKey === 'STUDENT') {
+  if (actor.roleKey === 'STUDENT') {
     const studentId = await getOwnStudentId(actor.profileId);
     const enrollments = await Enrollment.find({ studentId }).select('_id');
     return enrollments.map((e) => e._id.toString());
   }
-  throw new AppError('enrollmentId is required', 400);
+  if (actor.roleKey === 'TEACHER') {
+    // A teacher's own scope is the sections they teach, so their pupils'
+    // attendance is legitimately theirs to read.
+    const sectionIds = await getTeacherSectionIds(actor.profileId);
+    const enrollments = await Enrollment.find({ sectionId: { $in: sectionIds }, status: 'ACTIVE' }).select('_id');
+    return enrollments.map((e) => e._id.toString());
+  }
+  return [];
+}
+
+/**
+ * Resolves which enrollments a request may read.
+ *
+ * This used to begin `if (enrollmentId) return [enrollmentId]`, which meant a
+ * caller-supplied id skipped every ownership check below it. Any signed-in
+ * student could read another child's attendance summary, calendar, trend and
+ * per-subject breakdown by passing their enrollment id — the response even
+ * echoed the id back, confirming it had queried the other record. Enrollment
+ * ids are handed out freely elsewhere in the API, so this needed no guessing.
+ *
+ * An explicit id is now checked against what the actor is entitled to rather
+ * than taken as proof of entitlement. ALL-scoped staff may still name any
+ * enrollment; that is what the scope means.
+ */
+export async function resolveSummaryEnrollmentIds(actor, scope, enrollmentId) {
+  if (scope !== 'OWN') {
+    if (enrollmentId) return [String(enrollmentId)];
+    throw new AppError('enrollmentId is required', 400);
+  }
+
+  const allowed = await ownEnrollmentIds(actor);
+
+  if (enrollmentId) {
+    if (!allowed.includes(String(enrollmentId))) {
+      // 404 rather than 403: confirming an id exists but is someone else's is
+      // itself a disclosure, and enumeration is the natural next step.
+      throw new AppError('Enrollment not found', 404, [], 'ENROLLMENT_NOT_FOUND');
+    }
+    return [String(enrollmentId)];
+  }
+
+  if (allowed.length === 0) throw new AppError('No enrollment found for this account', 404);
+  return allowed;
 }
 
 export async function getSummary(actor, scope, { enrollmentId, from, to, month }) {
@@ -423,8 +464,10 @@ export async function getSubjectWiseSummary(actor, scope, { enrollmentId, month,
 /** Resolve a single enrollmentId for actor-scoped endpoints (calendar/trend) — the
  * student/parent's own record when none is given explicitly. */
 async function resolveSingleEnrollmentId(actor, scope, enrollmentId) {
-  if (enrollmentId) return enrollmentId;
-  const ids = await resolveSummaryEnrollmentIds(actor, scope, null);
+  // Goes through the same ownership check rather than trusting the id — this
+  // is the resolver behind the calendar, trend and subject-wise endpoints, and
+  // it previously returned whatever id it was handed.
+  const ids = await resolveSummaryEnrollmentIds(actor, scope, enrollmentId);
   if (ids.length === 0) throw new AppError('No enrollment found for this account', 404);
   return ids[0];
 }
