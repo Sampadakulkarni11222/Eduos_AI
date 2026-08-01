@@ -13,6 +13,10 @@ const studentSchema = new Schema(
     leadId: { type: Schema.Types.ObjectId, ref: 'Lead', default: null },
     status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
     deletedAt: { type: Date, default: null },
+    // Set once personal data has been irreversibly erased. Distinct from
+    // deletedAt: a record can be withdrawn (soft-deleted) while its PII is
+    // still held, which is the state this flag exists to end.
+    anonymisedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

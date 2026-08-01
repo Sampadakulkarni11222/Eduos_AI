@@ -99,6 +99,30 @@ router.get('/:id', requirePermission('students.read'), controller.getById);
  */
 router.patch('/:id/photo', requirePermission('students.read'), controller.setPhoto);
 
+/**
+ * @swagger
+ * /students/{id}/anonymise:
+ *   post:
+ *     summary: Irreversibly erase a withdrawn student's personal data
+ *     description: >
+ *       Removes name, date of birth, address, gender, photo (file included),
+ *       guardian links and medical records. Attendance, marks and invoices are
+ *       retained but de-identified, since a school has statutory reason to keep
+ *       the academic and financial record. Idempotent, and audited.
+ *     tags: [Students]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason: { type: string, example: "Erasure requested by guardian" }
+ *     responses:
+ *       200:
+ *         description: Personal data erased
+ */
+router.post('/:id/anonymise', requirePermission('students.manage'), controller.anonymise);
+
 router.patch('/:id', requirePermission('students.manage'), controller.update);
 router.delete('/:id', requirePermission('students.manage'), controller.remove);
 

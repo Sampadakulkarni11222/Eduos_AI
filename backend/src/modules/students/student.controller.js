@@ -35,6 +35,11 @@ export const setPhoto = asyncHandler(async (req, res) => {
   sendSuccess(res, result, 'Profile photo updated');
 });
 
+export const anonymise = asyncHandler(async (req, res) => {
+  const result = await service.anonymiseStudent(req.actor, req.params.id, { reason: req.body?.reason });
+  sendSuccess(res, result, result.alreadyAnonymised ? 'Already anonymised' : 'Personal data erased');
+});
+
 export const update = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.update(req.params.id, req.body), 'Student updated');
 });
