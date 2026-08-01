@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, extname, join } from 'path';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -111,12 +111,34 @@ app.use(express.static(join(__dirname, '..', 'public')));
 // User-supplied content served from our own origin: force a download instead
 // of inline rendering and forbid MIME sniffing, so an uploaded HTML/SVG file
 // can't execute script in this origin's context.
+//
+// Raster images are the exception, and have to be. helmet() sets
+// Cross-Origin-Resource-Policy: same-origin, and the portal runs on a different
+// origin from the API (:3000 vs :5000), so the browser refused every <img>
+// pointing here — a profile photo uploaded successfully and then rendered as a
+// broken icon, with a 200 and valid JPEG bytes on the wire.
+//
+// The exception is deliberately narrow: only formats that cannot carry script,
+// listed explicitly rather than by a `image/*` prefix. SVG is NOT among them —
+// it is an XML document that can execute script, and serving one inline
+// cross-origin is exactly the hole the rules above exist to close.
+const INLINE_IMAGE_TYPES = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.ico']);
+
 app.use(
   '/uploads',
-  (_req, res, next) => {
-    res.setHeader('Content-Disposition', 'attachment');
+  (req, res, next) => {
+    const ext = extname(req.path).toLowerCase();
+    const isSafeImage = INLINE_IMAGE_TYPES.has(ext);
+
+    res.setHeader('Content-Disposition', isSafeImage ? 'inline' : 'attachment');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    if (isSafeImage) {
+      // Lets the portal render it. Note /uploads is unauthenticated already —
+      // access rests on the unguessable filename, so this widens embedding, not
+      // access.
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    }
     next();
   },
   express.static(join(process.cwd(), env.UPLOAD_DIR))
