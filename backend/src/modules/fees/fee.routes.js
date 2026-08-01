@@ -309,38 +309,6 @@ router.post('/pay/verify', requirePermission('fees.pay'), controller.verifyCheck
 
 /**
  * @swagger
- * /fees/pay/speedypay:
- *   post:
- *     summary: "SpeedyPay: settle an invoice instantly for testing (development only)"
- *     description: >
- *       Writes a real ledger entry without contacting a gateway, so fee flows can
- *       be tested without typing a card number. Returns 403 SPEEDYPAY_DISABLED
- *       unless SPEEDYPAY_ENABLED=true **and** NODE_ENV is development; production
- *       refuses to start with it enabled at all. Payments are referenced
- *       SPEEDYPAY-… so they can never be mistaken for real settlements.
- *     tags: [Fees]
- *     responses:
- *       201:
- *         description: Test payment recorded
- *       403:
- *         description: SpeedyPay is not available in this environment
- */
-router.post('/pay/speedypay', requirePermission('fees.pay'), controller.speedyPay);
-
-/**
- * @swagger
- * /fees/payment-methods:
- *   get:
- *     summary: Which payment options the pay screen should offer
- *     tags: [Fees]
- *     responses:
- *       200:
- *         description: "{ provider, online, speedypay }"
- */
-router.get('/payment-methods', requirePermission('fees.read'), controller.paymentMethods);
-
-/**
- * @swagger
  * /fees/payments/{id}/refund:
  *   post:
  *     summary: Refund a payment

@@ -14,7 +14,6 @@ import {
   verifyCheckoutSignature,
 } from '../../providers/payment.provider.js';
 import { logger } from '../../utils/logger.js';
-import { isSpeedyPayEnabled } from '../../config/env.js';
 
 export const createFeeHead = (data) => FeeHead.create(data);
 export const createFeeStructure = (data) => FeeStructure.create(data);
@@ -352,88 +351,6 @@ export async function recordPayment(actor, scope, { invoiceId, amountPaise, mode
  * OWN-scoped actors may only pay their own invoices; the charge reference
  * from the provider is recorded on the real ledger.
  */
-/**
- * What the pay screen should offer.
- *
- * Returned from the server so the client cannot decide for itself that a test
- * shortcut is available — the button appears only if the endpoint behind it
- * would actually work.
- */
-export function getPaymentMethods() {
-  return {
-    provider: paymentMode(),
-    online: isOnlinePaymentEnabled(),
-    speedypay: isSpeedyPayEnabled(),
-  };
-}
-
-/**
- * SpeedyPay — settles an invoice instantly, without a gateway.
- *
- * A development shortcut so testing a fee flow does not mean typing a card
- * number every run. It writes a real ledger entry, because a test payment that
- * does not move the ledger tests nothing; what it does not do is move money.
- *
- * Every guard payOnline() applies still applies here — ownership, the
- * outstanding balance, a positive amount — so this is a faster way to pay, not
- * a way around the rules. The reference is prefixed SPEEDYPAY- and the mode is
- * recorded distinctly, so these are greppable and can never be mistaken for a
- * real settlement when reconciling.
- *
- * isSpeedyPayEnabled() is checked here rather than only at the route, because
- * this is the function that marks money received.
- */
-export async function speedyPay(actor, scope, { invoiceId, amountPaise }) {
-  if (!isSpeedyPayEnabled()) {
-    throw new AppError(
-      'SpeedyPay is a development-only test payment and is not available here.',
-      403,
-      [],
-      'SPEEDYPAY_DISABLED'
-    );
-  }
-
-  const invoice = await Invoice.findById(invoiceId);
-  if (!invoice) throw new AppError('Invoice not found', 404);
-  if (scope === 'OWN') await assertInvoiceOwnership(actor, invoice);
-
-  const duePaise = invoice.totalPaise - invoice.paidPaise;
-  if (duePaise <= 0) throw new AppError('This invoice is already fully paid', 409);
-
-  const amount = Number(amountPaise ?? duePaise);
-  if (!Number.isFinite(amount) || amount <= 0) throw new AppError('amountPaise must be a positive number', 400);
-  if (amount > duePaise) throw new AppError('Amount exceeds the outstanding balance', 400);
-
-  const payment = await Payment.create({
-    invoiceId,
-    amountPaise: amount,
-    mode: 'GATEWAY',
-    gatewayRef: `SPEEDYPAY-${crypto.randomBytes(5).toString('hex').toUpperCase()}`,
-    status: 'SUCCESS',
-    receiptNo: `RCPT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
-    reconciledAt: new Date(),
-  });
-
-  await Invoice.updateOne({ _id: invoice._id }, { $inc: { paidPaise: amount } });
-  const updated = await Invoice.findById(invoice._id);
-  updated.status = updated.paidPaise >= updated.totalPaise ? 'PAID' : 'PARTIAL';
-  await updated.save();
-
-  logger.warn(
-    `SpeedyPay (TEST, no money moved) settled ${amount} paise on ${updated.invoiceNo} → ${updated.status} by profile ${actor.profileId}`
-  );
-
-  return {
-    receiptNo: payment.receiptNo,
-    gatewayRef: payment.gatewayRef,
-    provider: 'speedypay',
-    speedypay: true,
-    status: updated.status,
-    paidPaise: updated.paidPaise,
-    totalPaise: updated.totalPaise,
-  };
-}
-
 export async function payOnline(actor, scope, { invoiceId, amountPaise }) {
   if (!isOnlinePaymentEnabled()) {
     throw new AppError('Online payments are not enabled for this school yet.', 501, [], 'PAYMENTS_DISABLED');

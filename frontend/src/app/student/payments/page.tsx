@@ -97,9 +97,7 @@ export default function StudentPayments() {
           onClose={() => setPaying(null)}
           onPaid={(receiptNo, sandbox) => {
             setPaying(null);
-            // The flag means "no real money moved" — true for both the sandbox provider
-            // and SpeedyPay. Saying "sandbox" for a SpeedyPay payment named the wrong one.
-            toast(`Payment successful — receipt ${receiptNo}${sandbox ? ' (test payment — no money moved)' : ''}.`);
+            toast(`Payment successful — receipt ${receiptNo}${sandbox ? ' (sandbox)' : ''}.`);
             loadAll();
           }}
         />

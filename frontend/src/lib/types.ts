@@ -391,17 +391,12 @@ export interface AiCreditStatusDto {
   periodKey?: string; freeResetsOn?: string;
   lifetimeSpent?: number; lifetimePurchased?: number;
   onlinePaymentEnabled?: boolean;
-  /** Dev-only instant test purchase. Never true outside development. */
-  speedypayEnabled?: boolean;
   packs: AiCreditPackDto[];
 }
 export interface AiCreditOrderDto {
   id: string; orderNo: string; packKey: string; credits: number;
   amountPaise: number; status: 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED'; paidAt: string | null;
 }
-/** What the pay screen may offer. `speedypay` is a dev-only instant test payment. */
-export interface PaymentMethods { provider: string; online: boolean; speedypay: boolean }
-
 export interface AiCreditPurchaseDto {
   order: AiCreditOrderDto;
   paid: boolean;

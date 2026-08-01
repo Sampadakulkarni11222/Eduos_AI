@@ -256,17 +256,6 @@ body.ai-docked .main{padding-right:var(--ai-dock-w);transition:padding-right .2s
    dialogs (and their Submit buttons) beside the panel rather than behind it. */
 body.ai-docked .modal-overlay{padding-right:var(--ai-dock-w)}
 
-/* ===== SpeedyPay (developer test payment) =====
-   Deliberately styled as a warning rather than a peer of the real Pay button:
-   it settles an invoice without money moving, and it should look like the
-   development tool it is, never like a payment method a family might pick. */
-.speedypay-box{margin-top:14px;padding:12px 14px;border:1px dashed #d9a441;border-radius:10px;background:#fff8ea}
-.speedypay-head{display:flex;align-items:center;gap:8px;font-size:13.5px;color:#7a5312}
-.speedypay-badge{display:inline-block;padding:1px 6px;border-radius:4px;background:#d9a441;color:#3b2707;
-  font-size:10px;font-weight:800;letter-spacing:.08em}
-.speedypay-note{margin:6px 0 10px;font-size:11.5px;line-height:1.5;color:#7a5312}
-.speedypay-note code{background:rgba(0,0,0,.06);padding:0 4px;border-radius:3px;font-size:11px}
-
 /* ===== Ask Agent — channel choice (in-portal AI vs WhatsApp) ===== */
 .ai-channels{padding:14px;border:1px solid rgba(255,255,255,.10);border-radius:12px;background:#141614;margin-bottom:14px}
 .ai-channels-title{font-weight:600;font-size:13px;color:#e8e3d6;margin:0 0 10px}

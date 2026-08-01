@@ -10,7 +10,7 @@ import {
 } from '../../providers/payment.provider.js';
 import { AppError } from '../../utils/AppError.js';
 import { logger } from '../../utils/logger.js';
-import { numFromEnv, isSpeedyPayEnabled } from '../../config/env.js';
+import { numFromEnv } from '../../config/env.js';
 
 /**
  * AI credit metering.
@@ -126,7 +126,6 @@ export async function getStatus(actor) {
     ...summarise(wallet),
     packs: CREDIT_PACKS,
     onlinePaymentEnabled: isOnlinePaymentEnabled(),
-    speedypayEnabled: isSpeedyPayEnabled(),
   };
 }
 
@@ -293,37 +292,6 @@ export async function purchasePack(actor, { packKey, beneficiaryProfileId } = {}
 
   const wallet = await creditOrder(order, charge.gatewayRef);
   return { order: toOrderDto(order), paid: true, wallet: summarise(wallet) };
-}
-
-/**
- * SpeedyPay for credit packs — grants the pack instantly, no gateway.
- *
- * Same development-only shortcut as the invoice version: it creates a real
- * order and grants real credits through the same idempotent claim, so the
- * wallet behaves exactly as it would after a genuine purchase. The gatewayRef
- * is prefixed SPEEDYPAY- so test grants stay distinguishable from paid ones.
- */
-export async function speedyPayPack(actor, { packKey, beneficiaryProfileId } = {}) {
-  if (!isSpeedyPayEnabled()) {
-    throw new AppError(
-      'SpeedyPay is a development-only test payment and is not available here.',
-      403, [], 'SPEEDYPAY_DISABLED'
-    );
-  }
-
-  // Reuses purchasePack's validation (pack exists, beneficiary is the caller)
-  // by creating the order through it, then settling that same order.
-  const created = await purchasePack(actor, { packKey, beneficiaryProfileId });
-  const order = await AiCreditOrder.findById(created.order.id);
-  if (!order) throw new AppError('Order could not be created', 500);
-
-  if (order.status === 'PAID') {
-    return { ...created, paid: true, speedypay: true };
-  }
-
-  const wallet = await creditOrder(order, `SPEEDYPAY-${crypto.randomBytes(5).toString('hex').toUpperCase()}`);
-  logger.warn(`SpeedyPay (TEST, no money moved) granted ${order.credits} credits to profile ${order.beneficiaryProfileId}`);
-  return { order: toOrderDto(order), paid: true, speedypay: true, wallet: summarise(wallet) };
 }
 
 /**

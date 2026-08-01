@@ -248,22 +248,4 @@ router.post('/credits/purchase', requirePermission('ai.copilot.use'), controller
  */
 router.post('/credits/purchase/verify', requirePermission('ai.copilot.use'), controller.verifyCreditPurchase);
 
-/**
- * @swagger
- * /ai/credits/purchase/speedypay:
- *   post:
- *     summary: "SpeedyPay: grant a credit pack instantly for testing (development only)"
- *     description: >
- *       Grants the pack through the same idempotent claim a real purchase uses,
- *       without contacting a gateway. Returns 403 SPEEDYPAY_DISABLED unless
- *       SPEEDYPAY_ENABLED=true and NODE_ENV is development.
- *     tags: [AI]
- *     responses:
- *       201:
- *         description: Credits granted
- *       403:
- *         description: SpeedyPay is not available in this environment
- */
-router.post('/credits/purchase/speedypay', requirePermission('ai.copilot.use'), controller.speedyBuyCredits);
-
 export default router;

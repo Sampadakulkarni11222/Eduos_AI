@@ -92,15 +92,6 @@ export const payOnline = asyncHandler(async (req, res) => {
   );
 });
 
-export const paymentMethods = asyncHandler(async (_req, res) => {
-  sendSuccess(res, service.getPaymentMethods(), 'Payment methods fetched');
-});
-
-export const speedyPay = asyncHandler(async (req, res) => {
-  const result = await service.speedyPay(req.actor, req.scope, req.body);
-  sendSuccess(res, result, 'Test payment recorded (SpeedyPay — no money moved)', 201);
-});
-
 export const verifyCheckout = asyncHandler(async (req, res) => {
   const result = await service.verifyCheckout(req.actor, req.scope, req.body);
   sendSuccess(res, result, result.idempotent ? 'Payment already confirmed' : 'Payment confirmed');
