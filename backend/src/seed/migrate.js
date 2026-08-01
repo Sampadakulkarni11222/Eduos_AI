@@ -4,6 +4,39 @@ import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { encrypt } from '../utils/crypto.js';
 
+/**
+ * Upserts a document that carries a unique index on something *other* than _id.
+ *
+ * This script pins fixed _ids so it can be re-run safely. That works on a
+ * database only this script has touched — but a document created by another
+ * seed (`npm run seed:school`) has its own _id and the same natural key, and
+ * inserting a second one violates the unique index. That is exactly how
+ * `npm run migrate` used to die after `npm run seed:school`:
+ *
+ *   E11000 duplicate key … academicyears index: name_1 dup key: { name: "2026-27" }
+ *
+ * So: resolve by natural key first and adopt whatever _id is already there,
+ * falling back to the fixed _id only when nothing exists yet. The caller uses
+ * the returned id for everything downstream, so references stay consistent
+ * whichever seed created the document.
+ *
+ * createdAt goes in $setOnInsert rather than $set, so re-running does not
+ * rewrite the creation time of rows that were already there.
+ */
+async function upsertByNaturalKey(db, collection, naturalKey, fixedId, fields = {}, unset = null) {
+  const existing = await db.collection(collection).findOne(naturalKey);
+  const _id = existing?._id ?? fixedId;
+
+  const update = {
+    $set: { ...naturalKey, ...fields, updatedAt: new Date() },
+    $setOnInsert: { createdAt: new Date() },
+  };
+  if (unset) update.$unset = unset;
+
+  await db.collection(collection).updateOne({ _id }, update, { upsert: true });
+  return _id;
+}
+
 async function runMigration() {
   logger.info('Connecting to MongoDB for migration…');
   await mongoose.connect(env.MONGO_URI);
@@ -35,38 +68,31 @@ async function runMigration() {
   logger.info(`Resolved Demo Teacher Profile: ${teacherProfile._id}`);
 
   // 2. Create Current Academic Year & Term
+  // `academicyears.name` is uniquely indexed, so this must adopt an existing
+  // "2026-27" rather than trying to insert a second one under a fixed _id.
   logger.info('Harmonizing Academic Years and Terms…');
-  const academicYearId = new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4ae1');
-  const termId = new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4af1');
-
-  await db.collection('academicyears').updateOne(
-    { _id: academicYearId },
+  const academicYearId = await upsertByNaturalKey(
+    db,
+    'academicyears',
+    { name: '2026-27' },
+    new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4ae1'),
     {
-      $set: {
-        name: '2026-27',
-        startsOn: new Date('2026-06-01T00:00:00.000Z'),
-        endsOn: new Date('2027-05-31T00:00:00.000Z'),
-        isCurrent: true,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    },
-    { upsert: true }
+      startsOn: new Date('2026-06-01T00:00:00.000Z'),
+      endsOn: new Date('2027-05-31T00:00:00.000Z'),
+      isCurrent: true
+    }
   );
+  logger.info(`Using academic year ${academicYearId}`);
 
-  await db.collection('terms').updateOne(
-    { _id: termId },
+  const termId = await upsertByNaturalKey(
+    db,
+    'terms',
+    { academicYearId, name: 'Midterm' },
+    new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4af1'),
     {
-      $set: {
-        academicYearId,
-        name: 'Midterm',
-        startsOn: new Date('2026-06-01T00:00:00.000Z'),
-        endsOn: new Date('2026-11-30T00:00:00.000Z'),
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    },
-    { upsert: true }
+      startsOn: new Date('2026-06-01T00:00:00.000Z'),
+      endsOn: new Date('2026-11-30T00:00:00.000Z')
+    }
   );
 
   // 3. Students
@@ -109,40 +135,23 @@ async function runMigration() {
     }
   );
 
-  // Create Enrollments
-  const aaravEnrollmentId = new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4b51');
-  const diyaEnrollmentId = new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4b52');
-
-  await db.collection('enrollments').updateOne(
-    { _id: aaravEnrollmentId },
-    {
-      $set: {
-        studentId: aaravId,
-        sectionId: sectionAId,
-        academicYearId,
-        rollNo: 12,
-        status: 'ACTIVE',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    },
-    { upsert: true }
+  // Create Enrollments.
+  // `{studentId, academicYearId}` is uniquely indexed — a student already
+  // enrolled for this year by another seed must be updated, not duplicated.
+  const aaravEnrollmentId = await upsertByNaturalKey(
+    db,
+    'enrollments',
+    { studentId: aaravId, academicYearId },
+    new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4b51'),
+    { sectionId: sectionAId, rollNo: 12, status: 'ACTIVE' }
   );
 
-  await db.collection('enrollments').updateOne(
-    { _id: diyaEnrollmentId },
-    {
-      $set: {
-        studentId: diyaId,
-        sectionId: sectionAId,
-        academicYearId,
-        rollNo: 14,
-        status: 'ACTIVE',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    },
-    { upsert: true }
+  const diyaEnrollmentId = await upsertByNaturalKey(
+    db,
+    'enrollments',
+    { studentId: diyaId, academicYearId },
+    new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4b52'),
+    { sectionId: sectionAId, rollNo: 14, status: 'ACTIVE' }
   );
 
   // 4. StudentGuardians
@@ -260,38 +269,26 @@ async function runMigration() {
 
   // 8. Exams & ExamSubjects & Marks
   logger.info('Creating exams and exam subjects, linking marks…');
-  const examId = new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4bd1');
-  const examSubjectId = new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4be1');
   const markId = new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4bc1');
 
-  await db.collection('exams').updateOne(
-    { _id: examId },
+  const examId = await upsertByNaturalKey(
+    db,
+    'exams',
+    { termId, name: 'Midterm Exam' },
+    new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4bd1'),
     {
-      $set: {
-        termId,
-        name: 'Midterm Exam',
-        startsOn: new Date('2026-09-10T00:00:00.000Z'),
-        endsOn: new Date('2026-09-20T00:00:00.000Z'),
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    },
-    { upsert: true }
+      startsOn: new Date('2026-09-10T00:00:00.000Z'),
+      endsOn: new Date('2026-09-20T00:00:00.000Z')
+    }
   );
 
-  await db.collection('examsubjects').updateOne(
-    { _id: examSubjectId },
-    {
-      $set: {
-        examId,
-        subjectOfferingId: mathOfferingId,
-        examDate: new Date('2026-09-12T00:00:00.000Z'),
-        maxMarks: 100,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    },
-    { upsert: true }
+  // `{examId, subjectOfferingId}` is uniquely indexed.
+  const examSubjectId = await upsertByNaturalKey(
+    db,
+    'examsubjects',
+    { examId, subjectOfferingId: mathOfferingId },
+    new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4be1'),
+    { examDate: new Date('2026-09-12T00:00:00.000Z'), maxMarks: 100 }
   );
 
   await db.collection('marks').updateOne(
@@ -322,46 +319,34 @@ async function runMigration() {
 
   // 9. Assignments & Submissions
   logger.info('Creating assignments and linking submissions…');
-  const assignmentId = new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4be1');
-  const submissionId = new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4bd1');
-
-  await db.collection('assignments').updateOne(
-    { _id: assignmentId },
+  const assignmentId = await upsertByNaturalKey(
+    db,
+    'assignments',
+    { subjectOfferingId: mathOfferingId, title: 'Math homework 1' },
+    new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4be1'),
     {
-      $set: {
-        subjectOfferingId: mathOfferingId,
-        title: 'Math homework 1',
-        description: 'Solve equations on page 42.',
-        type: 'HOMEWORK',
-        dueAt: new Date('2026-06-21T00:00:00.000Z'),
-        maxMarks: 10,
-        createdByProfileId: teacherProfile._id,
-        deletedAt: null,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      }
-    },
-    { upsert: true }
+      description: 'Solve equations on page 42.',
+      type: 'HOMEWORK',
+      dueAt: new Date('2026-06-21T00:00:00.000Z'),
+      maxMarks: 10,
+      createdByProfileId: teacherProfile._id,
+      deletedAt: null
+    }
   );
 
-  await db.collection('submissions').updateOne(
-    { _id: submissionId },
+  // `{assignmentId, enrollmentId}` is uniquely indexed.
+  await upsertByNaturalKey(
+    db,
+    'submissions',
+    { assignmentId, enrollmentId: aaravEnrollmentId },
+    new mongoose.Types.ObjectId('60d5ec3ad57f8a12e84d4bd1'),
     {
-      $set: {
-        assignmentId,
-        enrollmentId: aaravEnrollmentId,
-        status: 'GRADED',
-        submittedAt: new Date('2026-06-20T14:00:00.000Z'),
-        marks: 9,
-        feedback: 'Great job!',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      },
-      $unset: {
-        studentId: '',
-        studentName: ''
-      }
-    }
+      status: 'GRADED',
+      submittedAt: new Date('2026-06-20T14:00:00.000Z'),
+      marks: 9,
+      feedback: 'Great job!'
+    },
+    { studentId: '', studentName: '' }
   );
 
   // 10. Lead status → stage

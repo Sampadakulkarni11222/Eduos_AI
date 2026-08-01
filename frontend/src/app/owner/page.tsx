@@ -5,26 +5,22 @@ import { PortalShell } from '@/components/shell';
 
 import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees } from '@/components/ui';
 import { api } from '@/lib/api';
-import type { AuditLogDto, FeeSummary, Pipeline, StudentListItem } from '@/lib/types';
+import type { OwnerDashboardDto } from '@/lib/types';
 
 export default function OwnerDashboard() {
   const router = useRouter();
-  const [students, setStudents] = useState<StudentListItem[] | null>(null);
-  const [pipeline, setPipeline] = useState<Pipeline | null>(null);
-  const [feeSummary, setFeeSummary] = useState<FeeSummary | null>(null);
-  const [auditLogs, setAuditLogs] = useState<AuditLogDto[] | null>(null);
+  // One scoped call instead of four (/students, /admissions/pipeline,
+  // /fees/summary, /audit/logs) — the endpoint aggregates all of it in the
+  // database, and the student count is now a real count rather than the length
+  // of whatever page /students happened to return.
+  const [data, setData] = useState<OwnerDashboardDto | null>(null);
   const [err, setErr] = useState(false);
 
   useEffect(() => {
-    api.students().then((r) => setStudents(r.items)).catch(() => setErr(true));
-    api.pipeline().then(setPipeline).catch(() => {});
-    api.feeSummary().then(setFeeSummary).catch(() => {});
-    api.auditLogs().then((r) => setAuditLogs(r.items)).catch(() => {});
+    api.ownerDashboard().then(setData).catch(() => setErr(true));
   }, []);
 
-  const totalLeads = pipeline
-    ? Object.values(pipeline.byStage).reduce((acc, list) => acc + list.length, 0)
-    : 0;
+  const auditLogs = data?.recentAuditLogs ?? null;
 
   return (
     <PortalShell
@@ -35,19 +31,19 @@ export default function OwnerDashboard() {
       }}
     >
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
-        <StatCard label="Total Students" value={students ? students.length : '—'} delta={err ? 'Could not load' : 'live'} deltaDir="flat" />
-        <StatCard label="Active CRM Leads" value={pipeline ? totalLeads : '—'} delta={pipeline ? 'in pipeline' : undefined} deltaDir="flat" />
+        <StatCard label="Total Students" value={data ? data.totalStudents : '—'} delta={err ? 'Could not load' : 'live'} deltaDir="flat" />
+        <StatCard label="Active CRM Leads" value={data ? data.activeCRMLeads : '—'} delta={data ? 'in pipeline' : undefined} deltaDir="flat" />
         <StatCard
           label="Fees Collected"
-          value={feeSummary ? rupees(feeSummary.totalCollectedPaise) : '—'}
-          delta={feeSummary ? `${feeSummary.collectionPct}% collection rate` : undefined}
+          value={data ? rupees(data.feesCollectedPaise) : '—'}
+          delta={data ? `${data.collectionRate}% collection rate` : undefined}
           deltaDir="flat"
         />
         <StatCard
           label="Pending Fees"
-          value={feeSummary ? rupees(feeSummary.pendingPaise) : '—'}
-          delta={feeSummary ? `${feeSummary.pendingCount} unpaid invoices` : undefined}
-          deltaDir={feeSummary && feeSummary.pendingCount > 0 ? 'down' : 'flat'}
+          value={data ? rupees(data.pendingFeesPaise) : '—'}
+          delta={data ? `${data.unpaidInvoices} unpaid invoices` : undefined}
+          deltaDir={data && data.unpaidInvoices > 0 ? 'down' : 'flat'}
         />
       </div>
 
@@ -63,7 +59,7 @@ export default function OwnerDashboard() {
               <EmptyState title="No logs found" sub="System events will appear here." />
             )}
             {auditLogs?.slice(0, 5).map((log, i) => (
-              <div key={log.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
+              <div key={log._id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text-1)' }}>{log.action}</div>
                   <div style={{ fontSize: 12, color: 'var(--text-2b)' }}>
@@ -83,18 +79,18 @@ export default function OwnerDashboard() {
             <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Admissions Summary</strong>
             <Button variant="soft" small onClick={() => router.push('/owner/admissions')}>CRM View</Button>
           </div>
-          {pipeline === null && <SkeletonRows rows={3} />}
-          {pipeline !== null && (
+          {data === null && <SkeletonRows rows={3} />}
+          {data !== null && data.admissionsSummary.length === 0 && (
+            <EmptyState title="No leads yet" sub="Admission enquiries will appear here." />
+          )}
+          {data !== null && data.admissionsSummary.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
-              {pipeline.stages?.map((stage) => {
-                const count = pipeline.byStage[stage].length;
-                return (
-                  <div key={stage} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--hairline)' }}>
-                    <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-1)' }}>{stage.replace('_', ' ').toLowerCase()}</span>
-                    <Pill tone={count > 0 ? 'blue' : 'gray'}>{count} lead{count === 1 ? '' : 's'}</Pill>
-                  </div>
-                );
-              })}
+              {data.admissionsSummary.map(({ stage, count }) => (
+                <div key={stage} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid var(--hairline)' }}>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-1)' }}>{stage.replace('_', ' ').toLowerCase()}</span>
+                  <Pill tone={count > 0 ? 'blue' : 'gray'}>{count} lead{count === 1 ? '' : 's'}</Pill>
+                </div>
+              ))}
             </div>
           )}
         </Card>

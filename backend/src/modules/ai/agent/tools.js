@@ -2,6 +2,9 @@ import * as attendance from '../../attendance/attendance.service.js';
 import * as fees from '../../fees/fee.service.js';
 import * as leave from '../../leave/leave.service.js';
 import * as announcements from '../../announcements/announcement.service.js';
+import * as homework from '../../assignments/homework.service.js';
+import * as assignments from '../../assignments/assignment.service.js';
+import * as academics from '../../academics/academics.service.js';
 import * as dashboard from '../../dashboard/dashboard.service.js';
 import * as exams from '../../exams/exam.service.js';
 import { AppError } from '../../../utils/AppError.js';
@@ -25,6 +28,19 @@ import { AppError } from '../../../utils/AppError.js';
  *   summarise     human-readable description of exactly what will happen,
  *                 shown for confirmation before anything is written
  */
+
+/**
+ * Signals that a tool needs one more detail from the user before it can run.
+ *
+ * The orchestrator turns this into an ordinary 200 reply asking the question,
+ * rather than an HTTP error. `speakKey` is optional and, when given, is
+ * rendered in the caller's language.
+ */
+export function needsInput(message, speakKey = null) {
+  const err = new AppError(message, 400, [], 'AGENT_NEEDS_INPUT');
+  err.speakKey = speakKey;
+  return err;
+}
 
 export const TOOLS = {
   // ── Reads ────────────────────────────────────────────────
@@ -52,7 +68,10 @@ export const TOOLS = {
     params: {},
     async execute(actor, scope) {
       const summary = await fees.getSummary(actor, scope, {});
-      const pending = summary?.pendingAmountPaise ?? summary?.pendingAmount ?? 0;
+      // Was `pendingAmountPaise ?? pendingAmount`, neither of which getSummary
+      // has ever returned — so this tool told every parent their fees were
+      // clear no matter what they owed.
+      const pending = summary?.pendingPaise ?? 0;
       return pending > 0
         ? {
             speakKey: 'fees.outstanding',
@@ -81,6 +100,67 @@ export const TOOLS = {
     },
   },
 
+  get_assignments: {
+    description: 'Homework and assignments still to be submitted',
+    permission: 'assignments.read',
+    mutates: false,
+    params: {},
+    async execute(actor, scope) {
+      // Same service the Assignments page calls, so OWN-scoping and the
+      // teacher/section rules come along for free.
+      const all = await assignments.list(actor, scope, {});
+      const pending = all.filter((a) => {
+        const status = a.mySubmission?.status;
+        return status !== 'SUBMITTED' && status !== 'LATE' && status !== 'GRADED';
+      });
+
+      if (pending.length === 0) return { speakKey: 'assignments.none', data: { pending: [], total: all.length } };
+
+      // Soonest first — "what is due" is a question about the next deadline,
+      // and list() sorts newest-first for the table view.
+      const byDue = [...pending].sort((a, b) => new Date(a.dueAt ?? 0) - new Date(b.dueAt ?? 0));
+      const list = byDue
+        .slice(0, 5)
+        .map((a) => `${a.title} (${a.subject}${a.dueAt ? `, due ${new Date(a.dueAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''})`)
+        .join('; ');
+
+      return {
+        speakKey: 'assignments.due',
+        params: { count: byDue.length, list },
+        data: { pending: byDue, total: all.length },
+      };
+    },
+  },
+
+  get_subjects: {
+    description: 'Subjects taught to the caller (or their child) this year',
+    permission: 'timetable.read',
+    mutates: false,
+    params: {},
+    async execute(actor) {
+      const offerings = await academics.getMyOfferings(actor);
+      // One section can carry the same subject across two terms; the caller
+      // asked what they study, not how it is timetabled.
+      const seen = new Map();
+      for (const o of offerings) {
+        const name = o.subjectId?.name;
+        if (name && !seen.has(name)) seen.set(name, o.teacherId?.displayName ?? null);
+      }
+
+      if (seen.size === 0) return { speakKey: 'subjects.none', data: { subjects: [] } };
+
+      const subjects = [...seen.entries()].map(([name, teacher]) => ({ name, teacher }));
+      return {
+        speakKey: 'subjects.list',
+        params: {
+          count: subjects.length,
+          list: subjects.map((s) => (s.teacher ? `${s.name} (${s.teacher})` : s.name)).join(', '),
+        },
+        data: { subjects },
+      };
+    },
+  },
+
   who_is_absent_today: {
     description: 'School-wide absence snapshot for today (leadership)',
     permission: 'attendance.read',
@@ -93,6 +173,33 @@ export const TOOLS = {
     },
   },
 
+  get_payment_link: {
+    description: 'Get a link to pay an outstanding fee invoice',
+    permission: 'fees.pay',
+    mutates: false,
+    params: { invoiceId: 'specific invoice, optional' },
+    /**
+     * Deliberately a read. It returns links; it does not move money. An agent
+     * that can charge a card from a chat message is a different and much worse
+     * product, and confirm-before-commit is not a good enough guard for a
+     * payment the user never saw itemised.
+     */
+    async execute(actor, scope, args) {
+      const result = await fees.getPaymentLinks(actor, scope, { invoiceId: args.invoiceId });
+      return result.count === 0
+        ? { speakKey: 'fees.clear', data: result }
+        : {
+            speakKey: 'fees.payLink',
+            params: {
+              amount: (result.totalDuePaise / 100).toLocaleString('en-IN'),
+              count: result.count,
+              url: result.links[0].url,
+            },
+            data: result,
+          };
+    },
+  },
+
   // ── Writes: never execute without confirmation ───────────
   apply_leave: {
     description: 'Submit a leave application for the caller',
@@ -101,16 +208,18 @@ export const TOOLS = {
     affectsOthers: false,
     params: { fromDate: 'YYYY-MM-DD', toDate: 'YYYY-MM-DD', reason: 'text' },
     validate(args) {
-      if (!args.fromDate || !args.toDate) throw new AppError('I need a start and end date for the leave.', 400);
+      // Missing detail is a conversation, not an error. "i want a leave" is a
+      // perfectly normal opening line; answering it with HTTP 400 made the
+      // assistant look broken instead of curious.
+      if (!args.fromDate || !args.toDate) throw needsInput('I need a start and end date for the leave.', 'leave.needDates');
       if (new Date(args.toDate) < new Date(args.fromDate)) {
         throw new AppError('The end date cannot be before the start date.', 400);
       }
-      // The leave service requires a reason. Validating it here rather than
-      // letting execution fail means the user is asked BEFORE they confirm —
-      // otherwise they approve a summary for something that cannot succeed,
-      // which makes the confirmation step feel untrustworthy.
+      // The leave service requires a reason. Asking BEFORE the confirmation
+      // step matters: otherwise the user approves a summary for something that
+      // cannot succeed, which makes confirmation feel untrustworthy.
       if (!args.reason?.trim()) {
-        throw new AppError('What is the reason for the leave?', 400, [], 'LEAVE_REASON_REQUIRED');
+        throw needsInput('What is the reason for the leave?');
       }
     },
     summarise: (args) => `Apply for leave from ${args.fromDate} to ${args.toDate}${args.reason ? ` — "${args.reason}"` : ''}`,
@@ -134,9 +243,59 @@ export const TOOLS = {
     },
     summarise: (args) =>
       `Mark attendance for ${args.entries.length} student(s) on ${args.date ?? 'today'}`,
+    /**
+     * Attendance is the tool most likely to be disputed later ("my child was
+     * present that day"), so the audit entry records the register as it stood
+     * before and after — a tally by status plus the per-enrollment values for
+     * the rows this call touches.
+     */
+    async snapshot(actor, scope, args) {
+      const records = await attendance.findExisting(args.sectionId, args.date, args.periodNo);
+      const touched = new Set((args.entries ?? []).map((e) => String(e.enrollmentId)));
+      const tally = {};
+      for (const r of records) tally[r.status] = (tally[r.status] ?? 0) + 1;
+      return {
+        sectionId: String(args.sectionId),
+        date: args.date ?? null,
+        tally,
+        rows: records
+          .filter((r) => touched.has(String(r.enrollmentId)))
+          .map((r) => ({ enrollmentId: String(r.enrollmentId), status: r.status })),
+      };
+    },
     async execute(actor, scope, args) {
       const result = await attendance.markAttendance(actor, args);
       return { speakKey: 'attendance.marked', params: { count: args.entries.length }, data: result };
+    },
+  },
+
+  generate_homework: {
+    description: 'Draft and set homework for a class you teach',
+    permission: 'assignments.manage',
+    mutates: true,
+    affectsOthers: true,
+    params: { subject: 'subject name', className: 'class, optional', topic: 'what it is about', dueAt: 'YYYY-MM-DD', maxMarks: 'optional' },
+    validate(args) {
+      if (!args.topic?.trim()) throw new AppError('What should the homework be about?', 400, [], 'TOPIC_REQUIRED');
+      if (!args.dueAt) throw new AppError('When is the homework due?', 400, [], 'DUE_DATE_REQUIRED');
+    },
+    /**
+     * Two-step on purpose: the draft is produced when the proposal is made, so
+     * the summary the teacher confirms describes homework that already exists
+     * in full — not a promise to generate something unseen afterwards.
+     */
+    async prepare(actor, scope, args) {
+      return homework.draftHomework(actor, args);
+    },
+    summarise: (args, _actor, prepared) => prepared?.summary ?? `Set homework "${args.topic}"`,
+    async execute(actor, scope, args, prepared) {
+      const draft = prepared ?? (await homework.draftHomework(actor, args));
+      const created = await homework.commitHomework(actor, scope, draft);
+      return {
+        speakKey: 'homework.created',
+        params: { title: draft.title, className: draft.className, due: draft.dueAt.slice(0, 10) },
+        data: created,
+      };
     },
   },
 
@@ -155,6 +314,22 @@ export const TOOLS = {
     },
     summarise: (args) =>
       `Record a ₹${(Number(args.amountPaise) / 100).toLocaleString('en-IN')} payment against invoice ${args.invoiceId}`,
+    /**
+     * Money moving on an invoice is the other case where "what did it say
+     * before" is the question an audit has to answer. Records the invoice's
+     * paid total and status either side of the write.
+     */
+    async snapshot(actor, scope, args) {
+      const invoice = await fees.getInvoiceDetail(actor, scope, args.invoiceId);
+      return {
+        invoiceId: String(args.invoiceId),
+        invoiceNo: invoice.invoiceNo,
+        status: invoice.status,
+        totalPaise: invoice.totalPaise,
+        paidPaise: invoice.paidPaise,
+        paymentCount: invoice.payments?.length ?? 0,
+      };
+    },
     async execute(actor, scope, args) {
       const payment = await fees.recordPayment(actor, scope, args);
       return { speakKey: 'fees.recorded', data: payment };

@@ -10,7 +10,21 @@
  * expected to authenticate in production (no password set).
  */
 
-export const DEMO_PASSWORD = 'ChangeMe@123!';
+/**
+ * Password for the seeded staff logins.
+ *
+ * The literal below is a **development** convenience and is public knowledge:
+ * it was published in credentials.md, which is still recoverable from this
+ * repo's git history. Anyone who can read the repo can read it, so it must
+ * never be the password on a reachable deployment — and every one of the 1,461
+ * seeded accounts shares it.
+ *
+ * Override with SEED_DEMO_PASSWORD to seed a non-throwaway environment. The
+ * seeder additionally refuses to run at all outside development (see seed.js),
+ * because creating a superadmin with a known login is not something that should
+ * be one mistyped command away.
+ */
+export const DEMO_PASSWORD = process.env.SEED_DEMO_PASSWORD || 'ChangeMe@123!';
 
 export const DEMO_USERS = [
   { roleKey: 'OWNER', displayName: 'Default Owner', phone: '+910000000000', email: 'owner@schoolerp.com', password: DEMO_PASSWORD },

@@ -73,7 +73,6 @@ export const PORTALS: Record<string, Portal> = {
         item('Library Books', '▢', '/admin/library', { ready: true }),
         item('Transport Routes', '⛒', '/admin/transport', { ready: true }),
         item('Documents', '🗎', '/admin/documents', { ready: true }),
-        item('WhatsApp Assistant', '◆', '/admin/whatsapp', { ready: true }),
       ]},
       { title: 'SYSTEM', items: [
         item('Audit Logs', '▷', '/admin/audit', { ready: true }),
@@ -115,6 +114,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Assignments', '✐', '/parent/assignments', { ready: true }),
         item('Timetable', '▥', '/parent/timetable', { ready: true }),
         item('Course Material', '❑', '/parent/material', { ready: true }),
+        item('Study Help', '✦', '/parent/study-help', { ready: true }),
       ]},
       { title: 'SCHOOL LIFE', items: [
         item('Calendar & Events', '▤', '/parent/calendar', { ready: true }),
@@ -125,6 +125,7 @@ export const PORTALS: Record<string, Portal> = {
       ]},
       { title: 'ACCOUNT', items: [
         item('Payments', '₹', '/parent/payments', { ready: true }),
+        item('AI Credits', '✦', '/parent/ai-credits', { ready: true }),
         item('Documents', '🗎', '/parent/documents', { ready: true }),
         item('Support', '✉', '/parent/tickets', { ready: true }),
       ]},
@@ -141,6 +142,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Performance', '◉', '/student/performance', { ready: true }),
         item('Attendance', '☱', '/student/attendance', { ready: true }),
         item('Course Material', '❑', '/student/material', { ready: true }),
+        item('Study Help', '✦', '/student/study-help', { ready: true }),
       ]},
       { title: 'SCHOOL LIFE', items: [
         item('Calendar & Events', '▤', '/student/calendar', { ready: true }),
@@ -151,6 +153,7 @@ export const PORTALS: Record<string, Portal> = {
       ]},
       { title: 'ACCOUNT', items: [
         item('Payments', '₹', '/student/payments', { ready: true }),
+        item('AI Credits', '✦', '/student/ai-credits', { ready: true }),
         item('My Profile', '◉', '/student/profile', { ready: true }),
         item('Help & Support', '✉', '/student/tickets', { ready: true }),
       ]},

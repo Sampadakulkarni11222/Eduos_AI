@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, extname, join } from 'path';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -81,7 +81,7 @@ function apiCompressionMiddleware(req, res, next) {
 }
 
 
-import { env } from './config/env.js';
+import { env, isWhatsappLive, isWhatsappSignatureConfigured } from './config/env.js';
 import { connectDB } from './config/db.js';
 import { swaggerSpec } from './config/swagger.js';
 import { logger } from './utils/logger.js';
@@ -111,12 +111,34 @@ app.use(express.static(join(__dirname, '..', 'public')));
 // User-supplied content served from our own origin: force a download instead
 // of inline rendering and forbid MIME sniffing, so an uploaded HTML/SVG file
 // can't execute script in this origin's context.
+//
+// Raster images are the exception, and have to be. helmet() sets
+// Cross-Origin-Resource-Policy: same-origin, and the portal runs on a different
+// origin from the API (:3000 vs :5000), so the browser refused every <img>
+// pointing here — a profile photo uploaded successfully and then rendered as a
+// broken icon, with a 200 and valid JPEG bytes on the wire.
+//
+// The exception is deliberately narrow: only formats that cannot carry script,
+// listed explicitly rather than by a `image/*` prefix. SVG is NOT among them —
+// it is an XML document that can execute script, and serving one inline
+// cross-origin is exactly the hole the rules above exist to close.
+const INLINE_IMAGE_TYPES = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.ico']);
+
 app.use(
   '/uploads',
-  (_req, res, next) => {
-    res.setHeader('Content-Disposition', 'attachment');
+  (req, res, next) => {
+    const ext = extname(req.path).toLowerCase();
+    const isSafeImage = INLINE_IMAGE_TYPES.has(ext);
+
+    res.setHeader('Content-Disposition', isSafeImage ? 'inline' : 'attachment');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    if (isSafeImage) {
+      // Lets the portal render it. Note /uploads is unauthenticated already —
+      // access rests on the unguessable filename, so this widens embedding, not
+      // access.
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    }
     next();
   },
   express.static(join(process.cwd(), env.UPLOAD_DIR))
@@ -232,6 +254,30 @@ async function bootstrap() {
 
   // ── CORS ──
   logger.info(`✔  CORS enabled  →  origin: ${env.CORS_ORIGIN}`);
+
+  // ── WhatsApp ──
+  // Said out loud at boot because the failure is otherwise silent: webhooks
+  // just stop arriving, and nothing in the app looks wrong.
+  if (isWhatsappLive()) {
+    if (isWhatsappSignatureConfigured()) {
+      logger.info('✔  WhatsApp live  →  inbound webhook signatures verified');
+    } else if (env.isDev) {
+      logger.warn(
+        '✘  WhatsApp is LIVE but WA_APP_SECRET is unset or still a placeholder. ' +
+          'Inbound webhooks are being accepted UNVERIFIED because this is development — ' +
+          'any deployment reachable from the internet must set it to the App Secret ' +
+          'from the Meta app dashboard.'
+      );
+    } else {
+      logger.error(
+        '✘  WhatsApp is LIVE but WA_APP_SECRET is unset or still a placeholder — ' +
+          'inbound webhooks cannot be authenticated and are being REFUSED. ' +
+          'Set it to the App Secret from the Meta app dashboard.'
+      );
+    }
+  } else {
+    logger.info('-  WhatsApp simulation mode  →  set WA_PHONE_NUMBER_ID / WA_ACCESS_TOKEN to go live');
+  }
 
   // ── Swagger ──
   if (env.SWAGGER_ENABLED) {

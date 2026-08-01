@@ -1,11 +1,11 @@
 'use client';
 import { PortalShell } from '@/components/shell';
-import { TimetableGrid } from '@/components/timetable-grid';
+import { TimetableCalendar } from '@/components/timetable/timetable-calendar';
 
 export default function ParentTimetable() {
   return (
     <PortalShell expectedSlug="parent" topbar={{ title: 'Timetable', desc: "Your child's weekly class schedule." }}>
-      <TimetableGrid scopeLabel="Your child's class" />
+      <TimetableCalendar scopeLabel="Your child's class" />
     </PortalShell>
   );
 }

@@ -4,6 +4,7 @@ import { AppError } from '../../utils/AppError.js';
 import { getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
 import { generate, isLlmEnabled } from '../../providers/ai.provider.js';
 import * as exams from '../exams/exam.service.js';
+import * as credits from './aiCredit.service.js';
 import { detectLanguage, languageInstruction, LANGUAGE_NAMES } from '../../utils/language.js';
 
 /**
@@ -186,13 +187,33 @@ export async function tutor(actor, { subject, topic, mode = 'explain', lang: lan
   // A student who writes the topic in their own language should be taught in
   // it. An explicit lang (from the UI/voice picker) wins over detection.
   const lang = langOverride ?? detectLanguage(topic).lang;
+
+  /**
+   * Credit gate.
+   *
+   * Placed here, deliberately late, so it is the **last** thing that can refuse
+   * a request. Everything above it — the syllabus check, the off-subject
+   * refusal, a missing topic — still answers for free: nobody should be asked
+   * to pay to be told no.
+   *
+   * It is also skipped entirely when no model is configured, because the
+   * fallback below is a study plan assembled from the student's own timetable
+   * and marks. That is a database read, not AI, and charging for it would be
+   * charging for something we did not spend anything on.
+   */
+  const metering = isLlmEnabled() ? await credits.assertCanSpend(actor) : null;
+
   const result = await generate({
     system: system + languageInstruction(lang),
     message: userMessage,
   });
 
   if (result.generated) {
+    // Charged only now that the model has actually produced an answer — never
+    // for a provider outage, a refusal, or the un-generated fallback.
+    const balance = metering ? await credits.spend(actor, { feature: 'tutor' }) : null;
     return {
+      ...(balance && { credits: { charged: 1, source: balance.source, remaining: balance.totalRemaining } }),
       mode,
       modeLabel: config.label,
       subject: resolvedSubject,

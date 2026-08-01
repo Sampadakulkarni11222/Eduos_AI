@@ -10,12 +10,39 @@ import { Profile } from '../models/profile.model.js';
 import { Student } from '../models/student.model.js';
 import { Book, BookIssue } from '../models/library.model.js';
 import { HostelRoom, HostelAllocation } from '../models/hostel.model.js';
+import { seedDocuments, auditDocumentFiles, pruneStaleDocuments } from './seed_documents.js';
 import { PERMISSION_CATALOG, SYSTEM_ROLES } from '../constants/permissions.js';
-import { DEMO_USERS } from '../constants/demoUsers.js';
+import { DEMO_USERS, DEMO_PASSWORD } from '../constants/demoUsers.js';
 
 async function seed() {
+  // This creates an OWNER (superadmin) whose password is a compile-time
+  // constant published in credentials.md and still recoverable from git
+  // history. On anything reachable that is a free administrator account, so
+  // the guard is on the environment, not on someone remembering.
+  //
+  // SEED_DEMO_PASSWORD lets a non-throwaway environment be seeded deliberately;
+  // --allow-remote is still required for a non-local database.
+  const safeUri = env.MONGO_URI.replace(/\/\/[^@/]*@/, '//[credentials-redacted]@');
+  if (!env.isDev && !process.env.SEED_DEMO_PASSWORD) {
+    logger.error(
+      `REFUSING to seed demo accounts outside development (NODE_ENV=${env.NODE_ENV}).\n` +
+        '  These logins use a password that is public in this repo\'s history.\n' +
+        '  Set SEED_DEMO_PASSWORD to a real secret if you genuinely need to seed here.'
+    );
+    process.exit(1);
+  }
+
+  const isLocal = /localhost|127\.0\.0\.1/.test(env.MONGO_URI);
+  if (!isLocal && process.argv.indexOf('--allow-remote') === -1) {
+    logger.error(`REFUSING to seed a non-local database (${safeUri}). Re-run with --allow-remote if you are certain.`);
+    process.exit(1);
+  }
+
   await mongoose.connect(env.MONGO_URI);
-  logger.info('Connected to MongoDB for seeding');
+  logger.info(`Connected to MongoDB for seeding → ${safeUri} (NODE_ENV=${env.NODE_ENV})`);
+  if (DEMO_PASSWORD === 'ChangeMe@123!') {
+    logger.warn('Seeding with the PUBLIC development password. Never use these accounts on a reachable deployment.');
+  }
 
   logger.info(`Seeding ${PERMISSION_CATALOG.length} permissions...`);
   for (const p of PERMISSION_CATALOG) {
@@ -154,6 +181,23 @@ async function seed() {
     logger.info(`  ✔  ${allocated} students allocated to hostel rooms`);
   } else {
     logger.info(`  -  Hostel already has ${roomCount} rooms, skipping`);
+  }
+
+  // ─── Course Materials / Documents ─────────────────────────
+  logger.info('Seeding course material documents...');
+  await pruneStaleDocuments();
+  const docResult = await seedDocuments();
+  if (docResult.created) logger.info(`  ✔  ${docResult.created} document(s) seeded with real files on disk`);
+
+  // Any document whose file is missing is reported now rather than discovered
+  // later as a 404 by a student trying to open their syllabus.
+  const audit = await auditDocumentFiles();
+  if (audit.broken.length) {
+    logger.warn(`  ✘  ${audit.broken.length} of ${audit.total} document(s) reference a file that is NOT in local storage:`);
+    for (const b of audit.broken) logger.warn(`       ${b.title} → ${b.fileUrl}  (id ${b.id})`);
+    logger.warn('       These will 404 on view/download. Re-upload them, or remove the stale rows.');
+  } else {
+    logger.info(`  ✔  all ${audit.total} document file(s) present in local storage`);
   }
 
   logger.info('Seed complete.');

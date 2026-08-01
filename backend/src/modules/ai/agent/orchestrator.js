@@ -1,10 +1,11 @@
 import crypto from 'crypto';
 import { AgentAction } from '../../../models/agentAction.model.js';
 import { AuditLog } from '../../../models/auditLog.model.js';
+import { checkAgentRate, recordInjectionAttempt } from './throttle.js';
 import { AppError } from '../../../utils/AppError.js';
 import { logger } from '../../../utils/logger.js';
 import { getTool, toolsAvailableTo } from './tools.js';
-import { parseIntentWithLlm } from './intent.js';
+import { parseIntentWithLlm, parseIntent } from './intent.js';
 import { detectLanguage, t } from '../../../utils/language.js';
 
 const CONFIRM_TTL_MINUTES = 10;
@@ -68,20 +69,52 @@ export function checkAuthorization(actor, tool) {
   return scope;
 }
 
-async function auditAgentAction({ actor, tool, args, source, status, error, resultId }) {
+/**
+ * Writes one agent action to the Phase 3 audit log.
+ *
+ * `before`/`after` carry the **state of the affected record**, not the request
+ * — that distinction is the whole point of auditing a write. Knowing that
+ * `agent.mark_attendance` was called with some arguments does not answer the
+ * question an audit exists to answer, which is what the register said before
+ * and what it says now. Tools opt in by implementing `snapshot()`; creations
+ * legitimately have `before: null` because nothing existed.
+ *
+ * `request` keeps the arguments alongside, so a reviewer can see what was asked
+ * for as well as what changed.
+ */
+async function auditAgentAction({
+  actor, tool, args, source, status, error, resultId, before = null, after = null,
+}) {
   try {
     await AuditLog.create({
       actorProfileId: actor?.profileId ?? null,
       action: `agent.${tool}`,
       entityType: 'AgentAction',
       entityId: resultId ? String(resultId) : null,
-      after: { tool, args, status, ...(error && { error }) },
+      before,
+      after: { request: args, status, ...(after && { state: after }), ...(error && { error }) },
       channel: source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB',
       ip: null,
     });
   } catch (err) {
     // Never let an audit write failure swallow the user's actual result.
     logger.error(`Agent audit log failed for ${tool}: ${err.message}`);
+  }
+}
+
+/**
+ * Captures a tool's view of the records it is about to touch.
+ *
+ * Failure here must never block the write the user authorized, so a broken
+ * snapshot degrades to a recorded null with a log line rather than an error.
+ */
+async function snapshotState(tool, actor, scope, args, prepared, phase) {
+  if (!tool.snapshot) return null;
+  try {
+    return await tool.snapshot(actor, scope, args ?? {}, prepared ?? null);
+  } catch (err) {
+    logger.warn(`Agent ${phase} snapshot failed: ${err.message}`);
+    return null;
   }
 }
 
@@ -101,6 +134,81 @@ function speakOf(result, lang) {
 }
 
 /* ── Entry point ───────────────────────────────────────────── */
+/**
+ * Errors that are *answers*, not faults.
+ *
+ * "You may not do that" and "I need a date" are the assistant working
+ * correctly, and must keep their status codes. Everything else — a provider
+ * outage, a timeout, a bug — is an infrastructure failure the user should not
+ * be made to care about.
+ */
+function isMeaningfulRefusal(err) {
+  const status = err?.statusCode ?? err?.status;
+  return typeof status === 'number' && status >= 400 && status < 500;
+}
+
+/**
+ * runAgent() with a floor under it.
+ *
+ * The assistant previously surfaced any unexpected failure as a raw 500, which
+ * the web client rendered as "Sorry — I could not reach the assistant just
+ * now." — a dead end that told the user nothing and offered no way forward,
+ * even when the question was one the deterministic rules could have answered
+ * without the model at all.
+ *
+ * So on an infrastructure failure this retries the same message through the
+ * rule-based path only (no LLM), and answers from live school data if a read
+ * tool matches. Failing that, it says plainly that the AI service is
+ * unavailable and lists what still works. Either way the endpoint returns 200:
+ * the user's question was received and handled, and a degraded answer is not
+ * an HTTP error.
+ */
+export async function runAgentSafely(opts) {
+  try {
+    return await runAgent(opts);
+  } catch (err) {
+    if (isMeaningfulRefusal(err)) throw err;
+
+    const { message, actor, lang: langOverride } = opts ?? {};
+    const lang = langOverride ?? detectLanguage(message ?? '');
+    logger.error(`Agent failed, falling back to rules: ${err?.message}`);
+
+    try {
+      const intent = parseIntent(message ?? '', actor);
+      const tool = intent ? getTool(intent.tool) : null;
+
+      // Reads only. A write needs a confirmation round-trip, and proposing one
+      // while the system is already misbehaving is how a bad state gets
+      // committed.
+      if (tool && !tool.mutates) {
+        const scope = checkAuthorization(actor, tool);
+        const result = await tool.execute(actor, scope, intent.args ?? {});
+        return {
+          reply: speakOf(result, lang),
+          data: result.data,
+          lang,
+          action: null,
+          tool: intent.tool,
+          degraded: true,
+        };
+      }
+    } catch (fallbackErr) {
+      logger.error(`Rule-based fallback also failed: ${fallbackErr?.message}`);
+    }
+
+    const available = toolsAvailableTo(actor);
+    return {
+      reply: t('agent.degraded', lang, {
+        capabilities: available.map((tool) => tool.description.toLowerCase()).slice(0, 5).join('; '),
+      }),
+      lang,
+      action: null,
+      degraded: true,
+      suggestions: available.slice(0, 5).map((tool) => tool.name),
+    };
+  }
+}
+
 export async function runAgent({ message, actor, source = 'WEB', lang: langOverride } = {}) {
   if (!actor?.profileId) throw new AppError('Select a profile first', 403);
 
@@ -110,16 +218,25 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
   const detected = detectLanguage(message);
   const lang = langOverride ?? detected.lang;
 
+  // Per-actor pace limit, enforced in the core so it holds on every surface.
+  // Throws 429, and also refuses an actor currently blocked for repeated
+  // injection attempts.
+  checkAgentRate(actor.profileId);
+
   const injection = detectInjection(message);
   if (injection.detected) {
-    // Logged for monitoring; the request still proceeds through the normal
-    // authorization path, which is what actually protects the data.
+    // Individual attempts were always logged. What was missing was any notion
+    // of repetition — one unlucky phrase is not an attack, three in a minute
+    // is somebody probing — so attempts are now counted per actor and the
+    // surface closes for them on the third.
+    const strike = recordInjectionAttempt(actor.profileId, { source });
     logger.warn(
-      `Prompt-injection attempt (${injection.count} pattern(s)) from profile ${actor.profileId} via ${source}`
+      `Prompt-injection attempt ${strike.count} (${injection.count} pattern(s)) from profile ${actor.profileId} via ${source}`
     );
     await auditAgentAction({
       actor, tool: 'injection_attempt', args: { message: String(message).slice(0, 300) },
-      source, status: 'BLOCKED',
+      source, status: strike.blocked ? 'BLOCKED_REPEATED' : 'BLOCKED',
+      after: { attemptsInWindow: strike.count, surfaceBlocked: strike.blocked },
     });
     return {
       reply: t('agent.injection', lang),
@@ -148,18 +265,43 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
   // Authorize FIRST — before validation, execution, or proposing anything.
   const scope = checkAuthorization(actor, tool);
 
-  if (tool.validate) tool.validate(intent.args ?? {});
+  if (tool.validate) {
+    try {
+      tool.validate(intent.args ?? {});
+    } catch (err) {
+      // A missing detail becomes a question, not a failure — the caller stays
+      // in the conversation and can just answer it.
+      if (err?.code === 'AGENT_NEEDS_INPUT') {
+        return {
+          reply: (err.speakKey && t(err.speakKey, lang)) || err.message,
+          lang,
+          action: null,
+          needsInput: true,
+          intendedTool: intent.tool,
+        };
+      }
+      throw err;
+    }
+  }
 
   // Reads run straight away.
   if (!tool.mutates) {
     const result = await tool.execute(actor, scope, intent.args ?? {});
     await auditAgentAction({ actor, tool: intent.tool, args: intent.args, source, status: 'READ' });
-    return { reply: speakOf(result, lang), data: result.data, lang, action: null };
+    // `tool` is reported so callers (and tests) can see which capability
+    // answered, rather than having to infer it from the wording of the reply.
+    return { reply: speakOf(result, lang), data: result.data, lang, action: null, tool: intent.tool };
   }
 
   // Writes are proposed, never performed, on the first turn.
+  //
+  // A tool may prepare its payload now (drafting homework, for example) so the
+  // summary describes something that already exists in full rather than a
+  // promise to generate it later. The result is stored with the proposal.
+  const prepared = tool.prepare ? await tool.prepare(actor, scope, intent.args ?? {}) : null;
+
   const token = crypto.randomBytes(24).toString('hex');
-  const summary = tool.summarise ? tool.summarise(intent.args ?? {}, actor) : tool.description;
+  const summary = tool.summarise ? tool.summarise(intent.args ?? {}, actor, prepared) : tool.description;
 
   // Only ever one proposal outstanding per person. On WhatsApp a bare "yes"
   // resolves whatever is pending, so a forgotten proposal from earlier could
@@ -174,6 +316,7 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
     actorProfileId: actor.profileId,
     tool: intent.tool,
     args: intent.args ?? {},
+    prepared,
     summary,
     source,
     tokenHash: crypto.createHash('sha256').update(token).digest('hex'),
@@ -237,23 +380,30 @@ export async function confirmAction({ confirmToken, actor, source = 'WEB', accep
 
   const scope = checkAuthorization(actor, tool);
 
+  // Captured before the write, so the audit entry can show what the record
+  // looked like beforehand rather than only what was requested.
+  const before = await snapshotState(tool, actor, scope, pending.args, pending.prepared, 'before');
+
   try {
-    const result = await tool.execute(actor, scope, pending.args ?? {});
+    const result = await tool.execute(actor, scope, pending.args ?? {}, pending.prepared ?? null);
     pending.status = 'EXECUTED';
     pending.executedAt = new Date();
     await pending.save();
+    const after = await snapshotState(tool, actor, scope, pending.args, pending.prepared, 'after');
     await auditAgentAction({
       actor, tool: pending.tool, args: pending.args, source,
-      status: 'EXECUTED', resultId: pending._id,
+      status: 'EXECUTED', resultId: pending._id, before, after,
     });
     return { reply: speakOf(result, lang), data: result.data, lang, executed: true };
   } catch (err) {
     pending.status = 'FAILED';
     pending.error = err.message;
     await pending.save();
+    // `before` is still worth recording on a failure: it shows the state a
+    // half-applied write would have started from.
     await auditAgentAction({
       actor, tool: pending.tool, args: pending.args, source,
-      status: 'FAILED', error: err.message,
+      status: 'FAILED', error: err.message, before,
     });
     throw err;
   }

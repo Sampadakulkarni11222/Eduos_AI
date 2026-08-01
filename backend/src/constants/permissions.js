@@ -25,6 +25,10 @@ export const PERMISSION_CATALOG = [
 
   // academics structure
   { key: 'academics.structure.manage', group: 'academics', description: 'Manage years/terms/grades/sections/subjects/offerings' },
+  // Reading the school's structure is a staff concern. It is low-sensitivity
+  // on its own, but it is still roster metadata — the full list of grades,
+  // sections and who teaches what — and a family has no reason to enumerate it.
+  { key: 'academics.read', group: 'academics', description: 'View school structure (years/terms/grades/sections/subjects/offerings)' },
   { key: 'timetable.read', group: 'academics', description: 'View timetable' },
   { key: 'timetable.manage', group: 'academics', description: 'Manage timetable' },
 
@@ -148,6 +152,7 @@ export const SYSTEM_ROLES = [
       ['analytics.school.read', 'ALL'],
       ['analytics.class.read', 'ALL'],
       ['academics.structure.manage', 'ALL'],
+      ['academics.read', 'ALL'],
     ]),
   },
   {
@@ -179,6 +184,10 @@ export const SYSTEM_ROLES = [
       ['tickets.respond', 'OWN'],
       ['ai.copilot.use', 'OWN'],
       ['analytics.class.read', 'OWN'],
+      // Grade/section/subject lists, for pickers. ALL because the structure is
+      // school-wide by nature; what a teacher may *do* with a class is still
+      // scoped OWN by every other permission above.
+      ['academics.read', 'ALL'],
     ]),
   },
   {
@@ -245,6 +254,8 @@ export const SYSTEM_ROLES = [
       ['announcements.read', 'ALL'],
       ['analytics.school.read', 'ALL'],
       ['ai.copilot.use', 'ALL'],
+      // Fee structures are defined per academic year and grade.
+      ['academics.read', 'ALL'],
     ]),
   },
   {
@@ -260,6 +271,7 @@ export const SYSTEM_ROLES = [
       ['tickets.read', 'ALL'],
       ['tickets.respond', 'ALL'],
       ['ai.copilot.use', 'ALL'],
+      ['academics.read', 'ALL'],
     ]),
   },
   {
@@ -277,6 +289,7 @@ export const SYSTEM_ROLES = [
       ['tickets.manage', 'ALL'],
       ['tickets.respond', 'ALL'],
       ['ai.copilot.use', 'ALL'],
+      ['academics.read', 'ALL'],
     ]),
   },
 ];

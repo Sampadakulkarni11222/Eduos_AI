@@ -13,6 +13,9 @@ import { TimetableSlot } from '../../models/timetableSlot.model.js';
 import { Book, BookIssue } from '../../models/library.model.js';
 import { HostelRoom, HostelAllocation, HostelInquiry } from '../../models/hostel.model.js';
 import { Document } from '../../models/document.model.js';
+import { CalendarEvent } from '../../models/calendarEvent.model.js';
+import { AuditLog } from '../../models/auditLog.model.js';
+import { LeaveApplication } from '../../models/leaveApplication.model.js';
 import {
   getTeacherSectionIds,
   getGuardianStudentIds,
@@ -50,7 +53,7 @@ export async function getOwnerDashboard() {
     activeCRMLeads,
     feeAgg,
     unpaidCount,
-    recentTickets,
+    auditEntries,
     announcementsArr,
     admissionsByStage,
   ] = await Promise.all([
@@ -70,10 +73,14 @@ export async function getOwnerDashboard() {
 
     Invoice.countDocuments({ status: { $in: ['PENDING', 'PARTIAL', 'OVERDUE'] } }),
 
-    Ticket.find({ status: { $in: ['NEW', 'OPEN', 'WAITING'] } })
+    // Real audit log entries. This used to return open tickets under the name
+    // `recentAuditLogs` — a proxy that made the owner portal's audit panel
+    // render blank fields, because tickets have no action/actor/channel.
+    AuditLog.find({})
       .sort({ createdAt: -1 })
       .limit(5)
-      .select('subject status priority createdAt routedToRoleKey')
+      .populate('actorProfileId', 'displayName')
+      .select('action entityType channel createdAt actorProfileId')
       .lean(),
 
     recentAnnouncements(5),
@@ -96,11 +103,21 @@ export async function getOwnerDashboard() {
     pendingFees: toRs(pendingPaise),
     pendingFeesPaise: pendingPaise,
     unpaidInvoices: unpaidCount,
+    // The owner portal shows a collection rate; without this it had to fetch
+    // /fees/summary separately just to compute one percentage.
+    collectionRate: pct(paidPaise, totalPaise),
     admissionsSummary: admissionsByStage.map((s) => ({
       stage: s._id,
       count: s.count,
     })),
-    recentAuditLogs: recentTickets, // using tickets as proxy for recent activity
+    recentAuditLogs: auditEntries.map((log) => ({
+      _id: log._id,
+      action: log.action,
+      entityType: log.entityType ?? null,
+      actorName: log.actorProfileId?.displayName ?? null,
+      channel: log.channel,
+      createdAt: log.createdAt,
+    })),
     recentAnnouncements: announcementsArr,
   };
 }
@@ -397,12 +414,42 @@ export async function getStudentDashboard(profileId) {
   const enrollmentId = enrollment._id;
   const sectionId = enrollment.sectionId?._id;
 
-  // 1. Attendance percentage
+  // 1. Attendance percentage (all-time)
   const [totalAtt, presentAtt] = await Promise.all([
     AttendanceRecord.countDocuments({ enrollmentId, periodNo: null }),
     AttendanceRecord.countDocuments({ enrollmentId, periodNo: null, status: { $in: ['PRESENT', 'LATE', 'HALF_DAY'] } }),
   ]);
   const attendancePct = pct(presentAtt, totalAtt);
+
+  // 1b. Attendance percentage (current calendar month)
+  // Uses local Y/M/D (not getUTC*) fed into Date.UTC — matching parseDateToMidnight's
+  // convention elsewhere in this module, where a stored UTC-midnight Date represents
+  // an abstract calendar day, not a real UTC instant. Using getUTC* here would drift
+  // "today"/"this month" by the server's UTC offset and mismatch stored records.
+  const todayForMonth = new Date();
+  const monthStart = new Date(Date.UTC(todayForMonth.getFullYear(), todayForMonth.getMonth(), 1));
+  const monthEnd = new Date(Date.UTC(todayForMonth.getFullYear(), todayForMonth.getMonth() + 1, 0, 23, 59, 59, 999));
+  const [totalAttMonth, presentAttMonth] = await Promise.all([
+    AttendanceRecord.countDocuments({ enrollmentId, periodNo: null, date: { $gte: monthStart, $lte: monthEnd } }),
+    AttendanceRecord.countDocuments({
+      enrollmentId, periodNo: null, date: { $gte: monthStart, $lte: monthEnd },
+      status: { $in: ['PRESENT', 'LATE', 'HALF_DAY'] },
+    }),
+  ]);
+  const monthlyAttendance = {
+    percentage: pct(presentAttMonth, totalAttMonth),
+    presentDays: presentAttMonth,
+    totalDays: totalAttMonth,
+  };
+
+  // 1c. Today's attendance status (cross-checked against holidays)
+  const dayStart = new Date(Date.UTC(todayForMonth.getFullYear(), todayForMonth.getMonth(), todayForMonth.getDate()));
+  const dayEnd = new Date(Date.UTC(todayForMonth.getFullYear(), todayForMonth.getMonth(), todayForMonth.getDate(), 23, 59, 59, 999));
+  const [todayRecord, todayHoliday] = await Promise.all([
+    AttendanceRecord.findOne({ enrollmentId, periodNo: null, date: dayStart }).select('status').lean(),
+    CalendarEvent.findOne({ type: 'HOLIDAY', deletedAt: null, startsAt: { $lte: dayEnd }, endsAt: { $gte: dayStart } }).select('_id').lean(),
+  ]);
+  const todayAttendanceStatus = todayRecord?.status ?? (todayHoliday ? 'HOLIDAY' : 'NOT_MARKED');
 
   // 2. Today's timetable
   const dow = todayDow();
@@ -470,18 +517,25 @@ export async function getStudentDashboard(profileId) {
     attendancePercentage: attendancePct,
     totalDays: totalAtt,
     presentDays: presentAtt,
+    monthlyAttendance,
+    todayAttendanceStatus,
     todayTimetable: todaySlots.map((s) => ({
       periodNo: s.periodNo,
       startTime: s.startTime,
       endTime: s.endTime,
       subject: s.subjectOfferingId?.subjectId?.name ?? 'Break',
+      room: s.room ?? null,
+      liveClassLink: s.liveClassLink ?? null,
     })),
     upcomingClasses: todaySlots
       .filter((s) => s.startTime > new Date().toTimeString().slice(0, 5))
       .map((s) => ({
         periodNo: s.periodNo,
         startTime: s.startTime,
+        endTime: s.endTime,
         subject: s.subjectOfferingId?.subjectId?.name ?? 'Break',
+        room: s.room ?? null,
+        liveClassLink: s.liveClassLink ?? null,
       })),
     pendingAssignments,
     examSchedule: examSchedule.map((es) => ({
@@ -512,6 +566,8 @@ function _emptyStudentDashboard() {
     attendancePercentage: 0,
     totalDays: 0,
     presentDays: 0,
+    monthlyAttendance: { percentage: 0, presentDays: 0, totalDays: 0 },
+    todayAttendanceStatus: 'NOT_MARKED',
     todayTimetable: [],
     upcomingClasses: [],
     pendingAssignments: 0,
@@ -755,6 +811,9 @@ export async function getWardenDashboard() {
     maintenanceTickets,
     openInquiries,
     recentAllocations,
+    openTickets,
+    pendingLeave,
+    pendingLeaveCount,
   ] = await Promise.all([
     HostelRoom.countDocuments({ status: { $ne: 'CLOSED' } }),
     HostelAllocation.countDocuments({ status: 'ACTIVE' }),
@@ -797,6 +856,27 @@ export async function getWardenDashboard() {
       .sort({ allottedAt: -1 })
       .limit(10)
       .lean(),
+
+    // The warden portal lists open tickets, so return them here rather than
+    // making the page fetch /tickets separately and filter client-side.
+    Ticket.find({ routedToRoleKey: 'WARDEN', status: { $in: ['NEW', 'OPEN', 'WAITING'] } })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .populate('raisedByProfileId', 'displayName')
+      .select('subject status priority createdAt raisedByProfileId')
+      .lean(),
+
+    // Was hardcoded to [] with the comment "no leave model". There is one now.
+    LeaveApplication.find({ status: 'PENDING' })
+      .sort({ fromDate: 1 })
+      .limit(10)
+      .populate({ path: 'enrollmentId', populate: { path: 'studentId', select: 'firstName lastName admissionNo' } })
+      .lean(),
+
+    // The list above is capped at 10. Without a total, a warden looking at ten
+    // rows has no way to tell whether that is all of them or the first ten of
+    // forty — which is the difference between "nothing to do" and a backlog.
+    LeaveApplication.countDocuments({ status: 'PENDING' }),
   ]);
 
   const capacityData = vacantCount[0] ?? { totalCapacity: 0, totalOccupied: 0 };
@@ -810,10 +890,34 @@ export async function getWardenDashboard() {
     occupancyRate: pct(occupiedBeds, capacityData.totalCapacity),
     maintenanceRooms,
     maintenanceRequests: maintenanceTickets,
-    visitorLogs: [], // no visitor model — return empty per spec
-    leaveRequests: [], // no leave model — return empty per spec
-    recentIncidents: openInquiries, // using open inquiries as incidents proxy
+    // `visitorLogs: []` and `recentIncidents` used to be returned here. The
+    // first was a permanent empty array for a model that does not exist —
+    // better to omit a field than to promise data the system cannot produce —
+    // and the second was `openInquiries` under a second name, so a caller
+    // reading `recentIncidents.length` on what is actually a number got
+    // `undefined`.
     openInquiries,
+    openTickets: openTickets.map((t) => ({
+      id: t._id,
+      subject: t.subject,
+      status: t.status,
+      priority: t.priority ?? null,
+      raisedBy: t.raisedByProfileId?.displayName ?? null,
+      createdAt: t.createdAt,
+    })),
+    pendingLeaveCount,
+    leaveRequests: pendingLeave.map((l) => {
+      const student = l.enrollmentId?.studentId;
+      return {
+        id: l._id,
+        studentName: student ? `${student.firstName} ${student.lastName ?? ''}`.trim() : '--',
+        admissionNo: student?.admissionNo ?? '--',
+        fromDate: l.fromDate,
+        toDate: l.toDate,
+        reason: l.reason,
+        status: l.status,
+      };
+    }),
     recentAllocations: recentAllocations.map((a) => ({
       allocationId: a._id,
       studentName: `${a.studentId?.firstName ?? ''} ${a.studentId?.lastName ?? ''}`.trim(),

@@ -99,9 +99,18 @@ export async function list(actor, scope, query = {}) {
   });
 }
 
-export async function create(actor, data) {
+export async function create(actor, scope, data) {
   const offering = await SubjectOffering.findById(data.subjectOfferingId);
   if (!offering) throw new AppError('Subject offering not found', 404);
+
+  // An OWN-scoped actor (a teacher) may only set homework for a class they
+  // actually teach. Without this, holding assignments.manage let any teacher
+  // create work for any other teacher's section — the existence check above
+  // proved the offering was real, not that it was theirs.
+  if (scope === 'OWN' && String(offering.teacherId ?? '') !== String(actor.profileId)) {
+    throw new AppError('You do not teach this class', 403, [], 'NOT_YOUR_CLASS');
+  }
+
   return Assignment.create({ ...data, createdByProfileId: actor.profileId });
 }
 
@@ -151,6 +160,23 @@ export async function submit(actor, scope, { assignmentId, enrollmentId, attachm
   const assignment = await Assignment.findOne({ _id: assignmentId, deletedAt: null });
   if (!assignment) throw new AppError('Assignment not found', 404);
 
+  // A submission with nothing in it is not a submission. The disabled button in
+  // the UI is a courtesy; this is the rule, because the endpoint is reachable
+  // without the UI. Blank entries are stripped first so a payload of [""] or
+  // ["  "] cannot pass as work.
+  const cleanAttachments = (Array.isArray(attachments) ? attachments : [])
+    .map((a) => (typeof a === 'string' ? a.trim() : a?.fileUrl?.trim?.() ?? ''))
+    .filter(Boolean);
+
+  if (cleanAttachments.length === 0) {
+    throw new AppError(
+      'Attach a file or paste a link before submitting — an empty submission cannot be accepted.',
+      400,
+      [],
+      'SUBMISSION_EMPTY'
+    );
+  }
+
   let targetEnrollmentId = enrollmentId;
   if (scope === 'OWN') {
     const ownIds = await getOwnEnrollmentIds(actor);
@@ -179,7 +205,7 @@ export async function submit(actor, scope, { assignmentId, enrollmentId, attachm
     {
       status: isLate ? 'LATE' : 'SUBMITTED',
       submittedAt: new Date(),
-      attachments,
+      attachments: cleanAttachments,
     },
     { upsert: true, new: true }
   );

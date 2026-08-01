@@ -1,21 +1,22 @@
 'use client';
 import { PortalShell } from '@/components/shell';
 
-import { StatCard, Card, EmptyState, SkeletonRows, rupees } from '@/components/ui';
+import { StatCard, Card, EmptyState, Pill, SkeletonRows, rupees } from '@/components/ui';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
-import type { InvoiceDto, FeeSummary } from '@/lib/types';
+import type { FinanceDashboardDto } from '@/lib/types';
 
 export default function FinanceDashboard() {
-  const [invoices, setInvoices] = useState<InvoiceDto[] | null>(null);
-  const [summary, setSummary] = useState<FeeSummary | null>(null);
+  // One scoped call instead of /fees/invoices + /fees/summary. It also fixes
+  // the invoice count: the page used to show `invoices.length`, which was the
+  // size of one page of results, not the number of invoices raised.
+  const [data, setData] = useState<FinanceDashboardDto | null>(null);
 
   useEffect(() => {
-    api.invoices().then(setInvoices).catch(() => setInvoices([]));
-    api.feeSummary().then(setSummary).catch(() => setSummary(null));
+    api.financeDashboard().then(setData).catch(() => setData(null));
   }, []);
 
-  const totalDue = summary?.pendingPaise ?? 0;
+  const recent = data?.recentInvoices ?? null;
 
   return (
     <PortalShell
@@ -28,19 +29,19 @@ export default function FinanceDashboard() {
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 18 }}>
         <StatCard
           label="Pending Amount"
-          value={summary ? rupees(totalDue) : '—'}
-          delta={summary ? `${summary.pendingCount} unpaid invoice(s)` : undefined}
-          deltaDir={summary && totalDue > 0 ? 'down' : 'flat'}
+          value={data ? rupees(data.pendingAmountPaise) : '—'}
+          delta={data ? `${data.pendingInvoices.length} unpaid invoice(s) due soonest` : undefined}
+          deltaDir={data && data.pendingAmountPaise > 0 ? 'down' : 'flat'}
         />
         <StatCard
           label="Collected"
-          value={summary ? rupees(summary.totalCollectedPaise) : '—'}
-          delta={summary ? `${summary.collectionPct}% collection rate` : undefined}
+          value={data ? rupees(data.collectedAmountPaise) : '—'}
+          delta={data ? `${data.collectionRate}% collection rate` : undefined}
           deltaDir="up"
         />
         <StatCard
           label="Invoices"
-          value={invoices ? invoices.length : '—'}
+          value={data ? data.invoiceCount : '—'}
           delta="total raised"
           deltaDir="flat"
         />
@@ -50,15 +51,28 @@ export default function FinanceDashboard() {
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--hairline)' }}>
           <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Recent Invoices</strong>
         </div>
-        <div style={{ padding: invoices === null ? 20 : 0 }}>
-          {invoices === null && <SkeletonRows rows={3} />}
-          {invoices !== null && invoices.length === 0 && (
+        <div style={{ padding: recent === null ? 20 : 0 }}>
+          {recent === null && <SkeletonRows rows={3} />}
+          {recent !== null && recent.length === 0 && (
             <EmptyState title="No invoices" sub="No fee invoices have been generated yet." />
           )}
-          {invoices?.slice(0, 5).map((inv) => (
-            <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 20px', borderTop: '1px solid var(--hairline)' }}>
-              <div>{inv.invoiceNo}</div>
-              <div>{inv.status}</div>
+          {recent?.slice(0, 5).map((inv) => (
+            <div key={inv._id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', borderTop: '1px solid var(--hairline)' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text-1)' }}>{inv.invoiceNo}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-2b)' }}>
+                  {inv.studentName} · {inv.admissionNo}
+                </div>
+              </div>
+              <div style={{ fontSize: 12.5, textAlign: 'right' }}>
+                <div style={{ fontWeight: 600 }}>₹{inv.dueAmount.toLocaleString('en-IN')} due</div>
+                <div style={{ color: 'var(--text-faint)', fontSize: 11.5 }}>
+                  of ₹{inv.totalAmount.toLocaleString('en-IN')}
+                </div>
+              </div>
+              <Pill tone={inv.status === 'PAID' ? 'green' : inv.status === 'OVERDUE' ? 'red' : 'amber'}>
+                {inv.status.toLowerCase()}
+              </Pill>
             </div>
           ))}
         </div>

@@ -1,9 +1,10 @@
 'use client';
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api, ApiError } from '@/lib/api';
 import { Button, Spinner, cx } from './ui';
 import { useAuth } from '@/lib/auth';
-import type { AgentProposedAction } from '@/lib/types';
+import type { AgentProposedAction, WhatsappAssistantLink } from '@/lib/types';
 import { SPEECH_LANGUAGES, isSpeechSupported, startDictation } from '@/lib/speech';
 
 interface Msg {
@@ -18,7 +19,27 @@ interface Msg {
 
 export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   const [open, setOpen] = useState(false);
+  // Minimising keeps the conversation alive but gets the panel out of the way,
+  // which is the whole point: the assistant used to render inside a full-screen
+  // scrim, so opening it made the page underneath unclickable — including the
+  // assignment Submit button it was most often opened next to.
+  const [minimized, setMinimized] = useState(false);
+  // The launcher lives inside .topbar, which sets backdrop-filter. That makes
+  // the topbar a containing block for position:fixed descendants, so the panel
+  // was being positioned against the topbar instead of the viewport — on
+  // narrow screens the bottom sheet ended up mostly above the fold. Portalling
+  // to <body> puts it back in the viewport's coordinate space.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const portal = (node: ReactNode) => (mounted ? createPortal(node, document.body) : null);
+
   const { me } = useAuth();
+
+  // WhatsApp hand-off. The server decides whether this is offered at all —
+  // it is off unless a number is configured, and only families get it — so the
+  // client just renders whatever it is told and hides the option otherwise.
+  const [waLink, setWaLink] = useState<WhatsappAssistantLink | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const role = me?.profile?.role;
 
   // msgs and convId are stored in refs so they persist across open/close cycles
@@ -44,12 +65,55 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   // Sync ref → state on open so the panel renders persisted history
   const handleOpen = () => {
     setMsgs([...msgsRef.current]);
+    setMinimized(false);
     setOpen(true);
   };
+
+  /**
+   * Reserves the docked panel's space on <body> while it is open, so page
+   * content reflows beside it instead of hiding underneath. Cleared on close,
+   * on minimise, and on unmount — a stale class here would leave every page
+   * permanently indented.
+   */
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const docked = open && !minimized;
+    document.body.classList.toggle('ai-docked', docked);
+    return () => document.body.classList.remove('ai-docked');
+  }, [open, minimized]);
 
   useEffect(() => {
     if (open) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [msgs, busy, open]);
+
+  // Fetched on first open rather than on mount: most sessions never open the
+  // assistant, and this is one request per page load otherwise.
+  useEffect(() => {
+    if (!open || waLink) return;
+    api.whatsappAssistantLink().then(setWaLink).catch(() => setWaLink({ enabled: false, reason: 'UNAVAILABLE' }));
+  }, [open, waLink]);
+
+  /**
+   * Hands off to WhatsApp. wa.me resolves per platform on its own — the
+   * installed app on a phone, WhatsApp Web in a new tab on a desktop — so the
+   * same URL is correct everywhere and no user-agent branching is needed to
+   * make it work. The device is reported for analytics only.
+   */
+  const openWhatsapp = () => {
+    if (!waLink?.enabled) return;
+    const ua = navigator.userAgent;
+    const device: 'MOBILE' | 'TABLET' | 'DESKTOP' = /iPad|Tablet/i.test(ua)
+      ? 'TABLET'
+      : /Android|iPhone|iPod|Mobile/i.test(ua)
+        ? 'MOBILE'
+        : 'DESKTOP';
+
+    // Opened first, and analytics after: a blocked or slow request must not
+    // delay the hand-off, and popup blockers only allow window.open during the
+    // click's own task.
+    window.open(waLink.url, '_blank', 'noopener,noreferrer');
+    void api.trackWhatsappAssistantClick(device).catch(() => {});
+  };
 
   // Close on Escape
   useEffect(() => {
@@ -187,17 +251,72 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
       <Button onClick={handleOpen} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <span style={{ fontSize: 14 }}>✨</span> {label}
       </Button>
-      {open && (
-        <div className="ai-overlay" onClick={() => setOpen(false)} role="dialog" aria-modal="true" aria-label={label}>
-          <aside className="ai-panel" onClick={(e) => e.stopPropagation()}>
+      {open && minimized && portal(
+        <button
+          type="button"
+          className="ai-fab"
+          onClick={() => setMinimized(false)}
+          aria-label={`${label} (minimised — click to reopen)`}
+          title={`${label} — click to reopen`}
+        >
+          <span aria-hidden="true">✨</span>
+        </button>
+      )}
+      {open && !minimized && portal(
+        // No scrim and no aria-modal: this is a docked panel, not a modal. The
+        // page behind it stays live and focusable on purpose.
+        <aside className="ai-dock" role="complementary" aria-label={label}>
+          <div className="ai-panel-inner">
             <div className="ai-header">
               <div>
                 <div className="ai-title">{label}</div>
                 <div className="ai-sub">Answers from your school data</div>
               </div>
-              <button className="modal-close" onClick={() => setOpen(false)} aria-label="Close">×</button>
+              <div className="ai-header-actions">
+                <button
+                  type="button"
+                  className="ai-minimize"
+                  onClick={() => setMinimized(true)}
+                  aria-label="Minimise assistant"
+                  title="Minimise"
+                >
+                  −
+                </button>
+                <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Close">×</button>
+              </div>
             </div>
             <div className="ai-body" ref={scrollRef}>
+              {msgs.length === 0 && waLink?.enabled && (
+                <div className="ai-channels">
+                  <p className="ai-channels-title">Need quick help?</p>
+
+                  <button type="button" className="ai-channel" onClick={() => inputRef.current?.focus()}>
+                    <span className="ai-channel-icon" aria-hidden="true">💬</span>
+                    <span className="ai-channel-text">
+                      <span className="ai-channel-label">Chat with AI</span>
+                      <span className="ai-channel-sub">Continue inside the portal.</span>
+                    </span>
+                  </button>
+
+                  <div className="ai-channels-or"><span>OR</span></div>
+
+                  <button type="button" className="ai-channel ai-channel-wa" onClick={openWhatsapp}>
+                    <span className="ai-channel-icon" aria-hidden="true">
+                      {/* Inline so the icon works offline and cannot be blocked. */}
+                      <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" role="img" aria-label="WhatsApp">
+                        <path d="M17.47 14.38c-.3-.15-1.75-.86-2.02-.96-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.17.2-.35.22-.64.08-.3-.15-1.25-.46-2.38-1.47-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.6.14-.14.3-.35.45-.53.15-.18.2-.3.3-.5.1-.2.05-.38-.02-.53-.08-.15-.67-1.6-.92-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.53.07-.8.38-.28.3-1.05 1.02-1.05 2.5s1.07 2.9 1.22 3.1c.15.2 2.1 3.2 5.08 4.49.71.3 1.26.49 1.7.63.71.22 1.36.19 1.87.12.57-.09 1.75-.72 2-1.41.25-.7.25-1.29.17-1.41-.07-.13-.27-.2-.57-.35z"/>
+                        <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.46 1.32 4.96L2 22l5.25-1.38a9.87 9.87 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm0 18.13h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.17 8.17 0 0 1-1.25-4.36c0-4.54 3.7-8.24 8.24-8.24a8.18 8.18 0 0 1 5.82 2.42 8.18 8.18 0 0 1 2.41 5.83c0 4.54-3.7 8.23-8.25 8.23z"/>
+                      </svg>
+                    </span>
+                    <span className="ai-channel-text">
+                      <span className="ai-channel-label">Chat on WhatsApp</span>
+                      <span className="ai-channel-sub">Continue the conversation on WhatsApp.</span>
+                    </span>
+                  </button>
+
+                  <p className="ai-channels-note">Available 24×7</p>
+                </div>
+              )}
               {msgs.length === 0 && (
                 <div className="ai-empty">
                   <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-1)', marginBottom: 8 }}>Suggested queries for you:</p>
@@ -292,6 +411,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                 </>
               )}
               <input
+                ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={listening ? 'Listening…' : 'Ask anything…'}
@@ -300,8 +420,8 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
               />
               <Button type="submit" disabled={busy || !input.trim()}>Send</Button>
             </form>
-          </aside>
-        </div>
+          </div>
+        </aside>
       )}
     </>
   );

@@ -25,7 +25,8 @@ export const metrics = asyncHandler(async (_req, res) => {
         heapTotalMb: Math.round(mem.heapTotal / 1024 / 1024),
       },
       database: READY_STATES[mongoose.connection.readyState] ?? 'unknown',
-      nodeVersion: process.version,
+      // process.version is deliberately omitted: naming the exact Node build
+      // tells a reader which runtime CVEs to try, and no dashboard needs it.
     },
     'Metrics fetched'
   );

@@ -107,4 +107,66 @@ router.post(
  */
 router.get('/summary', requirePermission('attendance.read'), controller.getSummary);
 
+/**
+ * @swagger
+ * /attendance/calendar:
+ *   get:
+ *     summary: Get day-level attendance statuses for a single month (for calendar views)
+ *     tags: [Attendance]
+ *     parameters:
+ *       - in: query
+ *         name: enrollmentId
+ *         schema: { type: string }
+ *       - in: query
+ *         name: month
+ *         required: true
+ *         schema: { type: string, example: "2026-07" }
+ *     responses:
+ *       200:
+ *         description: Attendance calendar fetched
+ */
+router.get('/calendar', requirePermission('attendance.read'), controller.getCalendar);
+
+/**
+ * @swagger
+ * /attendance/subject-wise:
+ *   get:
+ *     summary: Per-subject attendance for one enrollment, grouped by subject offering
+ *     description: >
+ *       `basis` reports where the numbers come from: PERIOD (real per-period
+ *       records), DAY (day-level records attributed to the subjects timetabled
+ *       that day), or MIXED. Percentages are presentCount/totalSessions.
+ *     tags: [Attendance]
+ *     parameters:
+ *       - in: query
+ *         name: enrollmentId
+ *         schema: { type: string }
+ *       - in: query
+ *         name: month
+ *         schema: { type: string, example: '2026-07' }
+ *     responses:
+ *       200:
+ *         description: Subject-wise attendance fetched
+ */
+router.get('/subject-wise', requirePermission('attendance.read'), controller.getSubjectWise);
+
+/**
+ * @swagger
+ * /attendance/trend:
+ *   get:
+ *     summary: Get monthly attendance percentage trend for the last N months
+ *     tags: [Attendance]
+ *     parameters:
+ *       - in: query
+ *         name: enrollmentId
+ *         schema: { type: string }
+ *       - in: query
+ *         name: months
+ *         schema: { type: integer, default: 6 }
+ *     responses:
+ *       200:
+ *         description: Attendance trend fetched
+ */
+router.get('/trend', requirePermission('attendance.read'), controller.getTrend);
+
 export default router;

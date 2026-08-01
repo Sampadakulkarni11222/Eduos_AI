@@ -73,6 +73,56 @@ router.post('/', requirePermission('students.manage'), controller.create);
  *         description: Student deactivated
  */
 router.get('/:id', requirePermission('students.read'), controller.getById);
+/**
+ * @swagger
+ * /students/{id}/photo:
+ *   patch:
+ *     summary: Set a student's profile photo (used on their ID card)
+ *     description: >
+ *       Guarded by `students.read` rather than `students.manage` so a student
+ *       can supply their own photo without gaining edit rights over their
+ *       admission record. OWN scope restricts it to their own record; the
+ *       service accepts only paths from this system's upload endpoint.
+ *     tags: [Students]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [photoUrl]
+ *             properties:
+ *               photoUrl: { type: string, example: /uploads/uuid-photo.jpg }
+ *     responses:
+ *       200:
+ *         description: Profile photo updated
+ */
+router.patch('/:id/photo', requirePermission('students.read'), controller.setPhoto);
+
+/**
+ * @swagger
+ * /students/{id}/anonymise:
+ *   post:
+ *     summary: Irreversibly erase a withdrawn student's personal data
+ *     description: >
+ *       Removes name, date of birth, address, gender, photo (file included),
+ *       guardian links and medical records. Attendance, marks and invoices are
+ *       retained but de-identified, since a school has statutory reason to keep
+ *       the academic and financial record. Idempotent, and audited.
+ *     tags: [Students]
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason: { type: string, example: "Erasure requested by guardian" }
+ *     responses:
+ *       200:
+ *         description: Personal data erased
+ */
+router.post('/:id/anonymise', requirePermission('students.manage'), controller.anonymise);
+
 router.patch('/:id', requirePermission('students.manage'), controller.update);
 router.delete('/:id', requirePermission('students.manage'), controller.remove);
 

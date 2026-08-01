@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { TimetableGrid } from '@/components/timetable-grid';
+import { TimetableCalendar } from '@/components/timetable/timetable-calendar';
 import { Card, EmptyState, SkeletonRows, StatCard } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { SectionDto, TimetableSlotDto } from '@/lib/types';
@@ -125,7 +125,7 @@ export default function TeacherTimetable() {
         </>
       )}
 
-      <TimetableGrid scopeLabel="Your weekly periods" />
+      <TimetableCalendar scopeLabel="Your weekly periods" />
     </PortalShell>
   );
 }

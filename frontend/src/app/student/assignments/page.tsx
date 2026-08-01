@@ -152,6 +152,9 @@ function SubmitModal({ assignment, onClose, onDone }: { assignment: AssignmentDt
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const late = isOverdue(assignment.dueAt);
+  // A file upload sets fileUrl to the stored path; "paste a link" sets it to
+  // the typed URL. Either counts as work; whitespace does not.
+  const canSubmit = file.fileUrl.trim() !== '';
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -182,13 +185,19 @@ function SubmitModal({ assignment, onClose, onDone }: { assignment: AssignmentDt
             {late && <span style={{ color: 'var(--red)', fontWeight: 700 }}> — past due; this will be marked LATE</span>}
           </div>
 
-          <div className="field-label">Attach your work (optional)</div>
-          <FileOrUrlInput value={file} onChange={setFile} />
+          <div className="field-label">Attach your work</div>
+          <FileOrUrlInput value={file} onChange={setFile} required />
+
+          {!canSubmit && (
+            <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--text-2b)' }}>
+              Upload a file or paste a link to enable submitting.
+            </div>
+          )}
 
           {err && <div style={{ marginTop: 10, fontSize: 12.5, color: '#991b1b' }}>{err}</div>}
 
           <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-            <Button type="submit" disabled={busy}>{busy ? 'Submitting…' : 'Submit work'}</Button>
+            <Button type="submit" disabled={busy || !canSubmit}>{busy ? 'Submitting…' : 'Submit work'}</Button>
             <Button variant="ghost" type="button" onClick={onClose} disabled={busy}>Cancel</Button>
           </div>
         </form>

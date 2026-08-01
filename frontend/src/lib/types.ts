@@ -46,7 +46,12 @@ export interface StudentOverviewDto {
   gender: string | null;
   address: string | null;
   photoUrl: string | null;
-  enrollment: { id: string; rollNo: number | null; class: string; sectionId?: string | null; academicYearId?: string | null } | null;
+  enrollment: {
+    id: string; rollNo: number | null; class: string;
+    sectionId?: string | null; academicYearId?: string | null;
+    classTeacher?: { name: string; phone: string | null; email: string | null } | null;
+    classRepresentative?: { name: string } | null;
+  } | null;
   guardians: StudentGuardianInfo[];
   medical: MedicalDto | null;
   attendance: AttendanceSummaryDto | null;
@@ -74,7 +79,16 @@ export interface StaffAccountDto {
 }
 export interface RosterRow { enrollmentId: string; rollNo: number | null; studentName: string; status: AttStatus | null; note: string | null }
 export type AttStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY';
-export interface AttendanceRoster { section: { id: string; name: string }; date: string; periodNo: number | null; roster: RosterRow[] }
+export interface TimetabledPeriod { periodNo: number; subject: string; startTime: string | null; endTime: string | null }
+/** `periodNo: null` is whole-day attendance; `periods` lists what is timetabled that weekday. */
+export interface AttendanceRoster {
+  section: { id: string; name: string };
+  date: string;
+  periodNo: number | null;
+  subject: string | null;
+  periods: TimetabledPeriod[];
+  roster: RosterRow[];
+}
 export interface MySubmission { status: 'PENDING' | 'SUBMITTED' | 'LATE' | 'GRADED' | 'EXEMPT'; submittedAt: string | null; marks: number | null; feedback: string | null; attachments: string[] }
 export interface AssignmentDto {
   id: string; title: string; description?: string | null; type: string; chapter?: string | null;
@@ -103,6 +117,23 @@ export interface CalendarEventDto { id: string; title: string; description: stri
 export interface AttendanceDayDto { date: string; status: AttStatus }
 export interface AttendanceCalendarDto { enrollmentId: string; month: string; days: AttendanceDayDto[] }
 export interface AttendanceTrendPointDto { month: string; pctPresent: number; presentDays: number; workingDays: number }
+
+/**
+ * `basis` says where these numbers come from — PERIOD is a true per-subject
+ * figure; DAY means the day's status was attributed to each subject timetabled
+ * that day, so subjects taught daily will legitimately read alike.
+ */
+export interface SubjectAttendanceRow {
+  subjectOfferingId: string; subject: string; subjectId: string | null;
+  present: number; absent: number; leave: number;
+  totalSessions: number; periodBacked: number;
+  pctPresent: number | null; derived: boolean;
+}
+export interface SubjectAttendanceDto {
+  enrollmentId: string; yearMonth: string;
+  basis: 'PERIOD' | 'DAY' | 'MIXED';
+  subjects: SubjectAttendanceRow[];
+}
 
 // ── Leave applications ──
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -133,6 +164,15 @@ export interface RiskScan { items: RiskItem[]; counts: Record<string, number> }
 export interface AiReply { conversationId: string; reply: string; toolsUsed: string[] }
 
 export interface WaSimReply { reply: string; buttons: Array<{ id: string; title: string }> | null }
+
+/**
+ * `enabled: false` carries a `reason` (disabled, no number configured, or the
+ * caller is staff) and no link — the client hides the entry point rather than
+ * rendering a button that cannot work.
+ */
+export type WhatsappAssistantLink =
+  | { enabled: true; phone: string; message: string; url: string }
+  | { enabled: false; reason: string };
 
 // ── Phase 8: Transport ──
 export interface TransportRouteDto { id: string; name: string; operatorName: string | null; vehicleNo: string | null; driverName: string | null; driverPhone: string | null; status: string; stopCount: number }
@@ -211,7 +251,20 @@ export interface BulkImportResult {
 }
 
 // ── Online payments ──
-export interface PayOnlineResult { receiptNo: string; gatewayRef: string; provider: string; sandbox: boolean; status: string; paidPaise: number }
+/**
+ * Result of POST /fees/pay.
+ *
+ * A real gateway cannot capture from the server, so it answers with an order
+ * for the browser to complete (`requiresClientAction: true`) and no receipt —
+ * the ledger only moves once the signed webhook arrives. The sandbox provider
+ * captures immediately and returns the receipt fields. Callers must branch on
+ * `requiresClientAction` before showing any confirmation.
+ */
+export interface PayOnlineResult {
+  requiresClientAction?: boolean;
+  orderId?: string; keyId?: string; currency?: string; amountPaise?: number;
+  receiptNo: string; gatewayRef: string; provider: string; sandbox: boolean; status: string; paidPaise: number;
+}
 
 // ── Hostel ──
 export interface HostelRoomDto { _id: string; roomNo: string; block: string; floor?: number | null; type: string; capacity: number; status: string; occupied: number; available: number }
@@ -271,6 +324,9 @@ export interface ParentDashboardDto {
 export interface WardenDashboardDto {
   hostelStudents: number; occupiedRooms: number; vacantBeds: number; totalCapacity: number; occupancyRate: number;
   maintenanceRooms: number; maintenanceRequests: number; openInquiries: number;
+  openTickets: Array<{ id: string; subject: string; status: string; priority: string | null; raisedBy: string | null; createdAt: string }>;
+  pendingLeaveCount: number;
+  leaveRequests: Array<{ id: string; studentName: string; admissionNo: string; fromDate: string; toDate: string; reason: string; status: string }>;
   recentAllocations: Array<{ allocationId: string; studentName: string; admissionNo: string; roomNo: string; block: string; allottedAt: string }>;
 }
 export interface LibrarianDashboardDto {
@@ -281,9 +337,9 @@ export interface LibrarianDashboardDto {
 }
 export interface OwnerDashboardDto {
   totalStudents: number; activeCRMLeads: number;
-  feesCollectedPaise: number; pendingFeesPaise: number; unpaidInvoices: number;
+  feesCollectedPaise: number; pendingFeesPaise: number; unpaidInvoices: number; collectionRate: number;
   admissionsSummary: Array<{ stage: string; count: number }>;
-  recentAuditLogs: Array<{ _id: string; subject?: string; status?: string; createdAt: string }>;
+  recentAuditLogs: Array<{ _id: string; action: string; entityType: string | null; actorName: string | null; channel: string; createdAt: string }>;
   recentAnnouncements: Array<{ _id: string; title: string; content: string; publishedAt: string }>;
 }
 export interface FinanceDashboardDto {
@@ -294,6 +350,65 @@ export interface FinanceDashboardDto {
 
 
 
+
+export interface TutorModeDto { key: string; label: string }
+export interface TutorStatusDto { llmEnabled: boolean; modes: TutorModeDto[] }
+export interface TutorSyllabusDto {
+  enrollmentId: string;
+  className: string;
+  gradeName: string | null;
+  subjects: Array<{ id: string; name: string; code: string | null }>;
+}
+/**
+ * `generated: false` means no model produced this — `content` is null and
+ * `scaffold` holds a study plan built from the student's own timetable and
+ * results. The UI must label that difference rather than presenting a scaffold
+ * as if it were a tutor's answer.
+ */
+export interface TutorReplyDto {
+  mode: string; modeLabel: string;
+  subject: string | null; topic: string; className: string;
+  language: string; languageName: string;
+  content: string | null;
+  generated: boolean;
+  reason?: string;
+  scaffold?: string;
+  groundedOn: { subjects: string[]; performance: { overall: number; weakest: string | null } | null };
+  credits?: { charged: number; source: string; remaining: number };
+}
+
+export interface AiCreditPackDto { key: string; label: string; credits: number; amountPaise: number }
+/**
+ * `metered: false` is returned for staff — the school covers their AI usage —
+ * so the balance fields are absent rather than zero. A UI that shows "0 credits
+ * left" to a teacher would be reporting a limit that does not exist.
+ */
+export interface AiCreditStatusDto {
+  metered: boolean;
+  reason?: string;
+  freeAllowance?: number; freeUsed?: number; freeRemaining?: number;
+  paidBalance?: number; totalRemaining?: number;
+  periodKey?: string; freeResetsOn?: string;
+  lifetimeSpent?: number; lifetimePurchased?: number;
+  onlinePaymentEnabled?: boolean;
+  packs: AiCreditPackDto[];
+}
+export interface AiCreditOrderDto {
+  id: string; orderNo: string; packKey: string; credits: number;
+  amountPaise: number; status: 'PENDING' | 'PAID' | 'FAILED' | 'CANCELLED'; paidAt: string | null;
+}
+export interface AiCreditPurchaseDto {
+  order: AiCreditOrderDto;
+  paid: boolean;
+  /** Real gateway: complete `orderId` in checkout, then call verifyAiCreditPurchase. */
+  requiresClientAction?: boolean;
+  provider?: string;
+  orderId?: string; keyId?: string; currency?: string; amountPaise?: number;
+  linkKind?: 'IN_APP' | 'NONE';
+  url?: string | null;
+  message?: string;
+  wallet?: { totalRemaining: number; paidBalance: number; freeRemaining: number };
+}
 
 export type NotificationType =
   | 'ANNOUNCEMENT' | 'ASSIGNMENT' | 'MARKS' | 'ATTENDANCE'

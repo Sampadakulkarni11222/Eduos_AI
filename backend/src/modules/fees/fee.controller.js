@@ -1,6 +1,10 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
-import { sendSuccess } from '../../utils/response.js';
+import { sendSuccess, sendError } from '../../utils/response.js';
+import { verifyWebhookSignature } from '../../providers/payment.provider.js';
+import { logger } from '../../utils/logger.js';
 import { parseCsvRows } from '../../utils/csvImport.js';
+import { renderInvoicePdf } from '../../utils/invoicePdf.js';
+import { renderReceiptPdf } from '../../utils/receiptPdf.js';
 import * as service from './fee.service.js';
 
 export const createFeeHead = asyncHandler(async (req, res) => {
@@ -11,8 +15,51 @@ export const createFeeStructure = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.createFeeStructure(req.body), 'Fee structure created', 201);
 });
 
+export const listFeeHeads = asyncHandler(async (_req, res) => {
+  sendSuccess(res, await service.listFeeHeads(), 'Fee heads fetched');
+});
+
+export const listFeeStructures = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.listFeeStructures(req.query), 'Fee structures fetched');
+});
+
+export const generateInvoices = asyncHandler(async (req, res) => {
+  const result = await service.generateInvoices({
+    academicYearId: req.body.academicYearId,
+    gradeId: req.body.gradeId ?? null,
+    dueOn: req.body.dueOn,
+    dryRun: req.body.dryRun === true,
+  });
+  sendSuccess(
+    res,
+    result,
+    result.dryRun
+      ? `Preview: ${result.generated} invoice(s) would be generated, ${result.skipped} already billed`
+      : `${result.generated} invoice(s) generated, ${result.skipped} already billed`,
+    result.dryRun ? 200 : 201
+  );
+});
+
 export const listInvoices = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.listInvoices(req.actor, req.scope, req.query), 'Invoices fetched');
+});
+
+export const getInvoiceDetail = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.getInvoiceDetail(req.actor, req.scope, req.params.id), 'Invoice detail fetched');
+});
+
+export const getInvoicePdf = asyncHandler(async (req, res) => {
+  const invoice = await service.getInvoiceDetail(req.actor, req.scope, req.params.id);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="Invoice-${invoice.invoiceNo}.pdf"`);
+  renderInvoicePdf(res, invoice);
+});
+
+export const getReceiptPdf = asyncHandler(async (req, res) => {
+  const receipt = await service.getPaymentReceipt(req.actor, req.scope, req.params.id);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="Receipt-${receipt.receiptNo}.pdf"`);
+  renderReceiptPdf(res, receipt);
 });
 
 export const createInvoice = asyncHandler(async (req, res) => {
@@ -34,7 +81,50 @@ export const listPayments = asyncHandler(async (req, res) => {
 });
 
 export const payOnline = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.payOnline(req.actor, req.scope, req.body), 'Payment successful', 201);
+  const result = await service.payOnline(req.actor, req.scope, req.body);
+  // A real gateway returns an order to complete, not a receipt — saying
+  // "Payment successful" there would be a lie the UI then repeats to the payer.
+  sendSuccess(
+    res,
+    result,
+    result.requiresClientAction ? 'Payment order created — complete the payment to finish' : 'Payment successful',
+    201
+  );
+});
+
+export const verifyCheckout = asyncHandler(async (req, res) => {
+  const result = await service.verifyCheckout(req.actor, req.scope, req.body);
+  sendSuccess(res, result, result.idempotent ? 'Payment already confirmed' : 'Payment confirmed');
+});
+
+/**
+ * Razorpay webhook. Unauthenticated by necessity (Razorpay holds no JWT), so
+ * the HMAC signature over the raw body is the *only* authentication — it is
+ * checked before the payload is looked at, let alone acted on.
+ *
+ * Responds 200 for anything genuine-but-unactionable (other event types,
+ * unknown orders, duplicate deliveries). Razorpay retries non-2xx for hours,
+ * and a permanent condition retried on a schedule is just noise.
+ */
+export const razorpayWebhook = asyncHandler(async (req, res) => {
+  const signature = req.headers['x-razorpay-signature'];
+
+  if (!verifyWebhookSignature(req.rawBody, signature)) {
+    logger.warn(`Rejected Razorpay webhook with invalid signature from ${req.ip}`);
+    return sendError(res, 'Invalid webhook signature', 401, [], 'WEBHOOK_SIGNATURE_INVALID');
+  }
+
+  const event = req.body?.event;
+  const entity = req.body?.payload?.payment?.entity ?? {};
+
+  const result = await service.settleGatewayPayment({
+    event,
+    orderId: entity.order_id,
+    gatewayPaymentId: entity.id,
+    amountPaise: entity.amount,
+  });
+
+  return sendSuccess(res, result, result.handled ? 'Webhook processed' : `Webhook acknowledged: ${result.reason}`);
 });
 
 export const refundPayment = asyncHandler(async (req, res) => {

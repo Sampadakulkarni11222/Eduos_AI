@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, rupees, useToast } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
+import { runCheckout, PaymentCancelled } from '@/lib/razorpay';
 import type { InvoiceDto } from '@/lib/types';
 
 const TONE: Record<string, 'green' | 'amber' | 'red' | 'gray'> = { PAID: 'green', PARTIAL: 'amber', PENDING: 'gray', OVERDUE: 'red' };
@@ -79,8 +80,32 @@ function PayModal({ invoice, onClose, onPaid }: {
     try {
       const amountPaise = Math.round(Number(amount) * 100);
       const res = await api.payOnline({ invoiceId: invoice.id, amountPaise });
+
+      // A real gateway returns an order, not a receipt — the money has not
+      // moved yet. The payer completes it in Razorpay's own modal, and only a
+      // signed result counts as payment.
+      if (res.requiresClientAction) {
+        const result = await runCheckout(res, {
+          name: 'School fees',
+          description: `Invoice ${invoice.invoiceNo}`,
+          notes: { invoiceNo: invoice.invoiceNo },
+        });
+        const confirmed = await api.verifyCheckout({
+          orderId: result.razorpay_order_id,
+          paymentId: result.razorpay_payment_id,
+          signature: result.razorpay_signature,
+        });
+        onPaid(confirmed.receiptNo ?? '—', false);
+        return;
+      }
+
       onPaid(res.receiptNo, res.sandbox);
     } catch (x) {
+      if (x instanceof PaymentCancelled) {
+        setErr(x.message);
+        setBusy(false);
+        return;
+      }
       if (x instanceof ApiError && x.code === 'PAYMENTS_DISABLED') {
         setErr('Online payments are not enabled for this school yet. Please pay at the school office.');
       } else {

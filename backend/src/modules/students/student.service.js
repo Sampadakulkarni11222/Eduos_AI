@@ -1,4 +1,10 @@
+import fs from 'fs';
+import path from 'path';
 import { Student, StudentGuardian, Enrollment } from '../../models/student.model.js';
+import { MedicalRecord } from '../../models/medicalRecord.model.js';
+import { AuditLog } from '../../models/auditLog.model.js';
+import { env } from '../../config/env.js';
+import { logger } from '../../utils/logger.js';
 import { SubjectOffering } from '../../models/academics.model.js';
 import { Submission } from '../../models/assignment.model.js';
 import { AppError } from '../../utils/AppError.js';
@@ -107,9 +113,27 @@ export async function getById(actor, scope, id) {
 export async function getOverview(actor, scope, id) {
   const student = await getById(actor, scope, id); // throws 404 if not visible to this actor
 
+  // Class teacher and CR are populated the same way the parent dashboard does
+  // it (dashboard.service.js), so a student sees exactly what their guardian
+  // already sees — the data was on the section all along, just never read here.
   const enrollment = await Enrollment.findOne({ studentId: id, status: 'ACTIVE' })
     .sort({ createdAt: -1 })
-    .populate({ path: 'sectionId', populate: { path: 'gradeId' } });
+    .populate({
+      path: 'sectionId',
+      populate: [
+        { path: 'gradeId' },
+        {
+          path: 'classTeacherId',
+          select: 'displayName accountId',
+          populate: { path: 'accountId', select: 'phoneE164 email' },
+        },
+        { path: 'classRepresentativeId', select: 'firstName lastName' },
+      ],
+    });
+
+  const section = enrollment?.sectionId;
+  const teacher = section?.classTeacherId;
+  const rep = section?.classRepresentativeId;
 
   const enrollmentDto = enrollment
     ? {
@@ -120,6 +144,16 @@ export async function getOverview(actor, scope, id) {
           : 'Unknown',
         sectionId: enrollment.sectionId?._id?.toString() ?? null,
         academicYearId: enrollment.academicYearId?.toString() ?? null,
+        classTeacher: teacher
+          ? {
+              name: teacher.displayName ?? 'Unknown',
+              phone: teacher.accountId?.phoneE164 ?? null,
+              email: teacher.accountId?.email ?? null,
+            }
+          : null,
+        classRepresentative: rep
+          ? { name: `${rep.firstName} ${rep.lastName ?? ''}`.trim() }
+          : null,
       }
     : null;
 
@@ -240,7 +274,37 @@ export async function getIdCardData(actor, scope, id) {
       : null,
     rollNo: enrollment.rollNo ?? null,
     academicYear: enrollment.academicYearId?.name ?? null,
+    // Carried through so the card prints the real photo instead of falling
+    // back to initials whenever one has been uploaded.
+    photoUrl: student.photoUrl ?? null,
   };
+}
+
+/**
+ * Sets a student's profile photo.
+ *
+ * Separate from update() because that requires `students.manage` — staff-only.
+ * A student needs to be able to supply their own photo for their ID card
+ * without being handed permission to edit their admission record, so this
+ * writes exactly one field and re-uses getById's OWN check to confirm the
+ * caller owns (or is guardian of) the record.
+ */
+export async function setPhoto(actor, scope, id, photoUrl) {
+  const url = String(photoUrl ?? '').trim();
+  if (!url) throw new AppError('photoUrl is required', 400);
+
+  // Only accept a path produced by our own upload endpoint. A remote URL here
+  // would be fetched by the ID-card renderer, turning this into an SSRF and a
+  // way to put arbitrary third-party images on a school document.
+  if (!/^\/?uploads\/[A-Za-z0-9._-]+$/.test(url)) {
+    throw new AppError('photoUrl must reference a file uploaded to this system', 400, [], 'INVALID_PHOTO_URL');
+  }
+
+  const student = await getById(actor, scope, id); // 404s if not visible to this actor
+  student.photoUrl = url.startsWith('/') ? url : `/${url}`;
+  await student.save();
+
+  return { id: student._id.toString(), photoUrl: student.photoUrl };
 }
 
 export const create = (data) => Student.create(data);
@@ -262,6 +326,105 @@ export async function softDelete(id) {
 
   // Cascade soft delete / deactivation to active enrollments
   await Enrollment.updateMany({ studentId: id, status: 'ACTIVE' }, { $set: { status: 'WITHDRAWN' } });
+}
+
+/**
+ * Irreversibly erases a former student's personal data.
+ *
+ * softDelete() above sets a flag and nothing else, so a "deleted" child kept
+ * their full name, date of birth, home address, gender, guardian names, phone
+ * numbers, email addresses and medical records — all still queryable. That is a
+ * retention decision nobody made, on minors' data.
+ *
+ * Erasure rather than row deletion, because a school cannot simply drop the
+ * academic and financial record: attendance, marks and invoices carry statutory
+ * retention and other totals reconcile against them. Those rows stay, keyed by
+ * studentId, but nothing identifying survives on them.
+ *
+ * Removed:
+ *   - name, date of birth, address, gender, and the uploaded photo (file too)
+ *   - the guardian links, so no contact detail is reachable from the child
+ *   - medical records, deleted outright — the most sensitive data held, with no
+ *     retention basis once the child has left
+ *
+ * Kept deliberately:
+ *   - admissionNo, so ledger and transcript history stay reconcilable
+ *   - enrollment, attendance, marks, invoices — de-identified by this operation
+ *     because they hold no personal data of their own
+ *
+ * The erasure is itself audited: who, when, which record. That entry is the
+ * evidence the request was honoured, so it has to outlive the data — and it
+ * records that identifying data existed, never what it was.
+ */
+export async function anonymiseStudent(actor, id, { reason = null } = {}) {
+  const student = await Student.findById(id);
+  if (!student) throw new AppError('Student not found', 404);
+
+  if (student.anonymisedAt) {
+    // Idempotent: a repeated request is not an error, and must not report
+    // destroying data that was already gone.
+    return { id: String(student._id), admissionNo: student.admissionNo, alreadyAnonymised: true };
+  }
+
+  const removed = {
+    name: Boolean(student.firstName || student.lastName),
+    dob: Boolean(student.dob),
+    address: Boolean(student.address),
+    photo: Boolean(student.photoUrl),
+  };
+
+  // The photo is a file on disk, not just a field — leaving it would defeat the
+  // whole operation for anyone holding the URL.
+  if (student.photoUrl) {
+    try {
+      const abs = path.resolve(process.cwd(), String(student.photoUrl).replace(/^\//, ''));
+      const uploadRoot = path.resolve(process.cwd(), env.UPLOAD_DIR);
+      if (abs.startsWith(uploadRoot + path.sep) && fs.existsSync(abs)) fs.unlinkSync(abs);
+    } catch (err) {
+      logger.warn(`Could not remove photo for anonymised student ${id}: ${err.message}`);
+    }
+  }
+
+  student.firstName = 'Withdrawn';
+  student.lastName = 'Student';
+  student.dob = null;
+  student.gender = null;
+  student.address = null;
+  student.photoUrl = null;
+  student.profileId = null; // severs the login that powered OWN scope
+  student.status = 'INACTIVE';
+  student.deletedAt = student.deletedAt ?? new Date();
+  student.anonymisedAt = new Date();
+  await student.save();
+
+  const guardianLinks = await StudentGuardian.deleteMany({ studentId: id });
+  const medical = await MedicalRecord.deleteMany({ studentId: id });
+  await Enrollment.updateMany({ studentId: id, status: 'ACTIVE' }, { $set: { status: 'WITHDRAWN' } });
+
+  await AuditLog.create({
+    actorProfileId: actor?.profileId ?? null,
+    action: 'student.anonymise',
+    entityType: 'Student',
+    entityId: String(id),
+    channel: 'WEB',
+    after: {
+      admissionNo: student.admissionNo,
+      removed: { ...removed, guardianLinks: guardianLinks.deletedCount, medicalRecords: medical.deletedCount },
+      reason: reason ? String(reason).slice(0, 300) : null,
+      at: new Date().toISOString(),
+    },
+  });
+
+  logger.info(
+    `Anonymised student ${student.admissionNo} (${id}) — guardian links:${guardianLinks.deletedCount} medical:${medical.deletedCount}`
+  );
+
+  return {
+    id: String(student._id),
+    admissionNo: student.admissionNo,
+    anonymisedAt: student.anonymisedAt,
+    removed: { ...removed, guardianLinks: guardianLinks.deletedCount, medicalRecords: medical.deletedCount },
+  };
 }
 
 // ── Guardians ──

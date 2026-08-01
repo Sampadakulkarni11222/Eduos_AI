@@ -4,8 +4,8 @@ import { parseCsvRows } from '../../utils/csvImport.js';
 import * as service from './attendance.service.js';
 
 export const getRoster = asyncHandler(async (req, res) => {
-  const { sectionId, date } = req.query;
-  const roster = await service.getRoster(req.actor, req.scope, sectionId, date);
+  const { sectionId, date, periodNo } = req.query;
+  const roster = await service.getRoster(req.actor, req.scope, sectionId, date, periodNo ?? null);
   sendSuccess(res, roster, 'Roster fetched');
 });
 
@@ -29,4 +29,19 @@ export const markBulk = asyncHandler(async (req, res) => {
 export const getSummary = asyncHandler(async (req, res) => {
   const summary = await service.getSummary(req.actor, req.scope, req.query);
   sendSuccess(res, summary, 'Attendance summary fetched');
+});
+
+export const getSubjectWise = asyncHandler(async (req, res) => {
+  const summary = await service.getSubjectWiseSummary(req.actor, req.scope, req.query);
+  sendSuccess(res, summary, 'Subject-wise attendance fetched');
+});
+
+export const getCalendar = asyncHandler(async (req, res) => {
+  const calendar = await service.getCalendar(req.actor, req.scope, req.query);
+  sendSuccess(res, calendar, 'Attendance calendar fetched');
+});
+
+export const getTrend = asyncHandler(async (req, res) => {
+  const trend = await service.getTrend(req.actor, req.scope, req.query);
+  sendSuccess(res, trend, 'Attendance trend fetched');
 });
