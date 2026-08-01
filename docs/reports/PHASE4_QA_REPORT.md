@@ -89,14 +89,90 @@ Both new rate limits also proved themselves by accident: my own test volume trip
 
 ---
 
-## 5. Other issues found (not yet fixed — need your call)
+## 5. Other issues found
 
-| # | Issue | Severity | Note |
+| # | Issue | Severity | Status |
 |---|---|---|---|
-| QA-3 | `npm run migrate` **crashes** after `npm run seed:school` — `E11000 duplicate key … academicyears index: name_1 dup key: { name: "2026-27" }` | Medium | Documented setup sequence in README is broken for a fresh full-data environment. Fix = make the year/term upsert idempotent. |
-| QA-4 | `/observability/metrics` and `/ready` are **unauthenticated** | Medium | Confirm what `metrics` exposes before public deployment. |
-| QA-5 | `/academics/*` reads (years, terms, grades, sections, subjects, offerings) are authenticated but ungated | Low | Any signed-in user can enumerate school structure. Low sensitivity, but it is roster metadata. |
-| QA-6 | 4 of 8 dashboard endpoints (`owner`, `finance`, `warden`, `librarian`) are **not called by any frontend page** | Low | Dead surface — either wire the portals to them or retire them. Owner/Finance/Warden/Librarian portal homes currently assemble data another way. |
+| QA-3 | `npm run migrate` **crashes** after `npm run seed:school` — `E11000 duplicate key … academicyears index: name_1 dup key: { name: "2026-27" }` | Medium | **FIXED** — see §5.1 |
+| QA-4 | `/observability/metrics` and `/ready` are **unauthenticated** | Medium | **FIXED** — see §5.2 |
+| QA-5 | `/academics/*` reads (years, terms, grades, sections, subjects, offerings) are authenticated but ungated | Low | **FIXED** — see §5.3 |
+| QA-8 | `/academics/sections/mine` and `/offerings/mine` returned the **entire school** to every role except TEACHER | **High** | **FIXED** — see §5.3. Found while fixing QA-5. |
+| QA-6 | 4 of 8 dashboard endpoints (`owner`, `finance`, `warden`, `librarian`) are **not called by any frontend page** | Low | **FIXED** — see §5.4 |
+| QA-9 | `/dashboard/owner` returned **open tickets** under the name `recentAuditLogs` | Medium | **FIXED** — see §5.4. Found while fixing QA-6. |
+| QA-10 | `/dashboard/warden` returned two permanently-empty placeholder fields, and a **count** named like a list | Low | **FIXED** — see §5.4 |
+| QA-11 | Owner, finance and librarian portal homes derived totals from a **single page** of a list endpoint | Medium | **FIXED** — see §5.4 |
+
+### 5.1 QA-3 — `npm run migrate` crashed on the documented setup sequence · Medium · FIXED
+
+**Root cause was wider than first reported.** `migrate.js` pins fixed `_id`s so it can be re-run, which works on a database only it has touched. But documents created by `seed:school` have their own `_id` and the same natural key, and inserting a second one violates a unique index. Six upserts were exposed to this, not one: `academicyears` (`name`), `terms`, `enrollments` (`{studentId, academicYearId}`), `examsubjects` (`{examId, subjectOfferingId}`), `submissions` (`{assignmentId, enrollmentId}`) and `assignments`. `academicyears` simply crashed first.
+
+**Before:** `npm run seed` → `npm run seed:school` → `npm run migrate` died with `E11000 … academicyears index: name_1 dup key: { name: "2026-27" }`.
+
+**After:** a single `upsertByNaturalKey()` helper resolves each document by its natural key and **adopts whatever `_id` is already there**, using the pinned `_id` only when nothing exists. Downstream references use the returned id, so they stay consistent whichever seed created the row. `createdAt` also moved to `$setOnInsert`, so re-running no longer rewrites the creation time of existing rows.
+
+**Verified:** the full documented sequence completes, and `migrate` then ran a **second** time cleanly — no `E11000`, exactly one `2026-27` academic year, no duplicate `academicyears.name` / `students.admissionNo` / `accounts.email`.
+
+### 5.2 QA-4 — process metrics were unauthenticated · Medium · FIXED
+
+**Before:** `GET /observability/metrics` was public and returned uptime, resident/heap memory, database state and **`process.version`**. The Node build in particular tells a reader which runtime CVEs to try.
+
+**After:** `authenticate` + `requireRole('OWNER', 'ADMIN')`, and `process.version` is no longer in the payload at all.
+
+**`/ready` is deliberately left public.** A load balancer or platform health check cannot hold a session, and the response says only whether the database is reachable. Gating it would break deployment health checks to hide nothing.
+
+**Trade-off, stated rather than hidden:** a metrics scraper now needs a service account. Adding a shared bearer token here would have meant another secret to rotate, and a half-designed one at that.
+
+**Verified:** unauthenticated → `401`; parent → `403 ROLE_NOT_PERMITTED`; admin → `200`; response contains no `nodeVersion`; `/ready` still `200` anonymously.
+
+### 5.3 QA-5 + QA-8 — school structure was readable by any signed-in user · Low → **High** · FIXED
+
+Fixing QA-5 surfaced a materially worse bug underneath it.
+
+**QA-5, before:** the six `/academics/*` list reads were authenticated but ungated, so any signed-in user could enumerate every year, term, grade, section, subject and teaching assignment.
+
+**QA-5, after:** a new `academics.read` permission, granted at `ALL` to every staff role (OWNER, ADMIN, PRINCIPAL, TEACHER, FINANCE, LIBRARIAN, WARDEN) and **not** to STUDENT or PARENT.
+
+**QA-8 — the hole gating alone would have missed.** `getMySections()` and `getMyOfferings()` special-cased TEACHER and then **fell through to the unscoped full list for every other role**. So a student or parent could read the school's entire section and offering roster from `/academics/sections/mine`; gating `/academics/sections` on its own would only have moved the same data one URL over, while looking like a fix. Students and parents are now resolved to their own — or their children's — enrolled sections, and staff still get the full list because they hold `academics.read` anyway.
+
+**Side effect worth knowing about.** The student and parent timetable pages render `<TimetableCalendar>` with no section and default to `sections[0]`. Because `mySections()` used to return the whole school, those pages were defaulting to an arbitrary class and offering a picker for every other one. They now default to the family's actual class.
+
+**Verified:** all six list endpoints → parent `403`, student `403`, admin `200`. `/sections/mine` → student 1 of 12 sections, parent 1 of 12, admin 12 of 12. `/offerings/mine` → student 5 of 60, and every one belongs to a section they are actually in.
+
+**Deployment note:** `academics.read` is a new catalog key, so **an existing database must be re-seeded (`npm run seed`) for staff to keep access to these routes.** Without it they will get `403`.
+
+**Two matrix rows that looked like violations and were not.** The RBAC matrix flagged PARENT/STUDENT reaching `GET /students` (200) and `POST /fees/payments` (404). Both are correct: `students.read` is granted at `OWN` scope and the list comes back filtered — measured at **1 of 720**, not 720 of 720 — and parents legitimately hold `fees.pay` for their own invoices, then get stopped by ownership (`403` on a real invoice belonging to another family). The matrix only compares status codes, so it cannot tell a scoped 200 from a leak. Expectations corrected there rather than "fixing" working controls.
+
+### 5.4 QA-6 — four dashboard endpoints nothing called · Low · FIXED (plus QA-9, QA-10, QA-11 found underneath)
+
+The four portal homes are now wired to their endpoints: **one call each instead of two to four**. Owner went from four round trips (`/students`, `/admissions/pipeline`, `/fees/summary`, `/audit/logs`) to one; finance, warden and librarian from two to one.
+
+But "wire it up" turned out not to be the whole job. Three of the four endpoints had defects of their own, and two of the pages were computing totals wrongly. Wiring them blindly would have shipped those into the UI.
+
+#### QA-9 — the owner endpoint's audit panel was fake · Medium
+
+`getOwnerDashboard()` returned `recentAuditLogs: recentTickets`, with the comment *"using tickets as proxy for recent activity"*. Tickets have no `action`, `actorName` or `channel`, which is exactly what the owner page renders — so wiring the page to it would have produced five rows of blank fields. The frontend type had already half-noticed, typing the field as `{ subject?, status? }`.
+
+**After:** real `AuditLog` documents, with `actorProfileId` populated to a display name, shaped as `{action, entityType, actorName, channel, createdAt}`. **Verified** the endpoint's first entry matches `/audit/logs`' first entry (`auth.login`), every entry carries an `action` and a `channel`, and no ticket-shaped `subject` survives.
+
+Also added `collectionRate`, which the owner page needs for its "% collection rate" caption — previously the sole reason that page fetched `/fees/summary` at all. **Verified** it equals the fee summary's own figure (42%).
+
+#### QA-10 — warden placeholders and a mislabelled count · Low
+
+Three problems: `visitorLogs: []` was hardcoded for a model that does not exist; `leaveRequests: []` was hardcoded with the comment *"no leave model"*, which stopped being true when the leave module landed; and `recentIncidents` was `openInquiries` under a second name — **a number** with a plural list-shaped name, so any caller reading `recentIncidents.length` got `undefined`.
+
+**After:** `visitorLogs` removed (better to omit a field than promise data the system cannot produce), `recentIncidents` removed as a duplicate, and `leaveRequests` wired to real `PENDING` leave applications with student name and reason. Added `openTickets` so the page stops fetching every ticket and filtering client-side.
+
+**Verified end-to-end, not just by shape:** a student applied for leave through `/leave/apply`, and the warden dashboard went from 2 pending to 3, with the new row naming the student (`Diya Sharma`) and the reason.
+
+#### QA-11 — three portal homes counted a page, not a total · Medium
+
+- **Owner** showed `students.length` — the length of one page of `/students` — as "Total Students". Now the endpoint's real count. **Verified 720.**
+- **Finance** showed `invoices.length` as "Invoices / total raised". Now `invoiceCount`. On the test data that is 720 rather than one page's worth.
+- **Librarian** summed `totalCopies` over one page of the catalogue and showed `books.length` as "unique titles", so any school with more titles than the page size undercounted its own library. Now real aggregates (8 titles, 86 copies), plus the issued/returned-today counters the endpoint already computed and nothing displayed.
+
+**Verified:** 31/31 — every field each rewired page reads is present on its endpoint (a missing one fails the probe rather than rendering `undefined` in a portal), the owner audit panel gets real logs, warden placeholders are gone and leave is live, librarian aggregates are real, and all four endpoints stay role-gated (student refused on all four, warden refused on finance, librarian refused on owner, admin allowed on all four). `next build` compiles clean.
+
+**One stale test expectation corrected, not a code change.** The dashboard matrix flagged three "cross-role exposures": ADMIN on `/owner`, PRINCIPAL on `/admin` and `/finance`. All three are the `requireRole()` lists set deliberately by the QA-2 fix — a principal has school-wide oversight including `fees.read` at `ALL` scope. The matrix table predated that fix; it now mirrors the routes, and reports 0 exposures.
 
 ---
 

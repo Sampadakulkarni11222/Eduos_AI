@@ -38,7 +38,7 @@ import { logger } from '../utils/logger.js';
  *     was never sent.
  */
 function deliverLocally(channel, recipient, code) {
-  if (env.isProd) {
+  if (env.isProd && !env.ALLOW_DEV_OTP_IN_PRODUCTION) {
     logger.error(
       `[otp:${channel}] refusing to deliver via the console provider in production — ` +
         `configure a real ${channel.toUpperCase()} provider. No code was sent to ${recipient}.`

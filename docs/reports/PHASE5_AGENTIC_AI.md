@@ -49,7 +49,9 @@ The differentiator is **grounding, not the chat**. Subjects come from the studen
 
 ## LLM provider + intent parsing (`1703da2`)
 
-`ai.provider.js` follows the same shape as the payment and notification providers: real behaviour with credentials, an honest labelled fallback without. Uses `claude-opus-5` with adaptive thinking, checks `stop_reason` for a refusal **before** reading content, and degrades rather than throwing on provider errors.
+`ai.provider.js` follows the same shape as the payment and notification providers: real behaviour with credentials, an honest labelled fallback without. It checks `stop_reason` for a refusal **before** reading content, and degrades rather than throwing on provider errors.
+
+> **Updated 2026-07-30.** The provider now supports **Gemini as well as Anthropic** (`AI_PROVIDER=gemini` + `GEMINI_API_KEY`, default model `gemini-1.5-flash`; or `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`, default `claude-opus-5`). Anything else — including `openai`, which is *not* implemented despite what `API_KEYS_REQUIRED.md` used to claim — leaves generation off. The seam held: adding a second provider changed no caller.
 
 Intent parsing tries the deterministic rules **first** — cheaper, instant, predictable — and only falls through to the model for phrasings they miss. Three containments, none of which rely on the model behaving:
 
@@ -67,9 +69,11 @@ Stated plainly rather than left to be discovered:
 |---|---|
 | **OCR attendance from a photo of a paper register** | **Built** (`0fa2342`) — see the section below. |
 | **Voice input / multilingual responses** | **Built** (`e5a1b0f`) — see the section below. WhatsApp *voice notes* remain unbuilt (they need server-side STT). |
-| Payment-link generation from the agent | Not built (`record_fee_payment` is staff-only ledger recording, not a parent payment link). |
-| "Generate this week's homework" / "schedule a PTM" | Not built — no tool backs either yet. |
-| Live LLM behaviour | **Never exercised.** No `ANTHROPIC_API_KEY` was available, so every test ran on the deterministic path. The provider, refusal handling, and model-proposal containment are code-reviewed, not runtime-verified. This is the largest untested surface in the phase. |
+| Payment-link generation from the agent | **Built** — see the section below. |
+| "Generate this week's homework" | **Built** — see the section below. |
+| "Schedule a PTM" | Not built — no scheduling service backs it yet. |
+| Tutor UI | **Built** (`5a2bb58`) — `/student/study-help`, `/parent/study-help`. |
+| A **successful** LLM generation | **Still never observed.** Initially there was no key at all; the deployment now has `AI_PROVIDER=gemini` with a key Google rejects (`API_KEY_INVALID`), so every call 400s and falls back. Tutor generation, vision OCR, model-proposal containment and the *charged* credit path remain code-reviewed, not runtime-verified. **What is now proven against a live-but-failing provider:** the credit gate refuses before any provider call, a provider failure charges nothing and degrades to a labelled study plan, and the full suite passes in that state. |
 
 ## Verification summary
 
@@ -216,3 +220,422 @@ user is asked for a reason *before* confirming.
 use a browser API; transcribing them needs a server-side STT provider. The
 webhook already answers non-text messages with a usable reply rather than
 silence, so the failure mode is graceful.
+
+---
+
+## Payment links and homework generation — 29/29
+
+Two tools, deliberately built to opposite designs, because they carry opposite
+risks.
+
+### `get_payment_link` — a read, not a payment
+
+`fees.pay` · **does not mutate** · no confirmation step
+
+A parent asking "I want to pay my fees" gets back their outstanding invoices
+and a link into the payment page of their own portal. It never charges
+anything.
+
+That is a judgment call worth stating outright: an agent that can *take a
+payment* from a chat message is a different and much worse product, and
+confirm-before-commit is not a good enough guard for money moving on the back
+of a sentence someone typed. A one-word "yes" against a summary is not the same
+as a payer seeing an itemised invoice on a page they navigated to. So the tool
+hands over a link and stops; the existing payment screen does the rest, with
+its own UI and its own audit trail. `record_fee_payment` remains separate and
+staff-only — that is a cashier recording money already received at a counter,
+not a parent being charged.
+
+Links are produced by `payment.provider.createPaymentLink()`, kept distinct
+from `chargeOnline()` so the two can never be confused at a call site, and are
+labelled honestly: `linkKind: 'IN_APP'` when it points at the portal,
+`'NONE'` when no gateway is configured. No fake gateway URL is ever returned.
+
+Scoping is inherited, not re-implemented: `fees.getPaymentLinks()` reads
+through the same `listInvoices()` the REST API uses, so a parent sees only
+their own children's invoices for the same reason the fees page does.
+
+### `generate_homework` — a write, and it refuses to guess
+
+`assignments.manage` · **mutates** · `affectsOthers: true` · confirmation required
+
+Two-step by design. `prepare()` drafts the homework when the *proposal* is
+made and the draft is stored server-side on the pending action, so the summary
+the teacher approves describes homework that already exists in full. Without
+that split, a teacher would be confirming a promise to generate something
+unseen, and the text finally written could differ from what they agreed to.
+
+The more interesting behaviour is what it does when it is *not sure*. Asked to
+"create homework on fractions for Mathematics", for a teacher who teaches
+Mathematics to four classes, it does not pick one. It refuses with
+`OFFERING_AMBIGUOUS` and names the real options:
+
+> Which class did you mean? You teach: Mathematics — Class 5 A; Mathematics —
+> Class 6 B; Mathematics — Class 8 A; Mathematics — Class 9 B.
+
+A confirmation prompt does not save you here — the teacher would be shown one
+plausible class and would very likely say yes. The fix has to be upstream of
+the confirmation, in refusing to guess at all. Missing topic and missing due
+date are likewise rejected at *propose* time, not at execution, for the same
+reason: approving a summary that then fails makes the confirmation step feel
+like theatre.
+
+### Pre-existing High fixed along the way
+
+`assignment.create` checked that the subject offering **existed** but never
+that the caller **taught it**. A live probe confirmed it: one teacher created
+an assignment on another teacher's offering and got HTTP 200. This predates
+the agent work — it was reachable from the plain REST API — and the agent tool
+would have inherited it.
+
+**Before:** any user with `assignments.manage` at `OWN` scope could set
+homework for any class in the school by passing another teacher's
+`subjectOfferingId`.
+**After:** `scope === 'OWN'` requires `offering.teacherId === actor.profileId`,
+else `403 NOT_YOUR_CLASS`. `ALL` scope (admin) is unchanged.
+**Verified:** the probe now returns `403 NOT_YOUR_CLASS`; admin still gets
+`201`; the probe row created during discovery was deleted.
+
+### Verified
+
+29/29, live against `eduos_qa`:
+
+- Payment link is a read — invoice count and payment ledger unchanged after the
+  call; `action` is `null`, so no confirmation is even offered.
+- Per-role URLs: `/parent/payments?invoice=…` and `/student/payments?invoice=…`.
+- Another family's invoice ID → `404 INVOICE_NOT_PAYABLE`. Teacher (no
+  `fees.pay`) → `403`.
+- Hindi request answered in Hindi: `3 बिल में कुल ₹85,000 बकाया है…`.
+- Homework: ambiguity refused with the real class list; proposed only once the
+  class is explicit; **nothing written** on propose or on decline; the created
+  assignment matches the confirmed summary.
+- Capabilities are role-shaped: parent sees `get_payment_link` and not
+  `generate_homework`; teacher, the reverse.
+- No regressions: agent core **30/30**, WhatsApp **19/19**, OCR matcher
+  **25/25**, Phase 3 security **10/10**.
+
+**One test failure that was mine, not the code's.** The suite initially
+asserted that "create homework on fractions for Mathematics" would produce a
+proposal. It produced the ambiguity refusal instead — which is the designed
+and safer behaviour. The test was corrected to assert the refusal; the code was
+not touched.
+
+---
+
+## §5.4 guardrails: audit state, rate limiting, injection monitoring — 24/24
+
+Re-reading your brief against what was actually built, two of the three §5.4
+guardrails were only partly done. Both are now closed.
+
+### "Log every agentic action (who, what, source, **before/after state**)"
+
+Who, what and source were logged from the start. **Before/after state was not.**
+The audit entry recorded the *request* — the tool name and its arguments — which
+answers a different question from the one an audit exists to answer. Knowing
+`agent.record_fee_payment` was called with some arguments does not tell you what
+the invoice said beforehand, and that is exactly what a parent disputing a
+payment, or an auditor checking a cashier, needs.
+
+Tools now opt in with a `snapshot()` hook, captured either side of the write:
+
+| Tool | Snapshot |
+|---|---|
+| `record_fee_payment` | invoice status, total, paid total, payment count |
+| `mark_attendance` | per-status tally for the section/date, plus the status of each row this call touches |
+| creations (`generate_homework`, `apply_leave`, `create_announcement`) | `before: null` — nothing existed, and faking a before-state would be worse than admitting it |
+
+A real entry, from the test run:
+
+```
+before: { invoiceNo: "INV-…-60", status: "PENDING", totalPaise: 2500000, paidPaise: 0,     paymentCount: 0 }
+after:  { request: {…}, status: "EXECUTED",
+          state: { invoiceNo: "INV-…-60", status: "PARTIAL", totalPaise: 2500000, paidPaise: 10000, paymentCount: 1 } }
+```
+
+`before` is recorded on failures too — it shows the state a half-applied write
+would have started from. A snapshot that throws degrades to a logged `null`
+rather than blocking a write the user already authorized.
+
+**A second bug found while verifying this.** The state was being written and
+then **thrown away by the read API**: `GET /audit/logs` built a DTO that omitted
+`before` and `after` entirely, so every consumer could see *that* something
+happened and never *what changed*. Fixed, passed through the same redactor the
+request logger uses, since these payloads can carry OTPs and medical fields.
+That endpoint also hardcoded `limit = 20` while accepting a `limit` query
+parameter it silently ignored; it now honours it, capped at 200.
+
+### "Rate-limit … specifically on this surface"
+
+There was **no agent-specific limit at all** — only the general 2000-per-15-min
+API limiter, on the most expensive and most abusable surface in the product.
+
+Two layers now, and the important one is not the middleware:
+
+- **`agent/throttle.js`, in the core** — 20 calls/minute **per actor**, enforced
+  inside `runAgent()`. It lives here rather than in Express because both the web
+  and WhatsApp surfaces call `runAgent()` and only one of them passes through
+  middleware; a guard in the route would be bypassed by the webhook.
+- **`aiRateLimiter` on `/ai/*`** — 30/minute, keyed on the resolved profile,
+  as cheap early rejection.
+
+**Keying is the design decision worth stating.** Both key on profile, not IP.
+The general limiter keys on `req.ip`, which is right for a browser and useless
+here: every WhatsApp message arrives from Meta's infrastructure, so the whole
+school shares one address. IP keying would be either so loose it never fires or
+so tight that one chatty parent locks out everybody. Keying on the actor also
+means the limit follows a person across surfaces.
+
+**Known limitation:** counters are in process memory — correct for one instance,
+per-instance behind a load balancer. Moving to Redis is a change to two `Map`
+operations, and is required before running a second replica.
+
+### "…and monitor for prompt-injection attempts"
+
+Attempts were logged individually, but nothing counted them, so a probing
+attacker was indistinguishable from noise. Attempts are now counted per actor:
+three inside a minute escalates to an **error**-level log (so it surfaces in
+monitoring rather than a warn stream nobody reads), is marked
+`BLOCKED_REPEATED` in the audit trail with the attempt count, and cools the
+surface off for that actor.
+
+**I shortened that cool-off from 15 minutes to 60 seconds after building it, and
+the reasoning matters more than the number.** A prompt injection on this surface
+cannot actually achieve anything — the tool layer authorizes every action against
+live permissions, so the detector is defence in depth, not the defence. The
+security benefit of a long lockout is therefore near zero, while the cost of a
+false positive is a parent who quoted an unlucky sentence losing attendance and
+fee lookups for a quarter of an hour. A minute breaks a scripted probe loop,
+which is the thing worth stopping. The durable response is the log and the audit
+entry.
+
+### Verified
+
+24/24 against a **default-configured** server, so the limits were exercised at
+their real values rather than the relaxed ones the other suites use:
+
+- Payment write: `before` matches the invoice's pre-write paid total, `after`
+  shows the money moved (`0 → 10000`), request preserved alongside, actor and
+  channel recorded.
+- Creation: `before` is `null`, not fabricated; status `EXECUTED`.
+- Injection: refused on attempts 1 and 2, escalates on 3, then `429
+  AGENT_TEMPORARILY_BLOCKED` — and **a different actor is unaffected**, so the
+  block is per-account, not a global outage.
+- Flood: `429 AGENT_RATE_LIMITED` for the flooding actor, others unaffected.
+- No regressions: agent core **30/30**, WhatsApp **19/19**, tools **29/29**,
+  fee engine **18/18**, OCR **25/25**, QA-4/5/8 **22/22**, QA-6 **32/32**,
+  Phase 3 security **10/10**, RBAC matrix 0 violations, dashboard matrix 0
+  exposures, `next build` clean.
+
+**One regression I caused and fixed.** The strike limit initially broke the
+existing WhatsApp and tools suites: `agent-test` legitimately probes injection
+several times, which blocked that actor for the following suite. That is the
+guardrail working, but it revealed the 15-minute block was too blunt — see
+above. The suites now run with the escalation relaxed via
+`AGENT_INJECTION_STRIKES`, exactly as they already relax the HTTP rate limiter,
+and the guardrail itself is verified at defaults by its own suite.
+
+**One test flaw it exposed in the QA-6 probe.** That probe asserted the warden's
+pending-leave list *grew* by one. The list is capped at 10, so once there were
+more than ten pending it could never grow and the check silently stopped testing
+anything. Fixed to assert a new `pendingLeaveCount` total — which the endpoint
+did not previously return, meaning a warden looking at ten rows had no way to
+tell whether that was all of them or the first ten of forty. The dashboard now
+shows the total when the list is capped.
+
+---
+
+## AI credit metering and paid top-ups — 41/41
+
+Free monthly allowance for AI-generated answers, paid packs beyond it.
+
+### Four decisions, taken with you rather than for you
+
+| Decision | Chosen |
+|---|---|
+| Who is metered | **Students and parents only.** Staff are not. |
+| What costs a credit | **Only AI-generated answers.** |
+| Free tier | **50 per month**, resetting on the 1st. |
+| Payment | **Separate credit packs**, not fee invoices. |
+
+**Why staff are exempt, and why permissions could not express it.** Every role
+holds `ai.copilot.use`, so metering by permission would have started charging
+teachers, the librarian and the warden. A teacher hitting a paywall mid-lesson
+is a support call, not a revenue event — the school is already paying for their
+tools. Metering is therefore decided by role explicitly, in one named set.
+
+**Why credits stay out of the fee ledger.** Folding them into `Invoice` would
+have been less code — the PDFs, payment screens and reconciliation already
+exist. But AI credits are an optional software add-on, and putting them in
+`Invoice` puts them into statutory fee records, outstanding-dues totals and
+arrears reports, where a school accountant would have to explain why a family
+"owes" money for a chatbot. They get their own order type and reuse only the
+payment provider.
+
+### What is actually charged — and the surprise in the answer
+
+**Only tutor mode can cost a credit today, and that is correct.** While wiring
+this up I checked every AI surface for where a model is actually called:
+
+| Surface | Charged? | Why |
+|---|---|---|
+| `/ai/tutor` | **1 credit** | The only endpoint that calls the model to write something. |
+| `/ai/agent` (attendance, fees, results, homework, payment links) | Free | Deterministic database reads rendered from the message catalogue. No model output reaches the user. |
+| `/ai/chat` | Free | **It never calls a model at all** — it is a rule-based intent matcher over the caller's own facts. |
+| Refusals, validation errors, rate limits, provider failures | Free | Nobody is billed for being told no, or for our outage. |
+
+Charging for the agent would mean charging a parent a credit to read their own
+child's attendance. That is not an AI product, it is a toll on their own
+records.
+
+### Ordering, which is where paywalls usually go wrong
+
+The credit gate is deliberately the **last** check in the tutor, after the
+syllabus and off-subject checks. A student who is out of credits *and* asks for
+a subject they do not study gets the off-syllabus refusal, not a demand for
+money — verified: `400`, not `402`. Selling someone a credit to then be told no
+is the failure mode this ordering prevents.
+
+It is also skipped entirely when no model is configured, because the fallback is
+a study plan assembled from the student's own timetable and marks. That is a
+database read; charging for it would be charging for something that cost nothing.
+
+**`402 Payment Required`, not `403`.** This is not "you may not" — it is "this
+needs paying for", and a client has to be able to tell the difference to decide
+between a top-up prompt and an access error.
+
+### Money-handling invariants
+
+- **Free allowance spends first.** Never burn a purchased credit while a free one
+  is available.
+- **Purchased credits never expire** at the month boundary. The free counter
+  resets; the paid balance does not. Expiring what somebody paid for would be
+  taking their money.
+- **The month rolls lazily, on read.** No cron — a scheduled job that has to run
+  for billing to be correct is a job whose failure silently overcharges people.
+- **Spending is a conditional atomic update**, so two concurrent requests cannot
+  both take the last credit and the balance cannot go negative.
+- **The order row is written before the charge**, mirroring `fees.payOnline()`.
+  A gateway success followed by a local failure leaves a `PENDING` row to
+  reconcile, not a family who paid and got nothing.
+- **Granting is idempotent.** A replayed gateway callback does not grant twice.
+- **Charged only after generation.** `spend()` runs on `generated: true`, so an
+  outage or a model refusal costs the user nothing.
+
+### A bug found in my own code while testing
+
+The controller accepted `beneficiaryProfileId` and **silently dropped it**. The
+service had an ownership check, but it never saw the field — so a request to top
+up somebody else's account returned `201` having credited the caller's own
+wallet. A success response for something that did not happen. The field is now
+passed through and the check fires: `403 BENEFICIARY_NOT_ALLOWED`.
+
+### Verified
+
+**41/41** live, including 5 assertions that only run with an LLM configured
+(exercised with a deliberately invalid key so the gate engages and the provider
+fails):
+
+- Metering by role: student and parent metered; teacher and admin get
+  `metered: false` with no numbers and no packs.
+- Free surfaces charge nothing: agent lookups, syllabus, rule-based chat.
+- Refusals charge nothing: off-syllabus and missing-topic.
+- Exhausted student → `402 AI_CREDITS_EXHAUSTED`; off-syllabus still returns
+  `400` first.
+- Provider failure → `200` with `generated: false`, **and no credit taken**.
+- Purchase → `201`, 150 credits banked, order `PAID`, audited with the resulting
+  balance, and **no fee invoice created**.
+- Spend order `FREE` then `PAID`; month roll clears free use and preserves the
+  purchased balance; two concurrent spends cannot both take the last credit;
+  replayed callback does not double-grant.
+- Wallet isolation: topping up another account refused with nothing granted to
+  either wallet, each account reads only its own balance, anonymous gets `401`.
+- Pack pricing improves with size (₹1.98 → ₹1.66 → ₹1.40 per answer), so no pack
+  is worse value than a smaller one.
+- No regressions: agent core **30/30**, WhatsApp **19/19**, tools **29/29**, fee
+  engine **18/18**, OCR **25/25**, QA-4/5/8 **22/22**, QA-6 **32/32**, both
+  matrices clean, `next build` clean with `/student/ai-credits` and
+  `/parent/ai-credits` routed.
+
+### Not built
+
+~~**There is still no tutor UI.**~~ **Built** in `5a2bb58` — see the section
+below.
+
+**Staff-side reporting.** No admin view of credit consumption or revenue, and no
+way for the office to grant credits after taking cash — the purchase path
+assumes the family pays online. With `PAYMENT_PROVIDER=none` the order is still
+created and the user is told to pay at the office, but an admin then has no
+button to settle it.
+
+---
+
+## Tutor UI (`5a2bb58`) — 28/28
+
+`/student/study-help` and `/parent/study-help`. This is what the credit metering
+was gating: until now, tutor mode had a tested API since `4e261b0` and no screen
+in any portal, so the paywall was reachable only over HTTP.
+
+### Two choices that are security, not styling
+
+**Model output is rendered as text, never as HTML.** It goes into a
+`white-space: pre-wrap` block, not `dangerouslySetInnerHTML`. Model output is
+shaped by whatever the student typed, so piping it through an HTML parser is a
+self-inflicted XSS on the one surface where the input is adversarial by nature.
+
+**A study plan is never dressed up as a tutor's answer.** When generation does
+not happen the card is badged amber **"study plan"**, states plainly that it is
+not AI-written and that nothing was charged, while a real answer is badged green
+**"AI answer"** with the credit cost in the footer. This is the same principle
+the tutor service was written with: a student cannot tell a plausible wrong
+answer from a right one, so the interface must not blur which is which.
+
+The paywall is detected from `ApiError.status === 402` / code
+`AI_CREDITS_EXHAUSTED`, not by matching words in the message — copy changes must
+not silently break the top-up prompt.
+
+### A bug in my own credit code, found by trying to reach the paywall
+
+`FREE_MONTHLY_CREDITS` read `Number(process.env.AI_FREE_MONTHLY_CREDITS) || 50`.
+**`0` is falsy**, so a school setting the allowance to zero — to sell credits
+outright — silently got 50 free answers per student per month instead. A billing
+setting that ignores what you configured is worse than one that refuses to
+start.
+
+Fixed with `numFromEnv()` in `config/env.js`, which treats a configured `0` as a
+real value and falls back only on non-numeric or negative input. Applied to the
+credit allowance and all three agent throttle knobs. It also surfaced copy that
+read as nonsense at zero — *"You have used all 0 free AI answers"* — now
+corrected in the API message and both UI cards.
+
+### Verified
+
+**28/28** against the live API — every field the panel reads, all five modes,
+the off-syllabus refusal naming the student's real subjects, missing topic and
+unknown mode rejected, parent gets their child's class, and a teacher with no
+student record gets a clean `404 NO_STUDENT_RECORD` the page can show as a setup
+message rather than a crash. Plus `402` with a working **Add credits** link, and
+`400` still winning over `402` for an off-syllabus request from an account with
+no credits.
+
+No regressions: credits **41/41**, agent core **30/30**, WhatsApp **19/19**,
+tools **29/29**, fee engine **18/18**, OCR **25/25**, QA-4/5/8 **22/22**, QA-6
+**32/32**, Phase 3 security **10/10**, both matrices clean, `next build` clean.
+
+### Two test suites that broke for correct reasons
+
+The deployment's `.env` changed mid-session — a Gemini key and `WA_APP_SECRET`
+were added — and two suites failed as a direct result. Neither was a code fault:
+
+- **`wa-test` 4/19.** With `WA_APP_SECRET` set, the webhook correctly rejects
+  unsigned payloads. The suite had been posting unsigned bodies, which only ever
+  worked because the verifier fails open when no secret is configured (by
+  design, for simulation mode). The Phase 3 signature check was doing its job.
+  The suite now HMAC-signs from the same `.env` the server reads.
+- **`credits-test` 35/36.** A key being present flips `llmEnabled` to true, so
+  the credit gate engages and an exhausted student gets `402` — correct, but the
+  suite was asserting the un-metered branch. It now asks `/ai/tutor/status`
+  whether a model is live instead of trusting an env flag.
+
+Both now follow the deployment rather than assuming it, which is the general
+lesson: a test that hardcodes configuration tests the wrong branch the moment
+configuration changes.

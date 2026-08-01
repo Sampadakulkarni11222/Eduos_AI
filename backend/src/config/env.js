@@ -93,6 +93,7 @@ export const env = {
   BCRYPT_SALT_ROUNDS: Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
   MEDICAL_ENCRYPTION_KEY: process.env.MEDICAL_ENCRYPTION_KEY ?? 'change-this-medical-key-in-production',
   WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN ?? 'change-this-verify-token',
+  ALLOW_DEV_OTP_IN_PRODUCTION: process.env.ALLOW_DEV_OTP_IN_PRODUCTION === 'true',
   // ── WhatsApp (Meta Cloud API) ──
   // Live mode is inferred from the phone number + access token; the app secret
   // is what authenticates inbound webhooks. All three live here rather than
@@ -198,8 +199,8 @@ if (env.isProd) {
   // they mean OTP login is broken — and until this was fixed they also meant
   // the code came back in the HTTP response, which is account takeover for any
   // address. Refusing to boot is the only safe reading of this configuration.
-  if (env.SMS_PROVIDER === 'console') insecure.push('SMS_PROVIDER=console (cannot deliver an OTP — configure a real SMS provider)');
-  if (env.EMAIL_PROVIDER === 'console') insecure.push('EMAIL_PROVIDER=console (cannot deliver an OTP — configure a real email provider)');
+  if (env.SMS_PROVIDER === 'console' && !env.ALLOW_DEV_OTP_IN_PRODUCTION) insecure.push('SMS_PROVIDER=console (cannot deliver an OTP — configure a real SMS provider)');
+  if (env.EMAIL_PROVIDER === 'console' && !env.ALLOW_DEV_OTP_IN_PRODUCTION) insecure.push('EMAIL_PROVIDER=console (cannot deliver an OTP — configure a real email provider)');
   // A sandbox gateway in production marks invoices Paid without money moving.
   if (env.PAYMENT_PROVIDER === 'sandbox') insecure.push('PAYMENT_PROVIDER=sandbox (simulates payments — use a real gateway or "none")');
   if (env.PAYMENT_PROVIDER === 'razorpay') {
