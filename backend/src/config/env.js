@@ -127,6 +127,10 @@ export const env = {
   RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET ?? '',
   RAZORPAY_API_BASE: process.env.RAZORPAY_API_BASE ?? 'https://api.razorpay.com/v1',
   RAZORPAY_CURRENCY: process.env.RAZORPAY_CURRENCY ?? 'INR',
+  // SpeedyPay: a one-click "this is paid" for local testing, so a developer
+  // is not filling in a card form on every run. Off unless asked for, and see
+  // isSpeedyPayEnabled() — it cannot be turned on outside development.
+  SPEEDYPAY_ENABLED: process.env.SPEEDYPAY_ENABLED === 'true',
   // File uploads
   UPLOAD_DIR: process.env.UPLOAD_DIR ?? 'uploads',
   UPLOAD_MAX_BYTES: Number(process.env.UPLOAD_MAX_BYTES) || 15 * 1024 * 1024,
@@ -175,6 +179,22 @@ export function isWhatsappSignatureConfigured() {
   return !isPlaceholderSecret(env.WA_APP_SECRET);
 }
 
+/**
+ * True when the developer test-payment shortcut may be used.
+ *
+ * Two conditions, and the second is not negotiable by configuration: this
+ * endpoint marks an invoice paid without money moving, so it is a way to
+ * clear a real family's fees with one request. `env.isDev` — not merely
+ * "non-production" — keeps it off staging and anything else internet-facing.
+ *
+ * The production gate below additionally refuses to boot if it was explicitly
+ * enabled there, so a leftover SPEEDYPAY_ENABLED=true in a deploy config is a
+ * failed release rather than a silent hole.
+ */
+export function isSpeedyPayEnabled() {
+  return env.SPEEDYPAY_ENABLED && env.isDev;
+}
+
 // ─── Production safety gate ───────────────────────────────
 // The development defaults above are deliberately weak so the app runs out of
 // the box. Booting production with any of them still set means anyone holding
@@ -196,6 +216,9 @@ if (env.isProd) {
   if (env.CORS_ORIGIN === '*') insecure.push('CORS_ORIGIN (must name your frontend origin)');
   // A sandbox gateway in production marks invoices Paid without money moving.
   if (env.PAYMENT_PROVIDER === 'sandbox') insecure.push('PAYMENT_PROVIDER=sandbox (simulates payments — use a real gateway or "none")');
+  // Refused rather than ignored: it is already inert in production, but a
+  // deploy config carrying this is a mistake worth failing the release for.
+  if (env.SPEEDYPAY_ENABLED) insecure.push('SPEEDYPAY_ENABLED=true (developer test payments — must never be set in production)');
   if (env.PAYMENT_PROVIDER === 'razorpay') {
     if (!env.RAZORPAY_KEY_ID) insecure.push('RAZORPAY_KEY_ID');
     if (!env.RAZORPAY_KEY_SECRET) insecure.push('RAZORPAY_KEY_SECRET');

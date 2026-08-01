@@ -32,6 +32,14 @@ export const buyCredits = asyncHandler(async (req, res) => {
   sendSuccess(res, result, result.paid ? 'Credits added' : 'Order created', result.paid ? 201 : 200);
 });
 
+export const speedyBuyCredits = asyncHandler(async (req, res) => {
+  const result = await creditService.speedyPayPack(req.actor, {
+    packKey: req.body?.packKey,
+    beneficiaryProfileId: req.body?.beneficiaryProfileId,
+  });
+  sendSuccess(res, result, 'Credits added (SpeedyPay — no money moved)', 201);
+});
+
 export const verifyCreditPurchase = asyncHandler(async (req, res) => {
   const result = await creditService.verifyPackPurchase(req.actor, {
     orderId: req.body?.orderId,

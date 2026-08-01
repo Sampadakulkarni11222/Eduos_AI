@@ -1,9 +1,9 @@
 'use client';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Button, Field, Modal, rupees } from '../ui';
 import { api, ApiError } from '@/lib/api';
 import { runCheckout, PaymentCancelled } from '@/lib/razorpay';
-import type { InvoiceDto } from '@/lib/types';
+import type { InvoiceDto, PaymentMethods } from '@/lib/types';
 
 export function PayInvoiceModal({ invoice, onClose, onPaid }: {
   invoice: InvoiceDto;
@@ -14,6 +14,26 @@ export function PayInvoiceModal({ invoice, onClose, onPaid }: {
   const [amount, setAmount] = useState(String(duePaise / 100));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [methods, setMethods] = useState<PaymentMethods | null>(null);
+
+  // The server decides whether the test shortcut exists; the client never
+  // assumes it, so the button cannot appear where the endpoint would refuse.
+  useEffect(() => {
+    api.paymentMethods().then(setMethods).catch(() => setMethods(null));
+  }, []);
+
+  /** SpeedyPay: settles immediately, no gateway. Development builds only. */
+  const speedyPay = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await api.speedyPay({ invoiceId: invoice.id, amountPaise: Math.round(Number(amount) * 100) });
+      onPaid(res.receiptNo, true);
+    } catch (x) {
+      setErr(x instanceof ApiError ? x.message : 'Test payment failed.');
+      setBusy(false);
+    }
+  };
 
   const pay = async (e: FormEvent) => {
     e.preventDefault();
@@ -78,6 +98,28 @@ export function PayInvoiceModal({ invoice, onClose, onPaid }: {
           </Button>
           <Button variant="ghost" type="button" onClick={onClose} disabled={busy}>Cancel</Button>
         </div>
+
+        {methods?.speedypay && (
+          <div className="speedypay-box">
+            <div className="speedypay-head">
+              <span className="speedypay-badge">DEV</span>
+              <strong>SpeedyPay</strong>
+            </div>
+            <p className="speedypay-note">
+              Marks this invoice paid instantly for testing. No gateway, no money — the receipt is
+              referenced <code>SPEEDYPAY-…</code> so it is never mistaken for a real payment.
+            </p>
+            <Button
+              type="button"
+              variant="soft"
+              small
+              disabled={busy || !amount || Number(amount) <= 0}
+              onClick={() => void speedyPay()}
+            >
+              {busy ? 'Processing…' : `SpeedyPay ${amount ? rupees(Math.round(Number(amount) * 100)) : ''} (test)`}
+            </Button>
+          </div>
+        )}
         <p style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 12, lineHeight: 1.5 }}>
           Payments are processed by the school&apos;s configured payment provider and recorded
           against this invoice immediately. A receipt number is issued on success.

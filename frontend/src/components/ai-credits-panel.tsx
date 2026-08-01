@@ -26,6 +26,21 @@ export function AiCreditsPanel({ portalSlug }: { portalSlug: 'student' | 'parent
 
   useEffect(load, [load]);
 
+  /** SpeedyPay: grants the pack instantly for testing. Development builds only. */
+  const speedyBuy = async (packKey: string) => {
+    setBusy(packKey);
+    setNote(null);
+    try {
+      const result = await api.speedyBuyAiCredits(packKey);
+      setNote({ tone: 'ok', text: `${result.order.credits} credits added (SpeedyPay test — no money moved).` });
+      load();
+    } catch (err) {
+      setNote({ tone: 'warn', text: err instanceof Error ? err.message : 'Test purchase failed.' });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const buy = async (packKey: string) => {
     setBusy(packKey);
     setNote(null);
@@ -159,6 +174,17 @@ export function AiCreditsPanel({ portalSlug }: { portalSlug: 'student' | 'parent
               <Button small disabled={busy !== null} onClick={() => buy(pack.key)}>
                 {busy === pack.key ? 'Working…' : 'Buy'}
               </Button>
+              {status.speedypayEnabled && (
+                <Button
+                  small
+                  variant="soft"
+                  disabled={busy !== null}
+                  onClick={() => speedyBuy(pack.key)}
+                  title="Developer test purchase — grants the pack instantly, no gateway and no money"
+                >
+                  {busy === pack.key ? '…' : 'SpeedyPay'}
+                </Button>
+              )}
             </div>
           ))}
         </div>

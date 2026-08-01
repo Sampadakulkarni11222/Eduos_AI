@@ -4,7 +4,7 @@ import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, rupees, useToast } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import { runCheckout, PaymentCancelled } from '@/lib/razorpay';
-import type { InvoiceDto } from '@/lib/types';
+import type { InvoiceDto, PaymentMethods } from '@/lib/types';
 
 const TONE: Record<string, 'green' | 'amber' | 'red' | 'gray'> = { PAID: 'green', PARTIAL: 'amber', PENDING: 'gray', OVERDUE: 'red' };
 
@@ -54,7 +54,9 @@ export default function ParentPayments() {
           onClose={() => setPaying(null)}
           onPaid={(receiptNo, sandbox) => {
             setPaying(null);
-            toast(`Payment successful — receipt ${receiptNo}${sandbox ? ' (sandbox)' : ''}.`);
+            // The flag means "no real money moved" — true for both the sandbox provider
+            // and SpeedyPay. Saying "sandbox" for a SpeedyPay payment named the wrong one.
+            toast(`Payment successful — receipt ${receiptNo}${sandbox ? ' (test payment — no money moved)' : ''}.`);
             void load();
           }}
         />
@@ -72,6 +74,25 @@ function PayModal({ invoice, onClose, onPaid }: {
   const [amount, setAmount] = useState(String(duePaise / 100));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [methods, setMethods] = useState<PaymentMethods | null>(null);
+
+  // Availability comes from the server, never assumed by the client.
+  useEffect(() => {
+    api.paymentMethods().then(setMethods).catch(() => setMethods(null));
+  }, []);
+
+  /** SpeedyPay: settles immediately, no gateway. Development builds only. */
+  const speedyPay = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await api.speedyPay({ invoiceId: invoice.id, amountPaise: Math.round(Number(amount) * 100) });
+      onPaid(res.receiptNo, true);
+    } catch (x) {
+      setErr(x instanceof ApiError ? x.message : 'Test payment failed.');
+      setBusy(false);
+    }
+  };
 
   const pay = async (e: FormEvent) => {
     e.preventDefault();
@@ -147,6 +168,28 @@ function PayModal({ invoice, onClose, onPaid }: {
             </Button>
             <Button variant="ghost" type="button" onClick={onClose} disabled={busy}>Cancel</Button>
           </div>
+
+          {methods?.speedypay && (
+            <div className="speedypay-box">
+              <div className="speedypay-head">
+                <span className="speedypay-badge">DEV</span>
+                <strong>SpeedyPay</strong>
+              </div>
+              <p className="speedypay-note">
+                Marks this invoice paid instantly for testing. No gateway, no money — the receipt is
+                referenced <code>SPEEDYPAY-…</code> so it is never mistaken for a real payment.
+              </p>
+              <Button
+                type="button"
+                variant="soft"
+                small
+                disabled={busy || !amount || Number(amount) <= 0}
+                onClick={() => void speedyPay()}
+              >
+                {busy ? 'Processing…' : `SpeedyPay ${amount ? rupees(Math.round(Number(amount) * 100)) : ''} (test)`}
+              </Button>
+            </div>
+          )}
           <p style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 12, lineHeight: 1.5 }}>
             Payments are processed by the school's configured payment provider and recorded
             against this invoice immediately. A receipt number is issued on success.
