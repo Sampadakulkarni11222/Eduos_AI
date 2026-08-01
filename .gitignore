@@ -19,3 +19,8 @@ session
 # Runtime user uploads — served from disk, never source
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# Working notes kept out of version control on request.
+# Security notes especially: a list of what is weak does not belong in a repo.
+SECURITY_ACTIONS.md
+issues_sheet.md
