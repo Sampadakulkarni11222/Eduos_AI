@@ -70,11 +70,11 @@ export function SlotEditorModal({
           <div style={{ display: 'flex', gap: 12 }}>
             <div style={{ flex: 1 }}>
               <div className="field-label">Start Time (HH:MM) *</div>
-              <input className="field-input" type="text" required pattern="^\d{2}:\d{2}$" placeholder="09:00" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+              <input className="field-input" type="text" required pattern="^\\d{2}:\\d{2}$" placeholder="09:00" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
             </div>
             <div style={{ flex: 1 }}>
               <div className="field-label">End Time (HH:MM) *</div>
-              <input className="field-input" type="text" required pattern="^\d{2}:\d{2}$" placeholder="09:45" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+              <input className="field-input" type="text" required pattern="^\\d{2}:\\d{2}$" placeholder="09:45" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
             </div>
           </div>
 
