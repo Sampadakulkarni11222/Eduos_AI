@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import { join, resolve } from 'path';
 import { authenticate } from '../../middleware/auth.js';
+import { uploadRateLimiter } from '../../middleware/rateLimiter.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
 import { AppError } from '../../utils/AppError.js';
@@ -35,7 +36,10 @@ function sanitizeFilename(name) {
 }
 
 const router = Router();
+// authenticate first, so the limiter keys on the profile rather than an IP a
+// whole school shares.
 router.use(authenticate);
+router.use(uploadRateLimiter);
 
 /**
  * @swagger
