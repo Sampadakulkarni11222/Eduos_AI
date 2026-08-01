@@ -3,7 +3,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, rupees, useToast } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
-import { loadRazorpay, openCheckout } from '@/lib/razorpay';
+import { runCheckout, PaymentCancelled } from '@/lib/razorpay';
 import type { InvoiceDto } from '@/lib/types';
 
 const TONE: Record<string, 'green' | 'amber' | 'red' | 'gray'> = { PAID: 'green', PARTIAL: 'amber', PENDING: 'gray', OVERDUE: 'red' };
@@ -85,25 +85,11 @@ function PayModal({ invoice, onClose, onPaid }: {
       // moved yet. The payer completes it in Razorpay's own modal, and only a
       // signed result counts as payment.
       if (res.requiresClientAction) {
-        await loadRazorpay();
-        const result = await openCheckout({
-          key: res.keyId!,
-          amount: res.amountPaise!,
-          currency: res.currency ?? 'INR',
+        const result = await runCheckout(res, {
           name: 'School fees',
           description: `Invoice ${invoice.invoiceNo}`,
-          order_id: res.orderId!,
           notes: { invoiceNo: invoice.invoiceNo },
         });
-
-        // Closed the modal without paying. Not an error — the order simply
-        // stays unsettled and they can try again.
-        if (!result) {
-          setErr('Payment cancelled. Nothing has been charged.');
-          setBusy(false);
-          return;
-        }
-
         const confirmed = await api.verifyCheckout({
           orderId: result.razorpay_order_id,
           paymentId: result.razorpay_payment_id,
@@ -115,6 +101,11 @@ function PayModal({ invoice, onClose, onPaid }: {
 
       onPaid(res.receiptNo, res.sandbox);
     } catch (x) {
+      if (x instanceof PaymentCancelled) {
+        setErr(x.message);
+        setBusy(false);
+        return;
+      }
       if (x instanceof ApiError && x.code === 'PAYMENTS_DISABLED') {
         setErr('Online payments are not enabled for this school yet. Please pay at the school office.');
       } else {

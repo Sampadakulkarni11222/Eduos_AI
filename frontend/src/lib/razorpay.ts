@@ -35,6 +35,13 @@ export interface RazorpayCheckoutResult {
   razorpay_signature: string;
 }
 
+export class PaymentCancelled extends Error {
+  constructor() {
+    super('Payment cancelled. Nothing has been charged.');
+    this.name = 'PaymentCancelled';
+  }
+}
+
 let loader: Promise<void> | null = null;
 
 /** Loads checkout.js once; concurrent callers share the same promise. */
@@ -59,6 +66,39 @@ export function loadRazorpay(): Promise<void> {
   });
 
   return loader;
+}
+
+/**
+ * Runs a server-created order through Checkout and returns the signed result.
+ *
+ * Every "pay" button goes through here. That matters: this used to be written
+ * out at each call site, and the invoice modal shared by the student portal was
+ * missed — it kept reading `res.receiptNo` from a response that, with a real
+ * gateway, carries an order instead. The result was a success toast and a blank
+ * receipt for a payment that had not happened. One implementation means a new
+ * pay button cannot quietly reintroduce that.
+ *
+ * Throws PaymentCancelled if the payer dismisses the modal, so callers can tell
+ * "changed their mind" from "something broke".
+ */
+export async function runCheckout(order: {
+  keyId?: string; orderId?: string; amountPaise?: number; currency?: string;
+}, opts: { name: string; description: string; notes?: Record<string, string> }): Promise<RazorpayCheckoutResult> {
+  if (!order.keyId || !order.orderId || !order.amountPaise) {
+    throw new Error('The payment gateway did not return a usable order. Please try again.');
+  }
+  await loadRazorpay();
+  const result = await openCheckout({
+    key: order.keyId,
+    amount: order.amountPaise,
+    currency: order.currency ?? 'INR',
+    name: opts.name,
+    description: opts.description,
+    order_id: order.orderId,
+    notes: opts.notes,
+  });
+  if (!result) throw new PaymentCancelled();
+  return result;
 }
 
 /**

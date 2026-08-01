@@ -400,6 +400,10 @@ export interface AiCreditOrderDto {
 export interface AiCreditPurchaseDto {
   order: AiCreditOrderDto;
   paid: boolean;
+  /** Real gateway: complete `orderId` in checkout, then call verifyAiCreditPurchase. */
+  requiresClientAction?: boolean;
+  provider?: string;
+  orderId?: string; keyId?: string; currency?: string; amountPaise?: number;
   linkKind?: 'IN_APP' | 'NONE';
   url?: string | null;
   message?: string;

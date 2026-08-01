@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees } from '@/components/ui';
 import { api } from '@/lib/api';
+import { runCheckout, PaymentCancelled } from '@/lib/razorpay';
 import type { AiCreditOrderDto, AiCreditStatusDto } from '@/lib/types';
 
 /**
@@ -30,7 +31,22 @@ export function AiCreditsPanel({ portalSlug }: { portalSlug: 'student' | 'parent
     setNote(null);
     try {
       const result = await api.buyAiCredits(packKey);
-      if (result.paid) {
+
+      // A real gateway hands back an order to complete in checkout; the credits
+      // are only granted once the signed result comes back verified.
+      if (result.requiresClientAction) {
+        const checkout = await runCheckout(result, {
+          name: 'AI credits',
+          description: `${result.order.credits} credits`,
+          notes: { orderNo: result.order.orderNo },
+        });
+        const confirmed = await api.verifyAiCreditPurchase({
+          orderId: checkout.razorpay_order_id,
+          paymentId: checkout.razorpay_payment_id,
+          signature: checkout.razorpay_signature,
+        });
+        setNote({ tone: 'ok', text: `${confirmed.order.credits} credits added.` });
+      } else if (result.paid) {
         setNote({ tone: 'ok', text: `${result.order.credits} credits added.` });
       } else {
         // No gateway configured — say so rather than implying it worked.
@@ -38,7 +54,11 @@ export function AiCreditsPanel({ portalSlug }: { portalSlug: 'student' | 'parent
       }
       load();
     } catch (err) {
-      setNote({ tone: 'warn', text: err instanceof Error ? err.message : 'Could not complete that purchase.' });
+      if (err instanceof PaymentCancelled) {
+        setNote({ tone: 'warn', text: err.message });
+      } else {
+        setNote({ tone: 'warn', text: err instanceof Error ? err.message : 'Could not complete that purchase.' });
+      }
     } finally {
       setBusy(null);
     }

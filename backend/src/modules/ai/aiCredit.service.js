@@ -1,7 +1,13 @@
 import crypto from 'crypto';
 import { AiCreditWallet, AiCreditOrder } from '../../models/aiCredit.model.js';
 import { AuditLog } from '../../models/auditLog.model.js';
-import { chargeOnline, createPaymentLink, isOnlinePaymentEnabled } from '../../providers/payment.provider.js';
+import {
+  chargeOnline,
+  createPaymentLink,
+  isOnlinePaymentEnabled,
+  verifyCheckoutSignature,
+  fetchGatewayPayment,
+} from '../../providers/payment.provider.js';
 import { AppError } from '../../utils/AppError.js';
 import { logger } from '../../utils/logger.js';
 import { numFromEnv } from '../../config/env.js';
@@ -258,6 +264,25 @@ export async function purchasePack(actor, { packKey, beneficiaryProfileId } = {}
     payerProfileId: actor.profileId,
   });
 
+  // A real gateway cannot capture from the server: the payer authorises it in
+  // Razorpay's checkout. Not-captured-yet is the correct answer here, not a
+  // failure — treating it as one marked the order FAILED and returned a 502
+  // for a purchase that had not even been attempted yet.
+  if (charge.requiresClientAction) {
+    order.gatewayRef = charge.gatewayRef; // the order id, for the callback to match
+    await order.save();
+    return {
+      order: toOrderDto(order),
+      paid: false,
+      requiresClientAction: true,
+      provider: charge.provider,
+      orderId: charge.order.orderId,
+      keyId: charge.order.keyId,
+      currency: charge.order.currency,
+      amountPaise: charge.order.amountPaise,
+    };
+  }
+
   if (!charge.captured) {
     order.status = 'FAILED';
     order.error = charge.error ?? 'Payment could not be processed';
@@ -266,6 +291,48 @@ export async function purchasePack(actor, { packKey, beneficiaryProfileId } = {}
   }
 
   const wallet = await creditOrder(order, charge.gatewayRef);
+  return { order: toOrderDto(order), paid: true, wallet: summarise(wallet) };
+}
+
+/**
+ * Grants credits once the payer has completed checkout.
+ *
+ * Mirrors the invoice flow: the signature proves Razorpay produced this
+ * result, and the gateway is then asked directly whether the payment really
+ * captured — a valid signature says the message is genuine, not that the money
+ * arrived. creditOrder() is the same idempotent claim the sandbox path uses, so
+ * a retried or double-submitted callback grants the pack exactly once.
+ */
+export async function verifyPackPurchase(actor, { orderId, paymentId, signature }) {
+  if (!orderId || !paymentId || !signature) {
+    throw new AppError('orderId, paymentId and signature are required', 400);
+  }
+  if (!verifyCheckoutSignature({ orderId, paymentId, signature })) {
+    logger.warn(`Rejected AI-credit checkout callback with a bad signature for order ${orderId}`);
+    throw new AppError('Payment could not be verified', 400, [], 'CHECKOUT_SIGNATURE_INVALID');
+  }
+
+  const order = await AiCreditOrder.findOne({ gatewayRef: orderId });
+  if (!order) throw new AppError('No credit order found for that payment', 404);
+  // Someone else's order is not yours to complete, even with a valid signature.
+  if (String(order.profileId) !== String(actor.profileId)) {
+    throw new AppError('That order does not belong to your account', 403);
+  }
+
+  if (order.status === 'PAID') {
+    return { order: toOrderDto(order), paid: true, idempotent: true, wallet: summarise(await getWallet(order.beneficiaryProfileId ?? order.profileId)) };
+  }
+
+  const live = await fetchGatewayPayment(paymentId);
+  if (!live.captured) {
+    throw new AppError(`Payment is ${live.status}, not captured.`, 502, [], 'PAYMENT_NOT_CAPTURED');
+  }
+  if (Number(live.amountPaise) !== Number(order.amountPaise)) {
+    logger.error(`AI-credit amount mismatch on order ${orderId}: gateway=${live.amountPaise} order=${order.amountPaise}`);
+    throw new AppError('Payment amount did not match the order.', 400, [], 'AMOUNT_MISMATCH');
+  }
+
+  const wallet = await creditOrder(order, paymentId);
   return { order: toOrderDto(order), paid: true, wallet: summarise(wallet) };
 }
 

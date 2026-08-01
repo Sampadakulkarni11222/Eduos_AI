@@ -218,4 +218,34 @@ router.get('/credits/orders', requirePermission('ai.copilot.use'), controller.cr
  */
 router.post('/credits/purchase', requirePermission('ai.copilot.use'), controller.buyCredits);
 
+/**
+ * @swagger
+ * /ai/credits/purchase/verify:
+ *   post:
+ *     summary: Grant a credit pack after the payer completes gateway checkout
+ *     description: >
+ *       Verifies Razorpay Checkout's signature, confirms with the gateway that
+ *       the payment actually captured, checks the amount against the order, and
+ *       then grants the pack through the same idempotent claim the sandbox path
+ *       uses — so a resubmitted callback cannot grant twice.
+ *     tags: [AI]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [orderId, paymentId, signature]
+ *             properties:
+ *               orderId: { type: string }
+ *               paymentId: { type: string }
+ *               signature: { type: string }
+ *     responses:
+ *       200:
+ *         description: Credits added (or already added)
+ *       400:
+ *         description: Signature verification failed
+ */
+router.post('/credits/purchase/verify', requirePermission('ai.copilot.use'), controller.verifyCreditPurchase);
+
 export default router;

@@ -561,6 +561,8 @@ export const api = {
   aiCreditOrders: () => request<AiCreditOrderDto[]>('/ai/credits/orders'),
   buyAiCredits: (packKey: string) =>
     request<AiCreditPurchaseDto>('/ai/credits/purchase', { method: 'POST', body: JSON.stringify({ packKey }) }),
+  verifyAiCreditPurchase: (body: { orderId: string; paymentId: string; signature: string }) =>
+    request<AiCreditPurchaseDto & { idempotent?: boolean }>('/ai/credits/purchase/verify', { method: 'POST', body: JSON.stringify(body) }),
 
   // ── RBAC administration ──
   listRoles: () => request<RoleDto[]>('/roles'),

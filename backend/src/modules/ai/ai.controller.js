@@ -32,6 +32,15 @@ export const buyCredits = asyncHandler(async (req, res) => {
   sendSuccess(res, result, result.paid ? 'Credits added' : 'Order created', result.paid ? 201 : 200);
 });
 
+export const verifyCreditPurchase = asyncHandler(async (req, res) => {
+  const result = await creditService.verifyPackPurchase(req.actor, {
+    orderId: req.body?.orderId,
+    paymentId: req.body?.paymentId,
+    signature: req.body?.signature,
+  });
+  sendSuccess(res, result, result.idempotent ? 'Credits already added' : 'Credits added');
+});
+
 export const creditOrders = asyncHandler(async (req, res) => {
   sendSuccess(res, await creditService.listOrders(req.actor), 'Credit orders fetched');
 });
