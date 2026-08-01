@@ -18,19 +18,23 @@ export default function StudentPayments() {
   const [summary, setSummary] = useState<FeeSummary | null>(null);
   const [invoices, setInvoices] = useState<InvoiceDto[] | null>(null);
   const [payments, setPayments] = useState<PaymentReceiptDto[] | null>(null);
+  const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
   const [paying, setPaying] = useState<InvoiceDto | null>(null);
   const [timelineInvoiceId, setTimelineInvoiceId] = useState<string | null>(null);
   const toast = useToast();
 
   const loadAll = () => {
-    api.feeSummary().then(setSummary).catch(() => setSummary(null));
-    api.invoices().then(setInvoices).catch(() => setInvoices([]));
-    api.listPayments().then(setPayments).catch(() => setPayments([]));
+    setLoading(true);
+    Promise.allSettled([api.feeSummary(), api.invoices(), api.listPayments()]).then(([s, inv, pay]) => {
+      setSummary(s.status === 'fulfilled' ? s.value : null);
+      setInvoices(inv.status === 'fulfilled' ? inv.value : []);
+      setPayments(pay.status === 'fulfilled' ? pay.value : []);
+      setLoading(false);
+    });
   };
   useEffect(loadAll, []);
 
-  const loading = invoices === null || summary === null || payments === null;
   const pendingInvoices = (invoices ?? []).filter((i) => i.status !== 'PAID' && i.status !== 'CANCELLED');
   const paidInvoices = (invoices ?? []).filter((i) => i.status === 'PAID');
 

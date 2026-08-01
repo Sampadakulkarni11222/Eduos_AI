@@ -8,7 +8,7 @@ const COL_W = 60;
 const BAR_GAP = 10;
 
 function pctColor(p: number) {
-  return p >= 75 ? 'var(--green)' : p >= 60 ? 'var(--amber)' : 'var(--red)';
+  return p >= THRESHOLD ? 'var(--green)' : p >= 60 ? 'var(--amber)' : 'var(--red)';
 }
 
 function monthLabel(ym: string) {
