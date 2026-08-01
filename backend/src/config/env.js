@@ -194,6 +194,12 @@ if (env.isProd) {
     insecure.push('WA_APP_SECRET (WhatsApp is live — inbound webhooks cannot be authenticated without it)');
   }
   if (env.CORS_ORIGIN === '*') insecure.push('CORS_ORIGIN (must name your frontend origin)');
+  // The console providers cannot actually deliver anything, so in production
+  // they mean OTP login is broken — and until this was fixed they also meant
+  // the code came back in the HTTP response, which is account takeover for any
+  // address. Refusing to boot is the only safe reading of this configuration.
+  if (env.SMS_PROVIDER === 'console') insecure.push('SMS_PROVIDER=console (cannot deliver an OTP — configure a real SMS provider)');
+  if (env.EMAIL_PROVIDER === 'console') insecure.push('EMAIL_PROVIDER=console (cannot deliver an OTP — configure a real email provider)');
   // A sandbox gateway in production marks invoices Paid without money moving.
   if (env.PAYMENT_PROVIDER === 'sandbox') insecure.push('PAYMENT_PROVIDER=sandbox (simulates payments — use a real gateway or "none")');
   if (env.PAYMENT_PROVIDER === 'razorpay') {
