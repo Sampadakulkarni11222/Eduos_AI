@@ -56,7 +56,6 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   '/principal/fees': 'fees.read',
   '/finance/payments': 'fees.read',
   '/finance/reports': 'fees.read',
-  '/admin/whatsapp': 'ai.copilot.use',
   '/admin/admissions': 'admissions.read',
   '/owner/admissions': 'admissions.read',
   '/warden/rooms': 'hostel.read',

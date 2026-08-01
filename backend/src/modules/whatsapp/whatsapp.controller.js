@@ -41,3 +41,24 @@ export const receiveWebhook = asyncHandler(async (req, res) => {
 export const simulate = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.simulate(req.body, req.actor), 'Simulated WhatsApp exchange');
 });
+
+export const assistantLink = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.buildAssistantLink(req.actor), 'WhatsApp assistant link');
+});
+
+/**
+ * Records that a family opened the WhatsApp hand-off.
+ *
+ * Deliberately fire-and-forget from the client's point of view: this is
+ * product analytics, and a logging hiccup must never stop someone getting
+ * help. Everything identifying is taken from the session rather than the
+ * request body, so the numbers cannot be skewed by a crafted payload.
+ */
+export const trackAssistantLinkClick = asyncHandler(async (req, res) => {
+  const device = String(req.body?.device ?? '').toUpperCase();
+  await service.recordAssistantLinkClick(req.actor, {
+    device: ['MOBILE', 'DESKTOP', 'TABLET'].includes(device) ? device : 'UNKNOWN',
+    ip: req.ip,
+  });
+  sendSuccess(res, { recorded: true }, 'Click recorded');
+});

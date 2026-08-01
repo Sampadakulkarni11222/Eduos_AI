@@ -101,6 +101,13 @@ export const env = {
   WA_PHONE_NUMBER_ID: process.env.WA_PHONE_NUMBER_ID ?? '',
   WA_ACCESS_TOKEN: process.env.WA_ACCESS_TOKEN ?? '',
   WA_APP_SECRET: process.env.WA_APP_SECRET ?? '',
+  // The number families message, in international format. Distinct from
+  // WA_PHONE_NUMBER_ID, which is Meta's internal id for the sending number and
+  // is not dialable — putting that in a wa.me link produces a dead link.
+  SCHOOL_WHATSAPP_NUMBER: process.env.SCHOOL_WHATSAPP_NUMBER ?? '',
+  // Master switch for the "Chat on WhatsApp" entry point. Defaults on so a
+  // configured number is enough; set false to hide it without unsetting config.
+  WHATSAPP_ENABLED: process.env.WHATSAPP_ENABLED !== 'false',
   // ── Provider abstractions (all optional — safe fallbacks in dev) ──
   // Google Sign-In: when set, /auth/google verifies the ID token audience.
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? '',

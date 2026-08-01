@@ -3,6 +3,10 @@ import { handleInboundMessage, converse } from './whatsapp.agent.js';
 import { t } from '../../utils/language.js';
 import { env, isWhatsappLive, isWhatsappSignatureConfigured } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
+import { Student } from '../../models/student.model.js';
+import { Profile } from '../../models/profile.model.js';
+import { AuditLog } from '../../models/auditLog.model.js';
+import { getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
 
 /**
  * WhatsApp integration.
@@ -64,6 +68,116 @@ export function verifySignature(rawBody, signatureHeader) {
   const b = Buffer.from(String(signatureHeader));
   const ok = a.length === b.length && crypto.timingSafeEqual(a, b);
   return ok ? { ok: true, reason: 'VERIFIED' } : { ok: false, reason: 'SIGNATURE_MISMATCH' };
+}
+
+/**
+ * Normalises a configured number into the digits-only form wa.me requires.
+ *
+ * wa.me rejects "+", spaces and punctuation, so `+91 99999 99999` silently
+ * produces a broken link rather than an error. Returns null when what is left
+ * cannot be a real international number.
+ */
+export function normaliseWhatsappNumber(raw) {
+  const digits = String(raw ?? '').replace(/[^\d]/g, '');
+  // E.164 allows up to 15 digits; anything under 8 is not a reachable number
+  // with a country code in front of it.
+  if (digits.length < 8 || digits.length > 15) return null;
+  return digits;
+}
+
+/** True when the "Chat on WhatsApp" entry point should be offered at all. */
+export function isAssistantLinkEnabled() {
+  return env.WHATSAPP_ENABLED && normaliseWhatsappNumber(env.SCHOOL_WHATSAPP_NUMBER) !== null;
+}
+
+/**
+ * Builds the deep link that hands a signed-in student or parent over to the
+ * school's WhatsApp number, with their identity already typed out.
+ *
+ * Built on the server rather than in the browser for two reasons: the
+ * identifiers (admission number, guardian profile) come from records the
+ * client cannot be trusted to assert, and the number itself is configuration
+ * the client has no business knowing before it is switched on.
+ *
+ * The message is a *convenience*, not authentication. The bot re-resolves who
+ * the sender is from their phone number when they actually message, so editing
+ * this text before sending gains nothing — see resolveActorByPhone.
+ */
+export async function buildAssistantLink(actor) {
+  if (!env.WHATSAPP_ENABLED) {
+    return { enabled: false, reason: 'WHATSAPP_DISABLED' };
+  }
+
+  const phone = normaliseWhatsappNumber(env.SCHOOL_WHATSAPP_NUMBER);
+  if (!phone) {
+    return { enabled: false, reason: 'NUMBER_NOT_CONFIGURED' };
+  }
+
+  const role = actor?.roleKey;
+  if (role !== 'STUDENT' && role !== 'PARENT') {
+    // Staff have the in-portal assistant and the tools it fronts; the WhatsApp
+    // hand-off exists for families, whose data is scoped to themselves.
+    return { enabled: false, reason: 'ROLE_NOT_ELIGIBLE' };
+  }
+
+  const name = actor.displayName ?? 'a parent/guardian';
+  let message;
+
+  if (role === 'STUDENT') {
+    const studentId = await getOwnStudentId(actor.profileId);
+    const student = studentId ? await Student.findById(studentId).select('admissionNo').lean() : null;
+    // The admission number is what office staff actually look people up by;
+    // the internal id would be useless to whoever picks up the conversation.
+    const reference = student?.admissionNo ?? actor.profileId;
+    message = `Hello,\n\nI am ${name}.\n\nStudent ID: ${reference}\n\nI need assistance.`;
+  } else {
+    const childIds = await getGuardianStudentIds(actor.profileId);
+    const children = await Student.find({ _id: { $in: childIds } }).select('admissionNo firstName lastName').lean();
+    const childLine = children.length
+      ? `\n\nChild: ${children.map((c) => `${c.firstName} ${c.lastName ?? ''}`.trim() + ` (${c.admissionNo})`).join(', ')}`
+      : '';
+    message = `Hello,\nI am ${name}.\n\nParent ID: ${actor.profileId}${childLine}\n\nI need assistance regarding my child.`;
+  }
+
+  return {
+    enabled: true,
+    phone,
+    message,
+    // wa.me is the documented short form and resolves correctly on both
+    // desktop (WhatsApp Web) and mobile (the installed app).
+    url: `https://wa.me/${phone}?text=${encodeURIComponent(message)}`,
+  };
+}
+
+/**
+ * Records a WhatsApp hand-off click for product analytics.
+ *
+ * Reuses AuditLog rather than adding a collection: it already carries actor,
+ * channel, timestamp and IP, and keeping one trail means "what did this family
+ * do" is a single query. `after` holds the analytics dimensions — role, school
+ * and device — so they can be grouped without joins.
+ */
+export async function recordAssistantLinkClick(actor, { device = 'UNKNOWN', ip } = {}) {
+  const profile = await Profile.findById(actor.profileId).select('tenantId').lean();
+  try {
+    await AuditLog.create({
+      actorProfileId: actor.profileId,
+      action: 'whatsapp.assistant.click',
+      entityType: 'WhatsappAssistant',
+      entityId: actor.profileId,
+      channel: 'WHATSAPP',
+      ip,
+      after: {
+        role: actor.roleKey ?? null,
+        schoolId: profile?.tenantId ?? null,
+        device,
+        at: new Date().toISOString(),
+      },
+    });
+  } catch (err) {
+    // Analytics must never be the reason a parent cannot reach the school.
+    logger.warn(`Could not record WhatsApp assistant click: ${err.message}`);
+  }
 }
 
 /**

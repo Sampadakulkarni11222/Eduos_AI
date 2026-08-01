@@ -165,6 +165,15 @@ export interface AiReply { conversationId: string; reply: string; toolsUsed: str
 
 export interface WaSimReply { reply: string; buttons: Array<{ id: string; title: string }> | null }
 
+/**
+ * `enabled: false` carries a `reason` (disabled, no number configured, or the
+ * caller is staff) and no link — the client hides the entry point rather than
+ * rendering a button that cannot work.
+ */
+export type WhatsappAssistantLink =
+  | { enabled: true; phone: string; message: string; url: string }
+  | { enabled: false; reason: string };
+
 // ── Phase 8: Transport ──
 export interface TransportRouteDto { id: string; name: string; operatorName: string | null; vehicleNo: string | null; driverName: string | null; driverPhone: string | null; status: string; stopCount: number }
 export interface TransportStopDto { id: string; routeId: string; name: string; sequenceNo: number; etaMinutesFromStart: number }

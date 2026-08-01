@@ -73,7 +73,6 @@ export const PORTALS: Record<string, Portal> = {
         item('Library Books', '▢', '/admin/library', { ready: true }),
         item('Transport Routes', '⛒', '/admin/transport', { ready: true }),
         item('Documents', '🗎', '/admin/documents', { ready: true }),
-        item('WhatsApp Assistant', '◆', '/admin/whatsapp', { ready: true }),
       ]},
       { title: 'SYSTEM', items: [
         item('Audit Logs', '▷', '/admin/audit', { ready: true }),
