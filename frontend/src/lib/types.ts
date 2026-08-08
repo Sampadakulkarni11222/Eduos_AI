@@ -218,16 +218,30 @@ export interface PaymentReceiptDto {
 
 export interface UserDto {
   id: string;
+  accountId?: string;
   displayName: string;
+  role?: string | null;
   roleKey: RoleKey;
+  roleName?: string | null;
   phone: string;
   email: string | null;
+  status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | string;
+  createdAt?: string;
   studentDetails: {
-    id: string;
+    id?: string;
     admissionNo: string;
     rollNo: number | null;
     class: string | null;
   } | null;
+  profiles?: Array<{
+    profileId: string;
+    displayName: string;
+    avatarUrl?: string | null;
+    status: string;
+    role?: string | null;
+    roleKey?: string | null;
+    roleName?: string | null;
+  }>;
 }
 
 export interface CreateUserDto {
@@ -238,6 +252,14 @@ export interface CreateUserDto {
   password?: string;
   admissionNo?: string;
   sectionId?: string;
+}
+
+export interface UpdateUserDto {
+  displayName?: string;
+  phone?: string;
+  phoneE164?: string;
+  email?: string | null;
+  status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | string;
 }
 
 // ── Uploads ──

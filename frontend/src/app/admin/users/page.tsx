@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Avatar, Button, Card, EmptyState, Input, Pill, SkeletonRows, useToast } from '@/components/ui';
+import { Avatar, Button, Card, EmptyState, Field, Input, Modal, Pill, SkeletonRows, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api } from '@/lib/api';
 import type { UserDto, SectionDto } from '@/lib/types';
@@ -24,6 +24,19 @@ export default function UsersPage() {
   const [admissionNo, setAdmissionNo] = useState('');
   const [sectionId, setSectionId] = useState('');
   const [busy, setBusy] = useState(false);
+
+  // Edit User Modal states
+  const [editingUser, setEditingUser] = useState<UserDto | null>(null);
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editBusy, setEditBusy] = useState(false);
+
+  // Deactivate / Reactivate confirmation states
+  const [statusTargetUser, setStatusTargetUser] = useState<UserDto | null>(null);
+  const [statusAction, setStatusAction] = useState<'ACTIVE' | 'INACTIVE' | null>(null);
+  const [statusBusy, setStatusBusy] = useState(false);
+
   const toast = useToast();
 
   const load = useCallback(async (q: string) => {
@@ -84,6 +97,57 @@ export default function UsersPage() {
     }
   };
 
+  const openEditModal = (u: UserDto) => {
+    setEditingUser(u);
+    setEditDisplayName(u.displayName || '');
+    setEditPhone(u.phone || '');
+    setEditEmail(u.email || '');
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser || !editDisplayName.trim() || !editPhone.trim()) return;
+    setEditBusy(true);
+    try {
+      await api.updateUser(editingUser.id, {
+        displayName: editDisplayName.trim(),
+        phone: editPhone.trim(),
+        email: editEmail.trim() || null,
+      });
+      toast('User updated successfully', 'success');
+      setEditingUser(null);
+      await load(search);
+    } catch (err: any) {
+      toast(err.message || 'Could not update user.', 'error');
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
+  const openConfirmStatusModal = (u: UserDto, action: 'ACTIVE' | 'INACTIVE') => {
+    setStatusTargetUser(u);
+    setStatusAction(action);
+  };
+
+  const handleConfirmStatusChange = async () => {
+    if (!statusTargetUser || !statusAction) return;
+    setStatusBusy(true);
+    try {
+      await api.updateUser(statusTargetUser.id, { status: statusAction });
+      toast(
+        statusAction === 'INACTIVE' ? 'User deactivated successfully' : 'User reactivated successfully',
+        'success'
+      );
+      setStatusTargetUser(null);
+      setStatusAction(null);
+      await load(search);
+    } catch (err: any) {
+      toast(err.message || `Could not ${statusAction === 'INACTIVE' ? 'deactivate' : 'reactivate'} user.`, 'error');
+    } finally {
+      setStatusBusy(false);
+    }
+  };
+
   return (
     <PortalShell expectedSlug="admin" topbar={{ title: 'User Management', desc: 'Phone-rooted accounts linked to one or more role profiles.' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16 }}>
@@ -123,6 +187,7 @@ export default function UsersPage() {
                 <th>Phone / Email</th>
                 <th>Class Details</th>
                 <th>Status</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -156,7 +221,25 @@ export default function UsersPage() {
                     )}
                   </td>
                   <td data-label="Status">
-                    <Pill tone="green">Active</Pill>
+                    <Pill tone={u.status === 'ACTIVE' ? 'green' : u.status === 'SUSPENDED' ? 'amber' : 'red'}>
+                      {u.status ? u.status.charAt(0) + u.status.slice(1).toLowerCase() : 'Active'}
+                    </Pill>
+                  </td>
+                  <td data-label="Actions" style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                      <Button variant="ghost" small onClick={() => openEditModal(u)}>
+                        Edit
+                      </Button>
+                      {u.status === 'INACTIVE' ? (
+                        <Button variant="soft" small onClick={() => openConfirmStatusModal(u, 'ACTIVE')}>
+                          Reactivate
+                        </Button>
+                      ) : u.status === 'ACTIVE' ? (
+                        <Button variant="soft" small onClick={() => openConfirmStatusModal(u, 'INACTIVE')}>
+                          Deactivate
+                        </Button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -165,6 +248,7 @@ export default function UsersPage() {
         )}
       </Card>
 
+      {/* Create User Modal */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -215,6 +299,79 @@ export default function UsersPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Edit User Modal */}
+      {editingUser && (
+        <Modal title={`Edit User – ${editingUser.displayName}`} onClose={() => setEditingUser(null)}>
+          <form onSubmit={handleSaveEdit}>
+            <Field label="Full Name" required>
+              <Input
+                required
+                value={editDisplayName}
+                onChange={(e) => setEditDisplayName(e.target.value)}
+                placeholder="e.g. Diya Tharian"
+              />
+            </Field>
+
+            <Field label="Phone (E.164 format)" required>
+              <Input
+                required
+                type="tel"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                placeholder="e.g. +919555000111"
+              />
+            </Field>
+
+            <Field label="Email (Optional)">
+              <Input
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                placeholder="e.g. diya@example.com"
+              />
+            </Field>
+
+            <div style={{ display: 'flex', gap: 12, marginTop: 16, justifyContent: 'flex-end' }}>
+              <Button variant="ghost" type="button" onClick={() => setEditingUser(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={editBusy}>
+                {editBusy ? 'Saving…' : 'Save Changes'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Deactivate / Reactivate Confirmation Modal */}
+      {statusTargetUser && statusAction && (
+        <Modal
+          title={statusAction === 'INACTIVE' ? 'Deactivate User' : 'Reactivate User'}
+          onClose={() => { setStatusTargetUser(null); setStatusAction(null); }}
+        >
+          <p style={{ fontSize: 14, color: 'var(--text-1)', marginBottom: 20, lineHeight: 1.5 }}>
+            {statusAction === 'INACTIVE'
+              ? `Are you sure you want to deactivate ${statusTargetUser.displayName}? This user will not be able to log in until reactivated.`
+              : `Are you sure you want to reactivate ${statusTargetUser.displayName}? This user will regain access to their account.`}
+          </p>
+
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+            <Button variant="ghost" type="button" onClick={() => { setStatusTargetUser(null); setStatusAction(null); }}>
+              Cancel
+            </Button>
+            <Button
+              variant={statusAction === 'INACTIVE' ? 'soft' : 'accent'}
+              onClick={handleConfirmStatusChange}
+              disabled={statusBusy}
+            >
+              {statusBusy
+                ? (statusAction === 'INACTIVE' ? 'Deactivating…' : 'Reactivating…')
+                : (statusAction === 'INACTIVE' ? 'Deactivate' : 'Reactivate')}
+            </Button>
+          </div>
+        </Modal>
       )}
     </PortalShell>
   );
