@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees } from '@/components/ui';
+import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees, useToast } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
@@ -17,6 +17,7 @@ export default function FinancePayments() {
   const [receipts, setReceipts] = useState<PaymentReceiptDto[] | null>(null);
   const [paying, setPaying] = useState<InvoiceDto | null>(null);
   const [activeTab, setActiveTab] = useState<'invoices' | 'receipts'>('invoices');
+  const toast = useToast();
 
   const reload = useCallback(() => {
     api.feeSummary().then(setSummary).catch(() => {});
@@ -64,7 +65,14 @@ export default function FinancePayments() {
                       <td data-label="Paid">{rupees(i.paidPaise)}</td>
                       <td data-label="Due On">{i.dueOn}</td>
                       <td data-label="Status"><Pill tone={STATUS_TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
-                      <td data-label="Actions">{i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>}</td>
+                      <td data-label="Actions">
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && (
+                            <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>
+                          )}
+                          <Button small variant="ghost" onClick={() => api.downloadInvoicePdf(i.id).catch(() => toast('Could not open invoice PDF.', 'error'))}>Invoice PDF</Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -91,6 +99,7 @@ export default function FinancePayments() {
                     <th>Mode</th>
                     <th>Status</th>
                     <th>Date</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -104,6 +113,9 @@ export default function FinancePayments() {
                       <td data-label="Mode"><Pill tone="blue">{r.mode}</Pill></td>
                       <td data-label="Status"><Pill tone={r.status === 'SUCCESS' ? 'green' : 'gray'}>{r.status}</Pill></td>
                       <td style={{ color: 'var(--text-faint)' }} data-label="Date">{new Date(r.createdAt).toLocaleDateString('en-IN')}</td>
+                      <td data-label="Actions">
+                        <Button small variant="ghost" onClick={() => api.downloadReceiptPdf(r.id).catch(() => toast('Could not open receipt PDF.', 'error'))}>Receipt PDF</Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

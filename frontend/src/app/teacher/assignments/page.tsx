@@ -2,6 +2,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from '@/components/ui';
+import { FileOrUrlInput } from '@/components/file-input';
 import { api, ApiError, fileHref } from '@/lib/api';
 import type { AssignmentDto, OfferingDto, SubmissionRoster, SubmissionRow } from '@/lib/types';
 
@@ -87,7 +88,16 @@ export default function AssignmentsPage() {
             <tbody>
               {filtered.map((a) => (
                 <tr key={a.id}>
-                  <td className="cell-primary" data-label="Title">{a.title}</td>
+                  <td className="cell-primary" data-label="Title">
+                    <div>{a.title}</div>
+                    {a.attachments && a.attachments.length > 0 && (
+                      <div style={{ marginTop: 2 }}>
+                        <a href={fileHref(a.attachments[0])} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
+                          📄 Instructions
+                        </a>
+                      </div>
+                    )}
+                  </td>
                   <td data-label="Class">{a.class}</td>
                   <td data-label="Subject">{a.subject}</td>
                   <td data-label="Chapter">{a.chapter || '—'}</td>
@@ -248,6 +258,7 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
   const [chapter, setChapter] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [maxMarks, setMaxMarks] = useState('20');
+  const [attachment, setAttachment] = useState<{ fileUrl: string; filename?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { if (!offeringId && offerings[0]) setOfferingId(offerings[0].id); }, [offerings, offeringId]);
@@ -258,6 +269,7 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
       await api.createAssignment({
         subjectOfferingId: offeringId, title, type, chapter: chapter || undefined,
         dueAt: new Date(dueAt).toISOString(), maxMarks: maxMarks ? parseInt(maxMarks, 10) : undefined,
+        attachments: attachment?.fileUrl ? [attachment.fileUrl] : undefined,
       });
       onCreated();
     } catch { setErr('Could not create. Check the fields and try again.'); } finally { setBusy(false); }
@@ -292,6 +304,13 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
             <option value="">No chapter</option>
             {CHAPTER_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <div className="field-label">Instruction File / Worksheet (optional)</div>
+          <FileOrUrlInput
+            value={{ fileUrl: attachment?.fileUrl ?? '' }}
+            onChange={(val) => setAttachment(val.fileUrl ? val : null)}
+          />
         </div>
         {err && <p style={{ color: 'var(--red)', fontSize: 13, marginTop: 8, marginBottom: 8 }}>{err}</p>}
         <Button type="submit" disabled={busy || !offeringId} style={{ marginTop: 12 }}>{busy ? 'Creating…' : 'Create assignment'}</Button>

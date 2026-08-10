@@ -724,7 +724,7 @@ export async function getPaymentReceipt(actor, scope, paymentId) {
   const student = enrollment?.studentId;
   const section = enrollment?.sectionId;
   return {
-    receiptNo: payment.receiptNo ?? '—',
+    receiptNo: payment.receiptNo ?? 'N-A',
     invoiceNo: inv?.invoiceNo ?? '—',
     studentName: student ? `${student.firstName} ${student.lastName ?? ''}`.trim() : '—',
     class: section ? [section.gradeId?.name, section.name].filter(Boolean).join(' - ') : '—',

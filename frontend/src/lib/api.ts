@@ -4,7 +4,7 @@
  * Production hardening (Phase 7): move refresh into an httpOnly cookie
  * behind a BFF route handler so it never touches JS-readable storage.
  */
-import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UpdateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto } from './types';
+import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UpdateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, IncidentDto, PtThreadDto, PtMessageDto, PtThreadDetailDto, StudentTeacherDto } from './types';
 
 // Backend URL – default to localhost:5000. Can be overridden via NEXT_PUBLIC_BACKEND_URL.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
@@ -310,7 +310,7 @@ export const api = {
   // ── assignments ──
   assignments: (offeringId?: string) =>
     request<AssignmentDto[]>(`/assignments${offeringId ? `?offeringId=${offeringId}` : ''}`),
-  createAssignment: (body: { subjectOfferingId: string; title: string; type?: string; chapter?: string; dueAt: string; maxMarks?: number; description?: string }) =>
+  createAssignment: (body: { subjectOfferingId: string; title: string; type?: string; chapter?: string; dueAt: string; maxMarks?: number; description?: string; attachments?: string[] }) =>
     request<{ id: string; seededSubmissions: number }>('/assignments', { method: 'POST', body: JSON.stringify(body) }),
   submitAssignment: (body: { assignmentId: string; attachments?: string[] }) =>
     request<{ status: string; submittedAt: string }>('/assignments/submit', { method: 'POST', body: JSON.stringify(body) }),
@@ -573,4 +573,32 @@ export const api = {
     request<RoleDto>(`/roles/${roleId}/permissions`, { method: 'POST', body: JSON.stringify(body) }),
   revokeRolePermission: (roleId: string, key: string) =>
     request<RoleDto>(`/roles/${roleId}/permissions/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+
+  // ── Incidents / disciplinary reports ──
+  listIncidents: (params?: { studentId?: string; status?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.studentId) qs.set('studentId', params.studentId);
+    if (params?.status) qs.set('status', params.status);
+    const query = qs.toString();
+    return request<IncidentDto[]>(`/incidents${query ? `?${query}` : ''}`);
+  },
+  createIncident: (body: {
+    studentId: string;
+    date: string;
+    type: string;
+    severity: string;
+    description: string;
+    actionTaken?: string;
+  }) => request<IncidentDto>('/incidents', { method: 'POST', body: JSON.stringify(body) }),
+  updateIncident: (id: string, body: { status?: string; actionTaken?: string }) =>
+    request<IncidentDto>(`/incidents/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  // ── Parent-Teacher Direct Messaging ──
+  ptListThreads: () => request<PtThreadDto[]>('/pt-messages/threads'),
+  ptStudentTeachers: (studentId: string) => request<StudentTeacherDto[]>(`/pt-messages/student-teachers/${studentId}`),
+  ptStartThread: (body: { studentId: string; teacherProfileId?: string; subject?: string }) =>
+    request<PtThreadDto>('/pt-messages/threads', { method: 'POST', body: JSON.stringify(body) }),
+  ptGetThread: (id: string) => request<PtThreadDetailDto>(`/pt-messages/threads/${id}`),
+  ptSendMessage: (body: { threadId: string; body: string }) =>
+    request<PtMessageDto>('/pt-messages/send', { method: 'POST', body: JSON.stringify(body) }),
 };

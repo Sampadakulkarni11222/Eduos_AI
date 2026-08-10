@@ -122,7 +122,7 @@ app.use(express.static(join(__dirname, '..', 'public')));
 // listed explicitly rather than by a `image/*` prefix. SVG is NOT among them —
 // it is an XML document that can execute script, and serving one inline
 // cross-origin is exactly the hole the rules above exist to close.
-const INLINE_IMAGE_TYPES = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.ico']);
+const INLINE_IMAGE_TYPES = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.ico', '.pdf']);
 
 app.use(
   '/uploads',

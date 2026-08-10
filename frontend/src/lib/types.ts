@@ -92,7 +92,7 @@ export interface AttendanceRoster {
 export interface MySubmission { status: 'PENDING' | 'SUBMITTED' | 'LATE' | 'GRADED' | 'EXEMPT'; submittedAt: string | null; marks: number | null; feedback: string | null; attachments: string[] }
 export interface AssignmentDto {
   id: string; title: string; description?: string | null; type: string; chapter?: string | null;
-  dueAt: string; maxMarks: number | null; subject: string; subjectId?: string | null; class: string;
+  dueAt: string; maxMarks: number | null; attachments?: string[]; subject: string; subjectId?: string | null; class: string;
   gradeId?: string | null; gradeName?: string | null; sectionId?: string | null; sectionName?: string | null;
   subjectOfferingId?: string | null; submissionCount: number; mySubmission?: MySubmission | null;
 }
@@ -103,6 +103,7 @@ export interface TimetableDto { sectionId: string; slots: TimetableSlotDto[] }
 export interface PerformanceDto {
   student: { name: string; class: string };
   overallAvgPct: number | null;
+  classRank?: { rank: number; totalStudents: number } | null;
   bestSubject: { subject: string; pct: number | null } | null;
   needsSupport: { subject: string; pct: number | null } | null;
   results: Array<{ exam: string; subject: string; marks: number | null; maxMarks: number; pct: number | null }>;
@@ -503,4 +504,65 @@ export interface AgentReply {
   action: AgentProposedAction | null;
   flagged?: string;
   suggestions?: string[];
+}
+
+export type IncidentType = 'BEHAVIOUR' | 'BULLYING' | 'ATTENDANCE_RELATED' | 'PROPERTY_DAMAGE' | 'SAFETY' | 'OTHER';
+export type IncidentSeverity = 'LOW' | 'MEDIUM' | 'HIGH';
+export type IncidentStatus = 'OPEN' | 'REVIEWED' | 'CLOSED';
+
+export interface IncidentDto {
+  id: string;
+  studentId: string;
+  studentName: string | null;
+  admissionNo: string | null;
+  reportedByProfileId: string;
+  reportedByName: string | null;
+  date: string;
+  type: IncidentType;
+  severity: IncidentSeverity;
+  description: string;
+  actionTaken: string | null;
+  status: IncidentStatus;
+  reviewedByProfileId: string | null;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Parent-Teacher Direct Messaging ──
+export interface PtThreadDto {
+  id: string;
+  studentId: string;
+  studentName: string | null;
+  parentProfileId: string;
+  parentName: string | null;
+  teacherProfileId: string;
+  teacherName: string | null;
+  subject: string | null;
+  lastMessageAt: string | null;
+  lastMessageSnippet: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PtMessageDto {
+  id: string;
+  threadId: string;
+  senderProfileId: string;
+  senderName: string | null;
+  body: string;
+  mine: boolean;
+  createdAt: string;
+}
+
+export interface PtThreadDetailDto {
+  thread: PtThreadDto;
+  messages: PtMessageDto[];
+}
+
+export interface StudentTeacherDto {
+  profileId: string;
+  displayName: string;
+  label: string;
 }

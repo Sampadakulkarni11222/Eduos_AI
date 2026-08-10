@@ -60,6 +60,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Teacher Classes', '◐', '/admin/teacher-classes', { ready: true }),
         item('Admission CRM', '◌', '/admin/admissions', { ready: true }),
         item('Medical Records', '✚', '/admin/medical', { ready: true }),
+        item('Incident Reports', '⚑', '/admin/incidents', { ready: true }),
       ]},
       { title: 'ACADEMIC OPS', items: [
         item('Classroom Mgmt', '▦', '/admin/classrooms', { ready: true }),
@@ -97,9 +98,13 @@ export const PORTALS: Record<string, Portal> = {
       { title: 'COMMUNICATION', items: [
         item('Announcements', '◍', '/teacher/announcements', { ready: true }),
         item('Calendar', '▤', '/teacher/calendar', { ready: true }),
+        item('Messages', '✉', '/teacher/messages', { ready: true }),
         item('Parent Queries', '✉', '/teacher/tickets', { ready: true }),
       ]},
-      { title: 'STUDENTS', items: [ item('Medical Records', '✚', '/teacher/medical', { ready: true }) ]},
+      { title: 'STUDENTS', items: [
+        item('Medical Records', '✚', '/teacher/medical', { ready: true }),
+        item('Incidents', '⚑', '/teacher/incidents', { ready: true }),
+      ]},
     ],
   },
   parent: {
@@ -125,8 +130,9 @@ export const PORTALS: Record<string, Portal> = {
       ]},
       { title: 'ACCOUNT', items: [
         item('Payments', '₹', '/parent/payments', { ready: true }),
-        item('AI Credits', '✦', '/parent/ai-credits', { ready: true }),
-        item('Documents', '🗎', '/parent/documents', { ready: true }),
+        item('AI Credits', '❆', '/parent/ai-credits', { ready: true }),
+        item('Documents', '🗸', '/parent/documents', { ready: true }),
+        item('Messages', '✉', '/parent/messages', { ready: true }),
         item('Support', '✉', '/parent/tickets', { ready: true }),
       ]},
     ],
@@ -220,6 +226,7 @@ export const PORTALS: Record<string, Portal> = {
       ]},
       { title: 'HEALTH & CARE', items: [
         item('Medical Records', '✚', '/warden/medical', { ready: true }),
+        item('Incidents', '⚑', '/warden/incidents', { ready: true }),
       ]},
       { title: 'COMMUNICATION', items: [
         item('Announcements', '◍', '/warden/announcements', { ready: true }),
