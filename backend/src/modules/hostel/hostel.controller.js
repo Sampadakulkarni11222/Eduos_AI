@@ -79,3 +79,34 @@ export const updateInquiry = asyncHandler(async (req, res) => {
   const inquiry = await service.updateInquiry(req.params.id, req.body);
   sendSuccess(res, inquiry, 'Inquiry updated');
 });
+
+// ─── Hostel Passes (Feature 12) ──────────────────────────────
+export const applyPass = asyncHandler(async (req, res) => {
+  const pass = await service.applyHostelPass(req.actor, req.body);
+  sendSuccess(res, pass, 'Hostel pass requested successfully', 201);
+});
+
+export const listMyPasses = asyncHandler(async (req, res) => {
+  const passes = await service.listMyHostelPasses(req.actor);
+  sendSuccess(res, passes, 'My hostel passes fetched');
+});
+
+export const listPasses = asyncHandler(async (req, res) => {
+  const passes = await service.listHostelPasses(req.query);
+  sendSuccess(res, passes, 'Hostel passes fetched');
+});
+
+export const parentReviewPass = asyncHandler(async (req, res) => {
+  const pass = await service.parentReviewHostelPass(req.actor, req.params.id, req.body);
+  sendSuccess(res, pass, 'Parent pass review saved');
+});
+
+export const wardenReviewPass = asyncHandler(async (req, res) => {
+  const pass = await service.wardenReviewHostelPass(req.actor, req.params.id, req.body);
+  sendSuccess(res, pass, 'Warden pass review saved');
+});
+
+export const recordGateMovement = asyncHandler(async (req, res) => {
+  const pass = await service.recordGateMovement(req.actor, req.params.id, req.body);
+  sendSuccess(res, pass, 'Gate movement recorded');
+});

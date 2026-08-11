@@ -44,6 +44,16 @@ export const listIssues = asyncHandler(async (req, res) => {
   sendSuccess(res, issues, 'Issues fetched');
 });
 
+export const listOverdue = asyncHandler(async (_req, res) => {
+  const issues = await service.listOverdue();
+  sendSuccess(res, issues, 'Overdue issues fetched');
+});
+
+export const processReminders = asyncHandler(async (_req, res) => {
+  const result = await service.processOverdueReminders();
+  sendSuccess(res, result, `Processed overdue reminders: ${result.remindersSent} reminders sent`);
+});
+
 export const issueBook = asyncHandler(async (req, res) => {
   const issue = await service.issueBook(req.body);
   sendSuccess(res, issue, 'Book issued', 201);
@@ -58,4 +68,34 @@ export const bulkIssueBooks = asyncHandler(async (req, res) => {
 export const returnBook = asyncHandler(async (req, res) => {
   const issue = await service.returnBook(req.params.id);
   sendSuccess(res, issue, 'Book returned');
+});
+
+export const createReservation = asyncHandler(async (req, res) => {
+  const reservation = await service.createBookReservation(req.actor, req.body);
+  sendSuccess(res, reservation, 'Book reserved successfully', 201);
+});
+
+export const listMyReservations = asyncHandler(async (req, res) => {
+  const reservations = await service.listMyBookReservations(req.actor);
+  sendSuccess(res, reservations, 'My reservations fetched');
+});
+
+export const listReservations = asyncHandler(async (req, res) => {
+  const reservations = await service.listBookReservations(req.actor, req.scope, req.query);
+  sendSuccess(res, reservations, 'Reservations fetched');
+});
+
+export const getReservationById = asyncHandler(async (req, res) => {
+  const reservation = await service.getReservationById(req.actor, req.scope, req.params.id);
+  sendSuccess(res, reservation, 'Reservation fetched');
+});
+
+export const cancelReservation = asyncHandler(async (req, res) => {
+  const reservation = await service.cancelBookReservation(req.actor, req.scope, req.params.id, req.body?.reason);
+  sendSuccess(res, reservation, 'Reservation cancelled');
+});
+
+export const fulfillReservation = asyncHandler(async (req, res) => {
+  const reservation = await service.fulfillBookReservation(req.actor, req.params.id);
+  sendSuccess(res, reservation, 'Reservation fulfilled');
 });

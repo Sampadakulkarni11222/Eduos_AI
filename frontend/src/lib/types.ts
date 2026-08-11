@@ -137,10 +137,28 @@ export interface SubjectAttendanceDto {
 }
 
 // ── Leave applications ──
+export type LeaveType = 'SICK' | 'CASUAL' | 'PERSONAL' | 'DUTY' | 'OTHER';
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export interface LeaveApplicationDto {
-  _id: string; enrollmentId: string; fromDate: string; toDate: string; reason: string;
-  status: LeaveStatus; remarks: string | null; createdAt: string;
+  id?: string;
+  _id?: string;
+  applicantProfileId?: string | null;
+  applicantName?: string | null;
+  applicantRole?: 'STUDENT' | 'TEACHER';
+  enrollmentId?: string | null;
+  studentName?: string | null;
+  class?: string | null;
+  leaveType?: LeaveType;
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  status: LeaveStatus;
+  reviewedByProfileId?: string | null;
+  reviewedByName?: string | null;
+  reviewedAt?: string | null;
+  remarks: string | null;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface InvoiceDto { id: string; invoiceNo: string; studentName: string; class: string | null; status: string; totalPaise: number; paidPaise: number; dueOn: string; sectionId?: string; studentId?: string; createdAt?: string }
@@ -182,7 +200,44 @@ export interface MyBusDto { route: Omit<TransportRouteDto, 'stopCount'>; stop: T
 
 // ── Phase 8: Library ──
 export interface BookDto { id: string; title: string; author: string; isbn: string | null; category: string; totalCopies: number; availableCopies: number }
-export interface BookIssueDto { id: string; bookId: string; bookTitle: string; studentId: string; studentName: string; issuedAt: string; dueAt: string; returnedAt: string | null; status: 'ACTIVE' | 'RETURNED' | 'OVERDUE'; finePaise: number }
+export interface BookIssueDto {
+  id: string;
+  bookId: string;
+  bookTitle: string;
+  studentId: string;
+  studentName: string;
+  issuedAt: string;
+  dueAt: string;
+  returnedAt: string | null;
+  status: 'ACTIVE' | 'RETURNED' | 'OVERDUE' | string;
+  finePaise: number;
+  daysOverdue?: number;
+  lastReminderSentAt?: string | null;
+  reminderCount?: number;
+}
+
+export type BookReservationStatus = 'PENDING' | 'READY' | 'FULFILLED' | 'CANCELLED' | 'EXPIRED';
+
+export interface BookReservationDto {
+  id: string;
+  bookId: string;
+  bookTitle: string;
+  bookAuthor?: string;
+  bookIsbn?: string | null;
+  bookCoverUrl?: string | null;
+  studentId: string;
+  studentName: string;
+  requesterProfileId: string;
+  status: BookReservationStatus;
+  queuePosition: number;
+  reservedAt: string;
+  fulfilledAt?: string | null;
+  cancelledAt?: string | null;
+  expiresAt?: string | null;
+  cancellationReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 // ── Phase 8: Documents ──
 export interface DocumentDto { id: string; title: string; type: string; fileUrl: string; mimeType: string; visibleToRoles: string[]; studentId: string | null; studentName: string | null; academicYearId: string | null; sectionId?: string | null; subjectOfferingId?: string | null; issuedAt: string }
@@ -298,7 +353,36 @@ export interface HostelAllocationDto {
   roomId: { _id: string; roomNo: string; block: string; floor?: number | null; type: string } | null;
   studentId: { _id: string; firstName: string; lastName?: string; admissionNo: string; gender?: string } | null;
 }
-export interface HostelSummaryDto { totalRooms: number; totalCapacity: number; occupiedBeds: number; availableBeds: number; occupancyRate: number; hostelInquiries: number; maintenanceRequests: number }
+export interface HostelSummaryDto { totalRooms: number; totalCapacity: number; occupiedBeds: number; availableBeds: number; occupancyRate: number; hostelInquiries: number; maintenanceRequests: number; pendingPasses?: number; overduePasses?: number }
+
+export type HostelPassType = 'DAY_PASS' | 'NIGHT_OUT' | 'WEEKEND_PASS' | 'HOME_LEAVE' | 'EMERGENCY_PASS';
+export type ParentApprovalStatus = 'NOT_REQUIRED' | 'PENDING' | 'APPROVED' | 'REJECTED';
+export type HostelPassStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'OUT' | 'RETURNED' | 'CANCELLED';
+
+export interface HostelPassDto {
+  id: string;
+  studentId: string;
+  studentName: string;
+  admissionNo: string;
+  applicantProfileId: string;
+  passType: HostelPassType;
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  destination: string;
+  emergencyContact: string;
+  parentApprovalStatus: ParentApprovalStatus;
+  parentReviewedAt?: string | null;
+  parentRemarks?: string | null;
+  status: HostelPassStatus;
+  reviewedAt?: string | null;
+  remarks?: string | null;
+  actualExitTime?: string | null;
+  actualReturnTime?: string | null;
+  createdAt: string;
+  isOverdue?: boolean;
+  overdueHours?: number;
+}
 
 // ── RBAC (backend catalog) ──
 export interface PermissionDto { _id: string; key: string; group: string; description: string; isSystem?: boolean }

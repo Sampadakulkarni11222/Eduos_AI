@@ -1,9 +1,49 @@
-import { HostelRoom, HostelAllocation, HostelInquiry } from '../../models/hostel.model.js';
+import { HostelRoom, HostelAllocation, HostelInquiry, HostelPass } from '../../models/hostel.model.js';
 import { Ticket } from '../../models/ticket.model.js';
-import { Student } from '../../models/student.model.js';
+import { Student, StudentGuardian } from '../../models/student.model.js';
 import { MedicalRecord } from '../../models/medicalRecord.model.js';
+import { Notification } from '../../models/notification.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { decrypt } from '../../utils/crypto.js';
+
+// ─── Helper DTO Mapper for HostelPass ───────────────────────
+function toPassDto(pass) {
+  const raw = pass.toObject ? pass.toObject() : pass;
+  const student = raw.studentId;
+  const now = new Date();
+  const toDate = new Date(raw.toDate);
+  const isOverdue = raw.status === 'OUT' && !raw.actualReturnTime && now > toDate;
+  const overdueHours = isOverdue
+    ? Math.max(1, Math.floor((now.getTime() - toDate.getTime()) / (1000 * 60 * 60)))
+    : 0;
+
+  return {
+    id: raw._id,
+    studentId: student?._id ?? raw.studentId,
+    studentName: student
+      ? [student.firstName, student.lastName].filter(Boolean).join(' ')
+      : 'Unknown Student',
+    admissionNo: student?.admissionNo ?? '—',
+    applicantProfileId: raw.applicantProfileId,
+    passType: raw.passType,
+    fromDate: raw.fromDate,
+    toDate: raw.toDate,
+    reason: raw.reason,
+    destination: raw.destination,
+    emergencyContact: raw.emergencyContact,
+    parentApprovalStatus: raw.parentApprovalStatus,
+    parentReviewedAt: raw.parentReviewedAt ?? null,
+    parentRemarks: raw.parentRemarks ?? null,
+    status: raw.status,
+    reviewedAt: raw.reviewedAt ?? null,
+    remarks: raw.remarks ?? null,
+    actualExitTime: raw.actualExitTime ?? null,
+    actualReturnTime: raw.actualReturnTime ?? null,
+    createdAt: raw.createdAt,
+    isOverdue,
+    overdueHours,
+  };
+}
 
 // ─── Dashboard Summary ──────────────────────────────────────
 export async function getSummary() {
@@ -12,11 +52,15 @@ export async function getSummary() {
     occupiedBeds,
     openInquiries,
     maintenanceTickets,
+    pendingPasses,
+    overduePasses,
   ] = await Promise.all([
     HostelRoom.countDocuments({ status: { $ne: 'CLOSED' } }),
     HostelAllocation.countDocuments({ status: 'ACTIVE' }),
     HostelInquiry.countDocuments({ status: { $in: ['OPEN', 'IN_PROGRESS'] } }),
     Ticket.countDocuments({ status: { $in: ['OPEN', 'IN_PROGRESS'] }, routedToRoleKey: 'WARDEN' }),
+    HostelPass.countDocuments({ status: 'PENDING' }),
+    HostelPass.countDocuments({ status: 'OUT', actualReturnTime: null, toDate: { $lt: new Date() } }),
   ]);
 
   // Total capacity of all active rooms
@@ -34,6 +78,8 @@ export async function getSummary() {
     occupancyRate: totalCapacity > 0 ? Math.round((occupiedBeds / totalCapacity) * 100) : 0,
     hostelInquiries: openInquiries,
     maintenanceRequests: maintenanceTickets,
+    pendingPasses,
+    overduePasses,
   };
 }
 
@@ -45,7 +91,6 @@ export async function listRooms({ type, status } = {}) {
 
   const rooms = await HostelRoom.find(filter).sort({ block: 1, roomNo: 1 }).lean();
 
-  // Attach occupancy to each room
   const roomIds = rooms.map((r) => r._id);
   const allocations = await HostelAllocation.aggregate([
     { $match: { roomId: { $in: roomIds }, status: 'ACTIVE' } },
@@ -76,7 +121,7 @@ export async function bulkCreateRooms(rows) {
   const docs = [];
 
   for (let i = 0; i < rows.length; i++) {
-    const rowNo = i + 2; // header is row 1
+    const rowNo = i + 2;
     const row = rows[i];
     const roomNo = row.roomno?.trim();
     const capacity = Number(row.capacity);
@@ -119,11 +164,6 @@ export async function bulkCreateRooms(rows) {
   return results;
 }
 
-/**
- * Bulk-allocates students to rooms from CSV rows: admissionNo, roomNo. Each
- * row calls the existing allocate() (not a bulk insert) so the
- * capacity/duplicate-active-allocation checks stay enforced per row.
- */
 export async function bulkAllocate(rows) {
   const results = { imported: 0, failed: 0, errors: [] };
 
@@ -198,11 +238,9 @@ export async function allocate({ roomId, studentId, allottedAt, academicYearId }
   const student = await Student.findById(studentId);
   if (!student) throw new AppError('Student not found', 404);
 
-  // Check if already allocated
   const existing = await HostelAllocation.findOne({ studentId, status: 'ACTIVE' });
   if (existing) throw new AppError('Student already has an active hostel allocation', 409);
 
-  // Check room capacity
   const occupied = await HostelAllocation.countDocuments({ roomId, status: 'ACTIVE' });
   if (occupied >= room.capacity) throw new AppError('Room is at full capacity', 409);
 
@@ -238,7 +276,6 @@ export async function getMedicalRecord(studentId) {
   const student = await Student.findById(studentId);
   if (!student) throw new AppError('Student not found', 404);
 
-  // Verify they are a hostel student
   const allocation = await HostelAllocation.findOne({ studentId, status: 'ACTIVE' });
   if (!allocation) throw new AppError('Student is not a current hostel resident', 404);
 
@@ -247,7 +284,6 @@ export async function getMedicalRecord(studentId) {
 
   const obj = record.toObject();
 
-  // Decrypt the encrypted fields and expose with cleaner names
   const encFields = {
     emergencyContact: 'emergencyContactEnc',
     allergies: 'allergiesEnc',
@@ -268,7 +304,6 @@ export async function getMedicalRecord(studentId) {
 
   return obj;
 }
-
 
 // ─── Inquiries ────────────────────────────────────────────────
 export async function listInquiries({ status } = {}) {
@@ -293,4 +328,275 @@ export async function updateInquiry(id, { status }) {
   }
   await inquiry.save();
   return inquiry;
+}
+
+// ─── Hostel Passes (Feature 12) ──────────────────────────────
+export async function applyHostelPass(actor, passData) {
+  let student = null;
+
+  if (actor.roleKey === 'STUDENT') {
+    student = await Student.findOne({ profileId: actor.profileId, deletedAt: null });
+  } else if (passData.studentId) {
+    student = await Student.findById(passData.studentId);
+  }
+
+  if (!student) throw new AppError('Student record not found', 404);
+
+  // Validate student has an active hostel allocation
+  const allocation = await HostelAllocation.findOne({ studentId: student._id, status: 'ACTIVE' });
+  if (!allocation) {
+    throw new AppError('Only active hostel residents can apply for a hostel pass', 400);
+  }
+
+  // Validate dates
+  const fromDate = new Date(passData.fromDate);
+  const toDate = new Date(passData.toDate);
+  if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime())) {
+    throw new AppError('Invalid fromDate or toDate format', 400);
+  }
+  if (toDate <= fromDate) {
+    throw new AppError('Return date/time (toDate) must be after departure date/time (fromDate)', 400);
+  }
+
+  // Check if linked guardians exist
+  const guardians = await StudentGuardian.find({ studentId: student._id }).lean();
+  const parentApprovalStatus = guardians.length > 0 ? 'PENDING' : 'NOT_REQUIRED';
+
+  const pass = await HostelPass.create({
+    studentId: student._id,
+    applicantProfileId: actor.profileId,
+    passType: passData.passType || 'DAY_PASS',
+    fromDate,
+    toDate,
+    reason: passData.reason.trim(),
+    destination: passData.destination.trim(),
+    emergencyContact: passData.emergencyContact.trim(),
+    parentApprovalStatus,
+    status: 'PENDING',
+  });
+
+  // Notify parent(s) if approval is required
+  if (guardians.length > 0) {
+    for (const g of guardians) {
+      if (g.guardianProfileId) {
+        try {
+          await Notification.create({
+            recipientProfileId: g.guardianProfileId,
+            type: 'HOSTEL',
+            title: `Hostel Pass Request - ${student.firstName}`,
+            body: `${student.firstName} has requested a ${pass.passType.replace('_', ' ')} to ${pass.destination}. Please review and approve.`,
+            link: '/parent/hostel-pass',
+            meta: { passId: pass._id, studentId: student._id },
+          });
+        } catch (e) {
+          // Ignore notification failures
+        }
+      }
+    }
+  }
+
+  const populated = await HostelPass.findById(pass._id).populate('studentId', 'firstName lastName admissionNo');
+  return toPassDto(populated);
+}
+
+export async function listMyHostelPasses(actor) {
+  let filter = {};
+
+  if (actor.roleKey === 'STUDENT') {
+    const student = await Student.findOne({ profileId: actor.profileId, deletedAt: null });
+    if (!student) return [];
+    filter = { studentId: student._id };
+  } else if (actor.roleKey === 'PARENT') {
+    const guardians = await StudentGuardian.find({ guardianProfileId: actor.profileId }).lean();
+    const studentIds = guardians.map((g) => g.studentId);
+    filter = { studentId: { $in: studentIds } };
+  } else {
+    // Other roles default to own applicant passes
+    filter = { applicantProfileId: actor.profileId };
+  }
+
+  const passes = await HostelPass.find(filter)
+    .populate('studentId', 'firstName lastName admissionNo')
+    .sort({ createdAt: -1 });
+
+  return passes.map(toPassDto);
+}
+
+export async function listHostelPasses({ status, passType, studentId, parentApprovalStatus } = {}) {
+  const filter = {};
+  if (status === 'OVERDUE') {
+    filter.status = 'OUT';
+    filter.actualReturnTime = null;
+    filter.toDate = { $lt: new Date() };
+  } else if (status) {
+    filter.status = status;
+  }
+
+  if (passType) filter.passType = passType;
+  if (studentId) filter.studentId = studentId;
+  if (parentApprovalStatus) filter.parentApprovalStatus = parentApprovalStatus;
+
+  const passes = await HostelPass.find(filter)
+    .populate('studentId', 'firstName lastName admissionNo')
+    .sort({ createdAt: -1 });
+
+  return passes.map(toPassDto);
+}
+
+export async function parentReviewHostelPass(actor, passId, { status, remarks }) {
+  if (!['APPROVED', 'REJECTED'].includes(status)) {
+    throw new AppError('Invalid parent review status. Must be APPROVED or REJECTED', 400);
+  }
+
+  const pass = await HostelPass.findById(passId);
+  if (!pass) throw new AppError('Hostel pass not found', 404);
+
+  // Security: Check parent linkage
+  const isLinked = await StudentGuardian.exists({
+    guardianProfileId: actor.profileId,
+    studentId: pass.studentId,
+  });
+  if (!isLinked) {
+    throw new AppError('Unauthorized: You are not a linked guardian of this student', 403);
+  }
+
+  pass.parentApprovalStatus = status;
+  pass.parentReviewedByProfileId = actor.profileId;
+  pass.parentReviewedAt = new Date();
+  pass.parentRemarks = remarks ?? null;
+
+  // If parent rejects, overall pass is rejected
+  if (status === 'REJECTED') {
+    pass.status = 'REJECTED';
+    pass.remarks = remarks || 'Rejected by Parent';
+  }
+
+  await pass.save();
+
+  const student = await Student.findById(pass.studentId).lean();
+  if (student?.profileId) {
+    try {
+      await Notification.create({
+        recipientProfileId: student.profileId,
+        type: 'HOSTEL',
+        title: `Hostel Pass Parent Review: ${status}`,
+        body: `Your parent has ${status.toLowerCase()} your ${pass.passType.replace('_', ' ')} request.`,
+        link: '/student/hostel-pass',
+        meta: { passId: pass._id },
+      });
+    } catch (e) {}
+  }
+
+  const populated = await HostelPass.findById(passId).populate('studentId', 'firstName lastName admissionNo');
+  return toPassDto(populated);
+}
+
+export async function wardenReviewHostelPass(actor, passId, { status, remarks }) {
+  if (!['APPROVED', 'REJECTED'].includes(status)) {
+    throw new AppError('Invalid warden review status. Must be APPROVED or REJECTED', 400);
+  }
+
+  const pass = await HostelPass.findById(passId);
+  if (!pass) throw new AppError('Hostel pass not found', 404);
+
+  // Enforcement: Cannot approve if parent approval is pending or rejected
+  if (status === 'APPROVED') {
+    if (pass.parentApprovalStatus === 'PENDING') {
+      throw new AppError('Cannot approve pass while parent approval is PENDING', 400);
+    }
+    if (pass.parentApprovalStatus === 'REJECTED') {
+      throw new AppError('Cannot approve pass that has been REJECTED by parent', 400);
+    }
+  }
+
+  pass.status = status;
+  pass.reviewedByProfileId = actor.profileId;
+  pass.reviewedAt = new Date();
+  pass.remarks = remarks ?? null;
+  await pass.save();
+
+  // Notify student
+  const student = await Student.findById(pass.studentId).lean();
+  if (student?.profileId) {
+    try {
+      await Notification.create({
+        recipientProfileId: student.profileId,
+        type: 'HOSTEL',
+        title: `Hostel Pass Status: ${status}`,
+        body: `Your ${pass.passType.replace('_', ' ')} has been ${status.toLowerCase()} by the warden.`,
+        link: '/student/hostel-pass',
+        meta: { passId: pass._id },
+      });
+    } catch (e) {}
+  }
+
+  // Notify parent(s)
+  const guardians = await StudentGuardian.find({ studentId: pass.studentId }).lean();
+  for (const g of guardians) {
+    if (g.guardianProfileId) {
+      try {
+        await Notification.create({
+          recipientProfileId: g.guardianProfileId,
+          type: 'HOSTEL',
+          title: `Hostel Pass Update - ${student?.firstName ?? 'Child'}`,
+          body: `The warden has ${status.toLowerCase()} the ${pass.passType.replace('_', ' ')} request for ${student?.firstName ?? 'your child'}.`,
+          link: '/parent/hostel-pass',
+          meta: { passId: pass._id },
+        });
+      } catch (e) {}
+    }
+  }
+
+  const populated = await HostelPass.findById(passId).populate('studentId', 'firstName lastName admissionNo');
+  return toPassDto(populated);
+}
+
+export async function recordGateMovement(actor, passId, { action }) {
+  if (!['EXIT', 'ENTRY'].includes(action)) {
+    throw new AppError('Invalid movement action. Must be EXIT or ENTRY', 400);
+  }
+
+  const pass = await HostelPass.findById(passId);
+  if (!pass) throw new AppError('Hostel pass not found', 404);
+
+  const now = new Date();
+
+  if (action === 'EXIT') {
+    if (pass.status !== 'APPROVED') {
+      throw new AppError(`Cannot record EXIT for pass with status "${pass.status}". Pass must be APPROVED.`, 400);
+    }
+    pass.status = 'OUT';
+    pass.actualExitTime = now;
+  } else if (action === 'ENTRY') {
+    if (pass.status !== 'OUT') {
+      throw new AppError(`Cannot record ENTRY for pass with status "${pass.status}". Student must be OUT.`, 400);
+    }
+    pass.status = 'RETURNED';
+    pass.actualReturnTime = now;
+  }
+
+  await pass.save();
+
+  // Notify Parent on gate movement
+  const student = await Student.findById(pass.studentId).lean();
+  const guardians = await StudentGuardian.find({ studentId: pass.studentId }).lean();
+  for (const g of guardians) {
+    if (g.guardianProfileId) {
+      try {
+        await Notification.create({
+          recipientProfileId: g.guardianProfileId,
+          type: 'HOSTEL',
+          title: action === 'EXIT' ? `Gate Exit Notice - ${student?.firstName}` : `Gate Return Notice - ${student?.firstName}`,
+          body: action === 'EXIT'
+            ? `${student?.firstName} has departed from the hostel gate at ${now.toLocaleTimeString('en-IN')}.`
+            : `${student?.firstName} has returned to the hostel at ${now.toLocaleTimeString('en-IN')}.`,
+          link: '/parent/hostel-pass',
+          meta: { passId: pass._id },
+        });
+      } catch (e) {}
+    }
+  }
+
+  const populated = await HostelPass.findById(passId).populate('studentId', 'firstName lastName admissionNo');
+  return toPassDto(populated);
 }

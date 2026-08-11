@@ -65,6 +65,7 @@ export const PORTALS: Record<string, Portal> = {
       { title: 'ACADEMIC OPS', items: [
         item('Classroom Mgmt', '▦', '/admin/classrooms', { ready: true }),
         item('Attendance', '☱', '/admin/attendance', { ready: true }),
+        item('Leave Applications', '⊘', '/admin/leave', { ready: true }),
         item('Calendar & Events', '▤', '/admin/calendar', { ready: true }),
         item('Timetable Builder', '▥', '/admin/timetable', { ready: true }),
       ]},
@@ -90,6 +91,7 @@ export const PORTALS: Record<string, Portal> = {
       { title: 'TEACHING', items: [
         item('My Classes', '◐', '/teacher/classes', { ready: true }),
         item('Attendance', '☱', '/teacher/attendance', { ready: true }),
+        item('Leave Applications', '⊘', '/teacher/leave', { ready: true }),
         item('Timetable', '▥', '/teacher/timetable', { ready: true }),
         item('Assignments', '✎', '/teacher/assignments', { ready: true }),
         item('Exams & Performance', '◌', '/teacher/exams', { ready: true }),
@@ -127,6 +129,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Medical Records', '✚', '/parent/medical', { ready: true }),
         item('Library', '▢', '/parent/library', { ready: true }),
         item('Transport', '⛒', '/parent/transport', { ready: true }),
+        item('Hostel Pass', '🚪', '/parent/hostel-pass', { ready: true }),
       ]},
       { title: 'ACCOUNT', items: [
         item('Payments', '₹', '/parent/payments', { ready: true }),
@@ -156,6 +159,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Library', '▢', '/student/library', { ready: true }),
         item('Transport', '⛒', '/student/transport', { ready: true }),
         item('Documents', '🗎', '/student/documents', { ready: true }),
+        item('Hostel Pass', '🚪', '/student/hostel-pass', { ready: true }),
       ]},
       { title: 'ACCOUNT', items: [
         item('Payments', '₹', '/student/payments', { ready: true }),
@@ -223,6 +227,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Dashboard', '◫', '/warden', { ready: true }),
         item('Room Management', '▦', '/warden/rooms', { ready: true }),
         item('Hostel Students', '◈', '/warden/students', { ready: true }),
+        item('Hostel Passes', '🚪', '/warden/passes', { ready: true }),
       ]},
       { title: 'HEALTH & CARE', items: [
         item('Medical Records', '✚', '/warden/medical', { ready: true }),

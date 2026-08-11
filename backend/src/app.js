@@ -244,6 +244,26 @@ async function bootstrap() {
     logger.error(`✘  Failed to auto-sync roles/permissions: ${syncErr.message}`);
   }
 
+  // ── Library Overdue Reminders Scheduler ──
+  try {
+    const { processOverdueReminders } = await import('./modules/library/library.service.js');
+    setTimeout(() => {
+      processOverdueReminders().catch((err) => {
+        logger.error(`✘  Failed background library overdue check: ${err.message}`);
+      });
+    }, 10_000);
+
+    setInterval(() => {
+      processOverdueReminders().catch((err) => {
+        logger.error(`✘  Failed background library overdue check: ${err.message}`);
+      });
+    }, 12 * 60 * 60 * 1000);
+
+    logger.info('✔  Library overdue reminder scheduler active (12-hr interval)');
+  } catch (schedErr) {
+    logger.error(`✘  Failed to start library overdue scheduler: ${schedErr.message}`);
+  }
+
   // ── Logger ──
   logger.info(`✔  Logger initialized  →  level: ${env.LOG_LEVEL}, dir: ${env.LOG_DIR}/`);
 

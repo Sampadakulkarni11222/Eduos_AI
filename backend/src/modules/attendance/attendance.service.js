@@ -1,9 +1,11 @@
 import mongoose from 'mongoose';
 import { AttendanceRecord } from '../../models/attendanceRecord.model.js';
-import { Enrollment } from '../../models/student.model.js';
+import { Enrollment, StudentGuardian } from '../../models/student.model.js';
 import { Section } from '../../models/academics.model.js';
 import { TimetableSlot } from '../../models/timetableSlot.model.js';
+import { Notification } from '../../models/notification.model.js';
 import { AppError } from '../../utils/AppError.js';
+import { logger } from '../../utils/logger.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 
 export function parseDateToMidnight(dateStr) {
@@ -145,9 +147,104 @@ export async function markAttendance(actor, { date, periodNo = null, records, en
   }));
 
   await AttendanceRecord.bulkWrite(ops);
+
+  // Trigger automated absent parent alerts (non-blocking, anti-duplicate protected)
+  await processAbsentNotifications(items, day, periodNo, sectionId);
+
   // Same period back, so the caller sees what it just wrote rather than the
   // whole-day roster.
   return getRoster(actor, 'ALL', sectionId, date, periodNo);
+}
+
+/**
+ * Automated Absent Parent Alerts (Feature 13)
+ * Finds eligible guardians for absent students and dispatches in-app Notifications.
+ * Guarantees 1 notification per guardian per attendance event (anti-duplicate index/query).
+ */
+async function processAbsentNotifications(items, day, periodNo, sectionId) {
+  try {
+    const absentItems = items.filter((i) => i.status && i.status.toUpperCase() === 'ABSENT');
+    if (!absentItems.length) return;
+
+    const enrollmentIds = absentItems.map((i) => i.enrollmentId);
+    const enrollments = await Enrollment.find({ _id: { $in: enrollmentIds } })
+      .populate('studentId', 'firstName lastName admissionNo')
+      .populate({ path: 'sectionId', populate: { path: 'gradeId', select: 'name' } })
+      .lean();
+
+    if (!enrollments.length) return;
+
+    const period = periodNo === null || periodNo === undefined || periodNo === '' ? null : Number(periodNo);
+
+    // Get subject name if periodNo is specified
+    let subjectName = null;
+    if (period !== null) {
+      const dow = day.getUTCDay() === 0 ? 7 : day.getUTCDay();
+      const slot = await TimetableSlot.findOne({ sectionId, dayOfWeek: dow, periodNo: period })
+        .populate({ path: 'subjectOfferingId', populate: { path: 'subjectId', select: 'name' } })
+        .lean();
+      subjectName = slot?.subjectOfferingId?.subjectId?.name ?? null;
+    }
+
+    const dateIso = day.toISOString();
+    const formattedDate = day.toLocaleDateString('en-IN', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' });
+
+    for (const enrollment of enrollments) {
+      const student = enrollment.studentId;
+      if (!student) continue;
+
+      const studentName = [student.firstName, student.lastName].filter(Boolean).join(' ');
+      const gradeName = enrollment.sectionId?.gradeId?.name ?? '';
+      const sectionName = enrollment.sectionId?.name ?? '';
+      const className = [gradeName, sectionName].filter(Boolean).join('-') || 'Class';
+
+      // Find all linked guardians for this student
+      const guardians = await StudentGuardian.find({ studentId: student._id }).lean();
+      if (!guardians.length) continue;
+
+      for (const g of guardians) {
+        if (!g.guardianProfileId) continue;
+
+        // Anti-duplicate check: Has this guardian already been notified for this exact attendance event?
+        const existingNotif = await Notification.findOne({
+          recipientProfileId: g.guardianProfileId,
+          type: 'ATTENDANCE',
+          'meta.enrollmentId': enrollment._id.toString(),
+          'meta.date': dateIso,
+          'meta.periodNo': period,
+        }).lean();
+
+        if (existingNotif) {
+          // Already notified this guardian for this absence event — skip duplicate!
+          continue;
+        }
+
+        // Formulate notification title & body
+        const title = `Attendance Alert: ${studentName}`;
+        const body = subjectName
+          ? `${studentName} was marked ABSENT for ${subjectName} (${className}) on ${formattedDate}.`
+          : `${studentName} was marked ABSENT for ${className} on ${formattedDate}.`;
+
+        await Notification.create({
+          recipientProfileId: g.guardianProfileId,
+          type: 'ATTENDANCE',
+          title,
+          body,
+          link: '/parent/attendance',
+          meta: {
+            studentId: student._id.toString(),
+            enrollmentId: enrollment._id.toString(),
+            sectionId: enrollment.sectionId?._id?.toString() ?? String(sectionId),
+            date: dateIso,
+            periodNo: period,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    // Non-blocking logger error: attendance data remains safely committed
+    logger.error(`Failed to process absent parent notifications: ${err.message}`);
+  }
 }
 
 const VALID_STATUSES = new Set(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY']);

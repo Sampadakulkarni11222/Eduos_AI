@@ -38,6 +38,7 @@ export const PERMISSION_CATALOG = [
   { key: 'attendance.regularize', group: 'academics', description: 'Correct/regularize past attendance' },
   { key: 'leave.apply', group: 'academics', description: 'Apply for a leave of absence' },
   { key: 'leave.read', group: 'academics', description: 'View leave application status' },
+  { key: 'leave.manage', group: 'academics', description: 'Review, approve, and reject leave applications' },
 
   // assignments
   { key: 'assignments.read', group: 'academics', description: 'View assignments' },
@@ -90,6 +91,7 @@ export const PERMISSION_CATALOG = [
   // Hostel
   { key: 'hostel.read', group: 'hostel', description: 'View hostel rooms, allocations, and student directory' },
   { key: 'hostel.manage', group: 'hostel', description: 'Manage hostel rooms and allocations' },
+  { key: 'hostel.pass.apply', group: 'hostel', description: 'Apply for hostel leave / gate pass' },
 
   // Transport
   { key: 'transport.read', group: 'transport', description: 'View transport routes, stops, and bus enrollments' },
@@ -141,6 +143,7 @@ export const SYSTEM_ROLES = [
       ['attendance.read', 'ALL'],
       ['attendance.regularize', 'ALL'],
       ['leave.read', 'ALL'],
+      ['leave.manage', 'ALL'],
       ['assignments.read', 'ALL'],
       ['marks.read', 'ALL'],
       ['marks.publish', 'ALL'],
@@ -175,7 +178,9 @@ export const SYSTEM_ROLES = [
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
       ['attendance.mark', 'OWN'],
+      ['leave.apply', 'OWN'],
       ['leave.read', 'OWN'],
+      ['leave.manage', 'OWN'],
       ['assignments.read', 'OWN'],
       ['assignments.manage', 'OWN'],
       ['submissions.grade', 'OWN'],
@@ -232,6 +237,9 @@ export const SYSTEM_ROLES = [
       ['pt.messages.read', 'OWN'],
       ['pt.messages.create', 'OWN'],
       ['pt.messages.send', 'OWN'],
+      ['hostel.read', 'OWN'],
+      ['hostel.pass.apply', 'OWN'],
+      ['library.read', 'OWN'],
     ]),
   },
   {
@@ -258,6 +266,9 @@ export const SYSTEM_ROLES = [
       ['tickets.read', 'OWN'],
       ['tickets.create', 'OWN'],
       ['ai.copilot.use', 'OWN'],
+      ['hostel.read', 'OWN'],
+      ['hostel.pass.apply', 'OWN'],
+      ['library.read', 'OWN'],
     ]),
   },
   {
