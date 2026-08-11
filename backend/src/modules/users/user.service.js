@@ -281,10 +281,27 @@ export async function bulkCreateUsers(rows) {
   return results;
 }
 
-export async function updateUser(id, { status }) {
+export async function updateUser(id, { status, displayName, phone, email }) {
   const account = await Account.findById(id);
   if (!account) throw new AppError('User not found', 404);
+
   if (status) account.status = status;
+
+  // Update contact details on the account
+  if (phone !== undefined) {
+    // Normalise: accept bare 10-digit Indian numbers and prefix +91
+    const normalised = phone.trim().replace(/^0+/, '');
+    account.phoneE164 = normalised.startsWith('+') ? normalised : `+91${normalised}`;
+  }
+  if (email !== undefined) account.email = email || null;
+
   await account.save();
+
+  // Update display name on all non-deleted profiles for this account
+  if (displayName) {
+    const { Profile } = await import('../../models/profile.model.js');
+    await Profile.updateMany({ accountId: id, deletedAt: null }, { $set: { displayName } });
+  }
+
   return getUserById(id);
 }

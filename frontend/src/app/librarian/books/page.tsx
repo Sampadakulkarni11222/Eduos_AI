@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, SkeletonRows, Pill, rupees, useToast } from '@/components/ui';
+import { ConfirmModal } from '@/components/confirm-modal';
 import { api, ApiError } from '@/lib/api';
 import type { BookDto, BookIssueDto, StudentListItem } from '@/lib/types';
 
@@ -11,6 +12,7 @@ export default function LibrarianBooks() {
   const [students, setStudents] = useState<StudentListItem[] | null>(null);
   const [activeTab, setActiveTab] = useState<'books' | 'issued'>('books');
   const [searchQuery, setSearchQuery] = useState('');
+  const [returnTarget, setReturnTarget] = useState<BookIssueDto | null>(null);
   const toast = useToast();
 
   // Modals state
@@ -68,10 +70,10 @@ export default function LibrarianBooks() {
   };
 
   const handleReturnBook = async (issueId: string) => {
-    if (!confirm('Are you sure you want to return this book?')) return;
     try {
       const res = await api.returnBook(issueId);
       toast(`Book returned. ${res.finePaise > 0 ? `Late fine: ${rupees(res.finePaise)}` : 'No fine.'}`);
+      setReturnTarget(null);
       loadIssues();
       loadBooks();
     } catch (err) {
@@ -169,7 +171,7 @@ export default function LibrarianBooks() {
                     </td>
                     <td data-label="Action">
                       {!i.returnedAt && (
-                        <Button variant="ghost" small onClick={() => handleReturnBook(i.id)}>Return</Button>
+                        <Button variant="ghost" small onClick={() => setReturnTarget(i)}>Return</Button>
                       )}
                     </td>
                   </tr>
@@ -254,6 +256,16 @@ export default function LibrarianBooks() {
             </form>
           </div>
         </div>
+      )}
+
+      {returnTarget && (
+        <ConfirmModal
+          title="Return book?"
+          body={`Mark "${returnTarget.bookTitle}" as returned by ${returnTarget.studentName}? Any overdue fine will be calculated automatically.`}
+          confirmLabel="Return Book"
+          onConfirm={() => handleReturnBook(returnTarget.id)}
+          onCancel={() => setReturnTarget(null)}
+        />
       )}
     </PortalShell>
   );

@@ -7,7 +7,8 @@ import { Permission } from '../models/permission.model.js';
 import { Role } from '../models/role.model.js';
 import { Account } from '../models/account.model.js';
 import { Profile } from '../models/profile.model.js';
-import { Student } from '../models/student.model.js';
+import { Student, StudentGuardian, Enrollment } from '../models/student.model.js';
+import { AcademicYear } from '../models/academics.model.js';
 import { Book, BookIssue } from '../models/library.model.js';
 import { HostelRoom, HostelAllocation } from '../models/hostel.model.js';
 import { seedDocuments, auditDocumentFiles, pruneStaleDocuments } from './seed_documents.js';
@@ -102,6 +103,95 @@ async function seed() {
     } else {
       logger.info(`  -  ${u.roleKey.padEnd(10)} → already exists, password updated`);
     }
+  }
+
+  // ─── Demo Library Books ───────────────────────────────────
+  // ─── Link demo STUDENT account to a real Student record ──
+  logger.info('Linking demo STUDENT account to a Student record...');
+  try {
+    const studentDemoUser = DEMO_USERS.find((u) => u.roleKey === 'STUDENT');
+    if (studentDemoUser) {
+      const studentAccount = await Account.findOne({ phoneE164: studentDemoUser.phone });
+      const studentProfile = studentAccount
+        ? await Profile.findOne({ accountId: studentAccount._id })
+        : null;
+
+      if (studentProfile) {
+        // Find any active student NOT already linked to a profile
+        let demoStudent = await Student.findOne({ profileId: studentProfile._id, deletedAt: null });
+        if (!demoStudent) {
+          demoStudent = await Student.findOne({ profileId: null, deletedAt: null, status: 'ACTIVE' });
+        }
+        if (demoStudent) {
+          demoStudent.profileId = studentProfile._id;
+          await demoStudent.save();
+          logger.info(`  ✔  Demo student profile linked to student: ${demoStudent.firstName} ${demoStudent.lastName || ''} (${demoStudent.admissionNo})`);
+        } else {
+          // Create a demo student record if the school data hasn't been seeded
+          const acYear = await AcademicYear.findOne({ isCurrent: true });
+          const newStudent = await Student.create({
+            admissionNo: 'DEMO-001',
+            firstName: 'Demo',
+            lastName: 'Student',
+            dob: new Date('2010-01-01'),
+            gender: 'MALE',
+            profileId: studentProfile._id,
+            status: 'ACTIVE',
+          });
+          logger.info(`  ✔  Created demo Student record (${newStudent.admissionNo}) and linked to profile`);
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn(`  ⚠  Could not link demo student: ${err.message}`);
+  }
+
+  // ─── Link demo PARENT account to a real Student (guardian) ─
+  logger.info('Linking demo PARENT account to a Student record...');
+  try {
+    const parentDemoUser = DEMO_USERS.find((u) => u.roleKey === 'PARENT');
+    if (parentDemoUser) {
+      const parentAccount = await Account.findOne({ phoneE164: parentDemoUser.phone });
+      const parentProfile = parentAccount
+        ? await Profile.findOne({ accountId: parentAccount._id })
+        : null;
+
+      if (parentProfile) {
+        // Check if guardian link already exists
+        const existing = await StudentGuardian.findOne({ guardianProfileId: parentProfile._id });
+        if (!existing) {
+          // Link to the demo student created/found above, or any active student
+          const studentDemoUser = DEMO_USERS.find((u) => u.roleKey === 'STUDENT');
+          const studentAccount = studentDemoUser
+            ? await Account.findOne({ phoneE164: studentDemoUser.phone })
+            : null;
+          const studentProfile = studentAccount
+            ? await Profile.findOne({ accountId: studentAccount._id })
+            : null;
+
+          let targetStudent = studentProfile
+            ? await Student.findOne({ profileId: studentProfile._id, deletedAt: null })
+            : null;
+          if (!targetStudent) {
+            targetStudent = await Student.findOne({ deletedAt: null, status: 'ACTIVE' });
+          }
+
+          if (targetStudent) {
+            await StudentGuardian.create({
+              studentId: targetStudent._id,
+              guardianProfileId: parentProfile._id,
+              relation: 'GUARDIAN',
+              isPrimary: true,
+            });
+            logger.info(`  ✔  Demo parent linked as guardian to student: ${targetStudent.firstName} ${targetStudent.lastName || ''} (${targetStudent.admissionNo})`);
+          }
+        } else {
+          logger.info(`  -  Demo parent guardian link already exists`);
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn(`  ⚠  Could not link demo parent: ${err.message}`);
   }
 
   // ─── Demo Library Books ───────────────────────────────────

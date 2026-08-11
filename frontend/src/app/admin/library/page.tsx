@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, SkeletonRows, Pill, rupees, useToast } from '@/components/ui';
+import { Button, Card, EmptyState, Pagination, SkeletonRows, Pill, rupees, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
+import { ConfirmModal } from '@/components/confirm-modal';
 import { api, ApiError } from '@/lib/api';
 import type { BookDto, BookIssueDto, StudentListItem } from '@/lib/types';
 
@@ -12,6 +13,10 @@ export default function AdminLibrary() {
   const [students, setStudents] = useState<StudentListItem[] | null>(null);
   const [activeTab, setActiveTab] = useState<'books' | 'issued'>('books');
   const [searchQuery, setSearchQuery] = useState('');
+  const [bookPage, setBookPage] = useState(0);
+  const [issuedPage, setIssuedPage] = useState(0);
+  const PAGE_SIZE = 25;
+  const [returnTarget, setReturnTarget] = useState<BookIssueDto | null>(null);
   const toast = useToast();
 
   // Modals state
@@ -73,10 +78,10 @@ export default function AdminLibrary() {
   };
 
   const handleReturnBook = async (issueId: string) => {
-    if (!confirm('Are you sure you want to return this book?')) return;
     try {
       const res = await api.returnBook(issueId);
       toast(`Book returned. ${res.finePaise > 0 ? `Late fine: ${rupees(res.finePaise)}` : 'No fine.'}`);
+      setReturnTarget(null);
       loadIssues();
       loadBooks();
     } catch (err) {
@@ -107,6 +112,7 @@ export default function AdminLibrary() {
               <EmptyState title="No books found" sub="Refine your search or add a new book to the library." />
             )}
             {books && books.length > 0 && (
+              <>
               <table className="data-table data-table-cards">
                 <thead>
                   <tr>
@@ -119,7 +125,7 @@ export default function AdminLibrary() {
                   </tr>
                 </thead>
                 <tbody>
-                  {books.map((b) => (
+                  {books.slice(bookPage * PAGE_SIZE, (bookPage + 1) * PAGE_SIZE).map((b) => (
                     <tr key={b.id}>
                       <td className="cell-primary" data-label="Title">{b.title}</td>
                       <td data-label="Author">{b.author}</td>
@@ -138,6 +144,8 @@ export default function AdminLibrary() {
                   ))}
                 </tbody>
               </table>
+              <Pagination page={bookPage} pageSize={PAGE_SIZE} total={books.length} onPage={setBookPage} />
+              </>
             )}
           </Card>
         </>
@@ -154,6 +162,7 @@ export default function AdminLibrary() {
             <EmptyState title="No issued books" sub="Active checked out books will appear here." />
           )}
           {issued && issued.length > 0 && (
+            <>
             <table className="data-table data-table-cards">
               <thead>
                 <tr>
@@ -167,7 +176,7 @@ export default function AdminLibrary() {
                 </tr>
               </thead>
               <tbody>
-                {issued.map((i) => (
+                {issued.slice(issuedPage * PAGE_SIZE, (issuedPage + 1) * PAGE_SIZE).map((i) => (
                   <tr key={i.id}>
                     <td className="cell-primary" data-label="Book Title">{i.bookTitle}</td>
                     <td data-label="Student Name">{i.studentName}</td>
@@ -181,13 +190,15 @@ export default function AdminLibrary() {
                     </td>
                     <td data-label="Action">
                       {!i.returnedAt && (
-                        <Button variant="ghost" small onClick={() => handleReturnBook(i.id)}>Return</Button>
+                        <Button variant="ghost" small onClick={() => setReturnTarget(i)}>Return</Button>
                       )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <Pagination page={issuedPage} pageSize={PAGE_SIZE} total={issued.length} onPage={setIssuedPage} />
+            </>
           )}
           </Card>
         </>
@@ -290,6 +301,16 @@ export default function AdminLibrary() {
           onSubmit={(file) => api.bulkIssueBooks(file)}
           onClose={() => setShowBulkIssues(false)}
           onImported={(r) => { toast(`Issued ${r.imported} of ${r.imported + r.failed} books.`, r.failed > 0 ? 'error' : 'success'); loadIssues(); loadBooks(); }}
+        />
+      )}
+
+      {returnTarget && (
+        <ConfirmModal
+          title="Return book?"
+          body={`Mark "${returnTarget.bookTitle}" as returned by ${returnTarget.studentName}? Any overdue fine will be calculated automatically.`}
+          confirmLabel="Return Book"
+          onConfirm={() => handleReturnBook(returnTarget.id)}
+          onCancel={() => setReturnTarget(null)}
         />
       )}
     </PortalShell>

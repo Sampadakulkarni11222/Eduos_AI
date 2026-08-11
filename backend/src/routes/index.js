@@ -35,6 +35,7 @@ import documentRoutes from '../modules/documents/document.routes.js';
 import transportRoutes from '../modules/transport/transport.routes.js';
 import auditRoutes from '../modules/audit/audit.routes.js';
 import uploadRoutes from '../modules/uploads/upload.routes.js';
+import settingsRoutes from '../modules/settings/settings.routes.js';
 import { auditLogger } from '../middleware/auditLogger.js';
 
 const router = Router();
@@ -100,6 +101,7 @@ router.use('/documents', documentRoutes);
 router.use('/transport', transportRoutes);
 router.use('/audit', auditRoutes);
 router.use('/uploads', uploadRoutes);
+router.use('/settings', settingsRoutes);
 
 // NOTE — a public GET /admin-seed endpoint used to live here, gated only by a
 // hardcoded default secret ('eduos-seed-2026'). Anyone who could reach the API

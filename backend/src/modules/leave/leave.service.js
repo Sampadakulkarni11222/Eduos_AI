@@ -63,3 +63,82 @@ export async function listMine(actor) {
   const enrollmentId = await resolveOwnActiveEnrollmentId(actor);
   return LeaveApplication.find({ enrollmentId }).sort({ createdAt: -1 }).lean();
 }
+
+/**
+ * List all leave applications — for warden/admin review.
+ * Populates student name, admission number, and class so the reviewer
+ * doesn't need a separate lookup per row.
+ */
+export async function listAll({ status } = {}) {
+  const filter = {};
+  if (status) filter.status = status;
+
+  const applications = await LeaveApplication.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(500)
+    .populate({
+      path: 'enrollmentId',
+      select: 'studentId sectionId rollNo',
+      populate: [
+        { path: 'studentId', select: 'firstName lastName admissionNo' },
+        { path: 'sectionId', select: 'name', populate: { path: 'gradeId', select: 'name' } },
+      ],
+    })
+    .lean();
+
+  return applications.map((a) => {
+    const enrollment = a.enrollmentId;
+    const student = enrollment?.studentId;
+    const section = enrollment?.sectionId;
+    const grade = section?.gradeId;
+    return {
+      id: a._id.toString(),
+      _id: a._id.toString(),
+      enrollmentId: enrollment?._id?.toString() ?? null,
+      studentName: student ? `${student.firstName} ${student.lastName ?? ''}`.trim() : '—',
+      admissionNo: student?.admissionNo ?? '—',
+      class: grade ? `${grade.name} ${section.name}` : (section?.name ?? '—'),
+      fromDate: a.fromDate,
+      toDate: a.toDate,
+      reason: a.reason,
+      status: a.status,
+      remarks: a.remarks ?? null,
+      reviewedAt: a.reviewedAt ?? null,
+      createdAt: a.createdAt,
+    };
+  });
+}
+
+/**
+ * Approve or reject a leave application.
+ * Only WARDEN and ADMIN (via permissions) can call this.
+ */
+export async function review(id, { status, remarks, reviewerProfileId }) {
+  if (!['APPROVED', 'REJECTED'].includes(status)) {
+    throw new AppError('status must be APPROVED or REJECTED', 400);
+  }
+  const application = await LeaveApplication.findById(id);
+  if (!application) throw new AppError('Leave application not found', 404);
+  if (application.status !== 'PENDING') {
+    throw new AppError(`Application is already ${application.status.toLowerCase()}`, 409);
+  }
+
+  application.status = status;
+  application.remarks = remarks?.trim() ?? null;
+  application.reviewedByProfileId = reviewerProfileId ?? null;
+  application.reviewedAt = new Date();
+  await application.save();
+
+  return {
+    id: application._id.toString(),
+    _id: application._id.toString(),
+    enrollmentId: application.enrollmentId.toString(),
+    fromDate: application.fromDate,
+    toDate: application.toDate,
+    reason: application.reason,
+    status: application.status,
+    remarks: application.remarks,
+    reviewedAt: application.reviewedAt,
+    createdAt: application.createdAt,
+  };
+}

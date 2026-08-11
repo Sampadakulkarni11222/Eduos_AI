@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees, useToast } from '@/components/ui';
+import { Button, Card, EmptyState, Pagination, Pill, SkeletonRows, StatCard, rupees, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
+import { ConfirmModal } from '@/components/confirm-modal';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
@@ -24,12 +25,21 @@ export default function AdminPayments() {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<'invoices' | 'receipts' | 'plans'>('invoices');
 
-  // Grade / Section / Student filter for the Invoices tab
+  // Invoice filters
+  const [statusFilter, setStatusFilter] = useState('');
   const [grades, setGrades] = useState<GradeDto[]>([]);
   const [filterGradeId, setFilterGradeId] = useState('');
   const [sections, setSections] = useState<SectionDto[]>([]);
   const [filterSectionId, setFilterSectionId] = useState('');
   const [filterStudentId, setFilterStudentId] = useState('');
+
+  // Cancel invoice confirm
+  const [cancelInvoice, setCancelInvoice] = useState<InvoiceDto | null>(null);
+
+  // Pagination
+  const [invoicePage, setInvoicePage] = useState(0);
+  const [receiptPage, setReceiptPage] = useState(0);
+  const PAGE_SIZE = 25;
 
   const reload = useCallback(() => {
     api.feeSummary().then(setSummary).catch(() => {});
@@ -53,13 +63,18 @@ export default function AdminPayments() {
 
   useEffect(() => { setFilterStudentId(''); }, [filterSectionId]);
 
-  const studentsInSection = students.filter((s) => s.enrollment?.sectionId === filterSectionId);
+  // Apply filters
+  const filteredInvoices = (() => {
+    let result = invoices ?? [];
+    if (filterStudentId) result = result.filter((i) => i.studentId === filterStudentId);
+    if (filterSectionId && !filterStudentId) result = result.filter((i) => i.sectionId === filterSectionId);
+    if (statusFilter) result = result.filter((i) => i.status === statusFilter);
+    return result;
+  })();
 
-  // Invoices tab shows nothing until a specific student is picked — no
-  // browsing the full unfiltered list.
-  const filteredInvoices = filterStudentId
-    ? (invoices ?? []).filter((i) => i.studentId === filterStudentId)
-    : [];
+  const showInvoiceTable = filteredInvoices.length > 0;
+  const invoicePageItems = filteredInvoices.slice(invoicePage * PAGE_SIZE, (invoicePage + 1) * PAGE_SIZE);
+  const receiptPageItems = (receipts ?? []).slice(receiptPage * PAGE_SIZE, (receiptPage + 1) * PAGE_SIZE);
 
   const { me } = useAuth();
   const { hasAccess } = usePermissions();
@@ -93,15 +108,26 @@ export default function AdminPayments() {
       {activeTab === 'invoices' && (
         <>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+            <div style={{ flex: '1 1 160px', maxWidth: 220 }}>
+              <div className="field-label">Status</div>
+              <select className="field-input" style={{ marginBottom: 0 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="">All statuses</option>
+                <option value="PENDING">Pending</option>
+                <option value="PARTIAL">Partial</option>
+                <option value="OVERDUE">Overdue</option>
+                <option value="PAID">Paid</option>
+                <option value="CANCELLED">Cancelled</option>
+              </select>
+            </div>
             <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
-              <div className="field-label">Grade *</div>
+              <div className="field-label">Grade</div>
               <select className="field-input" style={{ marginBottom: 0 }} value={filterGradeId} onChange={(e) => setFilterGradeId(e.target.value)}>
-                <option value="">-- Choose grade --</option>
+                <option value="">All grades</option>
                 {grades.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
             </div>
             <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
-              <div className="field-label">Section *</div>
+              <div className="field-label">Section</div>
               <select
                 className="field-input"
                 style={{ marginBottom: 0 }}
@@ -109,38 +135,37 @@ export default function AdminPayments() {
                 onChange={(e) => setFilterSectionId(e.target.value)}
                 disabled={!filterGradeId || sections.length === 0}
               >
-                <option value="">-- Choose section --</option>
+                <option value="">All sections</option>
                 {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
             <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
-              <div className="field-label">Student *</div>
+              <div className="field-label">Student</div>
               <select
                 className="field-input"
                 style={{ marginBottom: 0 }}
                 value={filterStudentId}
                 onChange={(e) => setFilterStudentId(e.target.value)}
-                disabled={!filterSectionId || studentsInSection.length === 0}
               >
-                <option value="">-- Choose student --</option>
-                {studentsInSection.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                <option value="">All students</option>
+                {(filterSectionId
+                  ? students.filter((s) => s.enrollment?.sectionId === filterSectionId)
+                  : students
+                ).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
           </div>
 
           {invoices === null && <Card><SkeletonRows rows={5} /></Card>}
-          {invoices !== null && !filterStudentId && (
-            <EmptyState title="Select a grade, section, and student" sub="Choose a student above to view their fee invoices and payment status." />
+          {invoices !== null && filteredInvoices.length === 0 && (
+            <EmptyState title="No invoices match" sub="Try a different filter combination, or create the first invoice." />
           )}
-          {invoices !== null && filterStudentId && filteredInvoices.length === 0 && (
-            <EmptyState title="No invoices for this student" sub="This student has no fee invoices yet. Click '+ Create Invoice' to raise one." />
-          )}
-          {invoices !== null && filterStudentId && filteredInvoices.length > 0 && (
+          {showInvoiceTable && (
             <Card pad={false}>
               <table className="data-table data-table-cards">
                 <thead><tr><th>Invoice</th><th>Student</th><th>Class</th><th>Total</th><th>Paid</th><th>Due On</th><th>Status</th><th></th></tr></thead>
                 <tbody>
-                  {filteredInvoices.map((i) => (
+                  {invoicePageItems.map((i) => (
                     <tr key={i.id}>
                       <td className="cell-primary" data-label="Invoice">{i.invoiceNo}</td>
                       <td data-label="Student">{i.studentName}</td>
@@ -149,11 +174,21 @@ export default function AdminPayments() {
                       <td data-label="Paid">{rupees(i.paidPaise)}</td>
                       <td data-label="Due On">{i.dueOn}</td>
                       <td data-label="Status"><Pill tone={STATUS_TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
-                      <td data-label="Actions">{i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>}</td>
+                      <td data-label="Actions">
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && (
+                            <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>
+                          )}
+                          {i.status !== 'CANCELLED' && canCreate && (
+                            <Button small variant="ghost" style={{ color: 'var(--red)' }} onClick={() => setCancelInvoice(i)}>Cancel</Button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <Pagination page={invoicePage} pageSize={PAGE_SIZE} total={filteredInvoices.length} onPage={setInvoicePage} />
             </Card>
           )}
         </>
@@ -178,10 +213,11 @@ export default function AdminPayments() {
                     <th>Mode</th>
                     <th>Status</th>
                     <th>Date</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {receipts.map((r) => (
+                  {receiptPageItems.map((r) => (
                     <tr key={r.id}>
                       <td className="cell-primary" style={{ fontWeight: 600 }} data-label="Receipt No.">{r.receiptNo}</td>
                       <td data-label="Invoice No.">{r.invoiceNo}</td>
@@ -191,10 +227,16 @@ export default function AdminPayments() {
                       <td data-label="Mode"><Pill tone="blue">{r.mode}</Pill></td>
                       <td data-label="Status"><Pill tone={r.status === 'SUCCESS' ? 'green' : 'gray'}>{r.status}</Pill></td>
                       <td style={{ color: 'var(--text-faint)' }} data-label="Date">{new Date(r.createdAt).toLocaleDateString('en-IN')}</td>
+                      <td data-label="Download">
+                        <Button small variant="soft" onClick={() => {
+                          api.downloadReceiptPdf(r.id).catch(() => toast('Could not download receipt.', 'error'));
+                        }}>PDF</Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <Pagination page={receiptPage} pageSize={PAGE_SIZE} total={receipts.length} onPage={setReceiptPage} />
             </Card>
           )}
         </>
@@ -213,6 +255,26 @@ export default function AdminPayments() {
           onImported={(r) => { toast(`Created ${r.imported} of ${r.imported + r.failed} invoices.`, r.failed > 0 ? 'error' : 'success'); reload(); }}
         />
       )}
+      {cancelInvoice && (
+        <ConfirmModal
+          title="Cancel invoice?"
+          body={`Invoice ${cancelInvoice.invoiceNo} for ${cancelInvoice.studentName} (${cancelInvoice.class || 'no class'}) will be marked as cancelled. This cannot be undone.`}
+          confirmLabel="Cancel Invoice"
+          danger
+          onConfirm={async () => {
+            try {
+              await api.updateInvoice(cancelInvoice.id, { status: 'CANCELLED' });
+              toast('Invoice cancelled.');
+              reload();
+            } catch (e: any) {
+              toast(e?.message || 'Could not cancel invoice.', 'error');
+            } finally {
+              setCancelInvoice(null);
+            }
+          }}
+          onCancel={() => setCancelInvoice(null)}
+        />
+      )}
     </PortalShell>
   );
 }
@@ -224,7 +286,7 @@ function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClos
   const [mode, setMode] = useState('CASH');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [receipt, setReceipt] = useState<{ receiptNo: string; status: string; paidPaise: number } | null>(null);
+  const [receipt, setReceipt] = useState<{ id?: string; receiptNo: string; status: string; paidPaise: number } | null>(null);
 
   const submit = async () => {
     setBusy(true); setErr(null);
@@ -270,7 +332,14 @@ function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClos
                 <span style={{ fontWeight: 600, fontSize: 13 }}><Pill tone={STATUS_TONE[receipt.status] ?? 'gray'}>{receipt.status}</Pill></span>
               </div>
             </div>
-            <Button onClick={onDone} className="btn-block">Close & Reload</Button>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {receipt?.id && (
+                <Button variant="soft" onClick={() => {
+                  api.downloadReceiptPdf(receipt.id!).catch(() => {});
+                }} style={{ flex: 1 }}>⬇ Download Receipt</Button>
+              )}
+              <Button onClick={onDone} style={{ flex: 1 }}>Close & Reload</Button>
+            </div>
           </div>
         ) : (
           <>
@@ -333,10 +402,9 @@ function CreateInvoiceModal({
     if (!dueOn) return setErr('Please set a due date.');
     setBusy(true); setErr(null);
     try {
-      const invoiceNo = `INV-${Date.now()}`;
+      // Invoice number is generated server-side (sequential); do not pass one from client
       await api.createInvoice({
         enrollmentId,
-        invoiceNo,
         dueOn: new Date(dueOn).toISOString(),
         lines: [{ description: feeDesc, amountPaise: Math.round(parseFloat(amount) * 100), concessionPaise: 0 }],
       });
