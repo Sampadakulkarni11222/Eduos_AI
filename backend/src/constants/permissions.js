@@ -38,6 +38,7 @@ export const PERMISSION_CATALOG = [
   { key: 'attendance.regularize', group: 'academics', description: 'Correct/regularize past attendance' },
   { key: 'leave.apply', group: 'academics', description: 'Apply for a leave of absence' },
   { key: 'leave.read', group: 'academics', description: 'View leave application status' },
+  { key: 'leave.review', group: 'academics', description: 'Approve or reject leave applications (warden/admin)' },
 
   // assignments
   { key: 'assignments.read', group: 'academics', description: 'View assignments' },
@@ -163,6 +164,7 @@ export const SYSTEM_ROLES = [
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
       ['attendance.mark', 'OWN'],
+      ['leave.apply', 'OWN'],
       ['leave.read', 'OWN'],
       ['assignments.read', 'OWN'],
       ['assignments.manage', 'OWN'],
@@ -288,6 +290,8 @@ export const SYSTEM_ROLES = [
       ['tickets.read', 'ALL'],
       ['tickets.manage', 'ALL'],
       ['tickets.respond', 'ALL'],
+      ['leave.read', 'ALL'],
+      ['leave.review', 'ALL'],
       ['ai.copilot.use', 'ALL'],
       ['academics.read', 'ALL'],
     ]),

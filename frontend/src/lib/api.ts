@@ -4,7 +4,7 @@
  * Production hardening (Phase 7): move refresh into an httpOnly cookie
  * behind a BFF route handler so it never touches JS-readable storage.
  */
-import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto } from './types';
+import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, SchoolSettingsDto } from './types';
 
 // Backend URL – default to localhost:5000. Can be overridden via NEXT_PUBLIC_BACKEND_URL.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
@@ -197,8 +197,6 @@ export const api = {
   createStudent: (body: { firstName: string; lastName?: string; admissionNo: string; sectionId?: string }) =>
     request<StudentListItem>('/students', { method: 'POST', body: JSON.stringify(body) }),
   studentOverview: (id: string) => request<StudentOverviewDto>(`/students/${id}/overview`),
-  setStudentPhoto: (id: string, photoUrl: string) =>
-    request<{ id: string; photoUrl: string }>(`/students/${id}/photo`, { method: 'PATCH', body: JSON.stringify({ photoUrl }) }),
   bulkAssignSection: (file: File, sectionId: string, academicYearId: string) =>
     uploadCsv('/enrollments/bulk', file, { sectionId, academicYearId }),
 
@@ -218,6 +216,8 @@ export const api = {
   },
   createUser: (body: CreateUserDto) =>
     request<UserDto>('/users', { method: 'POST', body: JSON.stringify(body) }),
+  updateUser: (id: string, body: { status?: string; displayName?: string; phone?: string; email?: string }) =>
+    request<UserDto>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   bulkCreateUsers: (file: File) => uploadCsv('/users/bulk', file),
 
 
@@ -292,13 +292,17 @@ export const api = {
     request<AttendanceCalendarDto>(`/attendance/calendar?enrollmentId=${enrollmentId}&month=${month}`),
   attendanceTrend: (enrollmentId: string, months = 6) =>
     request<AttendanceTrendPointDto[]>(`/attendance/trend?enrollmentId=${enrollmentId}&months=${months}`),
-  attendanceSubjectWise: (enrollmentId: string, month: string) =>
-    request<SubjectAttendanceDto>(`/attendance/subject-wise?enrollmentId=${enrollmentId}&month=${month}`),
 
   // ── leave ──
   applyLeave: (body: { fromDate: string; toDate: string; reason: string }) =>
     request<LeaveApplicationDto>('/leave/apply', { method: 'POST', body: JSON.stringify(body) }),
   myLeaveApplications: () => request<LeaveApplicationDto[]>('/leave/mine'),
+  allLeaveApplications: (status?: string) => {
+    const qs = status ? `?status=${status}` : '';
+    return request<LeaveApplicationDto[]>(`/leave/all${qs}`);
+  },
+  reviewLeave: (id: string, body: { status: 'APPROVED' | 'REJECTED'; remarks?: string }) =>
+    request<LeaveApplicationDto>(`/leave/${id}/review`, { method: 'PATCH', body: JSON.stringify(body) }),
 
   // ── timetable ──
   timetable: (sectionId: string) => request<TimetableDto>(`/timetable?sectionId=${sectionId}`),
@@ -326,6 +330,8 @@ export const api = {
     request<{ id: string }[]>('/exams/marks', { method: 'POST', body: JSON.stringify(body) }),
   publishMarks: (examSubjectId: string) =>
     request<{ matched: number; modified: number }>('/exams/publish', { method: 'POST', body: JSON.stringify({ examSubjectId }) }),
+  unpublishMarks: (examSubjectId: string) =>
+    request<{ matched: number; modified: number }>('/exams/unpublish', { method: 'POST', body: JSON.stringify({ examSubjectId }) }),
 
   // ── calendar ──
   calendar: (from: string, to: string) => request<CalendarEventDto[]>(`/calendar?from=${from}&to=${to}`),
@@ -335,25 +341,31 @@ export const api = {
   // ── fees ──
   invoices: (status?: string) => request<InvoiceDto[]>(`/fees/invoices${status ? `?status=${status}` : ''}`),
   invoiceDetail: (id: string) => request<InvoiceDetailDto>(`/fees/invoices/${id}`),
-  createInvoice: (body: { enrollmentId: string; invoiceNo: string; dueOn: string; lines: { description: string; amountPaise: number; concessionPaise?: number }[] }) =>
+  createInvoice: (body: { enrollmentId: string; invoiceNo?: string; dueOn: string; lines: { description: string; amountPaise: number; concessionPaise?: number }[] }) =>
     request<{ id: string }>('/fees/invoices', { method: 'POST', body: JSON.stringify(body) }),
+  updateInvoice: (id: string, body: { status?: string; dueOn?: string }) =>
+    request<{ id: string }>(`/fees/invoices/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   bulkCreateInvoices: (file: File) => uploadCsv('/fees/invoices/bulk', file),
   listEnrollments: (studentId?: string) => {
     const qs = studentId ? `?studentId=${studentId}` : '';
     return request<{ id: string; studentName: string; class: string }[]>(`/enrollments${qs}`);
   },
-  // /fees/summary returns FeeSummary directly — the backend and this type are
-  // the same contract. The alias-guessing that used to live here (three
-  // candidate spellings per field, each defaulting to 0) is gone on purpose:
-  // it turned a renamed field into a silent ₹0 instead of a visible failure,
-  // which is how a broken dashboard went unnoticed.
-  feeSummary: () => request<FeeSummary>('/fees/summary'),
-  verifyCheckout: (body: { orderId: string; paymentId: string; signature: string }) =>
-    request<{ handled: boolean; idempotent?: boolean; receiptNo?: string; invoiceNo?: string; invoiceStatus?: string; paidPaise?: number }>(
-      '/fees/pay/verify', { method: 'POST', body: JSON.stringify(body) }
-    ),
+  feeSummary: async () => {
+    const raw: any = await request<any>('/fees/summary');
+    // Backend returns: totalPaise, paidPaise, outstandingPaise, collectionRate, pendingCount
+    // Frontend expects: totalBilledPaise, totalCollectedPaise, pendingPaise, collectionPct, pendingCount
+    return {
+      totalBilledPaise: raw.totalPaise ?? raw.billedTargetPaise ?? raw.totalBilledPaise ?? 0,
+      totalCollectedPaise: raw.paidPaise ?? raw.realizedRevenuePaise ?? raw.totalCollectedPaise ?? 0,
+      pendingPaise: raw.outstandingPaise ?? raw.outstandingBalancePaise ?? raw.pendingPaise ?? 0,
+      pendingCount: raw.pendingCount ?? raw.unpaidCount ?? raw.outstandingCount ?? 0,
+      collectionPct: raw.collectionRate ?? raw.collectionRatePercentage ?? raw.collectionPct ?? 0,
+      overduePaise: raw.overduePaise ?? 0,
+      overdueCount: raw.overdueCount ?? 0,
+    } as FeeSummary;
+  },
   recordPayment: (body: { invoiceId: string; amountPaise: number; mode: string; gatewayRef?: string }) =>
-    request<{ receiptNo: string; status: string; paidPaise: number }>('/fees/payments', { method: 'POST', body: JSON.stringify(body) }),
+    request<{ id: string; receiptNo: string; status: string; paidPaise: number }>('/fees/payments', { method: 'POST', body: JSON.stringify(body) }),
   listPayments: (invoiceId?: string) =>
     request<PaymentReceiptDto[]>(`/fees/payments${invoiceId ? `?invoiceId=${invoiceId}` : ''}`),
   payOnline: (body: { invoiceId: string; amountPaise?: number }) =>
@@ -475,13 +487,8 @@ export const api = {
   aiChat: (message: string, conversationId?: string) =>
     request<AiReply>('/ai/chat', { method: 'POST', body: JSON.stringify({ message, conversationId }) }),
 
-  // ── WhatsApp hand-off for families ──
-  // The link is built server-side: the identifiers in the prefilled message
-  // come from records the client cannot assert, and the number is not exposed
-  // until the feature is switched on.
-  whatsappAssistantLink: () => request<WhatsappAssistantLink>('/whatsapp/assistant-link'),
-  trackWhatsappAssistantClick: (device: 'MOBILE' | 'DESKTOP' | 'TABLET') =>
-    request<{ recorded: boolean }>('/whatsapp/assistant-link/click', { method: 'POST', body: JSON.stringify({ device }) }),
+  // ── WhatsApp simulator (runs the real bot as the logged-in user) ──
+  waSimulate: (text: string) => request<WaSimReply>('/whatsapp/simulate', { method: 'POST', body: JSON.stringify({ text }) }),
 
   // ── transport (Phase 8) ──
   listRoutes: () => request<TransportRouteDto[]>('/transport/routes'),
@@ -561,8 +568,11 @@ export const api = {
   aiCreditOrders: () => request<AiCreditOrderDto[]>('/ai/credits/orders'),
   buyAiCredits: (packKey: string) =>
     request<AiCreditPurchaseDto>('/ai/credits/purchase', { method: 'POST', body: JSON.stringify({ packKey }) }),
-  verifyAiCreditPurchase: (body: { orderId: string; paymentId: string; signature: string }) =>
-    request<AiCreditPurchaseDto & { idempotent?: boolean }>('/ai/credits/purchase/verify', { method: 'POST', body: JSON.stringify(body) }),
+
+  // ── school settings ──
+  getSettings: () => request<SchoolSettingsDto>('/settings'),
+  updateSettings: (body: Partial<SchoolSettingsDto>) =>
+    request<SchoolSettingsDto>('/settings', { method: 'PATCH', body: JSON.stringify(body) }),
 
   // ── RBAC administration ──
   listRoles: () => request<RoleDto[]>('/roles'),

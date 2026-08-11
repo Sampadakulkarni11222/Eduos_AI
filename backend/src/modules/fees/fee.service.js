@@ -5,15 +5,18 @@ import { Student, Enrollment } from '../../models/student.model.js';
 import { Section } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
-import {
-  chargeOnline,
-  createPaymentLink,
-  isOnlinePaymentEnabled,
-  paymentMode,
-  fetchGatewayPayment,
-  verifyCheckoutSignature,
-} from '../../providers/payment.provider.js';
-import { logger } from '../../utils/logger.js';
+import { chargeOnline, createPaymentLink, isOnlinePaymentEnabled, paymentMode } from '../../providers/payment.provider.js';
+import { nextSeq } from '../../models/counter.model.js';
+
+/**
+ * Returns a zero-padded sequential invoice number: INV-000001, INV-000002, …
+ * Uses MongoDB's atomic findOneAndUpdate so concurrent requests can never
+ * produce duplicates, even under load.
+ */
+async function nextInvoiceNo() {
+  const seq = await nextSeq('invoice');
+  return `INV-${String(seq).padStart(6, '0')}`;
+}
 
 export const createFeeHead = (data) => FeeHead.create(data);
 export const createFeeStructure = (data) => FeeStructure.create(data);
@@ -111,7 +114,7 @@ export async function generateInvoices({ academicYearId, gradeId = null, dueOn, 
 
     const invoice = await createInvoice({
       enrollmentId: enrollment._id,
-      invoiceNo: `INV-${stamp}-${result.generated}`,
+      invoiceNo: await nextInvoiceNo(),
       dueOn: invoiceDueOn,
       lines,
     });
@@ -233,9 +236,38 @@ export async function createInvoice({ enrollmentId, invoiceNo, dueOn, lines }) {
   const enrollment = await Enrollment.findById(enrollmentId);
   if (!enrollment) throw new AppError('Enrollment not found', 404);
 
+  // If no invoice number was provided, generate one server-side (sequential).
+  const resolvedInvoiceNo = invoiceNo || await nextInvoiceNo();
+
   const totalPaise = lines.reduce((sum, l) => sum + l.amountPaise - (l.concessionPaise ?? 0), 0);
-  const invoice = await Invoice.create({ enrollmentId, invoiceNo, dueOn, totalPaise });
+  const invoice = await Invoice.create({ enrollmentId, invoiceNo: resolvedInvoiceNo, dueOn, totalPaise });
   await InvoiceLine.insertMany(lines.map((l) => ({ ...l, invoiceId: invoice._id })));
+  return invoice;
+}
+
+/**
+ * Update a created invoice — supports cancellation and due-date correction.
+ * A PAID invoice cannot be cancelled (it would orphan the payment record).
+ * Only staff with fees.manage may call this.
+ */
+export async function updateInvoice(invoiceId, updates) {
+  const invoice = await Invoice.findById(invoiceId);
+  if (!invoice) throw new AppError('Invoice not found', 404);
+
+  if (updates.status === 'CANCELLED') {
+    if (invoice.status === 'PAID') {
+      throw new AppError('A fully paid invoice cannot be cancelled. Issue a refund first.', 409);
+    }
+    invoice.status = 'CANCELLED';
+  }
+
+  if (updates.dueOn) {
+    const d = new Date(updates.dueOn);
+    if (isNaN(d.getTime())) throw new AppError('Invalid dueOn date', 400);
+    invoice.dueOn = d;
+  }
+
+  await invoice.save();
   return invoice;
 }
 
@@ -291,7 +323,7 @@ export async function bulkCreateInvoices(rows) {
       continue;
     }
 
-    const invoiceNo = row.invoiceno?.trim() || `INV-${Date.now()}-${rowNo}`;
+    const invoiceNo = row.invoiceno?.trim() || await nextInvoiceNo();
 
     try {
       await createInvoice({
@@ -343,7 +375,7 @@ export async function recordPayment(actor, scope, { invoiceId, amountPaise, mode
   invoice.status = invoice.paidPaise >= invoice.totalPaise ? 'PAID' : 'PARTIAL';
   await invoice.save();
 
-  return { payment, invoice, receiptNo: payment.receiptNo, status: invoice.status, paidPaise: invoice.paidPaise };
+  return { payment, invoice, id: payment._id.toString(), receiptNo: payment.receiptNo, status: invoice.status, paidPaise: invoice.paidPaise };
 }
 
 /**
@@ -368,33 +400,6 @@ export async function payOnline(actor, scope, { invoiceId, amountPaise }) {
   if (amount > duePaise) throw new AppError('Amount exceeds the outstanding balance', 400);
 
   const charge = await chargeOnline({ amountPaise: amount, invoiceNo: invoice.invoiceNo, payerProfileId: actor.profileId });
-
-  // Real gateway: an order exists but no money has moved. Record the intent so
-  // the webhook has something to match against, and hand the order to the
-  // client. The invoice is deliberately left untouched.
-  if (charge.requiresClientAction) {
-    const pending = await Payment.create({
-      invoiceId,
-      amountPaise: amount,
-      mode: 'GATEWAY',
-      gatewayRef: charge.gatewayRef,
-      gatewayOrderRef: charge.order.orderId,
-      status: 'INITIATED',
-    });
-
-    return {
-      requiresClientAction: true,
-      provider: charge.provider,
-      orderId: charge.order.orderId,
-      keyId: charge.order.keyId,
-      currency: charge.order.currency,
-      amountPaise: charge.order.amountPaise,
-      paymentIntentId: pending._id,
-      invoiceNo: invoice.invoiceNo,
-      status: invoice.status,
-    };
-  }
-
   if (!charge.captured) {
     throw new AppError(charge.error ?? 'Payment could not be processed', 502, [], charge.code ?? 'PAYMENT_FAILED');
   }
@@ -419,167 +424,6 @@ export async function payOnline(actor, scope, { invoiceId, amountPaise }) {
     status: invoice.status,
     paidPaise: invoice.paidPaise,
   };
-}
-
-/**
- * Settles a payment from a gateway webhook that has **already been signature
- * verified** by the controller. Never call this with unverified input.
- *
- * Three things make this safe to expose to the internet:
- *
- *  1. The amount is taken from the payment intent we created, not from the
- *     event — a forged or replayed event cannot inflate what gets credited,
- *     and a mismatch is refused outright rather than reconciled.
- *  2. Settlement is claimed with an atomic status transition, so duplicate
- *     deliveries (which Razorpay does on retry) credit the ledger exactly
- *     once. This matters more than usual here: the local dev database is a
- *     standalone mongod, so multi-document transactions are unavailable.
- *  3. The invoice total is moved with $inc rather than a read-modify-write,
- *     so two invoices settling at once cannot clobber each other.
- */
-export async function settleGatewayPayment({ event, orderId, gatewayPaymentId, amountPaise, verifyWithGateway = true }) {
-  if (event && event !== 'payment.captured') {
-    return { handled: false, reason: `Ignoring unhandled event: ${event}` };
-  }
-  if (!orderId) return { handled: false, reason: 'Event carried no order id' };
-
-  const intent = await Payment.findOne({ gatewayOrderRef: orderId }).lean()
-    ?? await Payment.findOne({ gatewayRef: orderId }).lean();
-
-  if (!intent) {
-    // Genuinely possible: a payment made against an order this environment
-    // never created (e.g. a webhook from another deployment sharing a secret).
-    logger.warn(`Razorpay webhook for unknown order ${orderId} — ignored`);
-    return { handled: false, reason: 'No matching payment intent' };
-  }
-
-  if (intent.status === 'SUCCESS') {
-    return { handled: true, idempotent: true, paymentId: intent._id, reason: 'Already settled' };
-  }
-
-  // The event says one amount; we ordered another. Refusing is the only safe
-  // move — crediting either figure would be guessing about real money.
-  if (Number(amountPaise) !== Number(intent.amountPaise)) {
-    logger.error(
-      `Razorpay amount mismatch on order ${orderId}: event=${amountPaise} intent=${intent.amountPaise} — refusing to settle`
-    );
-    await Payment.updateOne({ _id: intent._id }, { $set: { status: 'FAILED' } });
-    return { handled: false, reason: 'AMOUNT_MISMATCH', expected: intent.amountPaise, received: Number(amountPaise) };
-  }
-
-  // Ask the gateway directly rather than believing the payload. A valid
-  // signature proves the message came from Razorpay, not that it is current.
-  if (verifyWithGateway && gatewayPaymentId) {
-    try {
-      const live = await fetchGatewayPayment(gatewayPaymentId);
-      if (!live.captured) {
-        return { handled: false, reason: `Gateway reports status "${live.status}", not captured` };
-      }
-      if (Number(live.amountPaise) !== Number(intent.amountPaise)) {
-        return { handled: false, reason: 'AMOUNT_MISMATCH_AT_GATEWAY' };
-      }
-    } catch (err) {
-      logger.error(`Could not confirm payment ${gatewayPaymentId} with Razorpay: ${err.message}`);
-      return { handled: false, reason: 'GATEWAY_UNREACHABLE' };
-    }
-  }
-
-  // Atomic claim: only the delivery that flips INITIATED→SUCCESS credits the
-  // ledger. Retries find nothing to update and fall through as idempotent.
-  const claimed = await Payment.findOneAndUpdate(
-    { _id: intent._id, status: 'INITIATED' },
-    {
-      $set: {
-        status: 'SUCCESS',
-        gatewayRef: gatewayPaymentId ?? intent.gatewayRef,
-        gatewayOrderRef: orderId,
-        receiptNo: intent.receiptNo ?? `RCPT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
-        reconciledAt: new Date(),
-      },
-    },
-    { new: true }
-  );
-
-  if (!claimed) {
-    return { handled: true, idempotent: true, paymentId: intent._id, reason: 'Concurrent delivery already settled this payment' };
-  }
-
-  await Invoice.updateOne({ _id: claimed.invoiceId }, { $inc: { paidPaise: claimed.amountPaise } });
-
-  // Status is derived after the increment so it reflects the committed total.
-  const invoice = await Invoice.findById(claimed.invoiceId);
-  invoice.status = invoice.paidPaise >= invoice.totalPaise ? 'PAID' : 'PARTIAL';
-  await invoice.save();
-
-  logger.info(
-    `Razorpay settled ${claimed.amountPaise} paise on invoice ${invoice.invoiceNo} → ${invoice.status} (payment ${gatewayPaymentId})`
-  );
-
-  return {
-    handled: true,
-    paymentId: claimed._id,
-    receiptNo: claimed.receiptNo,
-    invoiceNo: invoice.invoiceNo,
-    invoiceStatus: invoice.status,
-    paidPaise: invoice.paidPaise,
-    totalPaise: invoice.totalPaise,
-  };
-}
-
-/**
- * Confirms a checkout the payer just completed in their browser.
- *
- * Razorpay hands the browser back `order_id|payment_id|signature`, signed with
- * the API key secret. This exists so the payer gets an immediate answer rather
- * than staring at a spinner until the webhook lands.
- *
- * It is deliberately NOT a second way to move money. The signature is checked,
- * and then settlement goes through exactly the same settleGatewayPayment() the
- * webhook uses — same amount check against the intent we created, same atomic
- * claim, same confirmation with the gateway. So this racing the webhook is
- * harmless: whichever arrives first settles, the other returns idempotent.
- *
- * A closed browser tab therefore costs nothing; the webhook remains the
- * authority. This is a latency optimisation wearing a seatbelt.
- */
-export async function verifyCheckout(actor, scope, { orderId, paymentId, signature }) {
-  if (!orderId || !paymentId || !signature) {
-    throw new AppError('orderId, paymentId and signature are required', 400);
-  }
-
-  if (!verifyCheckoutSignature({ orderId, paymentId, signature })) {
-    logger.warn(`Rejected checkout callback with a bad signature for order ${orderId}`);
-    throw new AppError('Payment could not be verified', 400, [], 'CHECKOUT_SIGNATURE_INVALID');
-  }
-
-  // Ownership: the intent must belong to an invoice this actor may pay.
-  const intent = await Payment.findOne({ gatewayOrderRef: orderId });
-  if (!intent) throw new AppError('No payment found for that order', 404);
-  if (scope === 'OWN') {
-    const invoice = await Invoice.findById(intent.invoiceId);
-    if (!invoice) throw new AppError('Invoice not found', 404);
-    await assertInvoiceOwnership(actor, invoice);
-  }
-
-  const result = await settleGatewayPayment({
-    event: 'payment.captured',
-    orderId,
-    gatewayPaymentId: paymentId,
-    amountPaise: intent.amountPaise,
-  });
-
-  if (!result.handled) {
-    throw new AppError(
-      result.reason === 'GATEWAY_UNREACHABLE'
-        ? 'Your payment is being confirmed. It will appear on your invoice shortly.'
-        : 'Payment could not be confirmed.',
-      502,
-      [],
-      result.reason ?? 'PAYMENT_UNCONFIRMED'
-    );
-  }
-
-  return result;
 }
 
 /** List payment receipts (scoped: parents/students see only their own). */
@@ -814,25 +658,36 @@ export async function getSummary(actor, scope, query = {}) {
   const overdueCount = agg?.overdueCount ?? 0;
   const invoices = { length: agg?.invoiceCount ?? 0 };
 
-  const collectionPct = totalPaise > 0 ? Math.round((paidPaise / totalPaise) * 100) : 0;
+  const total = totalPaise / 100;
+  const paid = paidPaise / 100;
+  const outstanding = outstandingPaise / 100;
+  const collectionRate = total > 0 ? Math.round((paid / total) * 100) : 0;
 
-  // One name per concept, matching the `FeeSummary` type the portals already
-  // declare in frontend/src/lib/types.ts.
-  //
-  // This used to return twenty-five keys — nine spellings of "outstanding"
-  // alone — and still not the four the dashboards actually read, so every stat
-  // card rendered a dash. The aliases were not a compatibility layer; they were
-  // guesses, and having many of them is what let the real names stay missing
-  // without anyone noticing. Adding a name here is now a contract change:
-  // update types.ts and the consumers with it.
   return {
-    totalBilledPaise: totalPaise,
-    totalCollectedPaise: paidPaise,
-    pendingPaise: outstandingPaise,
+    totalPaise,
+    paidPaise,
+    outstandingPaise,
+    invoiceCount: invoices.length,
+    total,
+    paid,
+    outstanding,
+    totalAmount: total,
+    paidAmount: paid,
+    outstandingAmount: outstanding,
+    billedTarget: total,
+    billedTargetPaise: totalPaise,
+    realizedRevenue: paid,
+    realizedRevenuePaise: paidPaise,
+    outstandingBalance: outstanding,
+    outstandingBalances: outstanding,
+    outstandingBalancePaise: outstandingPaise,
+    collectionRate,
+    collectionRatePercentage: collectionRate,
+    unpaidCount,
     pendingCount: unpaidCount,
-    collectionPct,
+    outstandingCount: unpaidCount,
+    unpaidInvoices: unpaidCount,
     overduePaise,
     overdueCount,
-    invoiceCount: invoices.length,
   };
 }

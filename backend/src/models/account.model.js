@@ -9,6 +9,11 @@ const accountSchema = new Schema(
     passwordHash: { type: String, default: null },
     mfaSecret: { type: String, default: null },
     status: { type: String, enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED'], default: 'ACTIVE' },
+    // Account-level login throttle: tracks consecutive failed password attempts.
+    // Reset to 0 on a successful login. After MAX_FAILED_ATTEMPTS the account is
+    // temporarily locked until lockUntil expires (no permanent lockout).
+    failedLoginAttempts: { type: Number, default: 0 },
+    lockUntil: { type: Date, default: null },
   },
   { timestamps: true }
 );

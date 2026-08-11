@@ -217,6 +217,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Dashboard', '◫', '/warden', { ready: true }),
         item('Room Management', '▦', '/warden/rooms', { ready: true }),
         item('Hostel Students', '◈', '/warden/students', { ready: true }),
+        item('Leave Approvals', '✓', '/warden/leave', { ready: true }),
       ]},
       { title: 'HEALTH & CARE', items: [
         item('Medical Records', '✚', '/warden/medical', { ready: true }),

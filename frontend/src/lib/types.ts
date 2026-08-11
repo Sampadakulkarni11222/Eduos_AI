@@ -138,8 +138,19 @@ export interface SubjectAttendanceDto {
 // ── Leave applications ──
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export interface LeaveApplicationDto {
-  _id: string; enrollmentId: string; fromDate: string; toDate: string; reason: string;
-  status: LeaveStatus; remarks: string | null; createdAt: string;
+  _id: string;
+  id: string;
+  enrollmentId: string;
+  studentName?: string;
+  admissionNo?: string;
+  class?: string;
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  status: LeaveStatus;
+  remarks: string | null;
+  reviewedAt?: string | null;
+  createdAt: string;
 }
 
 export interface InvoiceDto { id: string; invoiceNo: string; studentName: string; class: string | null; status: string; totalPaise: number; paidPaise: number; dueOn: string; sectionId?: string; studentId?: string; createdAt?: string }
@@ -222,6 +233,8 @@ export interface UserDto {
   roleKey: RoleKey;
   phone: string;
   email: string | null;
+  /** Account-level status — ACTIVE, INACTIVE, or SUSPENDED. */
+  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   studentDetails: {
     id: string;
     admissionNo: string;
@@ -447,6 +460,20 @@ export interface ReportCardDto {
     passed: boolean | null; failedSubjects: string[];
   };
 }
+export interface SchoolSettingsDto {
+  tenantId: string;
+  schoolName?: string;
+  logoUrl?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  timezone?: string;
+  currency?: string;
+  currentAcademicYearId?: string | null;
+  academicYears?: Array<{ _id: string; name: string; isCurrent: boolean }>;
+}
+
 export interface FeeHeadDto { _id: string; name: string; category: string }
 export interface FeeStructureDto {
   _id: string; name: string; amountPaise: number; dueOn: string;

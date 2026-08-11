@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, SkeletonRows, Pill, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
+import { ConfirmModal } from '@/components/confirm-modal';
 import { api, ApiError } from '@/lib/api';
 import type { HostelAllocationDto, HostelRoomDto, StudentListItem } from '@/lib/types';
 
@@ -12,6 +13,7 @@ export default function WardenRooms() {
   const [students, setStudents] = useState<StudentListItem[] | null>(null);
   const [searchBlock, setSearchBlock] = useState('');
   const [err, setErr] = useState(false);
+  const [vacateTarget, setVacateTarget] = useState<HostelAllocationDto | null>(null);
   const toast = useToast();
 
   // Modals state
@@ -73,11 +75,17 @@ export default function WardenRooms() {
   };
 
   const handleVacate = async (allocation: HostelAllocationDto) => {
-    const name = allocation.studentId ? `${allocation.studentId.firstName} ${allocation.studentId.lastName ?? ''}`.trim() : 'this student';
-    if (!confirm(`Remove ${name} from the room?`)) return;
+    setVacateTarget(allocation);
+  };
+
+  const doVacate = async (allocation: HostelAllocationDto) => {
+    const name = allocation.studentId
+      ? `${allocation.studentId.firstName} ${allocation.studentId.lastName ?? ''}`.trim()
+      : 'this student';
     try {
       await api.vacateHostelRoom(allocation._id);
       toast(`${name} vacated.`);
+      setVacateTarget(null);
       load();
     } catch (x) {
       toast(x instanceof ApiError ? x.message : 'Could not vacate the allocation.', 'error');
@@ -264,6 +272,22 @@ export default function WardenRooms() {
           onImported={(r) => { toast(`Allocated ${r.imported} of ${r.imported + r.failed} students.`, r.failed > 0 ? 'error' : 'success'); load(); }}
         />
       )}
+
+      {vacateTarget && (() => {
+        const name = vacateTarget.studentId
+          ? `${vacateTarget.studentId.firstName} ${vacateTarget.studentId.lastName ?? ''}`.trim()
+          : 'this student';
+        return (
+          <ConfirmModal
+            title="Remove student from room?"
+            body={`${name} will be vacated from their current room. You can reallocate them at any time.`}
+            confirmLabel="Remove"
+            danger
+            onConfirm={() => doVacate(vacateTarget)}
+            onCancel={() => setVacateTarget(null)}
+          />
+        );
+      })()}
     </PortalShell>
   );
 }

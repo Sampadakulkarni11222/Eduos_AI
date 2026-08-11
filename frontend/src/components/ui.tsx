@@ -204,6 +204,52 @@ export function Field({
    Dialog semantics, Escape to close, focus moved in on open and returned to
    the trigger on close, and focus kept inside while open. No modal in the app
    did any of this, so keyboard users could tab out into the page behind. */
+/* ── Pagination control ──────────────────────────────────────────
+   A stateless row showing "Showing X–Y of Z" with Prev/Next buttons.
+   The parent holds the page index; this just fires callbacks.           */
+export function Pagination({
+  page, pageSize, total, onPage,
+}: {
+  page: number;       // 0-indexed
+  pageSize: number;
+  total: number;
+  onPage: (p: number) => void;
+}) {
+  const totalPages = Math.ceil(total / pageSize);
+  if (totalPages <= 1) return null;
+  const from = page * pageSize + 1;
+  const to = Math.min((page + 1) * pageSize, total);
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '12px 16px', borderTop: '1px solid var(--hairline)', fontSize: 13,
+      flexWrap: 'wrap', gap: 8,
+    }}>
+      <span style={{ color: 'var(--text-faint)' }}>
+        Showing {from}–{to} of {total}
+      </span>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <Button small variant="soft" disabled={page === 0} onClick={() => onPage(page - 1)}>
+          ← Prev
+        </Button>
+        {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+          // Show pages around current page + first/last
+          const p = i < 3 ? i : (i >= totalPages - 2 ? totalPages - (7 - i) : page - 1 + (i - 2));
+          if (p < 0 || p >= totalPages) return null;
+          return (
+            <Button key={p} small variant={p === page ? 'accent' : 'soft'} onClick={() => onPage(p)}>
+              {p + 1}
+            </Button>
+          );
+        })}
+        <Button small variant="soft" disabled={page >= totalPages - 1} onClick={() => onPage(page + 1)}>
+          Next →
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function Modal({
   title, onClose, children, footer, wide,
 }: {

@@ -154,6 +154,32 @@ router.get('/invoices/:id', requirePermission('fees.read'), controller.getInvoic
 
 /**
  * @swagger
+ * /fees/invoices/{id}:
+ *   patch:
+ *     summary: Cancel an invoice or update its due date
+ *     tags: [Fees]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status: { type: string, enum: [CANCELLED] }
+ *               dueOn: { type: string, format: date }
+ *     responses:
+ *       200:
+ *         description: Invoice updated
+ */
+router.patch('/invoices/:id', requirePermission('fees.manage'), controller.updateInvoice);
+
+/**
+ * @swagger
  * /fees/invoices/{id}/pdf:
  *   get:
  *     summary: Download the invoice as a PDF (scoped to OWN for parents/students)
