@@ -1,9 +1,8 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { PortalShell } from '@/components/shell';
-
-import { Card, EmptyState, Pill, SkeletonRows, StatCard } from '@/components/ui';
+import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { TeacherDashboardDto } from '@/lib/types';
@@ -13,12 +12,30 @@ export default function TeacherDashboard() {
   const router = useRouter();
   const name = me?.profile?.displayName;
   const [data, setData] = useState<TeacherDashboardDto | null>(null);
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<TeacherDashboardDto['recentAnnouncements'][number] | null>(null);
 
-  useEffect(() => {
-    api.teacherDashboard().then(setData).catch(() => setErr(true));
+  const loadDashboard = useCallback(() => {
+    setLoading(true);
+    setErr(false);
+    api.teacherDashboard()
+      .then((res) => {
+        setData(res);
+        setErr(false);
+      })
+      .catch(() => {
+        setData(null);
+        setErr(true);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, []);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
 
   const slots = data?.todayTimetable.filter((s) => s.subject !== 'Break') ?? [];
 
@@ -27,27 +44,45 @@ export default function TeacherDashboard() {
       <div className="card card-pad" style={{ background: 'var(--accent)', color: 'var(--on-accent)', marginBottom: 18 }}>
         <div style={{ fontFamily: 'Newsreader, serif', fontSize: 24, fontWeight: 600 }}>{greeting()}, {name ?? 'there'}!</div>
         <div style={{ fontSize: 13, opacity: 0.85, marginTop: 4 }}>
-          {today()} · {data ? (slots.length > 0 ? `${slots.length} class${slots.length === 1 ? '' : 'es'} today` : 'No classes scheduled today') : 'Loading your day…'}
+          {today()} · {loading ? 'Loading your day…' : err ? "Couldn't load schedule" : slots.length > 0 ? `${slots.length} class${slots.length === 1 ? '' : 'es'} today` : 'No classes scheduled today'}
         </div>
       </div>
 
-      {err && <EmptyState title="Couldn't load your dashboard" sub="The server didn't respond. Reload the page to try again." />}
+      {err && (
+        <EmptyState
+          title="Couldn't load your dashboard"
+          sub="The server didn't respond or encountered an error. Click below to retry."
+          action={
+            <Button variant="soft" small onClick={loadDashboard}>
+              Retry
+            </Button>
+          }
+        />
+      )}
 
       {!err && (
         <>
+          {/* Row 1: Primary Stats */}
           <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 14 }}>
-            <StatCard label="Today's Classes" value={data ? slots.length : '—'} />
-            <StatCard label="Total Classes" value={data ? data.totalOfferings : '—'} delta="subjects you teach" deltaDir="flat" />
-            <StatCard label="Total Sections" value={data ? data.assignedClasses.length : '—'} delta={data ? `${data.totalStudents} students` : undefined} deltaDir="flat" />
-            <StatCard label="Upcoming Exams" value={data ? data.upcomingExams.length : '—'} delta="in your subjects" deltaDir="flat" />
+            <StatCard label="Today's Classes" value={loading ? '…' : slots.length} />
+            <StatCard label="Total Classes" value={loading ? '…' : data ? data.totalOfferings : 0} delta="subjects you teach" deltaDir="flat" />
+            <StatCard label="Total Sections" value={loading ? '…' : data ? data.assignedClasses.length : 0} delta={data ? `${data.totalStudents} students` : undefined} deltaDir="flat" />
+            <StatCard label="Upcoming Exams" value={loading ? '…' : data ? data.upcomingExams.length : 0} delta="in your subjects" deltaDir="flat" />
           </div>
+
+          {/* Row 2: Secondary Metrics */}
           <div className="card-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 18 }}>
-            <StatCard label="Pending Assignments" value={data ? data.pendingAssignmentEvaluations : '—'} delta={data && data.pendingAssignmentEvaluations > 0 ? 'submissions to review' : 'all graded'} deltaDir={data && data.pendingAssignmentEvaluations > 0 ? 'down' : 'flat'} />
-            <StatCard label="Course Materials" value={data ? data.courseMaterialsCount : '—'} delta="uploaded by you" deltaDir="flat" />
+            <StatCard
+              label="Pending Assignments"
+              value={loading ? '…' : data ? data.pendingAssignmentEvaluations : 0}
+              delta={data && data.pendingAssignmentEvaluations > 0 ? 'submissions to review' : 'all graded'}
+              deltaDir={data && data.pendingAssignmentEvaluations > 0 ? 'down' : 'flat'}
+            />
+            <StatCard label="Course Materials" value={loading ? '…' : data ? data.courseMaterialsCount : 0} delta="uploaded by you" deltaDir="flat" />
             <div className="stat-card">
               <div className="stat-label">Attendance Today</div>
-              {data === null && <div style={{ marginTop: 8 }}><SkeletonRows rows={1} /></div>}
-              {data !== null && (
+              {loading && <div style={{ marginTop: 8 }}><SkeletonRows rows={1} /></div>}
+              {!loading && data && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                   <Pill tone="green">{data.attendanceSummary.PRESENT ?? 0} present</Pill>
                   <Pill tone="red">{data.attendanceSummary.ABSENT ?? 0} absent</Pill>
@@ -57,6 +92,7 @@ export default function TeacherDashboard() {
             </div>
           </div>
 
+          {/* Main Grid: Today's Schedule & Side Cards */}
           <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 16 }}>
             <Card>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -66,11 +102,11 @@ export default function TeacherDashboard() {
                 </button>
               </div>
               <div style={{ marginTop: 12 }}>
-                {data === null && <SkeletonRows rows={3} />}
-                {data !== null && slots.length === 0 && (
+                {loading && <SkeletonRows rows={3} />}
+                {!loading && slots.length === 0 && (
                   <p style={{ fontSize: 13, color: 'var(--text-2b)' }}>No classes scheduled for today.</p>
                 )}
-                {slots.map((sl, i) => (
+                {!loading && slots.map((sl, i) => (
                   <div key={`${sl.periodNo}-${sl.section}`} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '11px 0', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
                     <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 13, color: 'var(--text-2)', width: 46 }}>{sl.startTime}</span>
                     <span style={{ width: 3, height: 30, borderRadius: 3, background: 'var(--accent)', flexShrink: 0 }} />
@@ -91,8 +127,8 @@ export default function TeacherDashboard() {
                     Open assignments →
                   </button>
                 </div>
-                {data === null && <SkeletonRows rows={1} />}
-                {data !== null && (
+                {loading && <div style={{ marginTop: 8 }}><SkeletonRows rows={1} /></div>}
+                {!loading && data && (
                   <p style={{ fontSize: 13, color: 'var(--text-2b)', marginTop: 8 }}>
                     {data.pendingAssignmentEvaluations > 0
                       ? `${data.pendingAssignmentEvaluations} submission${data.pendingAssignmentEvaluations > 1 ? 's are' : ' is'} waiting for your review.`
@@ -108,9 +144,9 @@ export default function TeacherDashboard() {
                     View all →
                   </button>
                 </div>
-                {data === null && <SkeletonRows rows={2} />}
-                {data?.recentAnnouncements.length === 0 && <p style={{ fontSize: 12.5, color: 'var(--text-2b)' }}>No announcements yet.</p>}
-                {data?.recentAnnouncements.slice(0, 3).map((a, i) => (
+                {loading && <SkeletonRows rows={2} />}
+                {!loading && data?.recentAnnouncements.length === 0 && <p style={{ fontSize: 12.5, color: 'var(--text-2b)' }}>No announcements yet.</p>}
+                {!loading && data?.recentAnnouncements.slice(0, 3).map((a, i) => (
                   <div
                     key={a._id}
                     onClick={() => setSelectedAnnouncement(a)}
