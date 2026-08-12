@@ -19,5 +19,5 @@ export const listAll = asyncHandler(async (req, res) => {
 
 export const review = asyncHandler(async (req, res) => {
   const application = await service.review(req.actor, req.params.id, req.body);
-  sendSuccess(res, application, 'Leave application reviewed');
+  sendSuccess(res, application, `Leave application ${req.body.status?.toLowerCase() ?? 'updated'}`);
 });

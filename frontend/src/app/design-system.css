@@ -660,3 +660,73 @@ body.ai-docked .modal-overlay{padding-right:var(--ai-dock-w)}
 .ai-voice-note{padding:8px 12px;font-size:12px;color:#F0B429;background:#1d1f1c;
   border-top:1px solid rgba(255,255,255,.08)}
 @media (pointer: coarse){.ai-mic{width:44px;height:44px}.ai-lang{min-height:44px}}
+
+/* ===== Collapsible sidebar nav groups ===== */
+.nav-group-header{display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:0 10px 6px;user-select:none}
+.nav-group-header:hover .nav-group-label{color:var(--sidebar-heading)}
+.nav-group-chevron{font-size:10px;color:var(--sidebar-group);transition:transform .2s ease;flex:none}
+.nav-group-chevron.open{transform:rotate(0deg)}
+.nav-group-chevron.closed{transform:rotate(-90deg)}
+.nav-group-items{overflow:hidden;transition:max-height .22s ease,opacity .18s ease}
+.nav-group-items.collapsed{max-height:0!important;opacity:0;pointer-events:none}
+
+/* ===== Mini sidebar (icon-only collapse) ===== */
+:root{--sidebar-w:256px}
+.sidebar{width:var(--sidebar-w);transition:width .22s ease}
+.sidebar.sidebar-mini{width:58px}
+.sidebar.sidebar-mini .sidebar-school,.sidebar.sidebar-mini .sidebar-close-btn{display:none}
+.sidebar.sidebar-mini .sidebar-brand{padding:16px 10px;justify-content:center}
+.sidebar.sidebar-mini .sidebar-logo{margin:0}
+.sidebar.sidebar-mini .nav-group-label,.sidebar.sidebar-mini .nav-group-chevron,
+.sidebar.sidebar-mini .nav-item .nav-label,.sidebar.sidebar-mini .nav-item .nav-soon,
+.sidebar.sidebar-mini .nav-badge,.sidebar.sidebar-mini .profile-card-info,
+.sidebar.sidebar-mini .logout-btn span{display:none}
+.sidebar.sidebar-mini .nav-group-header{justify-content:center;padding:0 0 4px}
+.sidebar.sidebar-mini .nav-group-items.collapsed{max-height:none!important;opacity:1;pointer-events:auto}
+.sidebar.sidebar-mini .nav-item{justify-content:center;padding:10px 0;border-radius:9px;position:relative}
+.sidebar.sidebar-mini .nav-item .nav-icon{width:auto;font-size:16px}
+.sidebar.sidebar-mini .sidebar-nav{padding:10px 7px}
+.sidebar.sidebar-mini .nav-group{margin-bottom:6px}
+.sidebar.sidebar-mini .sidebar-footer{padding:10px 7px}
+.sidebar.sidebar-mini .profile-card{justify-content:center;padding:8px}
+.sidebar.sidebar-mini .logout-btn{padding:8px 0;font-size:0}
+.sidebar.sidebar-mini .logout-btn svg{display:inline-block}
+/* Tooltip on hover in mini mode */
+.sidebar.sidebar-mini .nav-item[data-label]::after{
+  content:attr(data-label);position:absolute;left:62px;top:50%;transform:translateY(-50%);
+  background:rgba(30,20,15,.92);color:#EFE8D8;font-size:12px;font-weight:600;
+  padding:5px 10px;border-radius:8px;white-space:nowrap;pointer-events:none;
+  opacity:0;transition:opacity .15s ease;z-index:200;font-family:inherit
+}
+.sidebar.sidebar-mini .nav-item[data-label]:hover::after{opacity:1}
+
+/* Sidebar mini toggle button */
+.sidebar-mini-btn{display:flex;align-items:center;justify-content:center;width:100%;padding:6px 0;
+  border:none;background:rgba(255,255,255,.06);border-radius:8px;color:var(--sidebar-secondary);
+  font-size:13px;cursor:pointer;transition:background .15s ease;margin-top:2px}
+.sidebar-mini-btn:hover{background:rgba(255,255,255,.12);color:var(--sidebar-heading)}
+.sidebar.sidebar-mini .sidebar-mini-btn .btn-label{display:none}
+
+/* ===== Priority indicator dots (tickets) ===== */
+.priority-dot{width:8px;height:8px;border-radius:50%;flex:none;display:inline-block;margin-right:6px}
+.priority-dot.HIGH{background:var(--red)}
+.priority-dot.MEDIUM{background:var(--amber)}
+.priority-dot.LOW{background:var(--green)}
+.priority-dot.NONE{background:#ccc}
+
+/* Hide mini sidebar on mobile — it stays as full overlay there */
+@media (max-width:768px){
+  .sidebar{width:256px!important;transition:transform .25s cubic-bezier(0.4,0,0.2,1)}
+  .sidebar.sidebar-mini .sidebar-school,.sidebar.sidebar-mini .sidebar-close-btn{display:flex}
+  .sidebar.sidebar-mini .nav-group-label,.sidebar.sidebar-mini .nav-group-chevron,
+  .sidebar.sidebar-mini .nav-item .nav-label,.sidebar.sidebar-mini .nav-item .nav-soon,
+  .sidebar.sidebar-mini .nav-badge,.sidebar.sidebar-mini .profile-card-info,
+  .sidebar.sidebar-mini .logout-btn span{display:unset}
+  .sidebar.sidebar-mini .nav-item{justify-content:flex-start;padding:8px 10px}
+  .sidebar.sidebar-mini .nav-group-header{justify-content:space-between;padding:0 10px 6px}
+  .sidebar.sidebar-mini .sidebar-footer{padding:14px 12px}
+  .sidebar.sidebar-mini .profile-card{padding:10px 12px;justify-content:flex-start}
+  .sidebar.sidebar-mini .nav-item[data-label]::after{display:none}
+  .sidebar-mini-btn{display:none}
+}
+

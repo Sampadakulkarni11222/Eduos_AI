@@ -16,10 +16,10 @@ function toIssueDto(issue) {
 
   return {
     id: raw._id,
-    bookId: book?._id ?? raw.bookId,
-    bookTitle: book?.title ?? 'Unknown',
+    bookId: (typeof book === 'object' && book?._id) ? book._id : raw.bookId,
+    bookTitle: (typeof book === 'object' && book?.title) ? book.title : (raw.bookTitle ?? 'Untitled Book'),
     studentId: String(raw.borrowerProfileId ?? ''),
-    studentName: raw.borrowerName ?? 'Unknown',
+    studentName: raw.borrowerName ?? 'Student',
     issuedAt: raw.issuedAt,
     dueAt: raw.dueDate,           // frontend uses dueAt
     returnedAt: raw.returnedAt ?? null,
@@ -42,8 +42,8 @@ export async function getSummary() {
 
   const [totalBooks, activeIssues, overdueReturns] = await Promise.all([
     Book.countDocuments({ deletedAt: null }),
-    BookIssue.countDocuments({ status: 'ACTIVE' }),
-    BookIssue.countDocuments({ status: 'OVERDUE', returnedAt: null }),
+    BookIssue.countDocuments({ status: { $in: ['ACTIVE', 'OVERDUE'] } }),
+    BookIssue.countDocuments({ status: 'OVERDUE' }),
   ]);
 
   const uniqueShelfItems = await Book.aggregate([

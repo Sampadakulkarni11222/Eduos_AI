@@ -67,7 +67,7 @@ export default function LibrarianBooks() {
       await api.issueBook({ ...issueForm, dueAt: dueIso });
       setShowIssueModal(false);
       setIssueForm({ studentId: '', bookId: '', dueAt: '' });
-      toast('Book issued.');
+      toast('Book issued successfully.');
       loadIssues();
       loadOverdue();
       loadBooks();
@@ -77,7 +77,6 @@ export default function LibrarianBooks() {
   };
 
   const handleReturnBook = async (issueId: string) => {
-    if (!confirm('Are you sure you want to return this book?')) return;
     try {
       const res = await api.returnBook(issueId);
       toast(`Book returned. ${res.finePaise > 0 ? `Late fine: ${rupees(res.finePaise)}` : 'No fine.'}`);

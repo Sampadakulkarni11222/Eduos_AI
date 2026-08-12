@@ -61,4 +61,16 @@ router.get('/', requirePermission('leave.manage'), controller.listAll);
  */
 router.patch('/:id', requirePermission('leave.manage'), controller.review);
 
+/**
+ * @swagger
+ * /leave/{id}/review:
+ *   post:
+ *     summary: Approve or reject a student leave application
+ *     tags: [Leave]
+ *     responses:
+ *       200:
+ *         description: Leave application status updated
+ */
+router.post('/:id/review', requirePermission('leave.manage'), controller.review);
+
 export default router;
