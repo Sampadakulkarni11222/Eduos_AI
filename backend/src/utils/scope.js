@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Section, SubjectOffering } from '../models/academics.model.js';
 import { Student, StudentGuardian, Enrollment } from '../models/student.model.js';
 
@@ -6,13 +7,17 @@ import { Student, StudentGuardian, Enrollment } from '../models/student.model.js
  * class teacher of, plus sections they hold a subject offering in.
  */
 export async function getTeacherSectionIds(profileId) {
+  if (!profileId) return [];
+  const pId = mongoose.Types.ObjectId.isValid(profileId)
+    ? new mongoose.Types.ObjectId(profileId)
+    : profileId;
   const [classSections, offerings] = await Promise.all([
-    Section.find({ classTeacherId: profileId }).select('_id'),
-    SubjectOffering.find({ teacherId: profileId }).select('sectionId'),
+    Section.find({ classTeacherId: { $in: [profileId, pId] } }).select('_id'),
+    SubjectOffering.find({ teacherId: { $in: [profileId, pId] } }).select('sectionId'),
   ]);
   const ids = new Set([
-    ...classSections.map((s) => s._id.toString()),
-    ...offerings.map((o) => o.sectionId.toString()),
+    ...classSections.map((s) => s._id?.toString()).filter(Boolean),
+    ...offerings.map((o) => o.sectionId?.toString()).filter(Boolean),
   ]);
   return [...ids];
 }

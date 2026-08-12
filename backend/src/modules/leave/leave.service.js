@@ -63,3 +63,17 @@ export async function listMine(actor) {
   const enrollmentId = await resolveOwnActiveEnrollmentId(actor);
   return LeaveApplication.find({ enrollmentId }).sort({ createdAt: -1 }).lean();
 }
+
+export async function review(actor, id, { status, remarks } = {}) {
+  if (!['APPROVED', 'REJECTED'].includes(status)) {
+    throw new AppError('status must be APPROVED or REJECTED', 400);
+  }
+  const app = await LeaveApplication.findById(id);
+  if (!app) throw new AppError('Leave application not found', 404);
+  app.status = status;
+  app.reviewedByProfileId = actor.profileId ?? null;
+  app.reviewedAt = new Date();
+  if (remarks) app.remarks = String(remarks).trim();
+  await app.save();
+  return app;
+}
