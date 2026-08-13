@@ -17,7 +17,7 @@ interface Msg {
   resolved?: 'done' | 'cancelled';
 }
 
-export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
+export function AskEduOS({ label = 'Ask Agent', title }: { label?: string; title?: string }) {
   const [open, setOpen] = useState(false);
   // Minimising keeps the conversation alive but gets the panel out of the way,
   // which is the whole point: the assistant used to render inside a full-screen
@@ -248,7 +248,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
 
   return (
     <>
-      <Button onClick={handleOpen} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <Button onClick={handleOpen} style={{ display: 'flex', alignItems: 'center', gap: 6 }} title={title}>
         <span style={{ fontSize: 14 }}>✨</span> {label}
       </Button>
       {open && minimized && portal(

@@ -549,6 +549,8 @@ export const api = {
   parentDashboard: () => request<ParentDashboardDto>('/dashboard/parent'),
   wardenDashboard: () => request<WardenDashboardDto>('/dashboard/warden'),
   librarianDashboard: () => request<LibrarianDashboardDto>('/dashboard/librarian'),
+  reviewLeave: (id: string, status: 'APPROVED' | 'REJECTED', remarks?: string) =>
+    request<any>(`/leave/${id}/review`, { method: 'POST', body: JSON.stringify({ status, remarks }) }),
 
   // ── AI tutor (grounded in the caller's own syllabus, server-side) ──
   tutorStatus: () => request<TutorStatusDto>('/ai/tutor/status'),

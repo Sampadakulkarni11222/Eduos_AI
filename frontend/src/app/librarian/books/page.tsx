@@ -1,9 +1,27 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, SkeletonRows, Pill, rupees, useToast } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import type { BookDto, BookIssueDto, StudentListItem } from '@/lib/types';
+
+function getDueStatus(dueAtStr: string, status: string): { label: string; tone: 'green' | 'red' | 'amber' | 'gray'; isOverdue: boolean; daysOverdue: number } {
+  if (status === 'RETURNED') return { label: 'Returned', tone: 'green', isOverdue: false, daysOverdue: 0 };
+  if (!dueAtStr) return { label: 'Active', tone: 'amber', isOverdue: false, daysOverdue: 0 };
+  const due = new Date(dueAtStr);
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+  const diffMs = due.getTime() - now.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) {
+    const daysOverdue = Math.abs(diffDays);
+    return { label: `${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue`, tone: 'red', isOverdue: true, daysOverdue };
+  }
+  if (diffDays === 0) return { label: 'Due today', tone: 'amber', isOverdue: false, daysOverdue: 0 };
+  if (diffDays <= 7) return { label: `Due in ${diffDays} day${diffDays > 1 ? 's' : ''}`, tone: 'amber', isOverdue: false, daysOverdue: 0 };
+  return { label: `Due ${due.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`, tone: 'gray', isOverdue: false, daysOverdue: 0 };
+}
 
 export default function LibrarianBooks() {
   const [books, setBooks] = useState<BookDto[] | null>(null);
@@ -11,6 +29,12 @@ export default function LibrarianBooks() {
   const [students, setStudents] = useState<StudentListItem[] | null>(null);
   const [activeTab, setActiveTab] = useState<'books' | 'issued'>('books');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Issued tab search & filter
+  const [issuedSearch, setIssuedSearch] = useState('');
+  const [issuedFilter, setIssuedFilter] = useState<'ALL' | 'OVERDUE' | 'ACTIVE' | 'RETURNED'>('ALL');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
   const toast = useToast();
 
   // Modals state
@@ -59,7 +83,7 @@ export default function LibrarianBooks() {
       await api.issueBook({ ...issueForm, dueAt: dueIso });
       setShowIssueModal(false);
       setIssueForm({ studentId: '', bookId: '', dueAt: '' });
-      toast('Book issued.');
+      toast('Book issued successfully.');
       loadIssues();
       loadBooks();
     } catch (err) {
@@ -68,7 +92,6 @@ export default function LibrarianBooks() {
   };
 
   const handleReturnBook = async (issueId: string) => {
-    if (!confirm('Are you sure you want to return this book?')) return;
     try {
       const res = await api.returnBook(issueId);
       toast(`Book returned. ${res.finePaise > 0 ? `Late fine: ${rupees(res.finePaise)}` : 'No fine.'}`);
@@ -78,6 +101,63 @@ export default function LibrarianBooks() {
       toast(err instanceof ApiError ? err.message : 'Could not return the book.', 'error');
     }
   };
+
+  const handleRemindBook = async (issueId: string, studentName: string, bookTitle: string, dueAt: string) => {
+    const due = new Date(dueAt).toLocaleDateString('en-IN');
+    const msg = `Dear ${studentName}, please return the library book "${bookTitle}" (due on ${due}). Fines may accumulate. — Oakridge Library`;
+    try {
+      await navigator.clipboard.writeText(msg);
+      setCopiedId(issueId);
+      toast('Reminder message copied to clipboard!');
+      setTimeout(() => setCopiedId(null), 2500);
+    } catch {
+      toast('Could not copy reminder message.', 'error');
+    }
+  };
+
+  // Process & filter issued books: calculate due status, search by borrower or title, filter, and sort worst overdue first
+  const processedIssued = useMemo(() => {
+    if (!issued) return null;
+
+    let list = issued.map((i) => {
+      const dueInfo = getDueStatus(i.dueAt, i.status);
+      const cleanTitle = (i.bookTitle && i.bookTitle !== 'CPP' && i.bookTitle !== 'Unknown') ? i.bookTitle : 'Untitled Book';
+      const cleanStudent = (i.studentName && i.studentName !== 'Unknown') ? i.studentName : 'Student';
+      return {
+        ...i,
+        cleanTitle,
+        cleanStudent,
+        dueInfo,
+      };
+    });
+
+    if (issuedFilter === 'OVERDUE') {
+      list = list.filter((i) => i.status === 'OVERDUE' || i.dueInfo.isOverdue);
+    } else if (issuedFilter === 'ACTIVE') {
+      list = list.filter((i) => i.status === 'ACTIVE' && !i.dueInfo.isOverdue && !i.returnedAt);
+    } else if (issuedFilter === 'RETURNED') {
+      list = list.filter((i) => i.status === 'RETURNED' || Boolean(i.returnedAt));
+    }
+
+    if (issuedSearch.trim()) {
+      const q = issuedSearch.trim().toLowerCase();
+      list = list.filter((i) =>
+        i.cleanStudent.toLowerCase().includes(q) || i.cleanTitle.toLowerCase().includes(q)
+      );
+    }
+
+    // Sort: worst overdue first, then active due soonest, then returned
+    return list.sort((a, b) => {
+      if (a.dueInfo.isOverdue && b.dueInfo.isOverdue) {
+        return b.dueInfo.daysOverdue - a.dueInfo.daysOverdue;
+      }
+      if (a.dueInfo.isOverdue) return -1;
+      if (b.dueInfo.isOverdue) return 1;
+      if (a.status !== 'RETURNED' && b.status === 'RETURNED') return -1;
+      if (a.status === 'RETURNED' && b.status !== 'RETURNED') return 1;
+      return new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime();
+    });
+  }, [issued, issuedSearch, issuedFilter]);
 
   return (
     <PortalShell expectedSlug="librarian" topbar={{ title: 'Catalog & Lending', desc: 'Manage library catalog and student check-out records.' }}>
@@ -136,48 +216,92 @@ export default function LibrarianBooks() {
       )}
 
       {activeTab === 'issued' && (
-        <Card pad={false}>
-          {issued === null && <div style={{ padding: 20 }}><SkeletonRows rows={4} /></div>}
-          {issued !== null && issued.length === 0 && (
-            <EmptyState title="No issued books" sub="Active checked out books will appear here." />
-          )}
-          {issued && issued.length > 0 && (
-            <table className="data-table data-table-cards">
-              <thead>
-                <tr>
-                  <th>Book Title</th>
-                  <th>Student Name</th>
-                  <th>Issued Date</th>
-                  <th>Due Date</th>
-                  <th>Returned</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {issued.map((i) => (
-                  <tr key={i.id}>
-                    <td className="cell-primary" data-label="Book Title">{i.bookTitle}</td>
-                    <td data-label="Student Name">{i.studentName}</td>
-                    <td data-label="Issued Date">{new Date(i.issuedAt).toLocaleDateString('en-IN')}</td>
-                    <td data-label="Due Date">{new Date(i.dueAt).toLocaleDateString('en-IN')}</td>
-                    <td data-label="Returned">{i.returnedAt ? new Date(i.returnedAt).toLocaleDateString('en-IN') : '—'}</td>
-                    <td data-label="Status">
-                      <Pill tone={i.status === 'RETURNED' ? 'green' : i.status === 'OVERDUE' ? 'red' : 'amber'}>
-                        {i.status}
-                      </Pill>
-                    </td>
-                    <td data-label="Action">
-                      {!i.returnedAt && (
-                        <Button variant="ghost" small onClick={() => handleReturnBook(i.id)}>Return</Button>
-                      )}
-                    </td>
+        <>
+          {/* Search & Filter Bar */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 320 }}>
+              <svg style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', opacity: 0.4, pointerEvents: 'none' }}
+                width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                className="input"
+                style={{ paddingLeft: 30 }}
+                placeholder="Search borrower or title…"
+                value={issuedSearch}
+                onChange={(e) => setIssuedSearch(e.target.value)}
+              />
+            </div>
+            <select
+              className="field-input"
+              style={{ width: 'auto', minWidth: 140 }}
+              value={issuedFilter}
+              onChange={(e) => setIssuedFilter(e.target.value as any)}
+              aria-label="Filter status"
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="OVERDUE">Overdue Only</option>
+              <option value="ACTIVE">Active (On Time)</option>
+              <option value="RETURNED">Returned</option>
+            </select>
+          </div>
+
+          <Card pad={false}>
+            {processedIssued === null && <div style={{ padding: 20 }}><SkeletonRows rows={4} /></div>}
+            {processedIssued !== null && processedIssued.length === 0 && (
+              <EmptyState title="No matching records" sub="No lending records match your criteria." />
+            )}
+            {processedIssued && processedIssued.length > 0 && (
+              <table className="data-table data-table-cards">
+                <thead>
+                  <tr>
+                    <th>Book Title</th>
+                    <th>Student Name</th>
+                    <th>Issued Date</th>
+                    <th>Due Date</th>
+                    <th>Returned</th>
+                    <th>Status</th>
+                    <th>Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Card>
+                </thead>
+                <tbody>
+                  {processedIssued.map((i) => (
+                    <tr key={i.id}>
+                      <td className="cell-primary" data-label="Book Title">{i.cleanTitle}</td>
+                      <td data-label="Student Name">{i.cleanStudent}</td>
+                      <td data-label="Issued Date">{new Date(i.issuedAt).toLocaleDateString('en-IN')}</td>
+                      <td data-label="Due Date">{new Date(i.dueAt).toLocaleDateString('en-IN')}</td>
+                      <td data-label="Returned">{i.returnedAt ? new Date(i.returnedAt).toLocaleDateString('en-IN') : '—'}</td>
+                      <td data-label="Status">
+                        <Pill tone={i.dueInfo.tone}>
+                          {i.dueInfo.label}
+                        </Pill>
+                      </td>
+                      <td data-label="Action">
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          {!i.returnedAt && (
+                            <>
+                              <Button variant="ghost" small onClick={() => handleReturnBook(i.id)}>Return</Button>
+                              <Button
+                                variant="ghost"
+                                small
+                                onClick={() => handleRemindBook(i.id, i.cleanStudent, i.cleanTitle, i.dueAt)}
+                                style={{ fontSize: 11.5 }}
+                                title="Copy return reminder message"
+                              >
+                                {copiedId === i.id ? '✓ Copied' : 'Remind'}
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Card>
+        </>
       )}
 
       {/* Add Book Modal */}
