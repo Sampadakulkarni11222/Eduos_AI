@@ -297,7 +297,7 @@ export interface StudentDashboardDto {
   upcomingClasses: Array<{ periodNo: number; startTime: string; endTime: string; subject: string; room: string | null; liveClassLink: string | null }>;
   pendingAssignments: number;
   examSchedule: Array<{ examName: string; subject: string; examDate: string; maxMarks?: number }>;
-  feeStatus: { totalFees: number; paidFees: number; pendingFees: number; pendingInvoices: number };
+  feeStatus: { totalFees: number; paidFees: number; pendingFees: number; pendingInvoices: number; nextDueDate?: string | null };
   borrowedBooks: Array<{ title: string; author: string; dueDate: string; status: string; fine: number }>;
   recentAnnouncements: Array<{ _id: string; title: string; content: string; publishedAt: string }>;
 }
@@ -317,6 +317,7 @@ export interface ParentDashboardDto {
   pendingFees: number; pendingFeesPaise: number;
   feeInvoices: Array<{ invoiceNo: string; status: string; total: number; paid: number; due: number; dueOn: string }>;
   upcomingExams: Array<{ examName: string; subject: string; examDate: string }>;
+  upcomingEvents?: Array<{ title: string; startsAt: string; endsAt?: string; type: string; location?: string | null }>;
   timetable: Array<{ periodNo: number; startTime: string; endTime: string; subject: string; section: string; sectionId: string | null }>;
   recentResults: Array<{ examName: string; subject: string; marks: number; maxMarks: number; grade: string }>;
   announcements: Array<{ _id: string; title: string; content: string; publishedAt: string }>;
