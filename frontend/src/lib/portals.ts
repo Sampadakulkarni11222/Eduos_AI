@@ -114,14 +114,14 @@ export const PORTALS: Record<string, Portal> = {
     label: 'Parent Portal', sublabel: 'Parent Portal', icon: '👨‍👩‍👧',
     nav: [
       { title: 'WORKSPACE', items: [ item('Dashboard', '◳', '/parent', { ready: true }) ]},
-      { title: 'ACADEMICS', items: [
+      { title: 'MY CHILD', items: [
         item('Performance', '◉', '/parent/performance', { ready: true }),
+        item('Student View', '◈', '/parent/student-view', { ready: true }),
         item('Attendance', '☱', '/parent/attendance', { ready: true }),
         item('Assignments', '✐', '/parent/assignments', { ready: true }),
         item('Timetable', '▥', '/parent/timetable', { ready: true }),
         item('Course Material', '❑', '/parent/material', { ready: true }),
         item('Study Help', '✦', '/parent/study-help', { ready: true }),
-        item('Student View', '◈', '/parent/student-view', { ready: true }),
       ]},
       { title: 'SCHOOL LIFE', items: [
         item('Calendar & Events', '▤', '/parent/calendar', { ready: true }),
@@ -198,13 +198,6 @@ export const PORTALS: Record<string, Portal> = {
         item('Dashboard', '◫', '/owner', { ready: true }),
         item('Admissions CRM', '◌', '/owner/admissions', { ready: true }),
       ]},
-      { title: 'PEOPLE', items: [
-        item('User Management', '◉', '/admin/users', { ready: true }),
-        item('Student Classes', '◑', '/admin/student-classes', { ready: true }),
-      ]},
-      { title: 'FINANCE', items: [
-        item('Payments & Fees', '₹', '/admin/payments', { ready: true }),
-      ]},
       { title: 'SYSTEM', items: [
         item('Audit Logs', '▷', '/owner/audit', { ready: true }),
         item('Access & Permissions', '🔐', '/owner/permissions', { ready: true }),
@@ -255,8 +248,8 @@ export const PORTALS: Record<string, Portal> = {
       ]},
       { title: 'FINANCE', items: [
         { label: 'Payments & Fees', icon: '₹', href: '/finance/payments', ready: true },
-        { label: 'Reports', icon: '📊', href: '/finance/reports', ready: true },
-      ]},
+        { label: 'Reports', icon: '📊', href: '/finance/reports', ready: true }
+      ]}
     ],
   },
 };

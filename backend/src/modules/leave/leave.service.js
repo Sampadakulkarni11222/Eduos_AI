@@ -74,7 +74,6 @@ export async function listMine(actor) {
 
   return apps.map(dto);
 }
-
 export async function listAll(actor, scope, query = {}) {
   const filter = {};
   if (query.status) filter.status = query.status;

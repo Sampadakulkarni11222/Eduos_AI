@@ -67,7 +67,7 @@ export default function LibrarianBooks() {
       await api.issueBook({ ...issueForm, dueAt: dueIso });
       setShowIssueModal(false);
       setIssueForm({ studentId: '', bookId: '', dueAt: '' });
-      toast('Book issued successfully.');
+      toast('Book issued.');
       loadIssues();
       loadOverdue();
       loadBooks();
@@ -77,6 +77,7 @@ export default function LibrarianBooks() {
   };
 
   const handleReturnBook = async (issueId: string) => {
+    if (!confirm('Are you sure you want to return this book?')) return;
     try {
       const res = await api.returnBook(issueId);
       toast(`Book returned. ${res.finePaise > 0 ? `Late fine: ${rupees(res.finePaise)}` : 'No fine.'}`);
@@ -120,7 +121,6 @@ export default function LibrarianBooks() {
       toast(err instanceof ApiError ? err.message : 'Could not cancel reservation.', 'error');
     }
   };
-
   return (
     <PortalShell expectedSlug="librarian" topbar={{ title: 'Catalog & Lending', desc: 'Manage library catalog, reservation queue, and student check-out records.' }}>
       <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>

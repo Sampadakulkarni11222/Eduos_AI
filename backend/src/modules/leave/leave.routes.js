@@ -72,5 +72,4 @@ router.patch('/:id', requirePermission('leave.manage'), controller.review);
  *         description: Leave application status updated
  */
 router.post('/:id/review', requirePermission('leave.manage'), controller.review);
-
 export default router;

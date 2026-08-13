@@ -11,7 +11,6 @@ export const listMine = asyncHandler(async (req, res) => {
   const applications = await service.listMine(req.actor);
   sendSuccess(res, applications, 'Leave applications fetched');
 });
-
 export const listAll = asyncHandler(async (req, res) => {
   const applications = await service.listAll(req.actor, req.scope, req.query);
   sendSuccess(res, applications, 'Leave applications fetched');
