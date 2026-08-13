@@ -38,6 +38,7 @@ export const PERMISSION_CATALOG = [
   { key: 'attendance.regularize', group: 'academics', description: 'Correct/regularize past attendance' },
   { key: 'leave.apply', group: 'academics', description: 'Apply for a leave of absence' },
   { key: 'leave.read', group: 'academics', description: 'View leave application status' },
+  { key: 'leave.manage', group: 'academics', description: 'Review, approve, and reject leave applications' },
 
   // assignments
   { key: 'assignments.read', group: 'academics', description: 'View assignments' },
@@ -90,10 +91,21 @@ export const PERMISSION_CATALOG = [
   // Hostel
   { key: 'hostel.read', group: 'hostel', description: 'View hostel rooms, allocations, and student directory' },
   { key: 'hostel.manage', group: 'hostel', description: 'Manage hostel rooms and allocations' },
+  { key: 'hostel.pass.apply', group: 'hostel', description: 'Apply for hostel leave / gate pass' },
 
   // Transport
   { key: 'transport.read', group: 'transport', description: 'View transport routes, stops, and bus enrollments' },
   { key: 'transport.manage', group: 'transport', description: 'Manage transport routes, stops, and bus enrollments' },
+
+  // Incidents & discipline
+  { key: 'incidents.report', group: 'incidents', description: 'File an incident / disciplinary report' },
+  { key: 'incidents.read', group: 'incidents', description: 'View incident reports' },
+  { key: 'incidents.manage', group: 'incidents', description: 'Update incident report status and review notes' },
+
+  // Parent-Teacher direct messaging
+  { key: 'pt.messages.read', group: 'pt-messages', description: 'View parent-teacher message threads and messages' },
+  { key: 'pt.messages.create', group: 'pt-messages', description: 'Start a new parent-teacher message thread' },
+  { key: 'pt.messages.send', group: 'pt-messages', description: 'Send a message in a parent-teacher thread' },
 
   // AI & analytics (stand-in integrations — see ARCHITECTURE.md)
   { key: 'ai.copilot.use', group: 'ai', description: 'Use the AI copilot/chat assistant' },
@@ -131,6 +143,7 @@ export const SYSTEM_ROLES = [
       ['attendance.read', 'ALL'],
       ['attendance.regularize', 'ALL'],
       ['leave.read', 'ALL'],
+      ['leave.manage', 'ALL'],
       ['assignments.read', 'ALL'],
       ['marks.read', 'ALL'],
       ['marks.publish', 'ALL'],
@@ -153,6 +166,8 @@ export const SYSTEM_ROLES = [
       ['analytics.class.read', 'ALL'],
       ['academics.structure.manage', 'ALL'],
       ['academics.read', 'ALL'],
+      ['incidents.read', 'ALL'],
+      ['incidents.manage', 'ALL'],
     ]),
   },
   {
@@ -163,7 +178,9 @@ export const SYSTEM_ROLES = [
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
       ['attendance.mark', 'OWN'],
+      ['leave.apply', 'OWN'],
       ['leave.read', 'OWN'],
+      ['leave.manage', 'OWN'],
       ['assignments.read', 'OWN'],
       ['assignments.manage', 'OWN'],
       ['submissions.grade', 'OWN'],
@@ -188,6 +205,10 @@ export const SYSTEM_ROLES = [
       // school-wide by nature; what a teacher may *do* with a class is still
       // scoped OWN by every other permission above.
       ['academics.read', 'ALL'],
+      ['incidents.report', 'OWN'],
+      ['incidents.read', 'OWN'],
+      ['pt.messages.read', 'OWN'],
+      ['pt.messages.send', 'OWN'],
     ]),
   },
   {
@@ -213,6 +234,12 @@ export const SYSTEM_ROLES = [
       ['medical.manage', 'OWN'],
       ['ai.copilot.use', 'OWN'],
       ['analytics.child.read', 'OWN'],
+      ['pt.messages.read', 'OWN'],
+      ['pt.messages.create', 'OWN'],
+      ['pt.messages.send', 'OWN'],
+      ['hostel.read', 'OWN'],
+      ['hostel.pass.apply', 'OWN'],
+      ['library.read', 'OWN'],
     ]),
   },
   {
@@ -239,6 +266,9 @@ export const SYSTEM_ROLES = [
       ['tickets.read', 'OWN'],
       ['tickets.create', 'OWN'],
       ['ai.copilot.use', 'OWN'],
+      ['hostel.read', 'OWN'],
+      ['hostel.pass.apply', 'OWN'],
+      ['library.read', 'OWN'],
     ]),
   },
   {
@@ -290,6 +320,8 @@ export const SYSTEM_ROLES = [
       ['tickets.respond', 'ALL'],
       ['ai.copilot.use', 'ALL'],
       ['academics.read', 'ALL'],
+      ['incidents.report', 'OWN'],
+      ['incidents.read', 'OWN'],
     ]),
   },
 ];

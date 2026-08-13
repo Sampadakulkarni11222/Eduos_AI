@@ -3,14 +3,17 @@ import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, SkeletonRows, Pill, rupees, useToast } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
-import type { BookDto, BookIssueDto, StudentListItem } from '@/lib/types';
+import type { BookDto, BookIssueDto, BookReservationDto, StudentListItem } from '@/lib/types';
 
 export default function LibrarianBooks() {
   const [books, setBooks] = useState<BookDto[] | null>(null);
   const [issued, setIssued] = useState<BookIssueDto[] | null>(null);
+  const [overdue, setOverdue] = useState<BookIssueDto[] | null>(null);
+  const [reservations, setReservations] = useState<BookReservationDto[] | null>(null);
   const [students, setStudents] = useState<StudentListItem[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'books' | 'issued'>('books');
+  const [activeTab, setActiveTab] = useState<'books' | 'issued' | 'overdue' | 'reservations'>('books');
   const [searchQuery, setSearchQuery] = useState('');
+  const [busyReminders, setBusyReminders] = useState(false);
   const toast = useToast();
 
   // Modals state
@@ -28,12 +31,17 @@ export default function LibrarianBooks() {
     api.listIssued().then(setIssued).catch(() => setIssued([]));
   };
 
+  const loadOverdue = () => {
+    api.listOverdueIssues().then(setOverdue).catch(() => setOverdue([]));
+  };
+
   useEffect(() => {
     loadBooks();
   }, [searchQuery]);
 
   useEffect(() => {
     loadIssues();
+    loadOverdue();
     api.students().then((r) => setStudents(r.items)).catch(() => setStudents([]));
   }, []);
 
@@ -61,6 +69,7 @@ export default function LibrarianBooks() {
       setIssueForm({ studentId: '', bookId: '', dueAt: '' });
       toast('Book issued.');
       loadIssues();
+      loadOverdue();
       loadBooks();
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'Could not issue the book. Check copy availability.', 'error');
@@ -73,17 +82,56 @@ export default function LibrarianBooks() {
       const res = await api.returnBook(issueId);
       toast(`Book returned. ${res.finePaise > 0 ? `Late fine: ${rupees(res.finePaise)}` : 'No fine.'}`);
       loadIssues();
+      loadOverdue();
       loadBooks();
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'Could not return the book.', 'error');
     }
   };
 
+  const handleSendReminders = async () => {
+    setBusyReminders(true);
+    try {
+      const res = await api.processLibraryReminders();
+      toast(`Sent ${res.remindersSent} reminder(s) to students & parents.`, 'success');
+      loadOverdue();
+      loadIssues();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Could not dispatch overdue reminders.', 'error');
+    } finally {
+      setBusyReminders(false);
+    }
+  };
+
+  const loadReservations = () => {
+    api.listBookReservations().then(setReservations).catch(() => setReservations([]));
+  };
+
+  useEffect(() => {
+    loadReservations();
+  }, []);
+
+  const handleCancelReservationLibrarian = async (id: string) => {
+    if (!confirm('Cancel this reservation?')) return;
+    try {
+      await api.cancelBookReservation(id);
+      toast('Reservation cancelled.');
+      loadReservations();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Could not cancel reservation.', 'error');
+    }
+  };
   return (
-    <PortalShell expectedSlug="librarian" topbar={{ title: 'Catalog & Lending', desc: 'Manage library catalog and student check-out records.' }}>
+    <PortalShell expectedSlug="librarian" topbar={{ title: 'Catalog & Lending', desc: 'Manage library catalog, reservation queue, and student check-out records.' }}>
       <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
         <button className={`chip-tab ${activeTab === 'books' ? 'active' : ''}`} onClick={() => setActiveTab('books')}>Catalog</button>
         <button className={`chip-tab ${activeTab === 'issued' ? 'active' : ''}`} onClick={() => setActiveTab('issued')}>Issued Books</button>
+        <button className={`chip-tab ${activeTab === 'reservations' ? 'active' : ''}`} onClick={() => { setActiveTab('reservations'); loadReservations(); }}>
+          Reservations Queue {reservations && reservations.filter(r => r.status === 'PENDING' || r.status === 'READY').length > 0 ? `(${reservations.filter(r => r.status === 'PENDING' || r.status === 'READY').length})` : ''}
+        </button>
+        <button className={`chip-tab ${activeTab === 'overdue' ? 'active' : ''}`} onClick={() => { setActiveTab('overdue'); loadOverdue(); }}>
+          Overdue Reminders {overdue && overdue.length > 0 ? `(${overdue.length})` : ''}
+        </button>
       </div>
 
       {activeTab === 'books' && (
@@ -170,6 +218,126 @@ export default function LibrarianBooks() {
                     <td data-label="Action">
                       {!i.returnedAt && (
                         <Button variant="ghost" small onClick={() => handleReturnBook(i.id)}>Return</Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Card>
+      )}
+
+      {activeTab === 'overdue' && (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ fontSize: 13, color: 'var(--text-2)' }}>
+              Overdue items auto-trigger in-app notifications to students & parents (with a 24-hr anti-duplicate window).
+            </div>
+            <Button onClick={handleSendReminders} disabled={busyReminders}>
+              {busyReminders ? 'Sending…' : '⚡ Dispatch Overdue Reminders'}
+            </Button>
+          </div>
+
+          <Card pad={false}>
+            {overdue === null && <div style={{ padding: 20 }}><SkeletonRows rows={4} /></div>}
+            {overdue !== null && overdue.length === 0 && (
+              <EmptyState icon="✔" title="No overdue books" sub="All borrowed books are returned or within their due date!" />
+            )}
+            {overdue && overdue.length > 0 && (
+              <table className="data-table data-table-cards">
+                <thead>
+                  <tr>
+                    <th>Book Title</th>
+                    <th>Borrower Student</th>
+                    <th>Due Date</th>
+                    <th>Overdue Time</th>
+                    <th>Est. Fine (₹5/day)</th>
+                    <th>Last Reminder</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {overdue.map((i) => (
+                    <tr key={i.id}>
+                      <td className="cell-primary" data-label="Book Title">{i.bookTitle}</td>
+                      <td data-label="Borrower Student">{i.studentName}</td>
+                      <td data-label="Due Date">{new Date(i.dueAt).toLocaleDateString('en-IN')}</td>
+                      <td data-label="Overdue Time">
+                        <Pill tone="red">
+                          {i.daysOverdue ? `${i.daysOverdue} day(s) overdue` : 'Overdue'}
+                        </Pill>
+                      </td>
+                      <td data-label="Est. Fine">{rupees((i.daysOverdue ?? 1) * 500)}</td>
+                      <td data-label="Last Reminder" style={{ fontSize: 12, color: 'var(--text-2)' }}>
+                        {i.lastReminderSentAt
+                          ? `${new Date(i.lastReminderSentAt).toLocaleDateString('en-IN')} (${i.reminderCount} sent)`
+                          : 'Not sent yet'}
+                      </td>
+                      <td data-label="Action">
+                        <Button variant="ghost" small onClick={() => handleReturnBook(i.id)}>Return Book</Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Card>
+        </>
+      )}
+
+      {activeTab === 'reservations' && (
+        <Card pad={false}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--hairline)' }}>
+            <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Library Book Reservations Queue</strong>
+          </div>
+          {reservations === null && <div style={{ padding: 20 }}><SkeletonRows rows={4} /></div>}
+          {reservations !== null && reservations.length === 0 && (
+            <EmptyState title="No active reservations" sub="When students reserve unavailable books, they will appear here in FIFO queue order." />
+          )}
+          {reservations && reservations.length > 0 && (
+            <table className="data-table data-table-cards">
+              <thead>
+                <tr>
+                  <th>Queue #</th>
+                  <th>Book Title</th>
+                  <th>Student</th>
+                  <th>Status</th>
+                  <th>Reserved At</th>
+                  <th>Expires</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reservations.map((r) => (
+                  <tr key={r.id}>
+                    <td data-label="Queue #">
+                      <strong style={{ fontSize: 15, color: r.status === 'READY' ? '#10B981' : 'var(--text-1)' }}>
+                        {r.status === 'READY' ? 'READY (1st)' : `#${r.queuePosition}`}
+                      </strong>
+                    </td>
+                    <td className="cell-primary" data-label="Book Title">
+                      <div style={{ fontWeight: 600 }}>{r.bookTitle}</div>
+                      {r.bookAuthor && <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>{r.bookAuthor}</div>}
+                    </td>
+                    <td data-label="Student">{r.studentName}</td>
+                    <td data-label="Status">
+                      <Pill tone={r.status === 'READY' ? 'green' : r.status === 'PENDING' ? 'amber' : r.status === 'FULFILLED' ? 'blue' : 'gray'}>
+                        {r.status}
+                      </Pill>
+                    </td>
+                    <td data-label="Reserved At">{new Date(r.reservedAt).toLocaleDateString('en-IN')}</td>
+                    <td data-label="Expires">{r.expiresAt ? new Date(r.expiresAt).toLocaleString('en-IN') : '—'}</td>
+                    <td data-label="Action">
+                      {(r.status === 'PENDING' || r.status === 'READY') && (
+                        <Button
+                          variant="ghost"
+                          small
+                          style={{ color: '#DC2626' }}
+                          onClick={() => handleCancelReservationLibrarian(r.id)}
+                        >
+                          Cancel
+                        </Button>
                       )}
                     </td>
                   </tr>

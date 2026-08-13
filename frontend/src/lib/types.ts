@@ -92,7 +92,7 @@ export interface AttendanceRoster {
 export interface MySubmission { status: 'PENDING' | 'SUBMITTED' | 'LATE' | 'GRADED' | 'EXEMPT'; submittedAt: string | null; marks: number | null; feedback: string | null; attachments: string[] }
 export interface AssignmentDto {
   id: string; title: string; description?: string | null; type: string; chapter?: string | null;
-  dueAt: string; maxMarks: number | null; subject: string; subjectId?: string | null; class: string;
+  dueAt: string; maxMarks: number | null; attachments?: string[]; subject: string; subjectId?: string | null; class: string;
   gradeId?: string | null; gradeName?: string | null; sectionId?: string | null; sectionName?: string | null;
   subjectOfferingId?: string | null; submissionCount: number; mySubmission?: MySubmission | null;
 }
@@ -103,6 +103,7 @@ export interface TimetableDto { sectionId: string; slots: TimetableSlotDto[] }
 export interface PerformanceDto {
   student: { name: string; class: string };
   overallAvgPct: number | null;
+  classRank?: { rank: number; totalStudents: number } | null;
   bestSubject: { subject: string; pct: number | null } | null;
   needsSupport: { subject: string; pct: number | null } | null;
   results: Array<{ exam: string; subject: string; marks: number | null; maxMarks: number; pct: number | null }>;
@@ -136,10 +137,28 @@ export interface SubjectAttendanceDto {
 }
 
 // ── Leave applications ──
+export type LeaveType = 'SICK' | 'CASUAL' | 'PERSONAL' | 'DUTY' | 'OTHER';
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export interface LeaveApplicationDto {
-  _id: string; enrollmentId: string; fromDate: string; toDate: string; reason: string;
-  status: LeaveStatus; remarks: string | null; createdAt: string;
+  id?: string;
+  _id?: string;
+  applicantProfileId?: string | null;
+  applicantName?: string | null;
+  applicantRole?: 'STUDENT' | 'TEACHER';
+  enrollmentId?: string | null;
+  studentName?: string | null;
+  class?: string | null;
+  leaveType?: LeaveType;
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  status: LeaveStatus;
+  reviewedByProfileId?: string | null;
+  reviewedByName?: string | null;
+  reviewedAt?: string | null;
+  remarks: string | null;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface InvoiceDto { id: string; invoiceNo: string; studentName: string; class: string | null; status: string; totalPaise: number; paidPaise: number; dueOn: string; sectionId?: string; studentId?: string; createdAt?: string }
@@ -181,7 +200,44 @@ export interface MyBusDto { route: Omit<TransportRouteDto, 'stopCount'>; stop: T
 
 // ── Phase 8: Library ──
 export interface BookDto { id: string; title: string; author: string; isbn: string | null; category: string; totalCopies: number; availableCopies: number }
-export interface BookIssueDto { id: string; bookId: string; bookTitle: string; studentId: string; studentName: string; issuedAt: string; dueAt: string; returnedAt: string | null; status: 'ACTIVE' | 'RETURNED' | 'OVERDUE'; finePaise: number }
+export interface BookIssueDto {
+  id: string;
+  bookId: string;
+  bookTitle: string;
+  studentId: string;
+  studentName: string;
+  issuedAt: string;
+  dueAt: string;
+  returnedAt: string | null;
+  status: 'ACTIVE' | 'RETURNED' | 'OVERDUE' | string;
+  finePaise: number;
+  daysOverdue?: number;
+  lastReminderSentAt?: string | null;
+  reminderCount?: number;
+}
+
+export type BookReservationStatus = 'PENDING' | 'READY' | 'FULFILLED' | 'CANCELLED' | 'EXPIRED';
+
+export interface BookReservationDto {
+  id: string;
+  bookId: string;
+  bookTitle: string;
+  bookAuthor?: string;
+  bookIsbn?: string | null;
+  bookCoverUrl?: string | null;
+  studentId: string;
+  studentName: string;
+  requesterProfileId: string;
+  status: BookReservationStatus;
+  queuePosition: number;
+  reservedAt: string;
+  fulfilledAt?: string | null;
+  cancelledAt?: string | null;
+  expiresAt?: string | null;
+  cancellationReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 // ── Phase 8: Documents ──
 export interface DocumentDto { id: string; title: string; type: string; fileUrl: string; mimeType: string; visibleToRoles: string[]; studentId: string | null; studentName: string | null; academicYearId: string | null; sectionId?: string | null; subjectOfferingId?: string | null; issuedAt: string }
@@ -218,16 +274,30 @@ export interface PaymentReceiptDto {
 
 export interface UserDto {
   id: string;
+  accountId?: string;
   displayName: string;
+  role?: string | null;
   roleKey: RoleKey;
+  roleName?: string | null;
   phone: string;
   email: string | null;
+  status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | string;
+  createdAt?: string;
   studentDetails: {
-    id: string;
+    id?: string;
     admissionNo: string;
     rollNo: number | null;
     class: string | null;
   } | null;
+  profiles?: Array<{
+    profileId: string;
+    displayName: string;
+    avatarUrl?: string | null;
+    status: string;
+    role?: string | null;
+    roleKey?: string | null;
+    roleName?: string | null;
+  }>;
 }
 
 export interface CreateUserDto {
@@ -238,6 +308,14 @@ export interface CreateUserDto {
   password?: string;
   admissionNo?: string;
   sectionId?: string;
+}
+
+export interface UpdateUserDto {
+  displayName?: string;
+  phone?: string;
+  phoneE164?: string;
+  email?: string | null;
+  status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | string;
 }
 
 // ── Uploads ──
@@ -275,7 +353,36 @@ export interface HostelAllocationDto {
   roomId: { _id: string; roomNo: string; block: string; floor?: number | null; type: string } | null;
   studentId: { _id: string; firstName: string; lastName?: string; admissionNo: string; gender?: string } | null;
 }
-export interface HostelSummaryDto { totalRooms: number; totalCapacity: number; occupiedBeds: number; availableBeds: number; occupancyRate: number; hostelInquiries: number; maintenanceRequests: number }
+export interface HostelSummaryDto { totalRooms: number; totalCapacity: number; occupiedBeds: number; availableBeds: number; occupancyRate: number; hostelInquiries: number; maintenanceRequests: number; pendingPasses?: number; overduePasses?: number }
+
+export type HostelPassType = 'DAY_PASS' | 'NIGHT_OUT' | 'WEEKEND_PASS' | 'HOME_LEAVE' | 'EMERGENCY_PASS';
+export type ParentApprovalStatus = 'NOT_REQUIRED' | 'PENDING' | 'APPROVED' | 'REJECTED';
+export type HostelPassStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'OUT' | 'RETURNED' | 'CANCELLED';
+
+export interface HostelPassDto {
+  id: string;
+  studentId: string;
+  studentName: string;
+  admissionNo: string;
+  applicantProfileId: string;
+  passType: HostelPassType;
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  destination: string;
+  emergencyContact: string;
+  parentApprovalStatus: ParentApprovalStatus;
+  parentReviewedAt?: string | null;
+  parentRemarks?: string | null;
+  status: HostelPassStatus;
+  reviewedAt?: string | null;
+  remarks?: string | null;
+  actualExitTime?: string | null;
+  actualReturnTime?: string | null;
+  createdAt: string;
+  isOverdue?: boolean;
+  overdueHours?: number;
+}
 
 // ── RBAC (backend catalog) ──
 export interface PermissionDto { _id: string; key: string; group: string; description: string; isSystem?: boolean }
@@ -481,4 +588,65 @@ export interface AgentReply {
   action: AgentProposedAction | null;
   flagged?: string;
   suggestions?: string[];
+}
+
+export type IncidentType = 'BEHAVIOUR' | 'BULLYING' | 'ATTENDANCE_RELATED' | 'PROPERTY_DAMAGE' | 'SAFETY' | 'OTHER';
+export type IncidentSeverity = 'LOW' | 'MEDIUM' | 'HIGH';
+export type IncidentStatus = 'OPEN' | 'REVIEWED' | 'CLOSED';
+
+export interface IncidentDto {
+  id: string;
+  studentId: string;
+  studentName: string | null;
+  admissionNo: string | null;
+  reportedByProfileId: string;
+  reportedByName: string | null;
+  date: string;
+  type: IncidentType;
+  severity: IncidentSeverity;
+  description: string;
+  actionTaken: string | null;
+  status: IncidentStatus;
+  reviewedByProfileId: string | null;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Parent-Teacher Direct Messaging ──
+export interface PtThreadDto {
+  id: string;
+  studentId: string;
+  studentName: string | null;
+  parentProfileId: string;
+  parentName: string | null;
+  teacherProfileId: string;
+  teacherName: string | null;
+  subject: string | null;
+  lastMessageAt: string | null;
+  lastMessageSnippet: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PtMessageDto {
+  id: string;
+  threadId: string;
+  senderProfileId: string;
+  senderName: string | null;
+  body: string;
+  mine: boolean;
+  createdAt: string;
+}
+
+export interface PtThreadDetailDto {
+  thread: PtThreadDto;
+  messages: PtMessageDto[];
+}
+
+export interface StudentTeacherDto {
+  profileId: string;
+  displayName: string;
+  label: string;
 }

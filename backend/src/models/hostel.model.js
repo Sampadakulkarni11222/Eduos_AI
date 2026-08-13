@@ -45,6 +45,52 @@ const hostelInquirySchema = new Schema(
 );
 hostelInquirySchema.index({ status: 1 });
 
+// ─── HostelPass ─────────────────────────────────────────────
+const hostelPassSchema = new Schema(
+  {
+    studentId: { type: Schema.Types.ObjectId, ref: 'Student', required: true },
+    applicantProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', required: true },
+    passType: {
+      type: String,
+      enum: ['DAY_PASS', 'NIGHT_OUT', 'WEEKEND_PASS', 'HOME_LEAVE', 'EMERGENCY_PASS'],
+      default: 'DAY_PASS',
+    },
+    fromDate: { type: Date, required: true },
+    toDate: { type: Date, required: true },
+    reason: { type: String, required: true, trim: true },
+    destination: { type: String, required: true, trim: true },
+    emergencyContact: { type: String, required: true, trim: true },
+
+    parentApprovalStatus: {
+      type: String,
+      enum: ['NOT_REQUIRED', 'PENDING', 'APPROVED', 'REJECTED'],
+      default: 'PENDING',
+    },
+    parentReviewedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
+    parentReviewedAt: { type: Date, default: null },
+    parentRemarks: { type: String, default: null },
+
+    status: {
+      type: String,
+      enum: ['PENDING', 'APPROVED', 'REJECTED', 'OUT', 'RETURNED', 'CANCELLED'],
+      default: 'PENDING',
+    },
+    reviewedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
+    reviewedAt: { type: Date, default: null },
+    remarks: { type: String, default: null },
+
+    actualExitTime: { type: Date, default: null },
+    actualReturnTime: { type: Date, default: null },
+  },
+  { timestamps: true }
+);
+
+hostelPassSchema.index({ studentId: 1, createdAt: -1 });
+hostelPassSchema.index({ status: 1, createdAt: -1 });
+hostelPassSchema.index({ parentApprovalStatus: 1 });
+hostelPassSchema.index({ fromDate: 1, toDate: 1 });
+
 export const HostelRoom = model('HostelRoom', hostelRoomSchema);
 export const HostelAllocation = model('HostelAllocation', hostelAllocationSchema);
 export const HostelInquiry = model('HostelInquiry', hostelInquirySchema);
+export const HostelPass = model('HostelPass', hostelPassSchema);

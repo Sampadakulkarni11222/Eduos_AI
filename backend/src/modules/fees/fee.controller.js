@@ -57,8 +57,9 @@ export const getInvoicePdf = asyncHandler(async (req, res) => {
 
 export const getReceiptPdf = asyncHandler(async (req, res) => {
   const receipt = await service.getPaymentReceipt(req.actor, req.scope, req.params.id);
+  const safeReceiptNo = String(receipt.receiptNo || req.params.id).replace(/[^\x00-\x7F]/g, '-');
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="Receipt-${receipt.receiptNo}.pdf"`);
+  res.setHeader('Content-Disposition', `inline; filename="Receipt-${safeReceiptNo}.pdf"`);
   renderReceiptPdf(res, receipt);
 });
 

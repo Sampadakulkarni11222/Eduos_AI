@@ -34,5 +34,7 @@ const notificationSchema = new Schema(
 notificationSchema.index({ recipientProfileId: 1, createdAt: -1 });
 // The bell-count query: this recipient's unread rows.
 notificationSchema.index({ recipientProfileId: 1, readAt: 1 });
+// Anti-duplicate lookup query for attendance notifications
+notificationSchema.index({ recipientProfileId: 1, type: 1, 'meta.enrollmentId': 1, 'meta.date': 1, 'meta.periodNo': 1 });
 
 export const Notification = model('Notification', notificationSchema);
