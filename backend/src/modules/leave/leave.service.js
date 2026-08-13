@@ -1,6 +1,28 @@
 import { LeaveApplication } from '../../models/leaveApplication.model.js';
+import { TeacherLeave } from '../../models/teacherLeave.model.js';
 import { Student, Enrollment } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
+
+/** Roles treated as staff — they use TeacherLeave instead of LeaveApplication. */
+const STAFF_ROLES = new Set(['TEACHER', 'LIBRARIAN', 'WARDEN', 'FINANCE', 'PRINCIPAL']);
+
+function _formatTeacherLeave(leave) {
+  return {
+    _id: leave._id.toString(),
+    id: leave._id.toString(),
+    profileId: leave.profileId?.toString() ?? null,
+    applicantName: leave.applicantName,
+    role: leave.role,
+    fromDate: leave.fromDate,
+    toDate: leave.toDate,
+    reason: leave.reason,
+    leaveType: leave.leaveType,
+    status: leave.status,
+    remarks: leave.remarks ?? null,
+    reviewedAt: leave.reviewedAt ?? null,
+    createdAt: leave.createdAt,
+  };
+}
 
 /**
  * Parses a calendar date to UTC midnight, ignoring any time or offset supplied.
@@ -35,7 +57,7 @@ async function resolveOwnActiveEnrollmentId(actor) {
   return enrollment._id.toString();
 }
 
-export async function apply(actor, { fromDate, toDate, reason }) {
+export async function apply(actor, { fromDate, toDate, reason, leaveType }) {
   if (!fromDate || !toDate) throw new AppError('fromDate and toDate are required', 400);
   if (!reason || !reason.trim()) throw new AppError('reason is required', 400);
 
@@ -46,6 +68,21 @@ export async function apply(actor, { fromDate, toDate, reason }) {
   const to = toUtcMidnight(toDate);
   if (!from || !to) throw new AppError('Invalid date format — use YYYY-MM-DD', 400);
   if (to < from) throw new AppError('toDate cannot be before fromDate', 400);
+
+  // Staff roles (teachers, librarians, etc.) don't have an enrollment record.
+  // They use TeacherLeave keyed by profileId instead.
+  if (STAFF_ROLES.has(actor.roleKey)) {
+    const leave = await TeacherLeave.create({
+      profileId: actor.profileId,
+      applicantName: actor.displayName ?? actor.email ?? 'Staff',
+      role: actor.roleKey,
+      fromDate: from,
+      toDate: to,
+      reason: reason.trim(),
+      leaveType: leaveType ?? 'CASUAL',
+    });
+    return _formatTeacherLeave(leave);
+  }
 
   const enrollmentId = await resolveOwnActiveEnrollmentId(actor);
 
@@ -60,6 +97,13 @@ export async function apply(actor, { fromDate, toDate, reason }) {
 }
 
 export async function listMine(actor) {
+  if (STAFF_ROLES.has(actor.roleKey)) {
+    const leaves = await TeacherLeave.find({ profileId: actor.profileId })
+      .sort({ createdAt: -1 })
+      .lean();
+    return leaves.map(_formatTeacherLeave);
+  }
+
   const enrollmentId = await resolveOwnActiveEnrollmentId(actor);
   return LeaveApplication.find({ enrollmentId }).sort({ createdAt: -1 }).lean();
 }
@@ -141,4 +185,42 @@ export async function review(id, { status, remarks, reviewerProfileId }) {
     reviewedAt: application.reviewedAt,
     createdAt: application.createdAt,
   };
+}
+
+/**
+ * List all staff (teacher) leave applications — for admin/principal review.
+ */
+export async function listAllStaff({ status } = {}) {
+  const filter = {};
+  if (status) filter.status = status;
+
+  const leaves = await TeacherLeave.find(filter)
+    .sort({ createdAt: -1 })
+    .limit(500)
+    .lean();
+
+  return leaves.map(_formatTeacherLeave);
+}
+
+/**
+ * Approve or reject a staff leave application.
+ * Only ADMIN / PRINCIPAL can call this (via leave.review permission).
+ */
+export async function reviewStaff(id, { status, remarks, reviewerProfileId }) {
+  if (!['APPROVED', 'REJECTED'].includes(status)) {
+    throw new AppError('status must be APPROVED or REJECTED', 400);
+  }
+  const leave = await TeacherLeave.findById(id);
+  if (!leave) throw new AppError('Staff leave application not found', 404);
+  if (leave.status !== 'PENDING') {
+    throw new AppError(`Application is already ${leave.status.toLowerCase()}`, 409);
+  }
+
+  leave.status = status;
+  leave.remarks = remarks?.trim() ?? null;
+  leave.reviewedByProfileId = reviewerProfileId ?? null;
+  leave.reviewedAt = new Date();
+  await leave.save();
+
+  return _formatTeacherLeave(leave);
 }

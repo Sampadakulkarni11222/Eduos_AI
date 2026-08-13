@@ -66,6 +66,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Attendance', '☱', '/admin/attendance', { ready: true }),
         item('Calendar & Events', '▤', '/admin/calendar', { ready: true }),
         item('Timetable Builder', '▥', '/admin/timetable', { ready: true }),
+        item('Staff Leave', '✓', '/admin/leave', { ready: true }),
       ]},
       { title: 'FINANCE', items: [ item('Payments & Fees', '₹', '/admin/payments', { ready: true }) ]},
       { title: 'COMMUNICATION', items: [
@@ -100,6 +101,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Parent Queries', '✉', '/teacher/tickets', { ready: true }),
       ]},
       { title: 'STUDENTS', items: [ item('Medical Records', '✚', '/teacher/medical', { ready: true }) ]},
+      { title: 'MY ACCOUNT', items: [ item('Leave Applications', '✓', '/teacher/leave', { ready: true }) ]},
     ],
   },
   parent: {
@@ -147,6 +149,7 @@ export const PORTALS: Record<string, Portal> = {
       { title: 'SCHOOL LIFE', items: [
         item('Calendar & Events', '▤', '/student/calendar', { ready: true }),
         item('Announcements', '◍', '/student/announcements', { ready: true }),
+        item('Leave Applications', '✓', '/student/leave', { ready: true }),
         item('Library', '▢', '/student/library', { ready: true }),
         item('Transport', '⛒', '/student/transport', { ready: true }),
         item('Documents', '🗎', '/student/documents', { ready: true }),
@@ -173,6 +176,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Fee Health', '₹', '/principal/fees', { ready: true }),
       ]},
       { title: 'PEOPLE', items: [ item('Staff Directory', '◇', '/principal/staff', { ready: true }) ]},
+      { title: 'STAFF OPS', items: [ item('Staff Leave', '✓', '/principal/leave', { ready: true }) ]},
       { title: 'COMMUNICATION', items: [
         item('Announcements', '◉', '/principal/announcements', { ready: true }),
         item('Escalated Tickets', '✉', '/principal/tickets', { ready: true }),

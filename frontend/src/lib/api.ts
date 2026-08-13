@@ -4,7 +4,7 @@
  * Production hardening (Phase 7): move refresh into an httpOnly cookie
  * behind a BFF route handler so it never touches JS-readable storage.
  */
-import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, SchoolSettingsDto } from './types';
+import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, TeacherLeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, SchoolSettingsDto } from './types';
 
 // Backend URL – default to localhost:5000. Can be overridden via NEXT_PUBLIC_BACKEND_URL.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
@@ -294,7 +294,7 @@ export const api = {
     request<AttendanceTrendPointDto[]>(`/attendance/trend?enrollmentId=${enrollmentId}&months=${months}`),
 
   // ── leave ──
-  applyLeave: (body: { fromDate: string; toDate: string; reason: string }) =>
+  applyLeave: (body: { fromDate: string; toDate: string; reason: string; leaveType?: string }) =>
     request<LeaveApplicationDto>('/leave/apply', { method: 'POST', body: JSON.stringify(body) }),
   myLeaveApplications: () => request<LeaveApplicationDto[]>('/leave/mine'),
   allLeaveApplications: (status?: string) => {
@@ -303,6 +303,13 @@ export const api = {
   },
   reviewLeave: (id: string, body: { status: 'APPROVED' | 'REJECTED'; remarks?: string }) =>
     request<LeaveApplicationDto>(`/leave/${id}/review`, { method: 'PATCH', body: JSON.stringify(body) }),
+  // staff leave (teachers, etc.)
+  staffLeaveApplications: (status?: string) => {
+    const qs = status ? `?status=${status}` : '';
+    return request<TeacherLeaveApplicationDto[]>(`/leave/staff/all${qs}`);
+  },
+  reviewStaffLeave: (id: string, body: { status: 'APPROVED' | 'REJECTED'; remarks?: string }) =>
+    request<TeacherLeaveApplicationDto>(`/leave/staff/${id}/review`, { method: 'PATCH', body: JSON.stringify(body) }),
 
   // ── timetable ──
   timetable: (sectionId: string) => request<TimetableDto>(`/timetable?sectionId=${sectionId}`),
