@@ -303,7 +303,11 @@ export async function getInstructionFile(actor, scope, assignmentId, attachmentI
     }
   }
 
-  const idx = parseInt(attachmentIndex, 10) || 0;
+  const idxStr = String(attachmentIndex ?? 0);
+  if (!/^\d+$/.test(idxStr)) {
+    throw new AppError('Invalid attachment index', 400);
+  }
+  const idx = parseInt(idxStr, 10);
   const attachments = assignment.attachments ?? [];
   if (idx < 0 || idx >= attachments.length || !attachments[idx]) {
     throw new AppError('Instruction attachment not found', 404);
