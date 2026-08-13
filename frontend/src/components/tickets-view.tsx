@@ -8,20 +8,6 @@ const STATUS_TONE: Record<string, 'green' | 'amber' | 'red' | 'gray' | 'blue'> =
   NEW: 'blue', OPEN: 'amber', WAITING: 'gray', RESOLVED: 'green', CLOSED: 'gray',
 };
 
-const PRIORITY_COLOR: Record<string, string> = {
-  HIGH: 'var(--red)', MEDIUM: 'var(--amber)', LOW: 'var(--green)',
-};
-function PriorityDot({ priority }: { priority?: string | null }) {
-  const p = (priority || 'NONE').toUpperCase();
-  const color = PRIORITY_COLOR[p] ?? '#ccc';
-  return (
-    <span
-      style={{ width: 7, height: 7, borderRadius: '50%', background: color, display: 'inline-block', flexShrink: 0, marginRight: 6 }}
-      title={`Priority: ${p.toLowerCase()}`}
-    />
-  );
-}
-
 export function TicketsView({ canCreate, canRespond }: { canCreate: boolean; canRespond: boolean }) {
   const [items, setItems] = useState<TicketDto[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -40,18 +26,14 @@ export function TicketsView({ canCreate, canRespond }: { canCreate: boolean; can
           <Card pad={false}>
             {items.map((t, i) => (
               <button key={t.id} onClick={() => setOpenId(t.id)}
-                style={{ width: '100%', textAlign: 'left', background: openId === t.id ? 'var(--panel-bg)' : 'transparent', border: 'none', borderTop: i ? '1px solid var(--hairline)' : 'none', padding: '12px 18px', cursor: 'pointer' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                    <PriorityDot priority={t.priority} />
-                    <span style={{ fontWeight: 600, color: 'var(--text-1)', fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.subject}</span>
-                  </span>
+                style={{ width: '100%', textAlign: 'left', background: openId === t.id ? 'var(--panel-bg)' : 'transparent', border: 'none', borderTop: i ? '1px solid var(--hairline)' : 'none', padding: '14px 18px', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--text-1)', fontSize: 13.5 }}>{t.subject}</span>
                   <Pill tone={STATUS_TONE[t.status] ?? 'gray'}>{t.status.toLowerCase()}</Pill>
                 </div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 3 }}>
-                  {t.raisedBy && t.raisedBy !== 'Unknown' ? t.raisedBy : (t.routedToRoleKey ? t.routedToRoleKey.replace('_', ' ').toLowerCase() : 'Support request')}
-                  {t.studentName ? ` · Re: ${t.studentName}` : ''}
-                  {' · '}{t.messageCount} msg{t.messageCount === 1 ? '' : 's'}
+                  {t.studentName ? `Re: ${t.studentName} · ` : ''}
+                  {t.routedToRoleKey ? `Routed to ${t.routedToRoleKey.replace('_', ' ').toLowerCase()}` : ''} · {t.messageCount} message{t.messageCount === 1 ? '' : 's'}
                 </div>
               </button>
             ))}

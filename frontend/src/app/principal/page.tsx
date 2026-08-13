@@ -57,7 +57,7 @@ export default function PrincipalDashboard() {
         />
         <StatCard
           label="Risk Categories"
-          value={scan ? new Set(scan.items.map((it) => it.type)).size : '—'}
+          value={scan ? Object.keys(scan.counts).length : '—'}
           delta="academic · attendance · fees · dropout"
           deltaDir="flat"
         />
