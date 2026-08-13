@@ -1,8 +1,13 @@
+import { existsSync } from 'fs';
+import { resolve, basename, relative, isAbsolute } from 'path';
 import { Assignment, Submission } from '../../models/assignment.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { SubjectOffering } from '../../models/academics.model.js';
 import { getTeacherSectionIds, getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
 import { Enrollment } from '../../models/student.model.js';
+import { env } from '../../config/env.js';
+
+const uploadDir = resolve(process.cwd(), env.UPLOAD_DIR);
 
 /** Resolve the ACTIVE enrollment ids for the actor's own student(s). */
 async function getOwnEnrollmentIds(actor) {
@@ -262,3 +267,73 @@ export async function listSubmissions(actor, scope, assignmentId) {
       .sort((a, b) => (a.rollNo ?? 999) - (b.rollNo ?? 999)),
   };
 }
+
+/**
+ * Resolves an assignment's instruction attachment file for an actor,
+ * re-checking permissions and section enrollment (IDOR protection).
+ */
+export async function getInstructionFile(actor, scope, assignmentId, attachmentIndex = 0) {
+  const assignment = await Assignment.findOne({ _id: assignmentId, deletedAt: null }).populate({
+    path: 'subjectOfferingId',
+    select: 'sectionId teacherId',
+  });
+  if (!assignment) throw new AppError('Assignment not found', 404);
+
+  const offering = assignment.subjectOfferingId;
+  const sectionId = offering?.sectionId?.toString();
+
+  // Scope & Authorization checks
+  if (scope === 'OWN' && actor.roleKey === 'TEACHER') {
+    const mySections = await getTeacherSectionIds(actor.profileId);
+    const isTeacherOfOffering = String(offering?.teacherId ?? '') === String(actor.profileId);
+    if (!isTeacherOfOffering && (!sectionId || !mySections.includes(sectionId))) {
+      throw new AppError('You do not have access to this assignment', 403);
+    }
+  }
+
+  if (scope === 'OWN' && (actor.roleKey === 'STUDENT' || actor.roleKey === 'PARENT')) {
+    const ownEnrollmentIds = await getOwnEnrollmentIds(actor);
+    if (ownEnrollmentIds.length === 0) {
+      throw new AppError('You do not have access to this assignment', 403);
+    }
+    const enrollments = await Enrollment.find({ _id: { $in: ownEnrollmentIds } }).select('sectionId');
+    const mySectionIds = enrollments.map((e) => e.sectionId?.toString()).filter(Boolean);
+    if (!sectionId || !mySectionIds.includes(sectionId)) {
+      throw new AppError('You do not have access to this assignment', 403);
+    }
+  }
+
+  const idx = parseInt(attachmentIndex, 10) || 0;
+  const attachments = assignment.attachments ?? [];
+  if (idx < 0 || idx >= attachments.length || !attachments[idx]) {
+    throw new AppError('Instruction attachment not found', 404);
+  }
+
+  const attachmentUrl = attachments[idx];
+  if (/^https?:\/\//i.test(attachmentUrl)) {
+    return { external: attachmentUrl };
+  }
+
+  const cleanPath = attachmentUrl.replace(/^\/?uploads\//, '');
+  const safeFilename = basename(cleanPath);
+  const absolutePath = resolve(uploadDir, safeFilename);
+
+  // Path containment & traversal check
+  const relativePath = relative(uploadDir, absolutePath);
+  if (
+    relativePath.startsWith('..') ||
+    isAbsolute(relativePath)
+  ) {
+    throw new AppError('Invalid file path', 400);
+  }
+
+  if (!existsSync(absolutePath)) {
+    throw new AppError('This instruction file is no longer available on storage.', 404, [], 'FILE_NOT_FOUND');
+  }
+
+  return {
+    absolutePath,
+    filename: safeFilename,
+  };
+}
+

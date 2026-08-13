@@ -85,9 +85,13 @@ export default function StudentAssignments() {
                 <div>{a.title}</div>
                 {a.attachments && a.attachments.length > 0 && (
                   <div style={{ marginTop: 2 }}>
-                    <a href={fileHref(a.attachments[0])} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
+                    <button
+                      type="button"
+                      onClick={() => void api.openAssignmentInstruction(a.id)}
+                      style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: 'var(--accent)', fontWeight: 600, cursor: 'pointer' }}
+                    >
                       📄 Instructions
-                    </a>
+                    </button>
                   </div>
                 )}
               </td>

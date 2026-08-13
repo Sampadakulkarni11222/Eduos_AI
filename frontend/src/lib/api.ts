@@ -327,6 +327,8 @@ export const api = {
     request<{ status: string }>('/assignments/grade', { method: 'POST', body: JSON.stringify(body) }),
   assignmentSubmissions: (assignmentId: string) =>
     request<SubmissionRoster>(`/assignments/${assignmentId}/submissions`),
+  openAssignmentInstruction: (assignmentId: string, index = 0) =>
+    openProtectedFile(`/assignments/${assignmentId}/instruction/${index}`),
 
   // ── exams / performance ──
   performance: (enrollmentId: string) => request<PerformanceDto>(`/exams/performance?enrollmentId=${enrollmentId}`),

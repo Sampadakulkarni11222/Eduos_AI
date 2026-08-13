@@ -90,6 +90,7 @@ import { rateLimiter } from './middleware/rateLimiter.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { sendError } from './utils/response.js';
 import apiRoutes from './routes/index.js';
+import { Assignment, Submission } from './models/assignment.model.js';
 
 const app = express();
 
@@ -122,10 +123,38 @@ app.use(express.static(join(__dirname, '..', 'public')));
 // listed explicitly rather than by a `image/*` prefix. SVG is NOT among them —
 // it is an XML document that can execute script, and serving one inline
 // cross-origin is exactly the hole the rules above exist to close.
+
 const INLINE_IMAGE_TYPES = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.ico', '.pdf']);
 
 app.use(
   '/uploads',
+  async (req, res, next) => {
+    try {
+      const cleanPath = req.path.replace(/^\//, '');
+      if (cleanPath) {
+        const fileVariants = [
+          req.path,
+          `/uploads/${cleanPath}`,
+          `uploads/${cleanPath}`,
+          cleanPath,
+        ];
+        const isAssignmentFile = await Assignment.exists({ attachments: { $in: fileVariants } });
+
+        if (isAssignmentFile) {
+          return sendError(
+            res,
+            'Access denied. Assignment instruction files are protected and cannot be accessed directly via public uploads.',
+            403,
+            [],
+            'ASSIGNMENT_FILE_PROTECTED'
+          );
+        }
+      }
+    } catch {
+      // Continue if DB check fails
+    }
+    next();
+  },
   (req, res, next) => {
     const ext = extname(req.path).toLowerCase();
     const isSafeImage = INLINE_IMAGE_TYPES.has(ext);
