@@ -1,10 +1,10 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { Avatar } from '@/components/ui';
-import { portalForRole, ROLE_TO_SLUG, type Portal, type NavGroup } from '@/lib/portals';
+import { portalForRole, ROLE_TO_SLUG, type Portal } from '@/lib/portals';
 import type { RoleKey } from '@/lib/types';
 import { Spinner, cx } from './ui';
 import { usePermissions, getRequiredPermission } from '@/lib/permissions';
@@ -89,7 +89,7 @@ export function PortalShell({
             </div>
             <div className="topbar-ask" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <NotificationBell portalSlug={expectedSlug} />
-              <AskEduOS label="Ask Agent" title="Ask the EduOS AI assistant for insights, data summaries, or contextual help about students and school operations" />
+              <AskEduOS label="Ask Agent" />
             </div>
           </div>
           {topbar.actions && <div className="topbar-actions">{topbar.actions}</div>}
@@ -117,8 +117,6 @@ export function PortalShell({
   );
 }
 
-const MINI_KEY = 'sidebar.mini';
-
 function Sidebar({
   portal,
   schoolName,
@@ -134,63 +132,8 @@ function Sidebar({
   const { me } = useAuth();
   const { hasAccess } = usePermissions();
 
-  // ── Mini sidebar (icon-only) ──────────────────────────────────────────
-  const [mini, setMini] = useState(false);
-  // Read persisted preference on mount (client-only)
-  useEffect(() => {
-    try {
-      setMini(localStorage.getItem(MINI_KEY) === '1');
-    } catch {}
-  }, []);
-  const toggleMini = () => {
-    setMini((v) => {
-      const next = !v;
-      try { localStorage.setItem(MINI_KEY, next ? '1' : '0'); } catch {}
-      return next;
-    });
-  };
-
-  // ── Collapsible groups ────────────────────────────────────────────────
-  // Determine which group title contains the currently active route.
-  const activeGroupTitle = portal.nav.find((g) =>
-    g.items.some((it) => it.href === pathname)
-  )?.title ?? null;
-
-  // Start with all groups collapsed except the active one.
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
-    const s = new Set<string>();
-    portal.nav.forEach((g) => {
-      if (g.title !== activeGroupTitle) s.add(g.title);
-    });
-    return s;
-  });
-
-  // When the active route changes (navigation), always ensure its group is open.
-  const prevActive = useRef(activeGroupTitle);
-  useEffect(() => {
-    if (activeGroupTitle && activeGroupTitle !== prevActive.current) {
-      setCollapsed((prev) => {
-        const next = new Set(prev);
-        next.delete(activeGroupTitle);
-        return next;
-      });
-      prevActive.current = activeGroupTitle;
-    }
-  }, [activeGroupTitle]);
-
-  const toggleGroup = (title: string) => {
-    // Never collapse the group that contains the current page.
-    if (title === activeGroupTitle) return;
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(title)) next.delete(title);
-      else next.add(title);
-      return next;
-    });
-  };
-
   return (
-    <aside className={cx('sidebar', mobileOpen && 'mobile-open', mini && 'sidebar-mini')}>
+    <aside className={cx('sidebar', mobileOpen && 'mobile-open')}>
       <div className="sidebar-brand">
         <div className="sidebar-logo">O</div>
         <div className="sidebar-school">
@@ -211,84 +154,43 @@ function Sidebar({
 
           if (visibleItems.length === 0) return null;
 
-          const isCollapsed = collapsed.has(group.title) && !mini;
-          const isActive = group.title === activeGroupTitle;
-          // Approximate max-height for smooth animation: 56px per item
-          const maxH = visibleItems.length * 56;
-
           return (
             <div className="nav-group" key={group.title}>
-              {/* Group header — acts as collapse toggle */}
-              <div
-                className="nav-group-header"
-                onClick={() => toggleGroup(group.title)}
-                role="button"
-                aria-expanded={!isCollapsed}
-                tabIndex={mini ? -1 : 0}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleGroup(group.title); } }}
-                style={{ cursor: isActive ? 'default' : 'pointer' }}
-              >
-                <span className="nav-group-label">{group.title}</span>
-                {!mini && (
-                  <span
-                    className={cx('nav-group-chevron', isCollapsed ? 'closed' : 'open')}
-                    aria-hidden
-                  >▾</span>
-                )}
-              </div>
-
-              {/* Collapsible items wrapper */}
-              <div
-                className={cx('nav-group-items', isCollapsed && 'collapsed')}
-                style={{ maxHeight: isCollapsed ? 0 : maxH }}
-              >
-                {visibleItems.map((it) => {
-                  const isActiveItem = pathname === it.href;
-                  const content = (
-                    <>
-                      <span className="nav-icon" aria-hidden>{it.icon}</span>
-                      <span className="nav-label">{it.label}</span>
-                      {it.badge && <span className="nav-badge">{it.badge}</span>}
-                    </>
-                  );
-                  return it.ready ? (
-                    <Link
-                      key={it.href}
-                      href={it.href}
-                      className={cx('nav-item', isActiveItem && 'active')}
-                      aria-current={isActiveItem ? 'page' : undefined}
-                      onClick={() => setMobileOpen(false)}
-                      data-label={it.label}
-                    >
-                      {content}
-                    </Link>
-                  ) : (
-                    <span key={it.href} className="nav-item not-ready" data-label={it.label}>
-                      <span className="nav-icon" aria-hidden>{it.icon}</span>
-                      <span className="nav-label">{it.label}</span>
-                      <span className="nav-soon">Soon</span>
-                    </span>
-                  );
-                })}
-              </div>
+              <div className="nav-group-label">{group.title}</div>
+              {visibleItems.map((it) => {
+                const isActive = pathname === it.href;
+                const content = (
+                  <>
+                    <span className="nav-icon" aria-hidden>{it.icon}</span>
+                    <span className="nav-label">{it.label}</span>
+                    {it.badge && <span className="nav-badge">{it.badge}</span>}
+                  </>
+                );
+                return it.ready ? (
+                  <Link
+                    key={it.href}
+                    href={it.href}
+                    className={cx('nav-item', isActive && 'active')}
+                    aria-current={isActive ? 'page' : undefined}
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    {content}
+                  </Link>
+                ) : (
+                  // Not a link and not focusable: there is nowhere to go yet.
+                  // The "soon" chip replaces a title tooltip that keyboard and
+                  // touch users could never see.
+                  <span key={it.href} className="nav-item not-ready">
+                    <span className="nav-icon" aria-hidden>{it.icon}</span>
+                    <span className="nav-label">{it.label}</span>
+                    <span className="nav-soon">Soon</span>
+                  </span>
+                );
+              })}
             </div>
           );
         })}
       </nav>
-
-      {/* Mini-sidebar toggle */}
-      <div style={{ padding: mini ? '0 7px 6px' : '0 12px 6px' }}>
-        <button
-          className="sidebar-mini-btn"
-          onClick={toggleMini}
-          title={mini ? 'Expand sidebar' : 'Collapse sidebar'}
-          aria-label={mini ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          <span style={{ fontSize: 14, marginRight: mini ? 0 : 6 }}>{mini ? '→' : '←'}</span>
-          <span className="btn-label">{mini ? '' : 'Collapse'}</span>
-        </button>
-      </div>
-
       <RoleSwitcher />
     </aside>
   );
@@ -312,7 +214,7 @@ function RoleSwitcher() {
       </div>
       <button className="logout-btn" onClick={() => void signOut()}>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        <span>Logout</span>
+        Logout
       </button>
     </div>
   );

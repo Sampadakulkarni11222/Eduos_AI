@@ -4,7 +4,6 @@ import { PortalShell } from '@/components/shell';
 import { Card, EmptyState, SkeletonRows, Button, useToast } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { AuditLogDto } from '@/lib/types';
-import { humanAuditLabel } from '@/lib/audit-labels';
 
 export default function OwnerAudit() {
   const [logs, setLogs] = useState<AuditLogDto[] | null>(null);
@@ -69,7 +68,7 @@ export default function OwnerAudit() {
               <tbody>
                 {logs.map((log) => (
                   <tr key={log.id}>
-                    <td className="cell-primary" style={{ fontWeight: 600 }} data-label="Action">{humanAuditLabel(log.action)}</td>
+                    <td className="cell-primary" style={{ fontWeight: 600 }} data-label="Action">{log.action}</td>
                     <td data-label="Target Entity">{log.entityType ?? '—'}</td>
                     <td style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--text-faint)' }} data-label="Target ID">{log.entityId ?? '—'}</td>
                     <td data-label="Actor">{log.actorName ?? 'System'}</td>
