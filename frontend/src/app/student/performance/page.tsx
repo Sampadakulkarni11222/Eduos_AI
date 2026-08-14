@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Card, EmptyState, SkeletonRows, StatCard } from '@/components/ui';
 import { ReportCardView } from '@/components/report-card-view';
-import { MarksTrendChart } from '@/components/marks-trend-chart';
 import { api } from '@/lib/api';
 import type { PerformanceDto, StudentListItem } from '@/lib/types';
 
@@ -39,19 +38,10 @@ export default function StudentPerformance() {
 
       {!loading && perf && perf.results.length > 0 && (
         <>
-          <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
+          <div className="card-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 18 }}>
             <StatCard label="Overall average" value={perf.overallAvgPct != null ? `${perf.overallAvgPct}%` : '—'} />
-            <StatCard label="Class rank" value={perf.classRank ? `#${perf.classRank.rank} of ${perf.classRank.totalStudents}` : '—'} />
             <StatCard label="Best subject" value={perf.bestSubject?.subject ?? '—'} delta={perf.bestSubject?.pct != null ? `${perf.bestSubject.pct}%` : undefined} deltaDir="up" />
             <StatCard label="Needs support" value={perf.needsSupport?.subject ?? '—'} delta={perf.needsSupport?.pct != null ? `${perf.needsSupport.pct}%` : undefined} deltaDir="down" />
-          </div>
-          <div style={{ marginBottom: 18 }}>
-            <Card>
-              <div style={{ paddingBottom: 12, marginBottom: 12, borderBottom: '1px solid var(--hairline)' }}>
-                <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Performance Trend Across Exams</strong>
-              </div>
-              <MarksTrendChart results={perf.results} />
-            </Card>
           </div>
           <div style={{ marginBottom: 18 }}>
             <ReportCardView />

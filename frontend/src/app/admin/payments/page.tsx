@@ -55,17 +55,16 @@ export default function AdminPayments() {
 
   const studentsInSection = students.filter((s) => s.enrollment?.sectionId === filterSectionId);
 
-  // Filter invoices by selected Student, Section, or Grade if set; otherwise show all invoices
-  const filteredInvoices = (invoices ?? []).filter((i) => {
-    if (filterStudentId) return i.studentId === filterStudentId;
-    if (filterSectionId) return i.sectionId === filterSectionId;
-    return true;
-  });
+  // Invoices tab shows nothing until a specific student is picked — no
+  // browsing the full unfiltered list.
+  const filteredInvoices = filterStudentId
+    ? (invoices ?? []).filter((i) => i.studentId === filterStudentId)
+    : [];
 
   const { me } = useAuth();
   const { hasAccess } = usePermissions();
-  const canCreate = hasAccess(me?.profile?.role, 'fees.manage');
-  const canRecord = hasAccess(me?.profile?.role, 'fees.pay') || hasAccess(me?.profile?.role, 'fees.manage');
+  const canCreate = hasAccess(me?.profile?.role, 'create_invoice');
+  const canRecord = hasAccess(me?.profile?.role, 'record_payment');
 
   return (
     <PortalShell expectedSlug="admin" topbar={{
@@ -130,10 +129,13 @@ export default function AdminPayments() {
           </div>
 
           {invoices === null && <Card><SkeletonRows rows={5} /></Card>}
-          {invoices !== null && filteredInvoices.length === 0 && (
-            <EmptyState title="No invoices found" sub="No fee invoices match your selection. Click '+ Create Invoice' to raise one." />
+          {invoices !== null && !filterStudentId && (
+            <EmptyState title="Select a grade, section, and student" sub="Choose a student above to view their fee invoices and payment status." />
           )}
-          {invoices !== null && filteredInvoices.length > 0 && (
+          {invoices !== null && filterStudentId && filteredInvoices.length === 0 && (
+            <EmptyState title="No invoices for this student" sub="This student has no fee invoices yet. Click '+ Create Invoice' to raise one." />
+          )}
+          {invoices !== null && filterStudentId && filteredInvoices.length > 0 && (
             <Card pad={false}>
               <table className="data-table data-table-cards">
                 <thead><tr><th>Invoice</th><th>Student</th><th>Class</th><th>Total</th><th>Paid</th><th>Due On</th><th>Status</th><th></th></tr></thead>
@@ -147,14 +149,7 @@ export default function AdminPayments() {
                       <td data-label="Paid">{rupees(i.paidPaise)}</td>
                       <td data-label="Due On">{i.dueOn}</td>
                       <td data-label="Status"><Pill tone={STATUS_TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
-                      <td data-label="Actions">
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && (
-                            <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>
-                          )}
-                          <Button small variant="ghost" onClick={() => api.downloadInvoicePdf(i.id).catch(() => toast('Could not open invoice PDF.', 'error'))}>Invoice PDF</Button>
-                        </div>
-                      </td>
+                      <td data-label="Actions">{i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -183,7 +178,6 @@ export default function AdminPayments() {
                     <th>Mode</th>
                     <th>Status</th>
                     <th>Date</th>
-                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -197,9 +191,6 @@ export default function AdminPayments() {
                       <td data-label="Mode"><Pill tone="blue">{r.mode}</Pill></td>
                       <td data-label="Status"><Pill tone={r.status === 'SUCCESS' ? 'green' : 'gray'}>{r.status}</Pill></td>
                       <td style={{ color: 'var(--text-faint)' }} data-label="Date">{new Date(r.createdAt).toLocaleDateString('en-IN')}</td>
-                      <td data-label="Actions">
-                        <Button small variant="ghost" onClick={() => api.downloadReceiptPdf(r.id).catch(() => toast('Could not open receipt PDF.', 'error'))}>Receipt PDF</Button>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -342,8 +333,10 @@ function CreateInvoiceModal({
     if (!dueOn) return setErr('Please set a due date.');
     setBusy(true); setErr(null);
     try {
+      const invoiceNo = `INV-${Date.now()}`;
       await api.createInvoice({
         enrollmentId,
+        invoiceNo,
         dueOn: new Date(dueOn).toISOString(),
         lines: [{ description: feeDesc, amountPaise: Math.round(parseFloat(amount) * 100), concessionPaise: 0 }],
       });

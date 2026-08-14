@@ -4,7 +4,7 @@
  * Production hardening (Phase 7): move refresh into an httpOnly cookie
  * behind a BFF route handler so it never touches JS-readable storage.
  */
-import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, BookReservationDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UpdateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, HostelPassDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, IncidentDto, PtThreadDto, PtMessageDto, PtThreadDetailDto, StudentTeacherDto } from './types';
+import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto } from './types';
 
 // Backend URL – default to localhost:5000. Can be overridden via NEXT_PUBLIC_BACKEND_URL.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
@@ -218,8 +218,6 @@ export const api = {
   },
   createUser: (body: CreateUserDto) =>
     request<UserDto>('/users', { method: 'POST', body: JSON.stringify(body) }),
-  updateUser: (id: string, body: UpdateUserDto) =>
-    request<UserDto>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   bulkCreateUsers: (file: File) => uploadCsv('/users/bulk', file),
 
 
@@ -298,18 +296,9 @@ export const api = {
     request<SubjectAttendanceDto>(`/attendance/subject-wise?enrollmentId=${enrollmentId}&month=${month}`),
 
   // ── leave ──
-  applyLeave: (body: { leaveType?: string; fromDate: string; toDate: string; reason: string }) =>
+  applyLeave: (body: { fromDate: string; toDate: string; reason: string }) =>
     request<LeaveApplicationDto>('/leave/apply', { method: 'POST', body: JSON.stringify(body) }),
   myLeaveApplications: () => request<LeaveApplicationDto[]>('/leave/mine'),
-  listLeaveApplications: (params?: { status?: string; role?: string }) => {
-    const q = new URLSearchParams();
-    if (params?.status) q.set('status', params.status);
-    if (params?.role) q.set('role', params.role);
-    const qs = q.toString();
-    return request<LeaveApplicationDto[]>(`/leave${qs ? `?${qs}` : ''}`);
-  },
-  reviewLeaveApplication: (id: string, body: { status: 'APPROVED' | 'REJECTED'; remarks?: string }) =>
-    request<LeaveApplicationDto>(`/leave/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
   // ── timetable ──
   timetable: (sectionId: string) => request<TimetableDto>(`/timetable?sectionId=${sectionId}`),
@@ -319,7 +308,7 @@ export const api = {
   // ── assignments ──
   assignments: (offeringId?: string) =>
     request<AssignmentDto[]>(`/assignments${offeringId ? `?offeringId=${offeringId}` : ''}`),
-  createAssignment: (body: { subjectOfferingId: string; title: string; type?: string; chapter?: string; dueAt: string; maxMarks?: number; description?: string; attachments?: string[] }) =>
+  createAssignment: (body: { subjectOfferingId: string; title: string; type?: string; chapter?: string; dueAt: string; maxMarks?: number; description?: string }) =>
     request<{ id: string; seededSubmissions: number }>('/assignments', { method: 'POST', body: JSON.stringify(body) }),
   submitAssignment: (body: { assignmentId: string; attachments?: string[] }) =>
     request<{ status: string; submittedAt: string }>('/assignments/submit', { method: 'POST', body: JSON.stringify(body) }),
@@ -327,8 +316,6 @@ export const api = {
     request<{ status: string }>('/assignments/grade', { method: 'POST', body: JSON.stringify(body) }),
   assignmentSubmissions: (assignmentId: string) =>
     request<SubmissionRoster>(`/assignments/${assignmentId}/submissions`),
-  openAssignmentInstruction: (assignmentId: string, index = 0) =>
-    openProtectedFile(`/assignments/${assignmentId}/instruction/${index}`),
 
   // ── exams / performance ──
   performance: (enrollmentId: string) => request<PerformanceDto>(`/exams/performance?enrollmentId=${enrollmentId}`),
@@ -348,7 +335,7 @@ export const api = {
   // ── fees ──
   invoices: (status?: string) => request<InvoiceDto[]>(`/fees/invoices${status ? `?status=${status}` : ''}`),
   invoiceDetail: (id: string) => request<InvoiceDetailDto>(`/fees/invoices/${id}`),
-  createInvoice: (body: { enrollmentId: string; invoiceNo?: string; dueOn: string; lines: { description: string; amountPaise: number; concessionPaise?: number }[] }) =>
+  createInvoice: (body: { enrollmentId: string; invoiceNo: string; dueOn: string; lines: { description: string; amountPaise: number; concessionPaise?: number }[] }) =>
     request<{ id: string }>('/fees/invoices', { method: 'POST', body: JSON.stringify(body) }),
   bulkCreateInvoices: (file: File) => uploadCsv('/fees/invoices/bulk', file),
   listEnrollments: (studentId?: string) => {
@@ -513,9 +500,6 @@ export const api = {
   // ── library (Phase 8) ──
   listBooks: (search?: string) => request<BookDto[]>(`/library/books${search ? `?search=${encodeURIComponent(search)}` : ''}`),
   listIssued: (studentId?: string) => request<BookIssueDto[]>(`/library/issues${studentId ? `?studentId=${studentId}` : ''}`),
-  listOverdueIssues: () => request<BookIssueDto[]>('/library/issues/overdue'),
-  processLibraryReminders: () =>
-    request<{ processed: number; remindersSent: number }>('/library/reminders/process', { method: 'POST' }),
   createBook: (body: { title: string; author: string; isbn?: string; category: string; totalCopies?: number }) =>
     request<{ id: string }>('/library/books', { method: 'POST', body: JSON.stringify(body) }),
   bulkCreateBooks: (file: File) => uploadCsv('/library/books/bulk', file),
@@ -524,22 +508,6 @@ export const api = {
   bulkIssueBooks: (file: File) => uploadCsv('/library/issues/bulk', file),
   returnBook: (issueId: string) =>
     request<BookIssueDto>(`/library/issues/${issueId}/return`, { method: 'PATCH' }),
-  createBookReservation: (bookId: string) =>
-    request<BookReservationDto>('/library/reservations', { method: 'POST', body: JSON.stringify({ bookId }) }),
-  listMyBookReservations: () =>
-    request<BookReservationDto[]>('/library/reservations/mine'),
-  listBookReservations: (params?: { bookId?: string; studentId?: string; status?: string }) => {
-    const q = new URLSearchParams();
-    if (params?.bookId) q.set('bookId', params.bookId);
-    if (params?.studentId) q.set('studentId', params.studentId);
-    if (params?.status) q.set('status', params.status);
-    const str = q.toString();
-    return request<BookReservationDto[]>(`/library/reservations${str ? `?${str}` : ''}`);
-  },
-  cancelBookReservation: (id: string, reason?: string) =>
-    request<BookReservationDto>(`/library/reservations/${id}/cancel`, { method: 'PATCH', body: JSON.stringify({ reason }) }),
-  fulfillBookReservation: (id: string) =>
-    request<BookReservationDto>(`/library/reservations/${id}/fulfill`, { method: 'PATCH' }),
 
   // ── documents (Phase 8) ──
   listDocuments: (studentId?: string) => request<DocumentDto[]>(`/documents${studentId ? `?studentId=${studentId}` : ''}`),
@@ -571,24 +539,6 @@ export const api = {
   vacateHostelRoom: (allocationId: string) =>
     request<HostelAllocationDto>(`/hostel/allocations/${allocationId}/vacate`, { method: 'PATCH' }),
   hostelStudents: () => request<HostelAllocationDto[]>('/hostel/students'),
-  applyHostelPass: (body: { studentId?: string; passType?: string; fromDate: string; toDate: string; reason: string; destination: string; emergencyContact: string }) =>
-    request<HostelPassDto>('/hostel/passes/apply', { method: 'POST', body: JSON.stringify(body) }),
-  listMyHostelPasses: () => request<HostelPassDto[]>('/hostel/passes/mine'),
-  listHostelPasses: (params?: { status?: string; passType?: string; studentId?: string; parentApprovalStatus?: string }) => {
-    const query = new URLSearchParams();
-    if (params?.status) query.set('status', params.status);
-    if (params?.passType) query.set('passType', params.passType);
-    if (params?.studentId) query.set('studentId', params.studentId);
-    if (params?.parentApprovalStatus) query.set('parentApprovalStatus', params.parentApprovalStatus);
-    const qStr = query.toString();
-    return request<HostelPassDto[]>(`/hostel/passes${qStr ? `?${qStr}` : ''}`);
-  },
-  parentReviewHostelPass: (id: string, body: { status: 'APPROVED' | 'REJECTED'; remarks?: string }) =>
-    request<HostelPassDto>(`/hostel/passes/${id}/parent-review`, { method: 'PATCH', body: JSON.stringify(body) }),
-  wardenReviewHostelPass: (id: string, body: { status: 'APPROVED' | 'REJECTED'; remarks?: string }) =>
-    request<HostelPassDto>(`/hostel/passes/${id}/review`, { method: 'PATCH', body: JSON.stringify(body) }),
-  recordHostelMovement: (id: string, body: { action: 'EXIT' | 'ENTRY' }) =>
-    request<HostelPassDto>(`/hostel/passes/${id}/movement`, { method: 'PATCH', body: JSON.stringify(body) }),
 
   // ── role dashboards (single scoped fetch per portal home) ──
   adminDashboard: () => request<AdminDashboardDto>('/dashboard/admin'),
@@ -621,32 +571,4 @@ export const api = {
     request<RoleDto>(`/roles/${roleId}/permissions`, { method: 'POST', body: JSON.stringify(body) }),
   revokeRolePermission: (roleId: string, key: string) =>
     request<RoleDto>(`/roles/${roleId}/permissions/${encodeURIComponent(key)}`, { method: 'DELETE' }),
-
-  // ── Incidents / disciplinary reports ──
-  listIncidents: (params?: { studentId?: string; status?: string }) => {
-    const qs = new URLSearchParams();
-    if (params?.studentId) qs.set('studentId', params.studentId);
-    if (params?.status) qs.set('status', params.status);
-    const query = qs.toString();
-    return request<IncidentDto[]>(`/incidents${query ? `?${query}` : ''}`);
-  },
-  createIncident: (body: {
-    studentId: string;
-    date: string;
-    type: string;
-    severity: string;
-    description: string;
-    actionTaken?: string;
-  }) => request<IncidentDto>('/incidents', { method: 'POST', body: JSON.stringify(body) }),
-  updateIncident: (id: string, body: { status?: string; actionTaken?: string }) =>
-    request<IncidentDto>(`/incidents/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-
-  // ── Parent-Teacher Direct Messaging ──
-  ptListThreads: () => request<PtThreadDto[]>('/pt-messages/threads'),
-  ptStudentTeachers: (studentId: string) => request<StudentTeacherDto[]>(`/pt-messages/student-teachers/${studentId}`),
-  ptStartThread: (body: { studentId: string; teacherProfileId?: string; subject?: string }) =>
-    request<PtThreadDto>('/pt-messages/threads', { method: 'POST', body: JSON.stringify(body) }),
-  ptGetThread: (id: string) => request<PtThreadDetailDto>(`/pt-messages/threads/${id}`),
-  ptSendMessage: (body: { threadId: string; body: string }) =>
-    request<PtMessageDto>('/pt-messages/send', { method: 'POST', body: JSON.stringify(body) }),
 };

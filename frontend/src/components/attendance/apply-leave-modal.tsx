@@ -3,13 +3,11 @@ import { useState } from 'react';
 import { Button, useToast } from '../ui';
 import { api } from '@/lib/api';
 import { toISODate } from '@/lib/timetable-dates';
-import type { LeaveType } from '@/lib/types';
 
 export function ApplyLeaveModal({ onClose, onApplied }: { onClose: () => void; onApplied: () => void }) {
   const today = toISODate(new Date());
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);
-  const [leaveType, setLeaveType] = useState<LeaveType>('CASUAL');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const toast = useToast();
@@ -22,7 +20,7 @@ export function ApplyLeaveModal({ onClose, onApplied }: { onClose: () => void; o
     }
     setBusy(true);
     try {
-      await api.applyLeave({ leaveType, fromDate, toDate, reason: reason.trim() });
+      await api.applyLeave({ fromDate, toDate, reason: reason.trim() });
       toast('Leave application submitted.', 'success');
       onApplied();
     } catch (err: any) {
@@ -40,15 +38,6 @@ export function ApplyLeaveModal({ onClose, onApplied }: { onClose: () => void; o
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <form onSubmit={handleSubmit}>
-          <div className="field-label">Leave Type *</div>
-          <select className="field-input" value={leaveType} onChange={(e) => setLeaveType(e.target.value as LeaveType)}>
-            <option value="CASUAL">Casual Leave</option>
-            <option value="SICK">Sick Leave</option>
-            <option value="PERSONAL">Personal Leave</option>
-            <option value="DUTY">Duty Leave</option>
-            <option value="OTHER">Other</option>
-          </select>
-
           <div style={{ display: 'flex', gap: 12 }}>
             <div style={{ flex: 1 }}>
               <div className="field-label">From Date *</div>

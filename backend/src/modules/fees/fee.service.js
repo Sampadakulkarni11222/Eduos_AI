@@ -14,7 +14,6 @@ import {
   verifyCheckoutSignature,
 } from '../../providers/payment.provider.js';
 import { logger } from '../../utils/logger.js';
-import { getNextInvoiceNumber } from '../../utils/sequence.js';
 
 export const createFeeHead = (data) => FeeHead.create(data);
 export const createFeeStructure = (data) => FeeStructure.create(data);
@@ -112,6 +111,7 @@ export async function generateInvoices({ academicYearId, gradeId = null, dueOn, 
 
     const invoice = await createInvoice({
       enrollmentId: enrollment._id,
+      invoiceNo: `INV-${stamp}-${result.generated}`,
       dueOn: invoiceDueOn,
       lines,
     });
@@ -233,10 +233,8 @@ export async function createInvoice({ enrollmentId, invoiceNo, dueOn, lines }) {
   const enrollment = await Enrollment.findById(enrollmentId);
   if (!enrollment) throw new AppError('Enrollment not found', 404);
 
-  const finalInvoiceNo = invoiceNo?.trim() || (await getNextInvoiceNumber());
-
   const totalPaise = lines.reduce((sum, l) => sum + l.amountPaise - (l.concessionPaise ?? 0), 0);
-  const invoice = await Invoice.create({ enrollmentId, invoiceNo: finalInvoiceNo, dueOn, totalPaise });
+  const invoice = await Invoice.create({ enrollmentId, invoiceNo, dueOn, totalPaise });
   await InvoiceLine.insertMany(lines.map((l) => ({ ...l, invoiceId: invoice._id })));
   return invoice;
 }
@@ -293,7 +291,7 @@ export async function bulkCreateInvoices(rows) {
       continue;
     }
 
-    const invoiceNo = row.invoiceno?.trim() || undefined;
+    const invoiceNo = row.invoiceno?.trim() || `INV-${Date.now()}-${rowNo}`;
 
     try {
       await createInvoice({
@@ -726,7 +724,7 @@ export async function getPaymentReceipt(actor, scope, paymentId) {
   const student = enrollment?.studentId;
   const section = enrollment?.sectionId;
   return {
-    receiptNo: payment.receiptNo ?? 'N-A',
+    receiptNo: payment.receiptNo ?? '—',
     invoiceNo: inv?.invoiceNo ?? '—',
     studentName: student ? `${student.firstName} ${student.lastName ?? ''}`.trim() : '—',
     class: section ? [section.gradeId?.name, section.name].filter(Boolean).join(' - ') : '—',

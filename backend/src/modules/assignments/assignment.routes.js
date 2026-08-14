@@ -85,26 +85,4 @@ router.post('/submit', requirePermission('submissions.submit'), controller.submi
  */
 router.get('/:id/submissions', requirePermission('submissions.grade'), controller.listSubmissions);
 
-/**
- * @swagger
- * /assignments/{id}/instruction:
- *   get:
- *     summary: Download/view an assignment instruction file (auth & role/class scoped)
- *     tags: [Assignments]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Instruction file content
- *       403:
- *         description: Access denied to this assignment
- *       404:
- *         description: Assignment or attachment not found
- */
-router.get('/:id/instruction', requirePermission('assignments.read'), controller.getInstructionFile);
-router.get('/:id/instruction/:attachmentIndex', requirePermission('assignments.read'), controller.getInstructionFile);
-
 export default router;

@@ -251,50 +251,9 @@ export async function getPerformance(actor, scope, { enrollmentId }) {
 
   const overallAvgPct = validResultsCount > 0 ? Math.round(totalPct / validResultsCount) : null;
 
-  let classRank = null;
-  const sectionId = enrollment.sectionId?._id;
-  if (sectionId) {
-    const sectionEnrollments = await Enrollment.find({ sectionId, status: 'ACTIVE' }).select('_id').lean();
-    const enrollmentIds = sectionEnrollments.map((e) => e._id);
-    const allSectionMarks = await Mark.find({ enrollmentId: { $in: enrollmentIds }, status: 'PUBLISHED' })
-      .populate({ path: 'examSubjectId', select: 'maxMarks' })
-      .lean();
-
-    const studentStats = {};
-    for (const m of allSectionMarks) {
-      if (!m.examSubjectId) continue;
-      const eid = m.enrollmentId.toString();
-      if (!studentStats[eid]) {
-        studentStats[eid] = { totalPct: 0, count: 0 };
-      }
-      const maxMarks = m.examSubjectId.maxMarks || 100;
-      if (m.marks !== null && m.marks !== undefined) {
-        const pct = (m.marks / maxMarks) * 100;
-        studentStats[eid].totalPct += pct;
-        studentStats[eid].count += 1;
-      }
-    }
-
-    const studentAverages = Object.entries(studentStats)
-      .filter(([_, stats]) => stats.count > 0)
-      .map(([eid, stats]) => ({
-        enrollmentId: eid,
-        avgPct: Math.round((stats.totalPct / stats.count) * 100) / 100,
-      }));
-
-    studentAverages.sort((a, b) => b.avgPct - a.avgPct);
-
-    const targetAvgObj = studentAverages.find((s) => s.enrollmentId === targetEnrollmentId.toString());
-    if (targetAvgObj) {
-      const rank = studentAverages.findIndex((s) => s.avgPct === targetAvgObj.avgPct) + 1;
-      classRank = { rank, totalStudents: sectionEnrollments.length };
-    }
-  }
-
   return {
     student: { name: studentName, class: className },
     overallAvgPct,
-    classRank,
     bestSubject,
     needsSupport,
     results,

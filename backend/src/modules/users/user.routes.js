@@ -76,7 +76,7 @@ router.post('/bulk', requirePermission('users.manage'), csvUploadSingle('file'),
  *       200:
  *         description: User fetched
  *   patch:
- *     summary: Update user account details or status (activate / deactivate / suspend)
+ *     summary: Update account status (activate / deactivate / suspend)
  *     tags: [Users]
  *     parameters:
  *       - in: path
@@ -91,9 +91,6 @@ router.post('/bulk', requirePermission('users.manage'), csvUploadSingle('file'),
  *           schema:
  *             type: object
  *             properties:
- *               displayName: { type: string, example: "John Doe" }
- *               phone: { type: string, example: "+919555000111" }
- *               email: { type: string, example: "john@example.com" }
  *               status: { type: string, enum: [ACTIVE, INACTIVE, SUSPENDED] }
  *     responses:
  *       200:
