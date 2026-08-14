@@ -132,6 +132,7 @@ export const SYSTEM_ROLES = [
       ['attendance.read', 'ALL'],
       ['attendance.regularize', 'ALL'],
       ['leave.read', 'ALL'],
+      ['leave.review', 'ALL'],
       ['assignments.read', 'ALL'],
       ['marks.read', 'ALL'],
       ['marks.publish', 'ALL'],

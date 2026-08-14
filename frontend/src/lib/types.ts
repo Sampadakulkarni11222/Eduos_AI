@@ -137,6 +137,8 @@ export interface SubjectAttendanceDto {
 
 // ── Leave applications ──
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type LeaveType = 'CASUAL' | 'SICK' | 'EARNED' | 'OTHER';
+
 export interface LeaveApplicationDto {
   _id: string;
   id: string;
@@ -150,6 +152,22 @@ export interface LeaveApplicationDto {
   status: LeaveStatus;
   remarks: string | null;
   reviewedAt?: string | null;
+  createdAt: string;
+}
+
+export interface TeacherLeaveApplicationDto {
+  _id: string;
+  id: string;
+  profileId: string | null;
+  applicantName: string;
+  role: string;
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  leaveType: LeaveType;
+  status: LeaveStatus;
+  remarks: string | null;
+  reviewedAt: string | null;
   createdAt: string;
 }
 
