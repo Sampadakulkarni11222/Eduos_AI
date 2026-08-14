@@ -1,4 +1,4 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
 import * as controller from './leave.controller.js';
@@ -10,14 +10,14 @@ router.use(authenticate);
  * @swagger
  * tags:
  *   name: Leave
- *   description: Student leave applications and warden/admin review
+ *   description: Student and Teacher leave applications
  */
 
 /**
  * @swagger
  * /leave/apply:
  *   post:
- *     summary: Apply for a leave of absence (own enrollment)
+ *     summary: Apply for a leave of absence
  *     tags: [Leave]
  *     responses:
  *       201:
@@ -39,88 +39,37 @@ router.get('/mine', requirePermission('leave.read'), controller.listMine);
 
 /**
  * @swagger
- * /leave/staff/all:
+ * /leave:
  *   get:
- *     summary: List ALL staff leave applications (admin / principal)
+ *     summary: List all leave applications for review
  *     tags: [Leave]
- *     parameters:
- *       - in: query
- *         name: status
- *         schema: { type: string, enum: [PENDING, APPROVED, REJECTED] }
  *     responses:
  *       200:
- *         description: All staff leave applications
+ *         description: Leave applications fetched
  */
-router.get('/staff/all', requirePermission('leave.review'), controller.listAllStaff);
+router.get('/', requirePermission('leave.manage'), controller.listAll);
 
 /**
  * @swagger
- * /leave/staff/{id}/review:
+ * /leave/{id}:
  *   patch:
- *     summary: Approve or reject a staff leave application
+ *     summary: Approve or reject a leave application
  *     tags: [Leave]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [status]
- *             properties:
- *               status: { type: string, enum: [APPROVED, REJECTED] }
- *               remarks: { type: string }
- *     responses:
- *       200:
- *         description: Staff leave application reviewed
- */
-router.patch('/staff/:id/review', requirePermission('leave.review'), controller.reviewStaff);
-
-/**
- * @swagger
- * /leave/all:
- *   get:
- *     summary: List ALL student leave applications (warden / admin)
- *     tags: [Leave]
- *     parameters:
- *       - in: query
- *         name: status
- *         schema: { type: string, enum: [PENDING, APPROVED, REJECTED] }
- *     responses:
- *       200:
- *         description: All leave applications
- */
-router.get('/all', requirePermission('leave.review'), controller.listAll);
-
-/**
- * @swagger
- * /leave/{id}/review:
- *   patch:
- *     summary: Approve or reject a student leave application
- *     tags: [Leave]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [status]
- *             properties:
- *               status: { type: string, enum: [APPROVED, REJECTED] }
- *               remarks: { type: string }
  *     responses:
  *       200:
  *         description: Leave application reviewed
  */
-router.patch('/:id/review', requirePermission('leave.review'), controller.review);
+router.patch('/:id', requirePermission('leave.manage'), controller.review);
 
+/**
+ * @swagger
+ * /leave/{id}/review:
+ *   post:
+ *     summary: Approve or reject a student leave application
+ *     tags: [Leave]
+ *     responses:
+ *       200:
+ *         description: Leave application status updated
+ */
+router.post('/:id/review', requirePermission('leave.manage'), controller.review);
 export default router;

@@ -1,4 +1,4 @@
-﻿import { asyncHandler } from '../../utils/asyncHandler.js';
+import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
 import * as service from './leave.service.js';
 
@@ -11,35 +11,12 @@ export const listMine = asyncHandler(async (req, res) => {
   const applications = await service.listMine(req.actor);
   sendSuccess(res, applications, 'Leave applications fetched');
 });
-
-/** List ALL student leave applications ΓÇö for warden / admin. */
 export const listAll = asyncHandler(async (req, res) => {
-  const { status } = req.query;
-  const applications = await service.listAll({ status });
+  const applications = await service.listAll(req.actor, req.scope, req.query);
   sendSuccess(res, applications, 'Leave applications fetched');
 });
 
-/** Approve or reject a student leave application. */
 export const review = asyncHandler(async (req, res) => {
-  const updated = await service.review(req.params.id, {
-    ...req.body,
-    reviewerProfileId: req.actor.profileId,
-  });
-  sendSuccess(res, updated, 'Leave application reviewed');
-});
-
-/** List ALL staff leave applications ΓÇö for admin / principal. */
-export const listAllStaff = asyncHandler(async (req, res) => {
-  const { status } = req.query;
-  const applications = await service.listAllStaff({ status });
-  sendSuccess(res, applications, 'Staff leave applications fetched');
-});
-
-/** Approve or reject a staff leave application. */
-export const reviewStaff = asyncHandler(async (req, res) => {
-  const updated = await service.reviewStaff(req.params.id, {
-    ...req.body,
-    reviewerProfileId: req.actor.profileId,
-  });
-  sendSuccess(res, updated, 'Staff leave application reviewed');
+  const application = await service.review(req.actor, req.params.id, req.body);
+  sendSuccess(res, application, `Leave application ${req.body.status?.toLowerCase() ?? 'updated'}`);
 });

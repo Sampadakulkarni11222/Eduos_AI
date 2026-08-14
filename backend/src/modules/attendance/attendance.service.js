@@ -1,4 +1,4 @@
-﻿import mongoose from 'mongoose';
+import mongoose from 'mongoose';
 import { AttendanceRecord } from '../../models/attendanceRecord.model.js';
 import { Enrollment, StudentGuardian } from '../../models/student.model.js';
 import { Section } from '../../models/academics.model.js';
@@ -32,7 +32,7 @@ async function assertTeacherOwnsSection(actor, scope, sectionId) {
  * Roster for a section on a date, optionally for one timetabled period.
  *
  * `periodNo` null means whole-day attendance, which is all this used to
- * support ΓÇö the roster hardcoded `periodNo: null`, so even though marking
+ * support — the roster hardcoded `periodNo: null`, so even though marking
  * accepted a period, there was no way to read one back and no way for a
  * teacher to mark one. That is why every attendance record in the system is
  * day-level, and in turn why per-subject attendance could only ever be
@@ -119,7 +119,7 @@ export async function markAttendance(actor, { date, periodNo = null, records, en
   const items = records || entries || [];
   if (items.length === 0) throw new AppError('No attendance records provided', 400);
 
-  // Every enrollmentId must actually belong to the authorized sectionId ΓÇö
+  // Every enrollmentId must actually belong to the authorized sectionId —
   // otherwise a caller could smuggle in enrollmentIds from other sections.
   const requestedIds = [...new Set(items.map((i) => i.enrollmentId?.toString()))];
   const validEnrollments = await Enrollment.find({ _id: { $in: requestedIds }, sectionId }).select('_id');
@@ -215,7 +215,7 @@ async function processAbsentNotifications(items, day, periodNo, sectionId) {
         }).lean();
 
         if (existingNotif) {
-          // Already notified this guardian for this absence event ΓÇö skip duplicate!
+          // Already notified this guardian for this absence event — skip duplicate!
           continue;
         }
 
@@ -348,7 +348,7 @@ async function ownEnrollmentIds(actor) {
  * This used to begin `if (enrollmentId) return [enrollmentId]`, which meant a
  * caller-supplied id skipped every ownership check below it. Any signed-in
  * student could read another child's attendance summary, calendar, trend and
- * per-subject breakdown by passing their enrollment id ΓÇö the response even
+ * per-subject breakdown by passing their enrollment id — the response even
  * echoed the id back, confirming it had queried the other record. Enrollment
  * ids are handed out freely elsewhere in the API, so this needed no guessing.
  *
@@ -411,7 +411,7 @@ export async function getSummary(actor, scope, { enrollmentId, from, to, month }
   }
 
   // Flat object (with pctPresent) whenever the query resolves to exactly one
-  // enrollment ΓÇö not only when the caller named it explicitly.
+  // enrollment — not only when the caller named it explicitly.
   //
   // A student asking "what's my attendance percentage?" passes no
   // enrollmentId, so this used to fall through to the keyed map below, and
@@ -449,16 +449,16 @@ export async function getSummary(actor, scope, { enrollmentId, from, to, month }
  *
  * Two sources, and the difference is reported rather than hidden:
  *
- *   PERIOD ΓÇö a record carries a periodNo, so the timetable says exactly which
+ *   PERIOD — a record carries a periodNo, so the timetable says exactly which
  *     subject that period was. This is a true per-subject figure.
- *   DAY    ΓÇö the record is day-level (periodNo null), the only kind this
+ *   DAY    — the record is day-level (periodNo null), the only kind this
  *     deployment currently captures. The day's status is attributed to each
  *     subject scheduled that weekday.
  *
  * The DAY case is why every subject used to read 75%: when a subject is on the
  * timetable every weekday, its denominator is every marked day, so it restates
  * the overall percentage. That is now visible in `basis` and `derived` instead
- * of being presented as a per-subject fact ΓÇö and subjects that are NOT
+ * of being presented as a per-subject fact — and subjects that are NOT
  * scheduled daily now differ, because each is counted only on the days it is
  * actually taught.
  */
@@ -481,7 +481,7 @@ export async function getSubjectWiseSummary(actor, scope, { enrollmentId, month,
     populate: { path: 'subjectId', select: 'name' },
   });
 
-  // (dayOfWeek, periodNo) ΓåÆ offering, plus which subjects run on each weekday.
+  // (dayOfWeek, periodNo) → offering, plus which subjects run on each weekday.
   const byDowPeriod = new Map();
   const subjectsByDow = new Map();
   for (const slot of slots) {
@@ -501,7 +501,7 @@ export async function getSubjectWiseSummary(actor, scope, { enrollmentId, month,
   }
   const records = await AttendanceRecord.find(match).select('date periodNo status').lean();
 
-  const buckets = new Map(); // offeringId ΓåÆ tally
+  const buckets = new Map(); // offeringId → tally
   const tallyFor = (offering) => {
     const key = String(offering._id);
     if (!buckets.has(key)) {
@@ -558,10 +558,10 @@ export async function getSubjectWiseSummary(actor, scope, { enrollmentId, month,
   };
 }
 
-/** Resolve a single enrollmentId for actor-scoped endpoints (calendar/trend) ΓÇö the
+/** Resolve a single enrollmentId for actor-scoped endpoints (calendar/trend) — the
  * student/parent's own record when none is given explicitly. */
 async function resolveSingleEnrollmentId(actor, scope, enrollmentId) {
-  // Goes through the same ownership check rather than trusting the id ΓÇö this
+  // Goes through the same ownership check rather than trusting the id — this
   // is the resolver behind the calendar, trend and subject-wise endpoints, and
   // it previously returned whatever id it was handed.
   const ids = await resolveSummaryEnrollmentIds(actor, scope, enrollmentId);
@@ -596,7 +596,7 @@ export async function getTrend(actor, scope, { enrollmentId, months }) {
   const targetId = await resolveSingleEnrollmentId(actor, scope, enrollmentId);
   const n = Math.min(Math.max(parseInt(months, 10) || 6, 1), 12);
 
-  // Local Y/M feed Date.UTC ΓÇö matching parseDateToMidnight's convention (a stored
+  // Local Y/M feed Date.UTC — matching parseDateToMidnight's convention (a stored
   // UTC-midnight Date represents an abstract calendar day, not a real UTC instant).
   // Using getUTC* on `now` here would drift "current month" by the server's UTC offset.
   const now = new Date();

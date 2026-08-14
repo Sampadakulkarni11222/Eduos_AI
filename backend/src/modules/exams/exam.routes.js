@@ -172,29 +172,4 @@ router.post('/marks', requirePermission('marks.enter'), controller.enterMarks);
  */
 router.post('/publish', requirePermission('marks.publish'), controller.publishMarks);
 
-/**
- * @swagger
- * /exams/unpublish:
- *   post:
- *     summary: Revert published marks back to DRAFT (corrections)
- *     description: >
- *       Sets all PUBLISHED marks for the exam subject back to DRAFT so the
- *       teacher can correct a data-entry mistake. A fresh publish will
- *       re-notify students and guardians.
- *     tags: [Exams]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [examSubjectId]
- *             properties:
- *               examSubjectId: { type: string }
- *     responses:
- *       200:
- *         description: Marks reverted to DRAFT
- */
-router.post('/unpublish', requirePermission('marks.publish'), controller.unpublishMarks);
-
 export default router;

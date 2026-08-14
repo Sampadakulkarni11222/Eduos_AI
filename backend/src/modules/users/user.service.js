@@ -1,4 +1,4 @@
-﻿import { Account } from '../../models/account.model.js';
+import { Account } from '../../models/account.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { Student, Enrollment } from '../../models/student.model.js';
 import { AcademicYear, Section } from '../../models/academics.model.js';
@@ -90,7 +90,7 @@ export async function listUsers({ search, status, roleKey } = {}) {
       status: acc.status,
       createdAt: acc.createdAt,
       profiles: accountProfiles,
-      // convenience fields ΓÇö use the first (primary) profile
+      // convenience fields — use the first (primary) profile
       displayName: primaryProfile?.displayName ?? null,
       role: primaryProfile?.role ?? null,
       roleKey: primaryProfile?.roleKey ?? null,
@@ -228,7 +228,7 @@ export async function createUser(data) {
 /**
  * Bulk-creates users from parsed CSV rows. Each row is processed through the
  * same createUser() path (so duplicate-phone/email, section validation, etc.
- * all behave identically to the single-user form) ΓÇö errors from one row
+ * all behave identically to the single-user form) — errors from one row
  * don't stop the rest of the batch.
  */
 export async function bulkCreateUsers(rows) {

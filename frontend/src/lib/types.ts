@@ -1,4 +1,4 @@
-﻿export type RoleKey =
+export type RoleKey =
   | 'OWNER' | 'ADMIN' | 'PRINCIPAL' | 'TEACHER' | 'PARENT'
   | 'STUDENT' | 'FINANCE' | 'LIBRARIAN' | 'WARDEN';
 
@@ -70,7 +70,7 @@ export interface GradeDto { id: string; name: string; level: number }
 export interface SubjectDto { id: string; name: string; code?: string | null }
 export interface TermDto { id: string; academicYearId: string; name: string; startsOn: string; endsOn: string }
 
-// Actual shape of GET /users (account + nested profiles) ΓÇö distinct from the
+// Actual shape of GET /users (account + nested profiles) — distinct from the
 // flattened UserDto below, which some pages construct client-side.
 export interface StaffAccountDto {
   accountId: string;
@@ -114,13 +114,13 @@ export interface MarkRow { enrollmentId: string; rollNo: number | null; studentN
 export interface MarksGrid { examSubject: { id: string; examName: string; subject: string; class: string; maxMarks: number }; rows: MarkRow[] }
 export interface CalendarEventDto { id: string; title: string; description: string | null; type: string; startsAt: string; endsAt: string }
 
-// ΓöÇΓöÇ Attendance calendar & trend ΓöÇΓöÇ
+// ── Attendance calendar & trend ──
 export interface AttendanceDayDto { date: string; status: AttStatus }
 export interface AttendanceCalendarDto { enrollmentId: string; month: string; days: AttendanceDayDto[] }
 export interface AttendanceTrendPointDto { month: string; pctPresent: number; presentDays: number; workingDays: number }
 
 /**
- * `basis` says where these numbers come from ΓÇö PERIOD is a true per-subject
+ * `basis` says where these numbers come from — PERIOD is a true per-subject
  * figure; DAY means the day's status was attributed to each subject timetabled
  * that day, so subjects taught daily will legitimately read alike.
  */
@@ -136,7 +136,7 @@ export interface SubjectAttendanceDto {
   subjects: SubjectAttendanceRow[];
 }
 
-// ΓöÇΓöÇ Leave applications ΓöÇΓöÇ
+// ── Leave applications ──
 export type LeaveType = 'SICK' | 'CASUAL' | 'PERSONAL' | 'DUTY' | 'OTHER';
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export interface LeaveApplicationDto {
@@ -159,21 +159,6 @@ export interface LeaveApplicationDto {
   remarks: string | null;
   createdAt: string;
   updatedAt?: string;
-}
-export interface TeacherLeaveApplicationDto {
-  _id: string;
-  id: string;
-  profileId: string | null;
-  applicantName: string;
-  role: string;
-  fromDate: string;
-  toDate: string;
-  reason: string;
-  leaveType: LeaveType;
-  status: LeaveStatus;
-  remarks: string | null;
-  reviewedAt: string | null;
-  createdAt: string;
 }
 
 export interface InvoiceDto { id: string; invoiceNo: string; studentName: string; class: string | null; status: string; totalPaise: number; paidPaise: number; dueOn: string; sectionId?: string; studentId?: string; createdAt?: string }
@@ -201,19 +186,19 @@ export interface WaSimReply { reply: string; buttons: Array<{ id: string; title:
 
 /**
  * `enabled: false` carries a `reason` (disabled, no number configured, or the
- * caller is staff) and no link ΓÇö the client hides the entry point rather than
+ * caller is staff) and no link — the client hides the entry point rather than
  * rendering a button that cannot work.
  */
 export type WhatsappAssistantLink =
   | { enabled: true; phone: string; message: string; url: string }
   | { enabled: false; reason: string };
 
-// ΓöÇΓöÇ Phase 8: Transport ΓöÇΓöÇ
+// ── Phase 8: Transport ──
 export interface TransportRouteDto { id: string; name: string; operatorName: string | null; vehicleNo: string | null; driverName: string | null; driverPhone: string | null; status: string; stopCount: number }
 export interface TransportStopDto { id: string; routeId: string; name: string; sequenceNo: number; etaMinutesFromStart: number }
 export interface MyBusDto { route: Omit<TransportRouteDto, 'stopCount'>; stop: TransportStopDto; direction: string; nextEta: string | null }
 
-// ΓöÇΓöÇ Phase 8: Library ΓöÇΓöÇ
+// ── Phase 8: Library ──
 export interface BookDto { id: string; title: string; author: string; isbn: string | null; category: string; totalCopies: number; availableCopies: number }
 export interface BookIssueDto {
   id: string;
@@ -254,7 +239,7 @@ export interface BookReservationDto {
   updatedAt: string;
 }
 
-// ΓöÇΓöÇ Phase 8: Documents ΓöÇΓöÇ
+// ── Phase 8: Documents ──
 export interface DocumentDto { id: string; title: string; type: string; fileUrl: string; mimeType: string; visibleToRoles: string[]; studentId: string | null; studentName: string | null; academicYearId: string | null; sectionId?: string | null; subjectOfferingId?: string | null; issuedAt: string }
 
 export interface AuditLogDto {
@@ -333,22 +318,22 @@ export interface UpdateUserDto {
   status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | string;
 }
 
-// ΓöÇΓöÇ Uploads ΓöÇΓöÇ
+// ── Uploads ──
 export interface UploadResult { fileUrl: string; filename: string; size: number; mimeType: string }
 
-// ΓöÇΓöÇ Bulk CSV import (leads / enrollments / attendance) ΓöÇΓöÇ
+// ── Bulk CSV import (leads / enrollments / attendance) ──
 export interface BulkImportResult {
   imported: number;
   failed: number;
   errors: { row: number; error: string }[];
 }
 
-// ΓöÇΓöÇ Online payments ΓöÇΓöÇ
+// ── Online payments ──
 /**
  * Result of POST /fees/pay.
  *
  * A real gateway cannot capture from the server, so it answers with an order
- * for the browser to complete (`requiresClientAction: true`) and no receipt ΓÇö
+ * for the browser to complete (`requiresClientAction: true`) and no receipt —
  * the ledger only moves once the signed webhook arrives. The sandbox provider
  * captures immediately and returns the receipt fields. Callers must branch on
  * `requiresClientAction` before showing any confirmation.
@@ -359,7 +344,7 @@ export interface PayOnlineResult {
   receiptNo: string; gatewayRef: string; provider: string; sandbox: boolean; status: string; paidPaise: number;
 }
 
-// ΓöÇΓöÇ Hostel ΓöÇΓöÇ
+// ── Hostel ──
 export interface HostelRoomDto { _id: string; roomNo: string; block: string; floor?: number | null; type: string; capacity: number; status: string; occupied: number; available: number }
 export interface HostelAllocationDto {
   _id: string;
@@ -399,11 +384,11 @@ export interface HostelPassDto {
   overdueHours?: number;
 }
 
-// ΓöÇΓöÇ RBAC (backend catalog) ΓöÇΓöÇ
+// ── RBAC (backend catalog) ──
 export interface PermissionDto { _id: string; key: string; group: string; description: string; isSystem?: boolean }
 export interface RoleDto { _id: string; key: string; name: string; description?: string; isSystem?: boolean; permissions: Array<{ key: string; scope: PermissionScope }> }
 
-// ΓöÇΓöÇ Role dashboards (shapes served by /dashboard/:role) ΓöÇΓöÇ
+// ── Role dashboards (shapes served by /dashboard/:role) ──
 export interface AdminDashboardDto {
   totalStudents: number; openTickets: number; announcementsCount: number;
   admissionsPipeline: Array<{ stage: string; count: number }>;
@@ -482,7 +467,7 @@ export interface TutorSyllabusDto {
   subjects: Array<{ id: string; name: string; code: string | null }>;
 }
 /**
- * `generated: false` means no model produced this ΓÇö `content` is null and
+ * `generated: false` means no model produced this — `content` is null and
  * `scaffold` holds a study plan built from the student's own timetable and
  * results. The UI must label that difference rather than presenting a scaffold
  * as if it were a tutor's answer.
@@ -501,7 +486,7 @@ export interface TutorReplyDto {
 
 export interface AiCreditPackDto { key: string; label: string; credits: number; amountPaise: number }
 /**
- * `metered: false` is returned for staff ΓÇö the school covers their AI usage ΓÇö
+ * `metered: false` is returned for staff — the school covers their AI usage —
  * so the balance fields are absent rather than zero. A UI that shows "0 credits
  * left" to a teacher would be reporting a limit that does not exist.
  */
@@ -629,7 +614,7 @@ export interface IncidentDto {
   updatedAt: string;
 }
 
-// ΓöÇΓöÇ Parent-Teacher Direct Messaging ΓöÇΓöÇ
+// ── Parent-Teacher Direct Messaging ──
 export interface PtThreadDto {
   id: string;
   studentId: string;
@@ -665,4 +650,3 @@ export interface StudentTeacherDto {
   displayName: string;
   label: string;
 }
-

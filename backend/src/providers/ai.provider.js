@@ -4,9 +4,31 @@ import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-opus-5';
-// gemini-1.5-flash is retired (404). Use gemini-2.0-flash which is stable on v1.
-// If GEMINI_MODEL is set in .env it takes precedence — allows pinning without a code change.
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? 'gemini-2.0-flash';
+
+/**
+ * Gemini model id.
+ *
+ * Was `gemini-1.5-flash`, which 404s — that family is retired. `gemini-2.5-*`
+ * is not a valid replacement either: it still appears in ListModels but
+ * generateContent answers "no longer available to new users", so listing the
+ * models is NOT sufficient to pick one. Verified by calling generateContent on
+ * each candidate with this project's key:
+ *
+ *   gemini-3.6-flash        200 on v1 and v1beta   ← chosen
+ *   gemini-3.1-flash-lite   200 on v1 and v1beta   (cheaper fallback)
+ *   gemini-flash-latest     200 on v1beta only
+ *   gemini-2.5-flash/-lite  404 "no longer available to new users"
+ *   gemini-1.5-*            404 retired
+ *
+ * Pinned rather than `gemini-flash-latest`: an alias that silently changes the
+ * model behind a school's OCR and tutoring is not something to find out about
+ * in production.
+ *
+ * When this 404s again, do not trust the model list — probe it:
+ *   curl -X POST -H 'Content-Type: application/json' -d '{"contents":[{"parts":[{"text":"hi"}]}]}' \
+ *     "https://generativelanguage.googleapis.com/v1/models/<id>:generateContent?key=$GEMINI_API_KEY"
+ */
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 const MAX_TOKENS = 16000;
 
 let anthropicClient = null;
@@ -44,7 +66,7 @@ export async function generate({ system, message, maxTokens = MAX_TOKENS }) {
   if (env.AI_PROVIDER === 'gemini') {
     try {
       const client = getGeminiClient();
-      const modelName = process.env.GEMINI_MODEL ?? 'gemini-1.5-flash';
+      const modelName = GEMINI_MODEL;
       const genModel = client.getGenerativeModel({
         model: modelName,
         systemInstruction: system,
@@ -117,7 +139,7 @@ export async function generateFromImage({ system, message, imageBase64, mediaTyp
   if (env.AI_PROVIDER === 'gemini') {
     try {
       const client = getGeminiClient();
-      const modelName = process.env.GEMINI_MODEL ?? 'gemini-1.5-flash';
+      const modelName = GEMINI_MODEL;
       const genModel = client.getGenerativeModel({
         model: modelName,
         systemInstruction: system,

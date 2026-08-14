@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Avatar, Button, Card, EmptyState, Field, Input, Modal, Pill, SkeletonRows, useToast } from '@/components/ui';
@@ -213,11 +213,11 @@ export default function UsersPage() {
                       <div>
                         <div style={{ fontWeight: 600 }}>{u.studentDetails.class || 'No Class'}</div>
                         <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>
-                          Adm: {u.studentDetails.admissionNo} {u.studentDetails.rollNo ? `┬╖ Roll: ${u.studentDetails.rollNo}` : ''}
+                          Adm: {u.studentDetails.admissionNo} {u.studentDetails.rollNo ? `· Roll: ${u.studentDetails.rollNo}` : ''}
                         </div>
                       </div>
                     ) : (
-                      <span style={{ color: 'var(--text-faint)' }}>ΓÇö</span>
+                      <span style={{ color: 'var(--text-faint)' }}>—</span>
                     )}
                   </td>
                   <td data-label="Status">
@@ -254,7 +254,7 @@ export default function UsersPage() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">Create User Profile</div>
-              <button className="modal-close" onClick={() => setShowModal(false)}>├ù</button>
+              <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
             </div>
             <form onSubmit={handleCreate}>
               <div className="field-label">Select Role *</div>
@@ -285,7 +285,7 @@ export default function UsersPage() {
                     <option value="">-- Choose Class --</option>
                     {sections.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.gradeName ? `${s.gradeName} ΓÇô ${s.name}` : s.name}
+                        {s.gradeName ? `${s.gradeName} – ${s.name}` : s.name}
                       </option>
                     ))}
                   </select>
@@ -293,7 +293,7 @@ export default function UsersPage() {
               )}
 
               <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-                <Button type="submit" disabled={busy}>{busy ? 'CreatingΓÇª' : 'Create User'}</Button>
+                <Button type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create User'}</Button>
                 <Button variant="ghost" type="button" onClick={() => setShowModal(false)}>Cancel</Button>
               </div>
             </form>
@@ -303,7 +303,7 @@ export default function UsersPage() {
 
       {/* Edit User Modal */}
       {editingUser && (
-        <Modal title={`Edit User ΓÇô ${editingUser.displayName}`} onClose={() => setEditingUser(null)}>
+        <Modal title={`Edit User – ${editingUser.displayName}`} onClose={() => setEditingUser(null)}>
           <form onSubmit={handleSaveEdit}>
             <Field label="Full Name" required>
               <Input
@@ -338,7 +338,7 @@ export default function UsersPage() {
                 Cancel
               </Button>
               <Button type="submit" disabled={editBusy}>
-                {editBusy ? 'SavingΓÇª' : 'Save Changes'}
+                {editBusy ? 'Saving…' : 'Save Changes'}
               </Button>
             </div>
           </form>
@@ -367,7 +367,7 @@ export default function UsersPage() {
               disabled={statusBusy}
             >
               {statusBusy
-                ? (statusAction === 'INACTIVE' ? 'DeactivatingΓÇª' : 'ReactivatingΓÇª')
+                ? (statusAction === 'INACTIVE' ? 'Deactivating…' : 'Reactivating…')
                 : (statusAction === 'INACTIVE' ? 'Deactivate' : 'Reactivate')}
             </Button>
           </div>

@@ -214,14 +214,8 @@ export async function getFinanceDashboard() {
     .lean();
 
   return {
-    // Primary keys matching the shared FeeDashboardCards component and FinanceDashboardDto
-    totalBilledPaise: totalPaise,
-    totalCollectedPaise: paidPaise,
-    pendingAmountPaise: pendingPaise,
-    pendingPaise: pendingPaise,
-    collectionPct: pct(paidPaise, totalPaise),
-    // Legacy aliases kept for backward compatibility
     pendingAmount: toRs(pendingPaise),
+    pendingAmountPaise: pendingPaise,
     collectedAmount: toRs(paidPaise),
     collectedAmountPaise: paidPaise,
     totalBilled: toRs(totalPaise),

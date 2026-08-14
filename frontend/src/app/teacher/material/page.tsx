@@ -1,9 +1,8 @@
 'use client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Card, EmptyState, SkeletonRows, Button, Pill, useToast } from '@/components/ui';
 import { FileOrUrlInput } from '@/components/file-input';
-import { ConfirmModal } from '@/components/confirm-modal';
 import { api, fileHref } from '@/lib/api';
 import type { DocumentDto, SectionDto } from '@/lib/types';
 
@@ -13,7 +12,6 @@ export default function TeacherMaterial() {
   const [loading, setLoading] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [editing, setEditing] = useState<DocumentDto | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<DocumentDto | null>(null);
   const [search, setSearch] = useState('');
   const [sectionFilter, setSectionFilter] = useState('');
   const toast = useToast();
@@ -142,9 +140,11 @@ export default function TeacherMaterial() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this study material?')) return;
     const backupDocs = docs;
-    if (docs) setDocs(docs.filter((d) => d.id !== id));
-    setDeleteTarget(null);
+    if (docs) {
+      setDocs(docs.filter(d => d.id !== id));
+    }
     toast('Material deleted.');
     try {
       await api.deleteDocument(id);
@@ -229,7 +229,7 @@ export default function TeacherMaterial() {
                   <td data-label="Actions">
                     <div style={{ display: 'flex', gap: 6 }}>
                       <Button variant="ghost" small disabled={d.sending} onClick={() => openEdit(d)}>Edit</Button>
-                      <Button variant="ghost" small disabled={d.sending} onClick={() => setDeleteTarget(d)}>Delete</Button>
+                      <Button variant="ghost" small disabled={d.sending} onClick={() => void handleDelete(d.id)}>Delete</Button>
                     </div>
                   </td>
                 </tr>
@@ -327,16 +327,6 @@ export default function TeacherMaterial() {
             </form>
           </div>
         </div>
-      )}
-      {deleteTarget && (
-        <ConfirmModal
-          title="Delete material?"
-          body={`"${deleteTarget.title}" will be permanently deleted and removed from your students' view.`}
-          confirmLabel="Delete"
-          danger
-          onConfirm={() => handleDelete(deleteTarget.id)}
-          onCancel={() => setDeleteTarget(null)}
-        />
       )}
     </PortalShell>
   );

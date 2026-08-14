@@ -1,9 +1,10 @@
-﻿'use client';
+'use client';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from '@/components/ui';
-import { api } from '@/lib/api';
-import type { TeacherLeaveApplicationDto, LeaveStatus } from '@/lib/types';
+import { Button, Card, EmptyState, Modal, Pill, SkeletonRows, useToast } from '@/components/ui';
+import { api, ApiError } from '@/lib/api';
+import { formatCalendarDate } from '@/lib/timetable-dates';
+import type { LeaveApplicationDto, LeaveStatus } from '@/lib/types';
 
 const STATUS_TONE: Record<LeaveStatus, 'amber' | 'green' | 'red'> = {
   PENDING: 'amber',
@@ -11,210 +12,240 @@ const STATUS_TONE: Record<LeaveStatus, 'amber' | 'green' | 'red'> = {
   REJECTED: 'red',
 };
 
-const LEAVE_TYPE_LABELS: Record<string, string> = {
-  CASUAL: 'Casual', SICK: 'Sick', EARNED: 'Earned', OTHER: 'Other',
-};
+const fmt = (d: string) => formatCalendarDate(d);
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-function dayCount(from: string, to: string) {
-  return Math.max(1, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000) + 1);
-}
-
-export default function AdminStaffLeavePage() {
-  const [applications, setApplications] = useState<TeacherLeaveApplicationDto[] | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>('PENDING');
-  const [reviewing, setReviewing] = useState<{ app: TeacherLeaveApplicationDto; action: 'APPROVED' | 'REJECTED' } | null>(null);
+export default function AdminLeaveManagementPage() {
+  const [applications, setApplications] = useState<LeaveApplicationDto[] | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [roleFilter, setRoleFilter] = useState<string>('');
+  const [selectedApp, setSelectedApp] = useState<LeaveApplicationDto | null>(null);
+  const [reviewAction, setReviewAction] = useState<'APPROVED' | 'REJECTED' | null>(null);
   const [remarks, setRemarks] = useState('');
   const [busy, setBusy] = useState(false);
   const toast = useToast();
 
-  const load = () => {
-    setApplications(null);
-    api.staffLeaveApplications(statusFilter || undefined)
+  const loadLeave = () => {
+    api.listLeaveApplications({
+      status: statusFilter || undefined,
+      role: roleFilter || undefined,
+    })
       .then(setApplications)
       .catch(() => setApplications([]));
   };
 
-  useEffect(() => { load(); }, [statusFilter]);
+  useEffect(loadLeave, [statusFilter, roleFilter]);
 
   const handleReview = async () => {
-    if (!reviewing) return;
+    if (!selectedApp || !reviewAction) return;
+    const appId = selectedApp.id || selectedApp._id;
+    if (!appId) return;
+
     setBusy(true);
     try {
-      await api.reviewStaffLeave(reviewing.app._id, {
-        status: reviewing.action,
+      await api.reviewLeaveApplication(appId, {
+        status: reviewAction,
         remarks: remarks.trim() || undefined,
       });
-      toast(
-        reviewing.action === 'APPROVED'
-          ? `Leave approved for ${reviewing.app.applicantName}.`
-          : `Leave rejected for ${reviewing.app.applicantName}.`,
-        'success'
-      );
-      setReviewing(null);
+      toast(`Leave application ${reviewAction.toLowerCase()}.`, 'success');
+      setSelectedApp(null);
+      setReviewAction(null);
       setRemarks('');
-      load();
-    } catch (x: any) {
-      toast(x?.message ?? 'Could not process review.', 'error');
+      loadLeave();
+    } catch (err: any) {
+      toast(err instanceof ApiError ? err.message : 'Failed to update leave status.', 'error');
     } finally {
       setBusy(false);
     }
   };
 
-  const pending = applications?.filter((a) => a.status === 'PENDING').length ?? 0;
-
   return (
-    <PortalShell expectedSlug="admin" topbar={{
-      title: 'Staff Leave Applications',
-      desc: 'Review and approve or reject staff leave requests.',
-      actions: pending > 0 ? (
-        <div style={{ background: 'var(--amber-bg, #fef3c7)', color: '#92400e', padding: '6px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600 }}>
-          {pending} pending
+    <PortalShell
+      expectedSlug="admin"
+      topbar={{
+        title: 'Leave Management',
+        desc: 'Review, approve, and manage leave requests for students and teachers.',
+      }}
+    >
+      <Card pad={false}>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 12,
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: '16px 20px',
+            borderBottom: '1px solid var(--hairline)',
+          }}
+        >
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
+            <label style={{ fontSize: 12, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              Status:
+              <select className="input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="">All Statuses</option>
+                <option value="PENDING">Pending</option>
+                <option value="APPROVED">Approved</option>
+                <option value="REJECTED">Rejected</option>
+              </select>
+            </label>
+
+            <label style={{ fontSize: 12, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              Applicant Role:
+              <select className="input" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+                <option value="">All Roles</option>
+                <option value="STUDENT">Students</option>
+                <option value="TEACHER">Teachers</option>
+              </select>
+            </label>
+          </div>
         </div>
-      ) : undefined,
-    }}>
-      {/* Status filter tabs */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        {(['PENDING', 'APPROVED', 'REJECTED', ''] as const).map((s) => (
-          <button
-            key={s}
-            className={`chip-tab${statusFilter === s ? ' active' : ''}`}
-            onClick={() => setStatusFilter(s)}
-          >
-            {s === '' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
-          </button>
-        ))}
-      </div>
 
-      {applications === null && <Card><SkeletonRows rows={6} /></Card>}
-      {applications?.length === 0 && (
-        <EmptyState
-          title={statusFilter === 'PENDING' ? 'No pending requests' : 'No leave applications'}
-          sub={statusFilter === 'PENDING' ? 'All staff applications have been reviewed.' : 'No applications match this filter.'}
-        />
-      )}
-
-      {applications && applications.length > 0 && (
-        <Card pad={false}>
+        {applications === null ? (
+          <div style={{ padding: 20 }}>
+            <SkeletonRows rows={6} />
+          </div>
+        ) : applications.length === 0 ? (
+          <EmptyState
+            icon="⊘"
+            title="No leave applications found"
+            sub="No leave applications match the selected status or role filters."
+          />
+        ) : (
           <table className="data-table data-table-cards">
             <thead>
               <tr>
-                <th>Staff Member</th>
-                <th>Role</th>
+                <th>Applicant</th>
+                <th>Role / Class</th>
                 <th>Type</th>
-                <th>From</th>
-                <th>To</th>
-                <th>Days</th>
+                <th>Dates</th>
                 <th>Reason</th>
-                <th>Applied</th>
                 <th>Status</th>
+                <th>Reviewer / Remarks</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {applications.map((a) => (
-                <tr key={a._id}>
-                  <td className="cell-primary" data-label="Staff Member">{a.applicantName}</td>
-                  <td data-label="Role" style={{ fontSize: 12.5 }}>
-                    <span style={{ textTransform: 'capitalize' }}>{a.role.toLowerCase()}</span>
-                  </td>
-                  <td data-label="Type" style={{ fontSize: 12.5 }}>
-                    {LEAVE_TYPE_LABELS[a.leaveType] ?? a.leaveType}
-                  </td>
-                  <td data-label="From">{fmtDate(a.fromDate)}</td>
-                  <td data-label="To">{fmtDate(a.toDate)}</td>
-                  <td data-label="Days" style={{ fontWeight: 600, textAlign: 'center' }}>
-                    {dayCount(a.fromDate, a.toDate)}
-                  </td>
-                  <td data-label="Reason" style={{ maxWidth: 200, fontSize: 12.5 }}>{a.reason}</td>
-                  <td data-label="Applied" style={{ color: 'var(--text-faint)', fontSize: 12 }}>
-                    {fmtDate(a.createdAt)}
-                  </td>
-                  <td data-label="Status">
-                    <div>
-                      <Pill tone={STATUS_TONE[a.status]}>{a.status.toLowerCase()}</Pill>
-                      {a.remarks && (
-                        <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 3 }} title={a.remarks}>
-                          {a.remarks.slice(0, 30)}{a.remarks.length > 30 ? 'ΓÇª' : ''}
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td data-label="Actions">
-                    {a.status === 'PENDING' ? (
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <Button small onClick={() => { setReviewing({ app: a, action: 'APPROVED' }); setRemarks(''); }}
-                          style={{ background: 'var(--green)', color: '#fff', border: 'none' }}>
-                          Approve
-                        </Button>
-                        <Button small variant="ghost" onClick={() => { setReviewing({ app: a, action: 'REJECTED' }); setRemarks(''); }}
-                          style={{ color: 'var(--red)' }}>
-                          Reject
-                        </Button>
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>
-                        {a.reviewedAt ? fmtDate(a.reviewedAt) : 'ΓÇö'}
+              {applications.map((a) => {
+                const key = a.id || a._id || String(Math.random());
+                const name = a.applicantName || a.studentName || 'Applicant';
+                const roleBadge = a.applicantRole === 'TEACHER' ? 'Teacher' : a.class ? `Student (${a.class})` : 'Student';
+
+                return (
+                  <tr key={key}>
+                    <td className="cell-primary" data-label="Applicant">
+                      {name}
+                    </td>
+                    <td data-label="Role / Class">{roleBadge}</td>
+                    <td data-label="Type">
+                      <span style={{ fontSize: 11, fontWeight: 600, background: 'var(--hairline)', padding: '2px 6px', borderRadius: 4 }}>
+                        {a.leaveType || 'CASUAL'}
                       </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td data-label="Dates">
+                      {fmt(a.fromDate)}
+                      {a.fromDate !== a.toDate ? ` – ${fmt(a.toDate)}` : ''}
+                    </td>
+                    <td data-label="Reason" style={{ maxWidth: 220, whiteSpace: 'normal', wordBreak: 'break-word' }}>
+                      {a.reason}
+                    </td>
+                    <td data-label="Status">
+                      <Pill tone={STATUS_TONE[a.status]}>{a.status}</Pill>
+                    </td>
+                    <td data-label="Remarks" style={{ fontSize: 12, color: 'var(--text-2)' }}>
+                      {a.remarks ? (
+                        <>
+                          <strong>{a.reviewedByName || 'Reviewer'}:</strong> {a.remarks}
+                        </>
+                      ) : (
+                        a.reviewedByName || '—'
+                      )}
+                    </td>
+                    <td data-label="Actions">
+                      {a.status === 'PENDING' ? (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <Button
+                            small
+                            onClick={() => {
+                              setSelectedApp(a);
+                              setReviewAction('APPROVED');
+                              setRemarks('');
+                            }}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            small
+                            variant="ghost"
+                            onClick={() => {
+                              setSelectedApp(a);
+                              setReviewAction('REJECTED');
+                              setRemarks('');
+                            }}
+                          >
+                            Reject
+                          </Button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>Completed</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-        </Card>
-      )}
+        )}
+      </Card>
 
-      {/* Review confirmation modal */}
-      {reviewing && (
-        <div className="modal-overlay" onClick={() => setReviewing(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-            <div className="modal-header">
-              <div className="modal-title">
-                {reviewing.action === 'APPROVED' ? 'Approve leave?' : 'Reject leave?'}
-              </div>
-              <button className="modal-close" onClick={() => setReviewing(null)}>├ù</button>
-            </div>
-            <p style={{ fontSize: 13.5, color: 'var(--text-2)', marginBottom: 8 }}>
-              <strong>{reviewing.app.applicantName}</strong> ({LEAVE_TYPE_LABELS[reviewing.app.leaveType] ?? reviewing.app.leaveType})
-            </p>
-            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14 }}>
-              {fmtDate(reviewing.app.fromDate)} ΓÇô {fmtDate(reviewing.app.toDate)} ┬╖ {dayCount(reviewing.app.fromDate, reviewing.app.toDate)} day{dayCount(reviewing.app.fromDate, reviewing.app.toDate) !== 1 ? 's' : ''}
-            </p>
-            <p style={{ fontSize: 12.5, color: 'var(--text-2)', marginBottom: 14, fontStyle: 'italic' }}>
-              "{reviewing.app.reason}"
-            </p>
-            <div className="field-label">Remarks (optional)</div>
-            <textarea
-              className="field-input"
-              rows={2}
-              value={remarks}
-              onChange={(e) => setRemarks(e.target.value)}
-              placeholder={reviewing.action === 'APPROVED' ? 'e.g. Approved. Ensure class coverage.' : 'e.g. Please provide medical certificate.'}
-              style={{ resize: 'vertical' }}
-            />
-            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-              <Button
-                onClick={handleReview}
-                disabled={busy}
-                style={{
-                  flex: 1,
-                  background: reviewing.action === 'APPROVED' ? 'var(--green)' : 'var(--red)',
-                  color: '#fff',
-                  border: 'none',
-                }}
-              >
-                {busy ? 'SavingΓÇª' : reviewing.action === 'APPROVED' ? 'Approve' : 'Reject'}
-              </Button>
-              <Button variant="ghost" onClick={() => setReviewing(null)} disabled={busy} style={{ flex: 1 }}>
-                Cancel
-              </Button>
-            </div>
+      {selectedApp && reviewAction && (
+        <Modal
+          title={`${reviewAction === 'APPROVED' ? 'Approve' : 'Reject'} Leave Application`}
+          onClose={() => {
+            setSelectedApp(null);
+            setReviewAction(null);
+          }}
+        >
+          <div style={{ fontSize: 13, color: 'var(--text-1)', marginBottom: 12 }}>
+            Applicant: <strong>{selectedApp.applicantName || selectedApp.studentName}</strong> ({fmt(selectedApp.fromDate)} – {fmt(selectedApp.toDate)})
           </div>
-        </div>
+          <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginBottom: 14 }}>
+            Reason: <em>"{selectedApp.reason}"</em>
+          </div>
+
+          <div className="field-label">Reviewer Remarks (Optional)</div>
+          <textarea
+            className="field-input"
+            rows={3}
+            placeholder="Add notes or reason for approval/rejection…"
+            value={remarks}
+            onChange={(e) => setRemarks(e.target.value)}
+            style={{ resize: 'vertical', fontFamily: 'inherit' }}
+          />
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => {
+                setSelectedApp(null);
+                setReviewAction(null);
+              }}
+              disabled={busy}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleReview}
+              disabled={busy}
+              style={{
+                background: reviewAction === 'REJECTED' ? 'var(--red, #e53e3e)' : undefined,
+                borderColor: reviewAction === 'REJECTED' ? 'var(--red, #e53e3e)' : undefined,
+              }}
+            >
+              {busy ? 'Saving…' : `Confirm ${reviewAction === 'APPROVED' ? 'Approval' : 'Rejection'}`}
+            </Button>
+          </div>
+        </Modal>
       )}
     </PortalShell>
   );

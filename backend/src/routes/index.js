@@ -1,4 +1,4 @@
-﻿import { Router } from 'express';
+import { Router } from 'express';
 import { sendSuccess } from '../utils/response.js';
 import { env } from '../config/env.js';
 
@@ -37,7 +37,6 @@ import auditRoutes from '../modules/audit/audit.routes.js';
 import uploadRoutes from '../modules/uploads/upload.routes.js';
 import incidentRoutes from '../modules/incidents/incident.routes.js';
 import ptMessageRoutes from '../modules/ptmessages/ptmessage.routes.js';
-import settingsRoutes from '../modules/settings/settings.routes.js';
 import { auditLogger } from '../middleware/auditLogger.js';
 
 const router = Router();
@@ -69,7 +68,7 @@ router.get('/health', (_req, res) =>
   )
 );
 
-// ΓöÇΓöÇΓöÇ Module routes ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Module routes ──────────────────────────────────────────────
 router.use('/auth', authRoutes);
 router.use('/roles', roleRoutes);
 router.use('/profiles', profileRoutes);
@@ -105,13 +104,11 @@ router.use('/audit', auditRoutes);
 router.use('/uploads', uploadRoutes);
 router.use('/incidents', incidentRoutes);
 router.use('/pt-messages', ptMessageRoutes);
-router.use('/settings', settingsRoutes);
 
-// NOTE ΓÇö a public GET /admin-seed endpoint used to live here, gated only by a
+// NOTE — a public GET /admin-seed endpoint used to live here, gated only by a
 // hardcoded default secret ('eduos-seed-2026'). Anyone who could reach the API
 // could (re)create every demo account, including OWNER, with the shared demo
 // password. Seeding is an operator task: run `npm run seed` with shell access
 // to the deployment instead.
 
 export default router;
-

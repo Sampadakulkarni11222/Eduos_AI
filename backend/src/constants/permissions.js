@@ -1,12 +1,12 @@
-﻿/**
+/**
  * Default permission catalog + system role grants.
- * This is the seed data only ΓÇö the source of truth at runtime is the
+ * This is the seed data only — the source of truth at runtime is the
  * `permissions` and `roles` collections in MongoDB, which can be extended
  * dynamically via the /api/v1/permissions and /api/v1/roles APIs.
  *
  * Scope semantics (enforced in services via req.actor / req.scope):
- *  ALL ΓåÆ whole school
- *  OWN ΓåÆ teacher's own classes, parent's own children, or student's own record
+ *  ALL → whole school
+ *  OWN → teacher's own classes, parent's own children, or student's own record
  */
 
 export const PERMISSION_CATALOG = [
@@ -26,8 +26,8 @@ export const PERMISSION_CATALOG = [
   // academics structure
   { key: 'academics.structure.manage', group: 'academics', description: 'Manage years/terms/grades/sections/subjects/offerings' },
   // Reading the school's structure is a staff concern. It is low-sensitivity
-  // on its own, but it is still roster metadata ΓÇö the full list of grades,
-  // sections and who teaches what ΓÇö and a family has no reason to enumerate it.
+  // on its own, but it is still roster metadata — the full list of grades,
+  // sections and who teaches what — and a family has no reason to enumerate it.
   { key: 'academics.read', group: 'academics', description: 'View school structure (years/terms/grades/sections/subjects/offerings)' },
   { key: 'timetable.read', group: 'academics', description: 'View timetable' },
   { key: 'timetable.manage', group: 'academics', description: 'Manage timetable' },
@@ -38,7 +38,6 @@ export const PERMISSION_CATALOG = [
   { key: 'attendance.regularize', group: 'academics', description: 'Correct/regularize past attendance' },
   { key: 'leave.apply', group: 'academics', description: 'Apply for a leave of absence' },
   { key: 'leave.read', group: 'academics', description: 'View leave application status' },
-  { key: 'leave.review', group: 'academics', description: 'Approve or reject leave applications (warden/admin)' },
   { key: 'leave.manage', group: 'academics', description: 'Review, approve, and reject leave applications' },
 
   // assignments
@@ -108,7 +107,7 @@ export const PERMISSION_CATALOG = [
   { key: 'pt.messages.create', group: 'pt-messages', description: 'Start a new parent-teacher message thread' },
   { key: 'pt.messages.send', group: 'pt-messages', description: 'Send a message in a parent-teacher thread' },
 
-  // AI & analytics (stand-in integrations ΓÇö see ARCHITECTURE.md)
+  // AI & analytics (stand-in integrations — see ARCHITECTURE.md)
   { key: 'ai.copilot.use', group: 'ai', description: 'Use the AI copilot/chat assistant' },
   { key: 'ai.insights.read', group: 'ai', description: "View AI-generated growth/risk insights" },
   { key: 'analytics.school.read', group: 'analytics', description: 'View school-wide analytics' },
@@ -190,7 +189,7 @@ export const SYSTEM_ROLES = [
       ['marks.read', 'OWN'],
       ['marks.enter', 'OWN'],
       ['marks.publish', 'OWN'],
-      // Read-only ΓÇö allergy/emergency-contact visibility for a teacher's own
+      // Read-only — allergy/emergency-contact visibility for a teacher's own
       // students; medical.manage stays parent/admin-only.
       ['medical.read', 'OWN'],
       ['timetable.read', 'OWN'],
@@ -326,4 +325,3 @@ export const SYSTEM_ROLES = [
     ]),
   },
 ];
-

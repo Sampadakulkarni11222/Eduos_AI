@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, SkeletonRows, Pill, rupees, useToast } from '@/components/ui';
@@ -171,7 +171,7 @@ export default function AdminLibrary() {
                     <tr key={b.id}>
                       <td className="cell-primary" data-label="Title">{b.title}</td>
                       <td data-label="Author">{b.author}</td>
-                      <td style={{ fontFamily: 'monospace' }} data-label="ISBN">{b.isbn ?? 'ΓÇö'}</td>
+                      <td style={{ fontFamily: 'monospace' }} data-label="ISBN">{b.isbn ?? '—'}</td>
                       <td data-label="Category"><Pill tone="gray">{b.category}</Pill></td>
                       <td data-label="Availability">
                         <strong>{b.availableCopies}</strong> / {b.totalCopies} available
@@ -221,7 +221,7 @@ export default function AdminLibrary() {
                       <td data-label="Student Name">{i.studentName}</td>
                       <td data-label="Issued Date">{new Date(i.issuedAt).toLocaleDateString('en-IN')}</td>
                       <td data-label="Due Date">{new Date(i.dueAt).toLocaleDateString('en-IN')}</td>
-                      <td data-label="Returned">{i.returnedAt ? new Date(i.returnedAt).toLocaleDateString('en-IN') : 'ΓÇö'}</td>
+                      <td data-label="Returned">{i.returnedAt ? new Date(i.returnedAt).toLocaleDateString('en-IN') : '—'}</td>
                       <td data-label="Status">
                         <Pill tone={i.status === 'RETURNED' ? 'green' : i.status === 'OVERDUE' ? 'red' : 'amber'}>
                           {i.status}
@@ -248,14 +248,14 @@ export default function AdminLibrary() {
               Overdue items auto-trigger in-app notifications to students & parents (with a 24-hr anti-duplicate window).
             </div>
             <Button onClick={handleSendReminders} disabled={busyReminders}>
-              {busyReminders ? 'SendingΓÇª' : 'ΓÜí Dispatch Overdue Reminders'}
+              {busyReminders ? 'Sending…' : '⚡ Dispatch Overdue Reminders'}
             </Button>
           </div>
 
           <Card pad={false}>
             {overdue === null && <div style={{ padding: 20 }}><SkeletonRows rows={4} /></div>}
             {overdue !== null && overdue.length === 0 && (
-              <EmptyState icon="Γ£ö" title="No overdue books" sub="All borrowed books are returned or within their due date!" />
+              <EmptyState icon="✔" title="No overdue books" sub="All borrowed books are returned or within their due date!" />
             )}
             {overdue && overdue.length > 0 && (
               <table className="data-table data-table-cards">
@@ -265,7 +265,7 @@ export default function AdminLibrary() {
                     <th>Borrower Student</th>
                     <th>Due Date</th>
                     <th>Overdue Time</th>
-                    <th>Est. Fine (Γé╣5/day)</th>
+                    <th>Est. Fine (₹5/day)</th>
                     <th>Last Reminder</th>
                     <th>Action</th>
                   </tr>
@@ -340,7 +340,7 @@ export default function AdminLibrary() {
                       </Pill>
                     </td>
                     <td data-label="Reserved At">{new Date(r.reservedAt).toLocaleDateString('en-IN')}</td>
-                    <td data-label="Expires">{r.expiresAt ? new Date(r.expiresAt).toLocaleString('en-IN') : 'ΓÇö'}</td>
+                    <td data-label="Expires">{r.expiresAt ? new Date(r.expiresAt).toLocaleString('en-IN') : '—'}</td>
                     <td data-label="Action">
                       {(r.status === 'PENDING' || r.status === 'READY') && (
                         <Button
@@ -367,7 +367,7 @@ export default function AdminLibrary() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Add Book to Catalog</div>
-              <button className="modal-close" onClick={() => setShowBookModal(false)}>├ù</button>
+              <button className="modal-close" onClick={() => setShowBookModal(false)}>×</button>
             </div>
             <form onSubmit={handleCreateBook}>
               <div className="field-label">Book Title *</div>
@@ -406,7 +406,7 @@ export default function AdminLibrary() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Issue Book</div>
-              <button className="modal-close" onClick={() => setShowIssueModal(false)}>├ù</button>
+              <button className="modal-close" onClick={() => setShowIssueModal(false)}>×</button>
             </div>
             <form onSubmit={handleIssueBook}>
               <div className="field-label">Select Student *</div>

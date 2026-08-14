@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Button, Card, EmptyState, Input, SkeletonRows } from '@/components/ui';
-import { ConfirmModal } from '@/components/confirm-modal';
 import { FileOrUrlInput } from '@/components/file-input';
 import { api, fileHref, ApiError } from '@/lib/api';
 import type { MedicalDto } from '@/lib/types';
@@ -51,7 +50,6 @@ export function MedicalRecordPanel({ studentId, canManage = true }: { studentId:
   const [form, setForm] = useState<EditState>(recToEdit(null));
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -118,6 +116,8 @@ export function MedicalRecordPanel({ studentId, canManage = true }: { studentId:
 
   const handleDelete = async () => {
     if (!studentId || !rec) return;
+    if (!window.confirm('Are you sure you want to delete this medical record? This action cannot be undone.')) return;
+
     setDeleting(true); setSaveErr(null); setSuccessMsg('');
     try {
       await api.deleteMedical(studentId);
@@ -127,10 +127,7 @@ export function MedicalRecordPanel({ studentId, canManage = true }: { studentId:
       setSuccessMsg('Medical record deleted successfully.');
     } catch (err) {
       setSaveErr(err instanceof ApiError ? err.message : 'Delete failed. Please try again.');
-    } finally {
-      setDeleting(false);
-      setConfirmDelete(false);
-    }
+    } finally { setDeleting(false); }
   };
 
   const section = (title: string, body: React.ReactNode) => (
@@ -155,7 +152,7 @@ export function MedicalRecordPanel({ studentId, canManage = true }: { studentId:
             </>
           ) : (
             <>
-              {rec && <Button variant="soft" small onClick={() => setConfirmDelete(true)} disabled={deleting} style={{ color: 'var(--red)' }}>Delete record</Button>}
+              {rec && <Button variant="soft" small onClick={() => void handleDelete()} disabled={deleting} style={{ color: 'var(--red)' }}>Delete record</Button>}
               <Button small onClick={() => { setEditing(true); setSuccessMsg(''); setSaveErr(null); }}>{rec ? 'Edit record' : 'Setup record'}</Button>
             </>
           )}
@@ -292,17 +289,6 @@ export function MedicalRecordPanel({ studentId, canManage = true }: { studentId:
           icon="✚"
           title="No medical record setup yet"
           sub={canManage ? "Click 'Setup record' above to create a medical profile." : notFound ? 'No medical record has been created for this student yet.' : 'Could not load this medical record.'}
-        />
-      )}
-
-      {confirmDelete && (
-        <ConfirmModal
-          title="Delete medical record?"
-          body="This will permanently remove all medical data for this student — emergency contacts, allergies, medications, and history. This cannot be undone."
-          confirmLabel="Delete"
-          danger
-          onConfirm={() => void handleDelete()}
-          onCancel={() => setConfirmDelete(false)}
         />
       )}
     </div>

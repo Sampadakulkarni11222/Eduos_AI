@@ -1,7 +1,7 @@
 'use client';
 import { FormEvent, useEffect, useState, useCallback, useRef } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pagination, Pill, SkeletonRows } from '@/components/ui';
+import { Button, Card, EmptyState, Pill, SkeletonRows } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api } from '@/lib/api';
 import type { StudentListItem, SectionDto } from '@/lib/types';
@@ -295,8 +295,6 @@ function BulkAssignModal({ onClose, onImported }: { onClose: () => void; onImpor
 export default function AdminStudentClasses() {
   const [students, setStudents] = useState<StudentListItem[] | null>(null);
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
-  const PAGE_SIZE = 25;
   const [showAdd, setShowAdd] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [assignTarget, setAssignTarget] = useState<StudentListItem | null>(null);
@@ -320,15 +318,11 @@ export default function AdminStudentClasses() {
 
   useEffect(() => { load(); }, [load]);
 
-  const onSearch = (q: string) => { setSearch(q); setPage(0); };
-
   const filtered = students?.filter((s) =>
     !search ||
     s.name.toLowerCase().includes(search.toLowerCase()) ||
-    (s.enrollment?.class ?? '').toLowerCase().includes(search.toLowerCase())
+    (s.enrollment?.class ?? '').toLowerCase().includes(search.toLowerCase()),
   ) ?? [];
-
-  const pageItems = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   return (
     <PortalShell expectedSlug="admin" topbar={{
@@ -362,7 +356,7 @@ export default function AdminStudentClasses() {
           className="input"
           placeholder="Search by name or class…"
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+          onChange={(e) => setSearch(e.target.value)}
           style={{ maxWidth: 320, width: '100%', flex: '1 1 200px' }}
         />
         {students && (
@@ -397,7 +391,7 @@ export default function AdminStudentClasses() {
               </tr>
             </thead>
             <tbody>
-              {pageItems.map((s) => (
+              {filtered.map((s) => (
                 <tr key={s.id}>
                   <td className="cell-primary" data-label="Student">{s.name}</td>
                   <td style={{ color: 'var(--text-faint)' }} data-label="Roll No">{s.enrollment?.rollNo ?? '—'}</td>
@@ -427,7 +421,6 @@ export default function AdminStudentClasses() {
               ))}
             </tbody>
           </table>
-          <Pagination page={page} pageSize={PAGE_SIZE} total={filtered.length} onPage={setPage} />
         </Card>
       )}
 

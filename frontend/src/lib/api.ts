@@ -1,12 +1,12 @@
-﻿/**
+/**
  * Typed API client with refresh-token rotation.
  * Access token lives in memory; refresh token in localStorage.
  * Production hardening (Phase 7): move refresh into an httpOnly cookie
  * behind a BFF route handler so it never touches JS-readable storage.
  */
-import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, BookReservationDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UpdateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, HostelPassDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, TeacherLeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, IncidentDto, PtThreadDto, PtMessageDto, PtThreadDetailDto, StudentTeacherDto } from './types';
+import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, BookReservationDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UpdateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, HostelPassDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, IncidentDto, PtThreadDto, PtMessageDto, PtThreadDetailDto, StudentTeacherDto } from './types';
 
-// Backend URL ΓÇô default to localhost:5000. Can be overridden via NEXT_PUBLIC_BACKEND_URL.
+// Backend URL – default to localhost:5000. Can be overridden via NEXT_PUBLIC_BACKEND_URL.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
 
 const REFRESH_KEY = 'eduos.refresh';
@@ -122,7 +122,7 @@ async function uploadCsv(path: string, file: File, fields: Record<string, string
   return (json?.data ?? json) as BulkImportResult;
 }
 
-/** Turn a stored fileUrl (which may be server-relative "/uploads/ΓÇª") into an absolute link. */
+/** Turn a stored fileUrl (which may be server-relative "/uploads/…") into an absolute link. */
 export function fileHref(fileUrl: string): string {
   if (!fileUrl) return '#';
   return fileUrl.startsWith('/') ? `${BACKEND_URL}${fileUrl}` : fileUrl;
@@ -130,7 +130,7 @@ export function fileHref(fileUrl: string): string {
 
 /**
  * Opens a protected (auth-gated) file endpoint in a new tab.
- * Auth here is a Bearer token held in memory, not a cookie ΓÇö a plain
+ * Auth here is a Bearer token held in memory, not a cookie — a plain
  * `<a href>` to an endpoint behind `authenticate` would 401. This fetches
  * the bytes with the Authorization header attached, then opens the result
  * as a blob URL, so the browser still renders/downloads it like a normal link.
@@ -202,7 +202,7 @@ export const api = {
   bulkAssignSection: (file: File, sectionId: string, academicYearId: string) =>
     uploadCsv('/enrollments/bulk', file, { sectionId, academicYearId }),
 
-  // ΓöÇΓöÇ audit ΓöÇΓöÇ
+  // ── audit ──
   auditLogs: (params: { cursor?: string; action?: string } = {}) => {
     const q = new URLSearchParams();
     if (params.cursor) q.set('cursor', params.cursor);
@@ -211,7 +211,7 @@ export const api = {
     return request<Paged<AuditLogDto>>(`/audit/logs${qs ? `?${qs}` : ''}`);
   },
 
-  // ΓöÇΓöÇ users ΓöÇΓöÇ
+  // ── users ──
   listUsers: (search?: string) => {
     const qs = search ? `?search=${encodeURIComponent(search)}` : '';
     return request<UserDto[]>(`/users${qs}`);
@@ -223,7 +223,7 @@ export const api = {
   bulkCreateUsers: (file: File) => uploadCsv('/users/bulk', file),
 
 
-  // ΓöÇΓöÇ academics helpers ΓöÇΓöÇ
+  // ── academics helpers ──
   mySections: () => request<SectionDto[]>('/academics/sections/mine'),
   myOfferings: () => request<OfferingDto[]>('/academics/offerings/mine'),
   allSections: (gradeId?: string) =>
@@ -243,7 +243,7 @@ export const api = {
   createAcademicYear: (body: { name: string; startsOn: string; endsOn: string; isCurrent?: boolean }) =>
     request<{ id: string }>('/academics/years', { method: 'POST', body: JSON.stringify(body) }),
 
-  // ΓöÇΓöÇ classroom management (grades / sections / subjects / offerings) ΓöÇΓöÇ
+  // ── classroom management (grades / sections / subjects / offerings) ──
   listGrades: async () => {
     const raw: any[] = await request<any[]>('/academics/grades');
     return raw.map((g) => ({ id: g._id ?? g.id, name: g.name, level: g.level })) as GradeDto[];
@@ -278,7 +278,7 @@ export const api = {
     request<{ id: string }>('/academics/offerings', { method: 'POST', body: JSON.stringify(body) }),
   listTeachers: () => request<StaffAccountDto[]>('/users?roleKey=TEACHER'),
 
-  // ΓöÇΓöÇ attendance ΓöÇΓöÇ
+  // ── attendance ──
   attendanceRoster: (sectionId: string, date: string, periodNo?: number) => {
     const q = new URLSearchParams({ sectionId, date });
     if (periodNo) q.set('periodNo', String(periodNo));
@@ -297,7 +297,7 @@ export const api = {
   attendanceSubjectWise: (enrollmentId: string, month: string) =>
     request<SubjectAttendanceDto>(`/attendance/subject-wise?enrollmentId=${enrollmentId}&month=${month}`),
 
-  // ΓöÇΓöÇ leave ΓöÇΓöÇ
+  // ── leave ──
   applyLeave: (body: { leaveType?: string; fromDate: string; toDate: string; reason: string }) =>
     request<LeaveApplicationDto>('/leave/apply', { method: 'POST', body: JSON.stringify(body) }),
   myLeaveApplications: () => request<LeaveApplicationDto[]>('/leave/mine'),
@@ -310,20 +310,13 @@ export const api = {
   },
   reviewLeaveApplication: (id: string, body: { status: 'APPROVED' | 'REJECTED'; remarks?: string }) =>
     request<LeaveApplicationDto>(`/leave/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
-  // staff leave (teachers) — separate model, separate endpoints
-  staffLeaveApplications: (status?: string) => {
-    const qs = status ? `?status=${status}` : '';
-    return request<TeacherLeaveApplicationDto[]>(`/leave/staff/all${qs}`);
-  },
-  reviewStaffLeave: (id: string, body: { status: 'APPROVED' | 'REJECTED'; remarks?: string }) =>
-    request<TeacherLeaveApplicationDto>(`/leave/staff/${id}/review`, { method: 'PATCH', body: JSON.stringify(body) }),
 
-  // ΓöÇΓöÇ timetable ΓöÇΓöÇ
+  // ── timetable ──
   timetable: (sectionId: string) => request<TimetableDto>(`/timetable?sectionId=${sectionId}`),
   upsertTimetableSlot: (body: { sectionId: string; dayOfWeek: number; periodNo: number; startTime: string; endTime: string; subjectOfferingId: string | null; room?: string | null; liveClassLink?: string | null }) =>
     request<{ id: string }>('/timetable/slot', { method: 'POST', body: JSON.stringify(body) }),
 
-  // ΓöÇΓöÇ assignments ΓöÇΓöÇ
+  // ── assignments ──
   assignments: (offeringId?: string) =>
     request<AssignmentDto[]>(`/assignments${offeringId ? `?offeringId=${offeringId}` : ''}`),
   createAssignment: (body: { subjectOfferingId: string; title: string; type?: string; chapter?: string; dueAt: string; maxMarks?: number; description?: string; attachments?: string[] }) =>
@@ -337,7 +330,7 @@ export const api = {
   openAssignmentInstruction: (assignmentId: string, index = 0) =>
     openProtectedFile(`/assignments/${assignmentId}/instruction/${index}`),
 
-  // ΓöÇΓöÇ exams / performance ΓöÇΓöÇ
+  // ── exams / performance ──
   performance: (enrollmentId: string) => request<PerformanceDto>(`/exams/performance?enrollmentId=${enrollmentId}`),
   exams: () => request<ExamDto[]>('/exams'),
   examSubjects: (examId: string) => request<ExamSubjectDto[]>(`/exams/subjects?examId=${examId}`),
@@ -347,12 +340,12 @@ export const api = {
   publishMarks: (examSubjectId: string) =>
     request<{ matched: number; modified: number }>('/exams/publish', { method: 'POST', body: JSON.stringify({ examSubjectId }) }),
 
-  // ΓöÇΓöÇ calendar ΓöÇΓöÇ
+  // ── calendar ──
   calendar: (from: string, to: string) => request<CalendarEventDto[]>(`/calendar?from=${from}&to=${to}`),
   createEvent: (body: { title: string; type?: string; startsAt: string; endsAt: string; description?: string; audience?: object }) =>
     request<{ id: string }>('/calendar', { method: 'POST', body: JSON.stringify(body) }),
 
-  // ΓöÇΓöÇ fees ΓöÇΓöÇ
+  // ── fees ──
   invoices: (status?: string) => request<InvoiceDto[]>(`/fees/invoices${status ? `?status=${status}` : ''}`),
   invoiceDetail: (id: string) => request<InvoiceDetailDto>(`/fees/invoices/${id}`),
   createInvoice: (body: { enrollmentId: string; invoiceNo?: string; dueOn: string; lines: { description: string; amountPaise: number; concessionPaise?: number }[] }) =>
@@ -362,10 +355,10 @@ export const api = {
     const qs = studentId ? `?studentId=${studentId}` : '';
     return request<{ id: string; studentName: string; class: string }[]>(`/enrollments${qs}`);
   },
-  // /fees/summary returns FeeSummary directly ΓÇö the backend and this type are
+  // /fees/summary returns FeeSummary directly — the backend and this type are
   // the same contract. The alias-guessing that used to live here (three
   // candidate spellings per field, each defaulting to 0) is gone on purpose:
-  // it turned a renamed field into a silent Γé╣0 instead of a visible failure,
+  // it turned a renamed field into a silent ₹0 instead of a visible failure,
   // which is how a broken dashboard went unnoticed.
   feeSummary: () => request<FeeSummary>('/fees/summary'),
   verifyCheckout: (body: { orderId: string; paymentId: string; signature: string }) =>
@@ -381,7 +374,7 @@ export const api = {
   downloadInvoicePdf: (invoiceId: string) => openProtectedFile(`/fees/invoices/${invoiceId}/pdf`),
   downloadReceiptPdf: (paymentId: string) => openProtectedFile(`/fees/payments/${paymentId}/pdf`),
 
-  // ΓöÇΓöÇ announcements ΓöÇΓöÇ
+  // ── announcements ──
   announcements: () => request<AnnouncementDto[]>('/announcements'),
   createAnnouncement: (body: {
     title: string; content: string;
@@ -389,10 +382,10 @@ export const api = {
     channels?: { app?: boolean; email?: boolean; whatsapp?: boolean };
   }) => request<{ id: string }>('/announcements', { method: 'POST', body: JSON.stringify(body) }),
 
-  // ΓöÇΓöÇ tickets ΓöÇΓöÇ
+  // ── tickets ──
   academicYears: () => request<AcademicYearDto[]>('/academics/years'),
 
-  // ΓöÇΓöÇ agentic assistant (shared core with WhatsApp) ΓöÇΓöÇ
+  // ── agentic assistant (shared core with WhatsApp) ──
   agentAsk: (message: string, lang?: string) =>
     request<AgentReply>('/ai/agent', { method: 'POST', body: JSON.stringify({ message, source: 'WEB', lang }) }),
   agentConfirm: (confirmToken: string, accept: boolean, lang?: string) =>
@@ -402,7 +395,7 @@ export const api = {
     }),
   agentCapabilities: () => request<{ tools: AgentTool[] }>('/ai/agent/capabilities'),
 
-  // ΓöÇΓöÇ report cards ΓöÇΓöÇ
+  // ── report cards ──
   reportCard: (enrollmentId?: string, exam?: string) => {
     const q = new URLSearchParams();
     if (enrollmentId) q.set('enrollmentId', enrollmentId);
@@ -415,12 +408,12 @@ export const api = {
     if (enrollmentId) q.set('enrollmentId', enrollmentId);
     if (exam) q.set('exam', exam);
     const qs = q.toString();
-    // Uses the same authenticated blob-fetch as the invoice/receipt PDFs ΓÇö
+    // Uses the same authenticated blob-fetch as the invoice/receipt PDFs —
     // a plain link would not carry the Bearer token.
     return openProtectedFile(`/exams/report-card/pdf${qs ? `?${qs}` : ''}`);
   },
 
-  // ΓöÇΓöÇ fee structures & invoice generation ΓöÇΓöÇ
+  // ── fee structures & invoice generation ──
   feeHeads: () => request<FeeHeadDto[]>('/fees/heads'),
   feeStructures: (academicYearId?: string, gradeId?: string) => {
     const q = new URLSearchParams();
@@ -436,7 +429,7 @@ export const api = {
   generateInvoices: (body: { academicYearId: string; gradeId?: string | null; dueOn?: string; dryRun?: boolean }) =>
     request<GenerateInvoicesResult>('/fees/invoices/generate', { method: 'POST', body: JSON.stringify(body) }),
 
-  // ΓöÇΓöÇ notifications (per-profile inbox) ΓöÇΓöÇ
+  // ── notifications (per-profile inbox) ──
   notifications: (opts: { unreadOnly?: boolean; limit?: number; before?: string } = {}) => {
     const q = new URLSearchParams();
     if (opts.unreadOnly) q.set('unreadOnly', 'true');
@@ -458,18 +451,18 @@ export const api = {
   replyTicket: (body: { ticketId: string; body: string; status?: string }) =>
     request<{ id: string; status: string }>('/tickets/reply', { method: 'POST', body: JSON.stringify(body) }),
 
-  // ΓöÇΓöÇ medical ΓöÇΓöÇ
+  // ── medical ──
   medical: (studentId: string) => request<MedicalDto>(`/medical/${studentId}`),
   saveMedical: (studentId: string, body: object) => request<{ studentId: string }>(`/medical/${studentId}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteMedical: (studentId: string) => request<void>(`/medical/${studentId}`, { method: 'DELETE' }),
 
-  // ΓöÇΓöÇ admissions ΓöÇΓöÇ
+  // ── admissions ──
   pipeline: () => request<Pipeline>('/admissions/pipeline'),
   createLead: (body: object) => request<{ id: string }>('/admissions/leads', { method: 'POST', body: JSON.stringify(body) }),
   updateLead: (body: object) => request<{ id: string }>('/admissions/leads/update', { method: 'POST', body: JSON.stringify(body) }),
   bulkImportLeads: (file: File) => uploadCsv('/admissions/leads/bulk', file),
 
-  // ΓöÇΓöÇ AI layer ΓöÇΓöÇ
+  // ── AI layer ──
   growthScore: (enrollmentId: string) => request<GrowthScore>(`/growth/score?enrollmentId=${enrollmentId}`),
   riskScan: async () => {
     const raw: any = await request<any>('/risk/scan');
@@ -495,7 +488,7 @@ export const api = {
   aiChat: (message: string, conversationId?: string) =>
     request<AiReply>('/ai/chat', { method: 'POST', body: JSON.stringify({ message, conversationId }) }),
 
-  // ΓöÇΓöÇ WhatsApp hand-off for families ΓöÇΓöÇ
+  // ── WhatsApp hand-off for families ──
   // The link is built server-side: the identifiers in the prefilled message
   // come from records the client cannot assert, and the number is not exposed
   // until the feature is switched on.
@@ -503,7 +496,7 @@ export const api = {
   trackWhatsappAssistantClick: (device: 'MOBILE' | 'DESKTOP' | 'TABLET') =>
     request<{ recorded: boolean }>('/whatsapp/assistant-link/click', { method: 'POST', body: JSON.stringify({ device }) }),
 
-  // ΓöÇΓöÇ transport (Phase 8) ΓöÇΓöÇ
+  // ── transport (Phase 8) ──
   listRoutes: () => request<TransportRouteDto[]>('/transport/routes'),
   listStops: (routeId: string) => request<TransportStopDto[]>(`/transport/routes/${routeId}/stops`),
   myBus: (studentId?: string) => request<MyBusDto | null>(`/transport/my-bus${studentId ? `?studentId=${studentId}` : ''}`),
@@ -517,7 +510,7 @@ export const api = {
     request<{ id: string }>('/transport/enroll', { method: 'POST', body: JSON.stringify(body) }),
   bulkEnrollStudents: (file: File) => uploadCsv('/transport/enroll/bulk', file),
 
-  // ΓöÇΓöÇ library (Phase 8) ΓöÇΓöÇ
+  // ── library (Phase 8) ──
   listBooks: (search?: string) => request<BookDto[]>(`/library/books${search ? `?search=${encodeURIComponent(search)}` : ''}`),
   listIssued: (studentId?: string) => request<BookIssueDto[]>(`/library/issues${studentId ? `?studentId=${studentId}` : ''}`),
   listOverdueIssues: () => request<BookIssueDto[]>('/library/issues/overdue'),
@@ -548,7 +541,7 @@ export const api = {
   fulfillBookReservation: (id: string) =>
     request<BookReservationDto>(`/library/reservations/${id}/fulfill`, { method: 'PATCH' }),
 
-  // ΓöÇΓöÇ documents (Phase 8) ΓöÇΓöÇ
+  // ── documents (Phase 8) ──
   listDocuments: (studentId?: string) => request<DocumentDto[]>(`/documents${studentId ? `?studentId=${studentId}` : ''}`),
   createDocument: (body: { title: string; type: string; fileUrl: string; mimeType?: string; visibleToRoles?: string[]; studentId?: string; academicYearId?: string; sectionId?: string; subjectOfferingId?: string }) =>
     request<{ id: string }>('/documents', { method: 'POST', body: JSON.stringify(body) }),
@@ -561,10 +554,10 @@ export const api = {
   /** Generates and opens a student's ID card PDF in a new tab; throws ApiError (404) if it isn't available yet. */
   openIdCard: (studentId: string) => openProtectedFile(`/students/${studentId}/id-card`),
 
-  // ΓöÇΓöÇ uploads ΓöÇΓöÇ
+  // ── uploads ──
   uploadFile,
 
-  // ΓöÇΓöÇ hostel ΓöÇΓöÇ
+  // ── hostel ──
   hostelSummary: () => request<HostelSummaryDto>('/hostel/summary'),
   hostelRooms: () => request<HostelRoomDto[]>('/hostel/rooms'),
   createHostelRoom: (body: { roomNo: string; block: string; floor?: number; type?: string; capacity: number }) =>
@@ -597,7 +590,7 @@ export const api = {
   recordHostelMovement: (id: string, body: { action: 'EXIT' | 'ENTRY' }) =>
     request<HostelPassDto>(`/hostel/passes/${id}/movement`, { method: 'PATCH', body: JSON.stringify(body) }),
 
-  // ΓöÇΓöÇ role dashboards (single scoped fetch per portal home) ΓöÇΓöÇ
+  // ── role dashboards (single scoped fetch per portal home) ──
   adminDashboard: () => request<AdminDashboardDto>('/dashboard/admin'),
   ownerDashboard: () => request<OwnerDashboardDto>('/dashboard/owner'),
   financeDashboard: () => request<FinanceDashboardDto>('/dashboard/finance'),
@@ -607,13 +600,13 @@ export const api = {
   wardenDashboard: () => request<WardenDashboardDto>('/dashboard/warden'),
   librarianDashboard: () => request<LibrarianDashboardDto>('/dashboard/librarian'),
 
-  // ΓöÇΓöÇ AI tutor (grounded in the caller's own syllabus, server-side) ΓöÇΓöÇ
+  // ── AI tutor (grounded in the caller's own syllabus, server-side) ──
   tutorStatus: () => request<TutorStatusDto>('/ai/tutor/status'),
   tutorSyllabus: () => request<TutorSyllabusDto>('/ai/tutor/syllabus'),
   tutor: (body: { topic: string; subject?: string; mode?: string; lang?: string }) =>
     request<TutorReplyDto>('/ai/tutor', { method: 'POST', body: JSON.stringify(body) }),
 
-  // ΓöÇΓöÇ AI credits (students & parents; staff are not metered) ΓöÇΓöÇ
+  // ── AI credits (students & parents; staff are not metered) ──
   aiCredits: () => request<AiCreditStatusDto>('/ai/credits'),
   aiCreditOrders: () => request<AiCreditOrderDto[]>('/ai/credits/orders'),
   buyAiCredits: (packKey: string) =>
@@ -621,7 +614,7 @@ export const api = {
   verifyAiCreditPurchase: (body: { orderId: string; paymentId: string; signature: string }) =>
     request<AiCreditPurchaseDto & { idempotent?: boolean }>('/ai/credits/purchase/verify', { method: 'POST', body: JSON.stringify(body) }),
 
-  // ΓöÇΓöÇ RBAC administration ΓöÇΓöÇ
+  // ── RBAC administration ──
   listRoles: () => request<RoleDto[]>('/roles'),
   listPermissionCatalog: () => request<PermissionDto[]>('/permissions'),
   assignRolePermission: (roleId: string, body: { key: string; scope?: 'ALL' | 'OWN' }) =>
@@ -629,7 +622,7 @@ export const api = {
   revokeRolePermission: (roleId: string, key: string) =>
     request<RoleDto>(`/roles/${roleId}/permissions/${encodeURIComponent(key)}`, { method: 'DELETE' }),
 
-  // ΓöÇΓöÇ Incidents / disciplinary reports ΓöÇΓöÇ
+  // ── Incidents / disciplinary reports ──
   listIncidents: (params?: { studentId?: string; status?: string }) => {
     const qs = new URLSearchParams();
     if (params?.studentId) qs.set('studentId', params.studentId);
@@ -648,7 +641,7 @@ export const api = {
   updateIncident: (id: string, body: { status?: string; actionTaken?: string }) =>
     request<IncidentDto>(`/incidents/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
-  // ΓöÇΓöÇ Parent-Teacher Direct Messaging ΓöÇΓöÇ
+  // ── Parent-Teacher Direct Messaging ──
   ptListThreads: () => request<PtThreadDto[]>('/pt-messages/threads'),
   ptStudentTeachers: (studentId: string) => request<StudentTeacherDto[]>(`/pt-messages/student-teachers/${studentId}`),
   ptStartThread: (body: { studentId: string; teacherProfileId?: string; subject?: string }) =>
@@ -657,4 +650,3 @@ export const api = {
   ptSendMessage: (body: { threadId: string; body: string }) =>
     request<PtMessageDto>('/pt-messages/send', { method: 'POST', body: JSON.stringify(body) }),
 };
-
