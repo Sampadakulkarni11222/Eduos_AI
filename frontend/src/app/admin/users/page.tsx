@@ -1,37 +1,10 @@
-'use client';
+﻿'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Avatar, Button, Card, EmptyState, Input, Pagination, Pill, SkeletonRows, useToast } from '@/components/ui';
+import { Avatar, Button, Card, EmptyState, Field, Input, Modal, Pill, SkeletonRows, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
-import { ConfirmModal } from '@/components/confirm-modal';
 import { api } from '@/lib/api';
 import type { UserDto, SectionDto } from '@/lib/types';
-
-// All roles that can be created from the form.
-const ALL_ROLES = [
-  { value: 'STUDENT', label: 'Student' },
-  { value: 'TEACHER', label: 'Teacher' },
-  { value: 'PARENT', label: 'Parent' },
-  { value: 'WARDEN', label: 'Warden' },
-  { value: 'LIBRARIAN', label: 'Librarian' },
-  { value: 'FINANCE', label: 'Finance' },
-  { value: 'PRINCIPAL', label: 'Principal' },
-  { value: 'ADMIN', label: 'Admin' },
-];
-
-const STATUS_TONE: Record<string, 'green' | 'red' | 'amber' | 'gray'> = {
-  ACTIVE: 'green', INACTIVE: 'red', SUSPENDED: 'amber',
-};
-
-/** Normalise a phone input to E.164: accept 10-digit Indian numbers without the prefix. */
-function normalisePhone(raw: string): string {
-  const trimmed = raw.trim().replace(/\s+/g, '');
-  if (trimmed.startsWith('+')) return trimmed;
-  // Strip leading 0 and assume +91 if 10 digits
-  const digits = trimmed.replace(/^0+/, '');
-  if (/^\d{10}$/.test(digits)) return `+91${digits}`;
-  return trimmed;
-}
 
 export default function UsersPage() {
   const [search, setSearch] = useState('');
@@ -40,14 +13,10 @@ export default function UsersPage() {
   const [err, setErr] = useState(false);
   const deb = useRef<ReturnType<typeof setTimeout>>();
 
-  // Pagination state
-  const [page, setPage] = useState(0);
-  const PAGE_SIZE = 20;
-
-  // Create modal
+  // Create User Modal states
   const [showModal, setShowModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
-  const [roleKey, setRoleKey] = useState('STUDENT');
+  const [roleKey, setRoleKey] = useState<'STUDENT' | 'TEACHER'>('STUDENT');
   const [displayName, setDisplayName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -56,22 +25,23 @@ export default function UsersPage() {
   const [sectionId, setSectionId] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // Edit modal
-  const [editUser, setEditUser] = useState<UserDto | null>(null);
-  const [editName, setEditName] = useState('');
+  // Edit User Modal states
+  const [editingUser, setEditingUser] = useState<UserDto | null>(null);
+  const [editDisplayName, setEditDisplayName] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editBusy, setEditBusy] = useState(false);
 
-  // Deactivate confirm
-  const [confirmUser, setConfirmUser] = useState<UserDto | null>(null);
+  // Deactivate / Reactivate confirmation states
+  const [statusTargetUser, setStatusTargetUser] = useState<UserDto | null>(null);
+  const [statusAction, setStatusAction] = useState<'ACTIVE' | 'INACTIVE' | null>(null);
+  const [statusBusy, setStatusBusy] = useState(false);
 
   const toast = useToast();
 
   const load = useCallback(async (q: string) => {
     setItems(null);
     setErr(false);
-    setPage(0);
     try {
       const r = await api.listUsers(q || undefined);
       setItems(r);
@@ -97,31 +67,29 @@ export default function UsersPage() {
     deb.current = setTimeout(() => void load(q.trim()), 300);
   };
 
-  const resetCreateForm = () => {
-    setDisplayName(''); setPhone(''); setEmail(''); setPassword('');
-    setAdmissionNo(''); setRoleKey('STUDENT');
-    if (sections[0]) setSectionId(sections[0].id);
-  };
-
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!displayName || !phone) return;
-    const normPhone = normalisePhone(phone);
     setBusy(true);
     try {
       await api.createUser({
-        roleKey: roleKey as any,
+        roleKey,
         displayName,
-        phone: normPhone,
+        phone,
         email: email || undefined,
         password: password || undefined,
         admissionNo: roleKey === 'STUDENT' ? admissionNo || undefined : undefined,
         sectionId: roleKey === 'STUDENT' ? sectionId || undefined : undefined,
       });
       setShowModal(false);
-      resetCreateForm();
+      // Reset form
+      setDisplayName('');
+      setPhone('');
+      setEmail('');
+      setPassword('');
+      setAdmissionNo('');
+      if (sections[0]) setSectionId(sections[0].id);
       await load(search);
-      toast('User created successfully.', 'success');
     } catch (err: any) {
       toast(err.message || 'Could not create the user.', 'error');
     } finally {
@@ -129,27 +97,26 @@ export default function UsersPage() {
     }
   };
 
-  const openEdit = (u: UserDto) => {
-    setEditUser(u);
-    setEditName(u.displayName);
-    setEditPhone(u.phone);
+  const openEditModal = (u: UserDto) => {
+    setEditingUser(u);
+    setEditDisplayName(u.displayName || '');
+    setEditPhone(u.phone || '');
     setEditEmail(u.email || '');
   };
 
-  const handleEdit = async (e: React.FormEvent) => {
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editUser) return;
+    if (!editingUser || !editDisplayName.trim() || !editPhone.trim()) return;
     setEditBusy(true);
     try {
-      const normPhone = normalisePhone(editPhone);
-      await api.updateUser(editUser.id, {
-        displayName: editName,
-        phone: normPhone,
-        email: editEmail || undefined,
+      await api.updateUser(editingUser.id, {
+        displayName: editDisplayName.trim(),
+        phone: editPhone.trim(),
+        email: editEmail.trim() || null,
       });
-      setEditUser(null);
+      toast('User updated successfully', 'success');
+      setEditingUser(null);
       await load(search);
-      toast('User updated.', 'success');
     } catch (err: any) {
       toast(err.message || 'Could not update user.', 'error');
     } finally {
@@ -157,27 +124,35 @@ export default function UsersPage() {
     }
   };
 
-  const handleToggleStatus = async (u: UserDto) => {
-    const newStatus = u.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-    try {
-      await api.updateUser(u.id, { status: newStatus });
-      await load(search);
-      toast(`User ${newStatus === 'INACTIVE' ? 'deactivated' : 'reactivated'}.`, 'success');
-    } catch (err: any) {
-      toast(err.message || 'Could not update status.', 'error');
-    }
+  const openConfirmStatusModal = (u: UserDto, action: 'ACTIVE' | 'INACTIVE') => {
+    setStatusTargetUser(u);
+    setStatusAction(action);
   };
 
-  // Paginated slice
-  const allItems = items ?? [];
-  const pageItems = allItems.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  const totalPages = Math.ceil(allItems.length / PAGE_SIZE);
+  const handleConfirmStatusChange = async () => {
+    if (!statusTargetUser || !statusAction) return;
+    setStatusBusy(true);
+    try {
+      await api.updateUser(statusTargetUser.id, { status: statusAction });
+      toast(
+        statusAction === 'INACTIVE' ? 'User deactivated successfully' : 'User reactivated successfully',
+        'success'
+      );
+      setStatusTargetUser(null);
+      setStatusAction(null);
+      await load(search);
+    } catch (err: any) {
+      toast(err.message || `Could not ${statusAction === 'INACTIVE' ? 'deactivate' : 'reactivate'} user.`, 'error');
+    } finally {
+      setStatusBusy(false);
+    }
+  };
 
   return (
     <PortalShell expectedSlug="admin" topbar={{ title: 'User Management', desc: 'Phone-rooted accounts linked to one or more role profiles.' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16 }}>
         <div style={{ maxWidth: 320, width: '100%', flex: '1 1 220px' }}>
-          <Input type="search" value={search} onChange={(e) => onSearch(e.target.value)} placeholder="Search by name or phone…" aria-label="Search" />
+          <Input type="search" value={search} onChange={(e) => onSearch(e.target.value)} placeholder="Search by name..." aria-label="Search" />
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <Button variant="soft" onClick={() => setShowBulkModal(true)}>Bulk Upload</Button>
@@ -204,72 +179,72 @@ export default function UsersPage() {
           <EmptyState title={search ? 'No matches' : 'No users yet'} sub={search ? `Nothing matches "${search}".` : 'Users appear here once records are created.'} />
         )}
         {items && items.length > 0 && (
-          <>
-            <table className="data-table data-table-cards">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Role</th>
-                  <th>Phone / Email</th>
-                  <th>Class Details</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pageItems.map((u) => (
-                  <tr key={u.id}>
-                    <td data-label="Name">
-                      <span className="row-flex">
-                        <Avatar name={u.displayName} />
-                        <span className="cell-primary">{u.displayName}</span>
-                      </span>
-                    </td>
-                    <td data-label="Role">
-                      <Pill tone={u.roleKey === 'ADMIN' ? 'red' : u.roleKey === 'TEACHER' ? 'blue' : u.roleKey === 'STUDENT' ? 'green' : 'gray'}>
-                        {u.roleKey}
-                      </Pill>
-                    </td>
-                    <td data-label="Phone / Email">
-                      <div style={{ fontSize: 13, fontWeight: 500 }}>{u.phone}</div>
-                      {u.email && <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{u.email}</div>}
-                    </td>
-                    <td data-label="Class Details">
-                      {u.roleKey === 'STUDENT' && u.studentDetails ? (
-                        <div>
-                          <div style={{ fontWeight: 600 }}>{u.studentDetails.class || 'No Class'}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>
-                            Adm: {u.studentDetails.admissionNo} {u.studentDetails.rollNo ? `· Roll: ${u.studentDetails.rollNo}` : ''}
-                          </div>
+          <table className="data-table data-table-cards">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Phone / Email</th>
+                <th>Class Details</th>
+                <th>Status</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((u) => (
+                <tr key={u.id}>
+                  <td data-label="Name">
+                    <span className="row-flex">
+                      <Avatar name={u.displayName} />
+                      <span className="cell-primary">{u.displayName}</span>
+                    </span>
+                  </td>
+                  <td data-label="Role">
+                    <Pill tone={u.roleKey === 'ADMIN' ? 'red' : u.roleKey === 'TEACHER' ? 'blue' : u.roleKey === 'STUDENT' ? 'green' : 'gray'}>
+                      {u.roleKey}
+                    </Pill>
+                  </td>
+                  <td data-label="Phone / Email">
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>{u.phone}</div>
+                    {u.email && <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{u.email}</div>}
+                  </td>
+                  <td data-label="Class Details">
+                    {u.roleKey === 'STUDENT' && u.studentDetails ? (
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{u.studentDetails.class || 'No Class'}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                          Adm: {u.studentDetails.admissionNo} {u.studentDetails.rollNo ? `┬╖ Roll: ${u.studentDetails.rollNo}` : ''}
                         </div>
-                      ) : (
-                        <span style={{ color: 'var(--text-faint)' }}>—</span>
-                      )}
-                    </td>
-                    <td data-label="Status">
-                      <Pill tone={STATUS_TONE[(u as any).status] ?? 'gray'}>{(u as any).status ?? 'ACTIVE'}</Pill>
-                    </td>
-                    <td data-label="Actions">
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <Button small variant="soft" onClick={() => openEdit(u)}>Edit</Button>
-                        <Button
-                          small
-                          variant="ghost"
-                          onClick={() => setConfirmUser(u)}
-                          style={{ color: (u as any).status === 'ACTIVE' ? 'var(--red)' : 'var(--green)' }}
-                        >
-                          {(u as any).status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
-                        </Button>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* Pagination */}
-            <Pagination page={page} pageSize={PAGE_SIZE} total={allItems.length} onPage={setPage} />
-          </>
+                    ) : (
+                      <span style={{ color: 'var(--text-faint)' }}>ΓÇö</span>
+                    )}
+                  </td>
+                  <td data-label="Status">
+                    <Pill tone={u.status === 'ACTIVE' ? 'green' : u.status === 'SUSPENDED' ? 'amber' : 'red'}>
+                      {u.status ? u.status.charAt(0) + u.status.slice(1).toLowerCase() : 'Active'}
+                    </Pill>
+                  </td>
+                  <td data-label="Actions" style={{ textAlign: 'right' }}>
+                    <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                      <Button variant="ghost" small onClick={() => openEditModal(u)}>
+                        Edit
+                      </Button>
+                      {u.status === 'INACTIVE' ? (
+                        <Button variant="soft" small onClick={() => openConfirmStatusModal(u, 'ACTIVE')}>
+                          Reactivate
+                        </Button>
+                      ) : u.status === 'ACTIVE' ? (
+                        <Button variant="soft" small onClick={() => openConfirmStatusModal(u, 'INACTIVE')}>
+                          Deactivate
+                        </Button>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </Card>
 
@@ -279,25 +254,20 @@ export default function UsersPage() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">Create User Profile</div>
-              <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
+              <button className="modal-close" onClick={() => setShowModal(false)}>├ù</button>
             </div>
             <form onSubmit={handleCreate}>
               <div className="field-label">Select Role *</div>
-              <select className="field-input" value={roleKey} onChange={(e) => setRoleKey(e.target.value)}>
-                {ALL_ROLES.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
+              <select className="field-input" value={roleKey} onChange={(e) => setRoleKey(e.target.value as any)}>
+                <option value="STUDENT">Student</option>
+                <option value="TEACHER">Teacher</option>
               </select>
 
               <div className="field-label">Full Name *</div>
               <input className="field-input" required value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Diya Tharian" />
 
-              <div className="field-label">Phone * <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>(10 digits or +91XXXXXXXXXX)</span></div>
-              <input
-                className="field-input" required type="tel" value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="e.g. 9555000111 or +919555000111"
-              />
+              <div className="field-label">Phone (E.164 format) *</div>
+              <input className="field-input" required type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="e.g. +919555000111" />
 
               <div className="field-label">Email (Optional)</div>
               <input className="field-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="e.g. diya@example.com" />
@@ -315,7 +285,7 @@ export default function UsersPage() {
                     <option value="">-- Choose Class --</option>
                     {sections.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.gradeName ? `${s.gradeName} – ${s.name}` : s.name}
+                        {s.gradeName ? `${s.gradeName} ΓÇô ${s.name}` : s.name}
                       </option>
                     ))}
                   </select>
@@ -323,7 +293,7 @@ export default function UsersPage() {
               )}
 
               <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-                <Button type="submit" disabled={busy}>{busy ? 'Creating…' : 'Create User'}</Button>
+                <Button type="submit" disabled={busy}>{busy ? 'CreatingΓÇª' : 'Create User'}</Button>
                 <Button variant="ghost" type="button" onClick={() => setShowModal(false)}>Cancel</Button>
               </div>
             </form>
@@ -332,49 +302,76 @@ export default function UsersPage() {
       )}
 
       {/* Edit User Modal */}
-      {editUser && (
-        <div className="modal-overlay" onClick={() => setEditUser(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
-            <div className="modal-header">
-              <div className="modal-title">Edit User</div>
-              <button className="modal-close" onClick={() => setEditUser(null)}>×</button>
-            </div>
-            <form onSubmit={handleEdit}>
-              <div className="field-label">Full Name *</div>
-              <input className="field-input" required value={editName} onChange={(e) => setEditName(e.target.value)} />
-
-              <div className="field-label">Phone * <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>(10 digits or +91XXXXXXXXXX)</span></div>
-              <input
-                className="field-input" required type="tel" value={editPhone}
-                onChange={(e) => setEditPhone(e.target.value)}
+      {editingUser && (
+        <Modal title={`Edit User ΓÇô ${editingUser.displayName}`} onClose={() => setEditingUser(null)}>
+          <form onSubmit={handleSaveEdit}>
+            <Field label="Full Name" required>
+              <Input
+                required
+                value={editDisplayName}
+                onChange={(e) => setEditDisplayName(e.target.value)}
+                placeholder="e.g. Diya Tharian"
               />
+            </Field>
 
-              <div className="field-label">Email (Optional)</div>
-              <input className="field-input" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+            <Field label="Phone (E.164 format)" required>
+              <Input
+                required
+                type="tel"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                placeholder="e.g. +919555000111"
+              />
+            </Field>
 
-              <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-                <Button type="submit" disabled={editBusy}>{editBusy ? 'Saving…' : 'Save Changes'}</Button>
-                <Button variant="ghost" type="button" onClick={() => setEditUser(null)}>Cancel</Button>
-              </div>
-            </form>
-          </div>
-        </div>
+            <Field label="Email (Optional)">
+              <Input
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                placeholder="e.g. diya@example.com"
+              />
+            </Field>
+
+            <div style={{ display: 'flex', gap: 12, marginTop: 16, justifyContent: 'flex-end' }}>
+              <Button variant="ghost" type="button" onClick={() => setEditingUser(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={editBusy}>
+                {editBusy ? 'SavingΓÇª' : 'Save Changes'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
       )}
 
-      {/* Deactivate / Reactivate Confirm Modal */}
-      {confirmUser && (
-        <ConfirmModal
-          title={(confirmUser as any).status === 'ACTIVE' ? 'Deactivate user?' : 'Reactivate user?'}
-          body={
-            (confirmUser as any).status === 'ACTIVE'
-              ? `${confirmUser.displayName} will no longer be able to log in. You can reactivate them at any time.`
-              : `${confirmUser.displayName} will be able to log in again.`
-          }
-          confirmLabel={(confirmUser as any).status === 'ACTIVE' ? 'Deactivate' : 'Reactivate'}
-          danger={(confirmUser as any).status === 'ACTIVE'}
-          onConfirm={() => { handleToggleStatus(confirmUser); setConfirmUser(null); }}
-          onCancel={() => setConfirmUser(null)}
-        />
+      {/* Deactivate / Reactivate Confirmation Modal */}
+      {statusTargetUser && statusAction && (
+        <Modal
+          title={statusAction === 'INACTIVE' ? 'Deactivate User' : 'Reactivate User'}
+          onClose={() => { setStatusTargetUser(null); setStatusAction(null); }}
+        >
+          <p style={{ fontSize: 14, color: 'var(--text-1)', marginBottom: 20, lineHeight: 1.5 }}>
+            {statusAction === 'INACTIVE'
+              ? `Are you sure you want to deactivate ${statusTargetUser.displayName}? This user will not be able to log in until reactivated.`
+              : `Are you sure you want to reactivate ${statusTargetUser.displayName}? This user will regain access to their account.`}
+          </p>
+
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+            <Button variant="ghost" type="button" onClick={() => { setStatusTargetUser(null); setStatusAction(null); }}>
+              Cancel
+            </Button>
+            <Button
+              variant={statusAction === 'INACTIVE' ? 'soft' : 'accent'}
+              onClick={handleConfirmStatusChange}
+              disabled={statusBusy}
+            >
+              {statusBusy
+                ? (statusAction === 'INACTIVE' ? 'DeactivatingΓÇª' : 'ReactivatingΓÇª')
+                : (statusAction === 'INACTIVE' ? 'Deactivate' : 'Reactivate')}
+            </Button>
+          </div>
+        </Modal>
       )}
     </PortalShell>
   );

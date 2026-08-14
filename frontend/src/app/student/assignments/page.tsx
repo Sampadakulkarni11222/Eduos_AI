@@ -81,7 +81,20 @@ export default function StudentAssignments() {
           {rows.map((a) => (
             <tr key={a.id} style={dim ? { opacity: 0.75 } : undefined}>
               <td style={{ color: 'var(--text-faint)' }} data-label="Subject">{a.subject}</td>
-              <td className="cell-primary" data-label="Title">{a.title}</td>
+              <td className="cell-primary" data-label="Title">
+                <div>{a.title}</div>
+                {a.attachments && a.attachments.length > 0 && (
+                  <div style={{ marginTop: 2 }}>
+                    <button
+                      type="button"
+                      onClick={() => void api.openAssignmentInstruction(a.id)}
+                      style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: 'var(--accent)', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      📄 Instructions
+                    </button>
+                  </div>
+                )}
+              </td>
               <td data-label="Chapter">{a.chapter || '—'}</td>
               <td data-label="Type"><Pill tone={TYPE_TONE[a.type] ?? 'gray'}>{a.type.toLowerCase()}</Pill></td>
               <td style={{ color: !dim && isOverdue(a.dueAt) ? 'var(--red)' : 'var(--text-2)' }} data-label={dueLabel}>{fmtDate(a.dueAt)}</td>

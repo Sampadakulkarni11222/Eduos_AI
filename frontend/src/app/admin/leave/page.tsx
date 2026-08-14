@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from '@/components/ui';
@@ -138,7 +138,7 @@ export default function AdminStaffLeavePage() {
                       <Pill tone={STATUS_TONE[a.status]}>{a.status.toLowerCase()}</Pill>
                       {a.remarks && (
                         <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 3 }} title={a.remarks}>
-                          {a.remarks.slice(0, 30)}{a.remarks.length > 30 ? '…' : ''}
+                          {a.remarks.slice(0, 30)}{a.remarks.length > 30 ? 'ΓÇª' : ''}
                         </div>
                       )}
                     </div>
@@ -157,7 +157,7 @@ export default function AdminStaffLeavePage() {
                       </div>
                     ) : (
                       <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>
-                        {a.reviewedAt ? fmtDate(a.reviewedAt) : '—'}
+                        {a.reviewedAt ? fmtDate(a.reviewedAt) : 'ΓÇö'}
                       </span>
                     )}
                   </td>
@@ -176,13 +176,13 @@ export default function AdminStaffLeavePage() {
               <div className="modal-title">
                 {reviewing.action === 'APPROVED' ? 'Approve leave?' : 'Reject leave?'}
               </div>
-              <button className="modal-close" onClick={() => setReviewing(null)}>×</button>
+              <button className="modal-close" onClick={() => setReviewing(null)}>├ù</button>
             </div>
             <p style={{ fontSize: 13.5, color: 'var(--text-2)', marginBottom: 8 }}>
               <strong>{reviewing.app.applicantName}</strong> ({LEAVE_TYPE_LABELS[reviewing.app.leaveType] ?? reviewing.app.leaveType})
             </p>
             <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 14 }}>
-              {fmtDate(reviewing.app.fromDate)} – {fmtDate(reviewing.app.toDate)} · {dayCount(reviewing.app.fromDate, reviewing.app.toDate)} day{dayCount(reviewing.app.fromDate, reviewing.app.toDate) !== 1 ? 's' : ''}
+              {fmtDate(reviewing.app.fromDate)} ΓÇô {fmtDate(reviewing.app.toDate)} ┬╖ {dayCount(reviewing.app.fromDate, reviewing.app.toDate)} day{dayCount(reviewing.app.fromDate, reviewing.app.toDate) !== 1 ? 's' : ''}
             </p>
             <p style={{ fontSize: 12.5, color: 'var(--text-2)', marginBottom: 14, fontStyle: 'italic' }}>
               "{reviewing.app.reason}"
@@ -207,7 +207,7 @@ export default function AdminStaffLeavePage() {
                   border: 'none',
                 }}
               >
-                {busy ? 'Saving…' : reviewing.action === 'APPROVED' ? 'Approve' : 'Reject'}
+                {busy ? 'SavingΓÇª' : reviewing.action === 'APPROVED' ? 'Approve' : 'Reject'}
               </Button>
               <Button variant="ghost" onClick={() => setReviewing(null)} disabled={busy} style={{ flex: 1 }}>
                 Cancel

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { FormEvent, useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from '@/components/ui';
@@ -116,7 +116,7 @@ export default function TeacherLeavePage() {
                     <Pill tone={STATUS_TONE[a.status]}>{a.status.toLowerCase()}</Pill>
                   </td>
                   <td data-label="Remarks" style={{ fontSize: 12.5, color: 'var(--text-2)' }}>
-                    {a.remarks ?? '—'}
+                    {a.remarks ?? 'ΓÇö'}
                   </td>
                 </tr>
               ))}
@@ -210,14 +210,14 @@ function ApplyLeaveForm({ onDone, onCancel, toast }: {
             rows={3}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. Family function, medical appointment…"
+            placeholder="e.g. Family function, medical appointmentΓÇª"
             style={{ resize: 'vertical' }}
             required
           />
         </div>
-        {err && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 8 }}>⚠ {err}</p>}
+        {err && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 8 }}>ΓÜá {err}</p>}
         <div style={{ display: 'flex', gap: 10 }}>
-          <Button type="submit" disabled={busy}>{busy ? 'Submitting…' : 'Submit application'}</Button>
+          <Button type="submit" disabled={busy}>{busy ? 'SubmittingΓÇª' : 'Submit application'}</Button>
           <Button variant="ghost" type="button" onClick={onCancel} disabled={busy}>Cancel</Button>
         </div>
       </form>

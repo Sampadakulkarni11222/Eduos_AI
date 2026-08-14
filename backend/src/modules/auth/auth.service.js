@@ -53,6 +53,10 @@ async function issueSession(account, { profileId = null, userAgent, ip } = {}) {
  *       profile and issue a full session immediately, skipping selection.
  */
 async function resolveSession(account, opts) {
+  if (account.status !== 'ACTIVE') {
+    throw new AppError('Account is inactive', 403);
+  }
+
   const profiles = await Profile.find({ accountId: account._id, status: 'ACTIVE', deletedAt: null })
     .sort({ createdAt: -1 })
     .populate('roleId');
@@ -130,12 +134,11 @@ async function consumeOtp(account, code, purpose = 'LOGIN') {
 
 export async function requestOtp({ phone }) {
   const account = await Account.findOne({ phoneE164: phone });
-  // Phone accounts are pre-provisioned by the school too — auto-creating a
-  // blank account here just produced a code that led nowhere (the account
-  // has no profile, so verifyOtp would still dead-end at "no profiles linked
-  // to this account"). Same fix as email: reject up front instead.
   if (!account) {
     throw new AppError('This phone number is not registered.', 404, [], 'PHONE_NOT_REGISTERED');
+  }
+  if (account.status !== 'ACTIVE') {
+    throw new AppError('Account is inactive', 403);
   }
 
   const code = await issueOtpForAccount(account);
@@ -152,6 +155,7 @@ export async function requestOtp({ phone }) {
 export async function verifyOtp({ phone, code }, opts) {
   const account = await Account.findOne({ phoneE164: phone });
   if (!account) throw new AppError('Invalid phone or code', 401, [], 'OTP_WRONG');
+  if (account.status !== 'ACTIVE') throw new AppError('Account is inactive', 403);
 
   await consumeOtp(account, code);
   return resolveSession(account, opts);
@@ -160,12 +164,11 @@ export async function verifyOtp({ phone, code }, opts) {
 export async function requestEmailOtp({ email }) {
   const normalized = email?.trim().toLowerCase();
   const account = await Account.findOne({ email: normalized });
-  // Email accounts are pre-provisioned (never self-registered like phone), so
-  // an unrecognized email is always a typo or an unlisted address — tell the
-  // user up front rather than sending them to an OTP screen that can never
-  // receive a code.
   if (!account) {
     throw new AppError('This email is not registered.', 404, [], 'EMAIL_NOT_REGISTERED');
+  }
+  if (account.status !== 'ACTIVE') {
+    throw new AppError('Account is inactive', 403);
   }
 
   const code = await issueOtpForAccount(account);
@@ -182,6 +185,7 @@ export async function requestEmailOtp({ email }) {
 export async function verifyEmailOtp({ email, code }, opts) {
   const account = await Account.findOne({ email: email?.trim().toLowerCase() });
   if (!account) throw new AppError('That code is incorrect', 401, [], 'OTP_WRONG');
+  if (account.status !== 'ACTIVE') throw new AppError('Account is inactive', 403);
 
   await consumeOtp(account, code);
   return resolveSession(account, opts);

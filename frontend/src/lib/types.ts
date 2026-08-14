@@ -1,4 +1,4 @@
-export type RoleKey =
+﻿export type RoleKey =
   | 'OWNER' | 'ADMIN' | 'PRINCIPAL' | 'TEACHER' | 'PARENT'
   | 'STUDENT' | 'FINANCE' | 'LIBRARIAN' | 'WARDEN';
 
@@ -70,7 +70,7 @@ export interface GradeDto { id: string; name: string; level: number }
 export interface SubjectDto { id: string; name: string; code?: string | null }
 export interface TermDto { id: string; academicYearId: string; name: string; startsOn: string; endsOn: string }
 
-// Actual shape of GET /users (account + nested profiles) — distinct from the
+// Actual shape of GET /users (account + nested profiles) ΓÇö distinct from the
 // flattened UserDto below, which some pages construct client-side.
 export interface StaffAccountDto {
   accountId: string;
@@ -92,7 +92,7 @@ export interface AttendanceRoster {
 export interface MySubmission { status: 'PENDING' | 'SUBMITTED' | 'LATE' | 'GRADED' | 'EXEMPT'; submittedAt: string | null; marks: number | null; feedback: string | null; attachments: string[] }
 export interface AssignmentDto {
   id: string; title: string; description?: string | null; type: string; chapter?: string | null;
-  dueAt: string; maxMarks: number | null; subject: string; subjectId?: string | null; class: string;
+  dueAt: string; maxMarks: number | null; attachments?: string[]; subject: string; subjectId?: string | null; class: string;
   gradeId?: string | null; gradeName?: string | null; sectionId?: string | null; sectionName?: string | null;
   subjectOfferingId?: string | null; submissionCount: number; mySubmission?: MySubmission | null;
 }
@@ -103,6 +103,7 @@ export interface TimetableDto { sectionId: string; slots: TimetableSlotDto[] }
 export interface PerformanceDto {
   student: { name: string; class: string };
   overallAvgPct: number | null;
+  classRank?: { rank: number; totalStudents: number } | null;
   bestSubject: { subject: string; pct: number | null } | null;
   needsSupport: { subject: string; pct: number | null } | null;
   results: Array<{ exam: string; subject: string; marks: number | null; maxMarks: number; pct: number | null }>;
@@ -113,13 +114,13 @@ export interface MarkRow { enrollmentId: string; rollNo: number | null; studentN
 export interface MarksGrid { examSubject: { id: string; examName: string; subject: string; class: string; maxMarks: number }; rows: MarkRow[] }
 export interface CalendarEventDto { id: string; title: string; description: string | null; type: string; startsAt: string; endsAt: string }
 
-// ── Attendance calendar & trend ──
+// ΓöÇΓöÇ Attendance calendar & trend ΓöÇΓöÇ
 export interface AttendanceDayDto { date: string; status: AttStatus }
 export interface AttendanceCalendarDto { enrollmentId: string; month: string; days: AttendanceDayDto[] }
 export interface AttendanceTrendPointDto { month: string; pctPresent: number; presentDays: number; workingDays: number }
 
 /**
- * `basis` says where these numbers come from — PERIOD is a true per-subject
+ * `basis` says where these numbers come from ΓÇö PERIOD is a true per-subject
  * figure; DAY means the day's status was attributed to each subject timetabled
  * that day, so subjects taught daily will legitimately read alike.
  */
@@ -135,26 +136,30 @@ export interface SubjectAttendanceDto {
   subjects: SubjectAttendanceRow[];
 }
 
-// ── Leave applications ──
+// ΓöÇΓöÇ Leave applications ΓöÇΓöÇ
+export type LeaveType = 'SICK' | 'CASUAL' | 'PERSONAL' | 'DUTY' | 'OTHER';
 export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
-export type LeaveType = 'CASUAL' | 'SICK' | 'EARNED' | 'OTHER';
-
 export interface LeaveApplicationDto {
-  _id: string;
-  id: string;
-  enrollmentId: string;
-  studentName?: string;
-  admissionNo?: string;
-  class?: string;
+  id?: string;
+  _id?: string;
+  applicantProfileId?: string | null;
+  applicantName?: string | null;
+  applicantRole?: 'STUDENT' | 'TEACHER';
+  enrollmentId?: string | null;
+  studentName?: string | null;
+  class?: string | null;
+  leaveType?: LeaveType;
   fromDate: string;
   toDate: string;
   reason: string;
   status: LeaveStatus;
-  remarks: string | null;
+  reviewedByProfileId?: string | null;
+  reviewedByName?: string | null;
   reviewedAt?: string | null;
+  remarks: string | null;
   createdAt: string;
+  updatedAt?: string;
 }
-
 export interface TeacherLeaveApplicationDto {
   _id: string;
   id: string;
@@ -196,23 +201,60 @@ export interface WaSimReply { reply: string; buttons: Array<{ id: string; title:
 
 /**
  * `enabled: false` carries a `reason` (disabled, no number configured, or the
- * caller is staff) and no link — the client hides the entry point rather than
+ * caller is staff) and no link ΓÇö the client hides the entry point rather than
  * rendering a button that cannot work.
  */
 export type WhatsappAssistantLink =
   | { enabled: true; phone: string; message: string; url: string }
   | { enabled: false; reason: string };
 
-// ── Phase 8: Transport ──
+// ΓöÇΓöÇ Phase 8: Transport ΓöÇΓöÇ
 export interface TransportRouteDto { id: string; name: string; operatorName: string | null; vehicleNo: string | null; driverName: string | null; driverPhone: string | null; status: string; stopCount: number }
 export interface TransportStopDto { id: string; routeId: string; name: string; sequenceNo: number; etaMinutesFromStart: number }
 export interface MyBusDto { route: Omit<TransportRouteDto, 'stopCount'>; stop: TransportStopDto; direction: string; nextEta: string | null }
 
-// ── Phase 8: Library ──
+// ΓöÇΓöÇ Phase 8: Library ΓöÇΓöÇ
 export interface BookDto { id: string; title: string; author: string; isbn: string | null; category: string; totalCopies: number; availableCopies: number }
-export interface BookIssueDto { id: string; bookId: string; bookTitle: string; studentId: string; studentName: string; issuedAt: string; dueAt: string; returnedAt: string | null; status: 'ACTIVE' | 'RETURNED' | 'OVERDUE'; finePaise: number }
+export interface BookIssueDto {
+  id: string;
+  bookId: string;
+  bookTitle: string;
+  studentId: string;
+  studentName: string;
+  issuedAt: string;
+  dueAt: string;
+  returnedAt: string | null;
+  status: 'ACTIVE' | 'RETURNED' | 'OVERDUE' | string;
+  finePaise: number;
+  daysOverdue?: number;
+  lastReminderSentAt?: string | null;
+  reminderCount?: number;
+}
 
-// ── Phase 8: Documents ──
+export type BookReservationStatus = 'PENDING' | 'READY' | 'FULFILLED' | 'CANCELLED' | 'EXPIRED';
+
+export interface BookReservationDto {
+  id: string;
+  bookId: string;
+  bookTitle: string;
+  bookAuthor?: string;
+  bookIsbn?: string | null;
+  bookCoverUrl?: string | null;
+  studentId: string;
+  studentName: string;
+  requesterProfileId: string;
+  status: BookReservationStatus;
+  queuePosition: number;
+  reservedAt: string;
+  fulfilledAt?: string | null;
+  cancelledAt?: string | null;
+  expiresAt?: string | null;
+  cancellationReason?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ΓöÇΓöÇ Phase 8: Documents ΓöÇΓöÇ
 export interface DocumentDto { id: string; title: string; type: string; fileUrl: string; mimeType: string; visibleToRoles: string[]; studentId: string | null; studentName: string | null; academicYearId: string | null; sectionId?: string | null; subjectOfferingId?: string | null; issuedAt: string }
 
 export interface AuditLogDto {
@@ -247,18 +289,30 @@ export interface PaymentReceiptDto {
 
 export interface UserDto {
   id: string;
+  accountId?: string;
   displayName: string;
+  role?: string | null;
   roleKey: RoleKey;
+  roleName?: string | null;
   phone: string;
   email: string | null;
-  /** Account-level status — ACTIVE, INACTIVE, or SUSPENDED. */
-  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | string;
+  createdAt?: string;
   studentDetails: {
-    id: string;
+    id?: string;
     admissionNo: string;
     rollNo: number | null;
     class: string | null;
   } | null;
+  profiles?: Array<{
+    profileId: string;
+    displayName: string;
+    avatarUrl?: string | null;
+    status: string;
+    role?: string | null;
+    roleKey?: string | null;
+    roleName?: string | null;
+  }>;
 }
 
 export interface CreateUserDto {
@@ -271,22 +325,30 @@ export interface CreateUserDto {
   sectionId?: string;
 }
 
-// ── Uploads ──
+export interface UpdateUserDto {
+  displayName?: string;
+  phone?: string;
+  phoneE164?: string;
+  email?: string | null;
+  status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | string;
+}
+
+// ΓöÇΓöÇ Uploads ΓöÇΓöÇ
 export interface UploadResult { fileUrl: string; filename: string; size: number; mimeType: string }
 
-// ── Bulk CSV import (leads / enrollments / attendance) ──
+// ΓöÇΓöÇ Bulk CSV import (leads / enrollments / attendance) ΓöÇΓöÇ
 export interface BulkImportResult {
   imported: number;
   failed: number;
   errors: { row: number; error: string }[];
 }
 
-// ── Online payments ──
+// ΓöÇΓöÇ Online payments ΓöÇΓöÇ
 /**
  * Result of POST /fees/pay.
  *
  * A real gateway cannot capture from the server, so it answers with an order
- * for the browser to complete (`requiresClientAction: true`) and no receipt —
+ * for the browser to complete (`requiresClientAction: true`) and no receipt ΓÇö
  * the ledger only moves once the signed webhook arrives. The sandbox provider
  * captures immediately and returns the receipt fields. Callers must branch on
  * `requiresClientAction` before showing any confirmation.
@@ -297,7 +359,7 @@ export interface PayOnlineResult {
   receiptNo: string; gatewayRef: string; provider: string; sandbox: boolean; status: string; paidPaise: number;
 }
 
-// ── Hostel ──
+// ΓöÇΓöÇ Hostel ΓöÇΓöÇ
 export interface HostelRoomDto { _id: string; roomNo: string; block: string; floor?: number | null; type: string; capacity: number; status: string; occupied: number; available: number }
 export interface HostelAllocationDto {
   _id: string;
@@ -306,13 +368,42 @@ export interface HostelAllocationDto {
   roomId: { _id: string; roomNo: string; block: string; floor?: number | null; type: string } | null;
   studentId: { _id: string; firstName: string; lastName?: string; admissionNo: string; gender?: string } | null;
 }
-export interface HostelSummaryDto { totalRooms: number; totalCapacity: number; occupiedBeds: number; availableBeds: number; occupancyRate: number; hostelInquiries: number; maintenanceRequests: number }
+export interface HostelSummaryDto { totalRooms: number; totalCapacity: number; occupiedBeds: number; availableBeds: number; occupancyRate: number; hostelInquiries: number; maintenanceRequests: number; pendingPasses?: number; overduePasses?: number }
 
-// ── RBAC (backend catalog) ──
+export type HostelPassType = 'DAY_PASS' | 'NIGHT_OUT' | 'WEEKEND_PASS' | 'HOME_LEAVE' | 'EMERGENCY_PASS';
+export type ParentApprovalStatus = 'NOT_REQUIRED' | 'PENDING' | 'APPROVED' | 'REJECTED';
+export type HostelPassStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'OUT' | 'RETURNED' | 'CANCELLED';
+
+export interface HostelPassDto {
+  id: string;
+  studentId: string;
+  studentName: string;
+  admissionNo: string;
+  applicantProfileId: string;
+  passType: HostelPassType;
+  fromDate: string;
+  toDate: string;
+  reason: string;
+  destination: string;
+  emergencyContact: string;
+  parentApprovalStatus: ParentApprovalStatus;
+  parentReviewedAt?: string | null;
+  parentRemarks?: string | null;
+  status: HostelPassStatus;
+  reviewedAt?: string | null;
+  remarks?: string | null;
+  actualExitTime?: string | null;
+  actualReturnTime?: string | null;
+  createdAt: string;
+  isOverdue?: boolean;
+  overdueHours?: number;
+}
+
+// ΓöÇΓöÇ RBAC (backend catalog) ΓöÇΓöÇ
 export interface PermissionDto { _id: string; key: string; group: string; description: string; isSystem?: boolean }
 export interface RoleDto { _id: string; key: string; name: string; description?: string; isSystem?: boolean; permissions: Array<{ key: string; scope: PermissionScope }> }
 
-// ── Role dashboards (shapes served by /dashboard/:role) ──
+// ΓöÇΓöÇ Role dashboards (shapes served by /dashboard/:role) ΓöÇΓöÇ
 export interface AdminDashboardDto {
   totalStudents: number; openTickets: number; announcementsCount: number;
   admissionsPipeline: Array<{ stage: string; count: number }>;
@@ -391,7 +482,7 @@ export interface TutorSyllabusDto {
   subjects: Array<{ id: string; name: string; code: string | null }>;
 }
 /**
- * `generated: false` means no model produced this — `content` is null and
+ * `generated: false` means no model produced this ΓÇö `content` is null and
  * `scaffold` holds a study plan built from the student's own timetable and
  * results. The UI must label that difference rather than presenting a scaffold
  * as if it were a tutor's answer.
@@ -410,7 +501,7 @@ export interface TutorReplyDto {
 
 export interface AiCreditPackDto { key: string; label: string; credits: number; amountPaise: number }
 /**
- * `metered: false` is returned for staff — the school covers their AI usage —
+ * `metered: false` is returned for staff ΓÇö the school covers their AI usage ΓÇö
  * so the balance fields are absent rather than zero. A UI that shows "0 credits
  * left" to a teacher would be reporting a limit that does not exist.
  */
@@ -478,20 +569,6 @@ export interface ReportCardDto {
     passed: boolean | null; failedSubjects: string[];
   };
 }
-export interface SchoolSettingsDto {
-  tenantId: string;
-  schoolName?: string;
-  logoUrl?: string | null;
-  address?: string | null;
-  phone?: string | null;
-  email?: string | null;
-  website?: string | null;
-  timezone?: string;
-  currency?: string;
-  currentAcademicYearId?: string | null;
-  academicYears?: Array<{ _id: string; name: string; isCurrent: boolean }>;
-}
-
 export interface FeeHeadDto { _id: string; name: string; category: string }
 export interface FeeStructureDto {
   _id: string; name: string; amountPaise: number; dueOn: string;
@@ -527,3 +604,65 @@ export interface AgentReply {
   flagged?: string;
   suggestions?: string[];
 }
+
+export type IncidentType = 'BEHAVIOUR' | 'BULLYING' | 'ATTENDANCE_RELATED' | 'PROPERTY_DAMAGE' | 'SAFETY' | 'OTHER';
+export type IncidentSeverity = 'LOW' | 'MEDIUM' | 'HIGH';
+export type IncidentStatus = 'OPEN' | 'REVIEWED' | 'CLOSED';
+
+export interface IncidentDto {
+  id: string;
+  studentId: string;
+  studentName: string | null;
+  admissionNo: string | null;
+  reportedByProfileId: string;
+  reportedByName: string | null;
+  date: string;
+  type: IncidentType;
+  severity: IncidentSeverity;
+  description: string;
+  actionTaken: string | null;
+  status: IncidentStatus;
+  reviewedByProfileId: string | null;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ΓöÇΓöÇ Parent-Teacher Direct Messaging ΓöÇΓöÇ
+export interface PtThreadDto {
+  id: string;
+  studentId: string;
+  studentName: string | null;
+  parentProfileId: string;
+  parentName: string | null;
+  teacherProfileId: string;
+  teacherName: string | null;
+  subject: string | null;
+  lastMessageAt: string | null;
+  lastMessageSnippet: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PtMessageDto {
+  id: string;
+  threadId: string;
+  senderProfileId: string;
+  senderName: string | null;
+  body: string;
+  mine: boolean;
+  createdAt: string;
+}
+
+export interface PtThreadDetailDto {
+  thread: PtThreadDto;
+  messages: PtMessageDto[];
+}
+
+export interface StudentTeacherDto {
+  profileId: string;
+  displayName: string;
+  label: string;
+}
+

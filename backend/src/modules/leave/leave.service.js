@@ -1,6 +1,7 @@
 import { LeaveApplication } from '../../models/leaveApplication.model.js';
 import { TeacherLeave } from '../../models/teacherLeave.model.js';
 import { Student, Enrollment } from '../../models/student.model.js';
+import { Notification } from '../../models/notification.model.js';
 import { AppError } from '../../utils/AppError.js';
 
 /** Roles treated as staff — they use TeacherLeave instead of LeaveApplication. */
@@ -24,14 +25,6 @@ function _formatTeacherLeave(leave) {
   };
 }
 
-/**
- * Parses a calendar date to UTC midnight, ignoring any time or offset supplied.
- *
- * A leave day is a day on a calendar, not a moment. Accepting a client's
- * timezone offset here is what shifts "15 August" into "14 August 18:30Z" and
- * makes the application appear on the wrong day for everyone else.
- * Returns null for anything unparseable so the caller can reject it.
- */
 function toUtcMidnight(value) {
   if (value instanceof Date) {
     return Number.isNaN(value.getTime())
@@ -42,7 +35,6 @@ function toUtcMidnight(value) {
   if (!m) return null;
   const [, y, mo, d] = m.map(Number);
   const date = new Date(Date.UTC(y, mo - 1, d));
-  // Rejects impossible dates like 2026-02-31, which Date would roll forward.
   if (date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d) return null;
   return date;
 }
@@ -50,10 +42,8 @@ function toUtcMidnight(value) {
 async function resolveOwnActiveEnrollmentId(actor) {
   const student = await Student.findOne({ profileId: actor.profileId, deletedAt: null }).select('_id').lean();
   if (!student) throw new AppError('No student record linked to this account', 404);
-
   const enrollment = await Enrollment.findOne({ studentId: student._id, status: 'ACTIVE' }).select('_id').lean();
   if (!enrollment) throw new AppError('No active enrollment found', 404);
-
   return enrollment._id.toString();
 }
 
@@ -61,16 +51,15 @@ export async function apply(actor, { fromDate, toDate, reason, leaveType }) {
   if (!fromDate || !toDate) throw new AppError('fromDate and toDate are required', 400);
   if (!reason || !reason.trim()) throw new AppError('reason is required', 400);
 
-  // Normalised to UTC midnight so a leave day is the same calendar day for
-  // everyone. `new Date('2026-08-15T00:00:00+05:30')` would otherwise store
-  // 14 Aug 18:30Z and the leave would show up on the wrong day.
   const from = toUtcMidnight(fromDate);
   const to = toUtcMidnight(toDate);
   if (!from || !to) throw new AppError('Invalid date format — use YYYY-MM-DD', 400);
   if (to < from) throw new AppError('toDate cannot be before fromDate', 400);
 
-  // Staff roles (teachers, librarians, etc.) don't have an enrollment record.
-  // They use TeacherLeave keyed by profileId instead.
+  const validLeaveTypes = ['SICK', 'CASUAL', 'PERSONAL', 'DUTY', 'EARNED', 'OTHER'];
+  const finalLeaveType = validLeaveTypes.includes(leaveType) ? leaveType : 'CASUAL';
+
+  // Staff roles (teachers, etc.) use TeacherLeave keyed by profileId.
   if (STAFF_ROLES.has(actor.roleKey)) {
     const leave = await TeacherLeave.create({
       profileId: actor.profileId,
@@ -79,20 +68,18 @@ export async function apply(actor, { fromDate, toDate, reason, leaveType }) {
       fromDate: from,
       toDate: to,
       reason: reason.trim(),
-      leaveType: leaveType ?? 'CASUAL',
+      leaveType: finalLeaveType,
     });
     return _formatTeacherLeave(leave);
   }
 
   const enrollmentId = await resolveOwnActiveEnrollmentId(actor);
-
   const application = await LeaveApplication.create({
     enrollmentId,
     fromDate: from,
     toDate: to,
     reason: reason.trim(),
   });
-
   return application;
 }
 
@@ -109,9 +96,7 @@ export async function listMine(actor) {
 }
 
 /**
- * List all leave applications — for warden/admin review.
- * Populates student name, admission number, and class so the reviewer
- * doesn't need a separate lookup per row.
+ * List all student leave applications — for warden/admin review.
  */
 export async function listAll({ status } = {}) {
   const filter = {};
@@ -154,8 +139,7 @@ export async function listAll({ status } = {}) {
 }
 
 /**
- * Approve or reject a leave application.
- * Only WARDEN and ADMIN (via permissions) can call this.
+ * Approve or reject a student leave application.
  */
 export async function review(id, { status, remarks, reviewerProfileId }) {
   if (!['APPROVED', 'REJECTED'].includes(status)) {
@@ -166,13 +150,11 @@ export async function review(id, { status, remarks, reviewerProfileId }) {
   if (application.status !== 'PENDING') {
     throw new AppError(`Application is already ${application.status.toLowerCase()}`, 409);
   }
-
   application.status = status;
   application.remarks = remarks?.trim() ?? null;
   application.reviewedByProfileId = reviewerProfileId ?? null;
   application.reviewedAt = new Date();
   await application.save();
-
   return {
     id: application._id.toString(),
     _id: application._id.toString(),
@@ -188,23 +170,17 @@ export async function review(id, { status, remarks, reviewerProfileId }) {
 }
 
 /**
- * List all staff (teacher) leave applications — for admin/principal review.
+ * List all staff leave applications — for admin/principal review.
  */
 export async function listAllStaff({ status } = {}) {
   const filter = {};
   if (status) filter.status = status;
-
-  const leaves = await TeacherLeave.find(filter)
-    .sort({ createdAt: -1 })
-    .limit(500)
-    .lean();
-
+  const leaves = await TeacherLeave.find(filter).sort({ createdAt: -1 }).limit(500).lean();
   return leaves.map(_formatTeacherLeave);
 }
 
 /**
  * Approve or reject a staff leave application.
- * Only ADMIN / PRINCIPAL can call this (via leave.review permission).
  */
 export async function reviewStaff(id, { status, remarks, reviewerProfileId }) {
   if (!['APPROVED', 'REJECTED'].includes(status)) {
@@ -215,12 +191,22 @@ export async function reviewStaff(id, { status, remarks, reviewerProfileId }) {
   if (leave.status !== 'PENDING') {
     throw new AppError(`Application is already ${leave.status.toLowerCase()}`, 409);
   }
-
   leave.status = status;
   leave.remarks = remarks?.trim() ?? null;
   leave.reviewedByProfileId = reviewerProfileId ?? null;
   leave.reviewedAt = new Date();
   await leave.save();
+
+  // Notify applicant
+  try {
+    await Notification.create({
+      recipientProfileId: leave.profileId,
+      type: 'LEAVE',
+      title: `Leave Application ${status}`,
+      body: `Your leave request for ${leave.fromDate.toISOString().slice(0, 10)} to ${leave.toDate.toISOString().slice(0, 10)} was ${status.toLowerCase()}.${leave.remarks ? ` Remarks: ${leave.remarks}` : ''}`,
+      link: '/teacher/leave',
+    });
+  } catch (_) { /* non-blocking */ }
 
   return _formatTeacherLeave(leave);
 }

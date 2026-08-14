@@ -1,4 +1,4 @@
-import { Router } from 'express';
+﻿import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
 import * as controller from './leave.controller.js';

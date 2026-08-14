@@ -1,11 +1,12 @@
-import mongoose from 'mongoose';
+﻿import mongoose from 'mongoose';
 import { AttendanceRecord } from '../../models/attendanceRecord.model.js';
-import { Enrollment } from '../../models/student.model.js';
+import { Enrollment, StudentGuardian } from '../../models/student.model.js';
 import { Section } from '../../models/academics.model.js';
+import { TimetableSlot } from '../../models/timetableSlot.model.js';
+import { Notification } from '../../models/notification.model.js';
 import { AppError } from '../../utils/AppError.js';
+import { logger } from '../../utils/logger.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
-import { notify } from '../notifications/notification.service.js';
-import { StudentGuardian } from '../../models/student.model.js';
 
 export function parseDateToMidnight(dateStr) {
   if (!dateStr) return null;
@@ -27,12 +28,28 @@ async function assertTeacherOwnsSection(actor, scope, sectionId) {
   }
 }
 
-export async function getRoster(actor, scope, sectionId, date) {
+/**
+ * Roster for a section on a date, optionally for one timetabled period.
+ *
+ * `periodNo` null means whole-day attendance, which is all this used to
+ * support ΓÇö the roster hardcoded `periodNo: null`, so even though marking
+ * accepted a period, there was no way to read one back and no way for a
+ * teacher to mark one. That is why every attendance record in the system is
+ * day-level, and in turn why per-subject attendance could only ever be
+ * inferred (see getSubjectWiseSummary).
+ *
+ * The response also lists the periods timetabled for that weekday, so the
+ * caller can offer the choice without a second request.
+ */
+export async function getRoster(actor, scope, sectionId, date, periodNo = null) {
   if (!sectionId) throw new AppError('sectionId is required', 400);
   if (!date) throw new AppError('date is required', 400);
 
   const day = parseDateToMidnight(date);
   if (!day) throw new AppError('Invalid date format', 400);
+
+  const period = periodNo === null || periodNo === undefined || periodNo === '' ? null : Number(periodNo);
+  if (period !== null && !Number.isInteger(period)) throw new AppError('periodNo must be a whole number', 400);
 
   await assertTeacherOwnsSection(actor, scope, sectionId);
 
@@ -43,10 +60,29 @@ export async function getRoster(actor, scope, sectionId, date) {
     .populate('studentId')
     .sort({ rollNo: 1 });
 
+  // getUTCDay(): 0=Sun..6=Sat; the timetable uses 1=Mon..7=Sun.
+  const dow = day.getUTCDay() === 0 ? 7 : day.getUTCDay();
+  const slots = await TimetableSlot.find({ sectionId, dayOfWeek: dow })
+    .populate({ path: 'subjectOfferingId', populate: { path: 'subjectId', select: 'name' } })
+    .sort({ periodNo: 1 });
+
+  const periods = slots
+    .filter((s) => s.subjectOfferingId?.subjectId?.name)
+    .map((s) => ({
+      periodNo: s.periodNo,
+      subject: s.subjectOfferingId.subjectId.name,
+      startTime: s.startTime ?? null,
+      endTime: s.endTime ?? null,
+    }));
+
+  if (period !== null && !periods.some((p) => p.periodNo === period)) {
+    throw new AppError(`Period ${period} is not timetabled for this section on that day.`, 400, [], 'PERIOD_NOT_SCHEDULED');
+  }
+
   const records = await AttendanceRecord.find({
     enrollmentId: { $in: enrollments.map((e) => e._id) },
     date: day,
-    periodNo: null,
+    periodNo: period,
   });
   const recordByEnrollment = new Map(records.map((r) => [r.enrollmentId.toString(), r]));
 
@@ -64,7 +100,9 @@ export async function getRoster(actor, scope, sectionId, date) {
       name: `${section.gradeId?.name ?? ''} ${section.name}`.trim(),
     },
     date,
-    periodNo: null,
+    periodNo: period,
+    subject: period === null ? null : periods.find((p) => p.periodNo === period)?.subject ?? null,
+    periods,
     roster,
   };
 }
@@ -81,7 +119,7 @@ export async function markAttendance(actor, { date, periodNo = null, records, en
   const items = records || entries || [];
   if (items.length === 0) throw new AppError('No attendance records provided', 400);
 
-  // Every enrollmentId must actually belong to the authorized sectionId —
+  // Every enrollmentId must actually belong to the authorized sectionId ΓÇö
   // otherwise a caller could smuggle in enrollmentIds from other sections.
   const requestedIds = [...new Set(items.map((i) => i.enrollmentId?.toString()))];
   const validEnrollments = await Enrollment.find({ _id: { $in: requestedIds }, sectionId }).select('_id');
@@ -110,55 +148,103 @@ export async function markAttendance(actor, { date, periodNo = null, records, en
 
   await AttendanceRecord.bulkWrite(ops);
 
-  // Fire absent/late notifications to guardians — best effort, never blocks the response.
-  const absentOrLate = items.filter((i) => i.status === 'ABSENT' || i.status === 'LATE');
-  if (absentOrLate.length > 0) {
-    setImmediate(async () => {
-      try {
-        const enrollmentIds = absentOrLate.map((i) => i.enrollmentId);
-        const enrollments = await Enrollment.find({ _id: { $in: enrollmentIds } })
-          .populate('studentId', 'firstName lastName')
-          .select('studentId')
-          .lean();
-        const studentIdByEnrollment = new Map(
-          enrollments.map((e) => [e._id.toString(), { studentId: e.studentId?._id, name: `${e.studentId?.firstName ?? ''} ${e.studentId?.lastName ?? ''}`.trim() }])
-        );
+  // Trigger automated absent parent alerts (non-blocking, anti-duplicate protected)
+  await processAbsentNotifications(items, day, periodNo, sectionId);
 
-        for (const item of absentOrLate) {
-          const info = studentIdByEnrollment.get(item.enrollmentId?.toString());
-          if (!info?.studentId) continue;
+  // Same period back, so the caller sees what it just wrote rather than the
+  // whole-day roster.
+  return getRoster(actor, 'ALL', sectionId, date, periodNo);
+}
 
-          const guardians = await StudentGuardian.find({ studentId: info.studentId }).select('guardianProfileId').lean();
-          const guardianProfileIds = guardians.map((g) => g.guardianProfileId?.toString()).filter(Boolean);
+/**
+ * Automated Absent Parent Alerts (Feature 13)
+ * Finds eligible guardians for absent students and dispatches in-app Notifications.
+ * Guarantees 1 notification per guardian per attendance event (anti-duplicate index/query).
+ */
+async function processAbsentNotifications(items, day, periodNo, sectionId) {
+  try {
+    const absentItems = items.filter((i) => i.status && i.status.toUpperCase() === 'ABSENT');
+    if (!absentItems.length) return;
 
-          // Also notify the student's own profile
-          const studentEnrollment = enrollments.find((e) => e._id.toString() === item.enrollmentId?.toString());
-          const studentProfileIds = [];
-          if (studentEnrollment?.studentId?._id) {
-            const { Student } = await import('../../models/student.model.js');
-            const student = await Student.findById(studentEnrollment.studentId._id).select('profileId').lean();
-            if (student?.profileId) studentProfileIds.push(student.profileId.toString());
-          }
+    const enrollmentIds = absentItems.map((i) => i.enrollmentId);
+    const enrollments = await Enrollment.find({ _id: { $in: enrollmentIds } })
+      .populate('studentId', 'firstName lastName admissionNo')
+      .populate({ path: 'sectionId', populate: { path: 'gradeId', select: 'name' } })
+      .lean();
 
-          const allRecipients = [...guardianProfileIds, ...studentProfileIds];
-          if (allRecipients.length === 0) continue;
+    if (!enrollments.length) return;
 
-          const statusLabel = item.status === 'ABSENT' ? 'absent' : 'late';
-          await notify({
-            recipientProfileIds: allRecipients,
-            type: 'ATTENDANCE',
-            title: `${info.name} marked ${statusLabel}`,
-            body: `${info.name} was marked ${statusLabel} on ${date}.`,
-            meta: { enrollmentId: item.enrollmentId, date, status: item.status },
-          });
+    const period = periodNo === null || periodNo === undefined || periodNo === '' ? null : Number(periodNo);
+
+    // Get subject name if periodNo is specified
+    let subjectName = null;
+    if (period !== null) {
+      const dow = day.getUTCDay() === 0 ? 7 : day.getUTCDay();
+      const slot = await TimetableSlot.findOne({ sectionId, dayOfWeek: dow, periodNo: period })
+        .populate({ path: 'subjectOfferingId', populate: { path: 'subjectId', select: 'name' } })
+        .lean();
+      subjectName = slot?.subjectOfferingId?.subjectId?.name ?? null;
+    }
+
+    const dateIso = day.toISOString();
+    const formattedDate = day.toLocaleDateString('en-IN', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' });
+
+    for (const enrollment of enrollments) {
+      const student = enrollment.studentId;
+      if (!student) continue;
+
+      const studentName = [student.firstName, student.lastName].filter(Boolean).join(' ');
+      const gradeName = enrollment.sectionId?.gradeId?.name ?? '';
+      const sectionName = enrollment.sectionId?.name ?? '';
+      const className = [gradeName, sectionName].filter(Boolean).join('-') || 'Class';
+
+      // Find all linked guardians for this student
+      const guardians = await StudentGuardian.find({ studentId: student._id }).lean();
+      if (!guardians.length) continue;
+
+      for (const g of guardians) {
+        if (!g.guardianProfileId) continue;
+
+        // Anti-duplicate check: Has this guardian already been notified for this exact attendance event?
+        const existingNotif = await Notification.findOne({
+          recipientProfileId: g.guardianProfileId,
+          type: 'ATTENDANCE',
+          'meta.enrollmentId': enrollment._id.toString(),
+          'meta.date': dateIso,
+          'meta.periodNo': period,
+        }).lean();
+
+        if (existingNotif) {
+          // Already notified this guardian for this absence event ΓÇö skip duplicate!
+          continue;
         }
-      } catch (err) {
-        // Notifications are a side-effect — never propagate failures
-      }
-    });
-  }
 
-  return getRoster(actor, 'ALL', sectionId, date);
+        // Formulate notification title & body
+        const title = `Attendance Alert: ${studentName}`;
+        const body = subjectName
+          ? `${studentName} was marked ABSENT for ${subjectName} (${className}) on ${formattedDate}.`
+          : `${studentName} was marked ABSENT for ${className} on ${formattedDate}.`;
+
+        await Notification.create({
+          recipientProfileId: g.guardianProfileId,
+          type: 'ATTENDANCE',
+          title,
+          body,
+          link: '/parent/attendance',
+          meta: {
+            studentId: student._id.toString(),
+            enrollmentId: enrollment._id.toString(),
+            sectionId: enrollment.sectionId?._id?.toString() ?? String(sectionId),
+            date: dateIso,
+            periodNo: period,
+          },
+        });
+      }
+    }
+  } catch (err) {
+    // Non-blocking logger error: attendance data remains safely committed
+    logger.error(`Failed to process absent parent notifications: ${err.message}`);
+  }
 }
 
 const VALID_STATUSES = new Set(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY']);
@@ -234,20 +320,61 @@ export async function markAttendanceBulk(actor, { date, periodNo = null, section
   return { ...roster, imported: records.length, failed: errors.length, errors };
 }
 
-export async function resolveSummaryEnrollmentIds(actor, scope, enrollmentId) {
-  if (enrollmentId) return [enrollmentId];
-
-  if (scope === 'OWN' && actor.roleKey === 'PARENT') {
+/** Every enrollment an OWN-scoped actor is entitled to see. */
+async function ownEnrollmentIds(actor) {
+  if (actor.roleKey === 'PARENT') {
     const studentIds = await getGuardianStudentIds(actor.profileId);
     const enrollments = await Enrollment.find({ studentId: { $in: studentIds } }).select('_id');
     return enrollments.map((e) => e._id.toString());
   }
-  if (scope === 'OWN' && actor.roleKey === 'STUDENT') {
+  if (actor.roleKey === 'STUDENT') {
     const studentId = await getOwnStudentId(actor.profileId);
     const enrollments = await Enrollment.find({ studentId }).select('_id');
     return enrollments.map((e) => e._id.toString());
   }
-  throw new AppError('enrollmentId is required', 400);
+  if (actor.roleKey === 'TEACHER') {
+    // A teacher's own scope is the sections they teach, so their pupils'
+    // attendance is legitimately theirs to read.
+    const sectionIds = await getTeacherSectionIds(actor.profileId);
+    const enrollments = await Enrollment.find({ sectionId: { $in: sectionIds }, status: 'ACTIVE' }).select('_id');
+    return enrollments.map((e) => e._id.toString());
+  }
+  return [];
+}
+
+/**
+ * Resolves which enrollments a request may read.
+ *
+ * This used to begin `if (enrollmentId) return [enrollmentId]`, which meant a
+ * caller-supplied id skipped every ownership check below it. Any signed-in
+ * student could read another child's attendance summary, calendar, trend and
+ * per-subject breakdown by passing their enrollment id ΓÇö the response even
+ * echoed the id back, confirming it had queried the other record. Enrollment
+ * ids are handed out freely elsewhere in the API, so this needed no guessing.
+ *
+ * An explicit id is now checked against what the actor is entitled to rather
+ * than taken as proof of entitlement. ALL-scoped staff may still name any
+ * enrollment; that is what the scope means.
+ */
+export async function resolveSummaryEnrollmentIds(actor, scope, enrollmentId) {
+  if (scope !== 'OWN') {
+    if (enrollmentId) return [String(enrollmentId)];
+    throw new AppError('enrollmentId is required', 400);
+  }
+
+  const allowed = await ownEnrollmentIds(actor);
+
+  if (enrollmentId) {
+    if (!allowed.includes(String(enrollmentId))) {
+      // 404 rather than 403: confirming an id exists but is someone else's is
+      // itself a disclosure, and enumeration is the natural next step.
+      throw new AppError('Enrollment not found', 404, [], 'ENROLLMENT_NOT_FOUND');
+    }
+    return [String(enrollmentId)];
+  }
+
+  if (allowed.length === 0) throw new AppError('No enrollment found for this account', 404);
+  return allowed;
 }
 
 export async function getSummary(actor, scope, { enrollmentId, from, to, month }) {
@@ -283,15 +410,26 @@ export async function getSummary(actor, scope, { enrollmentId, from, to, month }
     summary[key][row._id.status] = row.count;
   }
 
-  // If the query was for a single enrollmentId, return a flat object as expected by frontend
-  if (enrollmentId && enrollmentIds.includes(enrollmentId)) {
-    const stats = summary[enrollmentId] ?? { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
+  // Flat object (with pctPresent) whenever the query resolves to exactly one
+  // enrollment ΓÇö not only when the caller named it explicitly.
+  //
+  // A student asking "what's my attendance percentage?" passes no
+  // enrollmentId, so this used to fall through to the keyed map below, and
+  // every caller that looked for `pctPresent` found undefined. That is why the
+  // assistant answered "No attendance has been recorded yet" for a student who
+  // had eight records.
+  const singleId = enrollmentId && enrollmentIds.includes(enrollmentId)
+    ? enrollmentId
+    : (enrollmentIds.length === 1 ? enrollmentIds[0] : null);
+
+  if (singleId) {
+    const stats = summary[singleId] ?? { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
     const workingDays = stats.PRESENT + stats.ABSENT + stats.LATE + stats.EXCUSED + stats.HALF_DAY;
     const presentCount = stats.PRESENT + stats.LATE + stats.EXCUSED + (stats.HALF_DAY * 0.5);
     const pctPresent = workingDays > 0 ? Math.round((presentCount / workingDays) * 100) : 0;
 
     return {
-      enrollmentId,
+      enrollmentId: singleId,
       yearMonth: month || 'custom',
       PRESENT: stats.PRESENT,
       ABSENT: stats.ABSENT,
@@ -306,11 +444,127 @@ export async function getSummary(actor, scope, { enrollmentId, from, to, month }
   return summary;
 }
 
-/** Resolve a single enrollmentId for actor-scoped endpoints (calendar/trend) — the
+/**
+ * Per-subject attendance, grouped by subject offering.
+ *
+ * Two sources, and the difference is reported rather than hidden:
+ *
+ *   PERIOD ΓÇö a record carries a periodNo, so the timetable says exactly which
+ *     subject that period was. This is a true per-subject figure.
+ *   DAY    ΓÇö the record is day-level (periodNo null), the only kind this
+ *     deployment currently captures. The day's status is attributed to each
+ *     subject scheduled that weekday.
+ *
+ * The DAY case is why every subject used to read 75%: when a subject is on the
+ * timetable every weekday, its denominator is every marked day, so it restates
+ * the overall percentage. That is now visible in `basis` and `derived` instead
+ * of being presented as a per-subject fact ΓÇö and subjects that are NOT
+ * scheduled daily now differ, because each is counted only on the days it is
+ * actually taught.
+ */
+export async function getSubjectWiseSummary(actor, scope, { enrollmentId, month, from, to } = {}) {
+  const targetId = await resolveSingleEnrollmentId(actor, scope, enrollmentId);
+
+  const enrollment = await Enrollment.findById(targetId).select('sectionId');
+  if (!enrollment) throw new AppError('Enrollment not found', 404);
+
+  let dateFrom = from ? parseDateToMidnight(from) : null;
+  let dateTo = to ? parseDateToMidnight(to) : null;
+  if (month && !dateFrom && !dateTo) {
+    const [y, m] = month.split('-');
+    dateFrom = new Date(Date.UTC(Number(y), Number(m) - 1, 1));
+    dateTo = new Date(Date.UTC(Number(y), Number(m), 0, 23, 59, 59, 999));
+  }
+
+  const slots = await TimetableSlot.find({ sectionId: enrollment.sectionId }).populate({
+    path: 'subjectOfferingId',
+    populate: { path: 'subjectId', select: 'name' },
+  });
+
+  // (dayOfWeek, periodNo) ΓåÆ offering, plus which subjects run on each weekday.
+  const byDowPeriod = new Map();
+  const subjectsByDow = new Map();
+  for (const slot of slots) {
+    const offering = slot.subjectOfferingId;
+    const name = offering?.subjectId?.name;
+    if (!name) continue; // breaks and free periods have no offering
+    byDowPeriod.set(`${slot.dayOfWeek}:${slot.periodNo}`, offering);
+    if (!subjectsByDow.has(slot.dayOfWeek)) subjectsByDow.set(slot.dayOfWeek, new Map());
+    subjectsByDow.get(slot.dayOfWeek).set(String(offering._id), offering);
+  }
+
+  const match = { enrollmentId: new mongoose.Types.ObjectId(String(targetId)) };
+  if (dateFrom || dateTo) {
+    match.date = {};
+    if (dateFrom) match.date.$gte = dateFrom;
+    if (dateTo) match.date.$lte = dateTo;
+  }
+  const records = await AttendanceRecord.find(match).select('date periodNo status').lean();
+
+  const buckets = new Map(); // offeringId ΓåÆ tally
+  const tallyFor = (offering) => {
+    const key = String(offering._id);
+    if (!buckets.has(key)) {
+      buckets.set(key, {
+        subjectOfferingId: key,
+        subject: offering.subjectId?.name ?? 'Subject',
+        subjectId: offering.subjectId?._id ? String(offering.subjectId._id) : null,
+        present: 0, absent: 0, leave: 0, totalSessions: 0, periodBacked: 0,
+      });
+    }
+    return buckets.get(key);
+  };
+
+  const applyStatus = (bucket, status, fromPeriod) => {
+    bucket.totalSessions++;
+    if (fromPeriod) bucket.periodBacked++;
+    if (status === 'PRESENT' || status === 'LATE') bucket.present++;
+    else if (status === 'ABSENT') bucket.absent++;
+    else bucket.leave++; // EXCUSED / HALF_DAY
+  };
+
+  for (const rec of records) {
+    // getUTCDay(): 0=Sun..6=Sat; the timetable uses 1=Mon..7=Sun.
+    const dow = rec.date.getUTCDay() === 0 ? 7 : rec.date.getUTCDay();
+
+    if (rec.periodNo != null) {
+      const offering = byDowPeriod.get(`${dow}:${rec.periodNo}`);
+      if (offering) applyStatus(tallyFor(offering), rec.status, true);
+      continue;
+    }
+
+    for (const offering of (subjectsByDow.get(dow) ?? new Map()).values()) {
+      applyStatus(tallyFor(offering), rec.status, false);
+    }
+  }
+
+  const subjects = [...buckets.values()]
+    .map((b) => ({
+      ...b,
+      pctPresent: b.totalSessions > 0 ? Math.round((b.present / b.totalSessions) * 100) : null,
+      // True only when every session counted came from a real period record.
+      derived: b.periodBacked < b.totalSessions,
+    }))
+    .sort((a, b) => a.subject.localeCompare(b.subject));
+
+  const anyPeriod = subjects.some((s) => s.periodBacked > 0);
+  const allPeriod = subjects.length > 0 && subjects.every((s) => s.periodBacked === s.totalSessions);
+
+  return {
+    enrollmentId: String(targetId),
+    yearMonth: month ?? 'custom',
+    basis: allPeriod ? 'PERIOD' : anyPeriod ? 'MIXED' : 'DAY',
+    subjects,
+  };
+}
+
+/** Resolve a single enrollmentId for actor-scoped endpoints (calendar/trend) ΓÇö the
  * student/parent's own record when none is given explicitly. */
 async function resolveSingleEnrollmentId(actor, scope, enrollmentId) {
-  if (enrollmentId) return enrollmentId;
-  const ids = await resolveSummaryEnrollmentIds(actor, scope, null);
+  // Goes through the same ownership check rather than trusting the id ΓÇö this
+  // is the resolver behind the calendar, trend and subject-wise endpoints, and
+  // it previously returned whatever id it was handed.
+  const ids = await resolveSummaryEnrollmentIds(actor, scope, enrollmentId);
   if (ids.length === 0) throw new AppError('No enrollment found for this account', 404);
   return ids[0];
 }
@@ -342,7 +596,7 @@ export async function getTrend(actor, scope, { enrollmentId, months }) {
   const targetId = await resolveSingleEnrollmentId(actor, scope, enrollmentId);
   const n = Math.min(Math.max(parseInt(months, 10) || 6, 1), 12);
 
-  // Local Y/M feed Date.UTC — matching parseDateToMidnight's convention (a stored
+  // Local Y/M feed Date.UTC ΓÇö matching parseDateToMidnight's convention (a stored
   // UTC-midnight Date represents an abstract calendar day, not a real UTC instant).
   // Using getUTC* on `now` here would drift "current month" by the server's UTC offset.
   const now = new Date();

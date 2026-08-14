@@ -1,7 +1,8 @@
-import { Account } from '../../models/account.model.js';
+﻿import { Account } from '../../models/account.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { Student, Enrollment } from '../../models/student.model.js';
 import { AcademicYear, Section } from '../../models/academics.model.js';
+import { RefreshToken } from '../../models/refreshToken.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { register } from '../auth/auth.service.js';
 import { enroll } from '../students/student.service.js';
@@ -89,7 +90,7 @@ export async function listUsers({ search, status, roleKey } = {}) {
       status: acc.status,
       createdAt: acc.createdAt,
       profiles: accountProfiles,
-      // convenience fields — use the first (primary) profile
+      // convenience fields ΓÇö use the first (primary) profile
       displayName: primaryProfile?.displayName ?? null,
       role: primaryProfile?.role ?? null,
       roleKey: primaryProfile?.roleKey ?? null,
@@ -227,7 +228,7 @@ export async function createUser(data) {
 /**
  * Bulk-creates users from parsed CSV rows. Each row is processed through the
  * same createUser() path (so duplicate-phone/email, section validation, etc.
- * all behave identically to the single-user form) — errors from one row
+ * all behave identically to the single-user form) ΓÇö errors from one row
  * don't stop the rest of the batch.
  */
 export async function bulkCreateUsers(rows) {
@@ -281,26 +282,85 @@ export async function bulkCreateUsers(rows) {
   return results;
 }
 
-export async function updateUser(id, { status, displayName, phone, email }) {
+export async function updateUser(id, payload = {}) {
   const account = await Account.findById(id);
   if (!account) throw new AppError('User not found', 404);
 
-  if (status) account.status = status;
+  // Explicitly extract only allowed fields
+  const { displayName, phone, phoneE164, email, status } = payload;
 
-  // Update contact details on the account
-  if (phone !== undefined) {
-    // Normalise: accept bare 10-digit Indian numbers and prefix +91
-    const normalised = phone.trim().replace(/^0+/, '');
-    account.phoneE164 = normalised.startsWith('+') ? normalised : `+91${normalised}`;
+  const targetPhone = (phoneE164 || phone)?.trim();
+  if (targetPhone && targetPhone !== account.phoneE164) {
+    const existingPhone = await Account.findOne({
+      phoneE164: targetPhone,
+      _id: { $ne: account._id },
+    });
+    if (existingPhone) {
+      throw new AppError('An account with this phone number already exists', 409);
+    }
+    account.phoneE164 = targetPhone;
   }
-  if (email !== undefined) account.email = email || null;
+
+  if (email !== undefined) {
+    const normalizedEmail = email ? email.trim().toLowerCase() : null;
+    if (normalizedEmail && normalizedEmail !== account.email) {
+      const existingEmail = await Account.findOne({
+        email: normalizedEmail,
+        _id: { $ne: account._id },
+      });
+      if (existingEmail) {
+        throw new AppError('An account with this email address already exists', 409);
+      }
+      account.email = normalizedEmail;
+    } else if (normalizedEmail === null || normalizedEmail === '') {
+      account.email = undefined;
+    }
+  }
+
+  if (status) {
+    const validStatuses = ['ACTIVE', 'INACTIVE', 'SUSPENDED'];
+    const uppercaseStatus = status.toString().toUpperCase();
+    if (!validStatuses.includes(uppercaseStatus)) {
+      throw new AppError(`Invalid status: ${status}. Must be ACTIVE, INACTIVE, or SUSPENDED`, 400);
+    }
+    account.status = uppercaseStatus;
+
+    // Sync status to all active/non-deleted profiles linked to this account
+    await Profile.updateMany(
+      { accountId: account._id, deletedAt: null },
+      { status: uppercaseStatus }
+    );
+
+    // If deactivating or suspending, revoke active refresh tokens to terminate sessions
+    if (uppercaseStatus === 'INACTIVE' || uppercaseStatus === 'SUSPENDED') {
+      await RefreshToken.updateMany(
+        { accountId: account._id, revokedAt: null },
+        { revokedAt: new Date() }
+      );
+    }
+  }
 
   await account.save();
 
-  // Update display name on all non-deleted profiles for this account
-  if (displayName) {
-    const { Profile } = await import('../../models/profile.model.js');
-    await Profile.updateMany({ accountId: id, deletedAt: null }, { $set: { displayName } });
+  if (displayName && displayName.trim()) {
+    const cleanName = displayName.trim();
+
+    // Update display name on all linked non-deleted profiles
+    const profiles = await Profile.find({ accountId: account._id, deletedAt: null });
+    for (const p of profiles) {
+      p.displayName = cleanName;
+      await p.save();
+    }
+
+    // Also sync Student record firstName and lastName if a student profile exists
+    const profileIds = profiles.map((p) => p._id);
+    const students = await Student.find({ profileId: { $in: profileIds }, deletedAt: null });
+    for (const s of students) {
+      const names = cleanName.split(/\s+/);
+      s.firstName = names[0];
+      s.lastName = names.slice(1).join(' ') || '';
+      await s.save();
+    }
   }
 
   return getUserById(id);

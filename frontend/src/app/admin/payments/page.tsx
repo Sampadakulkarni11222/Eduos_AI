@@ -1,9 +1,8 @@
-'use client';
+﻿'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pagination, Pill, SkeletonRows, StatCard, rupees, useToast } from '@/components/ui';
+import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
-import { ConfirmModal } from '@/components/confirm-modal';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
@@ -25,21 +24,12 @@ export default function AdminPayments() {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<'invoices' | 'receipts' | 'plans'>('invoices');
 
-  // Invoice filters
-  const [statusFilter, setStatusFilter] = useState('');
+  // Grade / Section / Student filter for the Invoices tab
   const [grades, setGrades] = useState<GradeDto[]>([]);
   const [filterGradeId, setFilterGradeId] = useState('');
   const [sections, setSections] = useState<SectionDto[]>([]);
   const [filterSectionId, setFilterSectionId] = useState('');
   const [filterStudentId, setFilterStudentId] = useState('');
-
-  // Cancel invoice confirm
-  const [cancelInvoice, setCancelInvoice] = useState<InvoiceDto | null>(null);
-
-  // Pagination
-  const [invoicePage, setInvoicePage] = useState(0);
-  const [receiptPage, setReceiptPage] = useState(0);
-  const PAGE_SIZE = 25;
 
   const reload = useCallback(() => {
     api.feeSummary().then(setSummary).catch(() => {});
@@ -63,23 +53,19 @@ export default function AdminPayments() {
 
   useEffect(() => { setFilterStudentId(''); }, [filterSectionId]);
 
-  // Apply filters
-  const filteredInvoices = (() => {
-    let result = invoices ?? [];
-    if (filterStudentId) result = result.filter((i) => i.studentId === filterStudentId);
-    if (filterSectionId && !filterStudentId) result = result.filter((i) => i.sectionId === filterSectionId);
-    if (statusFilter) result = result.filter((i) => i.status === statusFilter);
-    return result;
-  })();
+  const studentsInSection = students.filter((s) => s.enrollment?.sectionId === filterSectionId);
 
-  const showInvoiceTable = filteredInvoices.length > 0;
-  const invoicePageItems = filteredInvoices.slice(invoicePage * PAGE_SIZE, (invoicePage + 1) * PAGE_SIZE);
-  const receiptPageItems = (receipts ?? []).slice(receiptPage * PAGE_SIZE, (receiptPage + 1) * PAGE_SIZE);
+  // Filter invoices by selected Student, Section, or Grade if set; otherwise show all invoices
+  const filteredInvoices = (invoices ?? []).filter((i) => {
+    if (filterStudentId) return i.studentId === filterStudentId;
+    if (filterSectionId) return i.sectionId === filterSectionId;
+    return true;
+  });
 
   const { me } = useAuth();
   const { hasAccess } = usePermissions();
-  const canCreate = hasAccess(me?.profile?.role, 'create_invoice');
-  const canRecord = hasAccess(me?.profile?.role, 'record_payment');
+  const canCreate = hasAccess(me?.profile?.role, 'fees.manage');
+  const canRecord = hasAccess(me?.profile?.role, 'fees.pay') || hasAccess(me?.profile?.role, 'fees.manage');
 
   return (
     <PortalShell expectedSlug="admin" topbar={{
@@ -93,10 +79,10 @@ export default function AdminPayments() {
       ) : undefined,
     }}>
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
-        <StatCard label="Total Collected" value={summary ? rupees(summary.totalCollectedPaise) : '—'} delta={summary ? `${summary.collectionPct}% of billed` : undefined} deltaDir="up" />
-        <StatCard label="Pending" value={summary ? rupees(summary.pendingPaise) : '—'} deltaDir="down" />
-        <StatCard label="Pending Invoices" value={summary ? summary.pendingCount : '—'} />
-        <StatCard label="Total Billed" value={summary ? rupees(summary.totalBilledPaise) : '—'} />
+        <StatCard label="Total Collected" value={summary ? rupees(summary.totalCollectedPaise) : 'ΓÇö'} delta={summary ? `${summary.collectionPct}% of billed` : undefined} deltaDir="up" />
+        <StatCard label="Pending" value={summary ? rupees(summary.pendingPaise) : 'ΓÇö'} deltaDir="down" />
+        <StatCard label="Pending Invoices" value={summary ? summary.pendingCount : 'ΓÇö'} />
+        <StatCard label="Total Billed" value={summary ? rupees(summary.totalBilledPaise) : 'ΓÇö'} />
       </div>
 
       <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
@@ -108,26 +94,15 @@ export default function AdminPayments() {
       {activeTab === 'invoices' && (
         <>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
-            <div style={{ flex: '1 1 160px', maxWidth: 220 }}>
-              <div className="field-label">Status</div>
-              <select className="field-input" style={{ marginBottom: 0 }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                <option value="">All statuses</option>
-                <option value="PENDING">Pending</option>
-                <option value="PARTIAL">Partial</option>
-                <option value="OVERDUE">Overdue</option>
-                <option value="PAID">Paid</option>
-                <option value="CANCELLED">Cancelled</option>
-              </select>
-            </div>
             <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
-              <div className="field-label">Grade</div>
+              <div className="field-label">Grade *</div>
               <select className="field-input" style={{ marginBottom: 0 }} value={filterGradeId} onChange={(e) => setFilterGradeId(e.target.value)}>
-                <option value="">All grades</option>
+                <option value="">-- Choose grade --</option>
                 {grades.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
             </div>
             <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
-              <div className="field-label">Section</div>
+              <div className="field-label">Section *</div>
               <select
                 className="field-input"
                 style={{ marginBottom: 0 }}
@@ -135,37 +110,35 @@ export default function AdminPayments() {
                 onChange={(e) => setFilterSectionId(e.target.value)}
                 disabled={!filterGradeId || sections.length === 0}
               >
-                <option value="">All sections</option>
+                <option value="">-- Choose section --</option>
                 {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
             <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
-              <div className="field-label">Student</div>
+              <div className="field-label">Student *</div>
               <select
                 className="field-input"
                 style={{ marginBottom: 0 }}
                 value={filterStudentId}
                 onChange={(e) => setFilterStudentId(e.target.value)}
+                disabled={!filterSectionId || studentsInSection.length === 0}
               >
-                <option value="">All students</option>
-                {(filterSectionId
-                  ? students.filter((s) => s.enrollment?.sectionId === filterSectionId)
-                  : students
-                ).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                <option value="">-- Choose student --</option>
+                {studentsInSection.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
           </div>
 
           {invoices === null && <Card><SkeletonRows rows={5} /></Card>}
           {invoices !== null && filteredInvoices.length === 0 && (
-            <EmptyState title="No invoices match" sub="Try a different filter combination, or create the first invoice." />
+            <EmptyState title="No invoices found" sub="No fee invoices match your selection. Click '+ Create Invoice' to raise one." />
           )}
-          {showInvoiceTable && (
+          {invoices !== null && filteredInvoices.length > 0 && (
             <Card pad={false}>
               <table className="data-table data-table-cards">
                 <thead><tr><th>Invoice</th><th>Student</th><th>Class</th><th>Total</th><th>Paid</th><th>Due On</th><th>Status</th><th></th></tr></thead>
                 <tbody>
-                  {invoicePageItems.map((i) => (
+                  {filteredInvoices.map((i) => (
                     <tr key={i.id}>
                       <td className="cell-primary" data-label="Invoice">{i.invoiceNo}</td>
                       <td data-label="Student">{i.studentName}</td>
@@ -175,20 +148,17 @@ export default function AdminPayments() {
                       <td data-label="Due On">{i.dueOn}</td>
                       <td data-label="Status"><Pill tone={STATUS_TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
                       <td data-label="Actions">
-                        <div style={{ display: 'flex', gap: 6 }}>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           {i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && (
                             <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>
                           )}
-                          {i.status !== 'CANCELLED' && canCreate && (
-                            <Button small variant="ghost" style={{ color: 'var(--red)' }} onClick={() => setCancelInvoice(i)}>Cancel</Button>
-                          )}
+                          <Button small variant="ghost" onClick={() => api.downloadInvoicePdf(i.id).catch(() => toast('Could not open invoice PDF.', 'error'))}>Invoice PDF</Button>
                         </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <Pagination page={invoicePage} pageSize={PAGE_SIZE} total={filteredInvoices.length} onPage={setInvoicePage} />
             </Card>
           )}
         </>
@@ -217,7 +187,7 @@ export default function AdminPayments() {
                   </tr>
                 </thead>
                 <tbody>
-                  {receiptPageItems.map((r) => (
+                  {receipts.map((r) => (
                     <tr key={r.id}>
                       <td className="cell-primary" style={{ fontWeight: 600 }} data-label="Receipt No.">{r.receiptNo}</td>
                       <td data-label="Invoice No.">{r.invoiceNo}</td>
@@ -227,16 +197,13 @@ export default function AdminPayments() {
                       <td data-label="Mode"><Pill tone="blue">{r.mode}</Pill></td>
                       <td data-label="Status"><Pill tone={r.status === 'SUCCESS' ? 'green' : 'gray'}>{r.status}</Pill></td>
                       <td style={{ color: 'var(--text-faint)' }} data-label="Date">{new Date(r.createdAt).toLocaleDateString('en-IN')}</td>
-                      <td data-label="Download">
-                        <Button small variant="soft" onClick={() => {
-                          api.downloadReceiptPdf(r.id).catch(() => toast('Could not download receipt.', 'error'));
-                        }}>PDF</Button>
+                      <td data-label="Actions">
+                        <Button small variant="ghost" onClick={() => api.downloadReceiptPdf(r.id).catch(() => toast('Could not open receipt PDF.', 'error'))}>Receipt PDF</Button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <Pagination page={receiptPage} pageSize={PAGE_SIZE} total={receipts.length} onPage={setReceiptPage} />
             </Card>
           )}
         </>
@@ -247,7 +214,7 @@ export default function AdminPayments() {
       {showBulkCreate && (
         <BulkUploadModal
           title="Bulk upload invoices"
-          description="Upload a CSV to raise many one-line invoices at once. invoiceNo is optional — auto-generated if left blank."
+          description="Upload a CSV to raise many one-line invoices at once. invoiceNo is optional ΓÇö auto-generated if left blank."
           templateHeaders={['admissionNo', 'invoiceNo', 'description', 'amount', 'dueOn']}
           templateSampleRow={['ADM-2026-0010', '', 'Tuition Fee', '5000', '2026-08-15']}
           onSubmit={(file) => api.bulkCreateInvoices(file)}
@@ -255,38 +222,18 @@ export default function AdminPayments() {
           onImported={(r) => { toast(`Created ${r.imported} of ${r.imported + r.failed} invoices.`, r.failed > 0 ? 'error' : 'success'); reload(); }}
         />
       )}
-      {cancelInvoice && (
-        <ConfirmModal
-          title="Cancel invoice?"
-          body={`Invoice ${cancelInvoice.invoiceNo} for ${cancelInvoice.studentName} (${cancelInvoice.class || 'no class'}) will be marked as cancelled. This cannot be undone.`}
-          confirmLabel="Cancel Invoice"
-          danger
-          onConfirm={async () => {
-            try {
-              await api.updateInvoice(cancelInvoice.id, { status: 'CANCELLED' });
-              toast('Invoice cancelled.');
-              reload();
-            } catch (e: any) {
-              toast(e?.message || 'Could not cancel invoice.', 'error');
-            } finally {
-              setCancelInvoice(null);
-            }
-          }}
-          onCancel={() => setCancelInvoice(null)}
-        />
-      )}
     </PortalShell>
   );
 }
 
-/* ── Record Payment Modal ─────────────────────────────────── */
+/* ΓöÇΓöÇ Record Payment Modal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
 function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClose: () => void; onDone: () => void }) {
   const remaining = invoice.totalPaise - invoice.paidPaise;
   const [amount, setAmount] = useState(String(remaining / 100));
   const [mode, setMode] = useState('CASH');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [receipt, setReceipt] = useState<{ id?: string; receiptNo: string; status: string; paidPaise: number } | null>(null);
+  const [receipt, setReceipt] = useState<{ receiptNo: string; status: string; paidPaise: number } | null>(null);
 
   const submit = async () => {
     setBusy(true); setErr(null);
@@ -303,7 +250,7 @@ function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClos
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
         {receipt ? (
           <div style={{ textAlign: 'center', padding: '8px 0' }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>Γ£à</div>
             <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: 'var(--text-1)' }}>Payment Successful</h3>
             <p style={{ fontSize: 13, color: 'var(--text-faint)', marginBottom: 20 }}>The payment has been recorded successfully.</p>
             <div style={{ background: 'var(--card-bg-header)', border: '1px solid var(--hairline)', borderRadius: 8, padding: 16, textAlign: 'left', marginBottom: 20 }}>
@@ -321,7 +268,7 @@ function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClos
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>Class:</span>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{invoice.class || '—'}</span>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{invoice.class || 'ΓÇö'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>Amount Paid:</span>
@@ -332,32 +279,25 @@ function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClos
                 <span style={{ fontWeight: 600, fontSize: 13 }}><Pill tone={STATUS_TONE[receipt.status] ?? 'gray'}>{receipt.status}</Pill></span>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              {receipt?.id && (
-                <Button variant="soft" onClick={() => {
-                  api.downloadReceiptPdf(receipt.id!).catch(() => {});
-                }} style={{ flex: 1 }}>⬇ Download Receipt</Button>
-              )}
-              <Button onClick={onDone} style={{ flex: 1 }}>Close & Reload</Button>
-            </div>
+            <Button onClick={onDone} className="btn-block">Close & Reload</Button>
           </div>
         ) : (
           <>
             <div className="modal-header">
               <div className="modal-title">Record payment</div>
-              <button className="modal-close" onClick={onClose}>×</button>
+              <button className="modal-close" onClick={onClose}>├ù</button>
             </div>
             <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
-              {invoice.invoiceNo} · {invoice.studentName} · balance {rupees(remaining)}
+              {invoice.invoiceNo} ┬╖ {invoice.studentName} ┬╖ balance {rupees(remaining)}
             </p>
-            <div className="field-label">Amount (₹)</div>
+            <div className="field-label">Amount (Γé╣)</div>
             <input className="field-input" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
             <div className="field-label">Mode</div>
             <select className="field-input" value={mode} onChange={(e) => setMode(e.target.value)}>
               <option value="CASH">Cash</option><option value="CHEQUE">Cheque</option><option value="BANK">Bank transfer</option>
             </select>
             {err && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10 }}>{err}</p>}
-            <Button onClick={submit} disabled={busy} className="btn-block">{busy ? 'Recording…' : 'Record payment'}</Button>
+            <Button onClick={submit} disabled={busy} className="btn-block">{busy ? 'RecordingΓÇª' : 'Record payment'}</Button>
           </>
         )}
       </div>
@@ -365,7 +305,7 @@ function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClos
   );
 }
 
-/* ── Create Invoice Modal ─────────────────────────────────── */
+/* ΓöÇΓöÇ Create Invoice Modal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
 function CreateInvoiceModal({
   students,
   onClose,
@@ -402,7 +342,6 @@ function CreateInvoiceModal({
     if (!dueOn) return setErr('Please set a due date.');
     setBusy(true); setErr(null);
     try {
-      // Invoice number is generated server-side (sequential); do not pass one from client
       await api.createInvoice({
         enrollmentId,
         dueOn: new Date(dueOn).toISOString(),
@@ -419,22 +358,22 @@ function CreateInvoiceModal({
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <div className="modal-header">
           <div className="modal-title">Create Invoice</div>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" onClick={onClose}>├ù</button>
         </div>
 
         <div className="field-label">Student *</div>
         <select className="field-input" value={selectedStudentId} onChange={(e) => setSelectedStudentId(e.target.value)}>
-          <option value="">— select a student —</option>
+          <option value="">ΓÇö select a student ΓÇö</option>
           {students.map((s) => (
             <option key={s.id} value={s.id}>
-              {s.name} {s.enrollment ? `(${s.enrollment.class})` : '(admitted – no class yet)'}
+              {s.name} {s.enrollment ? `(${s.enrollment.class})` : '(admitted ΓÇô no class yet)'}
             </option>
           ))}
         </select>
 
         {selectedStudentId && enrollments.length === 0 && (
           <p style={{ fontSize: 12, color: 'var(--amber, #b08020)', marginTop: 4 }}>
-            ⚠ This student has no enrollment record yet. Assign them to a section first to raise a fee invoice.
+            ΓÜá This student has no enrollment record yet. Assign them to a section first to raise a fee invoice.
           </p>
         )}
 
@@ -442,18 +381,18 @@ function CreateInvoiceModal({
           <>
             <div className="field-label">Enrollment *</div>
             <select className="field-input" value={enrollmentId} onChange={(e) => setEnrollmentId(e.target.value)}>
-              <option value="">— select enrollment —</option>
+              <option value="">ΓÇö select enrollment ΓÇö</option>
               {enrollments.map((e) => (
-                <option key={e.id} value={e.id}>{e.studentName} – {e.class}</option>
+                <option key={e.id} value={e.id}>{e.studentName} ΓÇô {e.class}</option>
               ))}
             </select>
           </>
         )}
 
         <div className="field-label" style={{ marginTop: 12 }}>Fee Description *</div>
-        <input className="field-input" value={feeDesc} onChange={(e) => setFeeDesc(e.target.value)} placeholder="e.g. Tuition Fee – Term 1" />
+        <input className="field-input" value={feeDesc} onChange={(e) => setFeeDesc(e.target.value)} placeholder="e.g. Tuition Fee ΓÇô Term 1" />
 
-        <div className="field-label" style={{ marginTop: 12 }}>Amount (₹) *</div>
+        <div className="field-label" style={{ marginTop: 12 }}>Amount (Γé╣) *</div>
         <input className="field-input" type="number" min="1" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 15000" />
 
         <div className="field-label" style={{ marginTop: 12 }}>Due Date *</div>
@@ -464,7 +403,7 @@ function CreateInvoiceModal({
         <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
           <Button variant="soft" onClick={onClose} disabled={busy} style={{ flex: 1 }}>Cancel</Button>
           <Button onClick={submit} disabled={busy || !enrollmentId || !amount || !dueOn} style={{ flex: 1 }}>
-            {busy ? 'Creating…' : 'Create Invoice'}
+            {busy ? 'CreatingΓÇª' : 'Create Invoice'}
           </Button>
         </div>
       </div>
