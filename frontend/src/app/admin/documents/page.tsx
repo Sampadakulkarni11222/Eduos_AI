@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, SkeletonRows, Pill, useToast } from '@/components/ui';
 import { FileOrUrlInput } from '@/components/file-input';
+import { ConfirmModal } from '@/components/confirm-modal';
 import { api, ApiError } from '@/lib/api';
 import type { DocumentDto, StudentListItem } from '@/lib/types';
 
@@ -12,6 +13,7 @@ export default function AdminDocuments() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [openingId, setOpeningId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DocumentDto | null>(null);
   const toast = useToast();
   const [form, setForm] = useState({
     title: '', type: 'CUSTOM', fileUrl: '', mimeType: '', studentId: '', visibleToRoles: ['PARENT', 'STUDENT']
@@ -62,10 +64,10 @@ export default function AdminDocuments() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this document?')) return;
     try {
       await api.deleteDocument(id);
       toast('Document deleted.');
+      setDeleteTarget(null);
       loadDocs();
     } catch (err) {
       toast('Could not delete the document.', 'error');
@@ -128,7 +130,7 @@ export default function AdminDocuments() {
                   </td>
                   <td data-label="Issued Date">{new Date(d.issuedAt).toLocaleDateString('en-IN')}</td>
                   <td data-label="Action">
-                    <Button variant="ghost" small onClick={() => handleDelete(d.id)} style={{ color: 'var(--red)' }}>Delete</Button>
+                    <Button variant="ghost" small onClick={() => setDeleteTarget(d)} style={{ color: 'var(--red)' }}>Delete</Button>
                   </td>
                 </tr>
               ))}
@@ -194,6 +196,16 @@ export default function AdminDocuments() {
             </form>
           </div>
         </div>
+      )}
+      {deleteTarget && (
+        <ConfirmModal
+          title="Delete document?"
+          body={`"${deleteTarget.title}" will be permanently deleted and will no longer be visible to parents or students.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => handleDelete(deleteTarget.id)}
+          onCancel={() => setDeleteTarget(null)}
+        />
       )}
     </PortalShell>
   );

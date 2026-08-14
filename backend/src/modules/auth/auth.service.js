@@ -147,7 +147,9 @@ export async function requestOtp({ phone }) {
     throw new AppError('SMS delivery is not configured. Contact your administrator.', 503, [], 'OTP_DELIVERY_UNAVAILABLE');
   }
 
-  return { message: 'OTP sent', devOtp };
+  // devOtp is only returned outside production so developers can test without
+  // a live SMS gateway. In production the code travels via SMS only.
+  return { message: 'OTP sent', ...(env.isProd ? {} : { devOtp }) };
 }
 
 export async function verifyOtp({ phone, code }, opts) {
@@ -175,7 +177,9 @@ export async function requestEmailOtp({ email }) {
     throw new AppError('Email delivery is not configured. Contact your administrator.', 503, [], 'OTP_DELIVERY_UNAVAILABLE');
   }
 
-  return { message: 'OTP sent', devOtp };
+  // devOtp is only returned outside production so developers can test without
+  // a live email gateway. In production the code travels via email only.
+  return { message: 'OTP sent', ...(env.isProd ? {} : { devOtp }) };
 }
 
 export async function verifyEmailOtp({ email, code }, opts) {
@@ -233,13 +237,41 @@ export async function googleLogin({ idToken }, opts) {
   return resolveSession(account, opts);
 }
 
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
 export async function login({ email, password }, opts) {
   const account = await Account.findOne({ email: email?.toLowerCase() });
   if (!account || !account.passwordHash) throw new AppError('Invalid email or password', 401, [], 'BAD_CREDENTIALS');
 
+  // Check if account is temporarily locked
+  if (account.lockUntil && account.lockUntil > new Date()) {
+    const minutesLeft = Math.ceil((account.lockUntil - new Date()) / 60_000);
+    throw new AppError(
+      `Account temporarily locked due to too many failed attempts. Try again in ${minutesLeft} minute${minutesLeft > 1 ? 's' : ''}.`,
+      429, [], 'ACCOUNT_TEMPORARILY_LOCKED'
+    );
+  }
+
   const valid = await bcrypt.compare(password, account.passwordHash);
-  if (!valid) throw new AppError('Invalid email or password', 401, [], 'BAD_CREDENTIALS');
+  if (!valid) {
+    // Increment failed attempt counter
+    const newAttempts = (account.failedLoginAttempts || 0) + 1;
+    const update = { failedLoginAttempts: newAttempts };
+    if (newAttempts >= MAX_FAILED_ATTEMPTS) {
+      update.lockUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
+      logger.warn(`Account ${account._id} (${account.email}) locked after ${newAttempts} failed login attempts`);
+    }
+    await Account.updateOne({ _id: account._id }, { $set: update });
+    throw new AppError('Invalid email or password', 401, [], 'BAD_CREDENTIALS');
+  }
+
   if (account.status !== 'ACTIVE') throw new AppError('Account is inactive', 403);
+
+  // Successful login — reset lockout counters
+  if (account.failedLoginAttempts > 0 || account.lockUntil) {
+    await Account.updateOne({ _id: account._id }, { $set: { failedLoginAttempts: 0, lockUntil: null } });
+  }
 
   return resolveSession(account, opts);
 }

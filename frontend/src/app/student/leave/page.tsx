@@ -1,21 +1,14 @@
-﻿'use client';
+'use client';
 import { FormEvent, useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from '@/components/ui';
 import { api } from '@/lib/api';
-import type { TeacherLeaveApplicationDto, LeaveStatus, LeaveType } from '@/lib/types';
+import type { LeaveApplicationDto, LeaveStatus } from '@/lib/types';
 
 const STATUS_TONE: Record<LeaveStatus, 'amber' | 'green' | 'red'> = {
   PENDING: 'amber',
   APPROVED: 'green',
   REJECTED: 'red',
-};
-
-const LEAVE_TYPE_LABELS: Record<LeaveType, string> = {
-  CASUAL: 'Casual',
-  SICK: 'Sick',
-  EARNED: 'Earned',
-  OTHER: 'Other',
 };
 
 function fmtDate(iso: string) {
@@ -27,25 +20,23 @@ function dayCount(from: string, to: string) {
   return Math.max(1, Math.round(ms / 86_400_000) + 1);
 }
 
-export default function TeacherLeavePage() {
-  const [applications, setApplications] = useState<TeacherLeaveApplicationDto[] | null>(null);
+export default function StudentLeavePage() {
+  const [applications, setApplications] = useState<LeaveApplicationDto[] | null>(null);
   const [showForm, setShowForm] = useState(false);
   const toast = useToast();
 
   const load = () => {
     api.myLeaveApplications()
-      .then((data) => setApplications(data as unknown as TeacherLeaveApplicationDto[]))
+      .then(setApplications)
       .catch(() => setApplications([]));
   };
 
   useEffect(() => { load(); }, []);
 
-  const pending = applications?.filter((a) => a.status === 'PENDING').length ?? 0;
-
   return (
-    <PortalShell expectedSlug="teacher" topbar={{
-      title: 'My Leave Applications',
-      desc: 'Apply for leave and track your approval status.',
+    <PortalShell expectedSlug="student" topbar={{
+      title: 'Leave Applications',
+      desc: 'Apply for leave and track approval status.',
       actions: (
         <Button onClick={() => setShowForm((v) => !v)}>
           {showForm ? 'Cancel' : '+ Apply for leave'}
@@ -60,25 +51,11 @@ export default function TeacherLeavePage() {
         />
       )}
 
-      {/* Summary chips */}
-      {applications && applications.length > 0 && (
-        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-          <div style={{ background: 'var(--panel-bg)', border: '1px solid var(--hairline)', borderRadius: 20, padding: '5px 14px', fontSize: 13 }}>
-            <span style={{ fontWeight: 600 }}>{applications.length}</span> total
-          </div>
-          {pending > 0 && (
-            <div style={{ background: 'var(--amber-bg, #fef3c7)', color: '#92400e', padding: '5px 14px', borderRadius: 20, fontSize: 13, fontWeight: 600 }}>
-              {pending} pending
-            </div>
-          )}
-        </div>
-      )}
-
       {applications === null && <Card><SkeletonRows rows={4} /></Card>}
       {applications?.length === 0 && !showForm && (
         <EmptyState
           title="No leave applications"
-          sub="Use the button above to apply for leave. It will be reviewed by the principal or admin."
+          sub="Use the button above to apply for leave. Your class teacher and warden will be notified."
         />
       )}
 
@@ -90,7 +67,6 @@ export default function TeacherLeavePage() {
                 <th>From</th>
                 <th>To</th>
                 <th>Days</th>
-                <th>Type</th>
                 <th>Reason</th>
                 <th>Applied On</th>
                 <th>Status</th>
@@ -103,11 +79,6 @@ export default function TeacherLeavePage() {
                   <td data-label="From">{fmtDate(a.fromDate)}</td>
                   <td data-label="To">{fmtDate(a.toDate)}</td>
                   <td data-label="Days" style={{ fontWeight: 600 }}>{dayCount(a.fromDate, a.toDate)}</td>
-                  <td data-label="Type">
-                    <span style={{ fontSize: 12, background: 'var(--panel-bg)', border: '1px solid var(--hairline)', borderRadius: 4, padding: '2px 8px' }}>
-                      {LEAVE_TYPE_LABELS[a.leaveType] ?? a.leaveType}
-                    </span>
-                  </td>
                   <td className="cell-primary" data-label="Reason">{a.reason}</td>
                   <td style={{ color: 'var(--text-faint)', fontSize: 12.5 }} data-label="Applied On">
                     {fmtDate(a.createdAt)}
@@ -116,7 +87,7 @@ export default function TeacherLeavePage() {
                     <Pill tone={STATUS_TONE[a.status]}>{a.status.toLowerCase()}</Pill>
                   </td>
                   <td data-label="Remarks" style={{ fontSize: 12.5, color: 'var(--text-2)' }}>
-                    {a.remarks ?? 'ΓÇö'}
+                    {a.remarks ?? '—'}
                   </td>
                 </tr>
               ))}
@@ -137,7 +108,6 @@ function ApplyLeaveForm({ onDone, onCancel, toast }: {
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);
   const [reason, setReason] = useState('');
-  const [leaveType, setLeaveType] = useState<LeaveType>('CASUAL');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -148,7 +118,7 @@ function ApplyLeaveForm({ onDone, onCancel, toast }: {
     setBusy(true);
     setErr(null);
     try {
-      await api.applyLeave({ fromDate, toDate, reason: reason.trim(), leaveType });
+      await api.applyLeave({ fromDate, toDate, reason: reason.trim() });
       toast('Leave application submitted successfully.', 'success');
       onDone();
     } catch (x: any) {
@@ -168,7 +138,7 @@ function ApplyLeaveForm({ onDone, onCancel, toast }: {
         <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 15, display: 'block', marginBottom: 14 }}>
           New Leave Application
         </strong>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
           <div>
             <div className="field-label">From date *</div>
             <input
@@ -182,19 +152,6 @@ function ApplyLeaveForm({ onDone, onCancel, toast }: {
               className="field-input" type="date" value={toDate} min={fromDate}
               onChange={(e) => setToDate(e.target.value)}
             />
-          </div>
-          <div>
-            <div className="field-label">Leave type *</div>
-            <select
-              className="field-input"
-              value={leaveType}
-              onChange={(e) => setLeaveType(e.target.value as LeaveType)}
-            >
-              <option value="CASUAL">Casual</option>
-              <option value="SICK">Sick</option>
-              <option value="EARNED">Earned</option>
-              <option value="OTHER">Other</option>
-            </select>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
             <div style={{ background: 'var(--panel-bg)', border: '1px solid var(--hairline)', borderRadius: 8, padding: '8px 14px', textAlign: 'center' }}>
@@ -210,14 +167,14 @@ function ApplyLeaveForm({ onDone, onCancel, toast }: {
             rows={3}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. Family function, medical appointmentΓÇª"
+            placeholder="e.g. Family function — will attend on Friday…"
             style={{ resize: 'vertical' }}
             required
           />
         </div>
-        {err && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 8 }}>ΓÜá {err}</p>}
+        {err && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 8 }}>⚠ {err}</p>}
         <div style={{ display: 'flex', gap: 10 }}>
-          <Button type="submit" disabled={busy}>{busy ? 'SubmittingΓÇª' : 'Submit application'}</Button>
+          <Button type="submit" disabled={busy}>{busy ? 'Submitting…' : 'Submit application'}</Button>
           <Button variant="ghost" type="button" onClick={onCancel} disabled={busy}>Cancel</Button>
         </div>
       </form>

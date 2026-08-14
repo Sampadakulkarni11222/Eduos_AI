@@ -406,6 +406,26 @@ export async function enterMarks(actor, scope, { examSubjectId, entries }) {
   return Mark.find({ examSubjectId });
 }
 
+/**
+ * Revert published marks back to DRAFT so a teacher can correct a typo.
+ * Requires the same ownership check as publishMarks — only the teacher who
+ * owns the subject (or an ALL-scope grader) can unpublish their own paper.
+ *
+ * Students and guardians are NOT notified on unpublish; the lack of a new
+ * "results available" notification is the implicit signal that results are
+ * being revised. A fresh publishMarks() triggers the notification again.
+ */
+export async function unpublishMarks(actor, scope, examSubjectId) {
+  const examSubject = await loadOwnedExamSubject(actor, scope, examSubjectId);
+
+  const result = await Mark.updateMany(
+    { examSubjectId, status: 'PUBLISHED' },
+    { $set: { status: 'DRAFT' }, $unset: { publishedAt: '' } }
+  );
+
+  return { matched: result.matchedCount, modified: result.modifiedCount };
+}
+
 export async function publishMarks(actor, scope, examSubjectId) {
   const examSubject = await loadOwnedExamSubject(actor, scope, examSubjectId);
 

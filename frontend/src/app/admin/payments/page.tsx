@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees, useToast } from '@/components/ui';
@@ -79,10 +79,10 @@ export default function AdminPayments() {
       ) : undefined,
     }}>
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
-        <StatCard label="Total Collected" value={summary ? rupees(summary.totalCollectedPaise) : '—'} delta={summary ? `${summary.collectionPct}% of billed` : undefined} deltaDir="up" />
-        <StatCard label="Pending" value={summary ? rupees(summary.pendingPaise) : '—'} deltaDir="down" />
-        <StatCard label="Pending Invoices" value={summary ? summary.pendingCount : '—'} />
-        <StatCard label="Total Billed" value={summary ? rupees(summary.totalBilledPaise) : '—'} />
+        <StatCard label="Total Collected" value={summary ? rupees(summary.totalCollectedPaise) : 'ΓÇö'} delta={summary ? `${summary.collectionPct}% of billed` : undefined} deltaDir="up" />
+        <StatCard label="Pending" value={summary ? rupees(summary.pendingPaise) : 'ΓÇö'} deltaDir="down" />
+        <StatCard label="Pending Invoices" value={summary ? summary.pendingCount : 'ΓÇö'} />
+        <StatCard label="Total Billed" value={summary ? rupees(summary.totalBilledPaise) : 'ΓÇö'} />
       </div>
 
       <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
@@ -214,7 +214,7 @@ export default function AdminPayments() {
       {showBulkCreate && (
         <BulkUploadModal
           title="Bulk upload invoices"
-          description="Upload a CSV to raise many one-line invoices at once. invoiceNo is optional — auto-generated if left blank."
+          description="Upload a CSV to raise many one-line invoices at once. invoiceNo is optional ΓÇö auto-generated if left blank."
           templateHeaders={['admissionNo', 'invoiceNo', 'description', 'amount', 'dueOn']}
           templateSampleRow={['ADM-2026-0010', '', 'Tuition Fee', '5000', '2026-08-15']}
           onSubmit={(file) => api.bulkCreateInvoices(file)}
@@ -226,7 +226,7 @@ export default function AdminPayments() {
   );
 }
 
-/* ── Record Payment Modal ─────────────────────────────────── */
+/* ΓöÇΓöÇ Record Payment Modal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
 function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClose: () => void; onDone: () => void }) {
   const remaining = invoice.totalPaise - invoice.paidPaise;
   const [amount, setAmount] = useState(String(remaining / 100));
@@ -250,7 +250,7 @@ function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClos
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
         {receipt ? (
           <div style={{ textAlign: 'center', padding: '8px 0' }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>Γ£à</div>
             <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: 'var(--text-1)' }}>Payment Successful</h3>
             <p style={{ fontSize: 13, color: 'var(--text-faint)', marginBottom: 20 }}>The payment has been recorded successfully.</p>
             <div style={{ background: 'var(--card-bg-header)', border: '1px solid var(--hairline)', borderRadius: 8, padding: 16, textAlign: 'left', marginBottom: 20 }}>
@@ -268,7 +268,7 @@ function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClos
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>Class:</span>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{invoice.class || '—'}</span>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{invoice.class || 'ΓÇö'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>Amount Paid:</span>
@@ -285,19 +285,19 @@ function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClos
           <>
             <div className="modal-header">
               <div className="modal-title">Record payment</div>
-              <button className="modal-close" onClick={onClose}>×</button>
+              <button className="modal-close" onClick={onClose}>├ù</button>
             </div>
             <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
-              {invoice.invoiceNo} · {invoice.studentName} · balance {rupees(remaining)}
+              {invoice.invoiceNo} ┬╖ {invoice.studentName} ┬╖ balance {rupees(remaining)}
             </p>
-            <div className="field-label">Amount (₹)</div>
+            <div className="field-label">Amount (Γé╣)</div>
             <input className="field-input" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
             <div className="field-label">Mode</div>
             <select className="field-input" value={mode} onChange={(e) => setMode(e.target.value)}>
               <option value="CASH">Cash</option><option value="CHEQUE">Cheque</option><option value="BANK">Bank transfer</option>
             </select>
             {err && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10 }}>{err}</p>}
-            <Button onClick={submit} disabled={busy} className="btn-block">{busy ? 'Recording…' : 'Record payment'}</Button>
+            <Button onClick={submit} disabled={busy} className="btn-block">{busy ? 'RecordingΓÇª' : 'Record payment'}</Button>
           </>
         )}
       </div>
@@ -305,7 +305,7 @@ function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClos
   );
 }
 
-/* ── Create Invoice Modal ─────────────────────────────────── */
+/* ΓöÇΓöÇ Create Invoice Modal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
 function CreateInvoiceModal({
   students,
   onClose,
@@ -358,22 +358,22 @@ function CreateInvoiceModal({
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <div className="modal-header">
           <div className="modal-title">Create Invoice</div>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" onClick={onClose}>├ù</button>
         </div>
 
         <div className="field-label">Student *</div>
         <select className="field-input" value={selectedStudentId} onChange={(e) => setSelectedStudentId(e.target.value)}>
-          <option value="">— select a student —</option>
+          <option value="">ΓÇö select a student ΓÇö</option>
           {students.map((s) => (
             <option key={s.id} value={s.id}>
-              {s.name} {s.enrollment ? `(${s.enrollment.class})` : '(admitted – no class yet)'}
+              {s.name} {s.enrollment ? `(${s.enrollment.class})` : '(admitted ΓÇô no class yet)'}
             </option>
           ))}
         </select>
 
         {selectedStudentId && enrollments.length === 0 && (
           <p style={{ fontSize: 12, color: 'var(--amber, #b08020)', marginTop: 4 }}>
-            ⚠ This student has no enrollment record yet. Assign them to a section first to raise a fee invoice.
+            ΓÜá This student has no enrollment record yet. Assign them to a section first to raise a fee invoice.
           </p>
         )}
 
@@ -381,18 +381,18 @@ function CreateInvoiceModal({
           <>
             <div className="field-label">Enrollment *</div>
             <select className="field-input" value={enrollmentId} onChange={(e) => setEnrollmentId(e.target.value)}>
-              <option value="">— select enrollment —</option>
+              <option value="">ΓÇö select enrollment ΓÇö</option>
               {enrollments.map((e) => (
-                <option key={e.id} value={e.id}>{e.studentName} – {e.class}</option>
+                <option key={e.id} value={e.id}>{e.studentName} ΓÇô {e.class}</option>
               ))}
             </select>
           </>
         )}
 
         <div className="field-label" style={{ marginTop: 12 }}>Fee Description *</div>
-        <input className="field-input" value={feeDesc} onChange={(e) => setFeeDesc(e.target.value)} placeholder="e.g. Tuition Fee – Term 1" />
+        <input className="field-input" value={feeDesc} onChange={(e) => setFeeDesc(e.target.value)} placeholder="e.g. Tuition Fee ΓÇô Term 1" />
 
-        <div className="field-label" style={{ marginTop: 12 }}>Amount (₹) *</div>
+        <div className="field-label" style={{ marginTop: 12 }}>Amount (Γé╣) *</div>
         <input className="field-input" type="number" min="1" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="e.g. 15000" />
 
         <div className="field-label" style={{ marginTop: 12 }}>Due Date *</div>
@@ -403,7 +403,7 @@ function CreateInvoiceModal({
         <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
           <Button variant="soft" onClick={onClose} disabled={busy} style={{ flex: 1 }}>Cancel</Button>
           <Button onClick={submit} disabled={busy || !enrollmentId || !amount || !dueOn} style={{ flex: 1 }}>
-            {busy ? 'Creating…' : 'Create Invoice'}
+            {busy ? 'CreatingΓÇª' : 'Create Invoice'}
           </Button>
         </div>
       </div>

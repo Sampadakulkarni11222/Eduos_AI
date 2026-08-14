@@ -67,6 +67,10 @@ export const createInvoice = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.createInvoice(req.body), 'Invoice created', 201);
 });
 
+export const updateInvoice = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.updateInvoice(req.params.id, req.body), 'Invoice updated');
+});
+
 export const bulkCreateInvoices = asyncHandler(async (req, res) => {
   const rows = parseCsvRows(req);
   const result = await service.bulkCreateInvoices(rows);

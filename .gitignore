@@ -24,3 +24,11 @@ backend/uploads/*
 # Security notes especially: a list of what is weak does not belong in a repo.
 SECURITY_ACTIONS.md
 issues_sheet.md
+
+# IDE / editor config — machine-specific, never source
+.vscode/
+.idea/
+
+# Runtime log files — generated at startup, not source
+logs/
+*.log

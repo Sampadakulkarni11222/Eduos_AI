@@ -48,3 +48,7 @@ export const enterMarks = asyncHandler(async (req, res) => {
 export const publishMarks = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.publishMarks(req.actor, req.scope, req.body.examSubjectId), 'Marks published');
 });
+
+export const unpublishMarks = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.unpublishMarks(req.actor, req.scope, req.body.examSubjectId), 'Marks unpublished — they are now in DRAFT and can be corrected');
+});
