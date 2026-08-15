@@ -433,7 +433,7 @@ export const api = {
 
   tickets: (status?: string) => request<TicketDto[]>(`/tickets${status ? `?status=${status}` : ''}`),
   ticketThread: (id: string) => request<TicketThread>(`/tickets/${id}`),
-  createTicket: (body: { subject: string; body: string; routedToRoleKey?: string; studentId?: string }) =>
+  createTicket: (body: { subject: string; body: string; routedToRoleKey?: string; studentId?: string; priority?: string; severity?: string }) =>
     request<{ id: string }>('/tickets', { method: 'POST', body: JSON.stringify(body) }),
   replyTicket: (body: { ticketId: string; body: string; status?: string }) =>
     request<{ id: string; status: string }>('/tickets/reply', { method: 'POST', body: JSON.stringify(body) }),
@@ -549,6 +549,8 @@ export const api = {
   parentDashboard: () => request<ParentDashboardDto>('/dashboard/parent'),
   wardenDashboard: () => request<WardenDashboardDto>('/dashboard/warden'),
   librarianDashboard: () => request<LibrarianDashboardDto>('/dashboard/librarian'),
+  reviewLeave: (id: string, status: 'APPROVED' | 'REJECTED', remarks?: string) =>
+    request<any>(`/leave/${id}/review`, { method: 'POST', body: JSON.stringify({ status, remarks }) }),
 
   // ── AI tutor (grounded in the caller's own syllabus, server-side) ──
   tutorStatus: () => request<TutorStatusDto>('/ai/tutor/status'),

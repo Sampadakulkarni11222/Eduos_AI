@@ -26,7 +26,7 @@ export default function WardenRooms() {
   const load = () => {
     Promise.all([api.hostelRooms(), api.hostelAllocations()])
       .then(([r, a]) => { setRooms(r); setAllocations(a); setErr(false); })
-      .catch(() => { setRooms([]); setAllocations([]); setErr(true); });
+      .catch(() => { setRooms(null); setAllocations(null); setErr(true); });
   };
 
   useEffect(() => {

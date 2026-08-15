@@ -8,7 +8,8 @@ export const list = asyncHandler(async (req, res) => {
     id: t._id,
     subject: t.subject,
     status: t.status,
-    priority: t.priority,
+    priority: t.priority ?? 'MEDIUM',
+    severity: t.severity ?? 'MEDIUM',
     routedToRoleKey: t.routedToRoleKey ?? null,
     raisedBy: t.raisedByProfileId?.displayName || 'Unknown',
     assignedTo: t.assigneeProfileId?.displayName || null,
@@ -25,6 +26,8 @@ export const getById = asyncHandler(async (req, res) => {
     id: ticket._id,
     subject: ticket.subject,
     status: ticket.status,
+    priority: ticket.priority ?? 'MEDIUM',
+    severity: ticket.severity ?? 'MEDIUM',
     routedToRoleKey: ticket.routedToRoleKey ?? null,
     studentName: ticket.studentId ? `${ticket.studentId.firstName} ${ticket.studentId.lastName ?? ''}`.trim() : null,
     messages: messages.map((m) => ({

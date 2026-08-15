@@ -4,7 +4,8 @@ const ticketSchema = new Schema(
   {
     subject: { type: String, required: true, trim: true },
     status: { type: String, enum: ['NEW', 'OPEN', 'WAITING', 'RESOLVED', 'CLOSED'], default: 'NEW' },
-    priority: { type: String, default: 'NORMAL' },
+    priority: { type: String, enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], default: 'MEDIUM' },
+    severity: { type: String, enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], default: 'MEDIUM' },
     raisedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', required: true },
     routedToRoleKey: { type: String }, // ADMIN | WARDEN | LIBRARIAN | CLASS_TEACHER
     assigneeProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },

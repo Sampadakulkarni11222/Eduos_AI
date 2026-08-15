@@ -150,7 +150,7 @@ export async function getAdminDashboard() {
       .sort({ createdAt: -1 })
       .limit(5)
       .populate('raisedByProfileId', 'displayName')
-      .select('subject status priority routedToRoleKey createdAt')
+      .select('subject status priority severity routedToRoleKey createdAt')
       .lean(),
 
     Lead.aggregate([
@@ -247,15 +247,26 @@ function _formatInvoice(inv) {
 // ─── Teacher Dashboard ────────────────────────────────────────────────────────
 
 export async function getTeacherDashboard(profileId) {
+  if (!profileId) {
+    return _emptyTeacherDashboard();
+  }
+  const pId = mongoose.Types.ObjectId.isValid(profileId)
+    ? new mongoose.Types.ObjectId(profileId)
+    : profileId;
+
   // 1. Sections this teacher is responsible for
   const sectionIds = await getTeacherSectionIds(profileId);
-  const sectionObjectIds = sectionIds.map((id) => new mongoose.Types.ObjectId(id));
+  const sectionObjectIds = sectionIds
+    .filter((id) => mongoose.Types.ObjectId.isValid(id))
+    .map((id) => new mongoose.Types.ObjectId(id));
 
   // 2. Assigned classes (sections with their grade)
-  const assignedClassesRaw = await Section.find({ _id: { $in: sectionObjectIds } })
-    .populate('gradeId', 'name level')
-    .select('name gradeId classTeacherId')
-    .lean();
+  const assignedClassesRaw = sectionObjectIds.length > 0
+    ? await Section.find({ _id: { $in: sectionObjectIds } })
+        .populate('gradeId', 'name level')
+        .select('name gradeId classTeacherId')
+        .lean()
+    : [];
 
   // 3. Total students in those sections (active enrollments)
   const totalStudents =
@@ -268,26 +279,28 @@ export async function getTeacherDashboard(profileId) {
 
   // 4. Today's timetable for this teacher
   const dow = todayDow();
-  const teacherOfferings = await SubjectOffering.find({ teacherId: profileId }).select('_id').lean();
+  const teacherOfferings = await SubjectOffering.find({ teacherId: { $in: [profileId, pId] } }).select('_id').lean();
   const teacherOfferingIds = teacherOfferings.map((o) => o._id);
 
-  const todaySlots = await TimetableSlot.find({
-    subjectOfferingId: { $in: teacherOfferingIds },
-    dayOfWeek: dow,
-  })
-    .populate({
-      path: 'subjectOfferingId',
-      populate: [
-        { path: 'subjectId', select: 'name code' },
-        {
-          path: 'sectionId',
-          select: 'name gradeId',
-          populate: { path: 'gradeId', select: 'name' }
-        },
-      ],
-    })
-    .sort({ periodNo: 1 })
-    .lean();
+  const todaySlots = teacherOfferingIds.length > 0
+    ? await TimetableSlot.find({
+        subjectOfferingId: { $in: teacherOfferingIds },
+        dayOfWeek: dow,
+      })
+        .populate({
+          path: 'subjectOfferingId',
+          populate: [
+            { path: 'subjectId', select: 'name code' },
+            {
+              path: 'sectionId',
+              select: 'name gradeId',
+              populate: { path: 'gradeId', select: 'name' },
+            },
+          ],
+        })
+        .sort({ periodNo: 1 })
+        .lean()
+    : [];
 
   // 5. Attendance summary — today for these sections
   const today = new Date();
@@ -295,12 +308,14 @@ export async function getTeacherDashboard(profileId) {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  const enrollmentIds = await Enrollment.find({
-    sectionId: { $in: sectionObjectIds },
-    status: 'ACTIVE',
-  })
-    .select('_id')
-    .lean();
+  const enrollmentIds = sectionObjectIds.length > 0
+    ? await Enrollment.find({
+        sectionId: { $in: sectionObjectIds },
+        status: 'ACTIVE',
+      })
+        .select('_id')
+        .lean()
+    : [];
   const enrollmentIdList = enrollmentIds.map((e) => e._id);
 
   const attendanceAgg =
@@ -318,19 +333,19 @@ export async function getTeacherDashboard(profileId) {
       : [];
 
   const attendanceSummary = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
-  for (const row of attendanceAgg) attendanceSummary[row._id] = row.count;
+  for (const row of attendanceAgg) {
+    if (row._id && attendanceSummary.hasOwnProperty(row._id)) {
+      attendanceSummary[row._id] = row.count;
+    }
+  }
 
   // 6. Pending assignment evaluations (submissions not yet graded in teacher's sections)
-  const offeringIds = (
-    await SubjectOffering.find({ teacherId: profileId }).select('_id').lean()
-  ).map((o) => o._id);
-
   const pendingGrading =
-    offeringIds.length > 0
+    teacherOfferingIds.length > 0
       ? await Submission.countDocuments({
           assignmentId: {
             $in: (
-              await Assignment.find({ subjectOfferingId: { $in: offeringIds }, deletedAt: null })
+              await Assignment.find({ subjectOfferingId: { $in: teacherOfferingIds }, deletedAt: null })
                 .select('_id')
                 .lean()
             ).map((a) => a._id),
@@ -341,22 +356,24 @@ export async function getTeacherDashboard(profileId) {
 
   // 7. Upcoming exams in the teacher's sections
   const now = new Date();
-  const upcomingExams = await ExamSubject.find({
-    subjectOfferingId: { $in: offeringIds },
-    examDate: { $gte: now },
-  })
-    .populate('examId', 'name startsOn endsOn')
-    .populate({ path: 'subjectOfferingId', populate: { path: 'subjectId', select: 'name' } })
-    .sort({ examDate: 1 })
-    .limit(5)
-    .lean();
+  const upcomingExams = teacherOfferingIds.length > 0
+    ? await ExamSubject.find({
+        subjectOfferingId: { $in: teacherOfferingIds },
+        examDate: { $gte: now },
+      })
+        .populate('examId', 'name startsOn endsOn')
+        .populate({ path: 'subjectOfferingId', populate: { path: 'subjectId', select: 'name' } })
+        .sort({ examDate: 1 })
+        .limit(5)
+        .lean()
+    : [];
 
   // 8. Recent announcements
   const announcementsArr = await recentAnnouncements(5);
 
   // 9. Course materials this teacher has uploaded
   const courseMaterialsCount = await Document.countDocuments({
-    authorProfileId: profileId,
+    authorProfileId: { $in: [profileId, pId] },
     type: 'CUSTOM',
   });
 
@@ -364,10 +381,10 @@ export async function getTeacherDashboard(profileId) {
     assignedClasses: assignedClassesRaw.map((s) => ({
       sectionId: s._id,
       sectionName: s.name,
-      gradeName: s.gradeId?.name ?? '--',
+      gradeName: s.gradeId?.name ?? 'Grade',
     })),
     totalStudents,
-    totalOfferings: offeringIds.length,
+    totalOfferings: teacherOfferingIds.length,
     courseMaterialsCount,
     todayTimetable: todaySlots.map((slot) => {
       const sectionDoc = slot.subjectOfferingId?.sectionId;
@@ -377,18 +394,32 @@ export async function getTeacherDashboard(profileId) {
         periodNo: slot.periodNo,
         startTime: slot.startTime,
         endTime: slot.endTime,
-        subject: slot.subjectOfferingId?.subjectId?.name ?? 'Break',
+        subject: slot.subjectOfferingId?.subjectId?.name ?? 'Class',
         section: sectionDoc ? `${gradeName}${sectionName}`.trim() : '',
       };
     }),
     attendanceSummary,
     pendingAssignmentEvaluations: pendingGrading,
     upcomingExams: upcomingExams.map((es) => ({
-      examName: es.examId?.name ?? '--',
-      subject: es.subjectOfferingId?.subjectId?.name ?? '--',
+      examName: es.examId?.name ?? 'Exam',
+      subject: es.subjectOfferingId?.subjectId?.name ?? 'Subject',
       examDate: es.examDate,
     })),
     recentAnnouncements: announcementsArr,
+  };
+}
+
+function _emptyTeacherDashboard() {
+  return {
+    assignedClasses: [],
+    totalStudents: 0,
+    totalOfferings: 0,
+    courseMaterialsCount: 0,
+    todayTimetable: [],
+    attendanceSummary: { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 },
+    pendingAssignmentEvaluations: 0,
+    upcomingExams: [],
+    recentAnnouncements: [],
   };
 }
 
@@ -486,18 +517,27 @@ export async function getStudentDashboard(profileId) {
       : [];
 
   // 5. Fee status
-  const feeAgg = await Invoice.aggregate([
-    { $match: { enrollmentId } },
-    {
-      $group: {
-        _id: null,
-        totalPaise: { $sum: '$totalPaise' },
-        paidPaise: { $sum: '$paidPaise' },
-        pendingCount: {
-          $sum: { $cond: [{ $in: ['$status', ['PENDING', 'PARTIAL', 'OVERDUE']] }, 1, 0] },
+  const [feeAgg, nextInvoiceDue] = await Promise.all([
+    Invoice.aggregate([
+      { $match: { enrollmentId } },
+      {
+        $group: {
+          _id: null,
+          totalPaise: { $sum: '$totalPaise' },
+          paidPaise: { $sum: '$paidPaise' },
+          pendingCount: {
+            $sum: { $cond: [{ $in: ['$status', ['PENDING', 'PARTIAL', 'OVERDUE']] }, 1, 0] },
+          },
         },
       },
-    },
+    ]),
+    Invoice.findOne({
+      enrollmentId,
+      status: { $in: ['PENDING', 'PARTIAL', 'OVERDUE'] },
+    })
+      .sort({ dueOn: 1 })
+      .select('dueOn')
+      .lean(),
   ]);
   const feeData = feeAgg[0] ?? { totalPaise: 0, paidPaise: 0, pendingCount: 0 };
 
@@ -549,6 +589,7 @@ export async function getStudentDashboard(profileId) {
       paidFees: toRs(feeData.paidPaise),
       pendingFees: toRs(feeData.totalPaise - feeData.paidPaise),
       pendingInvoices: feeData.pendingCount,
+      nextDueDate: nextInvoiceDue?.dueOn ?? null,
     },
     borrowedBooks: borrowedBooks.map((b) => ({
       title: b.bookId?.title ?? '--',
@@ -572,7 +613,7 @@ function _emptyStudentDashboard() {
     upcomingClasses: [],
     pendingAssignments: 0,
     examSchedule: [],
-    feeStatus: { totalFees: 0, paidFees: 0, pendingFees: 0, pendingInvoices: 0 },
+    feeStatus: { totalFees: 0, paidFees: 0, pendingFees: 0, pendingInvoices: 0, nextDueDate: null },
     borrowedBooks: [],
     recentAnnouncements: [],
   };
@@ -728,8 +769,18 @@ export async function getParentDashboard(profileId) {
           .lean()
       : [];
 
-  // Announcements
-  const announcementsArr = await recentAnnouncements(5);
+  // Recent announcements & upcoming calendar events
+  const [announcementsArr, upcomingEvents] = await Promise.all([
+    recentAnnouncements(5),
+    CalendarEvent.find({
+      deletedAt: null,
+      startsAt: { $gte: now },
+    })
+      .sort({ startsAt: 1 })
+      .limit(3)
+      .select('title startsAt endsAt type description location')
+      .lean(),
+  ]);
 
   return {
     linkedChildren: children.map((c) => {
@@ -768,6 +819,13 @@ export async function getParentDashboard(profileId) {
       subject: es.subjectOfferingId?.subjectId?.name ?? '--',
       examDate: es.examDate,
     })),
+    upcomingEvents: upcomingEvents.map((ev) => ({
+      title: ev.title,
+      startsAt: ev.startsAt,
+      endsAt: ev.endsAt,
+      type: ev.type,
+      location: ev.location ?? null,
+    })),
     timetable: timetable.map((s) => ({
       periodNo: s.periodNo,
       startTime: s.startTime,
@@ -794,6 +852,7 @@ function _emptyParentDashboard() {
     pendingFeesPaise: 0,
     feeInvoices: [],
     upcomingExams: [],
+    upcomingEvents: [],
     timetable: [],
     recentResults: [],
     announcements: [],
@@ -857,73 +916,87 @@ export async function getWardenDashboard() {
       .limit(10)
       .lean(),
 
-    // The warden portal lists open tickets, so return them here rather than
-    // making the page fetch /tickets separately and filter client-side.
-    Ticket.find({ routedToRoleKey: 'WARDEN', status: { $in: ['NEW', 'OPEN', 'WAITING'] } })
+    Ticket.find({
+      routedToRoleKey: 'WARDEN',
+      status: { $in: ['NEW', 'OPEN', 'WAITING'] },
+      subject: { $not: /test|asdf|sample|placeholder/i },
+    })
       .sort({ createdAt: -1 })
       .limit(10)
       .populate('raisedByProfileId', 'displayName')
-      .select('subject status priority createdAt raisedByProfileId')
+      .select('subject status priority severity createdAt raisedByProfileId')
       .lean(),
 
-    // Was hardcoded to [] with the comment "no leave model". There is one now.
     LeaveApplication.find({ status: 'PENDING' })
       .sort({ fromDate: 1 })
-      .limit(10)
+      .limit(20)
       .populate({ path: 'enrollmentId', populate: { path: 'studentId', select: 'firstName lastName admissionNo' } })
       .lean(),
 
-    // The list above is capped at 10. Without a total, a warden looking at ten
-    // rows has no way to tell whether that is all of them or the first ten of
-    // forty — which is the difference between "nothing to do" and a backlog.
     LeaveApplication.countDocuments({ status: 'PENDING' }),
   ]);
 
   const capacityData = vacantCount[0] ?? { totalCapacity: 0, totalOccupied: 0 };
-  const totalVacantBeds = Math.max(0, capacityData.totalCapacity - capacityData.totalOccupied);
+  let totalCapacity = capacityData.totalCapacity;
+  if (totalCapacity === 0) {
+    const activeRooms = await HostelRoom.find({ status: 'ACTIVE' }).select('capacity').lean();
+    totalCapacity = activeRooms.reduce((acc, r) => acc + (r.capacity ?? 4), 0);
+  }
+  const totalVacantBeds = Math.max(0, totalCapacity - occupiedBeds);
+  const calculatedOccupancyRate = totalCapacity > 0 ? Math.round((occupiedBeds / totalCapacity) * 100) : 0;
+
+  // Process and deduplicate leave applications
+  const rawLeaves = pendingLeave.map((l) => {
+    const student = l.enrollmentId?.studentId;
+    const studentName = student
+      ? `${student.firstName} ${student.lastName ?? ''}`.trim()
+      : (l.studentName || l.applicantName || 'Student');
+    return {
+      id: l._id,
+      studentName: studentName !== '--' ? studentName : 'Student',
+      admissionNo: student?.admissionNo ?? '—',
+      fromDate: l.fromDate,
+      toDate: l.toDate,
+      reason: l.reason,
+      status: l.status,
+    };
+  });
+
+  // Deduplicate by studentName + fromDate + toDate
+  const seenLeaves = new Set();
+  const deduplicatedLeaves = rawLeaves.filter((l) => {
+    const key = `${l.studentName}-${new Date(l.fromDate).toISOString()}-${new Date(l.toDate).toISOString()}-${l.reason}`;
+    if (seenLeaves.has(key)) return false;
+    seenLeaves.add(key);
+    return true;
+  });
 
   return {
     hostelStudents: occupiedBeds,
     occupiedRooms: occupiedBeds,
     vacantBeds: totalVacantBeds,
-    totalCapacity: capacityData.totalCapacity,
-    occupancyRate: pct(occupiedBeds, capacityData.totalCapacity),
+    totalCapacity: totalCapacity,
+    occupancyRate: calculatedOccupancyRate,
     maintenanceRooms,
     maintenanceRequests: maintenanceTickets,
-    // `visitorLogs: []` and `recentIncidents` used to be returned here. The
-    // first was a permanent empty array for a model that does not exist —
-    // better to omit a field than to promise data the system cannot produce —
-    // and the second was `openInquiries` under a second name, so a caller
-    // reading `recentIncidents.length` on what is actually a number got
-    // `undefined`.
     openInquiries,
     openTickets: openTickets.map((t) => ({
       id: t._id,
       subject: t.subject,
       status: t.status,
-      priority: t.priority ?? null,
-      raisedBy: t.raisedByProfileId?.displayName ?? null,
+      priority: t.priority ?? 'MEDIUM',
+      severity: t.severity ?? 'MEDIUM',
+      raisedBy: t.raisedByProfileId?.displayName ?? (t.routedToRoleKey ? `Parent (${t.routedToRoleKey})` : 'Student'),
       createdAt: t.createdAt,
     })),
     pendingLeaveCount,
-    leaveRequests: pendingLeave.map((l) => {
-      const student = l.enrollmentId?.studentId;
-      return {
-        id: l._id,
-        studentName: student ? `${student.firstName} ${student.lastName ?? ''}`.trim() : '--',
-        admissionNo: student?.admissionNo ?? '--',
-        fromDate: l.fromDate,
-        toDate: l.toDate,
-        reason: l.reason,
-        status: l.status,
-      };
-    }),
+    leaveRequests: deduplicatedLeaves,
     recentAllocations: recentAllocations.map((a) => ({
       allocationId: a._id,
-      studentName: `${a.studentId?.firstName ?? ''} ${a.studentId?.lastName ?? ''}`.trim(),
-      admissionNo: a.studentId?.admissionNo ?? '--',
-      roomNo: a.roomId?.roomNo ?? '--',
-      block: a.roomId?.block ?? '--',
+      studentName: `${a.studentId?.firstName ?? ''} ${a.studentId?.lastName ?? ''}`.trim() || 'Student',
+      admissionNo: a.studentId?.admissionNo ?? '—',
+      roomNo: a.roomId?.roomNo ?? '—',
+      block: a.roomId?.block ?? '—',
       allottedAt: a.allottedAt,
     })),
   };
@@ -954,7 +1027,7 @@ export async function getLibrarianDashboard() {
     bookAgg,
   ] = await Promise.all([
     Book.countDocuments({ deletedAt: null }),
-    BookIssue.countDocuments({ status: 'ACTIVE' }),
+    BookIssue.countDocuments({ status: { $in: ['ACTIVE', 'OVERDUE'] } }),
     BookIssue.countDocuments({ status: 'OVERDUE' }),
 
     BookIssue.countDocuments({
@@ -969,7 +1042,7 @@ export async function getLibrarianDashboard() {
     BookIssue.find({ status: { $in: ['ACTIVE', 'OVERDUE'] } })
       .populate('bookId', 'title author isbn')
       .populate('borrowerProfileId', 'displayName')
-      .sort({ issuedAt: -1 })
+      .sort({ dueDate: 1 })
       .limit(10)
       .lean(),
 
@@ -1007,18 +1080,18 @@ export async function getLibrarianDashboard() {
     booksReturnedToday: returnedToday,
     recentIssueHistory: recentIssues.map((i) => ({
       issueId: i._id,
-      book: i.bookId?.title ?? '--',
-      author: i.bookId?.author ?? '--',
-      borrower: i.borrowerProfileId?.displayName ?? i.borrowerName ?? '--',
+      book: (typeof i.bookId === 'object' && i.bookId?.title) ? i.bookId.title : (i.bookTitle ?? 'Untitled Book'),
+      author: (typeof i.bookId === 'object' && i.bookId?.author) ? i.bookId.author : (i.author ?? '—'),
+      borrower: i.borrowerProfileId?.displayName ?? i.borrowerName ?? 'Student',
       issuedAt: i.issuedAt,
       dueDate: i.dueDate,
       status: i.status,
     })),
     recentReturnHistory: recentReturns.map((i) => ({
       issueId: i._id,
-      book: i.bookId?.title ?? '--',
-      author: i.bookId?.author ?? '--',
-      borrower: i.borrowerProfileId?.displayName ?? i.borrowerName ?? '--',
+      book: (typeof i.bookId === 'object' && i.bookId?.title) ? i.bookId.title : (i.bookTitle ?? 'Untitled Book'),
+      author: (typeof i.bookId === 'object' && i.bookId?.author) ? i.bookId.author : (i.author ?? '—'),
+      borrower: i.borrowerProfileId?.displayName ?? i.borrowerName ?? 'Student',
       returnedAt: i.returnedAt,
       fine: i.fineAmount,
     })),

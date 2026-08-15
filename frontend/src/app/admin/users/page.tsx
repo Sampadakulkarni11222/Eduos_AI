@@ -34,7 +34,7 @@ export default function UsersPage() {
       setItems(r);
     } catch {
       setErr(true);
-      setItems([]);
+      setItems(null);
     }
   }, []);
 
