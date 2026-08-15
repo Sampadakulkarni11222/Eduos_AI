@@ -282,7 +282,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                 >
                   −
                 </button>
-                <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Close">×</button>
+                <button type="button" className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setOpen(false)}>×</button>
               </div>
             </div>
             <div className="ai-body" ref={scrollRef}>

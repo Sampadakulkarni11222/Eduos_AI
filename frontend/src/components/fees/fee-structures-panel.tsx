@@ -1,5 +1,5 @@
 'use client';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import type { AcademicYearDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, GradeDto } from '@/lib/types';
 import { Button, Card, EmptyState, Field, Modal, SkeletonRows, rupees, useToast } from '../ui';
@@ -12,6 +12,7 @@ import { Button, Card, EmptyState, Field, Modal, SkeletonRows, rupees, useToast 
  * the "define the plan for a class, then bill everyone in it" path.
  */
 export function FeeStructuresPanel() {
+  const generatingRef = useRef(false);
   const [heads, setHeads] = useState<FeeHeadDto[] | null>(null);
   const [structures, setStructures] = useState<FeeStructureDto[] | null>(null);
   const [grades, setGrades] = useState<GradeDto[]>([]);
@@ -43,6 +44,10 @@ export function FeeStructuresPanel() {
 
   async function generate(dryRun: boolean) {
     if (!yearId) { toast('Pick an academic year first.', 'error'); return; }
+    // Generation writes an invoice per enrolled student, so a second click
+    // landing before `generating` re-renders must be dropped outright.
+    if (generatingRef.current) return;
+    generatingRef.current = true;
     setGenerating(true);
     try {
       const res = await api.generateInvoices({ academicYearId: yearId, gradeId: gradeId || null, dryRun });
@@ -56,6 +61,7 @@ export function FeeStructuresPanel() {
       toast(x instanceof ApiError ? x.message : 'Could not generate invoices.', 'error');
     } finally {
       setGenerating(false);
+      generatingRef.current = false;
     }
   }
 

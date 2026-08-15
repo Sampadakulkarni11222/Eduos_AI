@@ -58,7 +58,7 @@ export function InvoiceTimelineModal({ invoiceId, onClose }: { invoiceId: string
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '85vh', overflowY: 'auto' }}>
         <div className="modal-header">
           <div className="modal-title">{detail ? `Invoice ${detail.invoiceNo}` : 'Invoice timeline'}</div>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" aria-label="Close dialog" title="Close" onClick={onClose}>×</button>
         </div>
 
         {!detail && <SkeletonRows rows={4} />}

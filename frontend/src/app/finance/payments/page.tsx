@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees } from '@/components/ui';
+import { Pagination } from '@/components/pagination';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
@@ -18,19 +19,64 @@ export default function FinancePayments() {
   const [paying, setPaying] = useState<InvoiceDto | null>(null);
   const [activeTab, setActiveTab] = useState<'invoices' | 'receipts'>('invoices');
 
+  // Invoices are school-wide (hundreds of rows), so the table is paged in the
+  // browser over the list already fetched for the summary figures. Receipts
+  // are paged server-side, which also lifts the old 200-row response cap.
+  const [invoicePage, setInvoicePage] = useState(1);
+  const [invoicePageSize, setInvoicePageSize] = useState(25);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [invoiceTotal, setInvoiceTotal] = useState(0);
+  const [invoiceTotalPages, setInvoiceTotalPages] = useState(1);
+  const [receiptPage, setReceiptPage] = useState(1);
+  const [receiptPageSize, setReceiptPageSize] = useState(25);
+  const [receiptTotal, setReceiptTotal] = useState(0);
+  const [receiptTotalPages, setReceiptTotalPages] = useState(1);
+  const [receiptsBusy, setReceiptsBusy] = useState(false);
+
+  const loadReceipts = useCallback(() => {
+    setReceiptsBusy(true);
+    api.listPaymentsPage({ page: receiptPage, pageSize: receiptPageSize })
+      .then((r) => {
+        setReceipts(r.items);
+        setReceiptTotal(r.total);
+        setReceiptTotalPages(r.totalPages);
+        if (r.page !== receiptPage) setReceiptPage(r.page);
+      })
+      .catch(() => { setReceipts([]); setReceiptTotal(0); setReceiptTotalPages(1); })
+      .finally(() => setReceiptsBusy(false));
+  }, [receiptPage, receiptPageSize]);
+
   const reload = useCallback(() => {
     api.feeSummary().then(setSummary).catch(() => {});
-    api.invoices().then(setInvoices).catch(() => setInvoices([]));
-    api.listPayments().then(setReceipts).catch(() => setReceipts([]));
-  }, []);
+    loadReceipts();
+  }, [loadReceipts]);
 
+  useEffect(() => { api.feeSummary().then(setSummary).catch(() => {}); }, []);
+
+  // Server-side paging for the invoice tab.
   useEffect(() => {
-    reload();
-  }, [reload]);
+    api.invoicesPage({ status: statusFilter || undefined, page: invoicePage, pageSize: invoicePageSize })
+      .then((r) => {
+        setInvoices(r.items);
+        setInvoiceTotal(r.total);
+        setInvoiceTotalPages(r.totalPages);
+        if (r.page !== invoicePage) setInvoicePage(r.page);
+      })
+      .catch(() => { setInvoices([]); setInvoiceTotal(0); setInvoiceTotalPages(1); });
+  }, [statusFilter, invoicePage, invoicePageSize]);
+
+  useEffect(() => { loadReceipts(); }, [loadReceipts]);
+
+  useEffect(() => { setInvoicePage(1); }, [statusFilter, invoicePageSize]);
 
   const { me } = useAuth();
   const { hasAccess } = usePermissions();
   const canRecord = hasAccess(me?.profile?.role, 'record_payment');
+
+  // Status filtering and paging are done by the server.
+  const filteredInvoices = invoices ?? [];
+  const safeInvoicePage = invoicePage;
+  const pagedInvoices = filteredInvoices;
 
   return (
     <PortalShell expectedSlug="finance" topbar={{ title: 'Payments & Fees', desc: 'Manage fee items, view payment records, and issue receipts.' }}>
@@ -48,14 +94,34 @@ export default function FinancePayments() {
 
       {activeTab === 'invoices' && (
         <>
+          {invoices && invoices.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+              {['', 'PENDING', 'OVERDUE', 'PARTIAL', 'PAID'].map((s) => (
+                <button
+                  key={s} onClick={() => setStatusFilter(s)} className="chip-tab"
+                  aria-pressed={statusFilter === s}
+                  style={{
+                    background: statusFilter === s ? 'var(--accent)' : '#fff',
+                    color: statusFilter === s ? 'var(--on-accent)' : 'var(--text-2)',
+                    borderColor: statusFilter === s ? 'var(--accent)' : 'var(--input-border)',
+                  }}
+                >
+                  {s ? s.charAt(0) + s.slice(1).toLowerCase() : 'All'}
+                </button>
+              ))}
+            </div>
+          )}
           {invoices === null && <Card><SkeletonRows rows={5} /></Card>}
           {invoices?.length === 0 && <EmptyState title="No invoices yet" sub="Fee invoices appear here once fee structures are assigned." />}
-          {invoices && invoices.length > 0 && (
+          {invoices && invoices.length > 0 && filteredInvoices.length === 0 && (
+            <EmptyState title="No matching invoices" sub="No invoices have this status." />
+          )}
+          {filteredInvoices.length > 0 && (
             <Card pad={false}>
               <table className="data-table data-table-cards">
                 <thead><tr><th>Invoice</th><th>Student</th><th>Class</th><th>Total</th><th>Paid</th><th>Due On</th><th>Status</th><th></th></tr></thead>
                 <tbody>
-                  {invoices.map((i) => (
+                  {pagedInvoices.map((i) => (
                     <tr key={i.id}>
                       <td className="cell-primary" data-label="Invoice">{i.invoiceNo}</td>
                       <td data-label="Student">{i.studentName}</td>
@@ -69,6 +135,15 @@ export default function FinancePayments() {
                   ))}
                 </tbody>
               </table>
+              <Pagination
+                page={safeInvoicePage}
+                pageSize={invoicePageSize}
+                total={invoiceTotal}
+                totalPages={invoiceTotalPages}
+                label="invoices"
+                onPageChange={setInvoicePage}
+                onPageSizeChange={(s) => { setInvoicePageSize(s); setInvoicePage(1); }}
+              />
             </Card>
           )}
         </>
@@ -108,6 +183,16 @@ export default function FinancePayments() {
                   ))}
                 </tbody>
               </table>
+              <Pagination
+                page={receiptPage}
+                pageSize={receiptPageSize}
+                total={receiptTotal}
+                totalPages={receiptTotalPages}
+                busy={receiptsBusy}
+                label="receipts"
+                onPageChange={setReceiptPage}
+                onPageSizeChange={(s) => { setReceiptPageSize(s); setReceiptPage(1); }}
+              />
             </Card>
           )}
         </>
@@ -183,7 +268,7 @@ function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClos
           <>
             <div className="modal-header">
               <div className="modal-title">Record payment</div>
-              <button className="modal-close" onClick={onClose}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={onClose}>×</button>
             </div>
             <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
               {invoice.invoiceNo} · {invoice.studentName} · balance {rupees(remaining)}

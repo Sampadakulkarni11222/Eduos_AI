@@ -1,6 +1,6 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { Button, Card, EmptyState, Input, SkeletonRows } from '@/components/ui';
+import { useEffect, useRef, useState } from 'react';
+import { Button, Card, EmptyState, Input, SkeletonRows, cx } from '@/components/ui';
 import { FileOrUrlInput } from '@/components/file-input';
 import { api, fileHref, ApiError } from '@/lib/api';
 import type { MedicalDto } from '@/lib/types';
@@ -51,6 +51,8 @@ export function MedicalRecordPanel({ studentId, canManage = true }: { studentId:
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  // Flips synchronously, so a second click in the same React batch is dropped.
+  const savingRef = useRef(false);
   const [successMsg, setSuccessMsg] = useState('');
 
   useEffect(() => {
@@ -87,6 +89,8 @@ export function MedicalRecordPanel({ studentId, canManage = true }: { studentId:
       return;
     }
 
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true); setSaveErr(null); setSuccessMsg('');
     try {
       const body: Record<string, unknown> = { studentId };
@@ -111,7 +115,7 @@ export function MedicalRecordPanel({ studentId, canManage = true }: { studentId:
       setEditing(false);
     } catch (err) {
       setSaveErr(err instanceof ApiError ? err.message : 'Save failed. Please try again.');
-    } finally { setSaving(false); }
+    } finally { setSaving(false); savingRef.current = false; }
   };
 
   const handleDelete = async () => {
@@ -256,6 +260,30 @@ export function MedicalRecordPanel({ studentId, canManage = true }: { studentId:
               />
             </div>
           </Card>
+
+          {/* The edit form runs well past a screen, so the save action follows
+              it down rather than staying at the top out of reach. The buttons
+              above are unchanged — this is an additional, always-reachable
+              copy, not a replacement. */}
+          <div className={cx('sticky-actions', saveErr && 'is-error', successMsg && !saveErr && 'is-saved')}>
+            <div className="sticky-actions-status" role="status" aria-live="polite">
+              {saveErr ? <span style={{ color: '#b91c1c', fontWeight: 600 }}>⚠ {saveErr}</span>
+                : saving ? <span>Saving medical record…</span>
+                : <span>Editing medical record — unsaved changes</span>}
+            </div>
+            <div className="sticky-actions-spacer">
+              <Button
+                variant="soft"
+                onClick={() => { setEditing(false); setForm(recToEdit(rec)); setSaveErr(null); }}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button onClick={() => void save()} disabled={saving}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </Button>
+            </div>
+          </div>
         </>
       ) : rec ? (
         <>

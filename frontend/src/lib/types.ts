@@ -64,8 +64,21 @@ export interface Paged<T> {
   nextCursor: string | null;
 }
 
+/**
+ * Page-numbered result. Endpoints that accept `page`/`pageSize` return this
+ * shape; called without those params they still return a plain array, so
+ * existing "load everything" callers are unaffected.
+ */
+export interface PageResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export interface SectionDto { id: string; name: string; gradeName: string; classTeacher?: string | null; classTeacherId?: string | null; classRepresentativeId?: string | null }
-export interface OfferingDto { id: string; subject: string; subjectId?: string; sectionId: string; sectionName: string; gradeName?: string; teacherName?: string | null }
+export interface OfferingDto { id: string; subject: string; subjectId?: string; sectionId: string; sectionName: string; gradeName?: string; teacherId?: string | null; teacherName?: string | null }
 export interface GradeDto { id: string; name: string; level: number }
 export interface SubjectDto { id: string; name: string; code?: string | null }
 export interface TermDto { id: string; academicYearId: string; name: string; startsOn: string; endsOn: string }
@@ -76,6 +89,11 @@ export interface StaffAccountDto {
   accountId: string;
   displayName: string | null;
   profiles: { profileId: string; displayName: string; role: string | null }[];
+  // Also present on the /users response and used by the staff directory.
+  id?: string;
+  phone?: string | null;
+  email?: string | null;
+  status?: string | null;
 }
 export interface RosterRow { enrollmentId: string; rollNo: number | null; studentName: string; status: AttStatus | null; note: string | null }
 export type AttStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY';
@@ -155,12 +173,87 @@ export interface TicketThread { id: string; subject: string; status: string; rou
 export interface MedicalDto { studentId: string; bloodGroup: string | null; heightCm: number | null; weightKg: number | null; emergencyContact: { name: string; phone: string; relation: string } | null; allergies: string[]; medications: string[]; history: string | null; attachments?: Array<{ name: string; fileUrl: string }> | null }
 export interface LeadCard { id: string; childName: string; guardianName: string; gradeApplying: string | null; source: string; nextActionAt: string | null }
 export interface Pipeline { stages: string[]; byStage: Record<string, LeadCard[]> }
+export interface LeadInteractionDto { id: string; type: string; body: string; authorName: string | null; createdAt: string }
+export interface LeadDetailDto {
+  id: string;
+  childName: string;
+  guardianName: string;
+  phone: string | null;
+  email: string | null;
+  gradeApplying: string | null;
+  source: string;
+  stage: string;
+  notes: string | null;
+  nextActionAt: string | null;
+  assigneeName: string | null;
+  assigneeProfileId: string | null;
+  createdAt: string;
+  updatedAt: string | null;
+  interactions: LeadInteractionDto[];
+}
 
 export interface GrowthComponent { key: string; label: string; raw: number; normalized: number; weight: number; points: number; detail: string }
 export interface GrowthScore { enrollmentId: string; studentName: string; score: number; band: string; components: GrowthComponent[]; computedAt: string }
 export interface RiskFeature { feature: string; value: string; contribution: number }
-export interface RiskItem { enrollmentId: string; studentName: string; class: string; type: string; level: string; probability: number; topFeatures: RiskFeature[]; summary: string }
-export interface RiskScan { items: RiskItem[]; counts: Record<string, number> }
+export interface RiskItem {
+  enrollmentId: string;
+  studentId?: string | null;
+  studentName: string;
+  class: string;
+  sectionId?: string | null;
+  sectionName?: string | null;
+  gradeName?: string | null;
+  type: string;
+  level: string;
+  probability: number;
+  topFeatures: RiskFeature[];
+  summary: string;
+}
+
+/**
+ * What the scan actually measured. `signalsEvaluated` counts every check run
+ * (one per student per signal with data) — most come back at 0% and are not
+ * flags. `flaggedSignals` counts the checks that crossed a threshold, and
+ * `flaggedStudents` counts distinct students behind them.
+ */
+export interface RiskSummary {
+  activeEnrollments: number;
+  signalsEvaluated: number;
+  flaggedSignals: number;
+  flaggedStudents: number;
+  studentsAtHighRisk: number;
+  studentsAtMediumRisk: number;
+  clearStudents: number;
+  byLevel: Record<string, number>;
+  byCategory: Record<string, number>;
+}
+
+export interface RiskScan {
+  /** When the stored predictions were last computed. */
+  computedAt?: string | null;
+  items: RiskItem[];
+  counts: Record<string, number>;
+  summary?: RiskSummary;
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
+}
+
+export interface RiskScanParams {
+  /** Forces the expensive rescoring pass; omit to read the stored predictions. */
+  refresh?: boolean;
+  level?: string;
+  type?: string;
+  sectionId?: string;
+  gradeName?: string;
+  search?: string;
+  minProbability?: number;
+  page?: number;
+  pageSize?: number;
+  sortBy?: 'probability' | 'level' | 'student' | 'class' | 'category';
+  sortDir?: 'asc' | 'desc';
+}
 export interface AiReply { conversationId: string; reply: string; toolsUsed: string[] }
 
 export interface WaSimReply { reply: string; buttons: Array<{ id: string; title: string }> | null }

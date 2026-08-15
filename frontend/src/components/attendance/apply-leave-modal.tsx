@@ -35,7 +35,7 @@ export function ApplyLeaveModal({ onClose, onApplied }: { onClose: () => void; o
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title">Apply for Leave</div>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" aria-label="Close dialog" title="Close" onClick={onClose}>×</button>
         </div>
         <form onSubmit={handleSubmit}>
           <div style={{ display: 'flex', gap: 12 }}>

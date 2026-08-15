@@ -1,8 +1,9 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
+import { Pagination } from '@/components/pagination';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
@@ -13,10 +14,12 @@ const STATUS_TONE: Record<string, 'green' | 'amber' | 'red' | 'gray' | 'blue'> =
   PAID: 'green', PARTIAL: 'amber', PENDING: 'gray', OVERDUE: 'red', CANCELLED: 'gray',
 };
 
+const INVOICE_STATUSES = ['PENDING', 'PARTIAL', 'PAID', 'OVERDUE', 'CANCELLED'];
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
 export default function AdminPayments() {
   const [summary, setSummary] = useState<FeeSummary | null>(null);
   const [invoices, setInvoices] = useState<InvoiceDto[] | null>(null);
-  const [receipts, setReceipts] = useState<PaymentReceiptDto[] | null>(null);
   const [students, setStudents] = useState<StudentListItem[]>([]);
   const [paying, setPaying] = useState<InvoiceDto | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -24,25 +27,65 @@ export default function AdminPayments() {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<'invoices' | 'receipts' | 'plans'>('invoices');
 
-  // Grade / Section / Student filter for the Invoices tab
+  // Grade / Section / Student filter for the Invoices tab. All optional now —
+  // invoices are visible straight away and these only narrow the list.
   const [grades, setGrades] = useState<GradeDto[]>([]);
   const [filterGradeId, setFilterGradeId] = useState('');
   const [sections, setSections] = useState<SectionDto[]>([]);
   const [filterSectionId, setFilterSectionId] = useState('');
   const [filterStudentId, setFilterStudentId] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [invoiceSearch, setInvoiceSearch] = useState('');
+  const [invoicePage, setInvoicePage] = useState(1);
+  const [invoicePageSize, setInvoicePageSize] = useState(25);
+
+  // Receipts tab — paginated, searched and date-filtered on the server.
+  const [receipts, setReceipts] = useState<PaymentReceiptDto[] | null>(null);
+  const [receiptSearch, setReceiptSearch] = useState('');
+  const [appliedReceiptSearch, setAppliedReceiptSearch] = useState('');
+  const [receiptFrom, setReceiptFrom] = useState('');
+  const [receiptTo, setReceiptTo] = useState('');
+  const [receiptPage, setReceiptPage] = useState(1);
+  const [receiptPageSize, setReceiptPageSize] = useState(25);
+  const [receiptTotal, setReceiptTotal] = useState(0);
+  const [receiptTotalPages, setReceiptTotalPages] = useState(1);
+  const [receiptsBusy, setReceiptsBusy] = useState(false);
+  const receiptSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const loadReceipts = useCallback(() => {
+    setReceiptsBusy(true);
+    api.listPaymentsPage({
+      search: appliedReceiptSearch || undefined,
+      from: receiptFrom || undefined,
+      to: receiptTo || undefined,
+      page: receiptPage,
+      pageSize: receiptPageSize,
+    })
+      .then((r) => {
+        setReceipts(r.items);
+        setReceiptTotal(r.total);
+        setReceiptTotalPages(r.totalPages);
+        if (r.page !== receiptPage) setReceiptPage(r.page);
+      })
+      .catch(() => { setReceipts([]); setReceiptTotal(0); setReceiptTotalPages(1); })
+      .finally(() => setReceiptsBusy(false));
+  }, [appliedReceiptSearch, receiptFrom, receiptTo, receiptPage, receiptPageSize]);
 
   const reload = useCallback(() => {
     api.feeSummary().then(setSummary).catch(() => {});
     api.invoices().then(setInvoices).catch(() => setInvoices([]));
-    api.listPayments().then(setReceipts).catch(() => setReceipts([]));
-  }, []);
+    loadReceipts();
+  }, [loadReceipts]);
 
   useEffect(() => {
-    reload();
+    api.feeSummary().then(setSummary).catch(() => {});
+    api.invoices().then(setInvoices).catch(() => setInvoices([]));
     // Load ALL students (admitted + enrolled) so invoice creation covers everyone
     api.students().then((r) => setStudents(r.items)).catch(() => setStudents([]));
     api.listGrades().then(setGrades).catch(() => setGrades([]));
-  }, [reload]);
+  }, []);
+
+  useEffect(() => { loadReceipts(); }, [loadReceipts]);
 
   // Sections reload whenever the selected grade changes.
   useEffect(() => {
@@ -53,13 +96,56 @@ export default function AdminPayments() {
 
   useEffect(() => { setFilterStudentId(''); }, [filterSectionId]);
 
-  const studentsInSection = students.filter((s) => s.enrollment?.sectionId === filterSectionId);
+  // Any change to the invoice filters restarts paging from the first page.
+  useEffect(() => {
+    setInvoicePage(1);
+  }, [filterGradeId, filterSectionId, filterStudentId, filterStatus, invoiceSearch, invoicePageSize]);
 
-  // Invoices tab shows nothing until a specific student is picked — no
-  // browsing the full unfiltered list.
-  const filteredInvoices = filterStudentId
-    ? (invoices ?? []).filter((i) => i.studentId === filterStudentId)
-    : [];
+  const onReceiptSearch = (q: string) => {
+    setReceiptSearch(q);
+    if (receiptSearchTimer.current) clearTimeout(receiptSearchTimer.current);
+    receiptSearchTimer.current = setTimeout(() => {
+      setReceiptPage(1);
+      setAppliedReceiptSearch(q.trim());
+    }, 300);
+  };
+
+  useEffect(() => () => { if (receiptSearchTimer.current) clearTimeout(receiptSearchTimer.current); }, []);
+
+  const studentsInSection = filterSectionId
+    ? students.filter((s) => s.enrollment?.sectionId === filterSectionId)
+    : students;
+
+  const sectionIdsInGrade = sections.map((s) => s.id);
+  const search = invoiceSearch.trim().toLowerCase();
+
+  // Every filter is optional; the full invoice list is the starting point.
+  const filteredInvoices = (invoices ?? []).filter((i) => {
+    if (filterStudentId && i.studentId !== filterStudentId) return false;
+    if (filterSectionId && i.sectionId !== filterSectionId) return false;
+    if (!filterSectionId && filterGradeId && !(i.sectionId && sectionIdsInGrade.includes(i.sectionId))) return false;
+    if (filterStatus && i.status !== filterStatus) return false;
+    if (search
+      && !i.invoiceNo.toLowerCase().includes(search)
+      && !(i.studentName ?? '').toLowerCase().includes(search)) return false;
+    return true;
+  });
+
+  const invoiceTotalPages = Math.max(Math.ceil(filteredInvoices.length / invoicePageSize), 1);
+  const safeInvoicePage = Math.min(invoicePage, invoiceTotalPages);
+  const pagedInvoices = filteredInvoices.slice(
+    (safeInvoicePage - 1) * invoicePageSize,
+    safeInvoicePage * invoicePageSize,
+  );
+  const hasInvoiceFilters = !!(filterGradeId || filterSectionId || filterStudentId || filterStatus || search);
+
+  const clearInvoiceFilters = () => {
+    setFilterGradeId('');
+    setFilterSectionId('');
+    setFilterStudentId('');
+    setFilterStatus('');
+    setInvoiceSearch('');
+  };
 
   const { me } = useAuth();
   const { hasAccess } = usePermissions();
@@ -92,16 +178,28 @@ export default function AdminPayments() {
 
       {activeTab === 'invoices' && (
         <>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16, alignItems: 'flex-end' }}>
             <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
-              <div className="field-label">Grade *</div>
+              <div className="field-label">Search</div>
+              <input
+                className="field-input"
+                style={{ marginBottom: 0 }}
+                type="search"
+                placeholder="Invoice no or student…"
+                value={invoiceSearch}
+                onChange={(e) => setInvoiceSearch(e.target.value)}
+                aria-label="Search invoices"
+              />
+            </div>
+            <div style={{ flex: '1 1 160px', maxWidth: 200 }}>
+              <div className="field-label">Grade</div>
               <select className="field-input" style={{ marginBottom: 0 }} value={filterGradeId} onChange={(e) => setFilterGradeId(e.target.value)}>
-                <option value="">-- Choose grade --</option>
+                <option value="">All grades</option>
                 {grades.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
             </div>
-            <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
-              <div className="field-label">Section *</div>
+            <div style={{ flex: '1 1 160px', maxWidth: 200 }}>
+              <div className="field-label">Section</div>
               <select
                 className="field-input"
                 style={{ marginBottom: 0 }}
@@ -109,38 +207,47 @@ export default function AdminPayments() {
                 onChange={(e) => setFilterSectionId(e.target.value)}
                 disabled={!filterGradeId || sections.length === 0}
               >
-                <option value="">-- Choose section --</option>
+                <option value="">All sections</option>
                 {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
-            <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
-              <div className="field-label">Student *</div>
+            <div style={{ flex: '1 1 180px', maxWidth: 240 }}>
+              <div className="field-label">Student</div>
               <select
                 className="field-input"
                 style={{ marginBottom: 0 }}
                 value={filterStudentId}
                 onChange={(e) => setFilterStudentId(e.target.value)}
-                disabled={!filterSectionId || studentsInSection.length === 0}
+                disabled={studentsInSection.length === 0}
               >
-                <option value="">-- Choose student --</option>
+                <option value="">All students</option>
                 {studentsInSection.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
+            <div style={{ flex: '1 1 150px', maxWidth: 180 }}>
+              <div className="field-label">Status</div>
+              <select className="field-input" style={{ marginBottom: 0 }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+                <option value="">All statuses</option>
+                {INVOICE_STATUSES.map((s) => <option key={s} value={s}>{s.charAt(0) + s.slice(1).toLowerCase()}</option>)}
+              </select>
+            </div>
+            {hasInvoiceFilters && (
+              <Button variant="soft" small onClick={clearInvoiceFilters}>Clear filters</Button>
+            )}
           </div>
 
           {invoices === null && <Card><SkeletonRows rows={5} /></Card>}
-          {invoices !== null && !filterStudentId && (
-            <EmptyState title="Select a grade, section, and student" sub="Choose a student above to view their fee invoices and payment status." />
+          {invoices !== null && filteredInvoices.length === 0 && (
+            hasInvoiceFilters
+              ? <EmptyState title="No matching invoices" sub="No invoices match the current filters. Clear them to see the full list." />
+              : <EmptyState title="No invoices yet" sub="No fee invoices have been raised. Click '+ Create Invoice' to raise one." />
           )}
-          {invoices !== null && filterStudentId && filteredInvoices.length === 0 && (
-            <EmptyState title="No invoices for this student" sub="This student has no fee invoices yet. Click '+ Create Invoice' to raise one." />
-          )}
-          {invoices !== null && filterStudentId && filteredInvoices.length > 0 && (
+          {invoices !== null && filteredInvoices.length > 0 && (
             <Card pad={false}>
               <table className="data-table data-table-cards">
                 <thead><tr><th>Invoice</th><th>Student</th><th>Class</th><th>Total</th><th>Paid</th><th>Due On</th><th>Status</th><th></th></tr></thead>
                 <tbody>
-                  {filteredInvoices.map((i) => (
+                  {pagedInvoices.map((i) => (
                     <tr key={i.id}>
                       <td className="cell-primary" data-label="Invoice">{i.invoiceNo}</td>
                       <td data-label="Student">{i.studentName}</td>
@@ -154,6 +261,16 @@ export default function AdminPayments() {
                   ))}
                 </tbody>
               </table>
+              <Pagination
+                page={safeInvoicePage}
+                pageSize={invoicePageSize}
+                total={filteredInvoices.length}
+                totalPages={invoiceTotalPages}
+                pageSizes={PAGE_SIZE_OPTIONS}
+                label="invoices"
+                onPageChange={setInvoicePage}
+                onPageSizeChange={(size) => { setInvoicePageSize(size); setInvoicePage(1); }}
+              />
             </Card>
           )}
         </>
@@ -163,8 +280,63 @@ export default function AdminPayments() {
 
       {activeTab === 'receipts' && (
         <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16, alignItems: 'flex-end' }}>
+            <div style={{ flex: '1 1 220px', maxWidth: 300 }}>
+              <div className="field-label">Search</div>
+              <input
+                className="field-input"
+                style={{ marginBottom: 0 }}
+                type="search"
+                placeholder="Receipt no, invoice no or student…"
+                value={receiptSearch}
+                onChange={(e) => onReceiptSearch(e.target.value)}
+                aria-label="Search receipts"
+              />
+            </div>
+            <div style={{ flex: '1 1 160px', maxWidth: 190 }}>
+              <div className="field-label">Paid from</div>
+              <input
+                className="field-input"
+                style={{ marginBottom: 0 }}
+                type="date"
+                value={receiptFrom}
+                max={receiptTo || undefined}
+                onChange={(e) => { setReceiptFrom(e.target.value); setReceiptPage(1); }}
+                aria-label="Payments from date"
+              />
+            </div>
+            <div style={{ flex: '1 1 160px', maxWidth: 190 }}>
+              <div className="field-label">Paid to</div>
+              <input
+                className="field-input"
+                style={{ marginBottom: 0 }}
+                type="date"
+                value={receiptTo}
+                min={receiptFrom || undefined}
+                onChange={(e) => { setReceiptTo(e.target.value); setReceiptPage(1); }}
+                aria-label="Payments to date"
+              />
+            </div>
+            {(receiptSearch || receiptFrom || receiptTo) && (
+              <Button
+                variant="soft"
+                small
+                onClick={() => {
+                  setReceiptSearch(''); setAppliedReceiptSearch('');
+                  setReceiptFrom(''); setReceiptTo(''); setReceiptPage(1);
+                }}
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
+
           {receipts === null && <Card><SkeletonRows rows={5} /></Card>}
-          {receipts?.length === 0 && <EmptyState title="No payment receipts" sub="No payments have been recorded yet." />}
+          {receipts?.length === 0 && (
+            appliedReceiptSearch || receiptFrom || receiptTo
+              ? <EmptyState title="No matching receipts" sub="No payments match the current search or date range." />
+              : <EmptyState title="No payment receipts" sub="No payments have been recorded yet." />
+          )}
           {receipts && receipts.length > 0 && (
             <Card pad={false}>
               <table className="data-table data-table-cards">
@@ -195,6 +367,17 @@ export default function AdminPayments() {
                   ))}
                 </tbody>
               </table>
+              <Pagination
+                page={receiptPage}
+                pageSize={receiptPageSize}
+                total={receiptTotal}
+                totalPages={receiptTotalPages}
+                pageSizes={PAGE_SIZE_OPTIONS}
+                busy={receiptsBusy}
+                label="receipts"
+                onPageChange={setReceiptPage}
+                onPageSizeChange={(size) => { setReceiptPageSize(size); setReceiptPage(1); }}
+              />
             </Card>
           )}
         </>
@@ -276,7 +459,7 @@ function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClos
           <>
             <div className="modal-header">
               <div className="modal-title">Record payment</div>
-              <button className="modal-close" onClick={onClose}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={onClose}>×</button>
             </div>
             <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
               {invoice.invoiceNo} · {invoice.studentName} · balance {rupees(remaining)}
@@ -351,7 +534,7 @@ function CreateInvoiceModal({
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
         <div className="modal-header">
           <div className="modal-title">Create Invoice</div>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" aria-label="Close dialog" title="Close" onClick={onClose}>×</button>
         </div>
 
         <div className="field-label">Student *</div>

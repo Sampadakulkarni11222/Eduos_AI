@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { useRouter } from 'next/navigation';
 import { api, clearSession, hasSession, setSession } from './api';
 import { ROLE_TO_SLUG } from './portals';
+import { invalidateCache } from './cache';
 import type { Me, ProfileSummary } from './types';
 
 const LOGIN_PROFILES_KEY = 'eduos.login.profiles';
@@ -64,6 +65,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (p: ProfileSummary) => {
       setSession(await api.selectProfile(p.id));
       clearLoginProfiles();
+      // A different profile means a different permission scope, so nothing
+      // cached under the previous one may be reused.
+      invalidateCache();
       const fresh = await reload();
       const role = fresh?.profile?.role ?? p.role;
       router.push(`/${ROLE_TO_SLUG[role] ?? 'admin'}`);
@@ -79,6 +83,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     clearSession();
     clearLoginProfiles();
+    // The read cache is per-tab and in-memory; drop it so the next account
+    // signing in on this tab can never be served the previous one's data.
+    invalidateCache();
     setMe(null);
     router.push('/login');
   }, [router]);

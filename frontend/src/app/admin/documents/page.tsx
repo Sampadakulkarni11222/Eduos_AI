@@ -143,7 +143,7 @@ export default function AdminDocuments() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Upload Document Record</div>
-              <button className="modal-close" onClick={() => setShowUploadModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowUploadModal(false)}>×</button>
             </div>
             <form onSubmit={handleCreateDocument}>
               <div className="field-label">Document Title *</div>

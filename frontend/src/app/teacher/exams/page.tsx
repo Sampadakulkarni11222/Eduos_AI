@@ -1,5 +1,5 @@
 'use client';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
@@ -46,26 +46,64 @@ export default function TeacherExams() {
     api.performance(enrollmentId).then(setPerf).catch(() => setPerf(null)).finally(() => setLoading(false));
   }, [enrollmentId]);
 
+  const selectedSubject = subjects?.find((s) => s.id === examSubjectId) ?? null;
+
   return (
     <PortalShell expectedSlug="teacher" topbar={{
       title: 'Exams & Performance', desc: 'Enter marks for your classes and view published results.',
-      actions: (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <select className="input" style={{ maxWidth: 200 }} value={examId} onChange={(e) => setExamId(e.target.value)} aria-label="Exam">
-            <option value="">— Select exam —</option>
-            {exams?.map((ex) => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
-          </select>
-          <select className="input" style={{ maxWidth: 240 }} value={examSubjectId} onChange={(e) => setExamSubjectId(e.target.value)} aria-label="Subject" disabled={!examId}>
-            <option value="">— Select subject —</option>
-            {subjects?.map((s) => <option key={s.id} value={s.id}>{s.class} · {s.subject}</option>)}
-          </select>
-          <Button disabled={!examSubjectId} onClick={() => setEntryOpen(true)}>Enter marks</Button>
-        </div>
-      ),
     }}>
-      {examId && subjects?.length === 0 && (
-        <EmptyState title="No papers set up for this exam" sub="Ask an admin to attach your subject to this exam before entering marks." />
-      )}
+      {/* Marks entry — the exam and subject selectors sit with the action they
+          drive rather than in the topbar, where their link to this workflow
+          wasn't visible. Behaviour and state are unchanged. */}
+      <Card style={{ marginBottom: 18 }}>
+        <div style={{ fontFamily: 'Newsreader, serif', fontSize: 16, fontWeight: 600, color: 'var(--text-1b)', marginBottom: 4 }}>
+          Marks entry
+        </div>
+        <p style={{ fontSize: 12.5, color: 'var(--text-faint)', marginBottom: 12 }}>
+          Pick the exam and the paper you teach, then enter marks for the whole class.
+        </p>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
+            <label className="field-label" htmlFor="exam-select">Exam</label>
+            <select
+              id="exam-select"
+              className="input"
+              style={{ width: '100%' }}
+              value={examId}
+              onChange={(e) => setExamId(e.target.value)}
+            >
+              <option value="">— Select exam —</option>
+              {exams?.map((ex) => <option key={ex.id} value={ex.id}>{ex.name}</option>)}
+            </select>
+          </div>
+          <div style={{ flex: '1 1 220px', maxWidth: 300 }}>
+            <label className="field-label" htmlFor="subject-select">Subject / paper</label>
+            <select
+              id="subject-select"
+              className="input"
+              style={{ width: '100%' }}
+              value={examSubjectId}
+              onChange={(e) => setExamSubjectId(e.target.value)}
+              disabled={!examId}
+            >
+              <option value="">— Select subject —</option>
+              {subjects?.map((s) => <option key={s.id} value={s.id}>{s.class} · {s.subject}</option>)}
+            </select>
+          </div>
+          <Button disabled={!examSubjectId} onClick={() => setEntryOpen(true)}>Enter marks</Button>
+          {selectedSubject && (
+            <span style={{ fontSize: 12.5, color: 'var(--text-faint)' }}>
+              Max marks: <strong>{selectedSubject.maxMarks}</strong>
+              {selectedSubject.examDate ? ` · ${new Date(selectedSubject.examDate).toLocaleDateString('en-IN')}` : ''}
+            </span>
+          )}
+        </div>
+        {examId && subjects?.length === 0 && (
+          <p style={{ fontSize: 12.5, color: 'var(--amber)', marginTop: 10 }}>
+            ⚠ No papers are set up for this exam. Ask an admin to attach your subject to it before entering marks.
+          </p>
+        )}
+      </Card>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, marginTop: 8, flexWrap: 'wrap' }}>
         <select className="input" style={{ maxWidth: 200 }} value={classFilter} onChange={(e) => setClassFilter(e.target.value)} aria-label="Class">
@@ -117,6 +155,10 @@ export default function TeacherExams() {
   );
 }
 
+/** The three editable columns of the marks grid, used for keyboard navigation. */
+type GridField = 'marks' | 'gradeLabel' | 'remarks';
+const cellKey = (enrollmentId: string, field: GridField) => `${enrollmentId}:${field}`;
+
 function MarksEntryModal({ examSubjectId, onClose, onSaved }: { examSubjectId: string; onClose: () => void; onSaved: () => void }) {
   const [grid, setGrid] = useState<MarksGrid | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -124,6 +166,8 @@ function MarksEntryModal({ examSubjectId, onClose, onSaved }: { examSubjectId: s
   const [busy, setBusy] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const toast = useToast();
+  /** Every grid input by "<enrollmentId>:<field>", so focus can jump between rows. */
+  const cellRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const load = () => {
     api.marksGrid(examSubjectId)
@@ -189,9 +233,46 @@ function MarksEntryModal({ examSubjectId, onClose, onSaved }: { examSubjectId: s
     }
   };
 
+  /**
+   * Spreadsheet-style vertical movement between students.
+   *
+   * Enter / Shift+Enter move down / up the column being edited. Enter would
+   * otherwise submit the form and close the dialog mid-entry, so it is
+   * intercepted for the grid inputs regardless of whether a next row exists.
+   * Arrow keys do the same for the text columns; on the number input they are
+   * left alone so the native value stepper keeps working. Any modifier combo
+   * (Ctrl/Cmd/Alt) passes straight through to the browser, and Tab is never
+   * touched, so its native left-to-right order still works.
+   */
+  const onGridKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, rowIndex: number, field: GridField) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    const isEnter = e.key === 'Enter';
+    const isArrow = e.key === 'ArrowDown' || e.key === 'ArrowUp';
+    // A number input owns its arrow keys (value stepping) — don't take them.
+    const arrowNavigable = isArrow && field !== 'marks';
+    if (!isEnter && !arrowNavigable) return;
+
+    e.preventDefault();
+    const step = (isEnter ? e.shiftKey : e.key === 'ArrowUp') ? -1 : 1;
+    focusCell(rowIndex + step, field, step);
+  };
+
+  /**
+   * Moves focus to the same column of another row, continuing in the direction
+   * of travel past any locked (published) input rather than stopping on it.
+   */
+  const focusCell = (rowIndex: number, field: GridField, step: 1 | -1) => {
+    if (!grid) return;
+    for (let i = rowIndex; i >= 0 && i < grid.rows.length; i += step) {
+      const el = cellRefs.current[cellKey(grid.rows[i].enrollmentId, field)];
+      if (el && !el.disabled) { el.focus(); el.select(); return; }
+    }
+  };
+
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 780, width: '94%' }} onClick={(e) => e.stopPropagation()}>
+      <div className="modal marks-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title">
             {grid ? `Enter marks — ${grid.examSubject.examName} · ${grid.examSubject.class} · ${grid.examSubject.subject}` : 'Enter marks'}
@@ -210,39 +291,74 @@ function MarksEntryModal({ examSubjectId, onClose, onSaved }: { examSubjectId: s
 
         {grid && (
           <form onSubmit={save}>
+            <div className="marks-hint">
+              <kbd>Enter</kbd> next student · <kbd>Shift</kbd>+<kbd>Enter</kbd> previous · <kbd>↑</kbd><kbd>↓</kbd> in Grade and Remarks · <kbd>Tab</kbd> across a row
+            </div>
             <div style={{ maxHeight: '55vh', overflowY: 'auto' }}>
-              <table className="data-table data-table-cards">
-                <thead><tr><th>Roll</th><th>Student</th><th style={{ width: 110 }}>Marks (of {grid.examSubject.maxMarks})</th><th style={{ width: 90 }}>Grade</th><th>Remarks</th><th>Status</th></tr></thead>
+              {/* Roll and status moved into the student cell: six columns with
+                  three text inputs could not fit the dialog without a
+                  horizontal scrollbar. Every field is still present. */}
+              <table className="data-table data-table-cards marks-grid">
+                <colgroup>
+                  <col className="col-student" />
+                  <col className="col-marks" />
+                  <col className="col-grade" />
+                  <col className="col-remarks" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th>Marks (of {grid.examSubject.maxMarks})</th>
+                    <th>Grade</th>
+                    <th>Remarks</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {grid.rows.map((r: MarkRow) => (
-                    <tr key={r.enrollmentId}>
-                      <td data-label="Roll">{r.rollNo ?? '—'}</td>
-                      <td className="cell-primary" data-label="Student">{r.studentName}</td>
-                      <td data-label="Marks">
-                        <input
-                          className="field-input" type="number" min={0} max={grid.examSubject.maxMarks} step="0.5"
-                          value={draft[r.enrollmentId]?.marks ?? ''}
-                          onChange={(e) => setField(r.enrollmentId, 'marks', e.target.value)}
-                          disabled={r.status === 'PUBLISHED'}
-                        />
-                      </td>
-                      <td data-label="Grade">
-                        <input
-                          className="field-input" value={draft[r.enrollmentId]?.gradeLabel ?? ''}
-                          onChange={(e) => setField(r.enrollmentId, 'gradeLabel', e.target.value)}
-                          placeholder="A" disabled={r.status === 'PUBLISHED'}
-                        />
-                      </td>
-                      <td data-label="Remarks">
-                        <input
-                          className="field-input" value={draft[r.enrollmentId]?.remarks ?? ''}
-                          onChange={(e) => setField(r.enrollmentId, 'remarks', e.target.value)}
-                          placeholder="Optional" disabled={r.status === 'PUBLISHED'}
-                        />
-                      </td>
-                      <td data-label="Status"><Pill tone={MARK_TONE[r.status] ?? 'gray'}>{r.status.toLowerCase()}</Pill></td>
-                    </tr>
-                  ))}
+                  {grid.rows.map((r: MarkRow, rowIndex: number) => {
+                    const locked = r.status === 'PUBLISHED';
+                    return (
+                      <tr key={r.enrollmentId}>
+                        <td data-label="Student">
+                          <div className="marks-student-name">{r.studentName}</div>
+                          <div className="marks-student-meta">
+                            <span>Roll {r.rollNo ?? '—'}</span>
+                            <Pill tone={MARK_TONE[r.status] ?? 'gray'}>{r.status.toLowerCase()}</Pill>
+                          </div>
+                        </td>
+                        <td data-label="Marks">
+                          <input
+                            className="field-input" type="number" min={0} max={grid.examSubject.maxMarks} step="0.5"
+                            value={draft[r.enrollmentId]?.marks ?? ''}
+                            onChange={(e) => setField(r.enrollmentId, 'marks', e.target.value)}
+                            onKeyDown={(e) => onGridKeyDown(e, rowIndex, 'marks')}
+                            ref={(el) => { cellRefs.current[cellKey(r.enrollmentId, 'marks')] = el; }}
+                            aria-label={`Marks for ${r.studentName}`}
+                            disabled={locked}
+                          />
+                        </td>
+                        <td data-label="Grade">
+                          <input
+                            className="field-input" value={draft[r.enrollmentId]?.gradeLabel ?? ''}
+                            onChange={(e) => setField(r.enrollmentId, 'gradeLabel', e.target.value)}
+                            onKeyDown={(e) => onGridKeyDown(e, rowIndex, 'gradeLabel')}
+                            ref={(el) => { cellRefs.current[cellKey(r.enrollmentId, 'gradeLabel')] = el; }}
+                            aria-label={`Grade for ${r.studentName}`}
+                            placeholder="A" disabled={locked}
+                          />
+                        </td>
+                        <td data-label="Remarks">
+                          <input
+                            className="field-input" value={draft[r.enrollmentId]?.remarks ?? ''}
+                            onChange={(e) => setField(r.enrollmentId, 'remarks', e.target.value)}
+                            onKeyDown={(e) => onGridKeyDown(e, rowIndex, 'remarks')}
+                            ref={(el) => { cellRefs.current[cellKey(r.enrollmentId, 'remarks')] = el; }}
+                            aria-label={`Remarks for ${r.studentName}`}
+                            placeholder="Optional" disabled={locked}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

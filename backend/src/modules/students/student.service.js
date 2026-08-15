@@ -5,7 +5,7 @@ import { MedicalRecord } from '../../models/medicalRecord.model.js';
 import { AuditLog } from '../../models/auditLog.model.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
-import { SubjectOffering } from '../../models/academics.model.js';
+import { SubjectOffering, Section } from '../../models/academics.model.js';
 import { Submission } from '../../models/assignment.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { runInTransaction } from '../../utils/transaction.js';
@@ -36,20 +36,82 @@ async function resolveOwnStudentIds(actor) {
   return [];
 }
 
+/** Escapes a user-supplied string so it is matched literally inside a $regex. */
+function escapeRegex(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Student IDs whose current class (grade + section name) matches the search
+ * text. The student list has always let users search by class as well as by
+ * name; that used to be filtered in the browser over the whole list, which is
+ * no longer possible once the list is paginated server-side.
+ */
+async function studentIdsMatchingClass(search) {
+  const rx = new RegExp(escapeRegex(search), 'i');
+  // Sections are a small collection (a few dozen rows), so they are matched in
+  // memory against the same "<grade> <section>" label the list renders. A pure
+  // query can't do that: the label spans two collections, so "Class 10 B"
+  // matches neither the grade name nor the section name on its own.
+  const sections = await Section.find().select('_id name gradeId').populate('gradeId', 'name').lean();
+  const matched = sections.filter((s) => {
+    const gradeName = s.gradeId?.name ?? '';
+    return rx.test(`${gradeName} ${s.name}`.trim()) || rx.test(s.name) || rx.test(gradeName);
+  });
+  if (!matched.length) return [];
+  const enrollments = await Enrollment.find({
+    sectionId: { $in: matched.map((s) => s._id) },
+    status: 'ACTIVE',
+  }).select('studentId');
+  return enrollments.map((e) => e.studentId);
+}
+
+/**
+ * Lists students, optionally paginated.
+ *
+ * Passing `page`/`pageSize` returns `{ items, total, page, pageSize, totalPages }`;
+ * without them the plain array shape callers already rely on is unchanged.
+ */
 export async function list(actor, scope, query = {}) {
   const filter = { deletedAt: null };
   if (scope === 'OWN') {
     const ids = await resolveOwnStudentIds(actor);
     filter._id = { $in: ids };
   }
+  if (query.sectionId) {
+    const enrollments = await Enrollment.find({ sectionId: query.sectionId, status: 'ACTIVE' }).select('studentId');
+    const ids = enrollments.map((e) => e.studentId.toString());
+    filter._id = filter._id
+      ? { $in: filter._id.$in.map(String).filter((id) => ids.includes(String(id))) }
+      : { $in: ids };
+  }
   if (query.search) {
+    const rx = { $regex: escapeRegex(query.search), $options: 'i' };
+    const classMatchIds = await studentIdsMatchingClass(query.search);
     filter.$or = [
-      { firstName: { $regex: query.search, $options: 'i' } },
-      { lastName: { $regex: query.search, $options: 'i' } },
-      { admissionNo: { $regex: query.search, $options: 'i' } },
+      { firstName: rx },
+      { lastName: rx },
+      { admissionNo: rx },
+      ...(classMatchIds.length ? [{ _id: { $in: classMatchIds } }] : []),
     ];
   }
-  const students = await Student.find(filter).sort({ createdAt: -1, lastName: 1, firstName: 1 });
+
+  const requestedPageSize = parseInt(query.pageSize, 10);
+  const pageSize = Number.isFinite(requestedPageSize) && requestedPageSize > 0 ? Math.min(requestedPageSize, 200) : 0;
+  const paginate = pageSize > 0;
+  const requestedPage = paginate ? Math.max(parseInt(query.page, 10) || 1, 1) : 1;
+
+  // _id last so the ordering is total — otherwise equal keys let skip/limit
+  // show the same student on two pages.
+  const sort = { createdAt: -1, lastName: 1, firstName: 1, _id: 1 };
+  const total = paginate ? await Student.countDocuments(filter) : 0;
+  // Clamp out-of-range pages to the last real page rather than returning an
+  // empty table (matches /users, /fees/* and /risk/scan).
+  const totalPagesCalc = paginate ? Math.max(Math.ceil(total / pageSize), 1) : 1;
+  const page = paginate ? Math.min(requestedPage, totalPagesCalc) : 1;
+  const students = paginate
+    ? await Student.find(filter).sort(sort).skip((page - 1) * pageSize).limit(pageSize)
+    : await Student.find(filter).sort(sort);
   const studentIds = students.map((s) => s._id);
 
   // Get all ACTIVE enrollments for these students, sorted newest first.
@@ -68,7 +130,7 @@ export async function list(actor, scope, query = {}) {
     if (!enrollmentMap.has(sid)) enrollmentMap.set(sid, e); // first = newest due to sort
   }
 
-  return students.map((s) => {
+  const items = students.map((s) => {
     const enrollment = enrollmentMap.get(s._id.toString());
     return {
       id: s._id.toString(),
@@ -87,6 +149,9 @@ export async function list(actor, scope, query = {}) {
         : null,
     };
   });
+
+  if (!paginate) return items;
+  return { items, total, page, pageSize, totalPages: totalPagesCalc, nextCursor: null };
 }
 
 export async function getById(actor, scope, id) {

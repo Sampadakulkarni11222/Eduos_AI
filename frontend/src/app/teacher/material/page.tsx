@@ -244,7 +244,7 @@ export default function TeacherMaterial() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">Upload Course Material</div>
-              <button className="modal-close" onClick={() => setShowUploadModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowUploadModal(false)}>×</button>
             </div>
             <form onSubmit={handleUpload}>
               <div className="field-label">Material Title *</div>
@@ -289,7 +289,7 @@ export default function TeacherMaterial() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">Edit Course Material</div>
-              <button className="modal-close" onClick={() => setEditing(null)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setEditing(null)}>×</button>
             </div>
             <form onSubmit={handleEditSave}>
               <div className="field-label">Material Title *</div>

@@ -79,14 +79,20 @@ export default function AttendancePage() {
     setMarks(next); setSaved(false);
   };
 
+  // `saving` state alone can't stop a double submit: two clicks (or Enter plus
+  // a click) landing in the same React batch both see the old value. The ref
+  // flips synchronously, so the second call returns immediately.
+  const savingRef = useRef(false);
+
   const save = async () => {
-    if (!data) return;
+    if (!data || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true); setSaveErr(null);
     try {
       const entries = data.roster
         .filter((r) => marks[r.enrollmentId] !== undefined)
         .map((r) => ({ enrollmentId: r.enrollmentId, status: marks[r.enrollmentId]! }));
-      if (!entries.length) { setSaveErr('Mark at least one student before saving.'); setSaving(false); return; }
+      if (!entries.length) { setSaveErr('Mark at least one student before saving.'); setSaving(false); savingRef.current = false; return; }
       const updatedRoster = await api.markAttendance({
         sectionId: data.section.id,
         date,
@@ -100,18 +106,23 @@ export default function AttendancePage() {
       setSaved(true);
     } catch (err: any) {
       setSaveErr(err?.message ?? 'Save failed. Please try again.');
-    } finally { setSaving(false); }
+    } finally { setSaving(false); savingRef.current = false; }
   };
 
   const summary = data ? countStatuses(data, marks) : null;
+  // Only students with a status contribute an entry to the save payload, so
+  // this is exactly what the Save button would submit.
+  const markedCount = data ? data.roster.filter((r) => marks[r.enrollmentId] !== undefined).length : 0;
 
   return (
     <PortalShell expectedSlug="teacher" topbar={{
       title: 'Attendance', desc: 'One-tap marking for your sections.',
+      // Save now lives in a sticky bar next to the roster it applies to, so it
+      // stays reachable while scrolling a long class instead of sitting in the
+      // topbar the teacher has to scroll back up to.
       actions: data ? (
         <div style={{ display: 'flex', gap: 8 }}>
           <Button variant="soft" onClick={() => setShowBulk(true)}>⇧ Bulk upload</Button>
-          <Button onClick={() => void save()} disabled={saving}>{saving ? 'Saving…' : saved ? '✓ Saved' : 'Save attendance'}</Button>
         </div>
       ) : undefined,
     }}>
@@ -161,7 +172,6 @@ export default function AttendancePage() {
         />
       )}
 
-      {saveErr && <div style={{ marginBottom: 12, padding: '10px 14px', background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 8, color: '#b91c1c', fontSize: 13.5 }}>{saveErr}</div>}
       {sections === null && <Card><SkeletonRows rows={5} /></Card>}
       {sections?.length === 0 && <EmptyState title="No sections assigned" sub="You'll mark attendance here once classes are linked to you." />}
       {loading && <Card><SkeletonRows rows={6} /></Card>}
@@ -202,6 +212,36 @@ export default function AttendancePage() {
             </tbody>
           </table>
         </Card>
+      )}
+
+      {/* Sticky save bar — stays visible while the roster scrolls. */}
+      {!loading && data && data.roster.length > 0 && (
+        <div className={cx('sticky-actions', saveErr && 'is-error', saved && !saveErr && 'is-saved')}>
+          <div className="sticky-actions-status" role="status" aria-live="polite">
+            {saveErr ? (
+              <span style={{ color: '#b91c1c', fontWeight: 600 }}>⚠ {saveErr}</span>
+            ) : saving ? (
+              <span>Saving attendance…</span>
+            ) : saved ? (
+              <span style={{ color: 'var(--green)', fontWeight: 600 }}>✓ Attendance saved</span>
+            ) : (
+              <span>
+                <strong>{markedCount}</strong> of {data.roster.length} marked
+                {markedCount < data.roster.length && ` · ${data.roster.length - markedCount} left`}
+              </span>
+            )}
+          </div>
+          <div className="sticky-actions-spacer">
+            {summary && (
+              <span style={{ fontSize: 12.5, color: 'var(--text-faint)' }}>
+                {summary.PRESENT}P · {summary.ABSENT}A · {summary.LATE}L · {summary.EXCUSED}E
+              </span>
+            )}
+            <Button onClick={() => void save()} disabled={saving || markedCount === 0}>
+              {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save attendance'}
+            </Button>
+          </div>
+        </div>
       )}
     </PortalShell>
   );

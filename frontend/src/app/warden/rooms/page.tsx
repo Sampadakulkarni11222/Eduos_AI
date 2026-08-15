@@ -170,7 +170,7 @@ export default function WardenRooms() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">Add Hostel Room</div>
-              <button className="modal-close" onClick={() => setShowRoomModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowRoomModal(false)}>×</button>
             </div>
             <form onSubmit={handleCreateRoom}>
               <div className="field-label">Room Number *</div>
@@ -208,7 +208,7 @@ export default function WardenRooms() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">Allocate Student to Room</div>
-              <button className="modal-close" onClick={() => setShowAllocateModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowAllocateModal(false)}>×</button>
             </div>
             <form onSubmit={handleAllocate}>
               <div className="field-label">Select Student *</div>

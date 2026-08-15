@@ -1,8 +1,9 @@
 'use client';
 import { FormEvent, useEffect, useState, useCallback, useRef } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pill, SkeletonRows } from '@/components/ui';
+import { Button, Card, EmptyState, Pill, SkeletonRows, Modal as Dialog } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
+import { Pagination } from '@/components/pagination';
 import { api } from '@/lib/api';
 import type { StudentListItem, SectionDto } from '@/lib/types';
 
@@ -292,15 +293,24 @@ function BulkAssignModal({ onClose, onImported }: { onClose: () => void; onImpor
 }
 
 /* ─── main page ──────────────────────────────────────────────── */
+const PAGE_SIZES = [10, 25, 50, 100];
+
 export default function AdminStudentClasses() {
   const [students, setStudents] = useState<StudentListItem[] | null>(null);
   const [search, setSearch] = useState('');
+  /** Search text actually sent to the server — debounced so typing doesn't fire a request per keystroke. */
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [showAdd, setShowAdd] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [assignTarget, setAssignTarget] = useState<StudentListItem | null>(null);
   const [showBulkAssign, setShowBulkAssign] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = (msg: string, ok = true) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -308,21 +318,39 @@ export default function AdminStudentClasses() {
     toastTimer.current = setTimeout(() => setToast(null), 4000);
   };
 
+  // The list is paginated on the server, so search runs there too — filtering
+  // the current page in the browser would only ever search 25 of the students.
   const load = useCallback(() => {
     setRefreshing(true);
-    api.students()
-      .then((r) => setStudents(r.items))
-      .catch(() => setStudents([]))
+    api.studentsPage({ search: appliedSearch || undefined, page, pageSize })
+      .then((r) => {
+        setStudents(r.items);
+        setTotal(r.total);
+        setTotalPages(r.totalPages);
+        // A page can disappear under you when a filter narrows the result set.
+        if (r.page !== page) setPage(r.page);
+      })
+      .catch(() => { setStudents([]); setTotal(0); setTotalPages(1); })
       .finally(() => setRefreshing(false));
-  }, []);
+  }, [appliedSearch, page, pageSize]);
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = students?.filter((s) =>
-    !search ||
-    s.name.toLowerCase().includes(search.toLowerCase()) ||
-    (s.enrollment?.class ?? '').toLowerCase().includes(search.toLowerCase()),
-  ) ?? [];
+  const onSearch = (q: string) => {
+    setSearch(q);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      setPage(1);          // a new search always starts at the first page
+      setAppliedSearch(q.trim());
+    }, 300);
+  };
+
+  useEffect(() => () => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+  }, []);
+
+  const rows = students ?? [];
 
   return (
     <PortalShell expectedSlug="admin" topbar={{
@@ -334,14 +362,15 @@ export default function AdminStudentClasses() {
             {refreshing ? '↻ Refreshing…' : '↻ Refresh'}
           </Button>
           <Button variant="soft" onClick={() => setShowBulkAssign(true)}>⇧ Bulk assign</Button>
-          <Button onClick={() => setShowAdd((v) => !v)}>
-            {showAdd ? 'Close' : '+ Add Student'}
-          </Button>
+          <Button onClick={() => setShowAdd(true)}>+ Add Student</Button>
         </div>
       ),
     }}>
       {showAdd && (
-        <AddStudentForm onDone={() => { setShowAdd(false); load(); }} />
+        <AddStudentModal
+          onClose={() => setShowAdd(false)}
+          onDone={(msg) => { setShowAdd(false); showToast(msg, true); load(); }}
+        />
       )}
 
       {showBulkAssign && (
@@ -354,30 +383,31 @@ export default function AdminStudentClasses() {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 14, alignItems: 'center' }}>
         <input
           className="input"
-          placeholder="Search by name or class…"
+          type="search"
+          placeholder="Search by name, admission no or class…"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => onSearch(e.target.value)}
+          aria-label="Search students"
           style={{ maxWidth: 320, width: '100%', flex: '1 1 200px' }}
         />
         {students && (
           <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>
-            {students.length} student{students.length !== 1 ? 's' : ''} total
+            {total} student{total !== 1 ? 's' : ''} {appliedSearch ? 'matched' : 'total'}
           </span>
         )}
       </div>
 
       {students === null && <Card><SkeletonRows rows={8} /></Card>}
-      {students?.length === 0 && (
-        <EmptyState
-          title="No students"
-          sub="No students have been added to the system yet. Add one manually or enroll a lead from Admissions CRM."
-        />
-      )}
-      {filtered.length === 0 && students && students.length > 0 && (
-        <EmptyState title="No match" sub="No students match your search." />
+      {students !== null && rows.length === 0 && (
+        appliedSearch
+          ? <EmptyState title="No match" sub={`No students match "${appliedSearch}".`} />
+          : <EmptyState
+              title="No students"
+              sub="No students have been added to the system yet. Add one manually or enroll a lead from Admissions CRM."
+            />
       )}
 
-      {filtered.length > 0 && (
+      {rows.length > 0 && (
         <Card pad={false}>
           <table className="data-table data-table-cards">
             <thead>
@@ -391,7 +421,7 @@ export default function AdminStudentClasses() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((s) => (
+              {rows.map((s) => (
                 <tr key={s.id}>
                   <td className="cell-primary" data-label="Student">{s.name}</td>
                   <td style={{ color: 'var(--text-faint)' }} data-label="Roll No">{s.enrollment?.rollNo ?? '—'}</td>
@@ -421,6 +451,17 @@ export default function AdminStudentClasses() {
               ))}
             </tbody>
           </table>
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            totalPages={totalPages}
+            pageSizes={PAGE_SIZES}
+            busy={refreshing}
+            label="students"
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+          />
         </Card>
       )}
 
@@ -444,8 +485,10 @@ export default function AdminStudentClasses() {
   );
 }
 
-/* ─── add student form ───────────────────────────────────────── */
-function AddStudentForm({ onDone }: { onDone: () => void }) {
+/* ─── add student modal ──────────────────────────────────────────
+   Same fields, validation and API call as before — it just no longer pushes
+   the student list down the page while it is open. */
+function AddStudentModal({ onClose, onDone }: { onClose: () => void; onDone: (msg: string) => void }) {
   const [f, setF] = useState({ firstName: '', lastName: '', admissionNo: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -456,7 +499,7 @@ function AddStudentForm({ onDone }: { onDone: () => void }) {
     setErr(null);
     try {
       await api.createStudent({ firstName: f.firstName, lastName: f.lastName || undefined, admissionNo: f.admissionNo });
-      onDone();
+      onDone(`${`${f.firstName} ${f.lastName}`.trim()} added successfully!`);
     } catch (ex: any) {
       setErr(ex?.message ?? 'Failed to add student. Check the admission number is unique.');
     } finally {
@@ -465,28 +508,26 @@ function AddStudentForm({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <Card style={{ marginBottom: 16 }}>
+    <Dialog title="Add Student Directly" onClose={busy ? () => {} : onClose}>
       <form onSubmit={submit}>
-        <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 15, display: 'block', marginBottom: 12 }}>
-          Add Student Directly
-        </strong>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 12 }}>
-          <div>
-            <div className="field-label">First Name</div>
-            <input className="field-input" value={f.firstName} onChange={(e) => setF({ ...f, firstName: e.target.value })} required placeholder="e.g. Riya" />
-          </div>
-          <div>
-            <div className="field-label">Last Name</div>
-            <input className="field-input" value={f.lastName} onChange={(e) => setF({ ...f, lastName: e.target.value })} placeholder="e.g. Sharma" />
-          </div>
-          <div>
-            <div className="field-label">Admission No</div>
-            <input className="field-input" value={f.admissionNo} onChange={(e) => setF({ ...f, admissionNo: e.target.value })} required placeholder="e.g. ADM-2026-0010" />
-          </div>
+        <div>
+          <div className="field-label">First Name *</div>
+          <input className="field-input" value={f.firstName} onChange={(e) => setF({ ...f, firstName: e.target.value })} required placeholder="e.g. Riya" />
         </div>
-        {err && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 8 }}>{err}</p>}
-        <Button type="submit" disabled={busy}>{busy ? 'Adding…' : 'Add Student'}</Button>
+        <div>
+          <div className="field-label">Last Name</div>
+          <input className="field-input" value={f.lastName} onChange={(e) => setF({ ...f, lastName: e.target.value })} placeholder="e.g. Sharma" />
+        </div>
+        <div>
+          <div className="field-label">Admission No *</div>
+          <input className="field-input" value={f.admissionNo} onChange={(e) => setF({ ...f, admissionNo: e.target.value })} required placeholder="e.g. ADM-2026-0010" />
+        </div>
+        {err && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 8 }}>⚠ {err}</p>}
+        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+          <Button variant="soft" type="button" onClick={onClose} disabled={busy} style={{ flex: 1 }}>Cancel</Button>
+          <Button type="submit" disabled={busy} style={{ flex: 1 }}>{busy ? 'Adding…' : 'Add Student'}</Button>
+        </div>
       </form>
-    </Card>
+    </Dialog>
   );
 }

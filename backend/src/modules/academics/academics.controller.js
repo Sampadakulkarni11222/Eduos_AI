@@ -110,6 +110,9 @@ function toOfferingDto(o) {
     gradeName: o.sectionId?.gradeId?.name || '',
     subject: o.subjectId?.name || '',          // matches OfferingDto.subject
     subjectId: o.subjectId?._id || o.subjectId || '',
+    // Exposed so callers can group offerings by teacher reliably; matching on
+    // teacherName alone breaks for two staff who share a display name.
+    teacherId: o.teacherId?._id?.toString() || (typeof o.teacherId === 'string' ? o.teacherId : null),
     teacherName: o.teacherId?.displayName || null,
   };
 }

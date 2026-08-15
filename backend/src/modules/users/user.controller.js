@@ -4,8 +4,8 @@ import { parseCsvRows } from '../../utils/csvImport.js';
 import * as service from './user.service.js';
 
 export const list = asyncHandler(async (req, res) => {
-  const { search, status, roleKey } = req.query;
-  const users = await service.listUsers({ search, status, roleKey });
+  const { search, status, roleKey, sectionId, page, pageSize } = req.query;
+  const users = await service.listUsers({ search, status, roleKey, sectionId, page, pageSize });
   sendSuccess(res, users, 'Users fetched');
 });
 

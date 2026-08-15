@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, cloneElement, createContext, isValidElement, useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
 
 export function cx(...parts: Array<string | false | undefined | null>) {
@@ -25,17 +26,35 @@ export function Card({ children, className, pad = true, style }: { children: Rea
   return <div className={cx('card', pad && 'card-pad', className)} style={style}>{children}</div>;
 }
 
+/**
+ * A stat tile. Passing `href` turns it into a real link to the detail view for
+ * that number — a keyboard-focusable anchor, not a div with a click handler,
+ * so it can be tabbed to and opened in a new tab. Without `href` the markup is
+ * exactly as before, so the tiles in every other portal are unchanged.
+ */
 export function StatCard({
-  label, value, delta, deltaDir = 'flat',
+  label, value, delta, deltaDir = 'flat', href, hint,
 }: {
   label: string; value: ReactNode; delta?: string; deltaDir?: 'up' | 'down' | 'flat';
+  href?: string; hint?: string;
 }) {
-  return (
-    <div className="stat-card">
-      <div className="stat-label">{label}</div>
+  const body = (
+    <>
+      <div className="stat-label">
+        {label}
+        {href && <span className="stat-link-arrow" aria-hidden="true">→</span>}
+      </div>
       <div className="stat-value">{value}</div>
       {delta && <div className={cx('stat-delta', deltaDir)}>{delta}</div>}
-    </div>
+    </>
+  );
+
+  if (!href) return <div className="stat-card">{body}</div>;
+
+  return (
+    <Link href={href} className="stat-card stat-card-link" aria-label={hint ? `${label}. ${hint}` : undefined}>
+      {body}
+    </Link>
   );
 }
 

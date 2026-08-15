@@ -3,15 +3,32 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Avatar, Button, Card, EmptyState, Input, Pill, SkeletonRows, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
+import { Pagination } from '@/components/pagination';
 import { api } from '@/lib/api';
-import type { UserDto, SectionDto } from '@/lib/types';
+import type { UserDto, SectionDto, RoleKey } from '@/lib/types';
+
+const ROLE_KEYS: RoleKey[] = ['OWNER', 'ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT', 'FINANCE', 'LIBRARIAN', 'WARDEN'];
+const PAGE_SIZES = [10, 25, 50, 100];
 
 export default function UsersPage() {
   const [search, setSearch] = useState('');
+  /** Debounced copy of `search` — this is what actually goes to the server. */
+  const [appliedSearch, setAppliedSearch] = useState('');
   const [items, setItems] = useState<UserDto[] | null>(null);
   const [sections, setSections] = useState<SectionDto[]>([]);
+  /** All sections in the school — the class filter must reach every class, not just the ones this admin teaches. */
+  const [allSections, setAllSections] = useState<SectionDto[]>([]);
   const [err, setErr] = useState(false);
   const deb = useRef<ReturnType<typeof setTimeout>>();
+
+  // Filters + paging (all applied server-side)
+  const [roleFilter, setRoleFilter] = useState('');
+  const [classFilter, setClassFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [busyList, setBusyList] = useState(false);
 
   // Create User Modal states
   const [showModal, setShowModal] = useState(false);
@@ -26,32 +43,55 @@ export default function UsersPage() {
   const [busy, setBusy] = useState(false);
   const toast = useToast();
 
-  const load = useCallback(async (q: string) => {
+  /**
+   * Search, role and class all narrow the query on the server, so the filters
+   * apply to the whole dataset rather than to whichever page is on screen.
+   */
+  const load = useCallback(async () => {
     setItems(null);
     setErr(false);
+    setBusyList(true);
     try {
-      const r = await api.listUsers(q || undefined);
-      setItems(r);
+      const r = await api.listUsersPage({
+        search: appliedSearch || undefined,
+        roleKey: roleFilter || undefined,
+        sectionId: classFilter || undefined,
+        page,
+        pageSize,
+      });
+      setItems(r.items);
+      setTotal(r.total);
+      setTotalPages(r.totalPages);
+      if (r.page !== page) setPage(r.page);
     } catch {
       setErr(true);
       setItems([]);
+      setTotal(0);
+      setTotalPages(1);
+    } finally {
+      setBusyList(false);
     }
-  }, []);
+  }, [appliedSearch, roleFilter, classFilter, page, pageSize]);
+
+  useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    void load('');
     api.mySections()
       .then((secs) => {
         setSections(secs);
         if (secs[0]) setSectionId(secs[0].id);
       })
       .catch(() => {});
-  }, [load]);
+    api.allSections().then(setAllSections).catch(() => setAllSections([]));
+  }, []);
 
   const onSearch = (q: string) => {
     setSearch(q);
     clearTimeout(deb.current);
-    deb.current = setTimeout(() => void load(q.trim()), 300);
+    deb.current = setTimeout(() => {
+      setPage(1);                 // a new search always restarts at page 1
+      setAppliedSearch(q.trim());
+    }, 300);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -76,7 +116,7 @@ export default function UsersPage() {
       setPassword('');
       setAdmissionNo('');
       if (sections[0]) setSectionId(sections[0].id);
-      await load(search);
+      await load();
     } catch (err: any) {
       toast(err.message || 'Could not create the user.', 'error');
     } finally {
@@ -87,8 +127,46 @@ export default function UsersPage() {
   return (
     <PortalShell expectedSlug="admin" topbar={{ title: 'User Management', desc: 'Phone-rooted accounts linked to one or more role profiles.' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <div style={{ maxWidth: 320, width: '100%', flex: '1 1 220px' }}>
-          <Input type="search" value={search} onChange={(e) => onSearch(e.target.value)} placeholder="Search by name..." aria-label="Search" />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', flex: '1 1 420px' }}>
+          <div style={{ maxWidth: 280, width: '100%', flex: '1 1 200px' }}>
+            <Input type="search" value={search} onChange={(e) => onSearch(e.target.value)} placeholder="Search by name, phone or email..." aria-label="Search" />
+          </div>
+          <select
+            className="field-input"
+            style={{ marginBottom: 0, width: 'auto', minWidth: 150 }}
+            value={roleFilter}
+            onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
+            aria-label="Filter by role"
+          >
+            <option value="">All roles</option>
+            {ROLE_KEYS.map((r) => <option key={r} value={r}>{r.charAt(0) + r.slice(1).toLowerCase()}</option>)}
+          </select>
+          <select
+            className="field-input"
+            style={{ marginBottom: 0, width: 'auto', minWidth: 170 }}
+            value={classFilter}
+            onChange={(e) => { setClassFilter(e.target.value); setPage(1); }}
+            aria-label="Filter by class"
+            disabled={allSections.length === 0}
+          >
+            <option value="">All classes</option>
+            {allSections.map((s) => (
+              <option key={s.id} value={s.id}>{s.gradeName ? `${s.gradeName} – ${s.name}` : s.name}</option>
+            ))}
+          </select>
+          {(roleFilter || classFilter || search) && (
+            <Button
+              variant="soft"
+              small
+              onClick={() => {
+                setRoleFilter(''); setClassFilter('');
+                setSearch(''); setAppliedSearch('');
+                setPage(1);
+              }}
+            >
+              Clear
+            </Button>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <Button variant="soft" onClick={() => setShowBulkModal(true)}>Bulk Upload</Button>
@@ -104,7 +182,7 @@ export default function UsersPage() {
           templateSampleRow={['STUDENT', 'Diya Tharian', '+919555000111', 'diya@example.com', '', 'CA-2026-005', 'Grade 5', 'A']}
           onSubmit={(file) => api.bulkCreateUsers(file)}
           onClose={() => setShowBulkModal(false)}
-          onImported={(r) => { toast(`Created ${r.imported} of ${r.imported + r.failed} users.`, r.failed > 0 ? 'error' : 'success'); void load(search); }}
+          onImported={(r) => { toast(`Created ${r.imported} of ${r.imported + r.failed} users.`, r.failed > 0 ? 'error' : 'success'); void load(); }}
         />
       )}
 
@@ -112,7 +190,9 @@ export default function UsersPage() {
         {items === null && !err && <div style={{ padding: 20 }}><SkeletonRows rows={6} /></div>}
         {err && <EmptyState title="Couldn't load users" sub="The server didn't respond. Reload to try again." />}
         {items !== null && !err && items.length === 0 && (
-          <EmptyState title={search ? 'No matches' : 'No users yet'} sub={search ? `Nothing matches "${search}".` : 'Users appear here once records are created.'} />
+          appliedSearch || roleFilter || classFilter
+            ? <EmptyState title="No matches" sub="No users match the current search and filters." />
+            : <EmptyState title="No users yet" sub="Users appear here once records are created." />
         )}
         {items && items.length > 0 && (
           <table className="data-table data-table-cards">
@@ -163,6 +243,19 @@ export default function UsersPage() {
             </tbody>
           </table>
         )}
+        {items && items.length > 0 && (
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            totalPages={totalPages}
+            pageSizes={PAGE_SIZES}
+            busy={busyList}
+            label="users"
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+          />
+        )}
       </Card>
 
       {showModal && (
@@ -170,7 +263,7 @@ export default function UsersPage() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">Create User Profile</div>
-              <button className="modal-close" onClick={() => setShowModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowModal(false)}>×</button>
             </div>
             <form onSubmit={handleCreate}>
               <div className="field-label">Select Role *</div>

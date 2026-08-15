@@ -52,6 +52,36 @@ export async function getPipeline() {
 }
 
 
+/**
+ * One lead with its recorded interaction history (stage changes, notes),
+ * newest first — backs the CRM's lead detail panel.
+ */
+export async function getLeadById(leadId) {
+  const lead = await Lead.findById(leadId)
+    .populate('assigneeProfileId', 'displayName')
+    .lean();
+  if (!lead) throw new AppError('Lead not found', 404);
+
+  const interactions = await LeadInteraction.find({ leadId })
+    .populate('authorProfileId', 'displayName')
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return {
+    ...toLeadDto(lead),
+    assigneeName: lead.assigneeProfileId?.displayName ?? null,
+    assigneeProfileId: lead.assigneeProfileId?._id ?? lead.assigneeProfileId ?? null,
+    updatedAt: lead.updatedAt ?? null,
+    interactions: interactions.map((i) => ({
+      id: i._id,
+      type: i.type,
+      body: i.body,
+      authorName: i.authorProfileId?.displayName ?? null,
+      createdAt: i.createdAt,
+    })),
+  };
+}
+
 async function ensureStudentForEnrolledLead(lead, session = null) {
   if (lead.stage !== 'ENROLLED') return;
   const existingStudent = await Student.findOne({ leadId: lead._id }).session(session);

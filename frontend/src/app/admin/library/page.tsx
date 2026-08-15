@@ -199,7 +199,7 @@ export default function AdminLibrary() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Add Book to Catalog</div>
-              <button className="modal-close" onClick={() => setShowBookModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowBookModal(false)}>×</button>
             </div>
             <form onSubmit={handleCreateBook}>
               <div className="field-label">Book Title *</div>
@@ -238,7 +238,7 @@ export default function AdminLibrary() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Issue Book</div>
-              <button className="modal-close" onClick={() => setShowIssueModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowIssueModal(false)}>×</button>
             </div>
             <form onSubmit={handleIssueBook}>
               <div className="field-label">Select Student *</div>

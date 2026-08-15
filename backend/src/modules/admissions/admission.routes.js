@@ -75,4 +75,23 @@ router.post(
  */
 router.post('/leads/update', requirePermission('admissions.manage'), controller.updateLead);
 
+/**
+ * @swagger
+ * /admissions/leads/{id}:
+ *   get:
+ *     summary: Get a single lead with its interaction history
+ *     tags: [Admissions]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Lead fetched
+ *       404:
+ *         description: Lead not found
+ */
+router.get('/leads/:id', requirePermission('admissions.read'), controller.getLead);
+
 export default router;

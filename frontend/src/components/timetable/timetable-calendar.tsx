@@ -143,7 +143,7 @@ export function TimetableCalendar({ scopeLabel, canEdit = false }: { scopeLabel:
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="modal-title">{formatDayLabel(dayAgendaDate)}</div>
-              <button className="modal-close" onClick={() => setDayAgendaDate(null)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setDayAgendaDate(null)}>×</button>
             </div>
             {dayAgendaSlots.length === 0 && (
               <p style={{ fontSize: 13, color: 'var(--text-2b)' }}>No classes scheduled on this day.</p>

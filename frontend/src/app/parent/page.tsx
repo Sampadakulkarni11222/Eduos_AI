@@ -4,10 +4,11 @@ import { useRouter } from 'next/navigation';
 import { PortalShell } from '@/components/shell';
 
 import { Card, EmptyState, Pill, SkeletonRows, StatCard } from '@/components/ui';
+import { ExpandableText } from '@/components/expandable-text';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { rupees } from '@/components/ui';
-import type { ParentDashboardDto, StudentListItem } from '@/lib/types';
+import type { CalendarEventDto, ParentDashboardDto, StudentListItem } from '@/lib/types';
 
 export default function ParentDashboard() {
   const { me } = useAuth();
@@ -18,12 +19,39 @@ export default function ParentDashboard() {
   const [data, setData] = useState<ParentDashboardDto | null>(null);
   const [err, setErr] = useState(false);
 
+  const [events, setEvents] = useState<CalendarEventDto[] | null>(null);
+
   useEffect(() => { api.students().then((r) => setKids(r.items)).catch(() => { setErr(true); setKids([]); }); }, []);
   useEffect(() => { api.parentDashboard().then(setData).catch(() => setData(null)); }, []);
+
+  // Real events from the same calendar endpoint the Calendar page uses —
+  // parents hold calendar.read, so this needs no new permission.
+  useEffect(() => {
+    const from = new Date();
+    const to = new Date(); to.setMonth(to.getMonth() + 3);
+    api.calendar(from.toISOString(), to.toISOString())
+      .then(setEvents)
+      .catch(() => setEvents([]));
+  }, []);
+
   const kid = kids?.[activeKid];
   const kidStats = data?.linkedChildren.find((c) => c.studentId === kid?.id);
   const announcements = data?.announcements ?? null;
   const kidTimetable = data?.timetable.filter((t) => t.sectionId === kid?.enrollment?.sectionId) ?? [];
+
+  // The endpoint returns a window that can include today's earlier entries;
+  // only events that have not finished are "upcoming".
+  const now = Date.now();
+  const upcomingEvents = (events ?? [])
+    .filter((e) => new Date(e.endsAt || e.startsAt).getTime() >= now)
+    .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+
+  // Latest published result for the Performance tile — real data from the
+  // dashboard payload, not a recomputed or invented figure.
+  const latestResult = data?.recentResults?.[0] ?? null;
+  const latestResultPct = latestResult && latestResult.maxMarks
+    ? Math.round((latestResult.marks / latestResult.maxMarks) * 100)
+    : null;
 
   return (
     <PortalShell expectedSlug="parent" topbar={{ title: 'My Children', desc: "Your family's school life in one place" }}>
@@ -56,18 +84,33 @@ export default function ParentDashboard() {
             </div>
           </div>
 
-          <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
+          {/* Five tiles: Performance was added alongside the existing four, not
+              in place of any of them. Below 1100px this collapses to 2 columns
+              and then to 1, per the shared .card-grid rules. */}
+          <div className="card-grid" style={{ gridTemplateColumns: 'repeat(5,1fr)', marginBottom: 18 }}>
             <StatCard
               label="Attendance"
               value={kidStats ? `${kidStats.attendance.percentage}%` : '—'}
               delta={kidStats ? `${kidStats.attendance.present}/${kidStats.attendance.total} days` : 'no records yet'}
               deltaDir={kidStats && kidStats.attendance.percentage < 75 ? 'down' : 'flat'}
+              href="/parent/attendance"
+              hint="View the monthly attendance breakdown"
+            />
+            <StatCard
+              label="Performance"
+              value={latestResultPct != null ? `${latestResultPct}%` : '—'}
+              delta={latestResult ? `${latestResult.subject} · ${latestResult.examName}` : 'no published results yet'}
+              deltaDir={latestResultPct != null && latestResultPct < 50 ? 'down' : latestResultPct != null && latestResultPct >= 75 ? 'up' : 'flat'}
+              href="/parent/performance"
+              hint="View the full marks breakdown and report card"
             />
             <StatCard
               label="Fees Pending"
               value={data ? rupees(data.pendingFeesPaise) : '—'}
               delta={data && data.pendingFeesPaise > 0 ? 'pay from Payments' : 'all settled'}
               deltaDir={data && data.pendingFeesPaise > 0 ? 'down' : 'flat'}
+              href="/parent/payments"
+              hint="View invoices and pay outstanding fees"
             />
             <StatCard label="Upcoming Exams" value={data ? data.upcomingExams.length : '—'} delta="scheduled" deltaDir="flat" />
             <StatCard label="Announcements" value={announcements ? announcements.length : '—'} delta="recent notices" deltaDir="flat" />
@@ -133,12 +176,52 @@ export default function ParentDashboard() {
                 <button
                   onClick={() => router.push('/parent/calendar')}
                   style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                  View all →
+                  View Calendar →
                 </button>
               </div>
-              <p style={{ fontSize: 12.5, color: 'var(--text-2b)' }}>
-                Open the Calendar to see school events and holidays.
-              </p>
+
+              {events === null && <SkeletonRows rows={2} />}
+
+              {events !== null && upcomingEvents.length === 0 && (
+                <div style={{ padding: '14px 4px' }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-1)', marginBottom: 3 }}>
+                    No upcoming events
+                  </div>
+                  <p style={{ fontSize: 12.5, color: 'var(--text-2b)', lineHeight: 1.5 }}>
+                    Holidays, exams and school events appear here once the school schedules them.
+                  </p>
+                </div>
+              )}
+
+              {upcomingEvents.slice(0, 4).map((e, idx) => (
+                <div
+                  key={e.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '9px 0', borderTop: idx ? '1px solid var(--hairline)' : 'none',
+                  }}
+                >
+                  <div style={{ width: 42, textAlign: 'center', flexShrink: 0 }}>
+                    <div style={{ fontFamily: 'Newsreader, serif', fontSize: 18, fontWeight: 600, color: 'var(--text-1b)', lineHeight: 1 }}>
+                      {new Date(e.startsAt).getDate()}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: 'var(--text-faint)', textTransform: 'uppercase', marginTop: 2 }}>
+                      {new Date(e.startsAt).toLocaleDateString('en-IN', { month: 'short' })}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text-1)' }}>{e.title}</div>
+                    <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>{fmtEventWhen(e)}</div>
+                  </div>
+                  <Pill tone={EVENT_TONE[e.type] ?? 'gray'}>{e.type.toLowerCase()}</Pill>
+                </div>
+              ))}
+
+              {upcomingEvents.length > 4 && (
+                <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 8 }}>
+                  +{upcomingEvents.length - 4} more in the calendar
+                </div>
+              )}
             </Card>
             <Card>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -159,7 +242,9 @@ export default function ParentDashboard() {
                       {new Date(a.publishedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                     </span>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-2b)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.content}</div>
+                  {/* Was clipped to a single nowrap line, so a long notice was
+                      unreadable here; it now expands in place. */}
+                  <ExpandableText text={a.content} clampLines={2} style={{ fontSize: 12, marginTop: 2 }} />
                 </div>
               ))}
             </Card>
@@ -169,5 +254,28 @@ export default function ParentDashboard() {
     </PortalShell>
   );
 }
+/** Same tones the Calendar page uses, so an event reads identically in both places. */
+const EVENT_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'maroon' | 'gray'> = {
+  HOLIDAY: 'amber', EXAM: 'maroon', PTM: 'blue', SPORTS: 'green', EVENT: 'gray',
+};
+
+/** "Tomorrow", "Mon, 18 Aug", or a range when the event spans several days. */
+function fmtEventWhen(e: CalendarEventDto): string {
+  const start = new Date(e.startsAt);
+  const end = e.endsAt ? new Date(e.endsAt) : null;
+  const dayFmt: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' };
+
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const dayDiff = Math.round((startOfDay(start) - startOfDay(new Date())) / 86_400_000);
+
+  const spansDays = end && startOfDay(end) > startOfDay(start);
+  if (spansDays) {
+    return `${start.toLocaleDateString('en-IN', dayFmt)} – ${end!.toLocaleDateString('en-IN', dayFmt)}`;
+  }
+  if (dayDiff === 0) return 'Today';
+  if (dayDiff === 1) return 'Tomorrow';
+  return start.toLocaleDateString('en-IN', dayFmt);
+}
+
 function greeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
 function today() { return new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }

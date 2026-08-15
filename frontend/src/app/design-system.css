@@ -660,3 +660,255 @@ body.ai-docked .modal-overlay{padding-right:var(--ai-dock-w)}
 .ai-voice-note{padding:8px 12px;font-size:12px;color:#F0B429;background:#1d1f1c;
   border-top:1px solid rgba(255,255,255,.08)}
 @media (pointer: coarse){.ai-mic{width:44px;height:44px}.ai-lang{min-height:44px}}
+
+/* ===== Admissions CRM kanban board =====
+   Six pipeline stages never fit a 1fr-per-stage grid, which squeezed every
+   column instead of scrolling. The board is a horizontal flex strip of
+   fixed-width columns with its own scroll container, so the columns keep a
+   readable width and the overflow is a real, visible scroll. */
+.kanban-scroll{position:relative}
+.kanban-board{display:flex;gap:14px;align-items:flex-start;overflow-x:auto;padding:2px 2px 12px;
+  scroll-snap-type:x proximity;scroll-padding-left:2px}
+.kanban-col{flex:0 0 264px;width:264px;scroll-snap-align:start;background:var(--panel-bg);
+  border:1px solid var(--card-border);border-radius:14px;padding:10px;
+  display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 260px)}
+.kanban-col-head{display:flex;justify-content:space-between;align-items:center;gap:8px;
+  position:sticky;top:0;background:var(--panel-bg);border-radius:8px;padding:4px 2px 8px;
+  border-bottom:1px solid var(--hairline-2)}
+.kanban-col-title{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--text-2b);
+  text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kanban-count{font-size:11px;font-weight:700;color:var(--text-faint);background:var(--card-bg);
+  border:1px solid var(--card-border);border-radius:20px;padding:1px 8px;flex:none}
+.kanban-cards{display:flex;flex-direction:column;gap:8px;overflow-y:auto;padding-right:2px}
+.kanban-empty{font-size:11.5px;color:var(--text-faint);padding:10px 8px;text-align:center;
+  border:1px dashed var(--hairline-2);border-radius:10px}
+/* Fades at the strip edges signal that the board continues past the viewport. */
+.kanban-fade{position:absolute;top:0;bottom:12px;width:34px;pointer-events:none;z-index:1}
+.kanban-fade.left{left:0;background:linear-gradient(to right,var(--parchment),transparent)}
+.kanban-fade.right{right:0;background:linear-gradient(to left,var(--parchment),transparent)}
+.kanban-hint{font-size:11.5px;color:var(--text-faint);margin-bottom:8px;display:flex;
+  align-items:center;gap:6px}
+.lead-card{width:100%;text-align:left;background:var(--card-bg);border:1px solid var(--card-border);
+  border-radius:11px;padding:11px;display:block;font-family:inherit;transition:border-color .12s,box-shadow .12s}
+.lead-card:hover{border-color:var(--gold);box-shadow:0 4px 14px rgba(40,20,15,.08)}
+.lead-card:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+@media (max-width:768px){
+  /* On tablets and phones the strip becomes near-full-width columns that snap
+     one at a time, which reads as paging through stages rather than a clipped
+     table. 768px matches .data-table-cards and the topbar rules — at 760px an
+     iPad in portrait (exactly 768px) fell through to the desktop layout. */
+  .kanban-col{flex:0 0 82vw;width:82vw;max-height:none}
+  .kanban-fade{display:none}
+}
+
+/* ===== Right-hand detail drawer (lead detail) ===== */
+.drawer-overlay{position:fixed;inset:0;background:rgba(40,25,20,.42);backdrop-filter:blur(2px);
+  z-index:60;display:flex;justify-content:flex-end;animation:eduFade .15s ease}
+.drawer{background:var(--panel-bg);width:440px;max-width:100vw;height:100%;overflow-y:auto;
+  padding:22px;box-shadow:-24px 0 60px rgba(40,20,15,.28);animation:eduPanel .18s ease}
+.drawer-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:16px}
+.drawer-section{border-top:1px solid var(--hairline-2);padding-top:14px;margin-top:14px}
+.drawer-section-title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text-2b);margin-bottom:10px}
+.drawer-row{display:flex;justify-content:space-between;gap:12px;font-size:13px;padding:5px 0}
+.drawer-row dt{color:var(--text-faint)}
+.drawer-row dd{font-weight:600;color:var(--text-1);text-align:right;word-break:break-word}
+@media (max-width:520px){.drawer{width:100%}}
+
+/* ===== Sticky action bar (attendance save) =====
+   `.content` is the scrolling element, so a sticky bar inside it stays on
+   screen while a long roster scrolls — without the fixed-position maths the
+   sidebar and the docked AI panel would otherwise require. */
+.sticky-actions{position:sticky;bottom:0;z-index:20;margin-top:14px;
+  display:flex;flex-wrap:wrap;align-items:center;gap:12px;
+  background:rgba(251,246,236,.94);backdrop-filter:blur(8px);
+  border:1px solid var(--input-border);border-radius:14px;padding:12px 16px;
+  box-shadow:0 -6px 22px rgba(40,20,15,.09)}
+.sticky-actions-status{font-size:12.5px;color:var(--text-2);min-width:0}
+.sticky-actions-spacer{margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sticky-actions.is-error{border-color:#fca5a5;background:rgba(254,242,242,.96)}
+.sticky-actions.is-saved{border-color:#86efac}
+@media (max-width:768px){
+  .sticky-actions{padding:10px 12px}
+  .sticky-actions-spacer{margin-left:0;width:100%}
+  .sticky-actions-spacer .btn{flex:1}
+}
+
+/* ===== Marks entry grid =====
+   The entry table used six columns inside a 780px dialog, which could not fit
+   three text inputs and forced a horizontal scrollbar on a laptop. Roll and
+   status now ride along with the student name, and a fixed table layout keeps
+   the remaining columns inside the dialog at any width. */
+.marks-modal{width:min(1040px,96vw);max-width:none}
+.marks-grid{table-layout:fixed;width:100%}
+.marks-grid thead th{padding:8px 10px;white-space:nowrap}
+.marks-grid tbody td{padding:8px 10px;vertical-align:middle}
+.marks-grid .field-input{margin-bottom:0;padding:8px 10px}
+.marks-grid col.col-student{width:auto}
+.marks-grid col.col-marks{width:120px}
+.marks-grid col.col-grade{width:96px}
+.marks-grid col.col-remarks{width:34%}
+.marks-student-name{font-weight:600;color:var(--text-1);overflow-wrap:anywhere}
+.marks-student-meta{display:flex;align-items:center;gap:7px;margin-top:3px;
+  font-size:11.5px;color:var(--text-faint);flex-wrap:wrap}
+.marks-hint{font-size:11.5px;color:var(--text-faint);margin-bottom:8px}
+.marks-hint kbd{font-family:inherit;font-size:11px;font-weight:700;background:var(--panel-bg);
+  border:1px solid var(--input-border);border-radius:5px;padding:1px 5px;color:var(--text-2)}
+@media (max-width:768px){
+  /* Stacked-card mode already applies from .data-table-cards at this same
+     breakpoint; the fixed layout and column widths must not fight it. */
+  .marks-grid{table-layout:auto}
+  .marks-grid col.col-marks,.marks-grid col.col-grade,.marks-grid col.col-remarks{width:auto}
+}
+
+/* ===== Drill-down stat tiles =====
+   A tile that links to the detail view for its number. Rendered as an <a>, so
+   it keeps link semantics (focus, middle-click, open in new tab) rather than
+   being a div that happens to respond to clicks. */
+.stat-card-link{display:block;text-decoration:none;color:inherit;
+  transition:border-color .12s,box-shadow .12s,transform .12s}
+.stat-card-link:hover{border-color:var(--accent);box-shadow:0 4px 16px rgba(40,20,15,.09)}
+.stat-card-link:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.stat-card-link .stat-label{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.stat-link-arrow{color:var(--accent);font-weight:700;opacity:0;transition:opacity .12s,transform .12s}
+.stat-card-link:hover .stat-link-arrow,
+.stat-card-link:focus-visible .stat-link-arrow{opacity:1;transform:translateX(2px)}
+@media (hover:none){.stat-link-arrow{opacity:1}}
+
+/* ===== Expandable long text (announcements) =====
+   Collapsed to a few lines with the full body one click away, so a long
+   circular is scannable in a list but still readable in full. */
+.expandable-text{font-size:13.5px;color:var(--text-2);line-height:1.55;
+  white-space:pre-wrap;overflow-wrap:anywhere;margin-top:6px}
+.expandable-text.is-clamped{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;
+  overflow:hidden}
+.expandable-toggle{background:none;border:none;padding:0;margin-top:6px;cursor:pointer;
+  font-family:inherit;font-size:12.5px;font-weight:700;color:var(--accent)}
+.expandable-toggle:hover{text-decoration:underline}
+.expandable-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+/* ===== Sortable table headers ===== */
+.sort-header{background:none;border:none;padding:0;font:inherit;font-size:11px;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--text-muted);font-weight:700;cursor:pointer;white-space:nowrap}
+.sort-header:hover{color:var(--accent)}
+.sort-header:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+/* Rows that open a detail view read as interactive. */
+.data-table tbody tr[title]:hover{background:rgba(0,0,0,.03)}
+
+/* ===== Collapsible sidebar =====
+   Collapsed the rail keeps every nav item, shown as its icon with a tooltip
+   and an accessible name. Width is driven by one custom property so the
+   transition and the mobile overlay rules stay in one place. */
+.app-shell{--sidebar-w:256px}
+.sidebar{width:var(--sidebar-w);transition:width .16s ease}
+.app-shell.sidebar-collapsed{--sidebar-w:72px}
+
+.sidebar-collapse-btn{margin-left:auto;flex:none;width:28px;height:28px;display:inline-flex;
+  align-items:center;justify-content:center;border-radius:8px;border:1px solid rgba(255,255,255,.14);
+  background:rgba(255,255,255,.06);color:var(--sidebar-heading);cursor:pointer;font-size:13px;line-height:1}
+.sidebar-collapse-btn:hover{background:rgba(255,255,255,.14)}
+.sidebar-collapse-btn:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+.app-shell.sidebar-collapsed .sidebar-school,
+.app-shell.sidebar-collapsed .nav-group-label,
+.app-shell.sidebar-collapsed .nav-label,
+.app-shell.sidebar-collapsed .nav-soon,
+.app-shell.sidebar-collapsed .profile-card-info,
+.app-shell.sidebar-collapsed .logout-btn span{display:none}
+.app-shell.sidebar-collapsed .sidebar-brand{padding:20px 10px 16px;justify-content:center;position:relative}
+.app-shell.sidebar-collapsed .sidebar-collapse-btn{position:absolute;bottom:-14px;right:8px;margin-left:0;
+  background:var(--accent);border-color:rgba(255,255,255,.2);z-index:2}
+.app-shell.sidebar-collapsed .sidebar-nav{padding:14px 8px}
+.app-shell.sidebar-collapsed .nav-item{justify-content:center;padding:10px 0}
+.app-shell.sidebar-collapsed .nav-item .nav-icon{width:auto;font-size:16px}
+/* The active row must stay obvious without a label to read. */
+.app-shell.sidebar-collapsed .nav-item.active{box-shadow:inset 3px 0 0 var(--gold);background:rgba(255,255,255,.18)}
+.app-shell.sidebar-collapsed .nav-badge{position:absolute;top:2px;right:8px;padding:0 5px;font-size:9px}
+.app-shell.sidebar-collapsed .nav-item{position:relative}
+.app-shell.sidebar-collapsed .profile-card{justify-content:center;padding:8px}
+.app-shell.sidebar-collapsed .sidebar-footer{padding:12px 8px}
+.app-shell.sidebar-collapsed .logout-btn{padding:9px 0}
+
+/* Tooltip for the icon-only rail. Driven by data-tooltip so it needs no extra
+   markup; the accessible name comes from aria-label on the control itself. */
+.app-shell.sidebar-collapsed [data-tooltip]{position:relative}
+.app-shell.sidebar-collapsed [data-tooltip]:hover::after,
+.app-shell.sidebar-collapsed [data-tooltip]:focus-visible::after{
+  content:attr(data-tooltip);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);
+  background:#2B2520;color:#fff;font-size:12px;font-weight:600;white-space:nowrap;
+  padding:5px 9px;border-radius:7px;z-index:60;pointer-events:none;
+  box-shadow:0 6px 18px rgba(0,0,0,.28)}
+
+/* The nav is the only scroll region in the sidebar; hide its scrollbar chrome
+   so it doesn't read as a second, nested scrollbar next to the page's own. */
+.sidebar-nav{scrollbar-width:none;-ms-overflow-style:none;overscroll-behavior:contain}
+.sidebar-nav::-webkit-scrollbar{width:0;height:0}
+
+@media (max-width:900px){
+  /* Collapsing is a desktop affordance; the mobile drawer keeps full labels. */
+  .sidebar-collapse-btn{display:none}
+  .app-shell.sidebar-collapsed{--sidebar-w:256px}
+  .app-shell.sidebar-collapsed .sidebar-school,
+  .app-shell.sidebar-collapsed .nav-group-label,
+  .app-shell.sidebar-collapsed .nav-label,
+  .app-shell.sidebar-collapsed .profile-card-info,
+  .app-shell.sidebar-collapsed .logout-btn span{display:initial}
+  .app-shell.sidebar-collapsed .nav-item{justify-content:flex-start;padding:8px 10px}
+}
+
+/* ===== Topbar density =====
+   The description is useful context on a big screen and pure vertical cost on
+   a short one, where it pushes the table below the fold. The title, actions
+   and controls are never hidden. */
+@media (max-height:820px){
+  .topbar{padding:12px 28px;gap:8px}
+  .topbar-desc{display:none}
+  .topbar-title{font-size:21px}
+}
+@media (max-width:900px){
+  .topbar{padding:12px 16px}
+  .topbar-desc{display:none}
+  .topbar-title{font-size:20px}
+  .content{padding:16px 16px 48px}
+}
+
+/* ===== Focus visibility =====
+   Several controls are custom-styled and had no visible keyboard focus at all.
+   :focus-visible keeps the ring for keyboard users without ringing on click. */
+.btn:focus-visible,
+.chip-tab:focus-visible,
+.tab:focus-visible,
+.input:focus-visible,
+.field-input:focus-visible,
+.modal-close:focus-visible,
+.nav-item:focus-visible,
+.hamburger-btn:focus-visible,
+.expandable-toggle:focus-visible,
+.lead-card:focus-visible,
+.stat-card-link:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:2px;
+}
+.sidebar .nav-item:focus-visible{outline-color:var(--gold)}
+/* Inputs get a border cue too, since an outline alone can be lost on white. */
+.input:focus-visible,.field-input:focus-visible{border-color:var(--accent)}
+
+/* A row that opens a detail view is reachable and obvious from the keyboard. */
+.data-table tbody tr[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+
+/* ===== Status not by colour alone =====
+   Pills already carry their status as text; this adds a shape cue in front of
+   the label so red/green is never the only signal. */
+.pill::before{font-weight:900;margin-right:5px;font-size:10px;line-height:1}
+.pill.green::before{content:"✓"}
+.pill.red::before{content:"!"}
+.pill.amber::before{content:"•"}
+.pill.blue::before{content:"i"}
+.pill.gray::before{content:"–"}
+.pill.maroon::before{content:"◆"}
+
+/* ===== Reduced motion ===== */
+@media (prefers-reduced-motion: reduce){
+  .sidebar,.stat-card-link,.lead-card{transition:none}
+}

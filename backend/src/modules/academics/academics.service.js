@@ -40,16 +40,61 @@ async function chunkedInsert(Model, validRows, dupField) {
 
 // ── Academic Years ──
 export const listYears = () => AcademicYear.find().sort({ startsOn: -1 });
-export const createYear = (data) => AcademicYear.create(data);
+export const createYear = (data = {}) => AcademicYear.create({
+  ...data,
+  name: requireText(data.name, 'Academic year name'),
+  ...assertDateRange(data.startsOn, data.endsOn, 'Academic year'),
+});
 
 // ── Terms ──
 export const listTerms = (academicYearId) =>
   Term.find(academicYearId ? { academicYearId } : {}).sort({ startsOn: 1 });
-export const createTerm = (data) => Term.create(data);
+export const createTerm = (data = {}) => Term.create({
+  ...data,
+  name: requireText(data.name, 'Term name'),
+  ...assertDateRange(data.startsOn, data.endsOn, 'Term'),
+});
 
 // ── Grades ──
 export const listGrades = () => Grade.find().sort({ level: 1 });
-export const createGrade = (data) => Grade.create(data);
+/**
+ * Validation at the service boundary. The controllers pass `req.body`
+ * straight through and there is no schema-validation middleware, so a raw
+ * `Model.create(data)` accepted anything Mongoose's own types allowed — a
+ * grade with `level: -1` was written happily. These checks reject bad input
+ * with a 400 before it reaches the database.
+ */
+function requireText(value, field, { max = 120 } = {}) {
+  const v = typeof value === 'string' ? value.trim() : '';
+  if (!v) throw new AppError(`${field} is required`, 400);
+  if (v.length > max) throw new AppError(`${field} must be ${max} characters or fewer`, 400);
+  return v;
+}
+
+function requireInt(value, field, { min, max } = {}) {
+  const n = Number(value);
+  if (value === undefined || value === null || value === '' || !Number.isInteger(n)) {
+    throw new AppError(`${field} must be a whole number`, 400);
+  }
+  if (min !== undefined && n < min) throw new AppError(`${field} must be at least ${min}`, 400);
+  if (max !== undefined && n > max) throw new AppError(`${field} must be at most ${max}`, 400);
+  return n;
+}
+
+/** Both dates must parse and end must not precede start. */
+function assertDateRange(startsOn, endsOn, label) {
+  const start = new Date(startsOn);
+  const end = new Date(endsOn);
+  if (Number.isNaN(start.getTime())) throw new AppError(`${label} start date is invalid`, 400);
+  if (Number.isNaN(end.getTime())) throw new AppError(`${label} end date is invalid`, 400);
+  if (end < start) throw new AppError(`${label} end date cannot be before the start date`, 400);
+  return { startsOn: start, endsOn: end };
+}
+
+export const createGrade = (data = {}) => Grade.create({
+  name: requireText(data.name, 'Grade name'),
+  level: requireInt(data.level, 'Grade level', { min: 1, max: 20 }),
+});
 
 export async function bulkCreateGrades(rows) {
   const validRows = [];
@@ -223,7 +268,10 @@ export async function bulkCreateSections(rows) {
 
 // ── Subjects ──
 export const listSubjects = () => Subject.find().sort({ name: 1 });
-export const createSubject = (data) => Subject.create(data);
+export const createSubject = (data = {}) => Subject.create({
+  name: requireText(data.name, 'Subject name'),
+  ...(data.code ? { code: String(data.code).trim().slice(0, 20) } : {}),
+});
 
 export async function bulkCreateSubjects(rows) {
   const validRows = [];

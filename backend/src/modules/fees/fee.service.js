@@ -187,6 +187,15 @@ export async function getPaymentLinks(actor, scope, { invoiceId } = {}) {
   };
 }
 
+/**
+ * Lists invoices.
+ *
+ * Passing `page`/`pageSize` paginates at the database level (skip/limit) and
+ * returns `{ items, total, page, pageSize, totalPages }`; without them the
+ * plain array shape existing callers rely on is unchanged. `search`
+ * (invoice no / student name) and `sectionId` narrow the set server-side, so
+ * the browser no longer needs the whole 700-row list to filter it.
+ */
 export async function listInvoices(actor, scope, query = {}) {
   const filter = {};
   if (query.enrollmentId) filter.enrollmentId = query.enrollmentId;
@@ -197,7 +206,48 @@ export async function listInvoices(actor, scope, query = {}) {
     filter.enrollmentId = query.enrollmentId ?? { $in: ids };
   }
 
-  const invoices = await Invoice.find(filter)
+  // Student/section/grade live on the enrollment, so narrowing by them means
+  // resolving to a set of enrollment ids first.
+  const enrollmentNarrowing = [];
+  if (query.sectionId) {
+    const enrs = await Enrollment.find({ sectionId: query.sectionId }).select('_id');
+    enrollmentNarrowing.push(enrs.map((e) => e._id.toString()));
+  }
+  if (query.studentId) {
+    const enrs = await Enrollment.find({ studentId: query.studentId }).select('_id');
+    enrollmentNarrowing.push(enrs.map((e) => e._id.toString()));
+  }
+  if (query.search) {
+    const rx = new RegExp(escapeRegex(query.search), 'i');
+    const students = await Student.find({
+      $or: [{ firstName: rx }, { lastName: rx }, { admissionNo: rx }], deletedAt: null,
+    }).select('_id');
+    const enrs = students.length
+      ? await Enrollment.find({ studentId: { $in: students.map((s) => s._id) } }).select('_id')
+      : [];
+    const byInvoiceNo = await Invoice.find({ invoiceNo: rx }).select('_id');
+    // invoiceNo OR student match — expressed as an $or so both paths count.
+    filter.$and = [
+      ...(filter.$and ?? []),
+      { $or: [
+        { _id: { $in: byInvoiceNo.map((i) => i._id) } },
+        { enrollmentId: { $in: enrs.map((e) => e._id) } },
+      ] },
+    ];
+  }
+  for (const ids of enrollmentNarrowing) {
+    filter.$and = [...(filter.$and ?? []), { enrollmentId: { $in: ids } }];
+  }
+
+  const requestedSize = parseInt(query.pageSize, 10);
+  const size = Number.isFinite(requestedSize) && requestedSize > 0 ? Math.min(requestedSize, 200) : 0;
+  const total = size > 0 ? await Invoice.countDocuments(filter) : 0;
+  const totalPages = size > 0 ? Math.max(Math.ceil(total / size), 1) : 1;
+  // Clamped so a stale page number returns the last real page, not an empty
+  // table — consistent with /users, /students and /risk/scan.
+  const pageNo = size > 0 ? Math.min(Math.max(parseInt(query.page, 10) || 1, 1), totalPages) : 1;
+
+  let q = Invoice.find(filter)
     .populate({
       path: 'enrollmentId',
       populate: [
@@ -205,9 +255,14 @@ export async function listInvoices(actor, scope, query = {}) {
         { path: 'sectionId', populate: { path: 'gradeId' } }
       ]
     })
-    .sort({ dueOn: 1 });
+    // _id breaks ties: every invoice in a batch can share the same dueOn, and
+    // a non-total sort order makes skip/limit return overlapping pages.
+    .sort({ dueOn: 1, _id: 1 });
+  if (size > 0) q = q.skip((pageNo - 1) * size).limit(size);
 
-  return invoices.map(inv => {
+  const invoices = await q;
+
+  const mapped = invoices.map(inv => {
     const obj = inv.toObject();
     obj.id = obj._id; // frontend keys on `id`
     if (obj.enrollmentId) {
@@ -227,6 +282,9 @@ export async function listInvoices(actor, scope, query = {}) {
     }
     return obj;
   });
+
+  if (size === 0) return mapped;
+  return { items: mapped, total, page: pageNo, pageSize: size, totalPages };
 }
 
 export async function createInvoice({ enrollmentId, invoiceNo, dueOn, lines }) {
@@ -582,8 +640,40 @@ export async function verifyCheckout(actor, scope, { orderId, paymentId, signatu
   return result;
 }
 
-/** List payment receipts (scoped: parents/students see only their own). */
-export async function listPayments(actor, scope, { invoiceId } = {}) {
+/** Escapes a user-supplied string so it is matched literally inside a $regex. */
+function escapeRegex(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Invoice IDs whose invoice number or student name matches the search text.
+ * Both live outside the Payment collection, so they are resolved to a set of
+ * invoice IDs first rather than joined in the payments query.
+ */
+async function invoiceIdsMatchingSearch(search) {
+  const rx = new RegExp(escapeRegex(search), 'i');
+  const students = await Student.find({
+    $or: [{ firstName: rx }, { lastName: rx }, { admissionNo: rx }],
+    deletedAt: null,
+  }).select('_id');
+  const enrollmentIds = students.length
+    ? (await Enrollment.find({ studentId: { $in: students.map((s) => s._id) } }).select('_id')).map((e) => e._id)
+    : [];
+  const invoices = await Invoice.find({
+    $or: [{ invoiceNo: rx }, ...(enrollmentIds.length ? [{ enrollmentId: { $in: enrollmentIds } }] : [])],
+  }).select('_id');
+  return invoices.map((i) => i._id);
+}
+
+/**
+ * List payment receipts (scoped: parents/students see only their own).
+ *
+ * Optional `search` (receipt no / invoice no / student), `from`/`to` (receipt
+ * date range) and `page`/`pageSize` narrow the list server-side. Passing
+ * `page`/`pageSize` returns `{ items, total, page, pageSize, totalPages }`;
+ * without them the plain array shape existing callers rely on is unchanged.
+ */
+export async function listPayments(actor, scope, { invoiceId, search, from, to, page, pageSize } = {}) {
   const filter = {};
   if (invoiceId) filter.invoiceId = invoiceId;
 
@@ -597,7 +687,38 @@ export async function listPayments(actor, scope, { invoiceId } = {}) {
     }
   }
 
-  const payments = await Payment.find(filter)
+  if (from || to) {
+    filter.createdAt = {};
+    if (from) filter.createdAt.$gte = new Date(from);
+    // `to` is a calendar day: include everything up to the end of it.
+    if (to) {
+      const end = new Date(to);
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt.$lte = end;
+    }
+  }
+
+  if (search) {
+    const rx = { $regex: escapeRegex(search), $options: 'i' };
+    const matchedInvoiceIds = await invoiceIdsMatchingSearch(search);
+    // Any invoice restriction already in place (own-scope, or an explicit
+    // invoiceId) must still hold, so the search goes in as an extra $and clause.
+    filter.$and = [
+      ...(filter.$and ?? []),
+      { $or: [{ receiptNo: rx }, ...(matchedInvoiceIds.length ? [{ invoiceId: { $in: matchedInvoiceIds } }] : [])] },
+    ];
+  }
+
+  const requestedPageSize = parseInt(pageSize, 10);
+  const size = Number.isFinite(requestedPageSize) && requestedPageSize > 0 ? Math.min(requestedPageSize, 200) : 0;
+  const paginate = size > 0;
+  const total = paginate ? await Payment.countDocuments(filter) : 0;
+  const totalPagesCalc = paginate ? Math.max(Math.ceil(total / size), 1) : 1;
+  // Clamped like every other paginated list, so a stale page number shows the
+  // last page of real receipts instead of an empty table.
+  const pageNo = paginate ? Math.min(Math.max(parseInt(page, 10) || 1, 1), totalPagesCalc) : 1;
+
+  const query = Payment.find(filter)
     .populate({
       path: 'invoiceId',
       select: 'invoiceNo enrollmentId',
@@ -610,11 +731,13 @@ export async function listPayments(actor, scope, { invoiceId } = {}) {
         ],
       },
     })
-    .sort({ createdAt: -1 })
-    .limit(200)
-    .lean();
+    .sort({ createdAt: -1, _id: -1 });
 
-  return payments.map((p) => {
+  const payments = paginate
+    ? await query.skip((pageNo - 1) * size).limit(size).lean()
+    : await query.limit(200).lean();
+
+  const items = payments.map((p) => {
     const inv = p.invoiceId;
     const enrollment = inv?.enrollmentId;
     const student = enrollment?.studentId;
@@ -631,6 +754,9 @@ export async function listPayments(actor, scope, { invoiceId } = {}) {
       createdAt: p.createdAt,
     };
   });
+
+  if (!paginate) return items;
+  return { items, total, page: pageNo, pageSize: size, totalPages: totalPagesCalc };
 }
 
 /**

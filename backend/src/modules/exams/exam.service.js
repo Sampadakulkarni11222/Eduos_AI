@@ -21,12 +21,19 @@ export async function listExams(termId) {
 
 export async function listExamSubjects(actor, scope, examId) {
   const filter = examId ? { examId } : {};
-  if (scope === 'OWN' && actor.roleKey === 'TEACHER') {
-    // Only subjects this teacher personally teaches — matches the write-side
-    // check in loadOwnedExamSubject, so nothing shows up here that they'd
-    // then be refused when actually entering marks for it.
-    const offerings = await SubjectOffering.find({ teacherId: actor.profileId }).select('_id');
-    filter.subjectOfferingId = { $in: offerings.map((o) => o._id) };
+  if (scope === 'OWN') {
+    if (actor.roleKey === 'TEACHER') {
+      // Only subjects this teacher personally teaches — matches the write-side
+      // check in loadOwnedExamSubject, so nothing shows up here that they'd
+      // then be refused when actually entering marks for it.
+      const offerings = await SubjectOffering.find({ teacherId: actor.profileId }).select('_id');
+      filter.subjectOfferingId = { $in: offerings.map((o) => o._id) };
+    } else {
+      // Same reasoning as loadOwnedExamSubject: this is the marks-entry
+      // picker, so an OWN-scope non-teacher gets nothing rather than the
+      // school's full exam/paper listing.
+      return [];
+    }
   }
   const examSubjects = await ExamSubject.find(filter)
     .populate([
@@ -83,7 +90,15 @@ async function loadOwnedExamSubject(actor, scope, examSubjectId) {
   ]);
   if (!examSubject) throw new AppError('Exam subject not found', 404);
 
-  if (scope === 'OWN' && actor.roleKey === 'TEACHER') {
+  // Driven by scope, not by role. The previous form only ran the check for
+  // TEACHER, so any other OWN-scope holder of `marks.read` — a student — could
+  // pull the whole class marks grid for any paper by supplying its id. Their
+  // own results come from getPerformance/getReportCard, which resolve the
+  // enrollment from the caller's identity.
+  if (scope === 'OWN') {
+    if (actor.roleKey !== 'TEACHER') {
+      throw new AppError('You are not allowed to view this class marks sheet', 403);
+    }
     const teacherId = examSubject.subjectOfferingId?.teacherId;
     if (!teacherId || teacherId.toString() !== actor.profileId) {
       throw new AppError('You do not teach this subject for this class', 403);

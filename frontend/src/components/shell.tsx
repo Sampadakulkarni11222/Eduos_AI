@@ -12,6 +12,8 @@ import { AskEduOS } from './ask-eduos';
 import { NotificationBell } from './notification-bell';
 import { ModalA11yBridge } from './modal-a11y-bridge';
 
+const SIDEBAR_KEY = 'eduos.sidebar.collapsed';
+
 /**
  * Per-role portal shell. Reads the active profile's role, renders that
  * portal's themed sidebar + nav, and exposes role switching limited to
@@ -31,6 +33,21 @@ export function PortalShell({
   const router = useRouter();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Rail preference is per-device, so it lives in localStorage rather than on
+  // the profile. Read after mount to keep the server and client markup equal.
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    setCollapsed(localStorage.getItem(SIDEBAR_KEY) === '1');
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((v) => {
+      const next = !v;
+      localStorage.setItem(SIDEBAR_KEY, next ? '1' : '0');
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (loading) return;
@@ -67,12 +84,19 @@ export function PortalShell({
   const permissionDenied = reqPerm ? !hasAccess(active.role, reqPerm) : false;
 
   return (
-    <div className={cx('app-shell', portal.themeClass)}>
+    <div className={cx('app-shell', portal.themeClass, collapsed && 'sidebar-collapsed')}>
       <ModalA11yBridge />
       {mobileOpen && (
         <div className="sidebar-overlay" onClick={() => setMobileOpen(false)} />
       )}
-      <Sidebar portal={portal} schoolName={active?.displayName ?? 'Oakridge'} mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+      <Sidebar
+        portal={portal}
+        schoolName={active?.displayName ?? 'Oakridge'}
+        mobileOpen={mobileOpen}
+        setMobileOpen={setMobileOpen}
+        collapsed={collapsed}
+        toggleCollapsed={toggleCollapsed}
+      />
       <div className="main">
         <div className="topbar">
           <div className="topbar-headrow">
@@ -122,11 +146,15 @@ function Sidebar({
   schoolName,
   mobileOpen,
   setMobileOpen,
+  collapsed,
+  toggleCollapsed,
 }: {
   portal: Portal;
   schoolName: string;
   mobileOpen: boolean;
   setMobileOpen: (open: boolean) => void;
+  collapsed: boolean;
+  toggleCollapsed: () => void;
 }) {
   const pathname = usePathname();
   const { me } = useAuth();
@@ -143,8 +171,18 @@ function Sidebar({
         <button className="sidebar-close-btn" onClick={() => setMobileOpen(false)} aria-label="Close Menu">
           ✕
         </button>
+        <button
+          type="button"
+          className="sidebar-collapse-btn"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!collapsed}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <span aria-hidden="true">{collapsed ? '»' : '«'}</span>
+        </button>
       </div>
-      <nav className="sidebar-nav">
+      <nav className="sidebar-nav" aria-label={`${portal.label} navigation`}>
         {portal.nav.map((group) => {
           const visibleItems = group.items.filter((it) => {
             const req = getRequiredPermission(it.href);
@@ -173,6 +211,11 @@ function Sidebar({
                     className={cx('nav-item', isActive && 'active')}
                     aria-current={isActive ? 'page' : undefined}
                     onClick={() => setMobileOpen(false)}
+                    data-tooltip={it.label}
+                    // With the label hidden in rail mode the icon alone is not
+                    // an accessible name, so supply one explicitly.
+                    aria-label={collapsed ? it.label : undefined}
+                    title={collapsed ? it.label : undefined}
                   >
                     {content}
                   </Link>
@@ -180,7 +223,7 @@ function Sidebar({
                   // Not a link and not focusable: there is nowhere to go yet.
                   // The "soon" chip replaces a title tooltip that keyboard and
                   // touch users could never see.
-                  <span key={it.href} className="nav-item not-ready">
+                  <span key={it.href} className="nav-item not-ready" data-tooltip={`${it.label} (coming soon)`}>
                     <span className="nav-icon" aria-hidden>{it.icon}</span>
                     <span className="nav-label">{it.label}</span>
                     <span className="nav-soon">Soon</span>
@@ -205,16 +248,16 @@ function RoleSwitcher() {
 
   return (
     <div className="sidebar-footer">
-      <div className="profile-card">
+      <div className="profile-card" data-tooltip={active?.displayName ?? undefined}>
         <Avatar name={active?.displayName ?? ''} className="profile-card-avatar" />
         <div className="profile-card-info">
           <span className="profile-card-name">{active?.displayName}</span>
           <span className="profile-card-role">{roleLabel(active?.role)}</span>
         </div>
       </div>
-      <button className="logout-btn" onClick={() => void signOut()}>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        Logout
+      <button className="logout-btn" onClick={() => void signOut()} aria-label="Logout" title="Logout" data-tooltip="Logout">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        <span>Logout</span>
       </button>
     </div>
   );

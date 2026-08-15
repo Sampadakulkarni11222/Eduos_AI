@@ -7,6 +7,10 @@ export const getPipeline = asyncHandler(async (_req, res) => {
   sendSuccess(res, await service.getPipeline(), 'Admissions pipeline fetched');
 });
 
+export const getLead = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.getLeadById(req.params.id), 'Lead fetched');
+});
+
 export const createLead = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.createLead(req.body), 'Lead created', 201);
 });

@@ -1,15 +1,21 @@
 'use client';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, EmptyState, Pill, SkeletonRows } from './ui';
+import { ExpandableText } from './expandable-text';
 import { api, ApiError } from '@/lib/api';
+import { useCachedResource } from '@/lib/cache';
 import { useAuth } from '@/lib/auth';
 import type { AnnouncementDto, GradeDto, SectionDto, SubjectDto } from '@/lib/types';
 
 export function AnnouncementsView({ canPublish }: { canPublish: boolean }) {
-  const [items, setItems] = useState<AnnouncementDto[] | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const reload = () => api.announcements().then(setItems).catch(() => setItems([]));
-  useEffect(() => { void reload(); }, []);
+  // This view is mounted in every portal, so returning to it should show the
+  // notices already fetched rather than a skeleton over a fresh request.
+  const { data, error, refresh } = useCachedResource<AnnouncementDto[]>(
+    'announcements', () => api.announcements(),
+  );
+  const items: AnnouncementDto[] | null = data ?? (error ? [] : null);
+  const reload = refresh;
 
   return (
     <>
@@ -29,7 +35,9 @@ export function AnnouncementsView({ canPublish }: { canPublish: boolean }) {
                 <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17, color: 'var(--text-1b)' }}>{a.title}</strong>
                 <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>{new Date(a.publishedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
               </div>
-              <p style={{ marginTop: 6, fontSize: 13.5, color: 'var(--text-2)', lineHeight: 1.5 }}>{a.content}</p>
+              {/* Long circulars are clamped with the full text one click away,
+                  and their original line breaks are preserved. */}
+              <ExpandableText text={a.content} clampLines={3} />
               <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 <Pill tone={a.audience?.all ? 'gray' : 'blue'}>{a.audienceLabel}</Pill>
                 {a.channels?.email && <Pill tone="amber">Email</Pill>}
@@ -69,6 +77,9 @@ function NewAnnouncement({ onDone }: { onDone: () => void }) {
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Posting twice fans out duplicate app/email/WhatsApp notices, and `busy`
+  // alone loses the race when two submits land in one React batch.
+  const busyRef = useRef(false);
 
   useEffect(() => {
     if (isTeacherScope) {
@@ -99,7 +110,10 @@ function NewAnnouncement({ onDone }: { onDone: () => void }) {
   })), [grades, sections]);
 
   const submit = async (e: FormEvent) => {
-    e.preventDefault(); setBusy(true); setErr(null);
+    e.preventDefault();
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true); setErr(null);
     try {
       const audience =
         mode === 'ALL' ? { all: true } :
@@ -118,7 +132,7 @@ function NewAnnouncement({ onDone }: { onDone: () => void }) {
       onDone();
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : 'Failed to post announcement. Please try again.');
-    } finally { setBusy(false); }
+    } finally { setBusy(false); busyRef.current = false; }
   };
 
   const canSubmit =

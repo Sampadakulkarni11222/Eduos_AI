@@ -29,7 +29,7 @@ export function ClassDetailModal({
             <span style={{ width: 12, height: 12, borderRadius: '50%', background: color.dot, flexShrink: 0 }} />
             {slot.subject ?? 'Class'}
           </div>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" aria-label="Close dialog" title="Close" onClick={onClose}>×</button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

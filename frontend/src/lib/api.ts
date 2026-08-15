@@ -4,7 +4,8 @@
  * Production hardening (Phase 7): move refresh into an httpOnly cookie
  * behind a BFF route handler so it never touches JS-readable storage.
  */
-import type { Me, Paged, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto } from './types';
+import { cachedFetch, invalidateCache } from './cache';
+import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto } from './types';
 
 // Backend URL – default to localhost:5000. Can be overridden via NEXT_PUBLIC_BACKEND_URL.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
@@ -77,10 +78,28 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
     const code = body?.error?.code ?? 'ERROR';
     throw new ApiError(res.status, code, msg);
   }
+  // Anything that isn't a plain read may have changed data another screen is
+  // holding, so the read cache is dropped wholesale on every successful
+  // mutation. Blunt on purpose: a needless refetch costs one request, whereas
+  // a missed invalidation shows the user a stale record.
+  const method = (init.method ?? 'GET').toUpperCase();
+  if (method !== 'GET') invalidateCache();
   if (res.status === 204) return undefined as T;
   const json = await res.json();
   // Backend wraps all success responses in { success: true, message: string, data: T }
   return (json?.data !== undefined ? json.data : json) as T;
+}
+
+/**
+ * A GET that is served from the in-memory cache when a recent copy exists and
+ * de-duplicated when several callers ask at once. Used for the reads that
+ * repeat across pages (reference data, rosters, summaries) — navigating back
+ * to a page you were just on no longer refires them.
+ *
+ * The cache key is the request path, so different filters/pages stay separate.
+ */
+function cachedRequest<T>(path: string, staleMs?: number): Promise<T> {
+  return cachedFetch<T>(`GET ${path}`, () => request<T>(path), staleMs);
 }
 
 /** Raw-body file upload; returns the stored file's public URL. */
@@ -99,6 +118,7 @@ async function uploadFile(file: File): Promise<UploadResult> {
     throw new ApiError(res.status, body?.error?.code ?? 'UPLOAD_FAILED', body?.message ?? 'Upload failed');
   }
   const json = await res.json();
+  invalidateCache();
   return (json?.data ?? json) as UploadResult;
 }
 
@@ -119,6 +139,7 @@ async function uploadCsv(path: string, file: File, fields: Record<string, string
     throw new ApiError(res.status, body?.error?.code ?? 'UPLOAD_FAILED', body?.message ?? 'Upload failed');
   }
   const json = await res.json();
+  invalidateCache();
   return (json?.data ?? json) as BulkImportResult;
 }
 
@@ -186,13 +207,26 @@ export const api = {
 
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
 
-  students: async (params: { search?: string; cursor?: string } = {}) => {
+  students: async (params: { search?: string; cursor?: string; sectionId?: string } = {}) => {
     const q = new URLSearchParams();
     if (params.search) q.set('search', params.search);
     if (params.cursor) q.set('cursor', params.cursor);
+    if (params.sectionId) q.set('sectionId', params.sectionId);
     const qs = q.toString();
-    const res: any = await request<any>(`/students${qs ? `?${qs}` : ''}`);
+    const res: any = await cachedRequest<any>(`/students${qs ? `?${qs}` : ''}`);
     return (Array.isArray(res) ? { items: res } : res) as Paged<StudentListItem>;
+  },
+  /**
+   * Page-numbered student list. Distinct from `students()` above, which the
+   * screens that genuinely need every student (invoice creation) still use.
+   */
+  studentsPage: async (params: { search?: string; sectionId?: string; page?: number; pageSize?: number }) => {
+    const q = new URLSearchParams();
+    if (params.search) q.set('search', params.search);
+    if (params.sectionId) q.set('sectionId', params.sectionId);
+    q.set('page', String(params.page ?? 1));
+    q.set('pageSize', String(params.pageSize ?? 25));
+    return request<PageResult<StudentListItem>>(`/students?${q.toString()}`);
   },
   createStudent: (body: { firstName: string; lastName?: string; admissionNo: string; sectionId?: string }) =>
     request<StudentListItem>('/students', { method: 'POST', body: JSON.stringify(body) }),
@@ -216,16 +250,26 @@ export const api = {
     const qs = search ? `?search=${encodeURIComponent(search)}` : '';
     return request<UserDto[]>(`/users${qs}`);
   },
+  /** Page-numbered user list with server-side search, role and class filters. */
+  listUsersPage: (params: { search?: string; roleKey?: string; sectionId?: string; page?: number; pageSize?: number }) => {
+    const q = new URLSearchParams();
+    if (params.search) q.set('search', params.search);
+    if (params.roleKey) q.set('roleKey', params.roleKey);
+    if (params.sectionId) q.set('sectionId', params.sectionId);
+    q.set('page', String(params.page ?? 1));
+    q.set('pageSize', String(params.pageSize ?? 25));
+    return request<PageResult<UserDto>>(`/users?${q.toString()}`);
+  },
   createUser: (body: CreateUserDto) =>
     request<UserDto>('/users', { method: 'POST', body: JSON.stringify(body) }),
   bulkCreateUsers: (file: File) => uploadCsv('/users/bulk', file),
 
 
   // ── academics helpers ──
-  mySections: () => request<SectionDto[]>('/academics/sections/mine'),
-  myOfferings: () => request<OfferingDto[]>('/academics/offerings/mine'),
+  mySections: () => cachedRequest<SectionDto[]>('/academics/sections/mine'),
+  myOfferings: () => cachedRequest<OfferingDto[]>('/academics/offerings/mine'),
   allSections: (gradeId?: string) =>
-    request<SectionDto[]>(`/academics/sections${gradeId ? `?gradeId=${gradeId}` : ''}`),
+    cachedRequest<SectionDto[]>(`/academics/sections${gradeId ? `?gradeId=${gradeId}` : ''}`),
   createSection: (body: { gradeId: string; name: string; classTeacherId?: string }) =>
     request<SectionDto>('/academics/sections', { method: 'POST', body: JSON.stringify(body) }),
   updateSection: (id: string, body: { classTeacherId?: string; classRepresentativeId?: string }) =>
@@ -235,7 +279,7 @@ export const api = {
   nextRollNo: (sectionId: string, academicYearId: string) =>
     request<{ nextRollNo: number }>(`/enrollments/next-roll-no?sectionId=${sectionId}&academicYearId=${academicYearId}`),
   allAcademicYears: async () => {
-    const raw: any[] = await request<any[]>('/academics/years');
+    const raw: any[] = await cachedRequest<any[]>('/academics/years');
     return raw.map((y) => ({ id: y._id ?? y.id, name: y.name, isCurrent: y.isCurrent ?? false })) as { id: string; name: string; isCurrent: boolean }[];
   },
   createAcademicYear: (body: { name: string; startsOn: string; endsOn: string; isCurrent?: boolean }) =>
@@ -243,7 +287,7 @@ export const api = {
 
   // ── classroom management (grades / sections / subjects / offerings) ──
   listGrades: async () => {
-    const raw: any[] = await request<any[]>('/academics/grades');
+    const raw: any[] = await cachedRequest<any[]>('/academics/grades');
     return raw.map((g) => ({ id: g._id ?? g.id, name: g.name, level: g.level })) as GradeDto[];
   },
   createGrade: (body: { name: string; level: number }) =>
@@ -251,7 +295,7 @@ export const api = {
   bulkCreateGrades: (file: File) => uploadCsv('/academics/grades/bulk', file),
   bulkCreateSections: (file: File) => uploadCsv('/academics/sections/bulk', file),
   listSubjects: async () => {
-    const raw: any[] = await request<any[]>('/academics/subjects');
+    const raw: any[] = await cachedRequest<any[]>('/academics/subjects');
     return raw.map((s) => ({ id: s._id ?? s.id, name: s.name, code: s.code ?? null })) as SubjectDto[];
   },
   createSubject: (body: { name: string; code?: string }) =>
@@ -274,7 +318,7 @@ export const api = {
   },
   createOffering: (body: { sectionId: string; subjectId: string; termId: string; teacherId?: string }) =>
     request<{ id: string }>('/academics/offerings', { method: 'POST', body: JSON.stringify(body) }),
-  listTeachers: () => request<StaffAccountDto[]>('/users?roleKey=TEACHER'),
+  listTeachers: () => cachedRequest<StaffAccountDto[]>('/users?roleKey=TEACHER'),
 
   // ── attendance ──
   attendanceRoster: (sectionId: string, date: string, periodNo?: number) => {
@@ -333,7 +377,21 @@ export const api = {
     request<{ id: string }>('/calendar', { method: 'POST', body: JSON.stringify(body) }),
 
   // ── fees ──
-  invoices: (status?: string) => request<InvoiceDto[]>(`/fees/invoices${status ? `?status=${status}` : ''}`),
+  invoices: (status?: string) => cachedRequest<InvoiceDto[]>(`/fees/invoices${status ? `?status=${status}` : ''}`),
+  /**
+   * Page-numbered invoices with server-side search/filtering, so a screen
+   * showing 25 rows no longer downloads the school's entire invoice list.
+   */
+  invoicesPage: (params: { status?: string; search?: string; sectionId?: string; studentId?: string; page?: number; pageSize?: number }) => {
+    const q = new URLSearchParams();
+    if (params.status) q.set('status', params.status);
+    if (params.search) q.set('search', params.search);
+    if (params.sectionId) q.set('sectionId', params.sectionId);
+    if (params.studentId) q.set('studentId', params.studentId);
+    q.set('page', String(params.page ?? 1));
+    q.set('pageSize', String(params.pageSize ?? 25));
+    return cachedRequest<PageResult<InvoiceDto>>(`/fees/invoices?${q.toString()}`);
+  },
   invoiceDetail: (id: string) => request<InvoiceDetailDto>(`/fees/invoices/${id}`),
   createInvoice: (body: { enrollmentId: string; invoiceNo: string; dueOn: string; lines: { description: string; amountPaise: number; concessionPaise?: number }[] }) =>
     request<{ id: string }>('/fees/invoices', { method: 'POST', body: JSON.stringify(body) }),
@@ -347,7 +405,7 @@ export const api = {
   // candidate spellings per field, each defaulting to 0) is gone on purpose:
   // it turned a renamed field into a silent ₹0 instead of a visible failure,
   // which is how a broken dashboard went unnoticed.
-  feeSummary: () => request<FeeSummary>('/fees/summary'),
+  feeSummary: () => cachedRequest<FeeSummary>('/fees/summary'),
   verifyCheckout: (body: { orderId: string; paymentId: string; signature: string }) =>
     request<{ handled: boolean; idempotent?: boolean; receiptNo?: string; invoiceNo?: string; invoiceStatus?: string; paidPaise?: number }>(
       '/fees/pay/verify', { method: 'POST', body: JSON.stringify(body) }
@@ -356,13 +414,24 @@ export const api = {
     request<{ receiptNo: string; status: string; paidPaise: number }>('/fees/payments', { method: 'POST', body: JSON.stringify(body) }),
   listPayments: (invoiceId?: string) =>
     request<PaymentReceiptDto[]>(`/fees/payments${invoiceId ? `?invoiceId=${invoiceId}` : ''}`),
+  /** Page-numbered receipts with server-side search and receipt-date range. */
+  listPaymentsPage: (params: { search?: string; from?: string; to?: string; invoiceId?: string; page?: number; pageSize?: number }) => {
+    const q = new URLSearchParams();
+    if (params.search) q.set('search', params.search);
+    if (params.from) q.set('from', params.from);
+    if (params.to) q.set('to', params.to);
+    if (params.invoiceId) q.set('invoiceId', params.invoiceId);
+    q.set('page', String(params.page ?? 1));
+    q.set('pageSize', String(params.pageSize ?? 25));
+    return request<PageResult<PaymentReceiptDto>>(`/fees/payments?${q.toString()}`);
+  },
   payOnline: (body: { invoiceId: string; amountPaise?: number }) =>
     request<PayOnlineResult>('/fees/pay', { method: 'POST', body: JSON.stringify(body) }),
   downloadInvoicePdf: (invoiceId: string) => openProtectedFile(`/fees/invoices/${invoiceId}/pdf`),
   downloadReceiptPdf: (paymentId: string) => openProtectedFile(`/fees/payments/${paymentId}/pdf`),
 
   // ── announcements ──
-  announcements: () => request<AnnouncementDto[]>('/announcements'),
+  announcements: () => cachedRequest<AnnouncementDto[]>('/announcements'),
   createAnnouncement: (body: {
     title: string; content: string;
     audience?: { all?: boolean; gradeIds?: string[]; sectionIds?: string[]; subjectIds?: string[] };
@@ -370,7 +439,7 @@ export const api = {
   }) => request<{ id: string }>('/announcements', { method: 'POST', body: JSON.stringify(body) }),
 
   // ── tickets ──
-  academicYears: () => request<AcademicYearDto[]>('/academics/years'),
+  academicYears: () => cachedRequest<AcademicYearDto[]>('/academics/years'),
 
   // ── agentic assistant (shared core with WhatsApp) ──
   agentAsk: (message: string, lang?: string) =>
@@ -445,14 +514,20 @@ export const api = {
 
   // ── admissions ──
   pipeline: () => request<Pipeline>('/admissions/pipeline'),
+  leadDetail: (id: string) => request<LeadDetailDto>(`/admissions/leads/${id}`),
   createLead: (body: object) => request<{ id: string }>('/admissions/leads', { method: 'POST', body: JSON.stringify(body) }),
   updateLead: (body: object) => request<{ id: string }>('/admissions/leads/update', { method: 'POST', body: JSON.stringify(body) }),
   bulkImportLeads: (file: File) => uploadCsv('/admissions/leads/bulk', file),
 
   // ── AI layer ──
   growthScore: (enrollmentId: string) => request<GrowthScore>(`/growth/score?enrollmentId=${enrollmentId}`),
-  riskScan: async () => {
-    const raw: any = await request<any>('/risk/scan');
+  riskScan: async (params: RiskScanParams = {}) => {
+    const q = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') q.set(k, String(v));
+    });
+    const qs = q.toString();
+    const raw: any = await request<any>(`/risk/scan${qs ? `?${qs}` : ''}`);
     // Normalize: backend may return an array, or { flags, counts }, or { items, counts }
     let items: any[] = [];
     let counts: Record<string, number> = {};
@@ -470,7 +545,17 @@ export const api = {
         counts[lvl] = (counts[lvl] ?? 0) + 1;
       });
     }
-    return { items, counts } as RiskScan;
+    return {
+      items,
+      counts,
+      // Paging/summary come straight from the server when present; the
+      // fallbacks keep an older unpaged response usable.
+      summary: raw?.summary,
+      total: raw?.total ?? items.length,
+      page: raw?.page ?? 1,
+      pageSize: raw?.pageSize ?? items.length,
+      totalPages: raw?.totalPages ?? 1,
+    } as RiskScan;
   },
   aiChat: (message: string, conversationId?: string) =>
     request<AiReply>('/ai/chat', { method: 'POST', body: JSON.stringify({ message, conversationId }) }),
@@ -484,7 +569,7 @@ export const api = {
     request<{ recorded: boolean }>('/whatsapp/assistant-link/click', { method: 'POST', body: JSON.stringify({ device }) }),
 
   // ── transport (Phase 8) ──
-  listRoutes: () => request<TransportRouteDto[]>('/transport/routes'),
+  listRoutes: () => cachedRequest<TransportRouteDto[]>('/transport/routes'),
   listStops: (routeId: string) => request<TransportStopDto[]>(`/transport/routes/${routeId}/stops`),
   myBus: (studentId?: string) => request<MyBusDto | null>(`/transport/my-bus${studentId ? `?studentId=${studentId}` : ''}`),
   createRoute: (body: { name: string; operatorName?: string; vehicleNo?: string; driverName?: string; driverPhone?: string }) =>
@@ -526,8 +611,8 @@ export const api = {
   uploadFile,
 
   // ── hostel ──
-  hostelSummary: () => request<HostelSummaryDto>('/hostel/summary'),
-  hostelRooms: () => request<HostelRoomDto[]>('/hostel/rooms'),
+  hostelSummary: () => cachedRequest<HostelSummaryDto>('/hostel/summary'),
+  hostelRooms: () => cachedRequest<HostelRoomDto[]>('/hostel/rooms'),
   createHostelRoom: (body: { roomNo: string; block: string; floor?: number; type?: string; capacity: number }) =>
     request<HostelRoomDto>('/hostel/rooms', { method: 'POST', body: JSON.stringify(body) }),
   bulkCreateHostelRooms: (file: File) => uploadCsv('/hostel/rooms/bulk', file),
@@ -541,14 +626,14 @@ export const api = {
   hostelStudents: () => request<HostelAllocationDto[]>('/hostel/students'),
 
   // ── role dashboards (single scoped fetch per portal home) ──
-  adminDashboard: () => request<AdminDashboardDto>('/dashboard/admin'),
-  ownerDashboard: () => request<OwnerDashboardDto>('/dashboard/owner'),
-  financeDashboard: () => request<FinanceDashboardDto>('/dashboard/finance'),
-  teacherDashboard: () => request<TeacherDashboardDto>('/dashboard/teacher'),
-  studentDashboard: () => request<StudentDashboardDto>('/dashboard/student'),
-  parentDashboard: () => request<ParentDashboardDto>('/dashboard/parent'),
-  wardenDashboard: () => request<WardenDashboardDto>('/dashboard/warden'),
-  librarianDashboard: () => request<LibrarianDashboardDto>('/dashboard/librarian'),
+  adminDashboard: () => cachedRequest<AdminDashboardDto>('/dashboard/admin'),
+  ownerDashboard: () => cachedRequest<OwnerDashboardDto>('/dashboard/owner'),
+  financeDashboard: () => cachedRequest<FinanceDashboardDto>('/dashboard/finance'),
+  teacherDashboard: () => cachedRequest<TeacherDashboardDto>('/dashboard/teacher'),
+  studentDashboard: () => cachedRequest<StudentDashboardDto>('/dashboard/student'),
+  parentDashboard: () => cachedRequest<ParentDashboardDto>('/dashboard/parent'),
+  wardenDashboard: () => cachedRequest<WardenDashboardDto>('/dashboard/warden'),
+  librarianDashboard: () => cachedRequest<LibrarianDashboardDto>('/dashboard/librarian'),
 
   // ── AI tutor (grounded in the caller's own syllabus, server-side) ──
   tutorStatus: () => request<TutorStatusDto>('/ai/tutor/status'),
@@ -565,8 +650,8 @@ export const api = {
     request<AiCreditPurchaseDto & { idempotent?: boolean }>('/ai/credits/purchase/verify', { method: 'POST', body: JSON.stringify(body) }),
 
   // ── RBAC administration ──
-  listRoles: () => request<RoleDto[]>('/roles'),
-  listPermissionCatalog: () => request<PermissionDto[]>('/permissions'),
+  listRoles: () => cachedRequest<RoleDto[]>('/roles'),
+  listPermissionCatalog: () => cachedRequest<PermissionDto[]>('/permissions'),
   assignRolePermission: (roleId: string, body: { key: string; scope?: 'ALL' | 'OWN' }) =>
     request<RoleDto>(`/roles/${roleId}/permissions`, { method: 'POST', body: JSON.stringify(body) }),
   revokeRolePermission: (roleId: string, key: string) =>

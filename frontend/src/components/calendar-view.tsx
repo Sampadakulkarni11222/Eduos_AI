@@ -2,6 +2,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from './ui';
 import { api, ApiError } from '@/lib/api';
+import { useCachedResource } from '@/lib/cache';
 import { usePermissions } from '@/lib/permissions';
 import { useAuth } from '@/lib/auth';
 import type { CalendarEventDto } from '@/lib/types';
@@ -11,19 +12,23 @@ const TYPE_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'maroon' | 
 };
 
 export function CalendarView() {
-  const [events, setEvents] = useState<CalendarEventDto[] | null>(null);
   const [showForm, setShowForm] = useState(false);
   const { me } = useAuth();
   const { hasAccess } = usePermissions();
   const canManage = hasAccess(me?.profile?.role, 'calendar.manage');
 
-  const load = useCallback(() => {
-    const from = new Date(); from.setMonth(from.getMonth() - 1);
-    const to = new Date(); to.setMonth(to.getMonth() + 3);
-    return api.calendar(from.toISOString(), to.toISOString()).then(setEvents).catch(() => setEvents([]));
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
+  // The window is derived per render but the cache key is stable per day, so
+  // moving between portals reuses the events already loaded.
+  const { data, error, refresh } = useCachedResource<CalendarEventDto[]>(
+    `calendar:${new Date().toISOString().slice(0, 10)}`,
+    () => {
+      const from = new Date(); from.setMonth(from.getMonth() - 1);
+      const to = new Date(); to.setMonth(to.getMonth() + 3);
+      return api.calendar(from.toISOString(), to.toISOString());
+    },
+  );
+  const events: CalendarEventDto[] | null = data ?? (error ? [] : null);
+  const load = refresh;
 
   return (
     <div>

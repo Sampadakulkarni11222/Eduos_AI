@@ -204,7 +204,7 @@ export default function AdminTransport() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Create Route</div>
-              <button className="modal-close" onClick={() => setShowRouteModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowRouteModal(false)}>×</button>
             </div>
             <form onSubmit={handleCreateRoute}>
               <div className="field-label">Route Name *</div>
@@ -234,7 +234,7 @@ export default function AdminTransport() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Add Stop</div>
-              <button className="modal-close" onClick={() => setShowStopModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowStopModal(false)}>×</button>
             </div>
             <form onSubmit={handleCreateStop}>
               <div className="field-label">Stop Name *</div>
@@ -261,7 +261,7 @@ export default function AdminTransport() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Enroll Student on Route</div>
-              <button className="modal-close" onClick={() => setShowEnrollModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowEnrollModal(false)}>×</button>
             </div>
             <form onSubmit={handleEnrollStudent}>
               <div className="field-label">Select Student *</div>

@@ -18,12 +18,33 @@ export function parseDateToMidnight(dateStr) {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
-async function assertTeacherOwnsSection(actor, scope, sectionId) {
-  if (scope !== 'OWN' || actor.roleKey !== 'TEACHER') return;
-  const sectionIds = await getTeacherSectionIds(actor.profileId);
-  if (!sectionIds.includes(sectionId)) {
-    throw new AppError('You do not teach this section', 403);
+/**
+ * Gate for section-wide attendance data (a whole class roster).
+ *
+ * This used to return early for anyone who was not a TEACHER, which meant the
+ * OWN-scope check silently did nothing for every other narrow role: a student
+ * holding `attendance.read: OWN` could read any section's roster — 60 other
+ * students' names and attendance — just by supplying a sectionId.
+ *
+ * The gate is now driven by scope, not by role. ALL-scope roles (admin,
+ * principal, owner) are unrestricted as before; a teacher must own the
+ * section; and any other OWN-scope caller is refused, because a class roster
+ * is a staff view. Students and parents read their own attendance through
+ * /attendance/summary, /calendar and /trend, which resolve the enrollment
+ * from the caller's identity (see resolveSummaryEnrollmentIds).
+ */
+async function assertSectionAccess(actor, scope, sectionId) {
+  if (scope !== 'OWN') return;
+
+  if (actor.roleKey === 'TEACHER') {
+    const sectionIds = await getTeacherSectionIds(actor.profileId);
+    if (!sectionIds.includes(String(sectionId))) {
+      throw new AppError('You do not teach this section', 403);
+    }
+    return;
   }
+
+  throw new AppError('You are not allowed to view this section roster', 403);
 }
 
 /**
@@ -49,7 +70,7 @@ export async function getRoster(actor, scope, sectionId, date, periodNo = null) 
   const period = periodNo === null || periodNo === undefined || periodNo === '' ? null : Number(periodNo);
   if (period !== null && !Number.isInteger(period)) throw new AppError('periodNo must be a whole number', 400);
 
-  await assertTeacherOwnsSection(actor, scope, sectionId);
+  await assertSectionAccess(actor, scope, sectionId);
 
   const section = await Section.findById(sectionId).populate('gradeId');
   if (!section) throw new AppError('Section not found', 404);
@@ -112,7 +133,7 @@ export async function markAttendance(actor, { date, periodNo = null, records, en
   const day = parseDateToMidnight(date);
   if (!day) throw new AppError('Invalid date format', 400);
 
-  await assertTeacherOwnsSection(actor, 'OWN', sectionId);
+  await assertSectionAccess(actor, 'OWN', sectionId);
 
   const items = records || entries || [];
   if (items.length === 0) throw new AppError('No attendance records provided', 400);

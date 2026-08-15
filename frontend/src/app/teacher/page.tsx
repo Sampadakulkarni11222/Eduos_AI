@@ -147,7 +147,7 @@ export default function TeacherDashboard() {
               <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 500 }}>
                 <div className="modal-header">
                   <h3 className="modal-title">{selectedAnnouncement.title}</h3>
-                  <button className="modal-close" onClick={() => setSelectedAnnouncement(null)}>×</button>
+                  <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setSelectedAnnouncement(null)}>×</button>
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-faint)', marginBottom: 14 }}>
                   Published on {new Date(selectedAnnouncement.publishedAt).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}

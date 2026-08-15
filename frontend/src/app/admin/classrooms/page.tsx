@@ -310,7 +310,7 @@ export default function ClassroomManagement() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Add Grade</div>
-              <button className="modal-close" onClick={() => setShowGradeModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowGradeModal(false)}>×</button>
             </div>
             <form onSubmit={createGrade}>
               <div className="field-label">Grade Name *</div>
@@ -335,7 +335,7 @@ export default function ClassroomManagement() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Add Section (Classroom)</div>
-              <button className="modal-close" onClick={() => setShowSectionModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowSectionModal(false)}>×</button>
             </div>
             <form onSubmit={createSection}>
               <div className="field-label">Grade *</div>
@@ -369,7 +369,7 @@ export default function ClassroomManagement() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Edit Section ({editSectionForm.name})</div>
-              <button className="modal-close" onClick={() => setShowEditSectionModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowEditSectionModal(false)}>×</button>
             </div>
             <form onSubmit={updateSection}>
               <div className="field-label">Class Teacher</div>
@@ -400,7 +400,7 @@ export default function ClassroomManagement() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Add Subject</div>
-              <button className="modal-close" onClick={() => setShowSubjectModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowSubjectModal(false)}>×</button>
             </div>
             <form onSubmit={createSubject}>
               <div className="field-label">Subject Name *</div>
@@ -424,7 +424,7 @@ export default function ClassroomManagement() {
           <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Assign Subject to Class</div>
-              <button className="modal-close" onClick={() => setShowOfferingModal(false)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowOfferingModal(false)}>×</button>
             </div>
             <form onSubmit={createOffering}>
               <div className="field-label">Section (Class) *</div>

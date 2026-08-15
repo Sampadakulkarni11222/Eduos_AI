@@ -60,7 +60,11 @@ export default function PrincipalWorkload() {
                   <td className="cell-primary" data-label="Grade">{r.grade}</td>
                   <td style={{ textAlign: 'center', fontWeight: 600 }} data-label="Sections">{r.sections.length}</td>
                   <td style={{ textAlign: 'center', fontWeight: 600 }} data-label="Offerings">{r.totalOfferings}</td>
-                  <td style={{ fontSize: 12, color: 'var(--text-2)' }} data-label="Section Names">{r.sections.map((s) => s.name).join(', ')}</td>
+                  {/* Rows are already one per grade, so the names only need
+                      de-duplicating and ordering to stop reading as noise. */}
+                  <td style={{ fontSize: 12, color: 'var(--text-2)' }} data-label="Section Names">
+                    {r.grade} — {[...new Set(r.sections.map((s) => s.name))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).join(', ')}
+                  </td>
                 </tr>
               ))}
             </tbody>

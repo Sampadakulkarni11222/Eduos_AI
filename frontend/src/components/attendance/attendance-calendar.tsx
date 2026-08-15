@@ -277,7 +277,7 @@ export function AttendanceCalendar() {
                 {selectedDate.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
                 {isToday(selectedDate) ? ' (Today)' : ''}
               </div>
-              <button className="modal-close" onClick={() => setSelectedDate(null)}>×</button>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setSelectedDate(null)}>×</button>
             </div>
             <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
               Status: <strong style={{ color: 'var(--text-1)' }}>

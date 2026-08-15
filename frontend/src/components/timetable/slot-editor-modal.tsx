@@ -54,7 +54,7 @@ export function SlotEditorModal({
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title">Configure Timetable Slot</div>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <button className="modal-close" aria-label="Close dialog" title="Close" onClick={onClose}>×</button>
         </div>
         <form onSubmit={handleSave}>
           <div className="field-label">Day of Week *</div>
