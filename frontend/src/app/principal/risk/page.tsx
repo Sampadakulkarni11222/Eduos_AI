@@ -157,7 +157,7 @@ export default function PrincipalRisk() {
     <PortalShell expectedSlug="principal" topbar={{ title: 'Performance & Risk', desc: 'Predictive flags with the reasons behind them.' }}>
 
       {/* ── Stat cards ── */}
-      <div className="card-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 18 }}>
+      <div className="card-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 18, position: 'sticky', top: 0, zIndex: 10 }}>
         <StatCard label="High risk" value={scan ? (scan.counts.HIGH ?? 0) : '—'} deltaDir="down" />
         <StatCard label="Medium risk" value={scan ? (scan.counts.MEDIUM ?? 0) : '—'} deltaDir="flat" />
         <StatCard label="Flagged students" value={scan ? studentGroups.length : '—'} />

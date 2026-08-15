@@ -26,6 +26,7 @@ function weekdayOccurrencesInMonth(year: number, monthIndex: number): Record<num
 export default function TeacherTimetable() {
   const [sections, setSections] = useState<SectionDto[] | null>(null);
   const [slots, setSlots] = useState<MySlot[] | null>(null);
+  const [err, setErr] = useState(false);
   const [dayFilter, setDayFilter] = useState('');
   const [periodFilter, setPeriodFilter] = useState('');
   const [timeFilter, setTimeFilter] = useState('');
@@ -37,7 +38,7 @@ export default function TeacherTimetable() {
         secs.map((s) => api.timetable(s.id).then((tt) => tt.slots.map((slot) => ({ ...slot, className: `${s.gradeName} ${s.name}` }))).catch(() => [])),
       );
       setSlots(perSection.flat().filter((s) => !s.isBreak));
-    }).catch(() => { setSections([]); setSlots([]); });
+    }).catch(() => { setSections(null); setSlots(null); setErr(true); });
   }, []);
 
   const summary = useMemo(() => {
@@ -71,9 +72,10 @@ export default function TeacherTimetable() {
 
   return (
     <PortalShell expectedSlug="teacher" topbar={{ title: 'Timetable', desc: 'Weekly schedule for your sections.' }}>
-      {slots === null && <Card style={{ marginBottom: 18 }}><SkeletonRows rows={3} /></Card>}
+      {slots === null && !err && <Card><SkeletonRows rows={4} /></Card>}
+      {err && <EmptyState title="Couldn't load timetable" sub="Check your connection and reload the page." />}
 
-      {slots !== null && (
+      {slots && slots.length > 0 && (
         <>
           <div className="card-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 18 }}>
             <StatCard label="Today" value={summary!.today} />
@@ -101,7 +103,7 @@ export default function TeacherTimetable() {
             )}
           </div>
 
-          {slots.length === 0 && <EmptyState title="No classes yet" sub="Your periods appear here once the timetable is built." />}
+          {slots.length === 0 && !err && <EmptyState title="No classes yet" sub="Your periods appear here once the timetable is built." />}
           {slots.length > 0 && filtered.length === 0 && <EmptyState title="No match" sub="No periods match these filters." />}
 
           {filtered.length > 0 && (

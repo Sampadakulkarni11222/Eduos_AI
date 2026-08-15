@@ -150,8 +150,8 @@ export interface AnnouncementDto {
   id: string; title: string; content: string; publishedAt: string;
   audience: AnnouncementAudience; audienceLabel: string; channels: AnnouncementChannels;
 }
-export interface TicketDto { id: string; subject: string; status: string; priority: string; routedToRoleKey: string | null; raisedBy: string; assignedTo?: string | null; studentName?: string | null; createdAt: string; messageCount: number }
-export interface TicketThread { id: string; subject: string; status: string; routedToRoleKey: string | null; studentName?: string | null; messages: Array<{ id: string; body: string; channel: string; mine: boolean; createdAt: string }> }
+export interface TicketDto { id: string; subject: string; status: string; priority: string; severity: string; routedToRoleKey: string | null; raisedBy: string; assignedTo?: string | null; studentName?: string | null; createdAt: string; messageCount: number }
+export interface TicketThread { id: string; subject: string; status: string; priority: string; severity: string; routedToRoleKey: string | null; studentName?: string | null; messages: Array<{ id: string; body: string; channel: string; mine: boolean; createdAt: string }> }
 export interface MedicalDto { studentId: string; bloodGroup: string | null; heightCm: number | null; weightKg: number | null; emergencyContact: { name: string; phone: string; relation: string } | null; allergies: string[]; medications: string[]; history: string | null; attachments?: Array<{ name: string; fileUrl: string }> | null }
 export interface LeadCard { id: string; childName: string; guardianName: string; gradeApplying: string | null; source: string; nextActionAt: string | null }
 export interface Pipeline { stages: string[]; byStage: Record<string, LeadCard[]> }
@@ -287,7 +287,7 @@ export interface AdminDashboardDto {
   admissionsPipeline: Array<{ stage: string; count: number }>;
   recentStudents: Array<{ _id: string; firstName: string; lastName?: string; admissionNo: string; createdAt: string }>;
   recentAnnouncements: Array<{ _id: string; title: string; content: string; publishedAt: string }>;
-  recentTickets: Array<{ _id: string; subject: string; status: string; priority?: string; routedToRoleKey?: string | null; createdAt: string; raisedByProfileId?: { displayName?: string } | null }>;
+  recentTickets: Array<{ _id: string; subject: string; status: string; priority?: string; severity?: string; routedToRoleKey?: string | null; createdAt: string; raisedByProfileId?: { displayName?: string } | null }>;
 }
 export interface StudentDashboardDto {
   attendancePercentage: number; totalDays: number; presentDays: number;
@@ -325,7 +325,7 @@ export interface ParentDashboardDto {
 export interface WardenDashboardDto {
   hostelStudents: number; occupiedRooms: number; vacantBeds: number; totalCapacity: number; occupancyRate: number;
   maintenanceRooms: number; maintenanceRequests: number; openInquiries: number;
-  openTickets: Array<{ id: string; subject: string; status: string; priority: string | null; raisedBy: string | null; createdAt: string }>;
+  openTickets: Array<{ id: string; subject: string; status: string; priority: string | null; severity: string | null; raisedBy: string | null; createdAt: string }>;
   pendingLeaveCount: number;
   leaveRequests: Array<{ id: string; studentName: string; admissionNo: string; fromDate: string; toDate: string; reason: string; status: string }>;
   recentAllocations: Array<{ allocationId: string; studentName: string; admissionNo: string; roomNo: string; block: string; allottedAt: string }>;

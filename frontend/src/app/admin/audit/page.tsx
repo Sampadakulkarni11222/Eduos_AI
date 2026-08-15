@@ -21,7 +21,7 @@ export default function AdminAudit() {
       setCursor(res.nextCursor);
     } catch {
       setErr(true);
-      setLogs([]);
+      setLogs(null);
     }
   }, []);
 

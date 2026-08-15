@@ -14,12 +14,13 @@ const CHAPTER_OPTIONS = Array.from({ length: 20 }, (_, i) => `Chapter ${i + 1}`)
 
 export default function AssignmentsPage() {
   const [items, setItems] = useState<AssignmentDto[] | null>(null);
+  const [err, setErr] = useState(false);
   const [offerings, setOfferings] = useState<OfferingDto[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [filters, setFilters] = useState(emptyFilters);
 
-  const reload = () => api.assignments().then(setItems).catch(() => setItems([]));
+  const reload = () => api.assignments().then((r) => { setItems(r); setErr(false); }).catch(() => { setItems(null); setErr(true); });
   useEffect(() => { void reload(); api.myOfferings().then(setOfferings).catch(() => {}); }, []);
 
   // One combined "class" option per section — labeled with its grade so same-named sections across grades stay distinguishable.
@@ -75,8 +76,9 @@ export default function AssignmentsPage() {
         </div>
       )}
 
-      {items === null && <Card><SkeletonRows rows={4} /></Card>}
-      {items?.length === 0 && <EmptyState title="No assignments yet" sub="Create your first assignment — students can submit from their portal." />}
+      {items === null && !err && <Card><SkeletonRows rows={4} /></Card>}
+      {err && <EmptyState title="Couldn't load assignments" sub="Check your connection and reload the page." />}
+      {!err && items?.length === 0 && <EmptyState title="No assignments yet" sub="Create your first assignment — students can submit from their portal." />}
       {filtered && filtered.length === 0 && items && items.length > 0 && (
         <EmptyState title="No matching assignments" sub="Try widening or clearing your filters." />
       )}

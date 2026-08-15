@@ -23,14 +23,20 @@ function PriorityDot({ priority }: { priority?: string | null }) {
   );
 }
 
+const SEVERITY_TONE: Record<string, 'red' | 'amber' | 'green' | 'gray'> = {
+  CRITICAL: 'red', HIGH: 'red', MEDIUM: 'amber', LOW: 'green',
+};
+
 export default function WardenDashboard() {
   const router = useRouter();
   const toast = useToast();
   const [data, setData] = useState<WardenDashboardDto | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
 
+  const [err, setErr] = useState(false);
+
   const reloadData = () => {
-    api.wardenDashboard().then(setData).catch(() => setData(null));
+    api.wardenDashboard().then((res) => { setData(res); setErr(false); }).catch(() => { setErr(true); setData(null); });
   };
 
   useEffect(() => {
@@ -131,9 +137,10 @@ export default function WardenDashboard() {
             <Button variant="soft" small onClick={() => router.push('/warden/tickets')}>View all</Button>
           </div>
 
-          <div style={{ padding: tickets === null || tickets.length === 0 ? 20 : 0 }}>
-            {tickets === null && <SkeletonRows rows={3} />}
-            {tickets !== null && tickets.length === 0 && (
+          <div style={{ padding: tickets === null && !err ? 20 : 0 }}>
+            {tickets === null && !err && <SkeletonRows rows={3} />}
+            {err && <EmptyState title="Couldn't load tickets" sub="The server didn't respond. Reload the page to try again." />}
+            {tickets !== null && !err && tickets.length === 0 && (
               <EmptyState title="No active requests" sub="All student tickets and maintenance requests are resolved." />
             )}
             {tickets?.slice(0, 5).map((t, i) => (
@@ -145,7 +152,10 @@ export default function WardenDashboard() {
                     Raised by: {t.raisedBy || 'Student'}
                   </div>
                 </div>
-                <Pill tone={t.status === 'NEW' ? 'blue' : t.status === 'OPEN' ? 'amber' : 'gray'}>{t.status.toLowerCase()}</Pill>
+                <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                  <Pill tone={SEVERITY_TONE[t.severity?.toUpperCase() ?? 'MEDIUM'] ?? 'gray'}>{(t.severity ?? 'medium').toLowerCase()}</Pill>
+                  <Pill tone={t.status === 'NEW' ? 'blue' : t.status === 'OPEN' ? 'amber' : 'gray'}>{t.status.toLowerCase()}</Pill>
+                </div>
               </div>
             ))}
           </div>

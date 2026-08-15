@@ -9,10 +9,10 @@ const STATUS_TONE: Record<string, 'green' | 'amber' | 'red' | 'gray' | 'blue'> =
 };
 
 const PRIORITY_COLOR: Record<string, string> = {
-  HIGH: 'var(--red)', MEDIUM: 'var(--amber)', LOW: 'var(--green)',
+  CRITICAL: 'var(--red)', HIGH: 'var(--red)', MEDIUM: 'var(--amber)', LOW: 'var(--green)',
 };
 function PriorityDot({ priority }: { priority?: string | null }) {
-  const p = (priority || 'NONE').toUpperCase();
+  const p = (priority || 'MEDIUM').toUpperCase();
   const color = PRIORITY_COLOR[p] ?? '#ccc';
   return (
     <span
@@ -22,11 +22,19 @@ function PriorityDot({ priority }: { priority?: string | null }) {
   );
 }
 
+const SEVERITY_TONE: Record<string, 'red' | 'amber' | 'green' | 'gray'> = {
+  CRITICAL: 'red', HIGH: 'red', MEDIUM: 'amber', LOW: 'green',
+};
+
 export function TicketsView({ canCreate, canRespond }: { canCreate: boolean; canRespond: boolean }) {
   const [items, setItems] = useState<TicketDto[] | null>(null);
+  const [err, setErr] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const reload = () => api.tickets().then(setItems).catch(() => setItems([]));
+  const reload = () => {
+    setErr(false);
+    api.tickets().then((r) => { setItems(r); setErr(false); }).catch(() => { setErr(true); setItems(null); });
+  };
   useEffect(() => { void reload(); }, []);
 
   return (
@@ -34,8 +42,9 @@ export function TicketsView({ canCreate, canRespond }: { canCreate: boolean; can
       <div>
         {canCreate && <div style={{ marginBottom: 14 }}><Button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Close' : '+ New ticket'}</Button></div>}
         {showForm && <NewTicket onDone={() => { setShowForm(false); void reload(); }} />}
-        {items === null && <Card><SkeletonRows rows={4} /></Card>}
-        {items?.length === 0 && <EmptyState title="No tickets" sub="Support requests appear here." />}
+        {items === null && !err && <Card><SkeletonRows rows={4} /></Card>}
+        {err && <EmptyState title="Couldn't load tickets" sub="The server didn't respond. Reload the page to try again." />}
+        {!err && items !== null && items.length === 0 && <EmptyState title="No tickets" sub="Support requests appear here." />}
         {items && items.length > 0 && (
           <Card pad={false}>
             {items.map((t, i) => (
@@ -46,7 +55,10 @@ export function TicketsView({ canCreate, canRespond }: { canCreate: boolean; can
                     <PriorityDot priority={t.priority} />
                     <span style={{ fontWeight: 600, color: 'var(--text-1)', fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.subject}</span>
                   </span>
-                  <Pill tone={STATUS_TONE[t.status] ?? 'gray'}>{t.status.toLowerCase()}</Pill>
+                  <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexShrink: 0 }}>
+                    <Pill tone={SEVERITY_TONE[t.severity?.toUpperCase()] ?? 'gray'}>{(t.severity ?? 'medium').toLowerCase()}</Pill>
+                    <Pill tone={STATUS_TONE[t.status] ?? 'gray'}>{t.status.toLowerCase()}</Pill>
+                  </div>
                 </div>
                 <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 3 }}>
                   {t.raisedBy && t.raisedBy !== 'Unknown' ? t.raisedBy : (t.routedToRoleKey ? t.routedToRoleKey.replace('_', ' ').toLowerCase() : 'Support request')}
@@ -116,6 +128,10 @@ function ThreadPanel({ ticketId, canRespond, onChanged }: { ticketId: string; ca
       <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--hairline)' }}>
         <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>{thread.subject}</strong>
         {thread.studentName && <div style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 2 }}>Re: {thread.studentName}</div>}
+        <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+          <Pill tone={SEVERITY_TONE[(thread.severity ?? 'MEDIUM').toUpperCase()] ?? 'gray'}>Severity: {(thread.severity ?? 'medium').toLowerCase()}</Pill>
+          <Pill tone={STATUS_TONE[thread.status] ?? 'gray'}>{thread.status?.toLowerCase()}</Pill>
+        </div>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {thread.messages.map((m: any) => (
@@ -148,6 +164,8 @@ function NewTicket({ onDone }: { onDone: () => void }) {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [routedToRoleKey, setRoute] = useState('ADMIN');
+  const [priority, setPriority] = useState('MEDIUM');
+  const [severity, setSeverity] = useState('MEDIUM');
   const [studentId, setStudentId] = useState('');
   const [kids, setKids] = useState<StudentListItem[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -159,7 +177,7 @@ function NewTicket({ onDone }: { onDone: () => void }) {
     e.preventDefault(); setBusy(true); setErr(null);
     try {
       await api.createTicket({
-        subject, body, routedToRoleKey,
+        subject, body, routedToRoleKey, priority, severity,
         studentId: routedToRoleKey === 'CLASS_TEACHER' ? studentId : undefined,
       });
       onDone();
@@ -174,6 +192,26 @@ function NewTicket({ onDone }: { onDone: () => void }) {
         <input className="field-input" value={subject} onChange={(e) => setSubject(e.target.value)} required />
         <div className="field-label">Message</div>
         <textarea className="field-input" rows={2} value={body} onChange={(e) => setBody(e.target.value)} required />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <div className="field-label">Priority</div>
+            <select className="field-input" value={priority} onChange={(e) => setPriority(e.target.value)}>
+              <option value="LOW">Low</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HIGH">High</option>
+              <option value="CRITICAL">Critical</option>
+            </select>
+          </div>
+          <div>
+            <div className="field-label">Severity</div>
+            <select className="field-input" value={severity} onChange={(e) => setSeverity(e.target.value)}>
+              <option value="LOW">Low</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HIGH">High</option>
+              <option value="CRITICAL">Critical</option>
+            </select>
+          </div>
+        </div>
         <div className="field-label">Route to</div>
         <select className="field-input" value={routedToRoleKey} onChange={(e) => setRoute(e.target.value)}>
           {kids && kids.length > 0 && <option value="CLASS_TEACHER">Class teacher</option>}

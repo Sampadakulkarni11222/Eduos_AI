@@ -150,7 +150,7 @@ export async function getAdminDashboard() {
       .sort({ createdAt: -1 })
       .limit(5)
       .populate('raisedByProfileId', 'displayName')
-      .select('subject status priority routedToRoleKey createdAt')
+      .select('subject status priority severity routedToRoleKey createdAt')
       .lean(),
 
     Lead.aggregate([
@@ -924,7 +924,7 @@ export async function getWardenDashboard() {
       .sort({ createdAt: -1 })
       .limit(10)
       .populate('raisedByProfileId', 'displayName')
-      .select('subject status priority createdAt raisedByProfileId')
+      .select('subject status priority severity createdAt raisedByProfileId')
       .lean(),
 
     LeaveApplication.find({ status: 'PENDING' })
@@ -984,7 +984,8 @@ export async function getWardenDashboard() {
       id: t._id,
       subject: t.subject,
       status: t.status,
-      priority: t.priority ?? null,
+      priority: t.priority ?? 'MEDIUM',
+      severity: t.severity ?? 'MEDIUM',
       raisedBy: t.raisedByProfileId?.displayName ?? (t.routedToRoleKey ? `Parent (${t.routedToRoleKey})` : 'Student'),
       createdAt: t.createdAt,
     })),

@@ -21,7 +21,7 @@ export default function PrincipalAudit() {
       setCursor(res.nextCursor);
     } catch {
       setErr(true);
-      setLogs([]);
+      setLogs(null);
     }
   }, []);
 

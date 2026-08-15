@@ -217,7 +217,7 @@ export default function MyClassesPage() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [viewingId, setViewingId] = useState<string | null>(null);
 
-  useEffect(() => { api.students().then((r) => setStudents(r.items)).catch(() => { setErr(true); setStudents([]); }); }, []);
+  useEffect(() => { api.students().then((r) => setStudents(r.items)).catch(() => { setErr(true); setStudents(null); }); }, []);
 
   // Group by class label — scope already limits to sections this teacher teaches.
   const byClass = useMemo(() => {

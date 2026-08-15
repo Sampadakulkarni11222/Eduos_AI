@@ -22,7 +22,7 @@ export default function OwnerAudit() {
       setCursor(res.nextCursor);
     } catch {
       setErr(true);
-      setLogs([]);
+      setLogs(null);
     }
   }, []);
 

@@ -28,12 +28,19 @@ export default function LibrarianDashboard() {
   const router = useRouter();
   const toast = useToast();
   const [data, setData] = useState<LibrarianDashboardDto | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(false);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'OVERDUE'>('ALL');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const reloadData = () => {
-    api.librarianDashboard().then(setData).catch(() => setData(null));
+    setLoading(true);
+    setErr(false);
+    api.librarianDashboard()
+      .then((res) => { setData(res); setErr(false); })
+      .catch(() => { setData(null); setErr(true); })
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
@@ -163,12 +170,13 @@ export default function LibrarianDashboard() {
             </select>
           </div>
 
-          <div style={{ padding: processedIssues === null || processedIssues.length === 0 ? 20 : 0 }}>
-            {processedIssues === null && <SkeletonRows rows={3} />}
-            {processedIssues !== null && processedIssues.length === 0 && (
+          <div style={{ padding: loading || (!loading && processedIssues?.length === 0) || err ? 20 : 0 }}>
+            {loading && <SkeletonRows rows={3} />}
+            {!loading && err && <EmptyState title="Couldn't load records" sub="The server didn't respond. Reload the page to try again." />}
+            {!loading && !err && processedIssues?.length === 0 && (
               <EmptyState title="No matching issues" sub={filterStatus === 'OVERDUE' ? 'No overdue books found.' : 'No books currently checked out.'} />
             )}
-            {processedIssues?.map((item, i) => (
+            {!loading && !err && processedIssues?.map((item, i) => (
               <div key={item.issueId} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 18px', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text-1)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -208,12 +216,13 @@ export default function LibrarianDashboard() {
           <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--hairline)' }}>
             <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Returned Today</strong>
           </div>
-          <div style={{ padding: returns === null || returns.length === 0 ? 20 : 0 }}>
-            {returns === null && <SkeletonRows rows={3} />}
-            {returns !== null && returns.length === 0 && (
+          <div style={{ padding: loading || (!loading && returns?.length === 0) || err ? 20 : 0 }}>
+            {loading && <SkeletonRows rows={3} />}
+            {!loading && err && <EmptyState title="Couldn't load returns" sub="The server didn't respond. Reload the page to try again." />}
+            {!loading && !err && returns?.length === 0 && (
               <EmptyState title="Nothing returned today" sub="Returns logged today will appear here." />
             )}
-            {returns?.map((item, i) => (
+            {!loading && !err && returns?.map((item, i) => (
               <div key={item.issueId} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-1)' }}>{(item.book && item.book !== 'CPP' && item.book !== '--') ? item.book : 'Untitled Book'}</div>

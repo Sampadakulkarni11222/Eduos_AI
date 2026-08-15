@@ -18,7 +18,7 @@ export default function ParentDashboard() {
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<ParentDashboardDto['announcements'][number] | null>(null);
 
   useEffect(() => {
-    api.students().then((r) => setKids(r.items)).catch(() => { setErr(true); setKids([]); });
+    api.students().then((r) => setKids(r.items)).catch(() => { setErr(true); setKids(null); });
   }, []);
 
   useEffect(() => {

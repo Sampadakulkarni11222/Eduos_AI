@@ -21,10 +21,11 @@ export default function TeacherExams() {
   const [perf, setPerf] = useState<PerformanceDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
+  const [err, setErr] = useState(false);
 
   useEffect(() => {
-    api.exams().then((r) => setExams(r)).catch(() => setExams([]));
-    api.students().then((r) => setStudents(r.items)).catch(() => setStudents([]));
+    api.exams().then((r) => setExams(r)).catch(() => setExams(null));
+    api.students().then((r) => setStudents(r.items)).catch(() => { setStudents(null); setErr(true); });
   }, []);
 
   useEffect(() => {
@@ -78,8 +79,9 @@ export default function TeacherExams() {
         </select>
       </div>
 
-      {students === null && <Card><SkeletonRows rows={4} /></Card>}
-      {students?.length === 0 && <EmptyState title="No students in your classes" sub="You'll see student performance here once you're assigned to a class." />}
+      {students === null && !err && <Card><SkeletonRows rows={4} /></Card>}
+      {err && <EmptyState title="Couldn't load students" sub="Check your connection and reload the page." />}
+      {!err && students?.length === 0 && <EmptyState title="No students in your classes" sub="You'll see student performance here once you're assigned to a class." />}
       {!enrollmentId && students && students.length > 0 && (
         <EmptyState icon="◌" title="Select a student" sub="Choose a class and student above to view their exam performance." />
       )}
