@@ -7,6 +7,7 @@ import { logger } from '../../../utils/logger.js';
 import { getTool, toolsAvailableTo } from './tools.js';
 import { parseIntentWithLlm, parseIntent } from './intent.js';
 import { detectLanguage, t } from '../../../utils/language.js';
+import { handleRagFallback } from './rag.js';
 
 const CONFIRM_TTL_MINUTES = 10;
 
@@ -248,6 +249,12 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
 
   const intent = await parseIntentWithLlm(message, actor);
   if (!intent) {
+    // Attempt RAG fallback for unstructured queries or generic greetings
+    const ragReply = await handleRagFallback(message, actor, lang);
+    if (ragReply) {
+      return { reply: ragReply, lang, action: null };
+    }
+
     const available = toolsAvailableTo(actor);
     return {
       reply: t('agent.unsure', lang, {
