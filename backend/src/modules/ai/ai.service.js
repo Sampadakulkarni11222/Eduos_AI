@@ -13,58 +13,12 @@ import * as documents from '../documents/document.service.js';
 import * as transport from '../transport/transport.service.js';
 import { Enrollment } from '../../models/student.model.js';
 import { getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
-
-/**
- * EduOS copilot.
- *
- * Deterministic, data-grounded assistant: intents are matched by keyword and
- * answered from the SAME role-scoped aggregation services that power the
- * dashboards, so a parent only ever sees their own children's data, a teacher
- * their own classes, etc. No fabricated numbers.
- *
- * Intent routing is a small weighted-keyword scorer (see scoreIntent below),
- * not a single first-match regex — this lets more specific phrases like
- * "exam results" or "fee due" outrank a bare shared word like "due" or
- * "exam" that appears in more than one intent's vocabulary.
- *
- * Provider hook: when AI_PROVIDER is set to an LLM provider (and its API key
- * is present), swap the `respond()` call for the LLM client, passing the same
- * scoped `facts` object as tool results — callers do not change.
- */
+import { chunkText } from '../../utils/chunker.js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const rupees = (n) => '₹' + Number(n ?? 0).toLocaleString('en-IN');
 const shortDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—');
 
-async function loadFacts(actor) {
-  const role = actor?.roleKey;
-  switch (role) {
-    case 'STUDENT':
-      return { role, student: await dashboard.getStudentDashboard(actor.profileId) };
-    case 'PARENT':
-      return { role, parent: await dashboard.getParentDashboard(actor.profileId) };
-    case 'TEACHER':
-      return { role, teacher: await dashboard.getTeacherDashboard(actor.profileId) };
-    case 'OWNER':
-    case 'ADMIN':
-    case 'PRINCIPAL': {
-      const [admin, feeSummary] = await Promise.all([
-        dashboard.getAdminDashboard(),
-        fees.getSummary(actor, 'ALL'),
-      ]);
-      return { role, admin, feeSummary };
-    }
-    case 'FINANCE':
-      return { role, feeSummary: await fees.getSummary(actor, 'ALL') };
-    case 'LIBRARIAN':
-      return { role, librarySummary: await library.getSummary() };
-    case 'WARDEN':
-      return { role, hostelSummary: await hostel.getSummary() };
-    default:
-      return { role };
-  }
-}
-
-/** Resolves the ACTIVE-enrollment section id for a student/parent actor, or null. */
 async function getOwnSectionId(actor) {
   let studentIds = [];
   if (actor?.roleKey === 'STUDENT') {
@@ -85,24 +39,27 @@ async function getMyOfferings(actor) {
   return academics.listOfferings({ sectionId });
 }
 
-function answerAttendance(facts, toolsUsed) {
-  if (facts.student) {
+async function answerAttendance(actor, toolsUsed) {
+  const role = actor?.roleKey;
+  if (role === 'STUDENT') {
     toolsUsed.push('attendance.summary');
-    const s = facts.student;
-    if (s.totalDays === 0) return 'No attendance has been recorded for you yet this term.';
-    return `Your attendance is ${s.attendancePercentage}% — present ${s.presentDays} of ${s.totalDays} recorded days.`;
+    const student = await dashboard.getStudentDashboard(actor.profileId);
+    if (student.totalDays === 0) return 'No attendance has been recorded for you yet this term.';
+    return `Your attendance is ${student.attendancePercentage}% — present ${student.presentDays} of ${student.totalDays} recorded days.`;
   }
-  if (facts.parent) {
+  if (role === 'PARENT') {
     toolsUsed.push('attendance.summary');
-    const kids = facts.parent.linkedChildren;
+    const parent = await dashboard.getParentDashboard(actor.profileId);
+    const kids = parent.linkedChildren;
     if (!kids?.length) return 'No children are linked to your account yet — please contact the school office.';
     return kids
       .map((k) => `${k.name}: ${k.attendance.percentage}% attendance (${k.attendance.present}/${k.attendance.total} days)`)
       .join('\n');
   }
-  if (facts.teacher) {
+  if (role === 'TEACHER') {
     toolsUsed.push('attendance.today');
-    const a = facts.teacher.attendanceSummary;
+    const teacher = await dashboard.getTeacherDashboard(actor.profileId);
+    const a = teacher.attendanceSummary;
     const marked = Object.values(a).reduce((x, y) => x + y, 0);
     if (marked === 0) return "Today's attendance hasn't been marked yet for your classes.";
     return `Today across your classes: ${a.PRESENT} present, ${a.ABSENT} absent, ${a.LATE} late, ${a.EXCUSED} excused.`;
@@ -110,31 +67,32 @@ function answerAttendance(facts, toolsUsed) {
   return 'Open Attendance in the sidebar for school-wide attendance trends.';
 }
 
-function answerFees(facts, toolsUsed) {
-  if (facts.student) {
+async function answerFees(actor, toolsUsed) {
+  const role = actor?.roleKey;
+  if (role === 'STUDENT') {
     toolsUsed.push('fees.summary');
-    const f = facts.student.feeStatus;
+    const student = await dashboard.getStudentDashboard(actor.profileId);
+    const f = student.feeStatus;
     if (f.totalFees === 0) return 'No fee invoices have been raised for you yet.';
     return `Fees: ${rupees(f.paidFees)} paid of ${rupees(f.totalFees)} billed — ${rupees(f.pendingFees)} pending across ${f.pendingInvoices} invoice(s).`;
   }
-  if (facts.parent) {
+  if (role === 'PARENT') {
     toolsUsed.push('fees.summary');
-    const p = facts.parent;
-    if (!p.feeInvoices?.length) return 'No fee invoices have been raised for your children yet.';
-    return `Pending fees for your family: ${rupees(p.pendingFees)}. You can pay online from Payments in the sidebar.`;
+    const parent = await dashboard.getParentDashboard(actor.profileId);
+    if (!parent.feeInvoices?.length) return 'No fee invoices have been raised for your children yet.';
+    return `Pending fees for your family: ${rupees(parent.pendingFees)}. You can pay online from Payments in the sidebar.`;
   }
-  if (facts.feeSummary) {
+  if (['OWNER', 'ADMIN', 'PRINCIPAL', 'FINANCE'].includes(role)) {
     toolsUsed.push('fees.summary');
-    const f = facts.feeSummary;
-    // getSummary speaks paise throughout; rupees() expects rupees.
+    const f = await fees.getSummary(actor, 'ALL');
     return `School fee health: ${rupees(f.totalCollectedPaise / 100)} collected of ${rupees(f.totalBilledPaise / 100)} billed (${f.collectionPct}% collection rate), ${f.pendingCount} invoice(s) still open.`;
   }
   return 'Fee information is available to parents, students, and school staff.';
 }
 
-/** Renders up to 5 assignments (title/subject/due date/status) for a student-or-parent actor. */
-async function answerAssignments(facts, toolsUsed, actor) {
-  if (facts.student || facts.parent) {
+async function answerAssignments(actor, toolsUsed) {
+  const role = actor?.roleKey;
+  if (role === 'STUDENT' || role === 'PARENT') {
     toolsUsed.push('assignments.list');
     const items = await assignments.list(actor, 'OWN', {});
     const pending = items.filter((a) => !a.mySubmission || a.mySubmission.status === 'PENDING');
@@ -145,9 +103,10 @@ async function answerAssignments(facts, toolsUsed, actor) {
     const more = pending.length > 5 ? `\n…and ${pending.length - 5} more.` : '';
     return `You have ${pending.length} pending assignment${pending.length > 1 ? 's' : ''}:\n${lines.join('\n')}${more}`;
   }
-  if (facts.teacher) {
+  if (role === 'TEACHER') {
     toolsUsed.push('submissions.pending');
-    const n = facts.teacher.pendingAssignmentEvaluations;
+    const teacher = await dashboard.getTeacherDashboard(actor.profileId);
+    const n = teacher.pendingAssignmentEvaluations;
     return n === 0
       ? 'No submissions are waiting for grading.'
       : `${n} submission${n > 1 ? 's are' : ' is'} waiting for your grading in Assignments.`;
@@ -155,9 +114,9 @@ async function answerAssignments(facts, toolsUsed, actor) {
   return 'Assignments are managed per class — teachers create them, students submit from their portal.';
 }
 
-/** Published exam results grouped by subject — distinct from the "upcoming exams" schedule intent. */
-async function answerGrades(facts, toolsUsed, actor) {
-  if (!facts.student && !facts.parent) {
+async function answerGrades(actor, toolsUsed) {
+  const role = actor?.roleKey;
+  if (role !== 'STUDENT' && role !== 'PARENT') {
     return 'Grades are available to students and parents once results are published.';
   }
   toolsUsed.push('exams.performance');
@@ -172,8 +131,13 @@ async function answerGrades(facts, toolsUsed, actor) {
   }
 }
 
-function answerTimetable(facts, toolsUsed) {
-  const slots = facts.student?.todayTimetable ?? facts.teacher?.todayTimetable ?? facts.parent?.timetable;
+async function answerTimetable(actor, toolsUsed) {
+  const role = actor?.roleKey;
+  let slots = null;
+  if (role === 'STUDENT') slots = (await dashboard.getStudentDashboard(actor.profileId)).todayTimetable;
+  else if (role === 'TEACHER') slots = (await dashboard.getTeacherDashboard(actor.profileId)).todayTimetable;
+  else if (role === 'PARENT') slots = (await dashboard.getParentDashboard(actor.profileId)).timetable;
+
   if (slots) {
     toolsUsed.push('timetable.today');
     if (!slots.length) return 'No periods are scheduled today.';
@@ -185,8 +149,13 @@ function answerTimetable(facts, toolsUsed) {
   return 'Open Timetable in the sidebar to view or build class schedules.';
 }
 
-function answerExams(facts, toolsUsed) {
-  const exams = facts.student?.examSchedule ?? facts.teacher?.upcomingExams ?? facts.parent?.upcomingExams;
+async function answerExams(actor, toolsUsed) {
+  const role = actor?.roleKey;
+  let exams = null;
+  if (role === 'STUDENT') exams = (await dashboard.getStudentDashboard(actor.profileId)).examSchedule;
+  else if (role === 'TEACHER') exams = (await dashboard.getTeacherDashboard(actor.profileId)).upcomingExams;
+  else if (role === 'PARENT') exams = (await dashboard.getParentDashboard(actor.profileId)).upcomingExams;
+
   if (exams) {
     toolsUsed.push('exams.upcoming');
     if (!exams.length) return 'No upcoming exams are scheduled.';
@@ -200,19 +169,19 @@ function answerExams(facts, toolsUsed) {
   return 'Exam schedules appear here once published.';
 }
 
-function answerSchool(facts, toolsUsed) {
-  if (facts.admin) {
+async function answerSchool(actor, toolsUsed) {
+  if (['OWNER', 'ADMIN', 'PRINCIPAL'].includes(actor?.roleKey)) {
     toolsUsed.push('analytics.school');
-    const a = facts.admin;
+    const a = await dashboard.getAdminDashboard();
     return `School snapshot: ${a.totalStudents} active students, ${a.openTickets} open tickets, ${a.announcementsCount} announcements published.`;
   }
   return 'School-wide analytics are available to admins, owners, and principals.';
 }
 
-async function answerLibrary(facts, toolsUsed, actor) {
-  if (facts.librarySummary) {
+async function answerLibrary(actor, toolsUsed) {
+  if (['LIBRARIAN', 'OWNER', 'ADMIN', 'PRINCIPAL'].includes(actor?.roleKey)) {
     toolsUsed.push('library.summary');
-    const l = facts.librarySummary;
+    const l = await library.getSummary();
     return `Library: ${l.totalCatalogBooks} books in the catalog (${l.uniqueTitles} titles), ${l.activeBookIssues} currently on loan, ${l.overdueReturns} overdue.`;
   }
   if (actor?.roleKey === 'STUDENT') {
@@ -227,16 +196,16 @@ async function answerLibrary(facts, toolsUsed, actor) {
   return 'Library catalog and lending data is available to librarians, admins, and owners.';
 }
 
-function answerHostel(facts, toolsUsed) {
-  if (facts.hostelSummary) {
+async function answerHostel(actor, toolsUsed) {
+  if (['WARDEN', 'OWNER', 'ADMIN', 'PRINCIPAL'].includes(actor?.roleKey)) {
     toolsUsed.push('hostel.summary');
-    const h = facts.hostelSummary;
+    const h = await hostel.getSummary();
     return `Hostel: ${h.occupiedBeds}/${h.totalCapacity} beds occupied (${h.occupancyRate}%), ${h.availableBeds} available across ${h.totalRooms} rooms. ${h.hostelInquiries} open inquiries.`;
   }
   return 'Hostel occupancy and allocation data is available to wardens, admins, and owners.';
 }
 
-async function answerSubjects(facts, toolsUsed, actor) {
+async function answerSubjects(actor, toolsUsed) {
   if (!['STUDENT', 'PARENT', 'TEACHER'].includes(actor?.roleKey)) {
     return 'Open Academic Setup in the sidebar to manage subjects.';
   }
@@ -247,7 +216,7 @@ async function answerSubjects(facts, toolsUsed, actor) {
   return `Your subjects: ${names.join(', ')}.`;
 }
 
-async function answerTeachers(facts, toolsUsed, actor) {
+async function answerTeachers(actor, toolsUsed) {
   if (!['STUDENT', 'PARENT', 'TEACHER'].includes(actor?.roleKey)) {
     return 'Open Academic Setup in the sidebar to manage teacher assignments.';
   }
@@ -260,7 +229,7 @@ async function answerTeachers(facts, toolsUsed, actor) {
   return `Your teachers:\n${lines.join('\n')}`;
 }
 
-async function answerAnnouncements(facts, toolsUsed) {
+async function answerAnnouncements(actor, toolsUsed) {
   toolsUsed.push('announcements.list');
   const items = await announcements.list();
   if (!items.length) return 'No announcements have been published yet.';
@@ -268,7 +237,7 @@ async function answerAnnouncements(facts, toolsUsed) {
   return `Latest announcements:\n${lines.join('\n')}`;
 }
 
-async function answerCalendar(facts, toolsUsed) {
+async function answerCalendar(actor, toolsUsed) {
   toolsUsed.push('calendar.list');
   const from = new Date();
   const to = new Date(from.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -278,7 +247,7 @@ async function answerCalendar(facts, toolsUsed) {
   return `Upcoming events:\n${lines.join('\n')}`;
 }
 
-async function answerTransport(facts, toolsUsed, actor) {
+async function answerTransport(actor, toolsUsed) {
   if (!['STUDENT', 'PARENT'].includes(actor?.roleKey)) {
     return 'Open Transport in the sidebar to manage routes and bus enrollments.';
   }
@@ -292,7 +261,7 @@ async function answerTransport(facts, toolsUsed, actor) {
   }
 }
 
-async function answerDocuments(facts, toolsUsed, actor) {
+async function answerDocuments(actor, toolsUsed) {
   if (!actor?.roleKey) return 'Open Documents in the sidebar to view your files.';
   toolsUsed.push('documents.list');
   const scope = actor.permissions?.['materials.read'] ?? 'OWN';
@@ -302,13 +271,6 @@ async function answerDocuments(facts, toolsUsed, actor) {
   return `Your recent documents:\n${lines.join('\n')}\nOpen Documents in the sidebar for the full list and downloads.`;
 }
 
-/**
- * Each intent lists the phrases/words that identify it. A match on a
- * multi-word phrase (contains a space) outweighs a match on a bare word —
- * this is what lets "assignments due" beat plain "due" (shared with fees)
- * and "exam results"/"test scores" route to grades instead of the exam
- * schedule intent, without needing to hand-order every pair.
- */
 const INTENTS = [
   { key: 'attendance', patterns: [/\battendance\b/i, /\babsent\b/i, /\bpresent\b/i], answer: answerAttendance },
   { key: 'library', patterns: [/\bbook(s)?\b/i, /\blibrary\b/i, /\blending\b/i, /\bcatalog\b/i, /\boverdue book(s)?\b/i], answer: answerLibrary },
@@ -342,16 +304,63 @@ function scoreIntent(message, patterns) {
   return score;
 }
 
+// In-memory simple RAG over announcements as an example of unstructured data fallback
+async function handleRagFallback(message, actor, toolsUsed) {
+  toolsUsed.push('rag.search');
+  
+  // 1. Fetch unstructured data
+  const anns = await announcements.list();
+  
+  // 2. Chunk it
+  let allChunks = [];
+  for (const a of anns) {
+     const text = `Announcement: ${a.title}\n${a.content}`;
+     const chunks = chunkText(text, 200, 20);
+     allChunks.push(...chunks);
+  }
+  
+  // Simple TF-IDF / Keyword search since we don't have a Vector DB set up
+  const queryWords = message.toLowerCase().split(/\W+/).filter(w => w.length > 2);
+  const scoredChunks = allChunks.map(chunk => {
+      let score = 0;
+      const lowerChunk = chunk.toLowerCase();
+      for (const w of queryWords) {
+          if (lowerChunk.includes(w)) score++;
+      }
+      return { chunk, score };
+  });
+  
+  scoredChunks.sort((a, b) => b.score - a.score);
+  const bestChunks = scoredChunks.slice(0, 3).filter(c => c.score > 0).map(c => c.chunk);
+  
+  if (bestChunks.length === 0 || bestChunks[0].score === 0) {
+      return HELP;
+  }
+  
+  // Use Gemini LLM to answer the question
+  try {
+      if (!env.GEMINI_API_KEY) {
+         return "I found some information, but AI generation is disabled: \n" + bestChunks.map(c => "- " + c).join('\n');
+      }
+      const genAI = new GoogleGenerativeAI(env.GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const prompt = `Answer the user's question using the provided context from the school's unstructured data. Keep it concise.
+      
+      Context:
+      ${bestChunks.join('\n---\n')}
+      
+      Question: ${message}
+      `;
+      const result = await model.generateContent(prompt);
+      return result.response.text();
+  } catch (err) {
+      return "I found relevant information but failed to generate an answer: " + err.message;
+  }
+}
+
 export async function chat({ message, conversationId }, actor) {
   const convId = conversationId ?? `conv-${crypto.randomBytes(6).toString('hex')}`;
   const toolsUsed = [];
-
-  let facts = { role: actor?.roleKey };
-  try {
-    facts = await loadFacts(actor);
-  } catch {
-    // Fall through — intents degrade to navigation hints when data is missing.
-  }
 
   let best = null;
   let bestScore = 0;
@@ -366,12 +375,12 @@ export async function chat({ message, conversationId }, actor) {
   let reply;
   if (best) {
     try {
-      reply = await best.answer(facts, toolsUsed, actor);
-    } catch {
+      reply = await best.answer(actor, toolsUsed);
+    } catch (err) {
       reply = "Something went wrong fetching that — please try again in a moment.";
     }
   } else {
-    reply = HELP;
+    reply = await handleRagFallback(message, actor, toolsUsed);
   }
 
   return {
