@@ -186,8 +186,11 @@ function PayModal({ invoice, onClose, onPaid }: {
   };
 
   return (
-    <div className="modal-overlay" onClick={busy ? undefined : onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+    // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+    <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+      <div className="modal">
         <div className="modal-header">
           <div className="modal-title">Pay invoice {invoice.invoiceNo}</div>
           <button className="modal-close" onClick={onClose} disabled={busy} aria-label="Close">×</button>
@@ -218,7 +221,7 @@ function PayModal({ invoice, onClose, onPaid }: {
             <Button variant="ghost" type="button" onClick={onClose} disabled={busy}>Cancel</Button>
           </div>
           <p style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 12, lineHeight: 1.5 }}>
-            Payments are processed by the school's configured payment provider and recorded
+            Payments are processed by the school&apos;s configured payment provider and recorded
             against this invoice immediately. A receipt number is issued on success.
           </p>
         </form>

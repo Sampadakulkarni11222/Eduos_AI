@@ -912,3 +912,30 @@ body.ai-docked .modal-overlay{padding-right:var(--ai-dock-w)}
 @media (prefers-reduced-motion: reduce){
   .sidebar,.stat-card-link,.lead-card{transition:none}
 }
+
+/* ===== Timetable time-grid (Google-Calendar-style day/week view) =====
+   The day header must stay visible while the hour body scrolls under it, and
+   the grid's own background has to be opaque so event chips don't show through
+   the sticky header as they scroll past. */
+.cal-grid { background: var(--surface, #fff); }
+.cal-grid-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--surface, #fff);
+}
+/* Thin scrollbar so the hour body doesn't gain a chunky OS bar mid-layout. */
+.cal-grid-body { scrollbar-width: thin; }
+.cal-grid-body::-webkit-scrollbar { width: 8px; }
+.cal-grid-body::-webkit-scrollbar-thumb {
+  background: var(--hairline-2, rgba(0, 0, 0, .18));
+  border-radius: 999px;
+}
+.cal-grid-body::-webkit-scrollbar-track { background: transparent; }
+
+/* Event chips respond on hover, as they do in Google Calendar. Targeted by
+   class rather than by matching the inline style attribute, whose exact
+   serialisation varies between browsers. */
+.cal-event { transition: filter .12s ease, box-shadow .12s ease; }
+.cal-event:hover { filter: brightness(0.96); box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+.cal-event:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

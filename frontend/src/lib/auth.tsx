@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const switchProfile = useCallback(
     async (p: ProfileSummary) => {
-      setSession(await api.selectProfile(p.id));
+      await setSession(await api.selectProfile(p.id));
       clearLoginProfiles();
       // A different profile means a different permission scope, so nothing
       // cached under the previous one may be reused.
@@ -81,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // session may already be dead; clear regardless
     }
-    clearSession();
+    await clearSession();
     clearLoginProfiles();
     // The read cache is per-tab and in-memory; drop it so the next account
     // signing in on this tab can never be served the previous one's data.

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, SkeletonRows, Pill, rupees, useToast } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
@@ -20,9 +20,9 @@ export default function LibrarianBooks() {
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [issueForm, setIssueForm] = useState({ studentId: '', bookId: '', dueAt: '' });
 
-  const loadBooks = () => {
+  const loadBooks = useCallback(() => {
     api.listBooks(searchQuery).then(setBooks).catch(() => setBooks([]));
-  };
+  }, [searchQuery]);
 
   const loadIssues = () => {
     api.listIssued().then(setIssued).catch(() => setIssued([]));
@@ -30,7 +30,7 @@ export default function LibrarianBooks() {
 
   useEffect(() => {
     loadBooks();
-  }, [searchQuery]);
+  }, [loadBooks]);
 
   useEffect(() => {
     loadIssues();

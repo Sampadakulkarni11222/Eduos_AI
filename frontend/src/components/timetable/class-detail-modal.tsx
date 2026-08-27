@@ -22,8 +22,8 @@ export function ClassDetailModal({
   ];
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
         <div className="modal-header">
           <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ width: 12, height: 12, borderRadius: '50%', background: color.dot, flexShrink: 0 }} />

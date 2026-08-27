@@ -271,8 +271,11 @@ function MarksEntryModal({ examSubjectId, onClose, onSaved }: { examSubjectId: s
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal marks-modal" onClick={(e) => e.stopPropagation()}>
+    // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+    // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal marks-modal">
         <div className="modal-header">
           <div className="modal-title">
             {grid ? `Enter marks — ${grid.examSubject.examName} · ${grid.examSubject.class} · ${grid.examSubject.subject}` : 'Enter marks'}

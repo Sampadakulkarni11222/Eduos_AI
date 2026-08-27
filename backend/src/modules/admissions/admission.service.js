@@ -2,6 +2,8 @@ import { Lead, LeadInteraction } from '../../models/lead.model.js';
 import { Student } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { runInTransaction } from '../../utils/transaction.js';
+import { nextSequence } from '../../utils/sequence.js';
+import { logger } from '../../utils/logger.js';
 
 // Helper: map a raw Lead doc to the DTO the frontend expects
 function toLeadDto(lead) {
@@ -82,6 +84,40 @@ export async function getLeadById(leadId) {
   };
 }
 
+const ADMISSION_NO_ATTEMPTS = 5;
+
+/**
+ * Allocates the next admission number for the current year, e.g. "ADM-2026-0042".
+ *
+ * Replaces a `countDocuments()`-derived number, which raced between concurrent
+ * admissions, cost a full collection scan each time, and went backwards
+ * whenever a student was removed. See utils/sequence.js.
+ */
+async function nextAdmissionNo(session = null) {
+  const year = new Date().getFullYear();
+  const seq = await nextSequence(`admissionNo:${year}`, {
+    session,
+    // First use on an existing database continues from the highest number
+    // already issued this year rather than restarting at 1. Zero-padding to a
+    // fixed width makes these lexically sortable, so a reverse sort finds the
+    // highest without parsing every row.
+    seedWith: async () => {
+      // Built by concatenation, not a template literal: `\d` inside a template
+      // literal collapses to a plain "d" and the pattern silently matches
+      // nothing, which would seed the counter at 0 and collide with every
+      // number already issued.
+      const highest = await Student.findOne({ admissionNo: new RegExp('^ADM-' + year + '-\\d+$') })
+        .sort({ admissionNo: -1 })
+        .select('admissionNo')
+        .session(session)
+        .lean();
+      const parsed = highest ? Number.parseInt(highest.admissionNo.split('-').pop(), 10) : 0;
+      return Number.isFinite(parsed) ? parsed : 0;
+    },
+  });
+  return `ADM-${year}-${String(seq).padStart(4, '0')}`;
+}
+
 async function ensureStudentForEnrolledLead(lead, session = null) {
   if (lead.stage !== 'ENROLLED') return;
   const existingStudent = await Student.findOne({ leadId: lead._id }).session(session);
@@ -90,23 +126,36 @@ async function ensureStudentForEnrolledLead(lead, session = null) {
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ') || '';
 
-    const count = await Student.countDocuments({}).session(session);
-    let admissionNo = `ADM-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
-    let checkStudent = await Student.findOne({ admissionNo }).session(session);
-    let attempts = 0;
-    while (checkStudent && attempts < 100) {
-      attempts++;
-      admissionNo = `ADM-${new Date().getFullYear()}-${String(count + 1 + attempts).padStart(4, '0')}`;
-      checkStudent = await Student.findOne({ admissionNo }).session(session);
+    // Retried only to absorb a collision with a hand-entered admission number;
+    // the counter advances on every call, so each attempt uses a fresh value
+    // and the loop converges immediately rather than re-testing the same one.
+    let lastErr = null;
+    for (let attempt = 0; attempt < ADMISSION_NO_ATTEMPTS; attempt++) {
+      const admissionNo = await nextAdmissionNo(session);
+      try {
+        await Student.create([{
+          admissionNo,
+          firstName,
+          lastName,
+          leadId: lead._id,
+          status: 'ACTIVE',
+        }], { session });
+        return;
+      } catch (err) {
+        if (err?.code !== 11000) throw err;
+        lastErr = err;
+      }
     }
-
-    await Student.create([{
-      admissionNo,
-      firstName,
-      lastName,
-      leadId: lead._id,
-      status: 'ACTIVE',
-    }], { session });
+    // The old code fell out of its retry loop and created the student with a
+    // number it already knew was taken, surfacing as an unhandled duplicate-key
+    // 500. Fail with something the caller can act on instead.
+    logger.error(
+      `Admission number allocation failed after ${ADMISSION_NO_ATTEMPTS} attempts for lead ${lead._id}: ${lastErr?.message}`
+    );
+    throw new AppError(
+      'Could not allocate an admission number. Check for manually assigned numbers that clash with the sequence.',
+      409, [], 'ADMISSION_NO_UNAVAILABLE'
+    );
   }
 }
 

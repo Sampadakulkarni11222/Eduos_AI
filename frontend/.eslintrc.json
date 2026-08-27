@@ -1,0 +1,21 @@
+{
+  "root": true,
+  "extends": ["next/core-web-vitals", "plugin:jsx-a11y/recommended"],
+  "plugins": ["jsx-a11y"],
+  "ignorePatterns": [".next/", "node_modules/", "next-env.d.ts"],
+  "rules": {
+    "jsx-a11y/click-events-have-key-events": "warn",
+    "jsx-a11y/no-static-element-interactions": "warn",
+    "jsx-a11y/no-noninteractive-element-interactions": "warn",
+    "@next/next/no-img-element": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["src/components/**/*-modal.tsx", "src/components/bulk-upload-modal.tsx"],
+      "rules": {
+        "jsx-a11y/click-events-have-key-events": "off",
+        "jsx-a11y/no-static-element-interactions": "off"
+      }
+    }
+  ]
+}

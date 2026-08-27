@@ -54,7 +54,7 @@ export const addGuardian = asyncHandler(async (req, res) => {
 });
 
 export const listGuardians = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.listGuardians(req.params.id), 'Guardians fetched');
+  sendSuccess(res, await service.listGuardians(req.actor, req.params.id), 'Guardians fetched');
 });
 
 export const enroll = asyncHandler(async (req, res) => {

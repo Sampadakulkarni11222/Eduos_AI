@@ -1,6 +1,7 @@
 import { LeaveApplication } from '../../models/leaveApplication.model.js';
 import { Student, Enrollment } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
+import { paginate } from '../../utils/paginate.js';
 
 /**
  * Parses a calendar date to UTC midnight, ignoring any time or offset supplied.
@@ -25,6 +26,23 @@ function toUtcMidnight(value) {
   return date;
 }
 
+/**
+ * Today's calendar day at UTC midnight, on the same scale as toUtcMidnight().
+ */
+function utcToday() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+// The applicant picks a date on *their* calendar, but we compare against the
+// server's UTC calendar, and the two disagree by up to a day in either
+// direction (UTC-12 .. UTC+14). A student in UTC-5 applying at 20:00 on the
+// 14th is picking "14th" while the server has already rolled over to the 15th,
+// so a strict `from >= utcToday()` would reject their own today as "the past".
+// One day of slack makes that impossible for every timezone on earth, while
+// still rejecting anything genuinely historical.
+const PAST_DATE_GRACE_DAYS = 1;
+
 async function resolveOwnActiveEnrollmentId(actor) {
   const student = await Student.findOne({ profileId: actor.profileId, deletedAt: null }).select('_id').lean();
   if (!student) throw new AppError('No student record linked to this account', 404);
@@ -47,6 +65,11 @@ export async function apply(actor, { fromDate, toDate, reason }) {
   if (!from || !to) throw new AppError('Invalid date format — use YYYY-MM-DD', 400);
   if (to < from) throw new AppError('toDate cannot be before fromDate', 400);
 
+  const earliest = new Date(utcToday().getTime() - PAST_DATE_GRACE_DAYS * 24 * 60 * 60 * 1000);
+  if (from < earliest) {
+    throw new AppError('Leave cannot be applied for a date in the past', 400, [], 'LEAVE_DATE_IN_PAST');
+  }
+
   const enrollmentId = await resolveOwnActiveEnrollmentId(actor);
 
   const application = await LeaveApplication.create({
@@ -59,7 +82,13 @@ export async function apply(actor, { fromDate, toDate, reason }) {
   return application;
 }
 
-export async function listMine(actor) {
+export async function listMine(actor, opts = {}) {
   const enrollmentId = await resolveOwnActiveEnrollmentId(actor);
-  return LeaveApplication.find({ enrollmentId }).sort({ createdAt: -1 }).lean();
+  const filter = { enrollmentId };
+  return paginate(
+    LeaveApplication.find(filter).sort({ createdAt: -1 }).lean(),
+    LeaveApplication,
+    filter,
+    { page: opts.page, pageSize: opts.pageSize, label: 'leave.listMine' }
+  );
 }

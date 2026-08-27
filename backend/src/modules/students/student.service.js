@@ -11,6 +11,7 @@ import { AppError } from '../../utils/AppError.js';
 import { runInTransaction } from '../../utils/transaction.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 import * as medicalService from '../medical/medical.service.js';
+import { recordPiiRead } from '../../utils/auditTrail.js';
 import * as attendanceService from '../attendance/attendance.service.js';
 import * as examService from '../exams/exam.service.js';
 
@@ -154,7 +155,18 @@ export async function list(actor, scope, query = {}) {
   return { items, total, page, pageSize, totalPages: totalPagesCalc, nextCursor: null };
 }
 
-export async function getById(actor, scope, id) {
+/**
+ * Returns the full student document — date of birth, gender, address, photo.
+ * That is personal data, so every read is audited here rather than in the
+ * controller: getOverview() and getIdCardData() both come through this
+ * function, and auditing at the single choke point keeps them covered.
+ *
+ * @param {string}  [via]   Which endpoint surfaced the record.
+ * @param {boolean} [audit] Set false when the caller is only using this as an
+ *   ownership check and returns none of the personal fields to the client —
+ *   logging those as disclosures would bury the real reads in noise.
+ */
+export async function getById(actor, scope, id, { via = 'students.api', audit = true } = {}) {
   const student = await Student.findOne({ _id: id, deletedAt: null });
   if (!student) throw new AppError('Student not found', 404);
 
@@ -162,6 +174,18 @@ export async function getById(actor, scope, id) {
     const ids = await resolveOwnStudentIds(actor);
     if (!ids.includes(id)) throw new AppError('Student not found', 404);
   }
+
+  if (audit) {
+    await recordPiiRead({
+      actor,
+      action: 'student.pii_read',
+      entityType: 'Student',
+      entityId: id,
+      via,
+      fields: ['dob', 'gender', 'address', 'photoUrl'].filter((f) => student[f] != null),
+    });
+  }
+
   return student;
 }
 
@@ -176,7 +200,7 @@ export async function getById(actor, scope, id) {
  * marks/assignments).
  */
 export async function getOverview(actor, scope, id) {
-  const student = await getById(actor, scope, id); // throws 404 if not visible to this actor
+  const student = await getById(actor, scope, id, { via: 'students.overview' }); // throws 404 if not visible to this actor
 
   // Class teacher and CR are populated the same way the parent dashboard does
   // it (dashboard.service.js), so a student sees exactly what their guardian
@@ -237,7 +261,7 @@ export async function getOverview(actor, scope, id) {
 
   let medical = null;
   try {
-    medical = await medicalService.getByStudentId(actor, scope, id);
+    medical = await medicalService.getByStudentId(actor, scope, id, { via: 'students.overview' });
   } catch {
     // No record, or (for a TEACHER) not this section's class teacher — omit.
   }
@@ -318,7 +342,7 @@ export async function getOverview(actor, scope, id) {
 
 /** Loads everything needed to render a student's ID card, enforcing the same OWN/ALL visibility as getById. */
 export async function getIdCardData(actor, scope, id) {
-  const student = await getById(actor, scope, id);
+  const student = await getById(actor, scope, id, { via: 'students.id_card' });
 
   const enrollment = await Enrollment.findOne({ studentId: id, status: 'ACTIVE' })
     .sort({ createdAt: -1 })
@@ -365,7 +389,7 @@ export async function setPhoto(actor, scope, id, photoUrl) {
     throw new AppError('photoUrl must reference a file uploaded to this system', 400, [], 'INVALID_PHOTO_URL');
   }
 
-  const student = await getById(actor, scope, id); // 404s if not visible to this actor
+  const student = await getById(actor, scope, id, { audit: false }); // 404s if not visible to this actor
   student.photoUrl = url.startsWith('/') ? url : `/${url}`;
   await student.save();
 
@@ -499,8 +523,24 @@ export async function addGuardian(studentId, data) {
   return StudentGuardian.create({ ...data, studentId });
 }
 
-export const listGuardians = (studentId) =>
-  StudentGuardian.find({ studentId }).populate('guardianProfileId', 'displayName');
+/**
+ * List query over guardian contact details — names and relationships tied to a
+ * named child, so it is audited with the row count the caller received.
+ */
+export async function listGuardians(actor, studentId) {
+  const links = await StudentGuardian.find({ studentId }).populate('guardianProfileId', 'displayName');
+
+  await recordPiiRead({
+    actor,
+    action: 'guardian.pii_read',
+    entityType: 'StudentGuardian',
+    entityId: studentId,
+    via: 'students.guardians',
+    count: links.length,
+  });
+
+  return links;
+}
 
 // ── Enrollments ──
 export async function enroll(data) {

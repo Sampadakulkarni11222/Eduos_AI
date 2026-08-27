@@ -1,6 +1,7 @@
 import { Book, BookIssue } from '../../models/library.model.js';
 import { Student } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
+import { paginate, mapPage } from '../../utils/paginate.js';
 
 // ─── Helper: map a raw BookIssue doc to BookIssueDto ───────
 function toIssueDto(issue) {
@@ -45,7 +46,8 @@ export async function getSummary() {
 }
 
 // ─── Books (catalog) ────────────────────────────────────────
-export async function listBooks({ search, category } = {}) {
+export async function listBooks(opts = {}) {
+  const { search, category } = opts;
   const filter = { deletedAt: null };
   if (search) {
     filter.$or = [
@@ -55,8 +57,13 @@ export async function listBooks({ search, category } = {}) {
     ];
   }
   if (category) filter.category = category;
-  const books = await Book.find(filter).sort({ title: 1 }).lean();
-  return books.map((b) => ({
+  const page = await paginate(
+    Book.find(filter).sort({ title: 1 }).lean(),
+    Book,
+    filter,
+    { page: opts.page, pageSize: opts.pageSize, label: 'library.listBooks' }
+  );
+  return mapPage(page, (b) => ({
     id: b._id,
     title: b.title,
     author: b.author,

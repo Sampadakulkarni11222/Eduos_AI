@@ -12,6 +12,7 @@ import { AppError } from '../../utils/AppError.js';
 import { Enrollment } from '../../models/student.model.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 import { runInTransaction } from '../../utils/transaction.js';
+import { SubjectRegistration } from '../../models/subjectRegistration.model.js';
 
 const CHUNK_SIZE = 100;
 
@@ -300,6 +301,50 @@ export const listOfferings = (filter = {}) =>
   SubjectOffering.find(filter)
     .populate({ path: 'sectionId', populate: { path: 'gradeId' } })
     .populate('subjectId termId teacherId');
+
+/**
+ * Updates an existing offering. Exists so staff can mark a subject elective and
+ * set its seat cap from the UI — previously those two fields were reachable
+ * only by creating the offering with them, or by re-seeding the database.
+ *
+ * Only the fields an admin screen should own are accepted; sectionId/subjectId/
+ * termId are the offering's identity and changing them would silently move
+ * every timetable slot and registration attached to it.
+ */
+export async function updateOffering(id, data = {}) {
+  const offering = await SubjectOffering.findById(id);
+  if (!offering) throw new AppError('Subject offering not found', 404);
+
+  if (data.teacherId !== undefined) offering.teacherId = data.teacherId || null;
+  if (data.isElective !== undefined) offering.isElective = Boolean(data.isElective);
+
+  if (data.capacity !== undefined) {
+    if (data.capacity === null || data.capacity === '') {
+      offering.capacity = null; // uncapped
+    } else {
+      const cap = Number(data.capacity);
+      if (!Number.isInteger(cap) || cap < 1) {
+        throw new AppError('capacity must be a whole number of seats, or empty for unlimited', 400, [], 'INVALID_CAPACITY');
+      }
+      // Lowering the cap below what is already taken would leave the offering
+      // over-subscribed with no way for the UI to explain it.
+      const taken = await SubjectRegistration.countDocuments({
+        subjectOfferingId: offering._id,
+        status: { $in: ['PENDING', 'APPROVED'] },
+      });
+      if (cap < taken) {
+        throw new AppError(
+          `${taken} seat(s) are already taken — set the capacity to ${taken} or more, or reject requests first.`,
+          409, [], 'CAPACITY_BELOW_TAKEN'
+        );
+      }
+      offering.capacity = cap;
+    }
+  }
+
+  await offering.save();
+  return offering;
+}
 
 export async function createOffering(data) {
   const [section, subject, term] = await Promise.all([

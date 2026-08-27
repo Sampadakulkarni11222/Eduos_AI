@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PortalShell } from '@/components/shell';
 
-import { Card, EmptyState, Pill, SkeletonRows, StatCard } from '@/components/ui';
+import { Card, EmptyState, Pill, SkeletonRows, StatCard, clickable } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { TeacherDashboardDto } from '@/lib/types';
@@ -60,7 +60,7 @@ export default function TeacherDashboard() {
           <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 16 }}>
             <Card>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Today's Classes</strong>
+                <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Today&apos;s Classes</strong>
                 <button onClick={() => router.push('/teacher/timetable')} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
                   Full timetable →
                 </button>
@@ -113,7 +113,7 @@ export default function TeacherDashboard() {
                 {data?.recentAnnouncements.slice(0, 3).map((a, i) => (
                   <div
                     key={a._id}
-                    onClick={() => setSelectedAnnouncement(a)}
+                    {...clickable(() => setSelectedAnnouncement(a), { label: `Open announcement: ${a.title}` })}
                     style={{
                       padding: '8px 8px',
                       margin: '2px -8px',
@@ -143,8 +143,11 @@ export default function TeacherDashboard() {
           </div>
 
           {selectedAnnouncement && (
-            <div className="modal-overlay" onClick={() => setSelectedAnnouncement(null)}>
-              <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 500 }}>
+            // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+            // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+            // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+            <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && (() => setSelectedAnnouncement(null))()}>
+              <div className="modal" style={{ width: '100%', maxWidth: 500 }}>
                 <div className="modal-header">
                   <h3 className="modal-title">{selectedAnnouncement.title}</h3>
                   <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setSelectedAnnouncement(null)}>×</button>

@@ -167,6 +167,20 @@ export function useToast() {
   return ctx.toast;
 }
 
+/**
+ * "Class 5 A" from a grade and section name.
+ *
+ * Section names are bare letters — every grade has an "A" — so showing one on
+ * its own tells you nothing about which class it is. Falls back to whichever
+ * part is present rather than rendering a stray separator.
+ */
+export function divisionLabel(
+  gradeName: string | null | undefined,
+  sectionName: string | null | undefined,
+): string {
+  return [gradeName, sectionName].map((p) => p?.trim()).filter(Boolean).join(' ') || '—';
+}
+
 export function rupees(paise: number | null | undefined): string {
   const safePaise = Number(paise) || 0;
   const amount = safePaise / 100;
@@ -261,6 +275,9 @@ export function Modal({
   }, [onClose]);
 
   return (
+    // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+    // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={panelRef}
@@ -279,4 +296,40 @@ export function Modal({
       </div>
     </div>
   );
+}
+
+/**
+ * Spreadable props that make a non-interactive element behave like a button for
+ * keyboard and screen-reader users.
+ *
+ * Preferred order is: use a real `<button>`; failing that, spread this. It
+ * exists because ~40 call sites render clickable cards, table rows and calendar
+ * cells as `<div onClick>`, which mouse users can operate and nobody else can.
+ * Restructuring each one into a button changes layout (buttons carry their own
+ * box model and reset styles); this does not.
+ *
+ * Enter and Space both activate, matching native button behaviour — Space is
+ * intercepted to stop the page scrolling underneath.
+ *
+ *   <div {...clickable(() => open(row.id))} style={…}>…</div>
+ */
+export function clickable(onClick: () => void, opts: { label?: string; disabled?: boolean } = {}) {
+  const { label, disabled = false } = opts;
+  return {
+    role: 'button' as const,
+    tabIndex: disabled ? -1 : 0,
+    'aria-disabled': disabled || undefined,
+    ...(label ? { 'aria-label': label } : {}),
+    onClick: disabled ? undefined : onClick,
+    onKeyDown: disabled
+      ? undefined
+      : (e: React.KeyboardEvent) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          // Only act on the element itself; a keypress inside a nested button or
+          // input has already been handled by that control.
+          if (e.target !== e.currentTarget) return;
+          e.preventDefault();
+          onClick();
+        },
+  };
 }

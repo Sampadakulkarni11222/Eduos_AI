@@ -1,7 +1,7 @@
 'use client';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from '@/components/ui';
+import { Button, Card, EmptyState, Pill, SkeletonRows, divisionLabel, useToast } from '@/components/ui';
 import { api, ApiError, fileHref } from '@/lib/api';
 import type { AssignmentDto, OfferingDto, SubmissionRoster, SubmissionRow } from '@/lib/types';
 
@@ -129,8 +129,11 @@ function SubmissionsModal({ assignmentId, onClose, onGraded }: { assignmentId: s
   useEffect(load, [assignmentId]);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 720, width: '94%' }} onClick={(e) => e.stopPropagation()}>
+    // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+    // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 720, width: '94%' }}>
         <div className="modal-header">
           <div className="modal-title">
             {roster ? `Submissions — ${roster.assignment.title}` : 'Submissions'}
@@ -274,7 +277,7 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
           <div>
             <div className="field-label">Class &amp; subject</div>
             <select className="field-input" value={offeringId} onChange={(e) => setOfferingId(e.target.value)} required>
-              {offerings.map((o) => <option key={o.id} value={o.id}>{o.sectionName} · {o.subject}</option>)}
+              {offerings.map((o) => <option key={o.id} value={o.id}>{divisionLabel(o.gradeName, o.sectionName)} · {o.subject}</option>)}
             </select>
           </div>
           <div>

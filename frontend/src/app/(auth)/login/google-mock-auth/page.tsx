@@ -220,6 +220,8 @@ export default function GoogleMockAuthPage() {
               className="custom-input"
               value={customEmail}
               onChange={(e) => setCustomEmail(e.target.value)}
+              // Dev-only mock sign-in screen whose sole control is this field.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
             />
 

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Oakridge Academy">
+  <!-- Mirrors .sidebar-logo in design-system.css: cream-to-tan rounded square,
+       serif "O" in the brand maroon. The O is drawn as geometry rather than
+       text so it renders identically without the Newsreader webfont and stays
+       legible at 16px, where a glyph would smear. -->
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#F2E4CC"/>
+      <stop offset="1" stop-color="#D8B98A"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#brand)"/>
+  <!-- Slight vertical squash + heavier side strokes echo a serif O's modulation. -->
+  <ellipse cx="16" cy="16" rx="7.2" ry="8.2" fill="none" stroke="#591620" stroke-width="3.4"/>
+</svg>

@@ -150,7 +150,11 @@ export const auditLogger = (req, res, next) => {
           if (typeof body === 'string') {
             try {
               parsedBody = JSON.parse(body);
-            } catch (e) {}
+            } catch {
+              // Not every response body is JSON (file downloads, plain text).
+              // The audit entry is still worth writing without the parsed body,
+              // so this falls through to the {} initialised above.
+            }
           } else if (typeof body === 'object') {
             parsedBody = body;
           }

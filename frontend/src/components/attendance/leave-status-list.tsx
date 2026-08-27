@@ -14,7 +14,7 @@ const fmt = (d: string) => formatCalendarDate(d);
 
 export function LeaveStatusList({ applications }: { applications: LeaveApplicationDto[] }) {
   if (applications.length === 0) {
-    return <p style={{ fontSize: 12.5, color: 'var(--text-2b)' }}>You haven't applied for any leave yet.</p>;
+    return <p style={{ fontSize: 12.5, color: 'var(--text-2b)' }}>You haven&apos;t applied for any leave yet.</p>;
   }
 
   return (

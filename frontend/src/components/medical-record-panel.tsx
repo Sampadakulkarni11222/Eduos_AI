@@ -172,19 +172,19 @@ export function MedicalRecordPanel({ studentId, canManage = true }: { studentId:
             <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 16 }}>Basic Info</strong>
             <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Blood group</label>
-                <select className="input" value={form.bloodGroup} onChange={set('bloodGroup')} style={{ width: '100%' }}>
+                <label htmlFor="med-blood-group" style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Blood group</label>
+                <select id="med-blood-group" className="input" value={form.bloodGroup} onChange={set('bloodGroup')} style={{ width: '100%' }}>
                   <option value="">—</option>
                   {BLOOD_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Height (cm)</label>
-                <Input type="number" min={0} max={300} step={0.1} value={form.heightCm} onChange={set('heightCm')} placeholder="e.g. 145" />
+                <label htmlFor="med-height" style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Height (cm)</label>
+                <Input id="med-height" type="number" min={0} max={300} step={0.1} value={form.heightCm} onChange={set('heightCm')} placeholder="e.g. 145" />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Weight (kg)</label>
-                <Input type="number" min={0} max={300} step={0.1} value={form.weightKg} onChange={set('weightKg')} placeholder="e.g. 42" />
+                <label htmlFor="med-weight" style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Weight (kg)</label>
+                <Input id="med-weight" type="number" min={0} max={300} step={0.1} value={form.weightKg} onChange={set('weightKg')} placeholder="e.g. 42" />
               </div>
             </div>
           </Card>
@@ -193,16 +193,16 @@ export function MedicalRecordPanel({ studentId, canManage = true }: { studentId:
             <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 16 }}>Emergency Contact</strong>
             <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12 }}>
               <div>
-                <label style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Name</label>
-                <Input value={form.ecName} onChange={set('ecName')} placeholder="e.g. Ravi Kumar" />
+                <label htmlFor="med-ec-name" style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Name</label>
+                <Input id="med-ec-name" value={form.ecName} onChange={set('ecName')} placeholder="e.g. Ravi Kumar" />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Phone</label>
-                <Input type="tel" value={form.ecPhone} onChange={set('ecPhone')} placeholder="+91 98765 43210" />
+                <label htmlFor="med-ec-phone" style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Phone</label>
+                <Input id="med-ec-phone" type="tel" value={form.ecPhone} onChange={set('ecPhone')} placeholder="+91 98765 43210" />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Relation</label>
-                <Input value={form.ecRelation} onChange={set('ecRelation')} placeholder="e.g. Father" />
+                <label htmlFor="med-ec-relation" style={{ fontSize: 11, color: 'var(--text-faint)', display: 'block', marginBottom: 4 }}>Relation</label>
+                <Input id="med-ec-relation" value={form.ecRelation} onChange={set('ecRelation')} placeholder="e.g. Father" />
               </div>
             </div>
           </Card>
@@ -231,7 +231,7 @@ export function MedicalRecordPanel({ studentId, canManage = true }: { studentId:
                 </div>
               ))}
               <div style={{ marginTop: 12 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 6 }}>Upload a report / file</label>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Upload a report / file</div>
                 <FileOrUrlInput
                   value={{ fileUrl: '' }}
                   onChange={(v) => {

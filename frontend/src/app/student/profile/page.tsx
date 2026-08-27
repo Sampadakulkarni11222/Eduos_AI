@@ -93,7 +93,7 @@ export default function StudentProfile() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={fileHref(overview.photoUrl)}
-                  alt={`${overview.name}'s profile photo`}
+                  alt={overview.name}
                   className="profile-avatar-lg"
                   style={{ objectFit: 'cover', borderRadius: '50%' }}
                 />

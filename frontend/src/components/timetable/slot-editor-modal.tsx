@@ -1,26 +1,30 @@
 'use client';
 import { useState } from 'react';
 import { Button, useToast } from '../ui';
-import { api } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import type { OfferingDto, TimetableSlotDto } from '@/lib/types';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export function SlotEditorModal({
-  sectionId, sectionOfferings, initialDayOfWeek, initialPeriodNo, existing, onClose, onSaved,
+  sectionId, sectionOfferings, initialDayOfWeek, initialPeriodNo,
+  initialStartTime, initialEndTime, existing, onClose, onSaved,
 }: {
   sectionId: string;
   sectionOfferings: OfferingDto[];
   initialDayOfWeek: number;
   initialPeriodNo: number;
+  /** Where in the day the user clicked, for a new slot. Falls back to 09:00. */
+  initialStartTime?: string;
+  initialEndTime?: string;
   existing?: TimetableSlotDto | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [dayOfWeek, setDayOfWeek] = useState(initialDayOfWeek);
   const [periodNo, setPeriodNo] = useState(initialPeriodNo);
-  const [startTime, setStartTime] = useState(existing?.startTime ?? '09:00');
-  const [endTime, setEndTime] = useState(existing?.endTime ?? '09:45');
+  const [startTime, setStartTime] = useState(existing?.startTime ?? initialStartTime ?? '09:00');
+  const [endTime, setEndTime] = useState(existing?.endTime ?? initialEndTime ?? '09:45');
   const [subjectOfferingId, setSubjectOfferingId] = useState(existing?.subjectOfferingId ?? '');
   const [room, setRoom] = useState(existing?.room ?? '');
   const [liveClassLink, setLiveClassLink] = useState(existing?.liveClassLink ?? '');
@@ -42,16 +46,16 @@ export function SlotEditorModal({
         liveClassLink: liveClassLink.trim() || null,
       });
       onSaved();
-    } catch (err: any) {
-      toast(err.message || 'Could not save the timetable slot.', 'error');
+    } catch (err: unknown) {
+      toast(errorMessage(err, 'Could not save the timetable slot.'), 'error');
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
         <div className="modal-header">
           <div className="modal-title">Configure Timetable Slot</div>
           <button className="modal-close" aria-label="Close dialog" title="Close" onClick={onClose}>×</button>

@@ -1,15 +1,16 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Button, Card, EmptyState, SkeletonRows, subjectColor } from '../ui';
+import { Button, Card, EmptyState, SkeletonRows, clickable, subjectColor } from '../ui';
 import { api } from '@/lib/api';
 import type { SectionDto, TimetableDto, OfferingDto, TimetableSlotDto } from '@/lib/types';
 import { MonthView } from './month-view';
 import { WeekView } from './week-view';
+import { DayView } from './day-view';
 import { ClassDetailModal } from './class-detail-modal';
 import { SlotEditorModal } from './slot-editor-modal';
-import { addMonths, addWeeks, formatMonthLabel, formatWeekRangeLabel, buildWeekDates, toDow, formatDayLabel } from '@/lib/timetable-dates';
+import { addDays, addMonths, addWeeks, formatMonthLabel, formatWeekRangeLabel, buildWeekDates, toDow, formatDayLabel, formatSingleDayLabel } from '@/lib/timetable-dates';
 
-type ViewMode = 'month' | 'week';
+type ViewMode = 'month' | 'week' | 'day';
 
 export function TimetableCalendar({ scopeLabel, canEdit = false }: { scopeLabel: string; canEdit?: boolean }) {
   const [sections, setSections] = useState<SectionDto[] | null>(null);
@@ -24,7 +25,7 @@ export function TimetableCalendar({ scopeLabel, canEdit = false }: { scopeLabel:
 
   const [detailSlot, setDetailSlot] = useState<TimetableSlotDto | null>(null);
   const [dayAgendaDate, setDayAgendaDate] = useState<Date | null>(null);
-  const [editorState, setEditorState] = useState<{ dayOfWeek: number; periodNo: number; existing: TimetableSlotDto | null } | null>(null);
+  const [editorState, setEditorState] = useState<{ dayOfWeek: number; periodNo: number; existing: TimetableSlotDto | null; startTime?: string; endTime?: string } | null>(null);
 
   const loadTimetable = () => {
     if (!sectionId) return;
@@ -66,8 +67,10 @@ export function TimetableCalendar({ scopeLabel, canEdit = false }: { scopeLabel:
   };
 
   const goToday = () => setAnchorDate(new Date());
-  const goPrev = () => setAnchorDate((d) => (viewMode === 'month' ? addMonths(d, -1) : addWeeks(d, -1)));
-  const goNext = () => setAnchorDate((d) => (viewMode === 'month' ? addMonths(d, 1) : addWeeks(d, 1)));
+  const step = (dir: -1 | 1) => setAnchorDate((d) =>
+    viewMode === 'month' ? addMonths(d, dir) : viewMode === 'week' ? addWeeks(d, dir) : addDays(d, dir));
+  const goPrev = () => step(-1);
+  const goNext = () => step(1);
 
   const sectionOfferings = offerings.filter((o) => o.sectionId === sectionId);
   const slots = tt?.slots ?? [];
@@ -106,15 +109,20 @@ export function TimetableCalendar({ scopeLabel, canEdit = false }: { scopeLabel:
         <>
           <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 14 }}>
             <div className="tabs">
-              <button className={`tab ${viewMode === 'month' ? 'active' : ''}`} onClick={() => setViewMode('month')}>Month</button>
+              <button className={`tab ${viewMode === 'day' ? 'active' : ''}`} onClick={() => setViewMode('day')}>Day</button>
               <button className={`tab ${viewMode === 'week' ? 'active' : ''}`} onClick={() => setViewMode('week')}>Week</button>
+              <button className={`tab ${viewMode === 'month' ? 'active' : ''}`} onClick={() => setViewMode('month')}>Month</button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <Button variant="ghost" small onClick={goPrev}>‹ Prev</Button>
               <Button variant="soft" small onClick={goToday}>Today</Button>
               <Button variant="ghost" small onClick={goNext}>Next ›</Button>
               <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 16, minWidth: 150, textAlign: 'center' }}>
-                {viewMode === 'month' ? formatMonthLabel(anchorDate) : formatWeekRangeLabel(buildWeekDates(anchorDate))}
+                {viewMode === 'month'
+                  ? formatMonthLabel(anchorDate)
+                  : viewMode === 'week'
+                    ? formatWeekRangeLabel(buildWeekDates(anchorDate))
+                    : formatSingleDayLabel(anchorDate)}
               </strong>
             </div>
           </div>
@@ -124,13 +132,21 @@ export function TimetableCalendar({ scopeLabel, canEdit = false }: { scopeLabel:
             <Card pad={false} style={{ padding: 14 }}>
               {viewMode === 'month' ? (
                 <MonthView anchorDate={anchorDate} slots={slots} onDayClick={setDayAgendaDate} />
+              ) : viewMode === 'day' ? (
+                <DayView
+                  anchorDate={anchorDate}
+                  slots={slots}
+                  canEdit={canEdit}
+                  onSlotClick={setDetailSlot}
+                  onCellClick={(dayOfWeek, periodNo, existing, startTime, endTime) => setEditorState({ dayOfWeek, periodNo, existing, startTime, endTime })}
+                />
               ) : (
                 <WeekView
                   anchorDate={anchorDate}
                   slots={slots}
                   canEdit={canEdit}
                   onSlotClick={setDetailSlot}
-                  onCellClick={(dayOfWeek, periodNo, existing) => setEditorState({ dayOfWeek, periodNo, existing })}
+                  onCellClick={(dayOfWeek, periodNo, existing, startTime, endTime) => setEditorState({ dayOfWeek, periodNo, existing, startTime, endTime })}
                 />
               )}
             </Card>
@@ -139,8 +155,11 @@ export function TimetableCalendar({ scopeLabel, canEdit = false }: { scopeLabel:
       )}
 
       {dayAgendaDate && (
-        <div className="modal-overlay" onClick={() => setDayAgendaDate(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+        // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+        // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+        <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && (() => setDayAgendaDate(null))()}>
+          <div className="modal">
             <div className="modal-header">
               <div className="modal-title">{formatDayLabel(dayAgendaDate)}</div>
               <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setDayAgendaDate(null)}>×</button>
@@ -154,11 +173,11 @@ export function TimetableCalendar({ scopeLabel, canEdit = false }: { scopeLabel:
                 return (
                   <div
                     key={s.id}
-                    onClick={() => {
+                    {...clickable(() => {
                       if (canEdit) { setEditorState({ dayOfWeek: s.dayOfWeek, periodNo: s.periodNo, existing: s }); }
                       else { setDetailSlot(s); }
                       setDayAgendaDate(null);
-                    }}
+                    }, { label: `${s.subject ?? 'Class'} at ${s.startTime}` })}
                     className="hover-bg"
                     style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8, cursor: 'pointer', background: color.bg }}
                   >
@@ -195,6 +214,8 @@ export function TimetableCalendar({ scopeLabel, canEdit = false }: { scopeLabel:
           sectionOfferings={sectionOfferings}
           initialDayOfWeek={editorState.dayOfWeek}
           initialPeriodNo={editorState.periodNo}
+          initialStartTime={editorState.startTime}
+          initialEndTime={editorState.endTime}
           existing={editorState.existing}
           onClose={() => setEditorState(null)}
           onSaved={() => { setEditorState(null); loadTimetable(); }}

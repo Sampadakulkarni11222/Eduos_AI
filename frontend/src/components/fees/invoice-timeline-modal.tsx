@@ -54,8 +54,8 @@ export function InvoiceTimelineModal({ invoiceId, onClose }: { invoiceId: string
   events.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '85vh', overflowY: 'auto' }}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxHeight: '85vh', overflowY: 'auto' }}>
         <div className="modal-header">
           <div className="modal-title">{detail ? `Invoice ${detail.invoiceNo}` : 'Invoice timeline'}</div>
           <button className="modal-close" aria-label="Close dialog" title="Close" onClick={onClose}>×</button>

@@ -78,7 +78,7 @@ export interface PageResult<T> {
 }
 
 export interface SectionDto { id: string; name: string; gradeName: string; classTeacher?: string | null; classTeacherId?: string | null; classRepresentativeId?: string | null }
-export interface OfferingDto { id: string; subject: string; subjectId?: string; sectionId: string; sectionName: string; gradeName?: string; teacherId?: string | null; teacherName?: string | null }
+export interface OfferingDto { id: string; subject: string; subjectId?: string; sectionId: string; sectionName: string; gradeName?: string; teacherId?: string | null; teacherName?: string | null; isElective?: boolean; capacity?: number | null }
 export interface GradeDto { id: string; name: string; level: number }
 export interface SubjectDto { id: string; name: string; code?: string | null }
 export interface TermDto { id: string; academicYearId: string; name: string; startsOn: string; endsOn: string }
@@ -158,6 +158,44 @@ export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export interface LeaveApplicationDto {
   _id: string; enrollmentId: string; fromDate: string; toDate: string; reason: string;
   status: LeaveStatus; remarks: string | null; createdAt: string;
+}
+
+// ── Elective subject registration ──
+export type RegistrationStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'WITHDRAWN';
+
+/** One elective on offer to the student's class, plus their own standing on it. */
+export interface AvailableElectiveDto {
+  subjectOfferingId: string;
+  subjectName: string;
+  subjectCode: string | null;
+  termName: string | null;
+  teacherName: string | null;
+  /** null = uncapped. */
+  capacity: number | null;
+  seatsTaken: number;
+  /** null when uncapped. */
+  seatsLeft: number | null;
+  isFull: boolean;
+  myRegistrationId: string | null;
+  myStatus: RegistrationStatus | null;
+  myDecisionNote: string | null;
+}
+
+export interface SubjectRegistrationDto {
+  id: string;
+  status: RegistrationStatus;
+  studentId: string;
+  studentName: string | null;
+  admissionNo: string | null;
+  subjectOfferingId: string | null;
+  subjectName: string | null;
+  subjectCode: string | null;
+  termName: string | null;
+  teacherName: string | null;
+  decisionNote: string | null;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  requestedAt: string;
 }
 
 export interface InvoiceDto { id: string; invoiceNo: string; studentName: string; class: string | null; status: string; totalPaise: number; paidPaise: number; dueOn: string; sectionId?: string; studentId?: string; createdAt?: string }

@@ -3,7 +3,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, Pill, SkeletonRows, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
-import { api } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
 import type { LeadDetailDto } from '@/lib/types';
@@ -286,8 +286,8 @@ function LeadDetailDrawer({
       setEditing(false);
       load();
       onChanged();
-    } catch (e: any) {
-      toast(e?.message ?? 'Could not update this lead.', 'error');
+    } catch (e: unknown) {
+      toast(errorMessage(e, 'Could not update this lead.'), 'error');
     } finally {
       setBusy(false);
     }
@@ -297,6 +297,9 @@ function LeadDetailDrawer({
     d ? new Date(d).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '—';
 
   return (
+    // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+    // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div className="drawer-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
         className="drawer"

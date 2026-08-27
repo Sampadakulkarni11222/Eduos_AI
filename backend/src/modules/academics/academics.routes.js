@@ -53,5 +53,6 @@ router.post('/subjects/bulk', manage, csvUploadSingle('file'), controller.bulkCr
 router.get('/offerings/mine', controller.myOfferings);
 router.get('/offerings', read, controller.listOfferings);
 router.post('/offerings', manage, controller.createOffering);
+router.patch('/offerings/:id', manage, controller.updateOffering);
 
 export default router;

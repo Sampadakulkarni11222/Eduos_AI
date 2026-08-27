@@ -265,7 +265,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
       {open && !minimized && portal(
         // No scrim and no aria-modal: this is a docked panel, not a modal. The
         // page behind it stays live and focusable on purpose.
-        <aside className="ai-dock" role="complementary" aria-label={label}>
+        <aside className="ai-dock" aria-label={label}>
           <div className="ai-panel-inner">
             <div className="ai-header">
               <div>
@@ -340,6 +340,8 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                           }}
                           onMouseOver={(e) => (e.currentTarget.style.background = '#f1f5f9')}
                           onMouseOut={(e) => (e.currentTarget.style.background = '#f8fafc')}
+                          onFocus={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+                          onBlur={(e) => (e.currentTarget.style.background = '#f8fafc')}
                         >
                           💬 &nbsp; {sText}
                         </button>

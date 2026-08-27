@@ -4,7 +4,7 @@ import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, Modal as Dialog } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { Pagination } from '@/components/pagination';
-import { api } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import type { StudentListItem, SectionDto } from '@/lib/types';
 
 /* ─── simple toast ─────────────────────────────────────────── */
@@ -25,15 +25,18 @@ function Toast({ msg, ok }: { msg: string; ok: boolean }) {
 /* ─── modal overlay ──────────────────────────────────────────── */
 function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
+    // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+    // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
-      onClick={onClose}
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
       style={{
         position: 'fixed', inset: 0, zIndex: 9000,
         background: 'rgba(0,0,0,0.45)', display: 'flex',
         alignItems: 'center', justifyContent: 'center', padding: 24,
       }}
     >
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 460 }}>
+      <div style={{ width: '100%', maxWidth: 460 }}>
         {children}
       </div>
     </div>
@@ -116,8 +119,8 @@ function AssignSectionModal({
       });
       onSuccess(`${student.name} assigned successfully!`);
       onClose();
-    } catch (e: any) {
-      setError(e?.message ?? 'Failed to assign section. Please try again.');
+    } catch (e: unknown) {
+      setError(errorMessage(e, 'Failed to assign section. Please try again.'));
     } finally {
       setBusy(false);
     }
@@ -500,8 +503,8 @@ function AddStudentModal({ onClose, onDone }: { onClose: () => void; onDone: (ms
     try {
       await api.createStudent({ firstName: f.firstName, lastName: f.lastName || undefined, admissionNo: f.admissionNo });
       onDone(`${`${f.firstName} ${f.lastName}`.trim()} added successfully!`);
-    } catch (ex: any) {
-      setErr(ex?.message ?? 'Failed to add student. Check the admission number is unique.');
+    } catch (ex: unknown) {
+      setErr(errorMessage(ex, 'Failed to add student. Check the admission number is unique.'));
     } finally {
       setBusy(false);
     }

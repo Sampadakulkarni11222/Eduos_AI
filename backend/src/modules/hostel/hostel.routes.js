@@ -165,7 +165,18 @@ router.get('/students', requirePermission('hostel.read'), controller.listHostelS
  *       200:
  *         description: Medical record fetched successfully
  */
-router.get('/medical-lookup/:studentId', requirePermission('hostel.read'), controller.getMedicalRecord);
+// Requires BOTH hostel.read (you are hostel staff) and medical.read (you are
+// cleared for medical data). This used to demand only hostel.read, which made
+// it a way around the medical module's per-student scope rules — anyone granted
+// hostel.read could read any resident's record. medical.read runs last on
+// purpose: requirePermission overwrites req.scope, and the service narrows by
+// the *medical* scope.
+router.get(
+  '/medical-lookup/:studentId',
+  requirePermission('hostel.read'),
+  requirePermission('medical.read'),
+  controller.getMedicalRecord
+);
 
 /**
  * @swagger

@@ -80,7 +80,7 @@ export default function ParentDashboard() {
           <div className="card card-pad" style={{ background: 'var(--accent)', color: 'var(--on-accent)', marginBottom: 16 }}>
             <div style={{ fontFamily: 'Newsreader, serif', fontSize: 23, fontWeight: 600 }}>{greeting()}, {first ?? 'there'}!</div>
             <div style={{ fontSize: 13, opacity: 0.85, marginTop: 3 }}>
-              Here's how {kid?.name} ({kid?.enrollment?.class}) is doing today · {today()}
+              Here&apos;s how {kid?.name} ({kid?.enrollment?.class}) is doing today · {today()}
             </div>
           </div>
 
@@ -118,7 +118,7 @@ export default function ParentDashboard() {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
             <Card>
-              <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17, display: 'block', marginBottom: 12 }}>Today's Timetable</strong>
+              <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17, display: 'block', marginBottom: 12 }}>Today&apos;s Timetable</strong>
               {kidTimetable.length === 0 ? (
                 <p style={{ fontSize: 12.5, color: 'var(--text-2b)' }}>No classes scheduled for today.</p>
               ) : (

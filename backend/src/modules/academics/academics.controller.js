@@ -78,13 +78,24 @@ export const listOfferings = asyncHandler(async (req, res) => {
     id: o._id,
     sectionId: o.sectionId?._id || '',
     sectionName: o.sectionId?.name || '',
+    // Section names are just "A"/"B", which is ambiguous on its own — the same
+    // letter exists in every grade. The screen needs the grade to say which.
+    gradeName: o.sectionId?.gradeId?.name || '',
     subject: o.subjectId?.name || '',          // matches OfferingDto.subject
     subjectId: o.subjectId?._id || '',
     teacherName: o.teacherId?.displayName || null,
+    // Needed by the classroom screen so staff can see and change which
+    // offerings students may register for.
+    isElective: !!o.isElective,
+    capacity: o.capacity ?? null,
   }));
   
   sendSuccess(res, dtos, 'Subject offerings fetched');
 });
+export const updateOffering = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.updateOffering(req.params.id, req.body), 'Subject offering updated');
+});
+
 export const createOffering = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.createOffering(req.body), 'Subject offering created', 201);
 });

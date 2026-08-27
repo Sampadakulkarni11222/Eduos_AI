@@ -22,6 +22,7 @@ import notificationRoutes from '../modules/notifications/notification.routes.js'
 import calendarRoutes from '../modules/calendar/calendar.routes.js';
 import ticketRoutes from '../modules/tickets/ticket.routes.js';
 import medicalRoutes from '../modules/medical/medical.routes.js';
+import registrationRoutes from '../modules/registrations/registration.routes.js';
 import admissionRoutes from '../modules/admissions/admission.routes.js';
 import growthRoutes from '../modules/growth/growth.routes.js';
 import riskRoutes from '../modules/risk/risk.routes.js';
@@ -87,6 +88,7 @@ router.use('/notifications', notificationRoutes);
 router.use('/calendar', calendarRoutes);
 router.use('/tickets', ticketRoutes);
 router.use('/medical', medicalRoutes);
+router.use('/registrations', registrationRoutes);
 router.use('/admissions', admissionRoutes);
 router.use('/growth', growthRoutes);
 router.use('/risk', riskRoutes);

@@ -18,4 +18,14 @@ const documentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Indexes follow buildVisibilityFilter() in modules/documents/document.service.js,
+// which is the only way documents are ever queried. Every list is sorted by
+// createdAt descending, so it is the trailing key on each compound index —
+// that lets Mongo satisfy the sort from the index instead of collecting the
+// whole match and sorting it in memory.
+documentSchema.index({ visibleToRoles: 1, createdAt: -1 }); // the common role-scoped list
+documentSchema.index({ studentId: 1, createdAt: -1 }); // a single student's documents
+documentSchema.index({ authorProfileId: 1, type: 1 }); // teacher's own course-material count
+documentSchema.index({ sectionId: 1, type: 1, createdAt: -1 }); // section-scoped course material
+
 export const Document = mongoose.model('Document', documentSchema);

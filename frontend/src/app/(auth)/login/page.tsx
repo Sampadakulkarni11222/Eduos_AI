@@ -24,7 +24,7 @@ function useCompleteLogin() {
   const { reload } = useAuth();
   /** Store the session, then route to profile selection or the role portal. */
   return async (result: LoginResult) => {
-    setSession(result);
+    await setSession(result);
     if (result.requiresProfileSelection && result.profiles?.length) {
       stashLoginProfiles(result.profiles);
       router.replace('/select-profile');
@@ -202,6 +202,9 @@ function CodeInput({ id, value, onChange }: { id: string; value: string; onChang
       value={value}
       onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
       placeholder="— — — — — —"
+      // The code field only renders once the OTP step appears, so moving focus
+      // to it is the intended behaviour rather than a focus steal.
+      // eslint-disable-next-line jsx-a11y/no-autofocus
       autoFocus
       required
       style={{
@@ -526,7 +529,7 @@ export default function LoginPage() {
                     style={inputStyle}
                   />
                   <p style={{ fontSize: 11.5, color: '#9a8a7a', marginTop: 5 }}>
-                    We'll send a 6-digit OTP verification code.
+                    We&apos;ll send a 6-digit OTP verification code.
                   </p>
                 </div>
                 {err && <ErrBanner msg={err} />}

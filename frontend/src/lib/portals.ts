@@ -63,6 +63,7 @@ export const PORTALS: Record<string, Portal> = {
       ]},
       { title: 'ACADEMIC OPS', items: [
         item('Classroom Mgmt', '▦', '/admin/classrooms', { ready: true }),
+        item('Subject Registrations', '⊕', '/admin/registrations', { ready: true }),
         item('Attendance', '☱', '/admin/attendance', { ready: true }),
         item('Calendar & Events', '▤', '/admin/calendar', { ready: true }),
         item('Timetable Builder', '▥', '/admin/timetable', { ready: true }),
@@ -99,7 +100,10 @@ export const PORTALS: Record<string, Portal> = {
         item('Calendar', '▤', '/teacher/calendar', { ready: true }),
         item('Parent Queries', '✉', '/teacher/tickets', { ready: true }),
       ]},
-      { title: 'STUDENTS', items: [ item('Medical Records', '✚', '/teacher/medical', { ready: true }) ]},
+      { title: 'STUDENTS', items: [
+        item('Subject Registrations', '⊕', '/teacher/registrations', { ready: true }),
+        item('Medical Records', '✚', '/teacher/medical', { ready: true }),
+      ]},
     ],
   },
   parent: {
@@ -137,6 +141,7 @@ export const PORTALS: Record<string, Portal> = {
     nav: [
       { title: 'WORKSPACE', items: [ item('Dashboard', '◳', '/student', { ready: true }) ]},
       { title: 'ACADEMICS', items: [
+        item('Subject Registration', '⊕', '/student/subjects', { ready: true }),
         item('Timetable', '▥', '/student/timetable', { ready: true }),
         item('Assignments', '✐', '/student/assignments', { ready: true }),
         item('Performance', '◉', '/student/performance', { ready: true }),

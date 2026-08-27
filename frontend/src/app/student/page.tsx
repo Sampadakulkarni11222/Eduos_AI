@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PortalShell } from '@/components/shell';
 
-import { Button, Card, EmptyState, SkeletonRows, StatCard, rupees, subjectColor } from '@/components/ui';
+import { Button, Card, EmptyState, SkeletonRows, StatCard, clickable, rupees, subjectColor } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { StudentDashboardDto, StudentListItem } from '@/lib/types';
@@ -59,7 +59,7 @@ export default function StudentDashboard() {
               deltaDir={data && data.pendingAssignments > 0 ? 'down' : 'flat'}
             />
             <StatCard label="Upcoming Exams" value={data ? data.examSchedule.length : '—'} delta="scheduled" deltaDir="flat" />
-            <div onClick={() => router.push('/student/payments')} style={{ cursor: 'pointer' }}>
+            <div {...clickable(() => router.push('/student/payments'), { label: 'View fees and payments' })} style={{ cursor: 'pointer' }}>
               <StatCard
                 label="Fees Pending"
                 value={data ? rupees(Math.round(data.feeStatus.pendingFees * 100)) : '—'}
@@ -81,7 +81,7 @@ export default function StudentDashboard() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <Card>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Today's Schedule</strong>
+                <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Today&apos;s Schedule</strong>
                 <button onClick={() => router.push('/student/timetable')} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
                   Full timetable →
                 </button>

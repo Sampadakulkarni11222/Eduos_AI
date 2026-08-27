@@ -147,7 +147,7 @@ export function AccessPermissionsContent() {
           <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1a0a0d' }}>Role-Based Access Control</div>
           <div style={{ fontSize: 12.5, color: '#7a6a60', marginTop: 2 }}>
             Changes save instantly to the server and are enforced on every API call.
-            Scope <strong>ALL</strong> covers the whole school; <strong>OWN</strong> restricts to the role's own classes, children, or records.
+            Scope <strong>ALL</strong> covers the whole school; <strong>OWN</strong> restricts to the role&apos;s own classes, children, or records.
             The <strong>Owner</strong> role is locked.
           </div>
         </div>
@@ -267,7 +267,7 @@ export function AccessPermissionsContent() {
       <div style={{ marginTop: 14, fontSize: 12, color: '#9a8a7a', display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
         <Pill tone="green">ALL — whole school</Pill>
         <Pill tone="amber">OWN — own classes / children / records</Pill>
-        <span>Click a grant's scope label to switch between ALL and OWN.</span>
+        <span>Click a grant&apos;s scope label to switch between ALL and OWN.</span>
       </div>
     </div>
   );

@@ -87,7 +87,10 @@ export function PortalShell({
     <div className={cx('app-shell', portal.themeClass, collapsed && 'sidebar-collapsed')}>
       <ModalA11yBridge />
       {mobileOpen && (
-        <div className="sidebar-overlay" onClick={() => setMobileOpen(false)} />
+        // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+        // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+        <div className="sidebar-overlay" onMouseDown={(e) => e.target === e.currentTarget && (() => setMobileOpen(false))()} />
       )}
       <Sidebar
         portal={portal}

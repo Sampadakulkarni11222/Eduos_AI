@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, SkeletonRows, cx } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
-import { api } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import type { AttStatus, AttendanceRoster, SectionDto } from '@/lib/types';
 
 const STATUSES: { key: AttStatus; label: string; tone: string }[] = [
@@ -104,8 +104,8 @@ export default function AttendancePage() {
       updatedRoster.roster.forEach((row) => { if (row.status) nextMarks[row.enrollmentId] = row.status; });
       setMarks(nextMarks);
       setSaved(true);
-    } catch (err: any) {
-      setSaveErr(err?.message ?? 'Save failed. Please try again.');
+    } catch (err: unknown) {
+      setSaveErr(errorMessage(err, 'Save failed. Please try again.'));
     } finally { setSaving(false); savingRef.current = false; }
   };
 

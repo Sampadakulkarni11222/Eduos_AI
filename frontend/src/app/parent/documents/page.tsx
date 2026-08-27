@@ -30,6 +30,10 @@ export default function ParentDocuments() {
       .then((docs) => setDocuments(docs.filter((d) => d.type !== 'ID_CARD')))
       .catch(() => setDocuments([]))
       .finally(() => setLoading(false));
+  // Intentionally narrower than the rule wants: this effect reads only the
+  // enrollment id, so widening the dependency to the whole `kid` object would
+  // refetch on unrelated changes to the selected child.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kid?.id]);
 
   const filteredDocs = documents?.filter((d) => {

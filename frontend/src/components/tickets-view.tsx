@@ -1,5 +1,5 @@
 'use client';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Button, Card, EmptyState, Pill, SkeletonRows } from './ui';
 import { api, ApiError } from '@/lib/api';
 import type { StudentListItem, TicketDto, TicketThread } from '@/lib/types';
@@ -49,8 +49,8 @@ function ThreadPanel({ ticketId, canRespond, onChanged }: { ticketId: string; ca
   const [thread, setThread] = useState<any | null>(null);
   const [reply, setReply] = useState('');
   const [busy, setBusy] = useState(false);
-  const load = () => api.ticketThread(ticketId).then(setThread).catch(() => setThread(null));
-  useEffect(() => { setThread(null); load(); }, [ticketId]);
+  const load = useCallback(() => api.ticketThread(ticketId).then(setThread).catch(() => setThread(null)), [ticketId]);
+  useEffect(() => { setThread(null); load(); }, [load]);
 
   const [replyErr, setReplyErr] = useState<string | null>(null);
   const send = async (e: FormEvent) => {

@@ -6,7 +6,7 @@ import { RefreshToken } from '../../models/refreshToken.model.js';
 import { OtpCode } from '../../models/otpCode.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { signAccessToken } from '../../utils/jwt.js';
-import { generateOtp, hashOtp } from '../../utils/otp.js';
+import { generateOtp, hashOtp, compareOtp } from '../../utils/otp.js';
 import { generateRefreshToken, hashRefreshToken } from '../../utils/refreshToken.js';
 import { buildPermissionMap } from '../../utils/buildPermissionMap.js';
 import { logger } from '../../utils/logger.js';
@@ -105,7 +105,7 @@ async function issueOtpForAccount(account, purpose = 'LOGIN') {
   const code = generateOtp();
   await OtpCode.create({
     accountId: account._id,
-    codeHash: hashOtp(code),
+    codeHash: await hashOtp(code),
     purpose,
     expiresAt: new Date(Date.now() + env.OTP_TTL_MINUTES * 60 * 1000),
   });
@@ -118,7 +118,7 @@ async function consumeOtp(account, code, purpose = 'LOGIN') {
   if (otp.expiresAt < new Date()) throw new AppError('OTP expired, request a new one', 401, [], 'OTP_EXPIRED');
   if (otp.attempts >= env.OTP_MAX_ATTEMPTS) throw new AppError('Too many attempts, request a new OTP', 429, [], 'OTP_LOCKED');
 
-  if (otp.codeHash !== hashOtp(code)) {
+  if (!(await compareOtp(code, otp.codeHash))) {
     otp.attempts += 1;
     await otp.save();
     throw new AppError('That code is incorrect', 401, [], 'OTP_WRONG');
@@ -183,6 +183,9 @@ export async function verifyEmailOtp({ email, code }, opts) {
   return resolveSession(account, opts);
 }
 
+// Google mints ID tokens under either spelling of the issuer claim.
+const GOOGLE_ISSUERS = ['accounts.google.com', 'https://accounts.google.com'];
+
 const googleAuthCircuitBreaker = new CircuitBreaker('google-auth', {
   failureThreshold: 3,
   cooldownPeriod: 10000,
@@ -191,7 +194,7 @@ const googleAuthCircuitBreaker = new CircuitBreaker('google-auth', {
 
 /**
  * Google Sign-In.
- * Verifies the Google ID token server-side (signature + audience via
+ * Verifies the Google ID token server-side (signature + issuer + audience via
  * Google's tokeninfo endpoint), then signs the matching EduOS account in.
  * Accounts are never auto-created from Google — sign-in only.
  */
@@ -213,6 +216,9 @@ export async function googleLogin({ idToken }, opts) {
     throw new AppError('Could not verify Google sign-in', 401, [], 'GOOGLE_TOKEN_INVALID');
   }
 
+  if (!GOOGLE_ISSUERS.includes(payload.iss)) {
+    throw new AppError('Google token was not issued by Google', 401, [], 'GOOGLE_TOKEN_INVALID');
+  }
   if (payload.aud !== env.GOOGLE_CLIENT_ID) {
     throw new AppError('Google token was issued for a different application', 401, [], 'GOOGLE_TOKEN_INVALID');
   }
@@ -229,13 +235,53 @@ export async function googleLogin({ idToken }, opts) {
   return resolveSession(account, opts);
 }
 
+// Password brute-force ceiling. After MAX_FAILED_LOGINS consecutive wrong
+// passwords the account stops accepting *any* password for LOCKOUT_MINUTES,
+// so an attacker can't walk a dictionary against a known email address.
+const MAX_FAILED_LOGINS = 5;
+const LOCKOUT_MINUTES = 15;
+
 export async function login({ email, password }, opts) {
   const account = await Account.findOne({ email: email?.toLowerCase() });
   if (!account || !account.passwordHash) throw new AppError('Invalid email or password', 401, [], 'BAD_CREDENTIALS');
 
+  if (account.lockoutUntil && account.lockoutUntil > new Date()) {
+    const minutesLeft = Math.ceil((account.lockoutUntil - Date.now()) / 60000);
+    throw new AppError(
+      `Too many failed sign-in attempts. Try again in ${minutesLeft} minute${minutesLeft === 1 ? '' : 's'}.`,
+      403,
+      [],
+      'ACCOUNT_LOCKED'
+    );
+  }
+
   const valid = await bcrypt.compare(password, account.passwordHash);
-  if (!valid) throw new AppError('Invalid email or password', 401, [], 'BAD_CREDENTIALS');
+  if (!valid) {
+    // A lapsed lockout counts as a clean slate: this failure starts a new streak.
+    const attempts = account.lockoutUntil ? 1 : account.failedLoginAttempts + 1;
+    const locked = attempts >= MAX_FAILED_LOGINS;
+    account.failedLoginAttempts = locked ? 0 : attempts;
+    account.lockoutUntil = locked ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000) : null;
+    await account.save();
+
+    if (locked) {
+      logger.warn(`Account ${account._id} locked after ${MAX_FAILED_LOGINS} failed sign-ins (ip: ${opts?.ip ?? 'unknown'})`);
+      throw new AppError(
+        `Too many failed sign-in attempts. Try again in ${LOCKOUT_MINUTES} minutes.`,
+        403,
+        [],
+        'ACCOUNT_LOCKED'
+      );
+    }
+    throw new AppError('Invalid email or password', 401, [], 'BAD_CREDENTIALS');
+  }
   if (account.status !== 'ACTIVE') throw new AppError('Account is inactive', 403);
+
+  if (account.failedLoginAttempts !== 0 || account.lockoutUntil) {
+    account.failedLoginAttempts = 0;
+    account.lockoutUntil = null;
+    await account.save();
+  }
 
   return resolveSession(account, opts);
 }

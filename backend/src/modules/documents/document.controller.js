@@ -6,7 +6,10 @@ import { getTeacherSectionIds } from '../../utils/scope.js';
 import * as service from './document.service.js';
 
 export const listDocuments = asyncHandler(async (req, res) => {
-  const documents = await service.listForActor(req.actor, req.scope, req.query.studentId);
+  const documents = await service.listForActor(req.actor, req.scope, req.query.studentId, {
+    page: req.query.page,
+    pageSize: req.query.pageSize,
+  });
   sendSuccess(res, documents, 'Documents retrieved successfully');
 });
 
