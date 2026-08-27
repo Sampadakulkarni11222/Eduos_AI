@@ -76,7 +76,10 @@ export const env = {
   RATE_LIMIT_MAX: Number(process.env.RATE_LIMIT_MAX) || 2000,
   // Stricter limit for credential endpoints (login / OTP request+verify).
   RATE_LIMIT_AUTH_MAX: Number(process.env.RATE_LIMIT_AUTH_MAX) || 30,
-  CORS_ORIGIN: process.env.CORS_ORIGIN ?? '*',
+  // Defaults to the local frontend rather than '*' so development exercises the
+  // same cross-origin rules as production — a wildcard default hides CORS
+  // mistakes until deploy, where the boot check then refuses to start on them.
+  CORS_ORIGIN: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
   // Defaults to true in development, false in production
   SWAGGER_ENABLED: process.env.SWAGGER_ENABLED !== undefined
     ? process.env.SWAGGER_ENABLED === 'true'

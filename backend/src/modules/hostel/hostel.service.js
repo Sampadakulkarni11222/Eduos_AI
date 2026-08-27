@@ -4,6 +4,8 @@ import { Student } from '../../models/student.model.js';
 import { MedicalRecord } from '../../models/medicalRecord.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { decrypt } from '../../utils/crypto.js';
+import { recordPiiRead } from '../../utils/auditTrail.js';
+import { assertCanAccess as assertCanAccessMedical } from '../medical/medical.service.js';
 
 // ─── Dashboard Summary ──────────────────────────────────────
 export async function getSummary() {
@@ -234,7 +236,18 @@ export async function listHostelStudents() {
 }
 
 // ─── Emergency Medical Lookup ─────────────────────────────────
-export async function getMedicalRecord(studentId) {
+// A second door onto the same medical records the medical module serves, so it
+// enforces the same gate: the route now also demands `medical.read` (which the
+// WARDEN role already holds at ALL scope), and an OWN-scoped holder is narrowed
+// by the medical module's own rules rather than seeing every resident. The
+// residency check stays on top of that, and every use is audited.
+//
+// `scope` is medical.read's scope, not hostel.read's — see hostel.routes.js.
+export async function getMedicalRecord(actor, scope, studentId) {
+  // Authorisation before existence, so an unauthorised caller can't use the
+  // 404s below to probe who is enrolled or resident.
+  await assertCanAccessMedical(actor, scope, studentId, { via: 'hostel.medical_lookup' });
+
   const student = await Student.findById(studentId);
   if (!student) throw new AppError('Student not found', 404);
 
@@ -243,7 +256,19 @@ export async function getMedicalRecord(studentId) {
   if (!allocation) throw new AppError('Student is not a current hostel resident', 404);
 
   const record = await MedicalRecord.findOne({ studentId });
-  if (!record) return { studentId, message: 'No medical record on file' };
+  if (!record) {
+    // Still an access attempt against a named resident, so it belongs in the
+    // trail even though nothing was disclosed.
+    await recordPiiRead({
+      actor,
+      action: 'medical.emergency_lookup',
+      entityType: 'MedicalRecord',
+      entityId: studentId,
+      via: 'hostel.medical_lookup',
+      fields: [],
+    });
+    return { studentId, message: 'No medical record on file' };
+  }
 
   const obj = record.toObject();
 
@@ -265,6 +290,15 @@ export async function getMedicalRecord(studentId) {
       delete obj[encKey];
     }
   }
+
+  await recordPiiRead({
+    actor,
+    action: 'medical.emergency_lookup',
+    entityType: 'MedicalRecord',
+    entityId: studentId,
+    via: 'hostel.medical_lookup',
+    fields: Object.keys(encFields).filter((k) => obj[k] != null),
+  });
 
   return obj;
 }

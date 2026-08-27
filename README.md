@@ -2,8 +2,6 @@
 
 EduOS AI is a multi-portal School/College ERP: one platform with dedicated, role-scoped portals for **Owner, Admin, Principal, Teacher, Parent, Student, Finance, Librarian, and Hostel Warden**, plus an AI copilot, WhatsApp assistant (simulation mode), online fee payments, file uploads, and a fully backend-enforced RBAC system.
 
-> 📄 Project history: [AUDIT_REPORT.md](AUDIT_REPORT.md) (full stabilization audit) and [COMPLETION_REPORT.md](COMPLETION_REPORT.md) (coverage matrix, fix log, remaining credential-only gaps).
-
 ---
 
 ## 1. Repository layout
@@ -35,8 +33,8 @@ Eduos-AI/
 │   │                           permissions.tsx (server-trusted gating), portals.ts, types.ts
 │   └── .env                    frontend configuration
 │
-├── AUDIT_REPORT.md         stabilization audit (what was broken and why)
-├── COMPLETION_REPORT.md    final completion report (what was fixed, verified how)
+├── .github/workflows/      CI: tests, lint, build, dependency audit
+├── docker-compose.yml      Mongo + backend + frontend for local orchestration
 ├── render.yaml             Render deployment blueprint
 └── package.json / *.yaml   ⚠ legacy leftovers from an earlier iteration — NOT used
 ```
@@ -90,6 +88,31 @@ npm run dev          # → http://localhost:3000
 ```
 
 Production build: `npm run build && npm start`.
+
+### 4.3 Running against a throwaway database
+
+`.env` may point `MONGO_URI` at a shared or remote cluster, which makes "just run
+it and see" risky — a seed would overwrite real data. To boot the real backend
+against an ephemeral in-memory MongoDB instead:
+
+```bash
+cd backend
+npm run dev:local            # prints the in-memory MongoDB URI it created
+npm run dev:local:seed       # same, with one admin account seeded
+```
+
+It overrides `MONGO_URI` for that process, so the configured cluster is
+unreachable from the run. Everything is discarded when the process exits.
+
+To load the full demo school into it, take the URI it printed:
+
+```bash
+MONGO_URI="<printed URI>" npm run seed:school
+```
+
+The in-memory server runs as a **single-node replica set**, not a standalone —
+the fee ledger and admission numbering use transactions, which MongoDB only
+supports on a replica set.
 
 ---
 
@@ -174,7 +197,7 @@ Everything below works out of the box in **safe development modes**; going live 
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT` / `HOST` | `5000` / `localhost` | server bind |
-| `MONGO_URI_ATLAS` / `MONGO_URI` | `mongodb://localhost:27017/school_erp` | database. **`MONGO_URI_ATLAS` wins when set** — if it is present in `.env`, setting `MONGO_URI` has no effect and your command silently talks to the Atlas cluster instead. Override `MONGO_URI_ATLAS` to point at a local database, and check the `MongoDB connected → …` boot line before trusting a seed or migration |
+| `MONGO_URI` / `MONGO_URI_ATLAS` | `mongodb://localhost:27017/school_erp` | database. **`MONGO_URI_ATLAS` is production-only**: outside `NODE_ENV=production` it is ignored entirely (and the boot log says so), so development always uses `MONGO_URI`. In production Atlas wins when set. The boot line prints `target=…, source=MONGO_URI\|MONGO_URI_ATLAS\|default` — check it before trusting a seed or migration. Note the shipped `.env` may point `MONGO_URI` at a remote cluster; see §4.3 for a way to run against a throwaway database instead |
 | `NODE_ENV` | `development` | in production, `devOtp` is never returned and Swagger defaults off |
 | `JWT_SECRET` | change-me | **must change in production** |
 | `ACCESS_TOKEN_EXPIRES_IN` / `REFRESH_TOKEN_TTL_DAYS` | `15m` / `30` | session lifetimes |
@@ -207,19 +230,134 @@ Everything below works out of the box in **safe development modes**; going live 
 
 ---
 
-## 10. Backend scripts
+## 10. Testing & quality gates
+
+```bash
+cd backend  && npm test        # 164 tests
+cd frontend && npm test        # 43 tests
+cd frontend && npm run lint    # ESLint — the baseline is zero warnings
+cd frontend && npm run typecheck
+```
+
+**Backend** uses Vitest with `mongodb-memory-server`. Tests run against a real
+MongoDB **replica set**, deliberately: `session.withTransaction` only works on
+one, so a standalone would silently take the non-transactional fallback and let
+the fee-ledger tests pass without exercising what they claim to cover. The first
+run downloads a MongoDB binary and is slow; later runs are not.
+
+| Suite | Covers |
+|---|---|
+| `fees.recordPayment` | Atomicity, concurrency, the overpayment guard |
+| `admissions.admissionNo` | Sequence atomicity, seeding from existing numbering |
+| `auth.lockout` / `auth.otp` | Lockout policy; OTP hashing, expiry, throttling |
+| `authFlow.integration` | Refresh-token rotation, reuse detection, revocation |
+| `medical.accessGate` | Per-role medical access matrix, read/denial auditing |
+| `csvImport` | Bulk import: header normalisation, partial failure |
+| `timetable` / `timetable.electives` | Scoping, slot upserts, elective visibility |
+| `paginate` | Opt-in pagination and its backward compatibility |
+| `registrations.notify`, `academics.updateOffering` | Elective workflow |
+
+**Frontend** uses Vitest + Testing Library (`jsdom`). Coverage is the pure
+logic and the components where a regression is silent — the timetable layout
+maths, the `clickable()` accessibility helper, and the elective catalogue.
+
+**CI** (`.github/workflows/ci.yml`) runs on push and PR: backend tests, build,
+and a `node --check` on the built bundle (that bundle is what `npm start`
+actually runs, so a bundle that does not parse is a broken deploy even when the
+source is fine); frontend typecheck, lint at `--max-warnings 0`, tests and
+build; plus an advisory `npm audit`.
+
+---
+
+## 11. Docker
+
+```bash
+docker compose up --build      # Mongo + backend :5000 + frontend :3000
+```
+
+Multi-stage builds, non-root user, production dependencies only. Compose starts
+MongoDB as a **single-node replica set** for the same transaction reason as
+above. `NEXT_PUBLIC_BACKEND_URL` is inlined at build time, so it must be the URL
+the *browser* will use, not the docker-internal hostname.
+
+> These images have not been built and run end to end — treat the setup as a
+> starting point rather than a verified deployment.
+
+---
+
+## 12. Elective subject registration
+
+Students opt into elective subjects; a teacher approves each request. Core
+subjects stay automatic and are not registerable.
+
+**The data chain.** If any link is missing the student sees an empty list with
+no explanation:
+
+```
+Account → Profile (STUDENT) → Student.profileId → Enrollment (ACTIVE) → Section
+                                                                          ▲
+                                 SubjectOffering (isElective: true) ───────┘
+                                 same section, term not yet ended
+```
+
+| Missing | What the student sees |
+|---|---|
+| `Student.profileId` | `STUDENT_NOT_LINKED` |
+| No ACTIVE enrolment | `NO_ACTIVE_ENROLLMENT` |
+| Offering not `isElective` | Nothing — core subjects are excluded by design |
+| Offering in another section | Nothing — students only see their own class's |
+| Term ended | Listed, but registering returns `TERM_CLOSED` |
+
+`capacity: null` means unlimited. **Both PENDING and APPROVED hold a seat** —
+otherwise approving a backlog of pending requests walks straight past the cap.
+
+**Adding electives to a real database:**
+
+```bash
+cd backend
+npm run electives:plan     # dry run — writes nothing
+npm run electives:apply    # prompts for confirmation on a remote database
+```
+
+Edit the `ELECTIVES` block at the top of `backend/scripts/add-electives.js` to
+set which subjects, which grades and what capacities. The script only ever
+writes `Subject` and `SubjectOffering` rows — never an account, profile,
+student, enrolment, grade, section or term. It is idempotent, additive only
+(it never un-marks or deletes an offering, which would strand registered
+students), and refuses to lower a capacity below the seats already taken.
+
+Staff can also do this per-offering in **Classroom Mgmt → Subject Offerings**.
+
+For a full local demo scenario with students, teachers and pre-seeded states,
+use `npm run seed:electives` against a `dev:local` database — **never against
+real data**, since it creates accounts.
+
+> An approved elective only appears on a timetable once a `TimetableSlot` is
+> scheduled for it. Registration decides *who attends*; the slot decides *when
+> it meets*.
+
+---
+
+## 13. Backend scripts
 
 | Command | What it does |
 |---|---|
 | `npm run dev` | nodemon dev server |
 | `npm run seed` | idempotent: permission catalog, system roles, demo users, demo books & hostel rooms |
 | `npm run migrate` | harmonizes/links demo data (enrollments, guardians, invoices, assignments, exams, timetable) |
+| `npm run seed:school` | full demo school: 12 divisions, 720 students, timetable, fees |
 | `npm run build` / `npm start` | esbuild bundle → `dist/`, run production build |
 | `npm run build:obfuscated` / `start:obfuscated` | obfuscated production bundle |
+| `npm test` / `npm run test:watch` | Vitest against an in-memory MongoDB replica set |
+| `npm run dev:local` / `dev:local:seed` | run the server against a throwaway database (§4.3) |
+| `npm run electives:plan` / `electives:apply` | add elective offerings to an existing database (§12) |
+| `npm run seed:electives` | full elective demo scenario — **local databases only** |
+
+Frontend: `npm run dev`, `build`, `start`, `test`, `lint`, `lint:fix`, `typecheck`.
 
 ---
 
-## 11. Troubleshooting
+## 14. Troubleshooting
 
 | Symptom | Fix |
 |---|---|
@@ -227,13 +365,16 @@ Everything below works out of the box in **safe development modes**; going live 
 | `MongooseError` on boot | MongoDB isn't running / wrong `MONGO_URI` |
 | Login page loads but sign-in fails with "Cannot reach the server" | backend not running, or `NEXT_PUBLIC_BACKEND_URL` doesn't match it |
 | No dev OTP shown after "Send OTP" (email) | that email has no account — unknown emails are answered identically on purpose (no user enumeration). Use a seeded email or create the user first |
-| `429 Too many sign-in attempts` | credential rate limit (30/15 min per IP) — wait or raise `RATE_LIMIT_AUTH_MAX` in dev |
+| `429 Too many sign-in attempts` | credential rate limit (30/15 min per IP) — wait, or raise `RATE_LIMIT_AUTH_MAX`. `npm run dev:local` already raises it, since scripting a walkthrough across many accounts trips it immediately |
+| Student's Subject Registration page is empty | no elective offerings for their section — see §12 for the chain each student needs |
+| A seed or migration hit the wrong database | check the `Connecting to MongoDB… (target=…, source=…)` boot line. `MONGO_URI_ATLAS` is ignored outside production |
+| `querySrv ECONNREFUSED` on a `mongodb+srv://` URI | Node's DNS resolver cannot complete the SRV lookup (`nslookup` may still work). Use a direct `mongodb://` URI listing the shard hosts |
 | Everything returns 403 | the role lacks that permission — check Admin → Access & Permissions |
 | Uploaded file 404s | file was uploaded before a change of `UPLOAD_DIR`; files live in `backend/uploads/` |
 
 ---
 
-## 12. Production checklist
+## 15. Production checklist
 
 1. Set strong `JWT_SECRET` and `MEDICAL_ENCRYPTION_KEY`; set `NODE_ENV=production` (disables `devOtp` echo and Swagger).
 2. Configure real `SMS_PROVIDER` / `EMAIL_PROVIDER` — with `console` in production, OTP requests fail loudly instead of pretending to send.
@@ -242,3 +383,6 @@ Everything below works out of the box in **safe development modes**; going live 
 5. Lock `CORS_ORIGIN` to your frontend origin.
 6. Replace/rotate all seeded demo accounts and the shared demo password.
 7. Point uploads at object storage if the server disk isn't durable.
+8. Run `npm test` in both packages and `npm run lint` in the frontend — CI gates on these.
+9. Rebuild the backend bundle (`npm run build`); `npm start` runs `dist/`, which is gitignored and not deployed for you.
+10. If upgrading an existing database, run `npm run electives:plan` before `apply` and read the plan.

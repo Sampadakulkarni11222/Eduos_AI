@@ -23,15 +23,18 @@ function StudentDetailModal({ studentId, onClose }: { studentId: string; onClose
   }, [studentId]);
 
   return (
+    // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+    // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
-      onClick={onClose}
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
       style={{
         position: 'fixed', inset: 0, zIndex: 9000,
         background: 'rgba(0,0,0,0.45)', display: 'flex',
         alignItems: 'flex-start', justifyContent: 'center', padding: 24, overflowY: 'auto',
       }}
     >
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 640, margin: '2vh 0' }}>
+      <div style={{ width: '100%', maxWidth: 640, margin: '2vh 0' }}>
         <Card style={{ padding: 0 }}>
           {!data && !err && <div style={{ padding: 24 }}><SkeletonRows rows={6} /></div>}
           {err && (
@@ -103,7 +106,7 @@ function StudentDetailModal({ studentId, onClose }: { studentId: string; onClose
                 <section>
                   <h4 style={sectionTitle}>Medical Record</h4>
                   {!data.medical && (
-                    <p style={emptyText}>Not available — either no record is on file, or (for subject teachers) only this section's class teacher can view medical info.</p>
+                    <p style={emptyText}>Not available — either no record is on file, or (for subject teachers) only this section&apos;s class teacher can view medical info.</p>
                   )}
                   {data.medical && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

@@ -8,6 +8,6 @@ export const apply = asyncHandler(async (req, res) => {
 });
 
 export const listMine = asyncHandler(async (req, res) => {
-  const applications = await service.listMine(req.actor);
+  const applications = await service.listMine(req.actor, { page: req.query.page, pageSize: req.query.pageSize });
   sendSuccess(res, applications, 'Leave applications fetched');
 });

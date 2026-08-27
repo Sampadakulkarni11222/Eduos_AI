@@ -1,6 +1,7 @@
 import { Ticket, TicketMessage } from '../../models/ticket.model.js';
 import { Enrollment } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
+import { paginate, mapPage } from '../../utils/paginate.js';
 import { getGuardianStudentIds } from '../../utils/scope.js';
 
 export async function list(actor, scope, query = {}) {
@@ -11,19 +12,28 @@ export async function list(actor, scope, query = {}) {
     filter.$or = [{ raisedByProfileId: actor.profileId }, { assigneeProfileId: actor.profileId }];
   }
 
-  const tickets = await Ticket.find(filter)
-    .populate('raisedByProfileId', 'displayName')
-    .populate('assigneeProfileId', 'displayName')
-    .populate('studentId', 'firstName lastName')
-    .sort({ createdAt: -1 });
+  // Opt-in pagination: callers passing pageSize get a Paged envelope, everyone
+  // else keeps the array they always got — but capped rather than unbounded.
+  const page = await paginate(
+    Ticket.find(filter)
+      .populate('raisedByProfileId', 'displayName')
+      .populate('assigneeProfileId', 'displayName')
+      .populate('studentId', 'firstName lastName')
+      .sort({ createdAt: -1 }),
+    Ticket,
+    filter,
+    { page: query.page, pageSize: query.pageSize, label: 'tickets.list' }
+  );
 
+  // Count messages only for the rows actually being returned.
+  const rows = Array.isArray(page) ? page : page.items;
   const counts = await TicketMessage.aggregate([
-    { $match: { ticketId: { $in: tickets.map((t) => t._id) } } },
+    { $match: { ticketId: { $in: rows.map((t) => t._id) } } },
     { $group: { _id: '$ticketId', count: { $sum: 1 } } },
   ]);
   const countMap = Object.fromEntries(counts.map((c) => [c._id.toString(), c.count]));
 
-  return tickets.map((t) => ({ ticket: t, messageCount: countMap[t._id.toString()] ?? 0 }));
+  return mapPage(page, (t) => ({ ticket: t, messageCount: countMap[t._id.toString()] ?? 0 }));
 }
 
 export async function getById(actor, scope, id) {

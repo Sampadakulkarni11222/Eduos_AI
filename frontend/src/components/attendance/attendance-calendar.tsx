@@ -270,8 +270,11 @@ export function AttendanceCalendar() {
 
       {/* Day detail modal */}
       {selectedDate && (
-        <div className="modal-overlay" onClick={() => setSelectedDate(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+        // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+        // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+        <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && (() => setSelectedDate(null))()}>
+          <div className="modal">
             <div className="modal-header">
               <div className="modal-title">
                 {selectedDate.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}

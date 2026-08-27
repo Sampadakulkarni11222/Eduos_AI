@@ -53,10 +53,18 @@ const subjectOfferingSchema = new Schema(
     subjectId: { type: Schema.Types.ObjectId, ref: 'Subject', required: true },
     termId: { type: Schema.Types.ObjectId, ref: 'Term', required: true },
     teacherId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
+    // Electives are the only offerings a student may register for themselves;
+    // core subjects stay implicit in the section enrollment, as they always
+    // have been. See modules/registrations.
+    isElective: { type: Boolean, default: false },
+    // Seat cap for an elective. null = uncapped. Counted against APPROVED and
+    // PENDING registrations so a run on the last seat can't be double-promised.
+    capacity: { type: Number, default: null, min: 1 },
   },
   { timestamps: true }
 );
 subjectOfferingSchema.index({ sectionId: 1, subjectId: 1, termId: 1 }, { unique: true });
+subjectOfferingSchema.index({ isElective: 1, termId: 1 });
 
 export const AcademicYear = model('AcademicYear', academicYearSchema);
 export const Term = model('Term', termSchema);

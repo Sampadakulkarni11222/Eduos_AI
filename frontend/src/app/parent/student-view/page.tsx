@@ -17,6 +17,10 @@ export default function StudentView() {
     if (!kid?.enrollment) { setGs(null); return; }
     setLoading(true);
     api.growthScore(kid.enrollment.id).then(setGs).catch(() => setGs(null)).finally(() => setLoading(false));
+  // Intentionally narrower than the rule wants: this effect reads only the
+  // enrollment id, so widening the dependency to the whole `kid` object would
+  // refetch on unrelated changes to the selected child.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kid?.enrollment?.id]);
 
   return (

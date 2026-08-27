@@ -66,7 +66,8 @@ async function seedSchool() {
     'subjectofferings', 'attendancerecords', 'exams', 'examsubjects', 'marks',
     'assignments', 'submissions', 'invoices', 'invoicelines', 'payments',
     'timetableslots', 'hostelrooms', 'hostelallocations', 'transportroutes',
-    'transportstops', 'busenrollments', 'calendarevents', 'medicalrecords'
+    'transportstops', 'busenrollments', 'calendarevents', 'medicalrecords',
+    'subjectregistrations'
   ];
   for (const c of collectionsToClear) {
     await mongoose.connection.db.collection(c).deleteMany({});
@@ -262,6 +263,38 @@ async function seedSchool() {
       offerings.push(offering);
     }
   }
+
+  // Electives: offered to every section but, unlike the core subjects above,
+  // not automatic — a student picks these on /student/subjects and a teacher
+  // approves. Seat caps are deliberately small so the "full" state is reachable
+  // in a demo without registering 60 students.
+  // Kept OUT of `offerings` on purpose. That array drives the timetable
+  // (whose no-double-booking stagger assumes exactly 5 subjects per section —
+  // see the comment above), plus exam subjects and assignments. Electives are
+  // opt-in and have no roster until students register, so scheduling them or
+  // generating assignments for them would be wrong on all three counts.
+  logger.info('Creating elective offerings (student-registerable)...');
+  const electiveDefs = [
+    { name: 'French', code: 'FRE', capacity: 20 },
+    { name: 'Music', code: 'MUS', capacity: 15 },
+    { name: 'Robotics', code: 'ROB', capacity: 12 },
+  ];
+  const electiveTeacherPool = [teacherProfiles[2], teacherProfiles[5], teacherProfiles[13]];
+  const electiveOfferings = [];
+  for (const [i, def] of electiveDefs.entries()) {
+    const subject = await Subject.create({ name: def.name, code: def.code });
+    for (const [sectionIndex, section] of sections.entries()) {
+      electiveOfferings.push(await SubjectOffering.create({
+        sectionId: section._id,
+        subjectId: subject._id,
+        termId: midtermTerm._id,
+        teacherId: electiveTeacherPool[(sectionIndex + i) % electiveTeacherPool.length]._id,
+        isElective: true,
+        capacity: def.capacity,
+      }));
+    }
+  }
+  logger.info(`Created ${electiveOfferings.length} elective offerings across ${sections.length} sections.`);
 
   // 8. Seed 60 Students and Parents per Division (720 total)
   logger.info('Generating 60 students and parents per division (12 sections * 60 = 720 students total)...');

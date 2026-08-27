@@ -36,6 +36,8 @@ export const PERMISSION_CATALOG = [
   { key: 'attendance.read', group: 'academics', description: 'View attendance' },
   { key: 'attendance.mark', group: 'academics', description: 'Mark attendance' },
   { key: 'attendance.regularize', group: 'academics', description: 'Correct/regularize past attendance' },
+  { key: 'registrations.apply', group: 'academics', description: 'Register for elective subjects' },
+  { key: 'registrations.review', group: 'academics', description: 'Approve or reject elective subject registrations' },
   { key: 'leave.apply', group: 'academics', description: 'Apply for a leave of absence' },
   { key: 'leave.read', group: 'academics', description: 'View leave application status' },
 
@@ -153,6 +155,7 @@ export const SYSTEM_ROLES = [
       ['analytics.class.read', 'ALL'],
       ['academics.structure.manage', 'ALL'],
       ['academics.read', 'ALL'],
+      ['registrations.review', 'ALL'],
     ]),
   },
   {
@@ -172,6 +175,9 @@ export const SYSTEM_ROLES = [
       ['marks.read', 'OWN'],
       ['marks.enter', 'OWN'],
       ['marks.publish', 'OWN'],
+      // Scoped OWN: the review queue and every decision are filtered to
+      // electives in sections this teacher actually teaches.
+      ['registrations.review', 'OWN'],
       // Read-only — allergy/emergency-contact visibility for a teacher's own
       // students; medical.manage stays parent/admin-only.
       ['medical.read', 'OWN'],
@@ -224,6 +230,7 @@ export const SYSTEM_ROLES = [
       ['attendance.read', 'OWN'],
       ['leave.apply', 'OWN'],
       ['leave.read', 'OWN'],
+      ['registrations.apply', 'OWN'],
       ['assignments.read', 'OWN'],
       ['submissions.submit', 'OWN'],
       ['marks.read', 'OWN'],

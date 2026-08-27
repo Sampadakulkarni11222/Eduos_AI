@@ -55,6 +55,9 @@ export function RiskDetailDrawer({ item, onClose }: { item: RiskItem; onClose: (
   const classTeacher = overview?.enrollment?.classTeacher ?? null;
 
   return (
+    // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+    // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div className="drawer-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="drawer" role="dialog" aria-modal="true" aria-label="Risk details" ref={panelRef} tabIndex={-1}>
         <div className="drawer-header">

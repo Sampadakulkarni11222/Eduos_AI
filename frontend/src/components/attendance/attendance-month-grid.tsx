@@ -1,5 +1,6 @@
 'use client';
 import { buildMonthGrid, isSameMonth, isToday, startOfDay, toISODate } from '@/lib/timetable-dates';
+import { clickable } from '../ui';
 import { dayStyle, type DayInfo } from './attendance-status';
 
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -37,7 +38,7 @@ export function AttendanceMonthGrid({
             return (
               <div
                 key={i}
-                onClick={() => onDayClick(date)}
+                {...clickable(() => onDayClick(date), { label: `Attendance on ${date.toDateString()}` })}
                 className="hover-bg"
                 style={{
                   minHeight: 66, borderRadius: 10, padding: 6, cursor: 'pointer',
@@ -79,7 +80,7 @@ export function AttendanceMonthGrid({
             return (
               <div
                 key={i}
-                onClick={() => onDayClick(date)}
+                {...clickable(() => onDayClick(date), { label: `Attendance on ${date.toDateString()}` })}
                 style={{
                   aspectRatio: '1', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'pointer',
                   background: style.bg,

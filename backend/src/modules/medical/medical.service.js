@@ -3,6 +3,13 @@ import { Enrollment } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { encrypt, decrypt } from '../../utils/crypto.js';
 import { getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
+import { recordPiiRead } from '../../utils/auditTrail.js';
+
+// Named for the audit trail so a privacy review can see which sensitive fields
+// a given read actually disclosed, without the log holding the values.
+const SENSITIVE_FIELDS = [
+  'bloodGroup', 'emergencyContact', 'allergies', 'medications', 'history', 'attachments',
+];
 
 function toPlain(record) {
   if (!record) return null;
@@ -24,14 +31,28 @@ function toPlain(record) {
   };
 }
 
-async function assertCanAccess(actor, scope, studentId) {
+/**
+ * The single gate on medical data. Exported because the hostel module's
+ * emergency lookup reads the same records through a different route and must
+ * narrow identically — a second door onto medical data with its own, looser
+ * rules is how this data leaks.
+ *
+ * Denials are audited here rather than at each call site so every door is
+ * covered: a refused attempt to open a named child's medical record is exactly
+ * the event a privacy review is looking for.
+ *
+ * @param {string} [via] Which endpoint the attempt came through.
+ */
+export async function assertCanAccess(actor, scope, studentId, { via = 'medical.api' } = {}) {
   if (scope !== 'OWN') return;
+
+  let allowed;
   if (actor.roleKey === 'PARENT') {
     const ids = await getGuardianStudentIds(actor.profileId);
-    if (!ids.includes(studentId)) throw new AppError('Medical record not found', 404);
+    allowed = ids.includes(studentId);
   } else if (actor.roleKey === 'STUDENT') {
     const ownId = await getOwnStudentId(actor.profileId);
-    if (ownId !== studentId) throw new AppError('Medical record not found', 404);
+    allowed = ownId === studentId;
   } else if (actor.roleKey === 'TEACHER') {
     // A teacher may view (never manage — medical.manage is never granted OWN
     // to TEACHER) health/allergy info only for students in a section where
@@ -43,18 +64,57 @@ async function assertCanAccess(actor, scope, studentId) {
     const enrollment = await Enrollment.findOne({ studentId, status: 'ACTIVE' })
       .populate('sectionId', 'classTeacherId')
       .select('sectionId');
-    const isClassTeacher = enrollment?.sectionId?.classTeacherId?.toString() === actor.profileId;
-    if (!isClassTeacher) throw new AppError('Medical record not found', 404);
+    allowed = enrollment?.sectionId?.classTeacherId?.toString() === actor.profileId;
   } else {
-    throw new AppError('Access denied to medical record', 403);
+    allowed = false;
   }
+  if (allowed) return;
+
+  await recordPiiRead({
+    actor,
+    action: 'medical.access_denied',
+    entityType: 'MedicalRecord',
+    entityId: studentId,
+    via,
+    fields: [],
+  });
+
+  // Roles that may hold medical.read for *someone* get a 404 (revealing no more
+  // than that this isn't their student); a role with no business here at all
+  // gets a plain 403, as before.
+  const knownScopedRole = ['PARENT', 'STUDENT', 'TEACHER'].includes(actor.roleKey);
+  throw knownScopedRole
+    ? new AppError('Medical record not found', 404)
+    : new AppError('Access denied to medical record', 403);
 }
 
-export async function getByStudentId(actor, scope, studentId) {
-  await assertCanAccess(actor, scope, studentId);
+/**
+ * @param {string} [via] Which endpoint surfaced the record — this is reachable
+ *   directly via GET /medical/:studentId and indirectly through the student
+ *   overview panel, and the audit trail should tell those apart.
+ */
+export async function getByStudentId(actor, scope, studentId, { via = 'medical.api' } = {}) {
+  await assertCanAccess(actor, scope, studentId, { via });
   const record = await MedicalRecord.findOne({ studentId });
   if (!record) throw new AppError('Medical record not found', 404);
-  return toPlain(record);
+
+  const dto = toPlain(record);
+  // Awaited, not fire-and-forget: the disclosure is logged before it leaves the
+  // building, so a crash mid-response can't drop the entry for a read that
+  // already happened.
+  await recordPiiRead({
+    actor,
+    action: 'medical.read',
+    entityType: 'MedicalRecord',
+    entityId: studentId,
+    via,
+    fields: SENSITIVE_FIELDS.filter((f) => {
+      const v = dto[f];
+      return Array.isArray(v) ? v.length > 0 : v != null;
+    }),
+  });
+
+  return dto;
 }
 
 export async function upsert(actor, scope, studentId, data) {

@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Button, useToast } from '../ui';
-import { api } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import { toISODate } from '@/lib/timetable-dates';
 
 export function ApplyLeaveModal({ onClose, onApplied }: { onClose: () => void; onApplied: () => void }) {
@@ -14,6 +14,12 @@ export function ApplyLeaveModal({ onClose, onApplied }: { onClose: () => void; o
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Both are plain "YYYY-MM-DD" strings, so lexical comparison is calendar
+    // comparison — no Date parsing, and so no timezone to shift the day.
+    if (fromDate < today) {
+      toast('Leave cannot be applied for a date in the past.', 'error');
+      return;
+    }
     if (toDate < fromDate) {
       toast('End date cannot be before start date.', 'error');
       return;
@@ -23,16 +29,16 @@ export function ApplyLeaveModal({ onClose, onApplied }: { onClose: () => void; o
       await api.applyLeave({ fromDate, toDate, reason: reason.trim() });
       toast('Leave application submitted.', 'success');
       onApplied();
-    } catch (err: any) {
-      toast(err.message || 'Could not submit the leave application.', 'error');
+    } catch (err: unknown) {
+      toast(errorMessage(err, 'Could not submit the leave application.'), 'error');
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
         <div className="modal-header">
           <div className="modal-title">Apply for Leave</div>
           <button className="modal-close" aria-label="Close dialog" title="Close" onClick={onClose}>×</button>
@@ -41,11 +47,11 @@ export function ApplyLeaveModal({ onClose, onApplied }: { onClose: () => void; o
           <div style={{ display: 'flex', gap: 12 }}>
             <div style={{ flex: 1 }}>
               <div className="field-label">From Date *</div>
-              <input className="field-input" type="date" required value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              <input className="field-input" type="date" required min={today} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
             </div>
             <div style={{ flex: 1 }}>
               <div className="field-label">To Date *</div>
-              <input className="field-input" type="date" required value={toDate} onChange={(e) => setToDate(e.target.value)} />
+              <input className="field-input" type="date" required min={fromDate || today} value={toDate} onChange={(e) => setToDate(e.target.value)} />
             </div>
           </div>
 

@@ -14,6 +14,10 @@ import {
   verifyCheckoutSignature,
 } from '../../providers/payment.provider.js';
 import { logger } from '../../utils/logger.js';
+import { runInTransaction } from '../../utils/transaction.js';
+
+// Mirrors the enum on paymentSchema in models/fee.model.js.
+const PAYMENT_MODES = ['GATEWAY', 'CASH', 'CHEQUE', 'BANK'];
 
 export const createFeeHead = (data) => FeeHead.create(data);
 export const createFeeStructure = (data) => FeeStructure.create(data);
@@ -377,31 +381,116 @@ async function assertInvoiceOwnership(actor, invoice) {
 }
 
 export async function recordPayment(actor, scope, { invoiceId, amountPaise, mode, gatewayRef, receiptNo }) {
-  const invoice = await Invoice.findById(invoiceId);
-  if (!invoice) throw new AppError('Invoice not found', 404);
-
   // Parents/students (OWN scope) cannot use the manual-ledger path — they can
-  // only pay online via payOnline(), never "mark" an invoice as paid.
+  // only pay online via payOnline(), never "mark" an invoice as paid. Checked
+  // before the invoice is read so an unauthorised caller learns nothing about
+  // whether the id exists.
   if (scope === 'OWN') {
     throw new AppError('Manual payment recording requires staff access. Use online payment instead.', 403);
   }
 
   const amount = Number(amountPaise);
-  if (!Number.isFinite(amount) || amount <= 0) throw new AppError('amountPaise must be a positive number', 400);
+  // Money is held in paise precisely so it is always an integer; a fractional
+  // amount here means the caller is passing rupees or a float, and silently
+  // storing it would corrupt every total derived from this row.
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new AppError('amountPaise must be a positive whole number of paise', 400, [], 'INVALID_AMOUNT');
+  }
+  // Validated up front so the common mistake fails before anything is written,
+  // leaving the compensating path below for genuinely exceptional failures.
+  if (!PAYMENT_MODES.includes(mode)) {
+    throw new AppError(`mode must be one of: ${PAYMENT_MODES.join(', ')}`, 400, [], 'INVALID_PAYMENT_MODE');
+  }
 
-  const payment = await Payment.create({
-    invoiceId,
-    amountPaise: amount,
-    mode,
-    gatewayRef,
-    receiptNo: receiptNo ?? `RCPT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+  return runInTransaction(async (session) => {
+    const opts = session ? { session } : {};
+
+    // One atomic statement replaces what used to be three racy steps. The
+    // filter is the overpayment guard (it matches only if the payment fits
+    // inside the invoice total), the pipeline increments paidPaise *in the
+    // database* rather than in application memory — so two cashiers paying the
+    // same invoice at once can no longer lose one of the payments — and status
+    // is derived from the committed figure in the same operation.
+    const invoice = await Invoice.findOneAndUpdate(
+      {
+        _id: invoiceId,
+        status: { $ne: 'CANCELLED' },
+        $expr: { $lte: [{ $add: ['$paidPaise', amount] }, '$totalPaise'] },
+      },
+      [
+        { $set: { paidPaise: { $add: ['$paidPaise', amount] } } },
+        { $set: { status: { $cond: [{ $gte: ['$paidPaise', '$totalPaise'] }, 'PAID', 'PARTIAL'] } } },
+      ],
+      { new: true, ...opts }
+    );
+
+    if (!invoice) {
+      // Nothing matched. Work out which of the three reasons it was, so the
+      // caller gets something actionable instead of a bare "not found".
+      const existing = await Invoice.findById(invoiceId).select('totalPaise paidPaise status').lean();
+      if (!existing) throw new AppError('Invoice not found', 404);
+      if (existing.status === 'CANCELLED') {
+        throw new AppError('This invoice has been cancelled', 409, [], 'INVOICE_CANCELLED');
+      }
+      const outstandingPaise = existing.totalPaise - existing.paidPaise;
+      throw new AppError(
+        outstandingPaise <= 0
+          ? 'This invoice is already fully paid'
+          : `Payment of ${amount} paise exceeds the outstanding balance of ${outstandingPaise} paise`,
+        409,
+        [],
+        'PAYMENT_EXCEEDS_BALANCE'
+      );
+    }
+
+    try {
+      const [payment] = await Payment.create(
+        [{
+          invoiceId,
+          amountPaise: amount,
+          mode,
+          gatewayRef,
+          receiptNo: receiptNo ?? `RCPT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+        }],
+        opts
+      );
+
+      return {
+        payment,
+        invoice,
+        receiptNo: payment.receiptNo,
+        status: invoice.status,
+        paidPaise: invoice.paidPaise,
+      };
+    } catch (err) {
+      // Inside a transaction the throw rolls the increment back for us. On a
+      // standalone MongoDB, runInTransaction runs us without a session, so the
+      // credit above is already committed and has to be undone by hand —
+      // otherwise the invoice shows money with no ledger entry behind it.
+      if (!session) {
+        await Invoice.updateOne({ _id: invoiceId }, [
+          { $set: { paidPaise: { $max: [0, { $subtract: ['$paidPaise', amount] }] } } },
+          {
+            $set: {
+              status: {
+                $switch: {
+                  branches: [
+                    { case: { $gte: ['$paidPaise', '$totalPaise'] }, then: 'PAID' },
+                    { case: { $gt: ['$paidPaise', 0] }, then: 'PARTIAL' },
+                  ],
+                  default: 'PENDING',
+                },
+              },
+            },
+          },
+        ]);
+        logger.error(
+          `Payment row failed after crediting invoice ${invoiceId}; rolled the credit back by ${amount} paise: ${err.message}`
+        );
+      }
+      throw err;
+    }
   });
-
-  invoice.paidPaise += amount;
-  invoice.status = invoice.paidPaise >= invoice.totalPaise ? 'PAID' : 'PARTIAL';
-  await invoice.save();
-
-  return { payment, invoice, receiptNo: payment.receiptNo, status: invoice.status, paidPaise: invoice.paidPaise };
 }
 
 /**

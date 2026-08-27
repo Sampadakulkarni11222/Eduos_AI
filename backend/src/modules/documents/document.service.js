@@ -6,6 +6,7 @@ import { AppError } from '../../utils/AppError.js';
 import { logger } from '../../utils/logger.js';
 import { env } from '../../config/env.js';
 import { getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
+import { paginate, mapPage } from '../../utils/paginate.js';
 
 const uploadDir = resolve(process.cwd(), env.UPLOAD_DIR);
 
@@ -58,11 +59,16 @@ async function buildVisibilityFilter(actor, scope, studentId) {
   return query;
 }
 
-export async function listForActor(actor, scope, studentId) {
+export async function listForActor(actor, scope, studentId, opts = {}) {
   const query = await buildVisibilityFilter(actor, scope, studentId);
-  const documents = await Document.find(query).sort({ createdAt: -1 });
+  const page = await paginate(
+    Document.find(query).sort({ createdAt: -1 }),
+    Document,
+    query,
+    { page: opts.page, pageSize: opts.pageSize, label: 'documents.listForActor' }
+  );
 
-  return documents.map((d) => ({
+  return mapPage(page, (d) => ({
     id: d._id,
     title: d.title,
     type: d.type,

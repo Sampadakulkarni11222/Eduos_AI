@@ -27,6 +27,10 @@ export default function ParentLibrary() {
       .then(setIssued)
       .catch(() => setIssued([]))
       .finally(() => setLoading(false));
+  // Intentionally narrower than the rule wants: this effect reads only the
+  // enrollment id, so widening the dependency to the whole `kid` object would
+  // refetch on unrelated changes to the selected child.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kid?.id]);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {

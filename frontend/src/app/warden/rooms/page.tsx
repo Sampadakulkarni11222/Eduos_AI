@@ -166,8 +166,11 @@ export default function WardenRooms() {
 
       {/* Add Room Modal */}
       {showRoomModal && (
-        <div className="modal-overlay" onClick={() => setShowRoomModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+        // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+        // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+        <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && (() => setShowRoomModal(false))()}>
+          <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Add Hostel Room</div>
               <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowRoomModal(false)}>×</button>
@@ -204,8 +207,11 @@ export default function WardenRooms() {
 
       {/* Allocate Student Modal */}
       {showAllocateModal && (
-        <div className="modal-overlay" onClick={() => setShowAllocateModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+        // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+        // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+        <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && (() => setShowAllocateModal(false))()}>
+          <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Allocate Student to Room</div>
               <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowAllocateModal(false)}>×</button>

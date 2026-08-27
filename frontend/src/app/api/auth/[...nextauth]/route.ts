@@ -15,9 +15,9 @@ const authOptions: NextAuthOptions = {
       // On initial Google sign-in, exchange the Google ID token with our backend
       if (account?.provider === 'google' && account.id_token) {
         token.googleIdToken = account.id_token;
-        token.googleEmail = (profile as any)?.email;
-        token.googleName = (profile as any)?.name;
-        token.googlePicture = (profile as any)?.picture;
+        token.googleEmail = profile?.email;
+        token.googleName = profile?.name;
+        token.googlePicture = profile?.picture;
 
         // Exchange with backend to get EduOS JWT tokens
         try {
@@ -27,9 +27,9 @@ const authOptions: NextAuthOptions = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               idToken: account.id_token,
-              email: (profile as any)?.email,
-              name: (profile as any)?.name,
-              picture: (profile as any)?.picture,
+              email: profile?.email,
+              name: profile?.name,
+              picture: profile?.picture,
             }),
           });
 
@@ -54,12 +54,12 @@ const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       // Forward EduOS tokens to client via session
-      (session as any).eduosAccessToken = token.eduosAccessToken;
-      (session as any).eduosRefreshToken = token.eduosRefreshToken;
-      (session as any).eduosProfile = token.eduosProfile;
-      (session as any).eduosProfiles = token.eduosProfiles;
-      (session as any).eduosRequiresProfileSelection = token.eduosRequiresProfileSelection;
-      (session as any).eduosError = token.eduosError;
+      session.eduosAccessToken = token.eduosAccessToken;
+      session.eduosRefreshToken = token.eduosRefreshToken;
+      session.eduosProfile = token.eduosProfile;
+      session.eduosProfiles = token.eduosProfiles;
+      session.eduosRequiresProfileSelection = token.eduosRequiresProfileSelection;
+      session.eduosError = token.eduosError;
       return session;
     },
   },

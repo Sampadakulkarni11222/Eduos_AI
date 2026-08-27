@@ -1,10 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from '@/components/ui';
+import { Button, Card, EmptyState, Pill, SkeletonRows, divisionLabel, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api, ApiError } from '@/lib/api';
 import type { GradeDto, SectionDto, SubjectDto, TermDto, OfferingDto, StaffAccountDto, StudentListItem } from '@/lib/types';
+import { ElectiveControls } from '@/components/academics/elective-controls';
 
 type Tab = 'grades' | 'sections' | 'subjects' | 'offerings';
 
@@ -288,13 +289,16 @@ export default function ClassroomManagement() {
             )}
             {offerings && offerings.length > 0 && (
               <table className="data-table data-table-cards">
-                <thead><tr><th>Class</th><th>Subject</th><th>Teacher</th></tr></thead>
+                <thead><tr><th>Class</th><th>Subject</th><th>Teacher</th><th>Student registration</th></tr></thead>
                 <tbody>
                   {offerings.map((o) => (
                     <tr key={o.id}>
-                      <td className="cell-primary" data-label="Class">{o.sectionName}</td>
+                      <td className="cell-primary" data-label="Class">{divisionLabel(o.gradeName, o.sectionName)}</td>
                       <td data-label="Subject"><Pill tone="gray">{o.subject}</Pill></td>
                       <td data-label="Teacher">{o.teacherName ?? <span style={{ color: 'var(--text-faint)' }}>Unassigned</span>}</td>
+                      <td data-label="Student registration">
+                        <ElectiveControls offering={o} onChanged={loadOfferings} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>

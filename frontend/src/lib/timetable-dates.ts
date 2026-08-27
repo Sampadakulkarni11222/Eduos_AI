@@ -125,3 +125,46 @@ export function formatDuration(startTime: string, endTime: string): string {
   const m = mins % 60;
   return m === 0 ? `${h}h` : `${h}h ${m}min`;
 }
+
+/** Minutes since midnight from an "HH:MM" string; null if unparseable. */
+export function minutesFromHm(hm: string | null | undefined): number | null {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(hm ?? ''));
+  if (!m) return null;
+  const mins = Number(m[1]) * 60 + Number(m[2]);
+  return mins >= 0 && mins <= 24 * 60 ? mins : null;
+}
+
+/** Minutes since local midnight for a Date — used to place the "now" line. */
+export function minutesOfDay(date: Date): number {
+  return date.getHours() * 60 + date.getMinutes();
+}
+
+/** Gutter label for a whole hour, Google-Calendar style: "8 AM", "12 PM", "1 PM". */
+export function formatHourLabel(hour: number): string {
+  const h = ((hour % 24) + 24) % 24;
+  const suffix = h < 12 ? 'AM' : 'PM';
+  const display = h % 12 === 0 ? 12 : h % 12;
+  return `${display} ${suffix}`;
+}
+
+/** "9:00 AM" from an "HH:MM" string, for event chips and tooltips. */
+export function formatTimeLabel(hm: string | null | undefined): string {
+  const mins = minutesFromHm(hm);
+  if (mins == null) return '—';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  const suffix = h < 12 ? 'AM' : 'PM';
+  const display = h % 12 === 0 ? 12 : h % 12;
+  return `${display}:${String(m).padStart(2, '0')} ${suffix}`;
+}
+
+/** "Monday, 26 August" — the header label for a single-day calendar view. */
+export function formatSingleDayLabel(date: Date): string {
+  return date.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+/** "HH:MM" from minutes-since-midnight, clamped into a single day. */
+export function hmFromMinutes(mins: number): string {
+  const clamped = Math.max(0, Math.min(24 * 60 - 1, Math.round(mins)));
+  return `${String(Math.floor(clamped / 60)).padStart(2, '0')}:${String(clamped % 60).padStart(2, '0')}`;
+}

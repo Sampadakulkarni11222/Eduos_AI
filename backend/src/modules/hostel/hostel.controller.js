@@ -61,7 +61,7 @@ export const listHostelStudents = asyncHandler(async (_req, res) => {
 });
 
 export const getMedicalRecord = asyncHandler(async (req, res) => {
-  const record = await service.getMedicalRecord(req.params.studentId);
+  const record = await service.getMedicalRecord(req.actor, req.scope, req.params.studentId);
   sendSuccess(res, record, 'Medical record fetched');
 });
 

@@ -50,6 +50,10 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
     roleId: profile?.roleId?._id?.toString() ?? null,
     roleKey: profile?.roleId?.key ?? null,
     permissions: profile ? buildPermissionMap(profile.roleId) : {},
+    // Request context, carried on the actor so the service layer can audit a
+    // read without every service signature having to take `req`.
+    ip: req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null,
+    userAgent: req.headers['user-agent'] ?? null,
   };
 
   next();

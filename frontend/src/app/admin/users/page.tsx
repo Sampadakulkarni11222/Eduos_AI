@@ -4,7 +4,7 @@ import { PortalShell } from '@/components/shell';
 import { Avatar, Button, Card, EmptyState, Input, Pill, SkeletonRows, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { Pagination } from '@/components/pagination';
-import { api } from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 import type { UserDto, SectionDto, RoleKey } from '@/lib/types';
 
 const ROLE_KEYS: RoleKey[] = ['OWNER', 'ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT', 'FINANCE', 'LIBRARIAN', 'WARDEN'];
@@ -117,8 +117,8 @@ export default function UsersPage() {
       setAdmissionNo('');
       if (sections[0]) setSectionId(sections[0].id);
       await load();
-    } catch (err: any) {
-      toast(err.message || 'Could not create the user.', 'error');
+    } catch (err: unknown) {
+      toast(errorMessage(err, 'Could not create the user.'), 'error');
     } finally {
       setBusy(false);
     }
@@ -259,8 +259,11 @@ export default function UsersPage() {
       </Card>
 
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+        // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+        // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+        <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && (() => setShowModal(false))()}>
+          <div className="modal">
             <div className="modal-header">
               <div className="modal-title">Create User Profile</div>
               <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setShowModal(false)}>×</button>

@@ -18,6 +18,10 @@ export default function ParentPerformance() {
     if (!kid?.enrollment) { setPerf(null); return; }
     setLoading(true);
     api.performance(kid.enrollment.id).then(setPerf).catch(() => setPerf(null)).finally(() => setLoading(false));
+  // Intentionally narrower than the rule wants: this effect reads only the
+  // enrollment id, so widening the dependency to the whole `kid` object would
+  // refetch on unrelated changes to the selected child.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kid?.enrollment?.id]);
 
   return (

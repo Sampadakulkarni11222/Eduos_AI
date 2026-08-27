@@ -314,4 +314,12 @@ async function bootstrap() {
 
 bootstrap();
 
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error(`Unhandled Rejection at: ${promise}, reason: ${reason?.stack || reason}`);
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error(`Uncaught Exception: ${error?.stack || error}`);
+});
+
 export default app;

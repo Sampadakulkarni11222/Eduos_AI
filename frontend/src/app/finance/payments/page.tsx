@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees } from '@/components/ui';
 import { Pagination } from '@/components/pagination';
-import { api } from '@/lib/api';
+import { ApiError, api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
 import type { FeeSummary, InvoiceDto, PaymentReceiptDto } from '@/lib/types';
@@ -217,14 +217,23 @@ function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClos
     try {
       const res = await api.recordPayment({ invoiceId: invoice.id, amountPaise: Math.round(parseFloat(amount) * 100), mode });
       setReceipt(res);
-    } catch (e: any) {
-      setErr(e?.code === 'OVERPAYMENT' ? 'Amount exceeds the balance due.' : 'Could not record payment.');
+    } catch (e: unknown) {
+      // The server names the specific failure and, for an over-payment, states
+      // the exact balance remaining — better than anything we could word here.
+      // ('OVERPAYMENT' was the code this checked for before the server actually
+      // emitted one; the real code is PAYMENT_EXCEEDS_BALANCE.)
+      const known = e instanceof ApiError
+        && ['PAYMENT_EXCEEDS_BALANCE', 'INVOICE_CANCELLED', 'INVALID_AMOUNT', 'INVALID_PAYMENT_MODE'].includes(e.code);
+      setErr(known ? (e as ApiError).message : errorMessage(e, 'Could not record payment.'));
     } finally { setBusy(false); }
   };
 
   return (
-    <div className="modal-overlay" onClick={receipt ? onDone : onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 400 }}>
+    // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
+    // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && (receipt ? onDone : onClose)()}>
+      <div className="modal" style={{ maxWidth: 400 }}>
         {receipt ? (
           <div style={{ textAlign: 'center', padding: '8px 0' }}>
             <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>

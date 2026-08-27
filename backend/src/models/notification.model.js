@@ -15,7 +15,7 @@ const notificationSchema = new Schema(
       type: String,
       enum: [
         'ANNOUNCEMENT', 'ASSIGNMENT', 'MARKS', 'ATTENDANCE',
-        'FEES', 'LIBRARY', 'TICKET', 'LEAVE', 'SYSTEM',
+        'FEES', 'LIBRARY', 'TICKET', 'LEAVE', 'REGISTRATION', 'SYSTEM',
       ],
       default: 'SYSTEM',
     },

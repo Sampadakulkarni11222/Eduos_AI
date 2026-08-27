@@ -24,6 +24,10 @@ export default function ParentTransport() {
       .then(setBus)
       .catch(() => setBus(null))
       .finally(() => setLoading(false));
+  // Intentionally narrower than the rule wants: this effect reads only the
+  // enrollment id, so widening the dependency to the whole `kid` object would
+  // refetch on unrelated changes to the selected child.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kid?.id]);
 
   return (

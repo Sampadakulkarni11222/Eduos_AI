@@ -1,5 +1,5 @@
 'use client';
-import { subjectColor } from '../ui';
+import { clickable, subjectColor } from '../ui';
 import { buildMonthGrid, isSameMonth, isToday, toDow } from '@/lib/timetable-dates';
 import type { TimetableSlotDto } from '@/lib/types';
 
@@ -33,7 +33,7 @@ export function MonthView({
             return (
               <div
                 key={i}
-                onClick={() => onDayClick(date)}
+                {...clickable(() => onDayClick(date), { label: `Classes on ${date.toDateString()}` })}
                 className="hover-bg"
                 style={{
                   minHeight: 92, borderRadius: 10, padding: 6, cursor: 'pointer',
@@ -83,7 +83,7 @@ export function MonthView({
             return (
               <div
                 key={i}
-                onClick={() => onDayClick(date)}
+                {...clickable(() => onDayClick(date), { label: `Classes on ${date.toDateString()}` })}
                 style={{
                   aspectRatio: '1', borderRadius: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3, cursor: 'pointer',
                   background: today ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',

@@ -1,0 +1,59 @@
+# Local orchestration: Mongo, backend and frontend together.
+#
+# For a throwaway backend with no Mongo of your own, `npm run dev:local:seed`
+# in backend/ is quicker — it boots against an in-memory replica set. This file
+# is for exercising the full stack the way it is actually deployed.
+
+services:
+  mongo:
+    image: mongo:7
+    # A single-node replica set, not a standalone: the fee ledger and admission
+    # numbering use transactions, which Mongo only supports on a replica set.
+    command: ['--replSet', 'rs0', '--bind_ip_all']
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: >
+        mongosh --quiet --eval "try { rs.status().ok } catch (e) { rs.initiate().ok }"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  backend:
+    build: ./backend
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - '5000:5000'
+    environment:
+      NODE_ENV: development
+      PORT: '5000'
+      HOST: 0.0.0.0
+      MONGO_URI: mongodb://mongo:27017/school_erp?replicaSet=rs0
+      CORS_ORIGIN: http://localhost:3000
+      # Development placeholders. Production refuses to boot on these — see the
+      # insecure-defaults check in backend/src/config/env.js.
+      JWT_SECRET: local-dev-secret-not-for-production
+      MEDICAL_ENCRYPTION_KEY: local-dev-medical-key
+      SMS_PROVIDER: console
+      EMAIL_PROVIDER: console
+      PAYMENT_PROVIDER: none
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Inlined at build time, so it must be the URL the *browser* will use,
+        # not the docker-internal hostname.
+        NEXT_PUBLIC_BACKEND_URL: http://localhost:5000
+    depends_on:
+      - backend
+    ports:
+      - '3000:3000'
+
+volumes:
+  mongo-data:

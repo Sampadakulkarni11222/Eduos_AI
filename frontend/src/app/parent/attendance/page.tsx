@@ -29,6 +29,10 @@ export default function ParentAttendance() {
     setLoading(true);
     api.attendanceSummary(kid.enrollment.id, month)
       .then(setSummary).catch(() => setSummary(null)).finally(() => setLoading(false));
+  // Intentionally narrower than the rule wants: this effect reads only the
+  // enrollment id, so widening the dependency to the whole `kid` object would
+  // refetch on unrelated changes to the selected child.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kid?.enrollment?.id, month]);
 
   const pctColor = (p: number) => p >= 75 ? 'var(--green)' : p >= 60 ? 'var(--amber)' : 'var(--red)';

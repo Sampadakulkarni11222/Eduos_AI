@@ -9,6 +9,9 @@ const accountSchema = new Schema(
     passwordHash: { type: String, default: null },
     mfaSecret: { type: String, default: null },
     status: { type: String, enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED'], default: 'ACTIVE' },
+    // Password brute-force throttling — see login() in auth.service.js.
+    failedLoginAttempts: { type: Number, default: 0 },
+    lockoutUntil: { type: Date, default: null },
   },
   { timestamps: true }
 );

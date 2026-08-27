@@ -1,31 +1,57 @@
 /**
  * Typed API client with refresh-token rotation.
- * Access token lives in memory; refresh token in localStorage.
- * Production hardening (Phase 7): move refresh into an httpOnly cookie
- * behind a BFF route handler so it never touches JS-readable storage.
+ *
+ * The access token lives in memory only. The refresh token lives in an
+ * httpOnly cookie set by the BFF routes under /api/session, so it is never
+ * readable from JavaScript — an XSS can steal at most the short-lived access
+ * token, not the ability to mint new ones indefinitely.
+ *
+ * localStorage holds only a boolean marker saying a session probably exists,
+ * which keeps hasSession() synchronous for its callers without storing
+ * anything sensitive.
  */
 import { cachedFetch, invalidateCache } from './cache';
-import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto } from './types';
+import { SESSION_MARKER } from './session-cookie';
+import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus } from './types';
+
+/**
+ * A document exactly as the API returns it, before this layer normalises it.
+ * Mongo serialises its primary key as `_id`; some endpoints already map it to
+ * `id`. Modelling that explicitly beats `any`, because the field reads in the
+ * `.map()` calls below are then actually type-checked.
+ */
+type RawDoc<T> = Partial<Omit<T, 'id'>> & { _id?: string; id?: string };
 
 // Backend URL – default to localhost:5000. Can be overridden via NEXT_PUBLIC_BACKEND_URL.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
 
-const REFRESH_KEY = 'eduos.refresh';
 let accessToken: string | null = null;
 let refreshInFlight: Promise<boolean> | null = null;
 
-export function setSession(tokens: { accessToken: string; refreshToken: string }) {
+/**
+ * Hands the refresh token to the server-side cookie store and keeps the access
+ * token in memory. Async because the cookie can only be set by the BFF route;
+ * callers must await it before making an authenticated request.
+ */
+export async function setSession(tokens: { accessToken: string; refreshToken: string }) {
   accessToken = tokens.accessToken;
-  localStorage.setItem(REFRESH_KEY, tokens.refreshToken);
+  await fetch('/api/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken: tokens.refreshToken }),
+  });
+  localStorage.setItem(SESSION_MARKER, '1');
 }
 
-export function clearSession() {
+export async function clearSession() {
   accessToken = null;
-  localStorage.removeItem(REFRESH_KEY);
+  localStorage.removeItem(SESSION_MARKER);
+  // Best-effort: a failure here must not stop the caller completing sign-out.
+  await fetch('/api/session', { method: 'DELETE' }).catch(() => {});
 }
 
 export function hasSession(): boolean {
-  return typeof window !== 'undefined' && !!localStorage.getItem(REFRESH_KEY);
+  return typeof window !== 'undefined' && !!localStorage.getItem(SESSION_MARKER);
 }
 
 export class ApiError extends Error {
@@ -35,20 +61,27 @@ export class ApiError extends Error {
 }
 
 async function doRefresh(): Promise<boolean> {
-  const token = localStorage.getItem(REFRESH_KEY);
-  if (!token) return false;
-  const res = await fetch(`${BACKEND_URL}/api/v1/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken: token }),
-  });
-  if (!res.ok) {
-    clearSession();
+  if (!hasSession()) return false;
+
+  // Same-origin, so the httpOnly cookie is attached automatically and the
+  // rotated token is written straight back into it server-side. Only the new
+  // access token comes back to this code.
+  const res = await fetch('/api/session/refresh', { method: 'POST' });
+
+  if (res.status === 503) {
+    // Backend unreachable — not a dead session. Leave the marker alone so the
+    // next attempt can still succeed once it recovers.
     return false;
   }
-  const body = await res.json();
-  // Backend wraps all responses in { success, message, data }
-  setSession(body?.data ?? body);
+  if (!res.ok) {
+    accessToken = null;
+    localStorage.removeItem(SESSION_MARKER);
+    return false;
+  }
+
+  const tokens = await res.json().catch(() => null);
+  if (!tokens?.accessToken) return false;
+  accessToken = tokens.accessToken;
   return true;
 }
 
@@ -213,8 +246,8 @@ export const api = {
     if (params.cursor) q.set('cursor', params.cursor);
     if (params.sectionId) q.set('sectionId', params.sectionId);
     const qs = q.toString();
-    const res: any = await cachedRequest<any>(`/students${qs ? `?${qs}` : ''}`);
-    return (Array.isArray(res) ? { items: res } : res) as Paged<StudentListItem>;
+    const res = await cachedRequest<StudentListItem[] | Paged<StudentListItem>>(`/students${qs ? `?${qs}` : ''}`);
+    return Array.isArray(res) ? ({ items: res } as Paged<StudentListItem>) : res;
   },
   /**
    * Page-numbered student list. Distinct from `students()` above, which the
@@ -279,32 +312,32 @@ export const api = {
   nextRollNo: (sectionId: string, academicYearId: string) =>
     request<{ nextRollNo: number }>(`/enrollments/next-roll-no?sectionId=${sectionId}&academicYearId=${academicYearId}`),
   allAcademicYears: async () => {
-    const raw: any[] = await cachedRequest<any[]>('/academics/years');
-    return raw.map((y) => ({ id: y._id ?? y.id, name: y.name, isCurrent: y.isCurrent ?? false })) as { id: string; name: string; isCurrent: boolean }[];
+    const raw = await cachedRequest<RawDoc<{ id: string; name: string; isCurrent: boolean }>[]>('/academics/years');
+    return raw.map((y) => ({ id: y._id ?? y.id ?? '', name: y.name ?? '', isCurrent: y.isCurrent ?? false }));
   },
   createAcademicYear: (body: { name: string; startsOn: string; endsOn: string; isCurrent?: boolean }) =>
     request<{ id: string }>('/academics/years', { method: 'POST', body: JSON.stringify(body) }),
 
   // ── classroom management (grades / sections / subjects / offerings) ──
   listGrades: async () => {
-    const raw: any[] = await cachedRequest<any[]>('/academics/grades');
-    return raw.map((g) => ({ id: g._id ?? g.id, name: g.name, level: g.level })) as GradeDto[];
+    const raw = await cachedRequest<RawDoc<GradeDto>[]>('/academics/grades');
+    return raw.map((g) => ({ id: g._id ?? g.id ?? '', name: g.name ?? '', level: g.level ?? 0 }));
   },
   createGrade: (body: { name: string; level: number }) =>
     request<{ id: string }>('/academics/grades', { method: 'POST', body: JSON.stringify(body) }),
   bulkCreateGrades: (file: File) => uploadCsv('/academics/grades/bulk', file),
   bulkCreateSections: (file: File) => uploadCsv('/academics/sections/bulk', file),
   listSubjects: async () => {
-    const raw: any[] = await cachedRequest<any[]>('/academics/subjects');
-    return raw.map((s) => ({ id: s._id ?? s.id, name: s.name, code: s.code ?? null })) as SubjectDto[];
+    const raw = await cachedRequest<RawDoc<SubjectDto>[]>('/academics/subjects');
+    return raw.map((s) => ({ id: s._id ?? s.id ?? '', name: s.name ?? '', code: s.code ?? null }));
   },
   createSubject: (body: { name: string; code?: string }) =>
     request<{ id: string }>('/academics/subjects', { method: 'POST', body: JSON.stringify(body) }),
   bulkCreateSubjects: (file: File) => uploadCsv('/academics/subjects/bulk', file),
   listTerms: async (academicYearId?: string) => {
     const qs = academicYearId ? `?academicYearId=${academicYearId}` : '';
-    const raw: any[] = await request<any[]>(`/academics/terms${qs}`);
-    return raw.map((t) => ({ id: t._id ?? t.id, academicYearId: t.academicYearId, name: t.name, startsOn: t.startsOn, endsOn: t.endsOn })) as TermDto[];
+    const raw = await request<RawDoc<TermDto>[]>(`/academics/terms${qs}`);
+    return raw.map((t) => ({ id: t._id ?? t.id ?? '', academicYearId: t.academicYearId ?? '', name: t.name ?? '', startsOn: t.startsOn ?? '', endsOn: t.endsOn ?? '' }));
   },
   createTerm: (body: { academicYearId: string; name: string; startsOn: string; endsOn: string }) =>
     request<{ id: string }>('/academics/terms', { method: 'POST', body: JSON.stringify(body) }),
@@ -316,6 +349,9 @@ export const api = {
     const qs = q.toString();
     return request<OfferingDto[]>(`/academics/offerings${qs ? `?${qs}` : ''}`);
   },
+  /** Marks an offering elective / sets its seat cap. Capacity null = unlimited. */
+  updateOffering: (id: string, body: { isElective?: boolean; capacity?: number | null; teacherId?: string | null }) =>
+    request<OfferingDto>(`/academics/offerings/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   createOffering: (body: { sectionId: string; subjectId: string; termId: string; teacherId?: string }) =>
     request<{ id: string }>('/academics/offerings', { method: 'POST', body: JSON.stringify(body) }),
   listTeachers: () => cachedRequest<StaffAccountDto[]>('/users?roleKey=TEACHER'),
@@ -343,6 +379,24 @@ export const api = {
   applyLeave: (body: { fromDate: string; toDate: string; reason: string }) =>
     request<LeaveApplicationDto>('/leave/apply', { method: 'POST', body: JSON.stringify(body) }),
   myLeaveApplications: () => request<LeaveApplicationDto[]>('/leave/mine'),
+
+  // ── elective subject registration ──
+  availableElectives: () => request<AvailableElectiveDto[]>('/registrations/available'),
+  myRegistrations: () => request<SubjectRegistrationDto[]>('/registrations/mine'),
+  registerForElective: (subjectOfferingId: string) =>
+    request<SubjectRegistrationDto>('/registrations', {
+      method: 'POST',
+      body: JSON.stringify({ subjectOfferingId }),
+    }),
+  withdrawRegistration: (id: string) =>
+    request<SubjectRegistrationDto>(`/registrations/${id}/withdraw`, { method: 'PATCH' }),
+  registrationsForReview: (status: RegistrationStatus | 'ALL' = 'PENDING') =>
+    request<SubjectRegistrationDto[]>(`/registrations/review?status=${status}`),
+  decideRegistration: (id: string, status: 'APPROVED' | 'REJECTED', note?: string) =>
+    request<SubjectRegistrationDto>(`/registrations/${id}/decision`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, note }),
+    }),
 
   // ── timetable ──
   timetable: (sectionId: string) => request<TimetableDto>(`/timetable?sectionId=${sectionId}`),
@@ -527,34 +581,45 @@ export const api = {
       if (v !== undefined && v !== null && v !== '') q.set(k, String(v));
     });
     const qs = q.toString();
-    const raw: any = await request<any>(`/risk/scan${qs ? `?${qs}` : ''}`);
-    // Normalize: backend may return an array, or { flags, counts }, or { items, counts }
-    let items: any[] = [];
-    let counts: Record<string, number> = {};
-    if (Array.isArray(raw)) {
-      items = raw;
-    } else if (raw && typeof raw === 'object') {
-      items = raw.items ?? raw.flags ?? raw.data ?? raw.results ?? [];
-      counts = raw.counts ?? raw.countsByLevel ?? {};
-    }
-    // If counts is empty, build it from items
-    if (!counts || Object.keys(counts).length === 0) {
+    // The endpoint has returned three different shapes across versions, so the
+    // envelope is modelled as a union rather than `any` — the field reads below
+    // are then checked, and adding a fourth shape becomes a compile error.
+    type RiskItem = { level?: string; riskLevel?: string };
+    type RiskEnvelope =
+      | RiskItem[]
+      | {
+          items?: RiskItem[]; flags?: RiskItem[]; data?: RiskItem[]; results?: RiskItem[];
+          counts?: Record<string, number>; countsByLevel?: Record<string, number>;
+          summary?: RiskScan['summary'];
+          page?: number; pageSize?: number; total?: number; totalPages?: number;
+          generatedAt?: string;
+        };
+
+    const raw = await request<RiskEnvelope>(`/risk/scan${qs ? `?${qs}` : ''}`);
+    const envelope = Array.isArray(raw) ? {} : (raw ?? {});
+    const items: RiskItem[] = Array.isArray(raw)
+      ? raw
+      : envelope.items ?? envelope.flags ?? envelope.data ?? envelope.results ?? [];
+    let counts: Record<string, number> = envelope.counts ?? envelope.countsByLevel ?? {};
+
+    // Older responses omit counts entirely; derive them from the rows.
+    if (Object.keys(counts).length === 0) {
       counts = {};
-      (items as any[]).forEach((it: any) => {
-        const lvl: string = it.level ?? it.riskLevel ?? 'UNKNOWN';
+      for (const it of items) {
+        const lvl = it.level ?? it.riskLevel ?? 'UNKNOWN';
         counts[lvl] = (counts[lvl] ?? 0) + 1;
-      });
+      }
     }
     return {
       items,
       counts,
       // Paging/summary come straight from the server when present; the
       // fallbacks keep an older unpaged response usable.
-      summary: raw?.summary,
-      total: raw?.total ?? items.length,
-      page: raw?.page ?? 1,
-      pageSize: raw?.pageSize ?? items.length,
-      totalPages: raw?.totalPages ?? 1,
+      summary: envelope.summary,
+      total: envelope.total ?? items.length,
+      page: envelope.page ?? 1,
+      pageSize: envelope.pageSize ?? items.length,
+      totalPages: envelope.totalPages ?? 1,
     } as RiskScan;
   },
   aiChat: (message: string, conversationId?: string) =>
@@ -657,3 +722,19 @@ export const api = {
   revokeRolePermission: (roleId: string, key: string) =>
     request<RoleDto>(`/roles/${roleId}/permissions/${encodeURIComponent(key)}`, { method: 'DELETE' }),
 };
+
+/**
+ * Narrows a caught value to a displayable message.
+ *
+ * `catch (e: any)` then reading `e.message` is a lie the compiler used to
+ * accept: a thrown string, a rejected non-Error, or an aborted fetch all reach
+ * that handler and none of them necessarily has `.message`. Catching `unknown`
+ * and funnelling through this keeps the call sites as short as they were while
+ * making the failure path honest.
+ */
+export function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) return err.message || fallback;
+  if (err instanceof Error) return err.message || fallback;
+  if (typeof err === 'string' && err.trim()) return err;
+  return fallback;
+}
