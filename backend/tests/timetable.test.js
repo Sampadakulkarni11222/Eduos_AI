@@ -9,7 +9,7 @@ import '../src/models/profile.model.js';
 import { getTimetable, upsertSlot } from '../src/modules/timetable/timetable.service.js';
 
 /**
- * Timetable reads and slot upserts — flagged as uncovered in docs/ISSUES.md.
+ * Timetable reads and slot upserts.
  * The scoping rules here are the interesting part: a teacher must see only the
  * periods they personally teach, and a student only their own section.
  */

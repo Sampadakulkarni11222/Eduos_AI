@@ -5,7 +5,7 @@ import { recordPayment } from '../src/modules/fees/fee.service.js';
 
 /**
  * Covers ISS-001 (non-atomic read-modify-write, no transaction) and ISS-002
- * (no overpayment guard) from docs/ISSUES.md.
+ * (no overpayment guard).
  */
 
 const STAFF = { profileId: new mongoose.Types.ObjectId().toString(), roleKey: 'FINANCE' };

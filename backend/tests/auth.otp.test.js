@@ -10,7 +10,7 @@ import {
 } from '../src/modules/auth/auth.service.js';
 
 /**
- * OTP issuance and verification — flagged as uncovered in docs/ISSUES.md.
+ * OTP issuance and verification.
  * Covers the salted-hash change (audit item M6) and the per-account issuance
  * ceiling, both of which were shipped without tests.
  */

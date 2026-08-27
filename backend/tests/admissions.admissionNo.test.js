@@ -7,7 +7,7 @@ import { nextSequence } from '../src/utils/sequence.js';
 import { updateLead } from '../src/modules/admissions/admission.service.js';
 
 /**
- * Covers ISS-003 from docs/ISSUES.md: admission numbers derived from
+ * Admission numbers used to be derived from
  * countDocuments() raced, cost a collection scan each time, and the retry loop
  * fell through after 100 attempts to create a student with a number it already
  * knew was taken.

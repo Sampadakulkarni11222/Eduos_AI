@@ -6,7 +6,7 @@ import { bulkCreateLeads } from '../src/modules/admissions/admission.service.js'
 import { bulkCreateGrades, bulkCreateSubjects } from '../src/modules/academics/academics.service.js';
 
 /**
- * CSV bulk import — flagged as uncovered in docs/ISSUES.md. It runs unattended
+ * CSV bulk import. It runs unattended
  * over large operator-supplied files, so the behaviour that matters is what
  * happens to the *good* rows when some rows are bad.
  */
@@ -141,7 +141,8 @@ describe('bulkCreateSubjects', () => {
    * sheet contains one existing subject gets zero rows imported.
    *
    * bulkCreateLeads, by contrast, validates per row and imports the good ones.
-   * See docs/ISSUES.md ISS-018.
+   * Changing this means dropping the per-chunk transaction for
+   * insertMany({ ordered: false }) with per-document error collection.
    */
   it('rejects the whole chunk when any row duplicates an existing subject', async () => {
     await Subject.create({ name: 'Mathematics', code: 'MATH' });
