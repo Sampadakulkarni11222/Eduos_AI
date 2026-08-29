@@ -328,6 +328,33 @@ students), and refuses to lower a capacity below the seats already taken.
 
 Staff can also do this per-offering in **Classroom Mgmt → Subject Offerings**.
 
+**Filling in registrations for existing students.** Offerings only say what a
+class *may* take; until students register, `/student/subjects` lists electives
+with no status and both staff queues are empty. To populate that:
+
+```bash
+cd backend
+npm run registrations:plan     # dry run — writes nothing
+npm run registrations:apply    # prompts for confirmation on a remote database
+```
+
+`backend/scripts/seed-registrations.js` gives every actively enrolled student
+registrations for electives offered to *their own division* (2 by default,
+`--per-student N` to change), in a mix of approved, pending and rejected. It
+also fills in a class teacher on any elective offering that has none, so the
+request lands in that teacher's queue rather than only an admin's.
+
+Like `add-electives.js` it is narrow and additive: it writes only
+`SubjectRegistration` rows plus that one `teacherId`, never an account,
+profile, student, enrolment, grade, section, term or subject, and never edits a
+registration that already exists. It respects `capacity` (recording a rejection
+rather than overfilling), and the allocation is derived from each student's own
+id, so re-running converges instead of duplicating. Accepts the same `--term`
+and `--grades` flags as `add-electives.js`.
+
+Run it *after* `electives:apply` — a registration has to point at an elective
+offering, so it refuses to run when the term has none.
+
 For a full local demo scenario with students, teachers and pre-seeded states,
 use `npm run seed:electives` against a `dev:local` database — **never against
 real data**, since it creates accounts.
@@ -351,6 +378,7 @@ real data**, since it creates accounts.
 | `npm test` / `npm run test:watch` | Vitest against an in-memory MongoDB replica set |
 | `npm run dev:local` / `dev:local:seed` | run the server against a throwaway database (§4.3) |
 | `npm run electives:plan` / `electives:apply` | add elective offerings to an existing database (§12) |
+| `npm run registrations:plan` / `registrations:apply` | give existing students registrations for those electives (§12) |
 | `npm run seed:electives` | full elective demo scenario — **local databases only** |
 
 Frontend: `npm run dev`, `build`, `start`, `test`, `lint`, `lint:fix`, `typecheck`.
@@ -385,4 +413,4 @@ Frontend: `npm run dev`, `build`, `start`, `test`, `lint`, `lint:fix`, `typechec
 7. Point uploads at object storage if the server disk isn't durable.
 8. Run `npm test` in both packages and `npm run lint` in the frontend — CI gates on these.
 9. Rebuild the backend bundle (`npm run build`); `npm start` runs `dist/`, which is gitignored and not deployed for you.
-10. If upgrading an existing database, run `npm run electives:plan` before `apply` and read the plan.
+10. If upgrading an existing database, run `npm run electives:plan` before `apply` and read the plan, then `npm run registrations:plan` / `apply` to give students registrations for them.

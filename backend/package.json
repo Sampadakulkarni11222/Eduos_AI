@@ -22,7 +22,9 @@
     "dev:local:seed": "node scripts/run-local.js --seed",
     "seed:electives": "node scripts/seed-electives-demo.js",
     "electives:plan": "node scripts/add-electives.js",
-    "electives:apply": "node scripts/add-electives.js --apply"
+    "electives:apply": "node scripts/add-electives.js --apply",
+    "registrations:plan": "node scripts/seed-registrations.js",
+    "registrations:apply": "node scripts/seed-registrations.js --apply"
   },
   "keywords": [
     "school",
