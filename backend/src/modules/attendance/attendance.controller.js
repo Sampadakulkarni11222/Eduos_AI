@@ -10,14 +10,14 @@ export const getRoster = asyncHandler(async (req, res) => {
 });
 
 export const mark = asyncHandler(async (req, res) => {
-  const roster = await service.markAttendance(req.actor, req.body);
+  const roster = await service.markAttendance(req.actor, req.scope, req.body);
   sendSuccess(res, roster, 'Attendance marked', 201);
 });
 
 export const markBulk = asyncHandler(async (req, res) => {
   const rows = parseCsvRows(req);
   const { sectionId, date, periodNo } = req.body;
-  const result = await service.markAttendanceBulk(req.actor, {
+  const result = await service.markAttendanceBulk(req.actor, req.scope, {
     sectionId,
     date,
     periodNo: periodNo ? Number(periodNo) : null,
