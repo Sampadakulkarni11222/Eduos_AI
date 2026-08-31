@@ -49,6 +49,6 @@ router.get('/ready', controller.ready);
  * trade: adding a shared bearer token here would have meant another secret to
  * rotate, and a half-designed one at that.
  */
-router.get('/metrics', authenticate, requireRole('OWNER', 'ADMIN'), controller.metrics);
+router.get('/metrics', authenticate, requireRole('SUPER_ADMIN', 'ADMIN'), controller.metrics);
 
 export default router;

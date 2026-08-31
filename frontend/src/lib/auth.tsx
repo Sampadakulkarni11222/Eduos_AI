@@ -2,7 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, clearSession, hasSession, setSession } from './api';
-import { ROLE_TO_SLUG } from './portals';
+import { portalHome } from './school-path';
 import { invalidateCache } from './cache';
 import type { Me, ProfileSummary } from './types';
 
@@ -70,7 +70,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       invalidateCache();
       const fresh = await reload();
       const role = fresh?.profile?.role ?? p.role;
-      router.push(`/${ROLE_TO_SLUG[role] ?? 'admin'}`);
+      // A profile switch can also be a school switch, so the school comes from
+      // the profile just selected, not from the URL we are leaving.
+      router.push(portalHome(fresh?.profile?.tenantId ?? p.tenantId, role));
     },
     [reload, router],
   );

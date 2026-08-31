@@ -1,8 +1,9 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const studentSchema = new Schema(
   {
-    admissionNo: { type: String, required: true, unique: true, trim: true },
+    admissionNo: { type: String, required: true, trim: true }, // unique per school
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, trim: true },
     dob: { type: Date },
@@ -20,6 +21,7 @@ const studentSchema = new Schema(
   },
   { timestamps: true }
 );
+studentSchema.index({ tenantId: 1, admissionNo: 1 }, { unique: true });
 studentSchema.index({ lastName: 1, firstName: 1 });
 
 const studentGuardianSchema = new Schema(
@@ -54,6 +56,9 @@ enrollmentSchema.index({ sectionId: 1 });
 // sparse:true allows multiple NULL rollNo values (unassigned students).
 enrollmentSchema.index({ sectionId: 1, academicYearId: 1, rollNo: 1 }, { unique: true, sparse: true });
 
+studentSchema.plugin(tenantScoped); // school-owned
 export const Student = model('Student', studentSchema);
+studentGuardianSchema.plugin(tenantScoped); // school-owned
 export const StudentGuardian = model('StudentGuardian', studentGuardianSchema);
+enrollmentSchema.plugin(tenantScoped); // school-owned
 export const Enrollment = model('Enrollment', enrollmentSchema);

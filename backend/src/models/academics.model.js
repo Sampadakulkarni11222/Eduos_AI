@@ -1,8 +1,9 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const academicYearSchema = new Schema(
   {
-    name: { type: String, required: true, unique: true, trim: true }, // "2026-27"
+    name: { type: String, required: true, trim: true }, // "2026-27" — unique per school
     startsOn: { type: Date, required: true },
     endsOn: { type: Date, required: true },
     isCurrent: { type: Boolean, default: false },
@@ -22,7 +23,7 @@ const termSchema = new Schema(
 
 const gradeSchema = new Schema(
   {
-    name: { type: String, required: true, unique: true, trim: true }, // "Class 5"
+    name: { type: String, required: true, trim: true }, // "Class 5" — unique per school
     level: { type: Number, required: true }, // sort order
   },
   { timestamps: true }
@@ -37,11 +38,14 @@ const sectionSchema = new Schema(
   },
   { timestamps: true }
 );
+academicYearSchema.index({ tenantId: 1, name: 1 }, { unique: true });
+gradeSchema.index({ tenantId: 1, name: 1 }, { unique: true });
+// gradeId is already school-specific, so this one needs no tenant column.
 sectionSchema.index({ gradeId: 1, name: 1 }, { unique: true });
 
 const subjectSchema = new Schema(
   {
-    name: { type: String, required: true, unique: true, trim: true },
+    name: { type: String, required: true, trim: true }, // unique per school
     code: { type: String, trim: true },
   },
   { timestamps: true }
@@ -63,12 +67,19 @@ const subjectOfferingSchema = new Schema(
   },
   { timestamps: true }
 );
+subjectSchema.index({ tenantId: 1, name: 1 }, { unique: true });
 subjectOfferingSchema.index({ sectionId: 1, subjectId: 1, termId: 1 }, { unique: true });
 subjectOfferingSchema.index({ isElective: 1, termId: 1 });
 
+academicYearSchema.plugin(tenantScoped); // school-owned
 export const AcademicYear = model('AcademicYear', academicYearSchema);
+termSchema.plugin(tenantScoped); // school-owned
 export const Term = model('Term', termSchema);
+gradeSchema.plugin(tenantScoped); // school-owned
 export const Grade = model('Grade', gradeSchema);
+sectionSchema.plugin(tenantScoped); // school-owned
 export const Section = model('Section', sectionSchema);
+subjectSchema.plugin(tenantScoped); // school-owned
 export const Subject = model('Subject', subjectSchema);
+subjectOfferingSchema.plugin(tenantScoped); // school-owned
 export const SubjectOffering = model('SubjectOffering', subjectOfferingSchema);

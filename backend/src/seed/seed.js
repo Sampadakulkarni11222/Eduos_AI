@@ -4,6 +4,8 @@ import bcrypt from 'bcryptjs';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { Permission } from '../models/permission.model.js';
+import { School } from '../models/school.model.js';
+import { runWithTenant } from '../tenancy/tenantContext.js';
 import { Role } from '../models/role.model.js';
 import { Account } from '../models/account.model.js';
 import { Profile } from '../models/profile.model.js';
@@ -14,8 +16,27 @@ import { seedDocuments, auditDocumentFiles, pruneStaleDocuments } from './seed_d
 import { PERMISSION_CATALOG, SYSTEM_ROLES } from '../constants/permissions.js';
 import { DEMO_USERS, DEMO_PASSWORD } from '../constants/demoUsers.js';
 
+/**
+ * Seeded data belongs to a school.
+ *
+ * Every school-owned collection is now scoped by the acting school, so data
+ * written with no school would be invisible to every portal. The demo data is
+ * Oakridge's; override with SEED_SCHOOL_SLUG / SEED_SCHOOL_NAME.
+ */
+const SEED_SCHOOL_SLUG = (process.env.SEED_SCHOOL_SLUG || 'oakridge').toLowerCase();
+const SEED_SCHOOL_NAME = process.env.SEED_SCHOOL_NAME || 'Oakridge Academy';
+
+async function ensureSeedSchool() {
+  await School.updateOne(
+    { slug: SEED_SCHOOL_SLUG },
+    { $setOnInsert: { slug: SEED_SCHOOL_SLUG, name: SEED_SCHOOL_NAME } },
+    { upsert: true },
+  );
+  return SEED_SCHOOL_SLUG;
+}
+
 async function seed() {
-  // This creates an OWNER (superadmin) whose password is a compile-time
+  // This creates a SUPER_ADMIN whose password is a compile-time
   // constant published in credentials.md and still recoverable from git
   // history. On anything reachable that is a free administrator account, so
   // the guard is on the environment, not on someone remembering.
@@ -39,6 +60,7 @@ async function seed() {
   }
 
   await mongoose.connect(env.MONGO_URI);
+  await ensureSeedSchool();
   logger.info(`Connected to MongoDB for seeding → ${safeUri} (NODE_ENV=${env.NODE_ENV})`);
   if (DEMO_PASSWORD === 'ChangeMe@123!') {
     logger.warn('Seeding with the PUBLIC development password. Never use these accounts on a reachable deployment.');
@@ -96,7 +118,10 @@ async function seed() {
 
     const existingProfile = await Profile.findOne({ accountId: account._id, roleId: role._id });
     if (!existingProfile) {
-      await Profile.create({ accountId: account._id, roleId: role._id, displayName: u.displayName });
+      await Profile.create({
+        accountId: account._id, roleId: role._id, displayName: u.displayName,
+        tenantId: SEED_SCHOOL_SLUG, tenantName: SEED_SCHOOL_NAME,
+      });
       const credential = u.password ? `${u.email} / ${u.password}` : `phone ${u.phone} (OTP login)`;
       logger.info(`  ✔  ${u.roleKey.padEnd(10)} → ${credential}`);
     } else {
@@ -205,7 +230,7 @@ async function seed() {
   process.exit(0);
 }
 
-seed().catch((err) => {
+runWithTenant(SEED_SCHOOL_SLUG, seed).catch((err) => {
   logger.error(err);
   process.exit(1);
 });

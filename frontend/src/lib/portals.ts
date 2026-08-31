@@ -23,7 +23,7 @@ export interface Portal {
     | 'role-parent'
     | 'role-principal'
     | 'role-student'
-    | 'role-owner'
+    | 'role-super-admin'
     | 'role-librarian'
     | 'role-warden';
   label: string;
@@ -38,7 +38,8 @@ const item = (label: string, icon: string, href: string, opts: Partial<NavItem> 
 
 /** Roles that share the admin portal (owner sees the same surface). */
 export const ROLE_TO_SLUG: Record<RoleKey, string> = {
-  ADMIN: 'admin', OWNER: 'owner',
+  SUPER_ADMIN: 'super-admin',
+  ADMIN: 'admin',
   TEACHER: 'teacher',
   PARENT: 'parent', STUDENT: 'student',
   PRINCIPAL: 'principal',
@@ -185,18 +186,20 @@ export const PORTALS: Record<string, Portal> = {
       { title: 'GOVERNANCE', items: [ item('Audit Logs', '▷', '/principal/audit', { ready: true }) ]},
     ],
   },
-  owner: {
-    role: 'OWNER', slug: 'owner', themeClass: 'role-owner',
-    label: 'Owner Console', sublabel: 'Governance & Analytics', icon: '👑',
+  'super-admin': {
+    role: 'SUPER_ADMIN', slug: 'super-admin', themeClass: 'role-super-admin',
+    label: 'Super Admin Console', sublabel: 'Platform Administration', icon: '🛡️',
     nav: [
       { title: 'WORKSPACE', items: [
-        item('Dashboard', '◫', '/owner', { ready: true }),
-        item('Admissions CRM', '◌', '/owner/admissions', { ready: true }),
+        item('Dashboard', '◫', '/super-admin', { ready: true }),
+      ]},
+      { title: 'SCHOOLS', items: [
+        item('Schools & Admins', '🏫', '/super-admin/schools', { ready: true }),
+        item('School Dashboards', '◪', '/super-admin/dashboards', { ready: true }),
       ]},
       { title: 'SYSTEM', items: [
-        item('Audit Logs', '▷', '/owner/audit', { ready: true }),
-        item('Access & Permissions', '🔐', '/owner/permissions', { ready: true }),
-        item('Tenant Settings', '⚙', '/owner/settings', { ready: true }),
+        item('Audit Logs', '▷', '/super-admin/audit', { ready: true }),
+        item('Access & Permissions', '🔐', '/super-admin/permissions', { ready: true }),
       ]},
     ],
   },

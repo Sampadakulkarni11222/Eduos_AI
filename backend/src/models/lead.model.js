@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const leadSchema = new Schema(
   {
@@ -33,5 +34,7 @@ const leadInteractionSchema = new Schema(
 );
 leadInteractionSchema.index({ leadId: 1 });
 
+leadSchema.plugin(tenantScoped); // school-owned
 export const Lead = model('Lead', leadSchema);
+leadInteractionSchema.plugin(tenantScoped); // school-owned
 export const LeadInteraction = model('LeadInteraction', leadInteractionSchema);

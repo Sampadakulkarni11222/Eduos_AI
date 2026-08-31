@@ -10,6 +10,8 @@ import { logger } from '../utils/logger.js';
 
 // Import Models
 import { Account } from '../models/account.model.js';
+import { School } from '../models/school.model.js';
+import { runWithTenant } from '../tenancy/tenantContext.js';
 import { Profile } from '../models/profile.model.js';
 import { Role } from '../models/role.model.js';
 import { Permission } from '../models/permission.model.js';
@@ -29,6 +31,25 @@ import { CalendarEvent } from '../models/calendarEvent.model.js';
 import { PERMISSION_CATALOG, SYSTEM_ROLES } from '../constants/permissions.js';
 
 const DEMO_PASSWORD = 'ChangeMe@123!';
+
+/**
+ * Seeded data belongs to a school.
+ *
+ * Every school-owned collection is now scoped by the acting school, so data
+ * written with no school would be invisible to every portal. The demo data is
+ * Oakridge's; override with SEED_SCHOOL_SLUG / SEED_SCHOOL_NAME.
+ */
+const SEED_SCHOOL_SLUG = (process.env.SEED_SCHOOL_SLUG || 'oakridge').toLowerCase();
+const SEED_SCHOOL_NAME = process.env.SEED_SCHOOL_NAME || 'Oakridge Academy';
+
+async function ensureSeedSchool() {
+  await School.updateOne(
+    { slug: SEED_SCHOOL_SLUG },
+    { $setOnInsert: { slug: SEED_SCHOOL_SLUG, name: SEED_SCHOOL_NAME } },
+    { upsert: true },
+  );
+  return SEED_SCHOOL_SLUG;
+}
 
 async function seedSchool() {
   logger.info('Connecting to MongoDB for full school seeding...');
@@ -57,6 +78,7 @@ async function seedSchool() {
   }
 
   await mongoose.connect(env.MONGO_URI);
+  await ensureSeedSchool();
   logger.info('Connected. Cleaning database for a fresh seed...');
 
   // Clear existing school collections
@@ -120,7 +142,6 @@ async function seedSchool() {
   // 3. Seed Core System Staff Users (Owner, Admin, Principal, Warden, Librarian, Finance)
   logger.info('Creating school management staff accounts...');
   const staffToCreate = [
-    { key: 'OWNER', name: 'Default Owner', phone: '+910000000000', email: 'owner@schoolerp.com' },
     { key: 'ADMIN', name: 'Demo Admin', phone: '+910000000001', email: 'admin@schoolerp.com' },
     { key: 'PRINCIPAL', name: 'Demo Principal', phone: '+910000000002', email: 'principal@schoolerp.com' },
     { key: 'FINANCE', name: 'Demo Finance', phone: '+910000000004', email: 'finance@schoolerp.com' },
@@ -138,6 +159,7 @@ async function seedSchool() {
       accountId: acc._id,
       roleId: roleMap.get(staff.key),
       displayName: staff.name,
+      tenantId: SEED_SCHOOL_SLUG, tenantName: SEED_SCHOOL_NAME,
     });
   }
 
@@ -175,6 +197,7 @@ async function seedSchool() {
       accountId: acc._id,
       roleId: roleMap.get('TEACHER'),
       displayName: tDef.name,
+      tenantId: SEED_SCHOOL_SLUG, tenantName: SEED_SCHOOL_NAME,
     });
     teacherProfiles.push(profile);
   }
@@ -851,7 +874,7 @@ async function seedSchool() {
   process.exit(0);
 }
 
-seedSchool().catch((err) => {
+runWithTenant(SEED_SCHOOL_SLUG, seedSchool).catch((err) => {
   logger.error('School Seeding failed:', err);
   process.exit(1);
 });

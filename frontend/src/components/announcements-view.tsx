@@ -59,6 +59,8 @@ function NewAnnouncement({ onDone }: { onDone: () => void }) {
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  // A teacher reaches the classes and subjects they teach, never the school,
+  // so "All classes" is not theirs to pick — the API refuses it.
   const [mode, setMode] = useState<AudienceMode>('ALL');
 
   // Admin/principal: pick from the school-wide grade/section/subject lists.
@@ -80,6 +82,11 @@ function NewAnnouncement({ onDone }: { onDone: () => void }) {
   // Posting twice fans out duplicate app/email/WhatsApp notices, and `busy`
   // alone loses the race when two submits land in one React batch.
   const busyRef = useRef(false);
+
+  // A teacher lands on their own classes, since "All classes" is not offered.
+  useEffect(() => {
+    if (isTeacherScope) setMode('CLASS');
+  }, [isTeacherScope]);
 
   useEffect(() => {
     if (isTeacherScope) {
@@ -135,6 +142,8 @@ function NewAnnouncement({ onDone }: { onDone: () => void }) {
     } finally { setBusy(false); busyRef.current = false; }
   };
 
+  const audienceModes: AudienceMode[] = isTeacherScope ? ['CLASS', 'SUBJECT'] : ['ALL', 'CLASS', 'SUBJECT'];
+
   const canSubmit =
     mode === 'ALL' ||
     (mode === 'CLASS' && (isTeacherScope ? !!sectionId : !!classSelection)) ||
@@ -150,7 +159,7 @@ function NewAnnouncement({ onDone }: { onDone: () => void }) {
 
         <div className="field-label" style={{ marginTop: 10 }}>Audience</div>
         <div style={{ display: 'flex', gap: 16, margin: '6px 0 10px' }}>
-          {(['ALL', 'CLASS', 'SUBJECT'] as AudienceMode[]).map((m) => (
+          {audienceModes.map((m) => (
             <label key={m} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
               <input type="radio" name="audience-mode" checked={mode === m} onChange={() => setMode(m)} />
               {m === 'ALL' ? 'All classes' : m === 'CLASS' ? 'Class-wise' : 'Subject-wise'}

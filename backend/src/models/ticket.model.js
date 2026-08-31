@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const ticketSchema = new Schema(
   {
@@ -25,5 +26,7 @@ const ticketMessageSchema = new Schema(
 );
 ticketMessageSchema.index({ ticketId: 1 });
 
+ticketSchema.plugin(tenantScoped); // school-owned
 export const Ticket = model('Ticket', ticketSchema);
+ticketMessageSchema.plugin(tenantScoped); // school-owned
 export const TicketMessage = model('TicketMessage', ticketMessageSchema);

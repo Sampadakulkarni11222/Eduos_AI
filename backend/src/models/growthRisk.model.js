@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const growthScoreSchema = new Schema(
   {
@@ -26,5 +27,7 @@ const riskPredictionSchema = new Schema(
 );
 riskPredictionSchema.index({ enrollmentId: 1, type: 1 }, { unique: true });
 
+growthScoreSchema.plugin(tenantScoped); // school-owned
 export const GrowthScore = model('GrowthScore', growthScoreSchema);
+riskPredictionSchema.plugin(tenantScoped); // school-owned
 export const RiskPrediction = model('RiskPrediction', riskPredictionSchema);

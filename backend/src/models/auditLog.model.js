@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const auditLogSchema = new Schema(
   {
@@ -17,4 +18,5 @@ const auditLogSchema = new Schema(
 auditLogSchema.index({ entityType: 1, entityId: 1 });
 auditLogSchema.index({ actorProfileId: 1, createdAt: -1 });
 
+auditLogSchema.plugin(tenantScoped); // school-owned
 export const AuditLog = model('AuditLog', auditLogSchema);

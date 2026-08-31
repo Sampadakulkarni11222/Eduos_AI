@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth';
-import { ROLE_TO_SLUG } from '@/lib/portals';
+import { portalHome } from '@/lib/school-path';
 
 /** Authenticated users go straight to their portal; others to /login. */
 export default function Index() {
@@ -15,7 +15,7 @@ export default function Index() {
       router.replace('/login');
       return;
     }
-    router.replace(`/${ROLE_TO_SLUG[me.profile.role]}`);
+    router.replace(portalHome(me.profile.tenantId, me.profile.role));
   }, [loading, me, router]);
 
   return (
@@ -32,7 +32,7 @@ export default function Index() {
           O
         </div>
         <div className="spinner" style={{ borderTopColor: '#591620' }} />
-        <span style={{ fontSize: 13, color: 'var(--text-faint)' }}>Loading Oakridge Academy…</span>
+        <span style={{ fontSize: 13, color: 'var(--text-faint)' }}>Loading EduOS AI…</span>
       </div>
     </div>
   );

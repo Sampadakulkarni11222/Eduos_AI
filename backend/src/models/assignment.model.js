@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const assignmentSchema = new Schema(
   {
@@ -31,5 +32,7 @@ const submissionSchema = new Schema(
 );
 submissionSchema.index({ assignmentId: 1, enrollmentId: 1 }, { unique: true });
 
+assignmentSchema.plugin(tenantScoped); // school-owned
 export const Assignment = model('Assignment', assignmentSchema);
+submissionSchema.plugin(tenantScoped); // school-owned
 export const Submission = model('Submission', submissionSchema);

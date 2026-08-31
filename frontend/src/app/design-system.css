@@ -64,10 +64,12 @@ body.role-student{
   --sidebar-text:#E7DEC9; --sidebar-heading:#FBF8F2; --sidebar-secondary:#BBA58B; --sidebar-group:#ab977e;
   --header-title:#3d2f26; --on-accent:#F7F0DF; --badge-on-accent-text:#3d2f26;
 }
-body.role-owner{
-  --accent:#3d0c11; --accent-2:#54131b;
-  --sidebar-text:#F0E6D2; --sidebar-heading:#FFF8EB; --sidebar-secondary:#D0B09A; --sidebar-group:#BCA08E;
-  --header-title:#3d0c11; --on-accent:#FAD6A5; --badge-on-accent-text:#3d0c11;
+/* Platform tier — deliberately the only indigo in the set, so a Super Admin
+   can never mistake this console for one of the school-level portals. */
+body.role-super-admin{
+  --accent:#312244; --accent-2:#453163;
+  --sidebar-text:#E4DCF0; --sidebar-heading:#F9F6FF; --sidebar-secondary:#A99CC4; --sidebar-group:#a294bf;
+  --header-title:#312244; --on-accent:#EFD9A8; --badge-on-accent-text:#312244;
 }
 body.role-librarian{
   --accent:#0f4c5c; --accent-2:#15657b;

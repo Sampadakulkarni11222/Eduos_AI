@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const attendanceRecordSchema = new Schema(
   {
@@ -15,4 +16,5 @@ const attendanceRecordSchema = new Schema(
 attendanceRecordSchema.index({ enrollmentId: 1, date: 1, periodNo: 1 }, { unique: true });
 attendanceRecordSchema.index({ date: 1 });
 
+attendanceRecordSchema.plugin(tenantScoped); // school-owned
 export const AttendanceRecord = model('AttendanceRecord', attendanceRecordSchema);

@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 /**
  * In-app notification addressed to a single profile.
@@ -35,4 +36,5 @@ notificationSchema.index({ recipientProfileId: 1, createdAt: -1 });
 // The bell-count query: this recipient's unread rows.
 notificationSchema.index({ recipientProfileId: 1, readAt: 1 });
 
+notificationSchema.plugin(tenantScoped); // school-owned
 export const Notification = model('Notification', notificationSchema);

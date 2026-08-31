@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 /**
  * AI credit wallet — one per metered profile.
@@ -31,6 +32,7 @@ const aiCreditWalletSchema = new Schema(
   { timestamps: true }
 );
 
+aiCreditWalletSchema.plugin(tenantScoped); // school-owned
 export const AiCreditWallet = model('AiCreditWallet', aiCreditWalletSchema);
 
 /**
@@ -62,4 +64,5 @@ const aiCreditOrderSchema = new Schema(
   { timestamps: true }
 );
 
+aiCreditOrderSchema.plugin(tenantScoped); // school-owned
 export const AiCreditOrder = model('AiCreditOrder', aiCreditOrderSchema);

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Button, Card, EmptyState, Field, Pill, SkeletonRows } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
+import { useSchoolHref } from '@/lib/school-path';
 import type { TutorReplyDto, TutorStatusDto, TutorSyllabusDto } from '@/lib/types';
 
 /**
@@ -24,6 +25,7 @@ import type { TutorReplyDto, TutorStatusDto, TutorSyllabusDto } from '@/lib/type
  * refuses anything else regardless of what the form sends.
  */
 export function TutorPanel({ portalSlug }: { portalSlug: 'student' | 'parent' }) {
+  const link = useSchoolHref();
   const [status, setStatus] = useState<TutorStatusDto | null>(null);
   const [syllabus, setSyllabus] = useState<TutorSyllabusDto | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -155,7 +157,7 @@ export function TutorPanel({ portalSlug }: { portalSlug: 'student' | 'parent' })
             <p role="alert" style={{ fontSize: 13.5, color: 'var(--text-2b)', marginTop: 6 }}>{error.text}</p>
             {error.paywall && (
               <div style={{ marginTop: 12 }}>
-                <Link href={`/${portalSlug}/ai-credits`}>
+                <Link href={link(`/${portalSlug}/ai-credits`)}>
                   <Button small>Add credits</Button>
                 </Link>
               </div>

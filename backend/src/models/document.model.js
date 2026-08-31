@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const documentSchema = new mongoose.Schema(
   {
@@ -28,4 +29,5 @@ documentSchema.index({ studentId: 1, createdAt: -1 }); // a single student's doc
 documentSchema.index({ authorProfileId: 1, type: 1 }); // teacher's own course-material count
 documentSchema.index({ sectionId: 1, type: 1, createdAt: -1 }); // section-scoped course material
 
+documentSchema.plugin(tenantScoped); // school-owned
 export const Document = mongoose.model('Document', documentSchema);

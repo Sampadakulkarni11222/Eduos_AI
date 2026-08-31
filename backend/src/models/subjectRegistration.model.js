@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 /**
  * A student's request to take an elective subject offering.
@@ -38,4 +39,5 @@ subjectRegistrationSchema.index(
 subjectRegistrationSchema.index({ subjectOfferingId: 1, status: 1 }); // seat counts
 subjectRegistrationSchema.index({ status: 1, createdAt: -1 }); // staff review queue
 
+subjectRegistrationSchema.plugin(tenantScoped); // school-owned
 export const SubjectRegistration = model('SubjectRegistration', subjectRegistrationSchema);

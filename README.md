@@ -1,6 +1,6 @@
 # EduOS AI — AI-native School ERP
 
-EduOS AI is a multi-portal School/College ERP: one platform with dedicated, role-scoped portals for **Owner, Admin, Principal, Teacher, Parent, Student, Finance, Librarian, and Hostel Warden**, plus an AI copilot, WhatsApp assistant (simulation mode), online fee payments, file uploads, and a fully backend-enforced RBAC system.
+EduOS AI is a multi-portal School/College ERP: one platform with dedicated, role-scoped portals for **Super Admin, Admin, Principal, Teacher, Parent, Student, Finance, Librarian, and Hostel Warden**, plus an AI copilot, WhatsApp assistant (simulation mode), online fee payments, file uploads, and a fully backend-enforced RBAC system.
 
 ---
 
@@ -122,7 +122,7 @@ Seeded by `npm run seed` (one account per role). **Shared demo password — rota
 
 | Role | Email | Phone | Password (API/Swagger) |
 |---|---|---|---|
-| Owner | owner@schoolerp.com | +910000000000 | `ChangeMe@123!` |
+| Super Admin | superadmin@schoolerp.com | +910000000009 | `ChangeMe@123!` |
 | Admin | admin@schoolerp.com | +910000000001 | `ChangeMe@123!` |
 | Principal | principal@schoolerp.com | +910000000002 | `ChangeMe@123!` |
 | Teacher | teacher@schoolerp.com | +910000000003 | `ChangeMe@123!` |
@@ -131,6 +131,166 @@ Seeded by `npm run seed` (one account per role). **Shared demo password — rota
 | Warden | warden@schoolerp.com | +910000000006 | `ChangeMe@123!` |
 | Parent | — (OTP only) | +910000000007 | — |
 | Student | — (OTP only) | +910000000008 | — |
+
+### The Super Admin, and how it gets created
+
+The **Super Admin** is the platform tier above any single school. It signs in
+through the same auth flow, lands on `/super-admin` (its own portal, its own
+accent theme), and is the only role holding `schools.read` / `schools.manage` —
+every school-level role is refused those two keys by the same
+`requirePermission` gate used everywhere else. What it manages is schools (the
+tenant already carried by every profile) and their **School Admin** accounts,
+which are ordinary `ADMIN` profiles, unchanged in what they can do.
+
+It also reads every school-wide dashboard — operations, finance, hostel and
+library — from the same `GET /api/v1/dashboard/:role` endpoints the school's own
+portals use, gathered under *School Dashboards*. The per-person dashboards
+(teacher/student/parent) stay out of reach by design: each aggregates one
+signed-in profile's own classes, record or children, so there is nothing for a
+platform actor to open.
+
+There are two ways to create one, and neither seeds a password into the repo.
+
+**1. Continue with Google (recommended).** Put the platform administrator's
+Google address in `SUPER_ADMIN_EMAILS` (backend env; `SUPER_ADMIN_EMAIL`
+singular is read too, and the value may be a comma-separated list):
+
+```bash
+SUPER_ADMIN_EMAILS=asha@example.com
+```
+
+The first time that address signs in through *Continue with Google*, the
+account and its Super Admin profile are provisioned automatically. The address
+is trusted only after the backend has verified Google's ID token — signature,
+issuer, audience and `email_verified` — so nothing here can be claimed by
+someone who merely knows the address. An address that is not on the list is
+untouched and still gets the usual "no account is linked" response. Clearing
+the variable stops further provisioning but does **not** revoke anyone: delete
+the profile to do that.
+
+**2. A provisioning script**, for a deployment without Google sign-in, or when
+you want the account to have a real phone number:
+
+```bash
+SUPER_ADMIN_PASSWORD='…' npm run superadmin:create -- \
+  --name "Asha Menon" --phone +919876543210 --email asha@example.com
+```
+
+The password comes from the environment, never a flag, so it stays out of shell
+history and the process list; it is never printed. Add `--allow-remote` when the
+target database is not local, and `--set-password` to rotate the password on an
+account that already has one (which also clears a sign-in lockout). Re-running
+is safe: an existing account gains a Super Admin profile rather than being
+duplicated, and a suspended one is reactivated.
+
+### Adding a school
+
+A Super Admin creates a school in the console (*Schools & Admins → New School*)
+by choosing its address and name and naming its first School Admin. Nothing else
+is per-school: the address resolves, the sign-in screen brands itself, the
+sidebar and browser tab take the school's name, and the school's data is
+separate from every other school's — all from that one record.
+
+The console shows each school's sign-in link so it can be handed to its staff.
+The address is fixed once created; `npm run schools:rename` moves a school and
+all of its data to a new one if it has to change.
+
+The browser tab shows the EduOS AI mark on every page — the platform hosts many
+schools, so the favicon belongs to none of them — with the school's name as the
+tab title wherever a school is being shown.
+
+### Two kinds of door
+
+```
+http://localhost:3000/            platform sign-in  — Super Admins only
+http://localhost:3000/oakridge    Oakridge sign-in  — Oakridge accounts only
+http://localhost:3000/nvmp        NVMP sign-in      — NVMP accounts only
+```
+
+Each screen admits one kind of person, and turning someone away names the
+address that is theirs: a teacher at the platform door is pointed at
+`/their-school`, a Super Admin at a school door is pointed back to `/login`, and
+an Oakridge account at `/nvmp` is told so by name. The rule is a pure function
+(`src/lib/login-door.ts`) with tests covering every combination.
+
+This is not what keeps a school's data private — the backend does that, by
+serving a profile its own school's rows whatever address was used. It is what
+stops someone landing in a portal that looks broken.
+
+### Each school has its own address
+
+A school is a `School` record whose `slug` is both the tenant stamped on every
+one of its documents and the first segment of its portal URL:
+
+```
+http://localhost:3000/oakridge                 → Oakridge's sign-in
+http://localhost:3000/oakridge/admin           → its Admin Console
+http://localhost:3000/oakridge/admin/users     → …and every page beneath it
+http://localhost:3000/nvmp/teacher             → NVMP's Teacher Portal
+```
+
+The slug is resolved through `GET /api/v1/schools/public/:slug` (unauthenticated
+— it returns the slug and display name only), which brands the form and lets a
+URL naming no school say so instead of showing a login that could never work.
+Signing in at one school with another school's account is refused by name; a
+Super Admin is exempt, since it belongs to the platform rather than to a school.
+
+Every portal lives under its school (`src/app/[school]/…`). Nav items and page
+links are still written school-less — `/admin/users` — and the school is added
+when they render (`src/lib/school-path.ts`), so a link cannot be written for the
+wrong school. Opening another school's URL is corrected rather than obeyed: the
+shell redirects to the signed-in profile's own school.
+
+`/login`, `/select-profile` and the Super Admin console stay outside `[school]`.
+The Super Admin spans every school, so `/super-admin` belongs to none of them.
+
+Data isolation does not depend on the URL. The backend derives the acting school
+from the signed-in profile, so an address that says otherwise changes nothing
+about what the API returns.
+
+### Data isolation between schools
+
+Every school-owned collection carries a `tenantId` and is filtered by the acting
+school through an `AsyncLocalStorage` scope plus a Mongoose plugin
+(`src/tenancy/`), so a query written without a tenant clause — nearly all of
+them — still cannot reach another school's rows. Identity and RBAC collections
+(Account, Profile, Role, Permission, tokens) stay global, because sign-in
+happens before any school is known.
+
+A Super Admin acts on one school by sending `X-School-Id: <slug>`; the header is
+ignored for every other role, so it cannot be used to read sideways. With no
+header a Super Admin runs platform-wide, which is what the schools list needs.
+
+**Migrating an existing database.** Data written before this change has no
+school, and a scoped query will not return it — so the portals look empty until
+the migration runs:
+
+```bash
+npm run schools:migrate                                   # dry run
+npm run schools:migrate -- --apply                        # local
+npm run schools:migrate -- --apply --allow-remote         # a real deployment
+```
+
+It creates the Oakridge record, repoints legacy `eduos-demo-tenant` profiles at
+it, stamps every unowned document, and drops the unique indexes that were global
+(admission numbers, grade/subject/fee-head names, room numbers) so a second
+school can reuse those identifiers. Override the owner with
+`--school=<slug> --name="..."`.
+
+### The retired Owner role
+
+`OWNER` has been removed — the Super Admin replaces it, and `ADMIN` covers
+everything else it did. Boot-time role sync adds roles but never deletes one,
+so a database created before the removal keeps an orphaned `OWNER` role and any
+profiles pointing at it. Clear them with:
+
+```bash
+npm run owner:drop            # dry run — reports what would change
+npm run owner:drop -- --apply # delete the profiles, then the role
+```
+
+Accounts are never deleted, so anyone who held another profile keeps it; the
+script names any account left with none.
 
 On the login page:
 - **Staff** → *Continue via Email OTP* with the email above.
@@ -151,7 +311,7 @@ Accounts can hold **multiple role profiles** (e.g. the same phone as Parent *and
 | **Parent** | Dashboard, Performance, Student View (growth score), Attendance, Assignments (submission status), Timetable, Calendar, Announcements, Medical Records, Library, Transport, **Payments with online Pay Now**, Documents, Support |
 | **Student** | Dashboard, Timetable, **Assignments with submit/resubmit + attachments**, Performance, Attendance, Calendar, Announcements, Library, Transport, Documents |
 | **Principal** | School Intelligence, Performance & Risk scan, Teacher Workload, Attendance Trends, Fee Health, Staff Directory, Announcements, Escalated Tickets, Audit Logs |
-| **Owner** | Dashboard, Admissions CRM, Audit Logs, Access & Permissions, Tenant Settings |
+| **Super Admin** | Dashboard (platform), Schools & Admins, School Dashboards (operations / finance / hostel / library), Audit Logs, Access & Permissions |
 | **Finance** | Dashboard, Payments & Fees, Reports |
 | **Librarian** | Dashboard, Catalog & Lending (issue/return + fines), Announcements, Tickets |
 | **Warden** | Dashboard (live occupancy), Room Management (allocate/vacate), Hostel Students, Medical Lookup, Announcements, Tickets |
@@ -164,7 +324,7 @@ Every portal home is powered by a single role-scoped `GET /api/v1/dashboard/:rol
 
 - **Server is the source of truth.** `/auth/me` returns the profile's resolved permission map (e.g. `fees.read: ALL`, `attendance.mark: OWN`); the same keys are enforced by `requirePermission` middleware on every API route. The frontend only mirrors that map for menu/page gating — nothing client-side grants data access.
 - **Scopes**: `ALL` = whole school; `OWN` = the teacher's own sections, the parent's own children, the student's own record — resolved server-side per request.
-- **Admin/Owner → Access & Permissions** is a live editor over the `roles` × `permissions` collections; toggles persist via the roles API and take effect immediately.
+- **Access & Permissions** is a live editor over the `roles` × `permissions` collections; toggles persist via the roles API and take effect immediately.
 - **Ownership checks**: parents can only pay their own invoices; students always submit assignments as themselves (enrollment resolved from the session, never trusted from the client); the manual payment ledger is staff-only.
 - Sessions: 15-min access tokens + rotating refresh tokens (revocable per device or account-wide on logout). Credential endpoints have a strict rate limit (30/15 min) separate from the general API limit (2000/15 min).
 - Medical records are encrypted at rest (`MEDICAL_ENCRYPTION_KEY`).

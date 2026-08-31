@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 // ─── Book (catalog entry) ───────────────────────────────────
 const bookSchema = new Schema(
@@ -41,5 +42,7 @@ bookIssueSchema.index({ bookId: 1, status: 1 });
 bookIssueSchema.index({ borrowerProfileId: 1 });
 bookIssueSchema.index({ dueDate: 1 });
 
+bookSchema.plugin(tenantScoped); // school-owned
 export const Book = model('Book', bookSchema);
+bookIssueSchema.plugin(tenantScoped); // school-owned
 export const BookIssue = model('BookIssue', bookIssueSchema);

@@ -1,8 +1,9 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const feeHeadSchema = new Schema(
   {
-    name: { type: String, required: true, unique: true, trim: true }, // "Tuition", "Transport"
+    name: { type: String, required: true, trim: true }, // "Tuition", "Transport" — unique per school
     category: { type: String, default: 'TUITION' },
   },
   { timestamps: true }
@@ -31,6 +32,7 @@ const invoiceSchema = new Schema(
   },
   { timestamps: true }
 );
+feeHeadSchema.index({ tenantId: 1, name: 1 }, { unique: true });
 invoiceSchema.index({ status: 1, dueOn: 1 });
 
 const invoiceLineSchema = new Schema(
@@ -62,8 +64,13 @@ const paymentSchema = new Schema(
   { timestamps: true }
 );
 
+feeHeadSchema.plugin(tenantScoped); // school-owned
 export const FeeHead = model('FeeHead', feeHeadSchema);
+feeStructureSchema.plugin(tenantScoped); // school-owned
 export const FeeStructure = model('FeeStructure', feeStructureSchema);
+invoiceSchema.plugin(tenantScoped); // school-owned
 export const Invoice = model('Invoice', invoiceSchema);
+invoiceLineSchema.plugin(tenantScoped); // school-owned
 export const InvoiceLine = model('InvoiceLine', invoiceLineSchema);
+paymentSchema.plugin(tenantScoped); // school-owned
 export const Payment = model('Payment', paymentSchema);

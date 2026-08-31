@@ -114,7 +114,7 @@ export async function seedDocuments({ force = false } = {}) {
       type: 'CUSTOM',
       fileUrl: `/${env.UPLOAD_DIR}/${filename}`,
       mimeType: 'application/pdf',
-      visibleToRoles: ['STUDENT', 'PARENT', 'TEACHER', 'ADMIN', 'PRINCIPAL', 'OWNER'],
+      visibleToRoles: ['STUDENT', 'PARENT', 'TEACHER', 'ADMIN', 'PRINCIPAL'],
       authorProfileId: author._id,
       sectionId: section?._id ?? null,
       subjectOfferingId: matched?._id ?? null,
