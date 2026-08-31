@@ -7,6 +7,7 @@ import { logger } from '../../../utils/logger.js';
 import { getTool, toolsAvailableTo } from './tools.js';
 import { parseIntentWithLlm, parseIntent } from './intent.js';
 import { detectLanguage, t } from '../../../utils/language.js';
+import { currentTenantId } from '../../../tenancy/tenantContext.js';
 
 const CONFIRM_TTL_MINUTES = 10;
 
@@ -67,6 +68,28 @@ export function checkAuthorization(actor, tool) {
     );
   }
   return scope;
+}
+
+/**
+ * A write has to land in exactly one school.
+ *
+ * Every school-owned collection is filtered by the acting school, but a
+ * platform-level Super Admin — signed in with no `X-School-Id` — runs with no
+ * school at all, and a bulk write in that state is unbounded: it names records
+ * by id and the tenant filter is not there to confine it. announcement.service
+ * already refuses this for its own case; this applies the same rule to every
+ * tool that mutates, so no single tool has to remember it.
+ *
+ * Reads are deliberately left alone: reading across schools is exactly what
+ * the platform-level views are for.
+ */
+export function assertSchoolContext(tool) {
+  if (!tool?.mutates) return;
+  if (currentTenantId()) return;
+  throw new AppError(
+    'Choose a school before running that action.',
+    400, [], 'AGENT_SCHOOL_REQUIRED',
+  );
 }
 
 /**
@@ -264,6 +287,7 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
 
   // Authorize FIRST — before validation, execution, or proposing anything.
   const scope = checkAuthorization(actor, tool);
+  assertSchoolContext(tool);
 
   if (tool.validate) {
     try {
@@ -379,6 +403,10 @@ export async function confirmAction({ confirmToken, actor, source = 'WEB', accep
   if (!tool) throw new AppError('That capability is no longer available.', 400);
 
   const scope = checkAuthorization(actor, tool);
+  // Re-checked here for the same reason the permission is: this is the moment
+  // data actually changes, and the acting school can differ from the one the
+  // proposal was made under.
+  assertSchoolContext(tool);
 
   // Captured before the write, so the audit entry can show what the record
   // looked like beforehand rather than only what was requested.
