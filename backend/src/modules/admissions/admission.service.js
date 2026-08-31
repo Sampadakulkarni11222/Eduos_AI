@@ -1,4 +1,8 @@
+import mongoose from 'mongoose';
 import { Lead, LeadInteraction } from '../../models/lead.model.js';
+import { Profile } from '../../models/profile.model.js';
+import { buildPermissionMap } from '../../utils/buildPermissionMap.js';
+import { tenantFilter } from '../../tenancy/tenantContext.js';
 import { Student } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { runInTransaction } from '../../utils/transaction.js';
@@ -25,7 +29,15 @@ function toLeadDto(lead) {
 }
 
 export async function getPipeline() {
-  const leads = await Lead.find().sort({ createdAt: -1 }).lean();
+  // The assignee is populated so a board can tell an available lead from one
+  // already owned — the two the CRM works in terms of. It was dropped from
+  // this DTO (the lead drawer resolves it separately), which left the pipeline
+  // unable to distinguish them at all. Scoped to the acting school by the
+  // tenant plugin on Lead, as every read here is.
+  const leads = await Lead.find()
+    .populate('assigneeProfileId', 'displayName')
+    .sort({ createdAt: -1 })
+    .lean();
 
   const STAGES = ['NEW', 'CONTACTED', 'TOUR_SCHEDULED', 'APPLICATION', 'ENROLLED', 'LOST'];
 
@@ -45,6 +57,8 @@ export async function getPipeline() {
         stage: lead.stage,
         notes: lead.notes,
         nextActionAt: lead.nextActionAt,
+        assigneeProfileId: lead.assigneeProfileId?._id ?? null,
+        assigneeName: lead.assigneeProfileId?.displayName ?? null,
         createdAt: lead.createdAt,
       });
     }
@@ -260,14 +274,54 @@ export async function bulkCreateLeads(rows) {
   return results;
 }
 
+/**
+ * Checks that a lead may be handed to this profile.
+ *
+ * The assignee used to be written straight through from the request body, so
+ * a lead could be assigned to a profile in a *different school* (Profile is
+ * not tenant-scoped — sign-in has to see across schools), or to someone with
+ * no CRM access at all, such as a teacher or a parent. Either way the lead
+ * left the pipeline of everyone who could act on it.
+ *
+ * Returns the id to store, or null when the assignment is being cleared.
+ */
+async function resolveAssignee(assigneeProfileId) {
+  if (assigneeProfileId === null || assigneeProfileId === '') return null;
+  if (!mongoose.isValidObjectId(assigneeProfileId)) {
+    throw new AppError('That user cannot be assigned leads', 403, [], 'INVALID_ASSIGNEE');
+  }
+
+  const profile = await Profile.findOne({
+    ...tenantFilter(), _id: assigneeProfileId, status: 'ACTIVE', deletedAt: null,
+  }).populate('roleId');
+
+  // Same message whether the profile belongs to another school, is inactive or
+  // does not exist, so the error cannot be used to probe who is on the platform.
+  if (!profile || !buildPermissionMap(profile.roleId)['admissions.manage']) {
+    throw new AppError('That user cannot be assigned leads', 403, [], 'INVALID_ASSIGNEE');
+  }
+  return profile._id;
+}
+
 export async function updateLead({ leadId, stage, notes, assigneeProfileId, nextActionAt, actorProfileId }) {
   const lead = await Lead.findById(leadId);
   if (!lead) throw new AppError('Lead not found', 404);
 
   const previousStage = lead.stage;
-  if (stage !== undefined) lead.stage = stage;
+  if (stage !== undefined) {
+    // The same enum the CSV importer validates against. Without this any string
+    // was stored, and getPipeline() groups into fixed buckets — so a lead given
+    // an unknown stage silently vanished from the board it lives on.
+    if (!LEAD_STAGES.has(stage)) {
+      throw new AppError(
+        `stage must be one of: ${[...LEAD_STAGES].join(', ')}`,
+        400, [], 'INVALID_LEAD_STAGE',
+      );
+    }
+    lead.stage = stage;
+  }
   if (notes !== undefined) lead.notes = notes;
-  if (assigneeProfileId !== undefined) lead.assigneeProfileId = assigneeProfileId;
+  if (assigneeProfileId !== undefined) lead.assigneeProfileId = await resolveAssignee(assigneeProfileId);
   if (nextActionAt !== undefined) lead.nextActionAt = nextActionAt;
   await lead.save();
 
