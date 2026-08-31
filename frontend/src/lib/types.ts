@@ -1,5 +1,6 @@
 export type RoleKey =
-  | 'OWNER' | 'ADMIN' | 'PRINCIPAL' | 'TEACHER' | 'PARENT'
+  | 'SUPER_ADMIN'
+  | 'ADMIN' | 'PRINCIPAL' | 'TEACHER' | 'PARENT'
   | 'STUDENT' | 'FINANCE' | 'LIBRARIAN' | 'WARDEN';
 
 export interface ProfileSummary {
@@ -199,7 +200,7 @@ export interface SubjectRegistrationDto {
 }
 
 export interface InvoiceDto { id: string; invoiceNo: string; studentName: string; class: string | null; status: string; totalPaise: number; paidPaise: number; dueOn: string; sectionId?: string; studentId?: string; createdAt?: string }
-export interface FeeSummary { totalBilledPaise: number; totalCollectedPaise: number; pendingPaise: number; pendingCount: number; collectionPct: number; overduePaise: number; overdueCount: number }
+export interface FeeSummary { totalBilledPaise: number; totalCollectedPaise: number; pendingPaise: number; pendingCount: number; collectionPct: number; overduePaise: number; overdueCount: number; onlinePaymentEnabled?: boolean }
 export interface AnnouncementAudience { all: boolean; gradeIds: string[]; sectionIds: string[]; subjectIds: string[] }
 export interface AnnouncementChannels { app: boolean; email: boolean; whatsapp: boolean }
 export interface AnnouncementDto {
@@ -209,7 +210,7 @@ export interface AnnouncementDto {
 export interface TicketDto { id: string; subject: string; status: string; priority: string; routedToRoleKey: string | null; raisedBy: string; assignedTo?: string | null; studentName?: string | null; createdAt: string; messageCount: number }
 export interface TicketThread { id: string; subject: string; status: string; routedToRoleKey: string | null; studentName?: string | null; messages: Array<{ id: string; body: string; channel: string; mine: boolean; createdAt: string }> }
 export interface MedicalDto { studentId: string; bloodGroup: string | null; heightCm: number | null; weightKg: number | null; emergencyContact: { name: string; phone: string; relation: string } | null; allergies: string[]; medications: string[]; history: string | null; attachments?: Array<{ name: string; fileUrl: string }> | null }
-export interface LeadCard { id: string; childName: string; guardianName: string; gradeApplying: string | null; source: string; nextActionAt: string | null }
+export interface LeadCard { id: string; childName: string; guardianName: string; gradeApplying: string | null; source: string; nextActionAt: string | null; assigneeProfileId?: string | null; assigneeName?: string | null }
 export interface Pipeline { stages: string[]; byStage: Record<string, LeadCard[]> }
 export interface LeadInteractionDto { id: string; type: string; body: string; authorName: string | null; createdAt: string }
 export interface LeadDetailDto {
@@ -322,7 +323,9 @@ export interface AuditLogDto {
   action: string;
   entityType: string | null;
   entityId: string | null;
+  actorProfileId?: string | null;
   actorName: string | null;
+  actorRole: string | null;
   channel: string;
   ip: string | null;
   createdAt: string;
@@ -359,6 +362,48 @@ export interface UserDto {
     rollNo: number | null;
     class: string | null;
   } | null;
+}
+
+/** What `/oakridge` can learn about a school before anyone signs in. */
+export interface PublicSchoolDto {
+  slug: string;
+  name: string;
+}
+
+// ── Schools (Super Admin) ──
+/** A school is the tenant already carried on every profile. */
+export interface SchoolDto {
+  /** The school's id and the first segment of its portal URL. */
+  slug: string;
+  /** The same value, under the name the tenant fields have always used. */
+  tenantId: string;
+  tenantName: string;
+  status: 'ACTIVE' | 'SUSPENDED';
+  profileCount: number;
+  adminCount: number;
+  activeAdminCount: number;
+  createdAt: string | null;
+}
+
+export interface SchoolAdminDto {
+  profileId: string;
+  accountId: string;
+  displayName: string;
+  roleKey: RoleKey;
+  tenantId: string;
+  tenantName: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  accountStatus: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | null;
+  phone: string | null;
+  email: string | null;
+  createdAt: string;
+}
+
+export interface CreateSchoolAdminDto {
+  displayName: string;
+  phone: string;
+  email?: string;
+  password?: string;
 }
 
 export interface CreateUserDto {
@@ -465,13 +510,6 @@ export interface LibrarianDashboardDto {
   booksIssuedToday: number; booksReturnedToday: number;
   recentIssueHistory: Array<{ issueId: string; book: string; author: string; borrower: string; issuedAt: string; dueDate: string; status: string }>;
   recentReturnHistory: Array<{ issueId: string; book: string; author: string; borrower: string; returnedAt: string; fine: number }>;
-}
-export interface OwnerDashboardDto {
-  totalStudents: number; activeCRMLeads: number;
-  feesCollectedPaise: number; pendingFeesPaise: number; unpaidInvoices: number; collectionRate: number;
-  admissionsSummary: Array<{ stage: string; count: number }>;
-  recentAuditLogs: Array<{ _id: string; action: string; entityType: string | null; actorName: string | null; channel: string; createdAt: string }>;
-  recentAnnouncements: Array<{ _id: string; title: string; content: string; publishedAt: string }>;
 }
 export interface FinanceDashboardDto {
   pendingAmountPaise: number; collectedAmountPaise: number; totalBilled: number; collectionRate: number; invoiceCount: number;

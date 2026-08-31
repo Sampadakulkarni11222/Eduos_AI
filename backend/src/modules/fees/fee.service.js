@@ -1049,5 +1049,11 @@ export async function getSummary(actor, scope, query = {}) {
     overduePaise,
     overdueCount,
     invoiceCount: invoices.length,
+    // Whether the online method is actually configured, so a payer is not
+    // offered a route that can only fail. Derived from the same
+    // PAYMENT_PROVIDER setting payOnline() enforces with — read, never a second
+    // copy of the configuration — and it reports availability only, never the
+    // gateway's identity or keys.
+    onlinePaymentEnabled: isOnlinePaymentEnabled(),
   };
 }

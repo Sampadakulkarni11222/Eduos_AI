@@ -18,6 +18,12 @@ export const PERMISSION_CATALOG = [
   { key: 'settings.manage', group: 'admin', description: 'Manage school-wide settings' },
   { key: 'audit.read', group: 'admin', description: 'View audit logs' },
 
+  // Platform-level governance. These two keys exist so a Super Admin can run
+  // school onboarding and School Admin accounts across schools; every
+  // school-level role is deliberately excluded from them.
+  { key: 'schools.read', group: 'admin', description: 'View the schools on the platform and their School Admins' },
+  { key: 'schools.manage', group: 'admin', description: 'Create schools and manage their School Admin accounts' },
+
   // students
   { key: 'students.read', group: 'students', description: 'View student records' },
   { key: 'students.manage', group: 'students', description: 'Create or update student records' },
@@ -107,21 +113,28 @@ export const PERMISSION_CATALOG = [
 
 const grants = (pairs) => pairs.map(([key, scope]) => ({ key, scope }));
 
+/**
+ * Permission keys reserved for SUPER_ADMIN. They sit above a single school, so
+ * the school-level roles below subtract them from their otherwise-full grant —
+ * that keeps every pre-existing role's effective permissions unchanged.
+ */
+export const SUPER_ADMIN_ONLY = ['schools.read', 'schools.manage'];
+
 const ALL_EXCEPT = (...excluded) =>
   PERMISSION_CATALOG.filter((p) => !excluded.includes(p.key)).map((p) => ({ key: p.key, scope: 'ALL' }));
 
 export const SYSTEM_ROLES = [
   {
-    key: 'OWNER',
-    name: 'Owner',
-    description: 'Full, unrestricted access',
+    key: 'SUPER_ADMIN',
+    name: 'Super Admin',
+    description: 'Platform administrator — manages schools and their School Admin accounts',
     grants: PERMISSION_CATALOG.map((p) => ({ key: p.key, scope: 'ALL' })),
   },
   {
     key: 'ADMIN',
     name: 'Administrator',
     description: 'Manages day-to-day school operations',
-    grants: ALL_EXCEPT('permissions.manage', 'fees.payments.refund'),
+    grants: ALL_EXCEPT('permissions.manage', 'fees.payments.refund', ...SUPER_ADMIN_ONLY),
   },
   {
     key: 'PRINCIPAL',
@@ -257,6 +270,10 @@ export const SYSTEM_ROLES = [
       ['fees.structure.manage', 'ALL'],
       ['fees.read', 'ALL'],
       ['fees.manage', 'ALL'],
+      // Recording a payment is the role's day job. Without this the Finance
+      // portal's "Record payment" action was hidden and POST /fees/payments
+      // refused it, while every other fee capability was granted.
+      ['fees.pay', 'ALL'],
       ['fees.payments.refund', 'ALL'],
       ['announcements.read', 'ALL'],
       ['analytics.school.read', 'ALL'],
