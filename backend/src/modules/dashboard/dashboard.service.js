@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 import { Student, StudentGuardian, Enrollment } from '../../models/student.model.js';
 import { Lead } from '../../models/lead.model.js';
-import { Invoice, Payment } from '../../models/fee.model.js';
+import { Invoice } from '../../models/fee.model.js';
 import { Ticket } from '../../models/ticket.model.js';
 import { Announcement } from '../../models/announcement.model.js';
 import { AcademicYear, Section, SubjectOffering } from '../../models/academics.model.js';
@@ -14,7 +14,6 @@ import { Book, BookIssue } from '../../models/library.model.js';
 import { HostelRoom, HostelAllocation, HostelInquiry } from '../../models/hostel.model.js';
 import { Document } from '../../models/document.model.js';
 import { CalendarEvent } from '../../models/calendarEvent.model.js';
-import { AuditLog } from '../../models/auditLog.model.js';
 import { LeaveApplication } from '../../models/leaveApplication.model.js';
 import {
   getTeacherSectionIds,
@@ -45,86 +44,27 @@ async function recentAnnouncements(limit = 5) {
     .lean();
 }
 
-// ─── Owner Dashboard ──────────────────────────────────────────────────────────
-
-export async function getOwnerDashboard() {
-  const [
-    totalStudents,
-    activeCRMLeads,
-    feeAgg,
-    unpaidCount,
-    auditEntries,
-    announcementsArr,
-    admissionsByStage,
-  ] = await Promise.all([
-    Student.countDocuments({ status: 'ACTIVE', deletedAt: null }),
-    Lead.countDocuments({ stage: { $nin: ['ENROLLED', 'LOST'] } }),
-
-    // Sum collected vs total invoices
-    Invoice.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalPaise: { $sum: '$totalPaise' },
-          paidPaise: { $sum: '$paidPaise' },
-        },
-      },
-    ]),
-
-    Invoice.countDocuments({ status: { $in: ['PENDING', 'PARTIAL', 'OVERDUE'] } }),
-
-    // Real audit log entries. This used to return open tickets under the name
-    // `recentAuditLogs` — a proxy that made the owner portal's audit panel
-    // render blank fields, because tickets have no action/actor/channel.
-    AuditLog.find({})
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .populate('actorProfileId', 'displayName')
-      .select('action entityType channel createdAt actorProfileId')
-      .lean(),
-
-    recentAnnouncements(5),
-
-    Lead.aggregate([
-      { $group: { _id: '$stage', count: { $sum: 1 } } },
-      { $sort: { _id: 1 } },
-    ]),
-  ]);
-
-  const totalPaise = feeAgg[0]?.totalPaise ?? 0;
-  const paidPaise = feeAgg[0]?.paidPaise ?? 0;
-  const pendingPaise = totalPaise - paidPaise;
-
-  return {
-    totalStudents,
-    activeCRMLeads,
-    feesCollected: toRs(paidPaise),
-    feesCollectedPaise: paidPaise,
-    pendingFees: toRs(pendingPaise),
-    pendingFeesPaise: pendingPaise,
-    unpaidInvoices: unpaidCount,
-    // The owner portal shows a collection rate; without this it had to fetch
-    // /fees/summary separately just to compute one percentage.
-    collectionRate: pct(paidPaise, totalPaise),
-    admissionsSummary: admissionsByStage.map((s) => ({
-      stage: s._id,
-      count: s.count,
-    })),
-    recentAuditLogs: auditEntries.map((log) => ({
-      _id: log._id,
-      action: log.action,
-      entityType: log.entityType ?? null,
-      actorName: log.actorProfileId?.displayName ?? null,
-      channel: log.channel,
-      createdAt: log.createdAt,
-    })),
-    recentAnnouncements: announcementsArr,
-  };
-}
-
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 
-export async function getAdminDashboard() {
+/**
+ * True when the signed-in actor holds a permission key at any scope.
+ *
+ * The dashboards are the one place several roles read the *same* endpoint, so
+ * a section that belongs to a narrower permission has to be resolved per
+ * caller rather than per route. requirePermission on the route answers "may
+ * you open this dashboard"; this answers "may you see this panel of it".
+ */
+const actorHolds = (actor, permissionKey) => Boolean(actor?.permissions?.[permissionKey]);
+
+export async function getAdminDashboard(actor) {
+  // The admissions pipeline is CRM data, gated everywhere else in the app by
+  // `admissions.read` — including the /admin/admissions route map. This
+  // endpoint is also open to PRINCIPAL, who holds no admissions permission, so
+  // the pipeline is fetched only for a caller entitled to it. Unauthorised
+  // callers get an empty list rather than a missing field, so the response
+  // shape every dashboard page already reads stays intact.
+  const mayReadAdmissions = actorHolds(actor, 'admissions.read');
+
   const [
     totalStudents,
     openTickets,
@@ -153,9 +93,9 @@ export async function getAdminDashboard() {
       .select('subject status priority routedToRoleKey createdAt')
       .lean(),
 
-    Lead.aggregate([
-      { $group: { _id: '$stage', count: { $sum: 1 } } },
-    ]),
+    mayReadAdmissions
+      ? Lead.aggregate([{ $group: { _id: '$stage', count: { $sum: 1 } } }])
+      : [],
   ]);
 
   return {
@@ -803,6 +743,17 @@ function _emptyParentDashboard() {
 // ─── Warden Dashboard ─────────────────────────────────────────────────────────
 
 export async function getWardenDashboard() {
+  // A warden oversees the hostel, not the whole school, and holds no
+  // `leave.read`. The pending-leave panel below used to read every student's
+  // application — day scholars included, with their stated reason — so it is
+  // narrowed to students who actually hold an active hostel allocation. The
+  // widget and its counts are unchanged; only non-residents drop out.
+  const residentStudentIds = await HostelAllocation.distinct('studentId', { status: 'ACTIVE' });
+  const residentEnrollmentIds = await Enrollment.distinct('_id', {
+    studentId: { $in: residentStudentIds },
+  });
+  const residentPendingLeave = { status: 'PENDING', enrollmentId: { $in: residentEnrollmentIds } };
+
   const [
     totalRooms,
     occupiedBeds,
@@ -867,7 +818,7 @@ export async function getWardenDashboard() {
       .lean(),
 
     // Was hardcoded to [] with the comment "no leave model". There is one now.
-    LeaveApplication.find({ status: 'PENDING' })
+    LeaveApplication.find(residentPendingLeave)
       .sort({ fromDate: 1 })
       .limit(10)
       .populate({ path: 'enrollmentId', populate: { path: 'studentId', select: 'firstName lastName admissionNo' } })
@@ -876,7 +827,7 @@ export async function getWardenDashboard() {
     // The list above is capped at 10. Without a total, a warden looking at ten
     // rows has no way to tell whether that is all of them or the first ten of
     // forty — which is the difference between "nothing to do" and a backlog.
-    LeaveApplication.countDocuments({ status: 'PENDING' }),
+    LeaveApplication.countDocuments(residentPendingLeave),
   ]);
 
   const capacityData = vacantCount[0] ?? { totalCapacity: 0, totalOccupied: 0 };
