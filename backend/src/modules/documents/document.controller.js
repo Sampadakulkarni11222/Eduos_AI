@@ -9,6 +9,11 @@ export const listDocuments = asyncHandler(async (req, res) => {
   const documents = await service.listForActor(req.actor, req.scope, req.query.studentId, {
     page: req.query.page,
     pageSize: req.query.pageSize,
+    // The categories a document is already filed under. Narrowing only — the
+    // visibility rules still decide what is reachable at all.
+    type: req.query.type,
+    sectionId: req.query.sectionId,
+    subjectOfferingId: req.query.subjectOfferingId,
   });
   sendSuccess(res, documents, 'Documents retrieved successfully');
 });
@@ -111,11 +116,13 @@ export const deleteDocument = asyncHandler(async (req, res) => {
     throw new AppError('Document not found', 404);
   }
 
-  const role = req.actor?.roleKey;
   const profileId = req.actor?.profileId;
 
-  // Only allow admin, owner, or the author to delete
-  if (role !== 'ADMIN' && role !== 'OWNER' && String(doc.authorProfileId) !== String(profileId)) {
+  // A school-wide holder of materials.manage, or the author. This used to test
+  // the literal string 'ADMIN', so a Principal and a Super Admin — who both
+  // hold the permission at ALL — were refused, the same role-string bug the
+  // read path carried. Driven by scope now, so the grant decides.
+  if (req.scope !== 'ALL' && String(doc.authorProfileId) !== String(profileId)) {
     throw new AppError('Not authorized to delete this document', 403);
   }
 
