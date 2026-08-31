@@ -1,7 +1,9 @@
 import bcrypt from 'bcryptjs';
+import { createHash } from 'node:crypto';
 import { Account } from '../../models/account.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { Role } from '../../models/role.model.js';
+import { School } from '../../models/school.model.js';
 import { RefreshToken } from '../../models/refreshToken.model.js';
 import { OtpCode } from '../../models/otpCode.model.js';
 import { AppError } from '../../utils/AppError.js';
@@ -11,6 +13,7 @@ import { generateRefreshToken, hashRefreshToken } from '../../utils/refreshToken
 import { buildPermissionMap } from '../../utils/buildPermissionMap.js';
 import { logger } from '../../utils/logger.js';
 import { env } from '../../config/env.js';
+import { currentTenantId } from '../../tenancy/tenantContext.js';
 import { sendOtpSms, sendOtpEmail } from '../../providers/notification.provider.js';
 import { CircuitBreaker } from '../../utils/circuitBreaker.js';
 
@@ -155,8 +158,81 @@ export async function verifyOtp({ phone, code }, opts) {
   return resolveSession(account, opts);
 }
 
+const SUPER_ADMIN_ROLE_KEY = 'SUPER_ADMIN';
+
+/**
+ * A stable, deliberately non-dialable stand-in for the required phone number
+ * on an account provisioned from an email address alone.
+ *
+ * `+000…` cannot collide with a real number (no country code starts with 0)
+ * and is rejected by the E.164 validation every user-entered phone passes, so
+ * it can never clash with an account someone creates by hand. Deriving it from
+ * the email keeps re-provisioning the same address idempotent.
+ */
+function placeholderPhoneFor(email) {
+  const digits = BigInt(`0x${createHash('sha256').update(email).digest('hex').slice(0, 12)}`) % 1_000_000_000n;
+  return `+000${String(digits).padStart(9, '0')}`;
+}
+
+/**
+ * Provisions the Super Admin named by SUPER_ADMIN_EMAILS.
+ *
+ * Called only from the sign-in paths behind a Google account, and only for an
+ * address the operator has put in the environment. Any other address falls
+ * through untouched, so this cannot create an account for anyone else, and it
+ * grants nothing beyond the SUPER_ADMIN profile.
+ *
+ * Idempotent: an existing account keeps its phone, password and other profiles
+ * and simply gains the Super Admin profile if it lacks one.
+ */
+export async function ensureSuperAdminAccount(email, name) {
+  const normalized = email?.trim().toLowerCase();
+  if (!normalized || !env.SUPER_ADMIN_EMAILS.includes(normalized)) return null;
+
+  const role = await Role.findOne({ key: SUPER_ADMIN_ROLE_KEY });
+  if (!role) {
+    // The boot sequence upserts this role, so its absence means the process is
+    // running against a database an older build owns. Say so rather than
+    // failing the sign-in with something unrelated.
+    logger.error(`${SUPER_ADMIN_ROLE_KEY} role is missing — cannot provision ${normalized}`);
+    return null;
+  }
+
+  let account = await Account.findOne({ email: normalized });
+  if (!account) {
+    account = await Account.create({
+      email: normalized,
+      phoneE164: placeholderPhoneFor(normalized),
+    });
+    logger.warn(`Provisioned Super Admin account for ${normalized} (listed in SUPER_ADMIN_EMAILS)`);
+  }
+
+  const existing = await Profile.findOne({ accountId: account._id, roleId: role._id });
+  if (!existing) {
+    await Profile.create({
+      accountId: account._id,
+      roleId: role._id,
+      displayName: name?.trim() || normalized.split('@')[0],
+    });
+    logger.warn(`Granted the Super Admin profile to ${normalized} (listed in SUPER_ADMIN_EMAILS)`);
+  } else if (existing.status !== 'ACTIVE' || existing.deletedAt) {
+    // Re-listing a suspended address in the environment is how an operator
+    // recovers from locking themselves out.
+    existing.status = 'ACTIVE';
+    existing.deletedAt = null;
+    await existing.save();
+    logger.warn(`Reactivated the Super Admin profile for ${normalized}`);
+  }
+
+  return account;
+}
+
 export async function requestEmailOtp({ email }) {
   const normalized = email?.trim().toLowerCase();
+  // The Google sign-in demo signs in through this path, so a Super Admin
+  // listed in the environment is provisioned here too. No-op for every other
+  // address, which still gets the 404 below.
+  await ensureSuperAdminAccount(normalized);
   const account = await Account.findOne({ email: normalized });
   // Email accounts are pre-provisioned (never self-registered like phone), so
   // an unrecognized email is always a typo or an unlisted address — tell the
@@ -225,6 +301,10 @@ export async function googleLogin({ idToken }, opts) {
   if (payload.email_verified !== 'true' && payload.email_verified !== true) {
     throw new AppError('Google account email is not verified', 401, [], 'GOOGLE_EMAIL_UNVERIFIED');
   }
+
+  // Google has verified this address belongs to the person signing in, so an
+  // operator listing it in SUPER_ADMIN_EMAILS is enough to provision it.
+  await ensureSuperAdminAccount(payload.email, payload.name);
 
   const account = await Account.findOne({ email: payload.email?.toLowerCase() });
   if (!account) {
@@ -393,6 +473,20 @@ export async function register({ name, phone, email, password, roleKey }) {
   const existing = await Profile.findOne({ accountId: account._id, roleId: role._id });
   if (existing) throw new AppError('This account already has a profile with that role', 409);
 
-  const profile = await Profile.create({ accountId: account._id, roleId: role._id, displayName: name });
+  // A profile belongs to the school the request is acting on. Without this it
+  // would fall back to the schema default and land in no school anyone uses,
+  // so an admin creating a teacher would create one nobody's portal can see.
+  const tenantId = currentTenantId();
+  const school = tenantId ? await School.findOne({ slug: tenantId }).select('slug name').lean() : null;
+
+  const profile = await Profile.create({
+    accountId: account._id,
+    roleId: role._id,
+    displayName: name,
+    // The acting school wins even if its School record cannot be read here;
+    // falling through to the schema default would file the new user under the
+    // demo school, i.e. outside the school that just created them.
+    ...(tenantId && { tenantId, tenantName: school?.name ?? tenantId }),
+  });
   return { account, profile };
 }

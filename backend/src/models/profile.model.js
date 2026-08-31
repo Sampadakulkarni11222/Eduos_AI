@@ -17,5 +17,13 @@ const profileSchema = new Schema(
   { timestamps: true }
 );
 profileSchema.index({ accountId: 1, roleId: 1 }, { unique: true });
+// Profile is deliberately not tenant-scoped — sign-in has to find an account
+// before any school is known — so administrative reads filter by tenantId
+// explicitly (see utils tenantFilter and modules/users/user.service.js). This
+// collection grows with the whole platform rather than one school, so without
+// this index the admin user list scanned every school's profiles on every
+// page. `deletedAt` trails it because every one of those reads excludes
+// soft-deleted rows.
+profileSchema.index({ tenantId: 1, deletedAt: 1 });
 
 export const Profile = model('Profile', profileSchema);
