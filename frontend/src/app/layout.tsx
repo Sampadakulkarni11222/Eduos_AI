@@ -6,7 +6,13 @@ import { ToastProvider } from '@/components/ui';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Oakridge Academy',
+  // The platform, not a school: these pages serve every school on it. A page
+  // that knows which school it is showing sets its own title on top of this
+  // (see PortalShell and the sign-in screen).
+  title: {
+    default: 'EduOS AI',
+    template: '%s · EduOS AI',
+  },
   description: 'The AI-native school operating system',
 };
 

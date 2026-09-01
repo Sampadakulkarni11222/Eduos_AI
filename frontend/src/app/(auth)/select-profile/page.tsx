@@ -3,12 +3,12 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth, readLoginProfiles } from '@/lib/auth';
 import { hasSession } from '@/lib/api';
-import { ROLE_TO_SLUG } from '@/lib/portals';
+import { portalHome } from '@/lib/school-path';
 import { Spinner } from '@/components/ui';
 import type { ProfileSummary } from '@/lib/types';
 
 const ROLE_GLYPH: Record<string, string> = {
-  OWNER: '👑', ADMIN: '🏛️', PRINCIPAL: '🎓', TEACHER: '👩‍🏫', PARENT: '👨‍👩‍👧',
+  SUPER_ADMIN: '🛡️', ADMIN: '🏛️', PRINCIPAL: '🎓', TEACHER: '👩‍🏫', PARENT: '👨‍👩‍👧',
   STUDENT: '🎒', FINANCE: '💰', LIBRARIAN: '📚', WARDEN: '🔑',
 };
 
@@ -26,7 +26,7 @@ export default function SelectProfilePage() {
   useEffect(() => {
     // Already acting as a profile → straight to its portal.
     if (!loading && me?.profile?.role) {
-      router.replace(`/${ROLE_TO_SLUG[me.profile.role]}`);
+      router.replace(portalHome(me.profile.tenantId, me.profile.role));
       return;
     }
     if (!hasSession()) {

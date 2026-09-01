@@ -57,9 +57,11 @@ function translateAnnouncements(announcements: any[], locale: string) {
 export default async function PublicAnnouncementsPage({
   searchParams,
 }: {
-  searchParams: { locale?: string };
+  // Next 15 made searchParams a promise; it is awaited rather than read
+  // directly, which is the only change this upgrade needed in app code.
+  searchParams: Promise<{ locale?: string }>;
 }) {
-  const locale = searchParams.locale || 'en';
+  const locale = (await searchParams).locale || 'en';
   const backendUrl = process.env.API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 
   let rawAnnouncements: any[] = [];

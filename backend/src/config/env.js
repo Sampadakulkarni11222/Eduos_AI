@@ -24,6 +24,20 @@ export function numFromEnv(name, fallback) {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
+/**
+ * Reads a comma-separated email allowlist, normalised to lowercase.
+ *
+ * Accepts either spelling of the variable so a single address in
+ * SUPER_ADMIN_EMAIL works as well as a list in SUPER_ADMIN_EMAILS.
+ */
+export function emailListFromEnv(...names) {
+  const raw = names.map((n) => process.env[n]).find((v) => v && v.trim());
+  if (!raw) return [];
+  return [...new Set(
+    raw.split(',').map((e) => e.trim().toLowerCase()).filter((e) => e.includes('@')),
+  )];
+}
+
 const LOCAL_MONGO_FALLBACK = 'mongodb://localhost:27017/school_erp';
 
 /**
@@ -115,6 +129,18 @@ export const env = {
   // ── Provider abstractions (all optional — safe fallbacks in dev) ──
   // Google Sign-In: when set, /auth/google verifies the ID token audience.
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? '',
+  // Super Admin allowlist. An address here is provisioned as SUPER_ADMIN the
+  // first time it signs in with a Google account Google has verified — which
+  // is how the platform gets its first Super Admin without a seeded password.
+  // Nothing else reads this list, so an address not on it is unaffected, and
+  // clearing it does not revoke anyone (remove the profile to do that).
+  //
+  // A getter, unlike every other key here, so the list is read from the
+  // environment at the moment of a sign-in rather than at import time — which
+  // keeps it independent of module load order.
+  get SUPER_ADMIN_EMAILS() {
+    return emailListFromEnv('SUPER_ADMIN_EMAILS', 'SUPER_ADMIN_EMAIL');
+  },
   // SMS/Email OTP delivery: 'console' logs the code and returns devOtp
   // outside production; a real provider module can be added per key.
   SMS_PROVIDER: process.env.SMS_PROVIDER ?? 'console',

@@ -2,9 +2,23 @@ import { TransportRoute, TransportStop, BusEnrollment } from '../../models/trans
 import { Student } from '../../models/student.model.js';
 import { AcademicYear } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
-import { getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
+import { Enrollment } from '../../models/student.model.js';
+import { getOwnStudentId, getGuardianStudentIds, getTeacherSectionIds } from '../../utils/scope.js';
 
-/** Resolves the student id(s) this actor may query bus assignments for (empty for staff roles — unrestricted). */
+/**
+ * The student id(s) this actor may query a bus assignment for.
+ *
+ * `null` means unrestricted — within the acting school, which the tenant
+ * plugin on BusEnrollment settles regardless.
+ *
+ * This endpoint carries no transport.* permission by design (a family has
+ * none, and still has to see its own bus), so the entitlement is resolved
+ * here. It used to return `null` for every role that was not a student or a
+ * parent, which read as "staff, unrestricted" — and made
+ * `GET /transport/my-bus?studentId=<anyone>` hand any signed-in teacher,
+ * librarian, warden or finance user that student's route, stop, vehicle and
+ * the driver's name and phone number.
+ */
 async function resolveOwnStudentIds(actor) {
   if (actor.roleKey === 'STUDENT') {
     const id = await getOwnStudentId(actor.profileId);
@@ -13,7 +27,22 @@ async function resolveOwnStudentIds(actor) {
   if (actor.roleKey === 'PARENT') {
     return getGuardianStudentIds(actor.profileId);
   }
-  return null; // staff roles: unrestricted
+  if (actor.roleKey === 'TEACHER') {
+    // Reuses the section assignment the rest of the app scopes teachers by —
+    // class teacher of, or holding a subject offering in. No transport-side
+    // copy of who teaches whom.
+    const sectionIds = await getTeacherSectionIds(actor.profileId);
+    if (!sectionIds.length) return [];
+    const enrolments = await Enrollment.find({
+      sectionId: { $in: sectionIds }, status: 'ACTIVE',
+    }).select('studentId').lean();
+    return [...new Set(enrolments.map((e) => e.studentId.toString()))];
+  }
+  // Unrestricted only for an actor the permission system says may read the
+  // school's transport data. Anyone else — finance, librarian, warden,
+  // principal — holds no transport grant and gets no one else's assignment.
+  if (actor.permissions?.['transport.read']) return null;
+  return [];
 }
 
 /**
@@ -30,7 +59,11 @@ export async function getOwnBus(actor, studentId) {
     if (studentId && !ownIds.includes(String(studentId))) {
       throw new AppError('You are not authorized to view this bus assignment', 403);
     }
-    targetId = studentId || ownIds[0];
+    // "My bus" means something only to the family it belongs to, so only they
+    // get an implicit subject. A teacher is entitled to a whole section, and
+    // defaulting to the first of them would answer a question nobody asked.
+    const ownsSubject = actor.roleKey === 'STUDENT' || actor.roleKey === 'PARENT';
+    targetId = studentId || (ownsSubject ? ownIds[0] : undefined);
   }
   if (!targetId) throw new AppError('studentId query param is required', 400);
 

@@ -231,7 +231,9 @@ async function answerTeachers(actor, toolsUsed) {
 
 async function answerAnnouncements(actor, toolsUsed) {
   toolsUsed.push('announcements.list');
-  const items = await announcements.list();
+  // Same audience filter the announcements screen uses, so the copilot cannot
+  // read out a notice the asker was not addressed in.
+  const items = await announcements.list(actor);
   if (!items.length) return 'No announcements have been published yet.';
   const lines = items.slice(0, 5).map((a) => `• ${a.title} — ${shortDate(a.publishedAt)}`);
   return `Latest announcements:\n${lines.join('\n')}`;

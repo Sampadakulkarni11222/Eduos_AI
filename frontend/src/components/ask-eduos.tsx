@@ -234,7 +234,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
       'List recently paid fee invoices',
       'Show all overdue invoices'
     ];
-  } else if (role === 'PRINCIPAL' || role === 'OWNER' || role === 'ADMIN') {
+  } else if (role === 'PRINCIPAL' || role === 'ADMIN') {
     suggestions = [
       'What is the overall attendance rate of the school?',
       'Show the budget health and collected fees summary',

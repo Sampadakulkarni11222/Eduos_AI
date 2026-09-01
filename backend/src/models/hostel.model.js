@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 // ─── HostelRoom ─────────────────────────────────────────────
 const hostelRoomSchema = new Schema(
@@ -13,7 +14,7 @@ const hostelRoomSchema = new Schema(
   },
   { timestamps: true }
 );
-hostelRoomSchema.index({ roomNo: 1 }, { unique: true });
+hostelRoomSchema.index({ tenantId: 1, roomNo: 1 }, { unique: true });
 
 // ─── HostelAllocation ───────────────────────────────────────
 // Links a student (via their Student record) to a room.
@@ -45,6 +46,9 @@ const hostelInquirySchema = new Schema(
 );
 hostelInquirySchema.index({ status: 1 });
 
+hostelRoomSchema.plugin(tenantScoped); // school-owned
 export const HostelRoom = model('HostelRoom', hostelRoomSchema);
+hostelAllocationSchema.plugin(tenantScoped); // school-owned
 export const HostelAllocation = model('HostelAllocation', hostelAllocationSchema);
+hostelInquirySchema.plugin(tenantScoped); // school-owned
 export const HostelInquiry = model('HostelInquiry', hostelInquirySchema);

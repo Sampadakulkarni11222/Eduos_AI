@@ -29,14 +29,34 @@ async function getOwnSectionIds(actor) {
  * Shared by the list endpoint and the file-download endpoint so a document
  * that isn't listable can never be fetched directly by id either.
  */
-async function buildVisibilityFilter(actor, scope, studentId) {
+async function buildVisibilityFilter(actor, scope, studentId, categories = {}) {
   const role = actor?.roleKey;
   const profileId = actor?.profileId;
   const query = {};
 
   if (studentId) query.studentId = studentId;
 
-  if (role !== 'ADMIN' && role !== 'OWNER') {
+  // Narrowing only — these never widen what the visibility rules below allow,
+  // so they are safe to take straight from the query string. A school-wide
+  // reader now sees every document the school holds, which is a lot to page
+  // through without them.
+  if (categories.type) query.type = categories.type;
+  if (categories.sectionId) query.sectionId = categories.sectionId;
+  if (categories.subjectOfferingId) query.subjectOfferingId = categories.subjectOfferingId;
+
+  // School-wide readers see the school's material; everyone else sees what was
+  // published to their role.
+  //
+  // This used to test `role !== 'ADMIN'` — a hardcoded role string rather than
+  // the permission the route is guarded by. A Principal and a Super Admin both
+  // hold materials.read at ALL, but neither is literally "ADMIN", so both fell
+  // through to `visibleToRoles: 'PRINCIPAL'` / `'SUPER_ADMIN'` — a tag course
+  // material never carries — and saw an all-but-empty list. Reading the scope
+  // instead means the grant decides, as it does everywhere else.
+  //
+  // Which school's material that is remains settled by the tenant plugin on
+  // Document, so a School Admin at ALL scope still sees only their own school.
+  if (scope !== 'ALL') {
     if (role === 'TEACHER') {
       query.$or = [{ visibleToRoles: role }, { authorProfileId: profileId }];
     } else {
@@ -60,7 +80,11 @@ async function buildVisibilityFilter(actor, scope, studentId) {
 }
 
 export async function listForActor(actor, scope, studentId, opts = {}) {
-  const query = await buildVisibilityFilter(actor, scope, studentId);
+  const query = await buildVisibilityFilter(actor, scope, studentId, {
+    type: opts.type,
+    sectionId: opts.sectionId,
+    subjectOfferingId: opts.subjectOfferingId,
+  });
   const page = await paginate(
     Document.find(query).sort({ createdAt: -1 }),
     Document,

@@ -20,11 +20,18 @@ function fmtDate(iso: string) {
 }
 
 export function InvoiceList({
-  invoices, onPay, onViewTimeline,
+  invoices, onPay, onViewTimeline, canPayOnline = true,
 }: {
   invoices: InvoiceDto[];
   onPay: (invoice: InvoiceDto) => void;
   onViewTimeline: (invoice: InvoiceDto) => void;
+  /**
+   * Whether online payment is configured for this school. Pay is the only
+   * method a family has, so when it is off the action is hidden rather than
+   * shown and failed on click. Defaults to true so the invoice list renders
+   * unchanged wherever the caller has no summary to hand.
+   */
+  canPayOnline?: boolean;
 }) {
   if (invoices.length === 0) {
     return <p style={{ fontSize: 12.5, color: 'var(--text-2b)', padding: '14px 4px' }}>No invoices here.</p>;
@@ -51,7 +58,7 @@ export function InvoiceList({
               <td data-label="Status"><Pill tone={TONE[inv.status] ?? 'gray'}>{inv.status.toLowerCase()}</Pill></td>
               <td data-label="Actions">
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {due > 0 && inv.status !== 'CANCELLED' && (
+                  {canPayOnline && due > 0 && inv.status !== 'CANCELLED' && (
                     <Button small onClick={() => onPay(inv)}>Pay {rupees(due)}</Button>
                   )}
                   <Button small variant="ghost" onClick={() => onViewTimeline(inv)}>Timeline</Button>

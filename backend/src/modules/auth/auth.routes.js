@@ -14,7 +14,7 @@ const router = Router();
  *     description: >
  *       Requires an authenticated caller holding `users.manage`. This endpoint
  *       mints profiles bound to any role, so leaving it public allowed anyone
- *       to self-issue an OWNER profile and take over the tenant.
+ *       to self-issue an administrator profile and take over the tenant.
  *     tags: [Auth]
  *     requestBody:
  *       required: true

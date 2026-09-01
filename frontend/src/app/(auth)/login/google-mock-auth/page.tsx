@@ -9,7 +9,8 @@ interface MockAccount {
 }
 
 const MOCK_GOOGLE_USERS: MockAccount[] = [
-  { email: 'owner@schoolerp.com',         name: 'Default Owner',          role: 'Superadmin', avatar: '👑' },
+  { email: 'superadmin@schoolerp.com',    name: 'Platform Super Admin',   role: 'Super Admin', avatar: '🛡️' },
+  { email: 'owner@schoolerp.com',         name: 'Default Owner',          role: 'Owner',      avatar: '👑' },
   { email: 'admin@schoolerp.com',         name: 'Demo Admin',             role: 'Admin',      avatar: '🏛️' },
   { email: 'principal@schoolerp.com',     name: 'Demo Principal',         role: 'Principal',  avatar: '🎓' },
   { email: 'teacher@schoolerp.com',       name: 'Arjun Sharma (Math)',    role: 'Teacher',    avatar: '👨‍🏫' },
@@ -180,7 +181,7 @@ export default function GoogleMockAuthPage() {
         {!showCustom ? (
           <>
             <h1 className="title">Choose an account</h1>
-            <p className="subtitle">to continue to Oakridge Academy</p>
+            <p className="subtitle">to continue to EduOS AI</p>
 
             <div className="account-list">
               {MOCK_GOOGLE_USERS.map((user) => (
@@ -212,7 +213,7 @@ export default function GoogleMockAuthPage() {
         ) : (
           <>
             <h1 className="title" style={{ textAlign: 'left', marginBottom: 16 }}>Sign in</h1>
-            <p className="subtitle" style={{ textAlign: 'left', marginBottom: 30 }}>to continue to Oakridge Academy</p>
+            <p className="subtitle" style={{ textAlign: 'left', marginBottom: 30 }}>to continue to EduOS AI</p>
 
             <input
               type="email"
@@ -240,7 +241,7 @@ export default function GoogleMockAuthPage() {
         )}
 
         <div className="footer">
-          To continue, Google will share your name, email address, language preference, and profile picture with Oakridge Academy.
+          To continue, Google will share your name, email address, language preference, and profile picture with EduOS AI.
         </div>
       </div>
     </div>

@@ -3,6 +3,8 @@ import mongoose from 'mongoose';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { encrypt } from '../utils/crypto.js';
+import { School } from '../models/school.model.js';
+import { runWithTenant } from '../tenancy/tenantContext.js';
 
 /**
  * Upserts a document that carries a unique index on something *other* than _id.
@@ -37,9 +39,29 @@ async function upsertByNaturalKey(db, collection, naturalKey, fixedId, fields = 
   return _id;
 }
 
+/**
+ * Migrated data belongs to a school.
+ *
+ * Every school-owned collection is now scoped by the acting school, so data
+ * written with no school would be invisible to every portal. The demo data is
+ * Oakridge's; override with SEED_SCHOOL_SLUG / SEED_SCHOOL_NAME.
+ */
+const SEED_SCHOOL_SLUG = (process.env.SEED_SCHOOL_SLUG || 'oakridge').toLowerCase();
+const SEED_SCHOOL_NAME = process.env.SEED_SCHOOL_NAME || 'Oakridge Academy';
+
+async function ensureSeedSchool() {
+  await School.updateOne(
+    { slug: SEED_SCHOOL_SLUG },
+    { $setOnInsert: { slug: SEED_SCHOOL_SLUG, name: SEED_SCHOOL_NAME } },
+    { upsert: true },
+  );
+  return SEED_SCHOOL_SLUG;
+}
+
 async function runMigration() {
   logger.info('Connecting to MongoDB for migration…');
   await mongoose.connect(env.MONGO_URI);
+  await ensureSeedSchool();
   logger.info('Connected successfully!');
 
   const db = mongoose.connection.db;
@@ -499,7 +521,7 @@ async function runMigration() {
   await mongoose.disconnect();
 }
 
-runMigration().catch(err => {
+runWithTenant(SEED_SCHOOL_SLUG, runMigration).catch(err => {
   logger.error(`Migration failed: ${err.message}`);
   process.exit(1);
 });

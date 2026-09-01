@@ -12,7 +12,7 @@
  */
 import { cachedFetch, invalidateCache } from './cache';
 import { SESSION_MARKER } from './session-cookie';
-import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, OwnerDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus } from './types';
+import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus } from './types';
 
 /**
  * A document exactly as the API returns it, before this layer normalises it.
@@ -270,10 +270,15 @@ export const api = {
     uploadCsv('/enrollments/bulk', file, { sectionId, academicYearId }),
 
   // ── audit ──
-  auditLogs: (params: { cursor?: string; action?: string } = {}) => {
+  auditLogs: (params: {
+    cursor?: string; action?: string; roleKey?: string; actorProfileId?: string;
+    from?: string; to?: string; month?: string; year?: string;
+  } = {}) => {
     const q = new URLSearchParams();
-    if (params.cursor) q.set('cursor', params.cursor);
-    if (params.action) q.set('action', params.action);
+    for (const key of ['cursor', 'action', 'roleKey', 'actorProfileId', 'from', 'to', 'month', 'year'] as const) {
+      const value = params[key];
+      if (value) q.set(key, value);
+    }
     const qs = q.toString();
     return request<Paged<AuditLogDto>>(`/audit/logs${qs ? `?${qs}` : ''}`);
   },
@@ -296,6 +301,37 @@ export const api = {
   createUser: (body: CreateUserDto) =>
     request<UserDto>('/users', { method: 'POST', body: JSON.stringify(body) }),
   bulkCreateUsers: (file: File) => uploadCsv('/users/bulk', file),
+
+  // ── schools ──
+  /** Resolves a portal URL slug to its school. Unauthenticated by design. */
+  publicSchool: (slug: string) => request<PublicSchoolDto>(`/schools/public/${encodeURIComponent(slug)}`),
+  listSchools: () => request<SchoolDto[]>('/schools'),
+  createSchool: (body: { tenantId: string; tenantName: string; admin: CreateSchoolAdminDto }) =>
+    request<{ school: SchoolDto; admins: SchoolAdminDto[] }>('/schools', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateSchool: (tenantId: string, body: { tenantName: string }) =>
+    request<SchoolDto>(`/schools/${encodeURIComponent(tenantId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  listSchoolAdmins: (tenantId: string) =>
+    request<SchoolAdminDto[]>(`/schools/${encodeURIComponent(tenantId)}/admins`),
+  createSchoolAdmin: (tenantId: string, body: CreateSchoolAdminDto) =>
+    request<SchoolAdminDto>(`/schools/${encodeURIComponent(tenantId)}/admins`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateSchoolAdmin: (
+    tenantId: string,
+    profileId: string,
+    body: { status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'; displayName?: string },
+  ) =>
+    request<SchoolAdminDto>(`/schools/${encodeURIComponent(tenantId)}/admins/${profileId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 
 
   // ── academics helpers ──
@@ -660,7 +696,21 @@ export const api = {
     request<BookIssueDto>(`/library/issues/${issueId}/return`, { method: 'PATCH' }),
 
   // ── documents (Phase 8) ──
-  listDocuments: (studentId?: string) => request<DocumentDto[]>(`/documents${studentId ? `?studentId=${studentId}` : ''}`),
+  listDocuments: (
+    studentId?: string,
+    // The categories a document is filed under. Narrowing only — the server
+    // still decides what this reader may see at all.
+    filters: { type?: string; sectionId?: string; subjectOfferingId?: string } = {},
+  ) => {
+    const q = new URLSearchParams();
+    if (studentId) q.set('studentId', studentId);
+    for (const key of ['type', 'sectionId', 'subjectOfferingId'] as const) {
+      const value = filters[key];
+      if (value) q.set(key, value);
+    }
+    const qs = q.toString();
+    return request<DocumentDto[]>(`/documents${qs ? `?${qs}` : ''}`);
+  },
   createDocument: (body: { title: string; type: string; fileUrl: string; mimeType?: string; visibleToRoles?: string[]; studentId?: string; academicYearId?: string; sectionId?: string; subjectOfferingId?: string }) =>
     request<{ id: string }>('/documents', { method: 'POST', body: JSON.stringify(body) }),
   updateDocument: (id: string, body: { title?: string; fileUrl?: string; mimeType?: string; visibleToRoles?: string[]; sectionId?: string | null; subjectOfferingId?: string | null }) =>
@@ -692,7 +742,6 @@ export const api = {
 
   // ── role dashboards (single scoped fetch per portal home) ──
   adminDashboard: () => cachedRequest<AdminDashboardDto>('/dashboard/admin'),
-  ownerDashboard: () => cachedRequest<OwnerDashboardDto>('/dashboard/owner'),
   financeDashboard: () => cachedRequest<FinanceDashboardDto>('/dashboard/finance'),
   teacherDashboard: () => cachedRequest<TeacherDashboardDto>('/dashboard/teacher'),
   studentDashboard: () => cachedRequest<StudentDashboardDto>('/dashboard/student'),

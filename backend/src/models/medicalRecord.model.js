@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 // Sensitive fields are envelope-encrypted at the application layer (see src/utils/crypto.js)
 // and stored as opaque base64 strings; reads/writes go through the medical module only.
@@ -17,4 +18,5 @@ const medicalRecordSchema = new Schema(
   { timestamps: true }
 );
 
+medicalRecordSchema.plugin(tenantScoped); // school-owned
 export const MedicalRecord = model('MedicalRecord', medicalRecordSchema);

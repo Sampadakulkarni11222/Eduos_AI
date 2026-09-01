@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const leaveApplicationSchema = new Schema(
   {
@@ -15,4 +16,5 @@ const leaveApplicationSchema = new Schema(
 );
 leaveApplicationSchema.index({ enrollmentId: 1, createdAt: -1 });
 
+leaveApplicationSchema.plugin(tenantScoped); // school-owned
 export const LeaveApplication = model('LeaveApplication', leaveApplicationSchema);

@@ -21,6 +21,8 @@
  *
  * Safe to re-run: everything is upserted, and registrations are rebuilt.
  */
+import dns from 'dns';
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { Account } from '../src/models/account.model.js';

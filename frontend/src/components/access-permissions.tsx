@@ -15,8 +15,15 @@ import type { PermissionDto, RoleDto } from '@/lib/types';
 
 const EDITABLE_ROLES = ['ADMIN', 'PRINCIPAL', 'TEACHER', 'FINANCE', 'LIBRARIAN', 'WARDEN', 'PARENT', 'STUDENT'];
 
+/**
+ * Platform-tier keys. They belong to SUPER_ADMIN, which is not one of the roles
+ * this matrix edits, so showing their (permanently off) row in every
+ * school-level column would only offer a toggle the server refuses.
+ */
+const PLATFORM_ONLY_PERMISSIONS = ['schools.read', 'schools.manage'];
+
 const ROLE_COLORS: Record<string, string> = {
-  OWNER: '#591620', ADMIN: '#1e3a5f', PRINCIPAL: '#065f46', TEACHER: '#7c2d12',
+  ADMIN: '#1e3a5f', PRINCIPAL: '#065f46', TEACHER: '#7c2d12',
   FINANCE: '#4b5563', LIBRARIAN: '#4a5e8c', WARDEN: '#946312', PARENT: '#8a2f3a', STUDENT: '#43434c',
 };
 
@@ -87,6 +94,7 @@ export function AccessPermissionsContent() {
   const groups = useMemo(() => {
     const map = new Map<string, PermissionDto[]>();
     for (const p of catalog ?? []) {
+      if (PLATFORM_ONLY_PERMISSIONS.includes(p.key)) continue;
       const g = p.group || 'other';
       if (!map.has(g)) map.set(g, []);
       map.get(g)!.push(p);
@@ -95,8 +103,9 @@ export function AccessPermissionsContent() {
   }, [catalog]);
 
   const shownRoles = useMemo(
-    () => (roles ?? []).filter((r) => r.key === 'OWNER' || EDITABLE_ROLES.includes(r.key))
-      .sort((a, b) => (a.key === 'OWNER' ? -1 : b.key === 'OWNER' ? 1 : EDITABLE_ROLES.indexOf(a.key) - EDITABLE_ROLES.indexOf(b.key))),
+    () => (roles ?? [])
+      .filter((r) => EDITABLE_ROLES.includes(r.key))
+      .sort((a, b) => EDITABLE_ROLES.indexOf(a.key) - EDITABLE_ROLES.indexOf(b.key)),
     [roles],
   );
 
@@ -148,7 +157,6 @@ export function AccessPermissionsContent() {
           <div style={{ fontSize: 12.5, color: '#7a6a60', marginTop: 2 }}>
             Changes save instantly to the server and are enforced on every API call.
             Scope <strong>ALL</strong> covers the whole school; <strong>OWN</strong> restricts to the role&apos;s own classes, children, or records.
-            The <strong>Owner</strong> role is locked.
           </div>
         </div>
       </div>
@@ -194,14 +202,13 @@ export function AccessPermissionsContent() {
                     </div>
                     {shownRoles.map((role) => {
                       const grant = grantOf(role, perm.key);
-                      const locked = role.key === 'OWNER';
                       const cellId = `${role._id}:${perm.key}`;
                       return (
                         <div key={role._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: savingCell === cellId ? 0.5 : 1 }}>
                           <Toggle
                             value={Boolean(grant)}
                             scope={grant?.scope ?? null}
-                            disabled={locked || savingCell === cellId}
+                            disabled={savingCell === cellId}
                             onToggle={() => void mutate(role, perm, 'toggle')}
                             onScope={() => void mutate(role, perm, 'scope')}
                           />
@@ -232,7 +239,6 @@ export function AccessPermissionsContent() {
             <Card pad={false}>
               {perms.map((perm, i) => {
                 const grant = grantOf(mobileRole, perm.key);
-                const locked = mobileRole.key === 'OWNER';
                 const cellId = `${mobileRole._id}:${perm.key}`;
                 return (
                   <div
@@ -251,7 +257,7 @@ export function AccessPermissionsContent() {
                       <Toggle
                         value={Boolean(grant)}
                         scope={grant?.scope ?? null}
-                        disabled={locked || savingCell === cellId}
+                        disabled={savingCell === cellId}
                         onToggle={() => void mutate(mobileRole, perm, 'toggle')}
                         onScope={() => void mutate(mobileRole, perm, 'scope')}
                       />

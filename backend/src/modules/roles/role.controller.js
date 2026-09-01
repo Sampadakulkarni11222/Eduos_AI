@@ -18,21 +18,21 @@ export const create = asyncHandler(async (req, res) => {
 });
 
 export const update = asyncHandler(async (req, res) => {
-  const role = await roleService.update(req.params.id, req.body);
+  const role = await roleService.update(req.params.id, req.body, req.actor);
   sendSuccess(res, role, 'Role updated');
 });
 
 export const remove = asyncHandler(async (req, res) => {
-  await roleService.remove(req.params.id);
+  await roleService.remove(req.params.id, req.actor);
   sendSuccess(res, null, 'Role deleted');
 });
 
 export const assignPermission = asyncHandler(async (req, res) => {
-  const role = await roleService.assignPermission(req.params.id, req.body);
+  const role = await roleService.assignPermission(req.params.id, req.body, req.actor);
   sendSuccess(res, role, 'Permission assigned to role');
 });
 
 export const revokePermission = asyncHandler(async (req, res) => {
-  const role = await roleService.revokePermission(req.params.id, req.params.key);
+  const role = await roleService.revokePermission(req.params.id, req.params.key, req.actor);
   sendSuccess(res, role, 'Permission revoked from role');
 });

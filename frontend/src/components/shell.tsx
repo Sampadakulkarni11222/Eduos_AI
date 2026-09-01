@@ -8,6 +8,7 @@ import { portalForRole, ROLE_TO_SLUG, type Portal } from '@/lib/portals';
 import type { RoleKey } from '@/lib/types';
 import { Spinner, cx } from './ui';
 import { usePermissions, getRequiredPermission } from '@/lib/permissions';
+import { portalHome, stripSchool, useSchoolSegment, withSchool } from '@/lib/school-path';
 import { AskEduOS } from './ask-eduos';
 import { NotificationBell } from './notification-bell';
 import { ModalA11yBridge } from './modal-a11y-bridge';
@@ -32,6 +33,8 @@ export function PortalShell({
   const { hasAccess } = usePermissions();
   const router = useRouter();
   const pathname = usePathname();
+  // The school in the URL. Nav items are written school-less and prefixed here.
+  const school = useSchoolSegment();
   const [mobileOpen, setMobileOpen] = useState(false);
   // Rail preference is per-device, so it lives in localStorage rather than on
   // the profile. Read after mount to keep the server and client markup equal.
@@ -40,6 +43,14 @@ export function PortalShell({
   useEffect(() => {
     setCollapsed(localStorage.getItem(SIDEBAR_KEY) === '1');
   }, []);
+
+  // The tab says which school you are looking at. These pages are client-side,
+  // so the server metadata in layout.tsx cannot know it — the favicon stays the
+  // platform's either way.
+  const tabSchool = me?.profile?.role === 'SUPER_ADMIN' ? null : me?.profile?.tenantName;
+  useEffect(() => {
+    document.title = tabSchool ? `${tabSchool} · EduOS AI` : 'EduOS AI';
+  }, [tabSchool]);
 
   const toggleCollapsed = () => {
     setCollapsed((v) => {
@@ -53,10 +64,17 @@ export function PortalShell({
     if (loading) return;
     if (!me) return router.replace('/login');
     if (!me.profile?.id || !me.profile?.role) return router.replace('/login');
-    // If the active role's portal differs from this route, send them home.
+
+    // Two things can be wrong with this URL: the portal (a teacher on /admin)
+    // and the school (an Oakridge account on /nvmp/admin). The profile's own
+    // school is the authority — the backend serves that school's data whatever
+    // the address says, so the address is what gets corrected.
+    const ownSchool = me.profile.tenantId ?? school;
     const slug = ROLE_TO_SLUG[me.profile.role];
-    if (slug !== expectedSlug) router.replace(`/${slug}`);
-  }, [loading, me, router, expectedSlug]);
+    if (slug !== expectedSlug || (ownSchool && school !== ownSchool)) {
+      router.replace(portalHome(ownSchool, me.profile.role));
+    }
+  }, [loading, me, router, expectedSlug, school]);
 
   useEffect(() => {
     if (loading || !me?.profile?.role || ROLE_TO_SLUG[me.profile.role] !== expectedSlug) return;
@@ -79,8 +97,15 @@ export function PortalShell({
   const active = me.profile;
   const portal = portalForRole(me.profile.role);
 
+  // Whose name goes on the sidebar and the browser tab. A Super Admin is on
+  // the platform rather than in a school; everyone else is in exactly one, and
+  // it must be theirs — this used to say "Oakridge Academy" on every school's
+  // pages.
+  const isPlatform = me.profile.role === 'SUPER_ADMIN';
+  const schoolLabel = isPlatform ? 'EduOS AI' : me.profile.tenantName || 'EduOS AI';
+
   // Feature Access Check for direct URL navigation
-  const reqPerm = getRequiredPermission(pathname);
+  const reqPerm = getRequiredPermission(stripSchool(pathname, school));
   const permissionDenied = reqPerm ? !hasAccess(active.role, reqPerm) : false;
 
   return (
@@ -94,7 +119,8 @@ export function PortalShell({
       )}
       <Sidebar
         portal={portal}
-        schoolName={active?.displayName ?? 'Oakridge'}
+        school={school}
+        schoolName={schoolLabel}
         mobileOpen={mobileOpen}
         setMobileOpen={setMobileOpen}
         collapsed={collapsed}
@@ -146,6 +172,7 @@ export function PortalShell({
 
 function Sidebar({
   portal,
+  school,
   schoolName,
   mobileOpen,
   setMobileOpen,
@@ -153,6 +180,7 @@ function Sidebar({
   toggleCollapsed,
 }: {
   portal: Portal;
+  school: string | null;
   schoolName: string;
   mobileOpen: boolean;
   setMobileOpen: (open: boolean) => void;
@@ -162,14 +190,16 @@ function Sidebar({
   const pathname = usePathname();
   const { me } = useAuth();
   const { hasAccess } = usePermissions();
+  // Nav hrefs are canonical (`/admin/users`); the school is added on render.
+  const here = stripSchool(pathname, school);
 
   return (
     <aside className={cx('sidebar', mobileOpen && 'mobile-open')}>
       <div className="sidebar-brand">
-        <div className="sidebar-logo">O</div>
+        <div className="sidebar-logo">{schoolName.trim().charAt(0).toUpperCase() || 'E'}</div>
         <div className="sidebar-school">
           <div className="sidebar-school-name">{schoolName}</div>
-          <div className="sidebar-school-sub">Oakridge Academy · {portal.sublabel}</div>
+          <div className="sidebar-school-sub">{portal.sublabel}</div>
         </div>
         <button className="sidebar-close-btn" onClick={() => setMobileOpen(false)} aria-label="Close Menu">
           ✕
@@ -199,7 +229,8 @@ function Sidebar({
             <div className="nav-group" key={group.title}>
               <div className="nav-group-label">{group.title}</div>
               {visibleItems.map((it) => {
-                const isActive = pathname === it.href;
+                const isActive = here === it.href;
+                const href = withSchool(school, it.href);
                 const content = (
                   <>
                     <span className="nav-icon" aria-hidden>{it.icon}</span>
@@ -210,7 +241,7 @@ function Sidebar({
                 return it.ready ? (
                   <Link
                     key={it.href}
-                    href={it.href}
+                    href={href}
                     className={cx('nav-item', isActive && 'active')}
                     aria-current={isActive ? 'page' : undefined}
                     onClick={() => setMobileOpen(false)}
@@ -267,9 +298,11 @@ function RoleSwitcher() {
 }
 
 const ROLE_GLYPH: Partial<Record<RoleKey, string>> = {
-  ADMIN: '🏛️', OWNER: '🏛️', TEACHER: '👩‍🏫', PARENT: '👨‍👩‍👧', STUDENT: '🎒', PRINCIPAL: '🎓',
+  SUPER_ADMIN: '🛡️', ADMIN: '🏛️', TEACHER: '👩‍🏫', PARENT: '👨‍👩‍👧', STUDENT: '🎒', PRINCIPAL: '🎓',
 };
 function roleLabel(role?: RoleKey | null): string {
   if (!role) return '';
-  return role.charAt(0) + role.slice(1).toLowerCase();
+  // Split on '_' so multi-word keys read as words ("SUPER_ADMIN" → "Super Admin");
+  // single-word keys are unaffected.
+  return role.split('_').map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
 }

@@ -4,6 +4,7 @@ import { Role } from '../../models/role.model.js';
 import { Student, Enrollment } from '../../models/student.model.js';
 import { AcademicYear, Section } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
+import { tenantFilter } from '../../tenancy/tenantContext.js';
 import { register } from '../auth/auth.service.js';
 import { enroll } from '../students/student.service.js';
 
@@ -26,14 +27,25 @@ function escapeRegex(str) {
  * and sliced in memory, which cost 1.4–2.7s per page request.
  */
 export async function listUsers({ search, status, roleKey, sectionId, page, pageSize } = {}) {
+  // Accounts are platform-wide (one phone, possibly profiles in two schools),
+  // so the visible population is not "all accounts" but "accounts holding a
+  // profile in the acting school". Without this a School Admin pages through
+  // every other school's staff and families. Unscoped callers (platform Super
+  // Admin, seeds) get `{}` back and the query is unchanged.
+  const scope = tenantFilter();
   const accountFilter = {};
   if (status) accountFilter.status = status;
+
+  if (scope.tenantId) {
+    const inSchool = await Profile.distinct('accountId', { ...scope, deletedAt: null });
+    accountFilter.$and = [...(accountFilter.$and ?? []), { _id: { $in: inSchool } }];
+  }
   if (search) {
     const rx = { $regex: escapeRegex(search), $options: 'i' };
     // The admin table's search box is labelled "search by name", so the
     // display name on the linked profiles has to match too — it lives on
     // Profile, not Account, and so is resolved to account IDs first.
-    const named = await Profile.find({ displayName: rx, deletedAt: null }).select('accountId');
+    const named = await Profile.find({ ...scope, displayName: rx, deletedAt: null }).select('accountId');
     accountFilter.$or = [
       { email: rx },
       { phoneE164: rx },
@@ -45,7 +57,7 @@ export async function listUsers({ search, status, roleKey, sectionId, page, page
   if (roleKey) {
     const role = await Role.findOne({ key: String(roleKey).toUpperCase() }).select('_id').lean();
     const roleProfiles = role
-      ? await Profile.find({ roleId: role._id, deletedAt: null }).select('accountId').lean()
+      ? await Profile.find({ ...scope, roleId: role._id, deletedAt: null }).select('accountId').lean()
       : [];
     accountFilter.$and = [
       ...(accountFilter.$and ?? []),
@@ -60,6 +72,7 @@ export async function listUsers({ search, status, roleKey, sectionId, page, page
       _id: { $in: enrs.map((e) => e.studentId) }, deletedAt: null,
     }).select('profileId').lean();
     const sectionProfiles = await Profile.find({
+      ...scope,
       _id: { $in: studentsInSection.map((s) => s.profileId).filter(Boolean) },
     }).select('accountId').lean();
     accountFilter.$and = [
@@ -80,7 +93,8 @@ export async function listUsers({ search, status, roleKey, sectionId, page, page
   const accounts = await accountQuery.lean();
   const accountIds = accounts.map((a) => a._id);
 
-  const profileFilter = { accountId: { $in: accountIds }, deletedAt: null };
+  // A shared account's profile in another school must not be listed either.
+  const profileFilter = { ...scope, accountId: { $in: accountIds }, deletedAt: null };
   const profiles = await Profile.find(profileFilter)
     .populate('roleId', 'key name')
     .lean();
@@ -170,9 +184,18 @@ export async function getUserById(id) {
   const account = await Account.findById(id).lean();
   if (!account) throw new AppError('User not found', 404);
 
-  const profiles = await Profile.find({ accountId: id, deletedAt: null })
+  // Only the profiles this school owns. A shared account (one phone, a profile
+  // in two schools) is legitimately reachable by both, but each School Admin
+  // sees only its own side of it.
+  const scope = tenantFilter();
+  const profiles = await Profile.find({ ...scope, accountId: id, deletedAt: null })
     .populate('roleId', 'key name')
     .lean();
+
+  // Guessing an account id from another school must not read back its phone
+  // and email. Same 404 as a non-existent id, so the response cannot be used
+  // to probe which ids exist on the platform.
+  if (scope.tenantId && profiles.length === 0) throw new AppError('User not found', 404);
 
   const studentProfileIds = profiles
     .filter((p) => p.roleId?.key === 'STUDENT')
@@ -236,7 +259,7 @@ export async function getUserById(id) {
   };
 }
 
-const VALID_ROLE_KEYS = new Set(['OWNER', 'ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT', 'FINANCE', 'LIBRARIAN', 'WARDEN']);
+const VALID_ROLE_KEYS = new Set(['ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT', 'FINANCE', 'LIBRARIAN', 'WARDEN']);
 const E164 = /^\+[1-9]\d{7,14}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -368,6 +391,12 @@ export async function bulkCreateUsers(rows) {
 export async function updateUser(id, { status }) {
   const account = await Account.findById(id);
   if (!account) throw new AppError('User not found', 404);
+
+  // Read-side isolation is not enough: suspending an account is a platform-wide
+  // act, so a School Admin may only do it to an account its own school holds a
+  // profile for. getUserById throws the 404 when it does not.
+  await getUserById(id);
+
   if (status) account.status = status;
   await account.save();
   return getUserById(id);

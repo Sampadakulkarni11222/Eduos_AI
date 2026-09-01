@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { useSchoolHref } from '@/lib/school-path';
 import type { NotificationDto } from '@/lib/types';
 import { Spinner, cx } from './ui';
 
@@ -30,6 +31,7 @@ function timeAgo(iso: string): string {
  * trade for not adding one just for a counter.
  */
 export function NotificationBell({ portalSlug }: { portalSlug: string }) {
+  const link = useSchoolHref();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -96,7 +98,7 @@ export function NotificationBell({ portalSlug }: { portalSlug: string }) {
       setOpen(false);
       // Links are stored portal-relative ("/performance") so one notification
       // can serve a student and their parent, whose portals differ.
-      router.push(n.link.startsWith('/') ? `/${portalSlug}${n.link}` : n.link);
+      router.push(n.link.startsWith('/') ? link(`/${portalSlug}${n.link}`) : n.link);
     }
   }
 

@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const announcementSchema = new Schema(
   {
@@ -11,6 +12,10 @@ const announcementSchema = new Schema(
       gradeIds: { type: [Schema.Types.ObjectId], ref: 'Grade', default: [] },
       sectionIds: { type: [Schema.Types.ObjectId], ref: 'Section', default: [] },
       subjectIds: { type: [Schema.Types.ObjectId], ref: 'Subject', default: [] },
+      // Optional narrowing by recipient role, e.g. only the PARENTs of a
+      // section. Empty means everyone in the classes named above, which is
+      // what every announcement written before this field did.
+      roleKeys: { type: [String], default: [] },
     },
     channels: {
       app: { type: Boolean, default: true },
@@ -26,4 +31,5 @@ const announcementSchema = new Schema(
 );
 announcementSchema.index({ publishedAt: -1 });
 
+announcementSchema.plugin(tenantScoped); // school-owned
 export const Announcement = model('Announcement', announcementSchema);

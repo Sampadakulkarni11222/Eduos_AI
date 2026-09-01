@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const transportRouteSchema = new Schema(
   {
@@ -39,6 +40,9 @@ const busEnrollmentSchema = new Schema(
 // Ensure a student has only one bus enrollment per academic year
 busEnrollmentSchema.index({ studentId: 1, academicYearId: 1 }, { unique: true });
 
+transportRouteSchema.plugin(tenantScoped); // school-owned
 export const TransportRoute = model('TransportRoute', transportRouteSchema);
+transportStopSchema.plugin(tenantScoped); // school-owned
 export const TransportStop = model('TransportStop', transportStopSchema);
+busEnrollmentSchema.plugin(tenantScoped); // school-owned
 export const BusEnrollment = model('BusEnrollment', busEnrollmentSchema);

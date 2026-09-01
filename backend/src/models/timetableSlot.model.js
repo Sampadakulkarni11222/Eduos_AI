@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const timetableSlotSchema = new Schema(
   {
@@ -15,4 +16,5 @@ const timetableSlotSchema = new Schema(
 );
 timetableSlotSchema.index({ sectionId: 1, dayOfWeek: 1, periodNo: 1 }, { unique: true });
 
+timetableSlotSchema.plugin(tenantScoped); // school-owned
 export const TimetableSlot = model('TimetableSlot', timetableSlotSchema);

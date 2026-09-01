@@ -7,6 +7,7 @@ import roleRoutes from '../modules/roles/role.routes.js';
 import profileRoutes from '../modules/profiles/profile.routes.js';
 import userRoutes from '../modules/users/user.routes.js';
 import permissionRoutes from '../modules/permissions/permission.routes.js';
+import schoolRoutes from '../modules/schools/school.routes.js';
 import academicsRoutes from '../modules/academics/academics.routes.js';
 import studentRoutes from '../modules/students/student.routes.js';
 import enrollmentRoutes from '../modules/students/enrollment.routes.js';
@@ -73,6 +74,7 @@ router.use('/roles', roleRoutes);
 router.use('/profiles', profileRoutes);
 router.use('/users', userRoutes);
 router.use('/permissions', permissionRoutes);
+router.use('/schools', schoolRoutes);
 router.use('/academics', academicsRoutes);
 router.use('/students', studentRoutes);
 router.use('/enrollments', enrollmentRoutes);
@@ -105,7 +107,7 @@ router.use('/uploads', uploadRoutes);
 
 // NOTE — a public GET /admin-seed endpoint used to live here, gated only by a
 // hardcoded default secret ('eduos-seed-2026'). Anyone who could reach the API
-// could (re)create every demo account, including OWNER, with the shared demo
+// could (re)create every demo account, including the platform Super Admin, with the shared demo
 // password. Seeding is an operator task: run `npm run seed` with shell access
 // to the deployment instead.
 

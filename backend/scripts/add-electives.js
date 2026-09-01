@@ -20,6 +20,8 @@
 // Loaded the same way src/config/env.js does it, so `npm run electives:plan`
 // picks up MONGO_URI from .env without having to pass it on the command line.
 import 'dotenv/config';
+import dns from 'dns';
+dns.setServers(['8.8.8.8', '1.1.1.1']);
 import mongoose from 'mongoose';
 import readline from 'node:readline/promises';
 import { AcademicYear, Term, Grade, Section, Subject, SubjectOffering } from '../src/models/academics.model.js';

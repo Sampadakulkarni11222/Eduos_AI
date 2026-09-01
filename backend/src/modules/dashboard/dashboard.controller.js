@@ -3,26 +3,19 @@ import { sendSuccess } from '../../utils/response.js';
 import * as service from './dashboard.service.js';
 
 /**
- * GET /dashboard/owner
- * Allowed roles: OWNER
- */
-export const ownerDashboard = asyncHandler(async (req, res) => {
-  const data = await service.getOwnerDashboard();
-  sendSuccess(res, data, 'Owner dashboard fetched');
-});
-
-/**
  * GET /dashboard/admin
- * Allowed roles: ADMIN, OWNER
+ * Allowed roles: SUPER_ADMIN, ADMIN, PRINCIPAL
  */
 export const adminDashboard = asyncHandler(async (req, res) => {
-  const data = await service.getAdminDashboard();
+  // The actor decides which panels of this dashboard it is entitled to; the
+  // route guard above only decides whether it may open it at all.
+  const data = await service.getAdminDashboard(req.actor);
   sendSuccess(res, data, 'Admin dashboard fetched');
 });
 
 /**
  * GET /dashboard/finance
- * Allowed roles: FINANCE, ADMIN, OWNER
+ * Allowed roles: SUPER_ADMIN, FINANCE, ADMIN, PRINCIPAL
  */
 export const financeDashboard = asyncHandler(async (req, res) => {
   const data = await service.getFinanceDashboard();
@@ -58,7 +51,7 @@ export const parentDashboard = asyncHandler(async (req, res) => {
 
 /**
  * GET /dashboard/warden
- * Allowed roles: WARDEN, ADMIN, OWNER
+ * Allowed roles: SUPER_ADMIN, WARDEN, ADMIN
  */
 export const wardenDashboard = asyncHandler(async (req, res) => {
   const data = await service.getWardenDashboard();
@@ -67,7 +60,7 @@ export const wardenDashboard = asyncHandler(async (req, res) => {
 
 /**
  * GET /dashboard/librarian
- * Allowed roles: LIBRARIAN, ADMIN, OWNER
+ * Allowed roles: SUPER_ADMIN, LIBRARIAN, ADMIN
  */
 export const librarianDashboard = asyncHandler(async (req, res) => {
   const data = await service.getLibrarianDashboard();

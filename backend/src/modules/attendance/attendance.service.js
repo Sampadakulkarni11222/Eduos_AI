@@ -34,7 +34,11 @@ export function parseDateToMidnight(dateStr) {
  * from the caller's identity (see resolveSummaryEnrollmentIds).
  */
 async function assertSectionAccess(actor, scope, sectionId) {
-  if (scope !== 'OWN') return;
+  // Only an explicit school-wide grant is unrestricted. Testing `!== 'OWN'`
+  // meant any other value — including an absent scope, which is what a role
+  // holding no attendance.mark at all resolves to — read as unrestricted and
+  // skipped every check below.
+  if (scope === 'ALL') return;
 
   if (actor.roleKey === 'TEACHER') {
     const sectionIds = await getTeacherSectionIds(actor.profileId);
@@ -126,14 +130,20 @@ export async function getRoster(actor, scope, sectionId, date, periodNo = null) 
   };
 }
 
-export async function markAttendance(actor, { date, periodNo = null, records, entries, sectionId }) {
+export async function markAttendance(actor, scope, { date, periodNo = null, records, entries, sectionId }) {
   if (!sectionId) throw new AppError('sectionId is required', 400);
   if (!date) throw new AppError('date is required', 400);
 
   const day = parseDateToMidnight(date);
   if (!day) throw new AppError('Invalid date format', 400);
 
-  await assertSectionAccess(actor, 'OWN', sectionId);
+  // The caller's real scope, not a hardcoded 'OWN'. assertSectionAccess()
+  // returns early for a school-wide grant and refuses any non-teacher at OWN,
+  // so pinning it to 'OWN' here meant an Admin holding attendance.mark at ALL
+  // was refused every section — through the UI, the CSV import and the agent
+  // alike. A teacher is unaffected: they hold OWN and are still checked
+  // against the sections they actually teach.
+  await assertSectionAccess(actor, scope, sectionId);
 
   const items = records || entries || [];
   if (items.length === 0) throw new AppError('No attendance records provided', 400);
@@ -200,7 +210,7 @@ export async function findExisting(sectionId, date, periodNo = null) {
  * given sectionId's active roster, then handed to markAttendance() so the
  * same ownership + cross-section checks apply as the single-roster path.
  */
-export async function markAttendanceBulk(actor, { date, periodNo = null, sectionId, rows }) {
+export async function markAttendanceBulk(actor, scope, { date, periodNo = null, sectionId, rows }) {
   if (!sectionId) throw new AppError('sectionId is required', 400);
 
   const enrollments = await Enrollment.find({ sectionId, status: 'ACTIVE' })
@@ -240,7 +250,7 @@ export async function markAttendanceBulk(actor, { date, periodNo = null, section
     throw new AppError('No valid attendance rows found in the file', 400, errors.map((e) => `Row ${e.row}: ${e.error}`));
   }
 
-  const roster = await markAttendance(actor, { date, periodNo, sectionId, records });
+  const roster = await markAttendance(actor, scope, { date, periodNo, sectionId, records });
   return { ...roster, imported: records.length, failed: errors.length, errors };
 }
 

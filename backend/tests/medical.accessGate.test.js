@@ -47,7 +47,7 @@ const canAccess = async (a, scope, studentId, via = 'medical.api') => {
 };
 
 describe('medical access gate — ALL scope', () => {
-  it.each(['WARDEN', 'ADMIN', 'OWNER', 'PRINCIPAL'])('lets %s at ALL scope read any student', async (role) => {
+  it.each(['WARDEN', 'ADMIN', 'PRINCIPAL'])('lets %s at ALL scope read any student', async (role) => {
     expect(await canAccess(actor(role), 'ALL', otherStudent._id)).toBe('ALLOW');
   });
 });

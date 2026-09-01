@@ -116,6 +116,17 @@ const mapRouteToAction = (method, path, reqBody, resData) => {
     else if (p.includes('vacate')) action = 'hostel.vacateRoom';
   }
 
+  // Bulk CSV routes used to fall through to the generic mapper and be recorded
+  // as an ordinary create — `POST /users/bulk` became `users.create`. Naming
+  // them distinctly is the minimum needed to authorize them: an import moves a
+  // whole roster in one action, and the audit view cannot restrict what it
+  // cannot identify.
+  if (!action && /(^|\/)bulk(\/|$)/.test(p)) {
+    const resource = p.split('/')[0] || 'system';
+    action = `${resource}.import`;
+    entityType = entityType || resource.charAt(0).toUpperCase() + resource.slice(1).replace(/s$/, '');
+  }
+
   // Fallback generic mapper
   if (!action) {
     const parts = p.split('/');

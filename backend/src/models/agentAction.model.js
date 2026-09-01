@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 /**
  * A write the agent has proposed and is waiting to be confirmed, plus the
@@ -41,4 +42,5 @@ const agentActionSchema = new Schema(
 // around indefinitely waiting to be triggered.
 agentActionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
+agentActionSchema.plugin(tenantScoped); // school-owned
 export const AgentAction = model('AgentAction', agentActionSchema);

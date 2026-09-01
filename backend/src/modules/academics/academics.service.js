@@ -13,6 +13,7 @@ import { Enrollment } from '../../models/student.model.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 import { runInTransaction } from '../../utils/transaction.js';
 import { SubjectRegistration } from '../../models/subjectRegistration.model.js';
+import { tenantFilter } from '../../tenancy/tenantContext.js';
 
 const CHUNK_SIZE = 100;
 
@@ -248,7 +249,12 @@ export async function bulkCreateSections(rows) {
     const phone = row.classteacherphone?.trim();
     if (phone) {
       const account = await Account.findOne({ phoneE164: phone });
-      const profile = account ? await Profile.findOne({ accountId: account._id, deletedAt: null }) : null;
+      // Accounts are platform-wide, so the phone alone can name someone who
+      // teaches at a different school; the profile has to be one of ours, or
+      // an import would hand a section to another school's teacher.
+      const profile = account
+        ? await Profile.findOne({ ...tenantFilter(), accountId: account._id, deletedAt: null })
+        : null;
       if (!profile) {
         results.failed++;
         results.errors.push({ row: rowNo, error: `No profile found for phone "${phone}"` });

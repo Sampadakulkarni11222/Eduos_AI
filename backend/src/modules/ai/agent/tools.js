@@ -264,7 +264,7 @@ export const TOOLS = {
       };
     },
     async execute(actor, scope, args) {
-      const result = await attendance.markAttendance(actor, args);
+      const result = await attendance.markAttendance(actor, scope, args);
       return { speakKey: 'attendance.marked', params: { count: args.entries.length }, data: result };
     },
   },
@@ -341,16 +341,32 @@ export const TOOLS = {
     permission: 'announcements.publish',
     mutates: true,
     affectsOthers: true,
-    params: { title: 'text', content: 'text' },
+    params: { title: 'text', content: 'text', audience: 'object' },
     validate(args) {
       if (!args.title?.trim()) throw new AppError('What should the announcement say?', 400);
     },
-    summarise: (args) => `Post the announcement "${args.title}" to the school`,
+    // The confirmation has to name the real audience. It used to say "to the
+    // school" whoever asked, which for a teacher was both a lie and, because
+    // the audience defaulted to everyone, an accurate description of a bug.
+    summarise: (args, actor) => {
+      const a = args.audience;
+      const named = a && !a.all && (a.sectionIds?.length || a.gradeIds?.length || a.subjectIds?.length);
+      if (named) return `Post the announcement "${args.title}" to the classes you selected`;
+      // The third argument of summarise is the prepared payload, not the
+      // scope, so read the scope from the actor's own permission map.
+      const scope = actor?.permissions?.['announcements.publish'];
+      if (scope === 'ALL') return `Post the announcement "${args.title}" to the whole school`;
+      return `Post the announcement "${args.title}" to the classes you teach`;
+    },
     async execute(actor, scope, args) {
+      // No audience is passed through untouched rather than widened to the
+      // school: announcement.service decides what an actor at this scope is
+      // entitled to address, so the agent cannot reach further than the same
+      // person could through the API.
       const created = await announcements.create(actor, scope, {
         title: args.title,
         content: args.content ?? args.title,
-        audience: args.audience ?? { all: true },
+        audience: args.audience,
       });
       return { speakKey: 'announcement.posted', data: created };
     },

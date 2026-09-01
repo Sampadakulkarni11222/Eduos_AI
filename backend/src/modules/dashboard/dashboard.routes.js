@@ -9,18 +9,14 @@ const router = Router();
 router.use(authenticate);
 
 /**
- * @swagger
- * /dashboard/owner:
- *   get:
- *     summary: Owner dashboard — school-wide KPIs, audit log, CRM, fees
- *     tags: [Dashboard]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Owner dashboard data
+ * The school-wide dashboards below list SUPER_ADMIN alongside the school-level
+ * roles that own them: a platform administrator oversees every school, so it
+ * reads the same aggregations the school's own staff do.
+ *
+ * The per-person dashboards (teacher/student/parent) deliberately do NOT list
+ * it — each aggregates one signed-in profile's own classes, record or children
+ * from its profileId, so there is nothing for a platform actor to read there.
  */
-router.get('/owner', requireRole('OWNER', 'ADMIN'), requirePermission('analytics.school.read', 'ALL'), ctrl.ownerDashboard);
 
 /**
  * @swagger
@@ -34,7 +30,7 @@ router.get('/owner', requireRole('OWNER', 'ADMIN'), requirePermission('analytics
  *       200:
  *         description: Admin dashboard data
  */
-router.get('/admin', requireRole('OWNER', 'ADMIN', 'PRINCIPAL'), requirePermission('students.read', 'ALL'), ctrl.adminDashboard);
+router.get('/admin', requireRole('SUPER_ADMIN', 'ADMIN', 'PRINCIPAL'), requirePermission('students.read', 'ALL'), ctrl.adminDashboard);
 
 /**
  * @swagger
@@ -48,7 +44,7 @@ router.get('/admin', requireRole('OWNER', 'ADMIN', 'PRINCIPAL'), requirePermissi
  *       200:
  *         description: Finance dashboard data
  */
-router.get('/finance', requireRole('OWNER', 'ADMIN', 'PRINCIPAL', 'FINANCE'), requirePermission('fees.read', 'ALL'), ctrl.financeDashboard);
+router.get('/finance', requireRole('SUPER_ADMIN', 'ADMIN', 'PRINCIPAL', 'FINANCE'), requirePermission('fees.read', 'ALL'), ctrl.financeDashboard);
 
 /**
  * @swagger
@@ -104,7 +100,7 @@ router.get('/parent', requireRole('PARENT'), requirePermission('students.read'),
  *       200:
  *         description: Warden dashboard data
  */
-router.get('/warden', requireRole('OWNER', 'ADMIN', 'WARDEN'), requirePermission('hostel.read'), ctrl.wardenDashboard);
+router.get('/warden', requireRole('SUPER_ADMIN', 'ADMIN', 'WARDEN'), requirePermission('hostel.read'), ctrl.wardenDashboard);
 
 /**
  * @swagger
@@ -118,6 +114,6 @@ router.get('/warden', requireRole('OWNER', 'ADMIN', 'WARDEN'), requirePermission
  *       200:
  *         description: Librarian dashboard data
  */
-router.get('/librarian', requireRole('OWNER', 'ADMIN', 'LIBRARIAN'), requirePermission('library.read'), ctrl.librarianDashboard);
+router.get('/librarian', requireRole('SUPER_ADMIN', 'ADMIN', 'LIBRARIAN'), requirePermission('library.read'), ctrl.librarianDashboard);
 
 export default router;

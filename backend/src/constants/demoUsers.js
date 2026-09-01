@@ -3,7 +3,7 @@
  * every category of user in the system has something to log in with and
  * test permissions/scopes against immediately.
  *
- * Staff-type roles (OWNER/ADMIN/PRINCIPAL/TEACHER/FINANCE/LIBRARIAN/WARDEN)
+ * Staff-type roles (SUPER_ADMIN/ADMIN/PRINCIPAL/TEACHER/FINANCE/LIBRARIAN/WARDEN)
  * get an email + password for POST /auth/login.
  * Guardian/student roles (PARENT/STUDENT) are phone-only — they sign in via
  * POST /auth/otp/request + /auth/otp/verify, matching how those roles are
@@ -27,7 +27,7 @@
 export const DEMO_PASSWORD = process.env.SEED_DEMO_PASSWORD || 'ChangeMe@123!';
 
 export const DEMO_USERS = [
-  { roleKey: 'OWNER', displayName: 'Default Owner', phone: '+910000000000', email: 'owner@schoolerp.com', password: DEMO_PASSWORD },
+  { roleKey: 'SUPER_ADMIN', displayName: 'Platform Super Admin', phone: '+910000000009', email: 'superadmin@schoolerp.com', password: DEMO_PASSWORD },
   { roleKey: 'ADMIN', displayName: 'Demo Admin', phone: '+910000000001', email: 'admin@schoolerp.com', password: DEMO_PASSWORD },
   { roleKey: 'PRINCIPAL', displayName: 'Demo Principal', phone: '+910000000002', email: 'principal@schoolerp.com', password: DEMO_PASSWORD },
   { roleKey: 'TEACHER', displayName: 'Demo Teacher', phone: '+910000000003', email: 'teacher@schoolerp.com', password: DEMO_PASSWORD },

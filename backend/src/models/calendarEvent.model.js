@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { tenantScoped } from '../tenancy/tenantScope.js';
 
 const calendarEventSchema = new Schema(
   {
@@ -15,4 +16,5 @@ const calendarEventSchema = new Schema(
 );
 calendarEventSchema.index({ startsAt: 1 });
 
+calendarEventSchema.plugin(tenantScoped); // school-owned
 export const CalendarEvent = model('CalendarEvent', calendarEventSchema);

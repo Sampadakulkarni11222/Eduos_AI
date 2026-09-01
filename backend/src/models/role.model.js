@@ -13,7 +13,7 @@ const roleSchema = new Schema(
     key: { type: String, required: true, unique: true, uppercase: true, trim: true },
     name: { type: String, required: true },
     description: { type: String, default: '' },
-    // Seeded roles (OWNER, ADMIN, TEACHER, ...) can't be deleted or renamed
+    // Seeded roles (SUPER_ADMIN, ADMIN, TEACHER, ...) can't be deleted or renamed
     isSystem: { type: Boolean, default: false },
     permissions: { type: [rolePermissionSchema], default: [] },
   },
