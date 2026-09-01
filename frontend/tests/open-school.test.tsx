@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { fireEvent, render, waitFor } from '@testing-library/react';
 
 /**
  * A platform administrator opening one school from the console.
@@ -27,7 +27,12 @@ vi.mock('next/navigation', () => ({
   useParams: () => params,
 }));
 
+const { signOut } = vi.hoisted(() => ({ signOut: vi.fn() }));
+
 vi.mock('@/lib/auth', () => ({
+  // The shape the shell actually consumes: it calls signOut (via the role
+  // switcher), never logout. A mock that names the wrong one leaves signOut
+  // undefined, so the control throws the moment anything reaches it.
   useAuth: () => ({
     loading: false,
     me: {
@@ -37,7 +42,9 @@ vi.mock('@/lib/auth', () => ({
       },
       permissions: {},
     },
-    signOut: vi.fn(),
+    reload: vi.fn(),
+    switchProfile: vi.fn(),
+    signOut,
   }),
 }));
 
@@ -92,6 +99,22 @@ describe('opening a school from the console', () => {
     setActingSchool({ slug: 'oakridge', name: 'Oakridge' });
     render(shell('super-admin'));
     expect(getActingSchool()).toBeNull();
+  });
+});
+
+describe('the shell chrome the console renders', () => {
+  it('signs out through the control in the sidebar', async () => {
+    setActingSchool({ slug: 'oakridge', name: 'Oakridge' });
+    pathname = '/oakridge/admin';
+    params = { school: 'oakridge' };
+    signOut.mockClear();
+
+    const { findByLabelText } = render(shell('admin'));
+    fireEvent.click(await findByLabelText('Logout'));
+
+    // Asserted rather than assumed: the shell calls signOut, so a mock that
+    // supplies `logout` instead leaves this undefined and the button throws.
+    expect(signOut).toHaveBeenCalled();
   });
 });
 

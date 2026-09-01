@@ -15,7 +15,7 @@ router.use(aiRateLimiter);
  * tags:
  *   name: AI
  *   description: >
- *     AI copilot chat (STAND-IN â€” rule-based, no LLM key configured).
+ *     AI copilot chat (STAND-IN — rule-based, no LLM key configured).
  *     See docs/ARCHITECTURE.md for how to wire a real model in.
  */
 

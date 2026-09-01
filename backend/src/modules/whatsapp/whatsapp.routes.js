@@ -10,7 +10,7 @@ const router = Router();
  * tags:
  *   name: WhatsApp
  *   description: >
- *     WhatsApp webhook (STAND-IN â€” no WhatsApp Business credentials
+ *     WhatsApp webhook (STAND-IN — no WhatsApp Business credentials
  *     configured). Webhook endpoints are public per Meta's protocol;
  *     /simulate is protected and lets you test the flow locally.
  */
