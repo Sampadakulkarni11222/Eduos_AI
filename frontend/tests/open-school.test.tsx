@@ -37,7 +37,7 @@ vi.mock('@/lib/auth', () => ({
       },
       permissions: {},
     },
-    logout: vi.fn(),
+    signOut: vi.fn(),
   }),
 }));
 
