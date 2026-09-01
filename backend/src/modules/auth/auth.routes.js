@@ -27,7 +27,7 @@ const router = Router();
  *               name: { type: string }
  *               phone: { type: string, example: "+919999999999" }
  *               email: { type: string }
- *               password: { type: string, description: "Optional â€” enables password login for this account" }
+ *               password: { type: string, description: "Optional — enables password login for this account" }
  *               roleKey: { type: string, example: TEACHER }
  *     responses:
  *       201:
@@ -49,15 +49,19 @@ router.post('/register', authenticate, requirePermission('users.manage'), authCo
  *           schema:
  *             type: object
  *             required: [phone]
- *             properties: { phone: { type: string, example: "+919999999999" } }
+ *             properties:
+ *               phone: { type: string, example: "+919999999999" }
+ *               schoolId: { type: string, example: nvmp, description: "The school door this request came through; omitted at the platform sign-in." }
  *     responses:
  *       200:
  *         description: >
- *           OTP sent (STAND-IN â€” no SMS provider configured; the code is
+ *           OTP sent (STAND-IN — no SMS provider configured; the code is
  *           logged server-side and echoed in the response as devOtp
  *           outside production only).
  *       404:
  *         description: PHONE_NOT_REGISTERED — no account exists for this phone number
+ *       403:
+ *         description: WRONG_DOOR - the account has no profile this door admits
  */
 router.post('/otp/request', authRateLimiter, authController.requestOtp);
 
@@ -75,12 +79,16 @@ router.post('/otp/request', authRateLimiter, authController.requestOtp);
  *           schema:
  *             type: object
  *             required: [email]
- *             properties: { email: { type: string } }
+ *             properties:
+ *               email: { type: string }
+ *               schoolId: { type: string, example: nvmp, description: "The school door this request came through; omitted at the platform sign-in." }
  *     responses:
  *       200:
  *         description: OTP sent (devOtp echoed outside production)
  *       404:
  *         description: EMAIL_NOT_REGISTERED — no account exists for this email
+ *       403:
+ *         description: WRONG_DOOR - the account has no profile this door admits
  */
 router.post('/otp/email/request', authRateLimiter, authController.requestEmailOtp);
 
@@ -101,9 +109,12 @@ router.post('/otp/email/request', authRateLimiter, authController.requestEmailOt
  *             properties:
  *               email: { type: string }
  *               code: { type: string }
+ *               schoolId: { type: string, example: nvmp, description: "The school door this request came through; omitted at the platform sign-in." }
  *     responses:
  *       200:
  *         description: OTP verified
+ *       403:
+ *         description: WRONG_DOOR - the account has no profile this door admits
  */
 router.post('/otp/email/verify', authRateLimiter, authController.verifyEmailOtp);
 
@@ -121,10 +132,14 @@ router.post('/otp/email/verify', authRateLimiter, authController.verifyEmailOtp)
  *           schema:
  *             type: object
  *             required: [idToken]
- *             properties: { idToken: { type: string } }
+ *             properties:
+ *               idToken: { type: string }
+ *               schoolId: { type: string, example: nvmp, description: "The school door this request came through; omitted at the platform sign-in." }
  *     responses:
  *       200:
  *         description: Signed in
+ *       403:
+ *         description: WRONG_DOOR - the account has no profile this door admits
  */
 router.post('/google', authRateLimiter, authController.googleLogin);
 
@@ -134,9 +149,12 @@ router.post('/google', authRateLimiter, authController.googleLogin);
  *   post:
  *     summary: Verify an OTP and start a session
  *     description: >
- *       If the account has exactly one profile, returns a full session
+ *       Only profiles belonging to the school named by `schoolId` are
+ *       considered (Super Admin profiles only when it is omitted), so an
+ *       account with profiles in two schools signs in as the one whose door it
+ *       used. If the account has exactly one such profile, returns a full session
  *       (accessToken + refreshToken + profile + permissions). If it has
- *       multiple, returns a pre-session accessToken plus the profile list â€”
+ *       multiple, returns a pre-session accessToken plus the profile list —
  *       call /auth/profile/select next.
  *     tags: [Auth]
  *     security: []
@@ -150,9 +168,12 @@ router.post('/google', authRateLimiter, authController.googleLogin);
  *             properties:
  *               phone: { type: string }
  *               code: { type: string }
+ *               schoolId: { type: string, example: nvmp, description: "The school door this request came through; omitted at the platform sign-in." }
  *     responses:
  *       200:
  *         description: OTP verified
+ *       403:
+ *         description: WRONG_DOOR - the account has no profile this door admits
  */
 router.post('/otp/verify', authRateLimiter, authController.verifyOtp);
 
@@ -173,9 +194,12 @@ router.post('/otp/verify', authRateLimiter, authController.verifyOtp);
  *             properties:
  *               email: { type: string }
  *               password: { type: string }
+ *               schoolId: { type: string, example: nvmp, description: "The school door this request came through; omitted at the platform sign-in." }
  *     responses:
  *       200:
  *         description: Login successful
+ *       403:
+ *         description: WRONG_DOOR - the account has no profile this door admits
  */
 router.post('/login', authRateLimiter, authController.login);
 

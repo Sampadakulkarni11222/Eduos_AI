@@ -32,6 +32,9 @@ interface LoginResult {
  * someone plainly that they are at the wrong door, and which one is theirs,
  * rather than dropping them into a portal that looks broken.
  */
+/** Where handleGoogleSignIn parks the door for the OAuth round trip. */
+const DOOR_COOKIE = 'eduos.door';
+
 class WrongDoorError extends Error {
   constructor(message: string, public goTo?: { href: string; label: string }) {
     super(message);
@@ -332,6 +335,10 @@ export function SignIn({ school: schoolProp }: { school?: PublicSchoolDto | null
   const { data: session } = useSession();
 
   const isPlatform = !school;
+  // The door this screen is: a school's slug, or null for the platform. It
+  // travels with every credential so the server refuses an account that
+  // belongs elsewhere before it ever issues a code or a session.
+  const door = school?.slug ?? null;
   const brandName = school?.name ?? 'EduOS AI';
   const brandSub = school ? 'The AI-native School OS' : 'Platform Administration';
   const brandInitial = (school?.name ?? 'EduOS AI').trim().charAt(0).toUpperCase() || 'E';
@@ -358,6 +365,8 @@ export function SignIn({ school: schoolProp }: { school?: PublicSchoolDto | null
           profiles: sess.eduosProfiles,
           requiresProfileSelection: sess.eduosRequiresProfileSelection,
         });
+      } else if (sess.eduosError === 'WRONG_DOOR') {
+        setPageErr(sess.eduosErrorMessage ?? 'This account is not part of this school.');
       } else if (sess.eduosError === 'USER_NOT_FOUND') {
         setPageErr('No EduOS account is linked to this Google account. Ask your school admin to add your email.');
       } else if (sess.eduosError) {
@@ -377,7 +386,7 @@ export function SignIn({ school: schoolProp }: { school?: PublicSchoolDto | null
           const res = await fetch('/api/auth/google-exchange', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email }),
+            body: JSON.stringify({ email, schoolId: door }),
           });
           const data = await res.json();
           if (res.ok) {
@@ -400,6 +409,11 @@ export function SignIn({ school: schoolProp }: { school?: PublicSchoolDto | null
   const handleGoogleSignIn = () => {
     setPageErr(null);
     if (googleConfigured) {
+      // Google takes the browser away from this page and brings it back to a
+      // route handler that no longer knows which door was used, so the slug is
+      // parked in a short-lived cookie the handler reads. Lax keeps it on the
+      // return trip; ten minutes is well past any real sign-in.
+      document.cookie = `${DOOR_COOKIE}=${encodeURIComponent(door ?? '')}; path=/; max-age=600; samesite=lax`;
       void signIn('google');
     } else if (mockGoogleAvailable) {
       const width = 500;
@@ -436,9 +450,9 @@ export function SignIn({ school: schoolProp }: { school?: PublicSchoolDto | null
 
       let res;
       if (isEmail) {
-        res = await api.requestEmailOtp(value);
+        res = await api.requestEmailOtp(value, door);
       } else {
-        res = await api.requestOtp(value);
+        res = await api.requestOtp(value, door);
       }
       setDevOtp(res.devOtp ?? null);
       setStep('code');
@@ -459,9 +473,9 @@ export function SignIn({ school: schoolProp }: { school?: PublicSchoolDto | null
     try {
       let loginRes;
       if (isEmailType) {
-        loginRes = await api.verifyEmailOtp(normalizedVal, code.trim());
+        loginRes = await api.verifyEmailOtp(normalizedVal, code.trim(), door);
       } else {
-        loginRes = await api.verifyOtp(normalizedVal, code.trim());
+        loginRes = await api.verifyOtp(normalizedVal, code.trim(), door);
       }
       await complete(loginRes);
     } catch (x) {

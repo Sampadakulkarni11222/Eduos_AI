@@ -11,6 +11,7 @@
  * anything sensitive.
  */
 import { cachedFetch, invalidateCache } from './cache';
+import { getActingSchool } from './acting-school';
 import { SESSION_MARKER } from './session-cookie';
 import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus } from './types';
 
@@ -27,6 +28,21 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:500
 
 let accessToken: string | null = null;
 let refreshInFlight: Promise<boolean> | null = null;
+
+/**
+ * The headers every call carries: the in-memory access token, and — for a
+ * platform administrator who has opened one school — the school they are
+ * looking at. The backend reads `X-School-Id` only for a Super Admin; for
+ * every other actor the acting school comes from their own profile, so this
+ * header cannot widen anyone's reach.
+ */
+function authHeaders(): Record<string, string> {
+  const acting = getActingSchool();
+  return {
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    ...(acting ? { 'X-School-Id': acting.slug } : {}),
+  };
+}
 
 /**
  * Hands the refresh token to the server-side cookie store and keeps the access
@@ -97,7 +113,7 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...authHeaders(),
       ...(init.headers ?? {}),
     },
   });
@@ -142,7 +158,7 @@ async function uploadFile(file: File): Promise<UploadResult> {
     headers: {
       'Content-Type': file.type || 'application/octet-stream',
       'x-filename': encodeURIComponent(file.name),
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...authHeaders(),
     },
     body: file,
   });
@@ -162,9 +178,7 @@ async function uploadCsv(path: string, file: File, fields: Record<string, string
   form.append('file', file);
   const res = await fetch(`${BACKEND_URL}/api/v1${path}`, {
     method: 'POST',
-    headers: {
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
+    headers: authHeaders(),
     body: form,
   });
   if (!res.ok) {
@@ -191,7 +205,7 @@ export function fileHref(fileUrl: string): string {
  */
 async function openProtectedFile(path: string): Promise<void> {
   const res = await fetch(`${BACKEND_URL}/api/v1${path}`, {
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    headers: authHeaders(),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -203,31 +217,39 @@ async function openProtectedFile(path: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+/**
+ * The sign-in address a call is being made from: a school's slug at
+ * `/oakridge`, null at the platform sign-in. Sent with every credential so the
+ * server can refuse an account that belongs at a different door — the check
+ * that matters happens there, not here.
+ */
+export type Door = string | null;
+
 export const api = {
-  requestOtp: (phone: string) =>
-    request<{ message: string; devOtp?: string }>('/auth/otp/request', { method: 'POST', body: JSON.stringify({ phone }) }),
+  requestOtp: (phone: string, schoolId: Door = null) =>
+    request<{ message: string; devOtp?: string }>('/auth/otp/request', { method: 'POST', body: JSON.stringify({ phone, schoolId }) }),
 
-  requestEmailOtp: (email: string) =>
-    request<{ message: string; devOtp?: string }>('/auth/otp/email/request', { method: 'POST', body: JSON.stringify({ email }) }),
+  requestEmailOtp: (email: string, schoolId: Door = null) =>
+    request<{ message: string; devOtp?: string }>('/auth/otp/email/request', { method: 'POST', body: JSON.stringify({ email, schoolId }) }),
 
-  verifyEmailOtp: (email: string, code: string) =>
+  verifyEmailOtp: (email: string, code: string, schoolId: Door = null) =>
     request<{ accessToken: string; refreshToken: string; profile?: ProfileSummary; profiles?: ProfileSummary[]; requiresProfileSelection?: boolean }>(
-      '/auth/otp/email/verify', { method: 'POST', body: JSON.stringify({ email, code }) },
+      '/auth/otp/email/verify', { method: 'POST', body: JSON.stringify({ email, code, schoolId }) },
     ),
 
-  googleLogin: (idToken: string) =>
+  googleLogin: (idToken: string, schoolId: Door = null) =>
     request<{ accessToken: string; refreshToken: string; profile?: ProfileSummary; profiles?: ProfileSummary[]; requiresProfileSelection?: boolean }>(
-      '/auth/google', { method: 'POST', body: JSON.stringify({ idToken }) },
+      '/auth/google', { method: 'POST', body: JSON.stringify({ idToken, schoolId }) },
     ),
 
-  verifyOtp: (phone: string, code: string) =>
+  verifyOtp: (phone: string, code: string, schoolId: Door = null) =>
     request<{ accessToken: string; refreshToken: string; profile?: ProfileSummary; profiles?: ProfileSummary[]; requiresProfileSelection?: boolean }>(
-      '/auth/otp/verify', { method: 'POST', body: JSON.stringify({ phone, code }) },
+      '/auth/otp/verify', { method: 'POST', body: JSON.stringify({ phone, code, schoolId }) },
     ),
 
-  passwordLogin: (email: string, password: string) =>
+  passwordLogin: (email: string, password: string, schoolId: Door = null) =>
     request<{ accessToken: string; refreshToken: string; profile?: ProfileSummary; profiles?: ProfileSummary[]; requiresProfileSelection?: boolean }>(
-      '/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) },
+      '/auth/login', { method: 'POST', body: JSON.stringify({ email, password, schoolId }) },
     ),
 
   selectProfile: (profileId: string) =>

@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers';
 import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import type { NextAuthOptions } from 'next-auth';
@@ -22,11 +23,18 @@ const authOptions: NextAuthOptions = {
         // Exchange with backend to get EduOS JWT tokens
         try {
           const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
+          // Which sign-in address the Google button was pressed at. The OAuth
+          // round trip leaves the page, so the door travels in a short-lived
+          // cookie written just before the redirect (see DOOR_COOKIE in
+          // components/sign-in.tsx). Absent means the platform sign-in, which
+          // the backend admits only for platform administrators.
+          const door = (await cookies()).get('eduos.door')?.value ?? null;
           const res = await fetch(`${BACKEND_URL}/api/v1/auth/google`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               idToken: account.id_token,
+              schoolId: door,
               email: profile?.email,
               name: profile?.name,
               picture: profile?.picture,
@@ -42,8 +50,11 @@ const authOptions: NextAuthOptions = {
             token.eduosProfiles = tokens.profiles;
             token.eduosRequiresProfileSelection = tokens.requiresProfileSelection;
           } else {
-            // Backend doesn't have this user — mark as needing registration
-            token.eduosError = 'USER_NOT_FOUND';
+            const body = await res.json().catch(() => ({}));
+            // A wrong-door refusal is a real account signing in at the wrong
+            // address — distinct from an account the backend has never seen.
+            token.eduosError = body?.error?.code === 'WRONG_DOOR' ? 'WRONG_DOOR' : 'USER_NOT_FOUND';
+            token.eduosErrorMessage = body?.message ?? null;
           }
         } catch (err) {
           console.error('[NextAuth] Backend exchange failed:', err);
@@ -60,6 +71,7 @@ const authOptions: NextAuthOptions = {
       session.eduosProfiles = token.eduosProfiles;
       session.eduosRequiresProfileSelection = token.eduosRequiresProfileSelection;
       session.eduosError = token.eduosError;
+      session.eduosErrorMessage = token.eduosErrorMessage;
       return session;
     },
   },

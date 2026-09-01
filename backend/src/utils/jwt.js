@@ -1,9 +1,11 @@
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 
-// payload: { accountId, profileId | null } — profileId is null for a
+// payload: { accountId, profileId | null, door } — profileId is null for a
 // "pre-session" token issued when an account has multiple profiles and
-// must call /auth/profile/select before doing anything else.
+// must call /auth/profile/select before doing anything else. `door` is the
+// sign-in address the session came in through (a school slug, or null for the
+// platform door); it is absent on tokens minted before doors existed.
 // The algorithm is pinned on both sides so a token can only ever be validated
 // the way it was issued — never inferred from the token's own header.
 const ALGORITHM = 'HS256';

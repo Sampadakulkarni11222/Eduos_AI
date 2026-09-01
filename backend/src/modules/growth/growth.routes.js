@@ -12,7 +12,7 @@ router.use(authenticate);
  *   name: Growth
  *   description: >
  *     Growth score (STAND-IN). Computed with a transparent heuristic
- *     (60% marks + 40% attendance) rather than a trained model Ã¢â‚¬â€ see
+ *     (60% marks + 40% attendance) rather than a trained model Ã¢â‚¬” see
  *     docs/ARCHITECTURE.md for what a real implementation would replace.
  */
 

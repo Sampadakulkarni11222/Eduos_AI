@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { api, clearSession, hasSession, setSession } from './api';
 import { portalHome } from './school-path';
 import { invalidateCache } from './cache';
+import { clearActingSchool } from './acting-school';
 import type { Me, ProfileSummary } from './types';
 
 const LOGIN_PROFILES_KEY = 'eduos.login.profiles';
@@ -65,8 +66,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (p: ProfileSummary) => {
       await setSession(await api.selectProfile(p.id));
       clearLoginProfiles();
-      // A different profile means a different permission scope, so nothing
-      // cached under the previous one may be reused.
+      // A different profile means a different school and permission scope, so
+      // nothing cached under the previous one may be reused.
+      clearActingSchool();
       invalidateCache();
       const fresh = await reload();
       const role = fresh?.profile?.role ?? p.role;
@@ -85,6 +87,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     await clearSession();
     clearLoginProfiles();
+    // Whichever school a platform admin was looking at does not carry into the
+    // next session on this tab.
+    clearActingSchool();
     // The read cache is per-tab and in-memory; drop it so the next account
     // signing in on this tab can never be served the previous one's data.
     invalidateCache();

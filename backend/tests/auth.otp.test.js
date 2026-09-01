@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { Account } from '../src/models/account.model.js';
 import { Profile } from '../src/models/profile.model.js';
 import { Role } from '../src/models/role.model.js';
+import { School } from '../src/models/school.model.js';
 import { OtpCode } from '../src/models/otpCode.model.js';
 import { env } from '../src/config/env.js';
 import { compareOtp } from '../src/utils/otp.js';
@@ -17,9 +18,13 @@ import {
 
 const PHONE = '+919812345678';
 const EMAIL = 'otp@example.test';
+// The school door every request below comes through. Which door admits which
+// account is auth.door.test.js's subject; here it is just the parent's own.
+const SCHOOL = 'eduos-demo-tenant';
 let accountId;
 
 beforeEach(async () => {
+  await School.create({ slug: SCHOOL, name: 'Demo School' });
   const role = await Role.create({ key: 'PARENT', name: 'Parent', permissions: [] });
   const account = await Account.create({ phoneE164: PHONE, email: EMAIL });
   accountId = account._id;
@@ -27,7 +32,7 @@ beforeEach(async () => {
 });
 
 /** The console provider hands the code back so a dev flow can complete. */
-const issue = async () => (await requestOtp({ phone: PHONE })).devOtp;
+const issue = async () => (await requestOtp({ phone: PHONE, schoolId: SCHOOL })).devOtp;
 
 describe('OTP issuance', () => {
   it('issues a six-digit numeric code', async () => {
@@ -36,7 +41,7 @@ describe('OTP issuance', () => {
   });
 
   it('rejects an unregistered phone rather than creating a dead account', async () => {
-    await expect(requestOtp({ phone: '+910000000000' })).rejects.toMatchObject({
+    await expect(requestOtp({ phone: '+910000000000', schoolId: SCHOOL })).rejects.toMatchObject({
       code: 'PHONE_NOT_REGISTERED',
       statusCode: 404,
     });
@@ -44,13 +49,13 @@ describe('OTP issuance', () => {
   });
 
   it('rejects an unregistered email', async () => {
-    await expect(requestEmailOtp({ email: 'nobody@example.test' })).rejects.toMatchObject({
+    await expect(requestEmailOtp({ email: 'nobody@example.test', schoolId: SCHOOL })).rejects.toMatchObject({
       code: 'EMAIL_NOT_REGISTERED',
     });
   });
 
   it('normalises the email before lookup', async () => {
-    await expect(requestEmailOtp({ email: '  OTP@Example.TEST ' })).resolves.toBeTruthy();
+    await expect(requestEmailOtp({ email: '  OTP@Example.TEST ', schoolId: SCHOOL })).resolves.toBeTruthy();
   });
 });
 
@@ -83,22 +88,22 @@ describe('OTP storage — audit item M6, salted hashing', () => {
 describe('OTP verification', () => {
   it('signs in with the correct code', async () => {
     const code = await issue();
-    const session = await verifyOtp({ phone: PHONE, code }, {});
+    const session = await verifyOtp({ phone: PHONE, code, schoolId: SCHOOL }, {});
     expect(session.accessToken).toBeTruthy();
   });
 
   it('rejects a wrong code and counts the attempt', async () => {
     await issue();
-    await expect(verifyOtp({ phone: PHONE, code: '000000' }, {})).rejects.toMatchObject({ code: 'OTP_WRONG' });
+    await expect(verifyOtp({ phone: PHONE, code: '000000', schoolId: SCHOOL }, {})).rejects.toMatchObject({ code: 'OTP_WRONG' });
     expect((await OtpCode.findOne({ accountId }).lean()).attempts).toBe(1);
   });
 
   it('locks the code after OTP_MAX_ATTEMPTS wrong guesses', async () => {
     await issue();
     for (let i = 0; i < env.OTP_MAX_ATTEMPTS; i++) {
-      await verifyOtp({ phone: PHONE, code: '000000' }, {}).catch(() => {});
+      await verifyOtp({ phone: PHONE, code: '000000', schoolId: SCHOOL }, {}).catch(() => {});
     }
-    await expect(verifyOtp({ phone: PHONE, code: '000000' }, {})).rejects.toMatchObject({
+    await expect(verifyOtp({ phone: PHONE, code: '000000', schoolId: SCHOOL }, {})).rejects.toMatchObject({
       code: 'OTP_LOCKED',
       statusCode: 429,
     });
@@ -107,39 +112,39 @@ describe('OTP verification', () => {
   it('a locked code cannot be redeemed even if the guess is then correct', async () => {
     const code = await issue();
     for (let i = 0; i < env.OTP_MAX_ATTEMPTS; i++) {
-      await verifyOtp({ phone: PHONE, code: '000000' }, {}).catch(() => {});
+      await verifyOtp({ phone: PHONE, code: '000000', schoolId: SCHOOL }, {}).catch(() => {});
     }
-    await expect(verifyOtp({ phone: PHONE, code }, {})).rejects.toMatchObject({ code: 'OTP_LOCKED' });
+    await expect(verifyOtp({ phone: PHONE, code, schoolId: SCHOOL }, {})).rejects.toMatchObject({ code: 'OTP_LOCKED' });
   });
 
   it('rejects an expired code', async () => {
     const code = await issue();
     await OtpCode.updateOne({ accountId }, { $set: { expiresAt: new Date(Date.now() - 1000) } });
-    await expect(verifyOtp({ phone: PHONE, code }, {})).rejects.toMatchObject({ code: 'OTP_EXPIRED' });
+    await expect(verifyOtp({ phone: PHONE, code, schoolId: SCHOOL }, {})).rejects.toMatchObject({ code: 'OTP_EXPIRED' });
   });
 
   it('cannot reuse a code once consumed', async () => {
     const code = await issue();
-    await verifyOtp({ phone: PHONE, code }, {});
-    await expect(verifyOtp({ phone: PHONE, code }, {})).rejects.toMatchObject({ code: 'OTP_NOT_FOUND' });
+    await verifyOtp({ phone: PHONE, code, schoolId: SCHOOL }, {});
+    await expect(verifyOtp({ phone: PHONE, code, schoolId: SCHOOL }, {})).rejects.toMatchObject({ code: 'OTP_NOT_FOUND' });
   });
 
   it('errors when no code was ever requested', async () => {
-    await expect(verifyOtp({ phone: PHONE, code: '123456' }, {})).rejects.toMatchObject({
+    await expect(verifyOtp({ phone: PHONE, code: '123456', schoolId: SCHOOL }, {})).rejects.toMatchObject({
       code: 'OTP_NOT_FOUND',
     });
   });
 
   it('gives an unknown phone the same generic failure as a wrong code', async () => {
-    await expect(verifyOtp({ phone: '+910000000000', code: '123456' }, {})).rejects.toMatchObject({
+    await expect(verifyOtp({ phone: '+910000000000', code: '123456', schoolId: SCHOOL }, {})).rejects.toMatchObject({
       code: 'OTP_WRONG',
       statusCode: 401,
     });
   });
 
   it('verifies the email OTP flow end to end', async () => {
-    const { devOtp } = await requestEmailOtp({ email: EMAIL });
-    const session = await verifyEmailOtp({ email: EMAIL, code: devOtp }, {});
+    const { devOtp } = await requestEmailOtp({ email: EMAIL, schoolId: SCHOOL });
+    const session = await verifyEmailOtp({ email: EMAIL, code: devOtp, schoolId: SCHOOL }, {});
     expect(session.accessToken).toBeTruthy();
   });
 });
@@ -151,7 +156,7 @@ describe('OTP throttling — per-account issuance ceiling', () => {
 
   it('refuses the sixth request in the window', async () => {
     for (let i = 0; i < 5; i++) await issue();
-    await expect(requestOtp({ phone: PHONE })).rejects.toMatchObject({
+    await expect(requestOtp({ phone: PHONE, schoolId: SCHOOL })).rejects.toMatchObject({
       code: 'OTP_THROTTLED',
       statusCode: 429,
     });
@@ -161,7 +166,7 @@ describe('OTP throttling — per-account issuance ceiling', () => {
     // The limiter is per account+purpose, and both flows use purpose LOGIN —
     // otherwise an attacker just alternates channels to double the cap.
     for (let i = 0; i < 5; i++) await issue();
-    await expect(requestEmailOtp({ email: EMAIL })).rejects.toMatchObject({ code: 'OTP_THROTTLED' });
+    await expect(requestEmailOtp({ email: EMAIL, schoolId: SCHOOL })).rejects.toMatchObject({ code: 'OTP_THROTTLED' });
   });
 
   it('lets issuance resume once older codes fall outside the window', async () => {

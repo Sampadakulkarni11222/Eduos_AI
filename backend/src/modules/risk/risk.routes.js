@@ -12,7 +12,7 @@ router.use(authenticate);
  *   name: Risk
  *   description: >
  *     Dropout/academic/fee-default risk (STAND-IN). Rule-based thresholds
- *     over the last 30 days of data, not a trained model â€” see
+ *     over the last 30 days of data, not a trained model — see
  *     docs/ARCHITECTURE.md.
  */
 

@@ -3,8 +3,10 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
+import { api } from '@/lib/api';
 import { Avatar } from '@/components/ui';
-import { portalForRole, ROLE_TO_SLUG, type Portal } from '@/lib/portals';
+import { portalForRole, PORTALS, ROLE_TO_SLUG, type Portal } from '@/lib/portals';
+import { clearActingSchool, platformViewAllowed, setActingSchool, useActingSchool } from '@/lib/acting-school';
 import type { RoleKey } from '@/lib/types';
 import { Spinner, cx } from './ui';
 import { usePermissions, getRequiredPermission } from '@/lib/permissions';
@@ -35,6 +37,55 @@ export function PortalShell({
   const pathname = usePathname();
   // The school in the URL. Nav items are written school-less and prefixed here.
   const school = useSchoolSegment();
+  // Set when a platform administrator has opened one school from the console.
+  const acting = useActingSchool();
+
+  const isPlatformAdmin = me?.profile?.role === 'SUPER_ADMIN';
+  /** A platform administrator looking at a school through its own portal. */
+  const platformView = platformViewAllowed({
+    role: me?.profile?.role,
+    urlSlug: school,
+    portalSlug: expectedSlug,
+  });
+  /**
+   * The school in view follows the address bar.
+   *
+   * The console sets it on the way out of "Open school", but that is only the
+   * common path — a refresh, a link opened in a new tab, a pasted URL and a
+   * bookmark all arrive with nothing stored (it is per tab), and the school in
+   * the URL is the answer in every one of those cases. Requests carry it as
+   * `X-School-Id`, so until it agrees with the URL this page must not fetch:
+   * `headerReady` below holds the children back for that one frame.
+   */
+  const headerReady = !platformView || acting?.slug === school;
+  useEffect(() => {
+    if (platformView && school && acting?.slug !== school) {
+      // The console passes the display name through; arriving cold, the slug
+      // stands in until the schools API supplies the real one, just below.
+      setActingSchool({ slug: school, name: school });
+    }
+  }, [platformView, school, acting?.slug]);
+
+  // Put the school's real name on the banner when only the slug is known.
+  useEffect(() => {
+    if (!platformView || !school || acting?.slug !== school || acting.name !== school) return;
+    let cancelled = false;
+    api.publicSchool(school)
+      .then((found) => { if (!cancelled) setActingSchool({ slug: found.slug, name: found.name }); })
+      .catch(() => { /* the slug is a perfectly readable stand-in */ });
+    return () => { cancelled = true; };
+  }, [platformView, school, acting?.slug, acting?.name]);
+  // The platform console spans every school, so opening it drops any school
+  // still in view — otherwise `X-School-Id` would quietly narrow it to one.
+  //
+  // Keyed on the portal alone, deliberately not on `acting`. "Open school"
+  // sets the acting school and then navigates, and this console page is still
+  // mounted for that render — so re-running on `acting` cleared the very
+  // school the user had just opened. The school portal then loaded with none
+  // set, failed platformViewAllowed(), and bounced straight back here.
+  useEffect(() => {
+    if (expectedSlug === 'super-admin') clearActingSchool();
+  }, [expectedSlug]);
   const [mobileOpen, setMobileOpen] = useState(false);
   // Rail preference is per-device, so it lives in localStorage rather than on
   // the profile. Read after mount to keep the server and client markup equal.
@@ -47,7 +98,7 @@ export function PortalShell({
   // The tab says which school you are looking at. These pages are client-side,
   // so the server metadata in layout.tsx cannot know it — the favicon stays the
   // platform's either way.
-  const tabSchool = me?.profile?.role === 'SUPER_ADMIN' ? null : me?.profile?.tenantName;
+  const tabSchool = isPlatformAdmin ? (platformView ? acting?.name ?? null : null) : me?.profile?.tenantName;
   useEffect(() => {
     document.title = tabSchool ? `${tabSchool} · EduOS AI` : 'EduOS AI';
   }, [tabSchool]);
@@ -69,24 +120,36 @@ export function PortalShell({
     // and the school (an Oakridge account on /nvmp/admin). The profile's own
     // school is the authority — the backend serves that school's data whatever
     // the address says, so the address is what gets corrected.
-    const ownSchool = me.profile.tenantId ?? school;
+    if (platformView) return;
+
+    // A platform administrator has no school of their own. Production's Super
+    // Admin profile nonetheless carries a tenantId left over from the seed,
+    // and comparing that against the URL's school broke the console: its pages
+    // name no school, so `school` is null there and every one of them looked
+    // like the wrong school. The dashboard survived only because it redirected
+    // to itself; Schools, Dashboards, Audit and Permissions each bounced back
+    // to it the moment they mounted.
+    const ownSchool = isPlatformAdmin ? null : me.profile.tenantId ?? school;
     const slug = ROLE_TO_SLUG[me.profile.role];
     if (slug !== expectedSlug || (ownSchool && school !== ownSchool)) {
+      // A platform admin who wandered off their opened school goes back to the
+      // console, not to a school portal their profile does not own.
+      if (isPlatformAdmin) return router.replace('/super-admin');
       router.replace(portalHome(ownSchool, me.profile.role));
     }
-  }, [loading, me, router, expectedSlug, school]);
+  }, [loading, me, router, expectedSlug, school, platformView, isPlatformAdmin]);
 
   useEffect(() => {
-    if (loading || !me?.profile?.role || ROLE_TO_SLUG[me.profile.role] !== expectedSlug) return;
-    const portal = portalForRole(me.profile.role);
+    if (loading || !me?.profile?.role || (!platformView && ROLE_TO_SLUG[me.profile.role] !== expectedSlug)) return;
+    const portal = platformView ? PORTALS[expectedSlug] : portalForRole(me.profile.role);
     const cls = portal.themeClass;
     document.body.classList.add(cls);
     return () => {
       document.body.classList.remove(cls);
     };
-  }, [loading, me?.profile?.role, expectedSlug]);
+  }, [loading, me?.profile?.role, expectedSlug, platformView]);
 
-  if (loading || !me?.profile?.role || ROLE_TO_SLUG[me.profile.role] !== expectedSlug) {
+  if (loading || !me?.profile?.role || !headerReady || (!platformView && ROLE_TO_SLUG[me.profile.role] !== expectedSlug)) {
     return (
       <div className="app-shell" style={{ alignItems: 'center', justifyContent: 'center' }}>
         <Spinner />
@@ -95,14 +158,18 @@ export function PortalShell({
   }
 
   const active = me.profile;
-  const portal = portalForRole(me.profile.role);
+  // In a platform view the surface is the school portal being looked at, not
+  // the console the signed-in profile would normally get.
+  const portal = platformView ? PORTALS[expectedSlug] : portalForRole(me.profile.role);
 
   // Whose name goes on the sidebar and the browser tab. A Super Admin is on
   // the platform rather than in a school; everyone else is in exactly one, and
   // it must be theirs — this used to say "Oakridge Academy" on every school's
   // pages.
   const isPlatform = me.profile.role === 'SUPER_ADMIN';
-  const schoolLabel = isPlatform ? 'EduOS AI' : me.profile.tenantName || 'EduOS AI';
+  const schoolLabel = platformView
+    ? acting?.name ?? 'EduOS AI'
+    : isPlatform ? 'EduOS AI' : me.profile.tenantName || 'EduOS AI';
 
   // Feature Access Check for direct URL navigation
   const reqPerm = getRequiredPermission(stripSchool(pathname, school));
@@ -127,6 +194,15 @@ export function PortalShell({
         toggleCollapsed={toggleCollapsed}
       />
       <div className="main">
+        {platformView && acting && (
+          <PlatformViewBanner
+            school={acting}
+            onLeave={() => {
+              clearActingSchool();
+              router.push('/super-admin/schools');
+            }}
+          />
+        )}
         <div className="topbar">
           <div className="topbar-headrow">
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
@@ -166,6 +242,45 @@ export function PortalShell({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Says whose data is on screen.
+ *
+ * A platform administrator looking at a school sees that school's portal
+ * exactly as its own staff do, which is the point — and precisely why it must
+ * never be mistaken for their own console. It stays put above the topbar on
+ * every page of the view, and carries the way back out.
+ */
+function PlatformViewBanner({ school, onLeave }: { school: { slug: string; name: string }; onLeave: () => void }) {
+  return (
+    <div
+      role="status"
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+        flexWrap: 'wrap', padding: '9px 20px', fontSize: 13,
+        background: 'rgba(89,22,32,0.06)', borderBottom: '1px solid rgba(89,22,32,0.16)',
+        color: '#591620',
+      }}
+    >
+      <span>
+        <strong style={{ fontWeight: 700 }}>Platform view</strong>
+        {' — you are looking at '}
+        <strong style={{ fontWeight: 700 }}>{school.name}</strong>
+        <span style={{ fontFamily: 'monospace', fontSize: 12, opacity: 0.75 }}> /{school.slug}</span>
+      </span>
+      <button
+        type="button"
+        onClick={onLeave}
+        style={{
+          border: '1px solid rgba(89,22,32,0.3)', background: 'transparent', color: 'inherit',
+          borderRadius: 8, padding: '5px 12px', fontSize: 12.5, fontFamily: 'inherit', cursor: 'pointer',
+        }}
+      >
+        Leave school view
+      </button>
     </div>
   );
 }
