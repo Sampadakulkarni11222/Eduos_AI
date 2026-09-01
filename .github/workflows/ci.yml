@@ -17,16 +17,35 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    env:
+      # Pinned so the cache key, the download and the test run always name the
+      # same binary. Unpinned, the version is whatever mongodb-memory-server
+      # currently defaults to, which moves with its own releases — and when a
+      # runner image cannot supply that build, all 29 test files die in their
+      # beforeAll at once, which reads as a broken suite rather than a missing
+      # MongoDB. This is the version the installed library defaults to today.
+      MONGOMS_VERSION: '8.2.6'
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 22, not 20: mongodb-memory-server needs >=20.19 and the Vite that
+          # Vitest 4 pulls in needs ^20.19 || >=22.12, so a runner image whose
+          # newest 20.x is older than 20.19 fails before the first test runs —
+          # and does it in seconds, which looks like nothing at all in the log.
+          # The app itself only requires >=18, so nothing here is a constraint.
+          node-version: '22'
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
       - run: npm ci
+
+      # One line, in the log, saying what this run actually is. Worth the two
+      # seconds: an install-time failure otherwise gives no way to tell a
+      # toolchain mismatch from a broken lockfile.
+      - name: Toolchain
+        run: node -v && npm -v && npm ls esbuild --depth=0
 
       # mongodb-memory-server downloads a MongoDB binary on first use; caching
       # it keeps the test job from re-fetching ~100MB on every run.
@@ -49,8 +68,24 @@ jobs:
           # The version is in the key so bumping mongodb-memory-server (which
           # changes the MongoDB build it wants) fetches a fresh binary instead
           # of restoring a cache that can never satisfy it.
-          key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('backend/package-lock.json') }}
-          restore-keys: mongodb-binaries-${{ runner.os }}-
+          key: mongodb-binaries-${{ runner.os }}-${{ env.MONGOMS_VERSION }}-${{ hashFiles('backend/package-lock.json') }}
+          restore-keys: |
+            mongodb-binaries-${{ runner.os }}-${{ env.MONGOMS_VERSION }}-
+            mongodb-binaries-${{ runner.os }}-
+
+      # Fetching the binary here rather than inside the suite. It is the one
+      # step that reaches the network at test time, and when it fails it fails
+      # 29 times over — once per file's beforeAll, each reported as a test
+      # error. Doing it once, first, means a download or a distro that the
+      # runner image cannot satisfy is reported as exactly that.
+      - name: Warm the MongoDB binary
+        run: |
+          node --input-type=module -e "
+            import { MongoMemoryServer } from 'mongodb-memory-server';
+            const server = await MongoMemoryServer.create();
+            console.log('mongod ready at', server.getUri());
+            await server.stop();
+          "
 
       - run: npm test
 
