@@ -323,3 +323,28 @@ router.use('/students', studentRoutes);
 ## License
 
 ISC
+
+## A note on `package-lock.json`
+
+`swagger-jsdoc` pins `yaml@2.0.0-1` exactly — it calls that release's
+`keepCstNodes` option, which later versions dropped — while the Vite that
+Vitest pulls in needs `yaml@^2.4.2`. Both are correct, so the tree legitimately
+carries two copies: `yaml@2.0.0-1` at the root and `yaml@2.9.0` nested under
+`vitest/`.
+
+npm 11 collapses those two into the root copy when it updates an existing
+tree, which produces a lockfile `npm ci` rejects with
+`Missing: yaml@2.9.0 from lock file` — green locally, red in CI, because
+`npm install` tolerates what `npm ci` will not.
+
+If `npm ls yaml` says `deduped invalid`, the lockfile is in that state.
+Regenerate it from `package.json` alone rather than repairing it in place:
+
+```sh
+mkdir /tmp/lock && cp package.json /tmp/lock && (cd /tmp/lock && npm install --package-lock-only)
+cp /tmp/lock/package-lock.json .
+npx npm@10 ci --dry-run   # the npm CI runs; it must accept the file
+```
+
+An `overrides` entry is not a way out: forcing one `yaml` on both breaks
+swagger-jsdoc at boot.
