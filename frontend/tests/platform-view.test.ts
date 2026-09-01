@@ -1,5 +1,15 @@
-import { describe, it, expect } from 'vitest';
-import { platformViewAllowed, PLATFORM_VIEW_PORTALS } from '@/lib/acting-school';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import {
+  platformViewAllowed, PLATFORM_VIEW_PORTALS, setActingSchool, getActingSchool, clearActingSchool,
+} from '@/lib/acting-school';
+import { invalidateCache } from '@/lib/cache';
+
+let invalidated = 0;
+vi.mock('@/lib/cache', () => ({ invalidateCache: vi.fn(() => { invalidated += 1; }) }));
+void invalidateCache;
+
+beforeEach(() => { clearActingSchool(); invalidated = 0; });
+afterEach(() => clearActingSchool());
 
 /**
  * Who may look at a school through a school portal.
@@ -16,7 +26,6 @@ import { platformViewAllowed, PLATFORM_VIEW_PORTALS } from '@/lib/acting-school'
 const view = (over: Partial<Parameters<typeof platformViewAllowed>[0]> = {}) =>
   platformViewAllowed({
     role: 'SUPER_ADMIN',
-    actingSlug: 'oakridge',
     urlSlug: 'oakridge',
     portalSlug: 'admin',
     ...over,
@@ -39,13 +48,16 @@ describe('platform view', () => {
     }
   });
 
-  it('refuses a school whose address is not the one that was opened', () => {
-    expect(view({ urlSlug: 'nvmp' })).toBe(false);
+  it('admits whichever school the address names', () => {
+    // The decision is the URL's, so a pasted address, a new tab and a refresh
+    // all work — none of them carry the per-tab store that once decided it.
+    expect(view({ urlSlug: 'nvmp' })).toBe(true);
   });
 
-  it('refuses when no school has been opened', () => {
-    expect(view({ actingSlug: null })).toBe(false);
-    expect(view({ actingSlug: undefined })).toBe(false);
+  it('refuses a page that names no school at all', () => {
+    expect(view({ urlSlug: null })).toBe(false);
+    expect(view({ urlSlug: undefined })).toBe(false);
+    expect(view({ urlSlug: '' })).toBe(false);
   });
 
   it('refuses every school-level role, whatever school is in view', () => {
@@ -57,5 +69,25 @@ describe('platform view', () => {
   it('refuses a signed-out visitor', () => {
     expect(view({ role: null })).toBe(false);
     expect(view({ role: undefined })).toBe(false);
+  });
+});
+
+describe('switching the school in view', () => {
+  it('drops the read cache when the school changes', () => {
+    setActingSchool({ slug: 'oakridge', name: 'Oakridge Academy' });
+    invalidated = 0;
+    setActingSchool({ slug: 'nvmp', name: 'NVMP School' });
+    expect(invalidated).toBe(1);
+  });
+
+  it('keeps it when only the name is filled in', () => {
+    // Arriving by URL, the slug stands in for the name until the API answers.
+    // That correction is cosmetic: dropping the cache for it made every page
+    // reload its data a second after it had finished loading.
+    setActingSchool({ slug: 'oakridge', name: 'oakridge' });
+    invalidated = 0;
+    setActingSchool({ slug: 'oakridge', name: 'Oakridge Academy' });
+    expect(invalidated).toBe(0);
+    expect(getActingSchool()?.name).toBe('Oakridge Academy');
   });
 });

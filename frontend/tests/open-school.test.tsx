@@ -50,6 +50,10 @@ vi.mock('@/lib/permissions', () => ({
 vi.mock('@/components/ask-eduos', () => ({ AskEduOS: () => null }));
 vi.mock('@/components/notification-bell', () => ({ NotificationBell: () => null }));
 vi.mock('@/components/modal-a11y-bridge', () => ({ ModalA11yBridge: () => null }));
+vi.mock('@/lib/api', () => ({
+  api: { publicSchool: vi.fn().mockImplementation((slug: string) => Promise.resolve({ slug, name: slug })) },
+  errorMessage: (_e: unknown, fallback: string) => fallback,
+}));
 
 const { PortalShell } = await import('@/components/shell');
 const { setActingSchool, getActingSchool, clearActingSchool } =
@@ -103,13 +107,30 @@ describe('the school portal accepts the platform view', () => {
     expect(getActingSchool()?.slug).toBe('oakridge');
   });
 
-  it('bounces a platform admin who is on a school they did not open', async () => {
+  it('follows the address to another school rather than bouncing', async () => {
+    // The URL is the authority now: a platform admin who types, bookmarks or
+    // is linked to another school's portal is looking at that school, and the
+    // school in view moves to match so its data — not the previous school's —
+    // is what loads. Requiring the two to agree in advance is what made every
+    // hard navigation (refresh, new tab, pasted link) bounce to the console.
     setActingSchool({ slug: 'oakridge', name: 'Oakridge' });
     pathname = '/nvmp/admin';
     params = { school: 'nvmp' };
 
     render(shell('admin'));
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/super-admin'));
+    await waitFor(() => expect(getActingSchool()?.slug).toBe('nvmp'));
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('opens a school portal reached cold, with nothing in the per-tab store', async () => {
+    clearActingSchool();
+    pathname = '/oakridge/admin/users';
+    params = { school: 'oakridge' };
+
+    render(shell('admin'));
+
+    await waitFor(() => expect(getActingSchool()?.slug).toBe('oakridge'));
+    expect(replace).not.toHaveBeenCalled();
   });
 });

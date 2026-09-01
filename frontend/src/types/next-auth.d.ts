@@ -19,7 +19,9 @@ declare module 'next-auth' {
     eduosProfile?: ProfileSummary;
     eduosProfiles?: ProfileSummary[];
     eduosRequiresProfileSelection?: boolean;
-    eduosError?: 'USER_NOT_FOUND' | 'BACKEND_ERROR';
+    eduosError?: 'USER_NOT_FOUND' | 'BACKEND_ERROR' | 'WRONG_DOOR';
+    /** The backend's own wording for a WRONG_DOOR refusal — it names the right door. */
+    eduosErrorMessage?: string | null;
   }
 
   /** The subset of the Google OAuth profile this app reads. */
@@ -41,6 +43,8 @@ declare module 'next-auth/jwt' {
     eduosProfile?: ProfileSummary;
     eduosProfiles?: ProfileSummary[];
     eduosRequiresProfileSelection?: boolean;
-    eduosError?: 'USER_NOT_FOUND' | 'BACKEND_ERROR';
+    eduosError?: 'USER_NOT_FOUND' | 'BACKEND_ERROR' | 'WRONG_DOOR';
+    /** The backend's own wording for a WRONG_DOOR refusal — it names the right door. */
+    eduosErrorMessage?: string | null;
   }
 }

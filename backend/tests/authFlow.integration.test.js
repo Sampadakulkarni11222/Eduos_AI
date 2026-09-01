@@ -5,6 +5,7 @@ import { Account } from '../src/models/account.model.js';
 import { Profile } from '../src/models/profile.model.js';
 import { Role } from '../src/models/role.model.js';
 import { RefreshToken } from '../src/models/refreshToken.model.js';
+import { School } from '../src/models/school.model.js';
 import { login, refresh, logout, me } from '../src/modules/auth/auth.service.js';
 
 /**
@@ -23,6 +24,7 @@ import { login, refresh, logout, me } from '../src/modules/auth/auth.service.js'
 
 const EMAIL = 'flow@example.test';
 const PASSWORD = 'correct-horse-battery';
+const SCHOOL = 'eduos-demo-tenant';
 let accountId;
 
 beforeAll(() => {
@@ -30,6 +32,7 @@ beforeAll(() => {
 });
 
 beforeEach(async () => {
+  await School.create({ slug: SCHOOL, name: 'Demo School' });
   const role = await Role.create({ key: 'ADMIN', name: 'Admin', permissions: [{ key: 'students.read', scope: 'ALL' }] });
   const account = await Account.create({
     phoneE164: '+919900001234',
@@ -40,7 +43,8 @@ beforeEach(async () => {
   await Profile.create({ accountId: account._id, roleId: role._id, displayName: 'Flow Admin' });
 });
 
-const signIn = () => login({ email: EMAIL, password: PASSWORD }, { ip: '10.0.0.1', userAgent: 'vitest' });
+const signIn = () =>
+  login({ email: EMAIL, password: PASSWORD, schoolId: SCHOOL }, { ip: '10.0.0.1', userAgent: 'vitest' });
 
 describe('token lifecycle — what the BFF cookie flow depends on', () => {
   it('sign-in issues both an access token and a refresh token', async () => {

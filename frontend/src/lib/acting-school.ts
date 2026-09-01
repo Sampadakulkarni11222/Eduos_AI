@@ -49,14 +49,21 @@ export function getActingSchool(): ActingSchool | null {
 /**
  * Switches the school in view.
  *
- * The read cache is dropped on every switch: its keys are request paths, which
+ * Changing *school* drops the read cache: its keys are request paths, which
  * say nothing about which school answered them, so keeping it would show one
  * school's rows under another's name.
+ *
+ * Changing only the *name* must not. A view opened from the address bar starts
+ * with the slug standing in until the real name arrives, and treating that
+ * cosmetic correction as a switch threw away every row the page had just
+ * loaded and refetched the lot — the whole screen reloading a second after it
+ * appeared.
  */
 export function setActingSchool(school: ActingSchool | null) {
   const before = getActingSchool();
-  if (before?.slug === school?.slug) return;
+  if (before?.slug === school?.slug && before?.name === school?.name) return;
 
+  const schoolChanged = before?.slug !== school?.slug;
   current = school;
   try {
     if (school) sessionStorage.setItem(KEY, JSON.stringify(school));
@@ -64,7 +71,7 @@ export function setActingSchool(school: ActingSchool | null) {
   } catch {
     // Blocked storage: the switch still holds for this page's lifetime.
   }
-  invalidateCache();
+  if (schoolChanged) invalidateCache();
   listeners.forEach((fn) => fn());
 }
 
@@ -87,26 +94,31 @@ export const PLATFORM_VIEW_PORTALS = ['admin', 'principal', 'finance', 'libraria
  * A Super Admin holds every permission and belongs to no school, so the usual
  * portal test — your role owns this portal, and this is your school — would
  * bounce them out of the very screens the console sends them to. What stands
- * in for it: the school they opened is the school in the URL, and the portal
- * is one that spans a whole school. Everyone else fails the first check, so
- * this can never widen a school account's reach.
+ * in for it: the URL names a school, and the portal is one that spans a whole
+ * school. Everyone else fails the first check, so this can never widen a
+ * school account's reach.
+ *
+ * Deliberately decided from the URL alone, not from the stored school. The
+ * stored one is *how the header is sent*, not *whether the page is allowed*:
+ * it is per tab and read asynchronously, so a page that asked it for
+ * permission turned every hard refresh, every middle-clicked link, every
+ * pasted address and every hydration into a bounce back to the console. The
+ * address bar already says which school is being looked at; the store follows
+ * it (see the shell), rather than the other way round.
  */
 export function platformViewAllowed({
   role,
-  actingSlug,
   urlSlug,
   portalSlug,
 }: {
   role: string | null | undefined;
-  /** The school the console opened, if any. */
-  actingSlug: string | null | undefined;
   /** The school segment of the current URL. */
   urlSlug: string | null | undefined;
   /** The portal this page belongs to (`admin`, `finance`, …). */
   portalSlug: string;
 }): boolean {
   if (role !== 'SUPER_ADMIN') return false;
-  if (!actingSlug || actingSlug !== urlSlug) return false;
+  if (!urlSlug) return false;
   return PLATFORM_VIEW_PORTALS.includes(portalSlug);
 }
 

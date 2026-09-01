@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { Account } from '../src/models/account.model.js';
 import { Profile } from '../src/models/profile.model.js';
 import { Role } from '../src/models/role.model.js';
+import { School } from '../src/models/school.model.js';
 import { login } from '../src/modules/auth/auth.service.js';
 
 /**
@@ -12,8 +13,11 @@ import { login } from '../src/modules/auth/auth.service.js';
 
 const EMAIL = 'staff@example.test';
 const PASSWORD = 'correct-horse-battery';
+// Every sign-in names the door it came through; this admin's is their school's.
+const SCHOOL = 'eduos-demo-tenant';
 
 beforeEach(async () => {
+  await School.create({ slug: SCHOOL, name: 'Demo School' });
   const role = await Role.create({ key: 'ADMIN', name: 'Admin', permissions: [{ key: 'students.read', scope: 'ALL' }] });
   const account = await Account.create({
     phoneE164: '+919900000001',
@@ -23,7 +27,7 @@ beforeEach(async () => {
   await Profile.create({ accountId: account._id, roleId: role._id, displayName: 'Test Admin' });
 });
 
-const attempt = (password) => login({ email: EMAIL, password }, { ip: '10.0.0.1' });
+const attempt = (password) => login({ email: EMAIL, password, schoolId: SCHOOL }, { ip: '10.0.0.1' });
 const failNTimes = async (n) => {
   for (let i = 0; i < n; i++) await attempt('wrong').catch(() => {});
 };
@@ -36,7 +40,7 @@ describe('login — successful sign-in', () => {
   });
 
   it('is case-insensitive on the email', async () => {
-    await expect(login({ email: EMAIL.toUpperCase(), password: PASSWORD }, {})).resolves.toBeTruthy();
+    await expect(login({ email: EMAIL.toUpperCase(), password: PASSWORD, schoolId: SCHOOL }, {})).resolves.toBeTruthy();
   });
 });
 
@@ -113,7 +117,7 @@ describe('login — lockout', () => {
 
 describe('login — unknown accounts', () => {
   it('gives the same error for an unknown email as for a wrong password', async () => {
-    await expect(login({ email: 'nobody@example.test', password: 'x' }, {})).rejects.toMatchObject({
+    await expect(login({ email: 'nobody@example.test', password: 'x', schoolId: SCHOOL }, {})).rejects.toMatchObject({
       code: 'BAD_CREDENTIALS',
       statusCode: 401,
     });
@@ -121,7 +125,7 @@ describe('login — unknown accounts', () => {
 
   it('rejects an account that has no password set', async () => {
     await Account.create({ phoneE164: '+919900000002', email: 'otponly@example.test' });
-    await expect(login({ email: 'otponly@example.test', password: 'x' }, {})).rejects.toMatchObject({
+    await expect(login({ email: 'otponly@example.test', password: 'x', schoolId: SCHOOL }, {})).rejects.toMatchObject({
       code: 'BAD_CREDENTIALS',
     });
   });

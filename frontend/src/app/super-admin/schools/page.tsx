@@ -1,8 +1,10 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Field, Input, Modal, Pill, SkeletonRows, useToast } from '@/components/ui';
 import { api, errorMessage } from '@/lib/api';
+import { setActingSchool } from '@/lib/acting-school';
 import type { SchoolDto, SchoolAdminDto } from '@/lib/types';
 
 /**
@@ -14,6 +16,7 @@ import type { SchoolDto, SchoolAdminDto } from '@/lib/types';
  * do once created is unchanged.
  */
 export default function SuperAdminSchoolsPage() {
+  const router = useRouter();
   const [schools, setSchools] = useState<SchoolDto[] | null>(null);
   const [err, setErr] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -62,6 +65,19 @@ export default function SuperAdminSchoolsPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  /**
+   * Opens a school and goes to its Admin Console.
+   *
+   * From here on every request carries `X-School-Id`, so the platform admin
+   * reads exactly what that school's own admin would — its students, fees,
+   * attendance and the rest — rather than the platform-wide totals this
+   * console shows.
+   */
+  const openSchool = (school: SchoolDto) => {
+    setActingSchool({ slug: school.slug, name: school.tenantName });
+    router.push(`/${school.slug}/admin`);
   };
 
   const current = schools?.find((s) => s.tenantId === selected) ?? null;
@@ -116,7 +132,12 @@ export default function SuperAdminSchoolsPage() {
               </strong>
               {current && <SchoolAddress slug={current.slug} />}
             </div>
-            {current && <Button variant="soft" small onClick={() => setShowAdminModal(true)}>+ Add School Admin</Button>}
+            {current && (
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <Button variant="soft" small onClick={() => setShowAdminModal(true)}>+ Add School Admin</Button>
+                <Button small onClick={() => openSchool(current)}>Open school →</Button>
+              </div>
+            )}
           </div>
 
           {!current && <EmptyState title="Select a school" sub="Pick a school on the left to see its administrators." />}

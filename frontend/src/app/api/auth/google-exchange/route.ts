@@ -24,21 +24,32 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { email } = await req.json();
+    const { email, schoolId } = await req.json();
     if (!email) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
     const normalizedEmail = String(email).trim().toLowerCase();
+    // The door the popup was opened from. Forwarded on both legs so the demo
+    // path is held to the same school check as a typed sign-in.
+    const door = schoolId ? String(schoolId).trim().toLowerCase() : null;
 
     // 1. Ask the backend for an email OTP (devOtp is echoed outside production)
     const reqRes = await fetch(`${BACKEND_URL}/api/v1/auth/otp/email/request`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: normalizedEmail }),
+      body: JSON.stringify({ email: normalizedEmail, schoolId: door }),
     });
     const reqData = await reqRes.json().catch(() => ({}));
     const devOtp = reqData?.data?.devOtp;
     if (!reqRes.ok || !devOtp) {
+      // A wrong-door refusal is not "no such account" — say which it was, so
+      // the screen can tell the user where they should sign in instead.
+      if (reqData?.error?.code === 'WRONG_DOOR') {
+        return NextResponse.json(
+          { error: reqData?.message ?? 'This account is not part of this school.', code: 'WRONG_DOOR' },
+          { status: 403 }
+        );
+      }
       return NextResponse.json(
         { error: 'No EduOS account is linked to this Google account.', code: 'USER_NOT_FOUND', email: normalizedEmail },
         { status: 404 }
@@ -49,7 +60,7 @@ export async function POST(req: NextRequest) {
     const verRes = await fetch(`${BACKEND_URL}/api/v1/auth/otp/email/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: normalizedEmail, code: devOtp }),
+      body: JSON.stringify({ email: normalizedEmail, code: devOtp, schoolId: door }),
     });
     const verData = await verRes.json().catch(() => ({}));
     if (!verRes.ok) {

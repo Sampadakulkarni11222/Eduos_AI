@@ -3,9 +3,10 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
+import { api } from '@/lib/api';
 import { Avatar } from '@/components/ui';
 import { portalForRole, PORTALS, ROLE_TO_SLUG, type Portal } from '@/lib/portals';
-import { clearActingSchool, platformViewAllowed, useActingSchool } from '@/lib/acting-school';
+import { clearActingSchool, platformViewAllowed, setActingSchool, useActingSchool } from '@/lib/acting-school';
 import type { RoleKey } from '@/lib/types';
 import { Spinner, cx } from './ui';
 import { usePermissions, getRequiredPermission } from '@/lib/permissions';
@@ -40,13 +41,40 @@ export function PortalShell({
   const acting = useActingSchool();
 
   const isPlatformAdmin = me?.profile?.role === 'SUPER_ADMIN';
-  /** A platform administrator looking at the one school they opened. */
+  /** A platform administrator looking at a school through its own portal. */
   const platformView = platformViewAllowed({
     role: me?.profile?.role,
-    actingSlug: acting?.slug,
     urlSlug: school,
     portalSlug: expectedSlug,
   });
+  /**
+   * The school in view follows the address bar.
+   *
+   * The console sets it on the way out of "Open school", but that is only the
+   * common path — a refresh, a link opened in a new tab, a pasted URL and a
+   * bookmark all arrive with nothing stored (it is per tab), and the school in
+   * the URL is the answer in every one of those cases. Requests carry it as
+   * `X-School-Id`, so until it agrees with the URL this page must not fetch:
+   * `headerReady` below holds the children back for that one frame.
+   */
+  const headerReady = !platformView || acting?.slug === school;
+  useEffect(() => {
+    if (platformView && school && acting?.slug !== school) {
+      // The console passes the display name through; arriving cold, the slug
+      // stands in until the schools API supplies the real one, just below.
+      setActingSchool({ slug: school, name: school });
+    }
+  }, [platformView, school, acting?.slug]);
+
+  // Put the school's real name on the banner when only the slug is known.
+  useEffect(() => {
+    if (!platformView || !school || acting?.slug !== school || acting.name !== school) return;
+    let cancelled = false;
+    api.publicSchool(school)
+      .then((found) => { if (!cancelled) setActingSchool({ slug: found.slug, name: found.name }); })
+      .catch(() => { /* the slug is a perfectly readable stand-in */ });
+    return () => { cancelled = true; };
+  }, [platformView, school, acting?.slug, acting?.name]);
   // The platform console spans every school, so opening it drops any school
   // still in view — otherwise `X-School-Id` would quietly narrow it to one.
   //
@@ -94,7 +122,14 @@ export function PortalShell({
     // the address says, so the address is what gets corrected.
     if (platformView) return;
 
-    const ownSchool = me.profile.tenantId ?? school;
+    // A platform administrator has no school of their own. Production's Super
+    // Admin profile nonetheless carries a tenantId left over from the seed,
+    // and comparing that against the URL's school broke the console: its pages
+    // name no school, so `school` is null there and every one of them looked
+    // like the wrong school. The dashboard survived only because it redirected
+    // to itself; Schools, Dashboards, Audit and Permissions each bounced back
+    // to it the moment they mounted.
+    const ownSchool = isPlatformAdmin ? null : me.profile.tenantId ?? school;
     const slug = ROLE_TO_SLUG[me.profile.role];
     if (slug !== expectedSlug || (ownSchool && school !== ownSchool)) {
       // A platform admin who wandered off their opened school goes back to the
@@ -114,7 +149,7 @@ export function PortalShell({
     };
   }, [loading, me?.profile?.role, expectedSlug, platformView]);
 
-  if (loading || !me?.profile?.role || (!platformView && ROLE_TO_SLUG[me.profile.role] !== expectedSlug)) {
+  if (loading || !me?.profile?.role || !headerReady || (!platformView && ROLE_TO_SLUG[me.profile.role] !== expectedSlug)) {
     return (
       <div className="app-shell" style={{ alignItems: 'center', justifyContent: 'center' }}>
         <Spinner />

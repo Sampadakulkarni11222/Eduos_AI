@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { Role } from '../src/models/role.model.js';
 import { Account } from '../src/models/account.model.js';
 import { Profile } from '../src/models/profile.model.js';
+import { School } from '../src/models/school.model.js';
 import { SYSTEM_ROLES } from '../src/constants/permissions.js';
 import { ensureSuperAdminAccount, requestEmailOtp } from '../src/modules/auth/auth.service.js';
 
@@ -140,7 +141,9 @@ describe('the sign-in path the Google button actually takes', () => {
     const account = await Account.create({ phoneE164: '+919876500002', email: 'teacher@example.com' });
     await Profile.create({ accountId: account._id, roleId: teacher._id, displayName: 'A Teacher' });
 
-    const result = await requestEmailOtp({ email: 'teacher@example.com' });
+    // A teacher signs in at their school's door, not the platform's.
+    await School.create({ slug: 'eduos-demo-tenant', name: 'Demo School' });
+    const result = await requestEmailOtp({ email: 'teacher@example.com', schoolId: 'eduos-demo-tenant' });
     expect(result.devOtp).toBeTruthy();
     // No stray Super Admin profile was created along the way.
     expect(await superAdminProfiles()).toHaveLength(0);
