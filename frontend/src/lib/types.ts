@@ -111,7 +111,7 @@ export interface AttendanceRoster {
 export interface MySubmission { status: 'PENDING' | 'SUBMITTED' | 'LATE' | 'GRADED' | 'EXEMPT'; submittedAt: string | null; marks: number | null; feedback: string | null; attachments: string[] }
 export interface AssignmentDto {
   id: string; title: string; description?: string | null; type: string; chapter?: string | null;
-  dueAt: string; maxMarks: number | null; subject: string; subjectId?: string | null; class: string;
+  dueAt: string; maxMarks: number | null; attachments: string[]; subject: string; subjectId?: string | null; class: string;
   gradeId?: string | null; gradeName?: string | null; sectionId?: string | null; sectionName?: string | null;
   subjectOfferingId?: string | null; submissionCount: number; mySubmission?: MySubmission | null;
 }
@@ -159,6 +159,10 @@ export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export interface LeaveApplicationDto {
   _id: string; enrollmentId: string; fromDate: string; toDate: string; reason: string;
   status: LeaveStatus; remarks: string | null; createdAt: string;
+}
+/** LeaveApplicationDto plus the applicant fields listForReview() joins in for a teacher's queue. */
+export interface LeaveRequestDto extends LeaveApplicationDto {
+  studentName: string; admissionNo: string | null;
 }
 
 // ── Elective subject registration ──

@@ -18,6 +18,21 @@ function escapeRegex(str) {
 }
 
 /**
+ * Grades are stored as "Class 5", but nothing forces a CSV author to know
+ * that — "Grade 5", "Std 5" and "5" all mean the same thing to a human. This
+ * strips the common prefix words so any of those spellings resolve to the
+ * same grade instead of silently matching nothing (which is what every "No
+ * section found" bulk-upload failure turned out to be).
+ */
+function normalizeGradeName(name) {
+  return String(name ?? '')
+    .trim()
+    .replace(/^(class|grade|std\.?|standard)\s*/i, '')
+    .trim()
+    .toLowerCase();
+}
+
+/**
  * Lists user accounts with their profiles.
  *
  * Paging happens on the Account query itself (skip/limit), and the role and
@@ -345,8 +360,9 @@ export async function bulkCreateUsers(rows) {
   // for the whole batch rather than re-queried per row.
   const sections = await Section.find().populate('gradeId').lean();
   const sectionMap = new Map(
-    sections.map((s) => [`${(s.gradeId?.name ?? '').toLowerCase()}|${s.name.toLowerCase()}`, s._id.toString()]),
+    sections.map((s) => [`${normalizeGradeName(s.gradeId?.name)}|${s.name.toLowerCase()}`, s._id.toString()]),
   );
+  const knownGradeNames = [...new Set(sections.map((s) => s.gradeId?.name).filter(Boolean))].sort();
 
   for (let i = 0; i < rows.length; i++) {
     const rowNo = i + 2; // header is row 1
@@ -368,10 +384,13 @@ export async function bulkCreateUsers(rows) {
 
     let sectionId;
     if (roleKey === 'STUDENT' && gradeName && sectionName) {
-      sectionId = sectionMap.get(`${gradeName.toLowerCase()}|${sectionName.toLowerCase()}`);
+      sectionId = sectionMap.get(`${normalizeGradeName(gradeName)}|${sectionName.toLowerCase()}`);
       if (!sectionId) {
         results.failed++;
-        results.errors.push({ row: rowNo, error: `No section "${sectionName}" found in grade "${gradeName}"` });
+        results.errors.push({
+          row: rowNo,
+          error: `No section "${sectionName}" found in grade "${gradeName}". Known grades: ${knownGradeNames.join(', ') || 'none'}`,
+        });
         continue;
       }
     }

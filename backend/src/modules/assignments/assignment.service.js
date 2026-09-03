@@ -77,6 +77,7 @@ export async function list(actor, scope, query = {}) {
       chapter: a.chapter ?? null,
       dueAt: a.dueAt?.toISOString() ?? null,
       maxMarks: a.maxMarks ?? null,
+      attachments: a.attachments ?? [],
       subject: offering?.subjectId?.name ?? 'Subject',
       subjectId: offering?.subjectId?._id ?? null,
       class: section ? [section.gradeId?.name, section.name].filter(Boolean).join(' - ') : '—',

@@ -46,6 +46,7 @@ export const PERMISSION_CATALOG = [
   { key: 'registrations.review', group: 'academics', description: 'Approve or reject elective subject registrations' },
   { key: 'leave.apply', group: 'academics', description: 'Apply for a leave of absence' },
   { key: 'leave.read', group: 'academics', description: 'View leave application status' },
+  { key: 'leave.review', group: 'academics', description: 'Approve or reject leave applications' },
 
   // assignments
   { key: 'assignments.read', group: 'academics', description: 'View assignments' },
@@ -146,6 +147,7 @@ export const SYSTEM_ROLES = [
       ['attendance.read', 'ALL'],
       ['attendance.regularize', 'ALL'],
       ['leave.read', 'ALL'],
+      ['leave.review', 'ALL'],
       ['assignments.read', 'ALL'],
       ['marks.read', 'ALL'],
       ['marks.publish', 'ALL'],
@@ -180,6 +182,7 @@ export const SYSTEM_ROLES = [
       ['attendance.read', 'OWN'],
       ['attendance.mark', 'OWN'],
       ['leave.read', 'OWN'],
+      ['leave.review', 'OWN'],
       ['assignments.read', 'OWN'],
       ['assignments.manage', 'OWN'],
       ['submissions.grade', 'OWN'],
@@ -244,6 +247,10 @@ export const SYSTEM_ROLES = [
       ['leave.apply', 'OWN'],
       ['leave.read', 'OWN'],
       ['registrations.apply', 'OWN'],
+      // The catalog itself isn't owned by anyone; OWN here means "your own
+      // issued-books list", which listIssues() enforces server-side by
+      // overriding any studentId a non-ALL-scope caller sends.
+      ['library.read', 'OWN'],
       ['assignments.read', 'OWN'],
       ['submissions.submit', 'OWN'],
       ['marks.read', 'OWN'],

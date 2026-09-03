@@ -81,7 +81,14 @@ export default function StudentAssignments() {
           {rows.map((a) => (
             <tr key={a.id} style={dim ? { opacity: 0.75 } : undefined}>
               <td style={{ color: 'var(--text-faint)' }} data-label="Subject">{a.subject}</td>
-              <td className="cell-primary" data-label="Title">{a.title}</td>
+              <td className="cell-primary" data-label="Title">
+                {a.title}
+                {a.attachments.length > 0 && (
+                  <a href={fileHref(a.attachments[0])} target="_blank" rel="noreferrer" style={{ marginLeft: 8, fontSize: 11.5, color: 'var(--accent)', fontWeight: 600 }}>
+                    📎 Material
+                  </a>
+                )}
+              </td>
               <td data-label="Chapter">{a.chapter || '—'}</td>
               <td data-label="Type"><Pill tone={TYPE_TONE[a.type] ?? 'gray'}>{a.type.toLowerCase()}</Pill></td>
               <td style={{ color: !dim && isOverdue(a.dueAt) ? 'var(--red)' : 'var(--text-2)' }} data-label={dueLabel}>{fmtDate(a.dueAt)}</td>

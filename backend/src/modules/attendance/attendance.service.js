@@ -52,6 +52,41 @@ async function assertSectionAccess(actor, scope, sectionId) {
 }
 
 /**
+ * Gate for actually writing an attendance record (as opposed to reading the
+ * roster, which any teacher of the section may do via assertSectionAccess).
+ *
+ * "Teaches this section" is too coarse for writes: a section has one class
+ * teacher but many subject teachers via SubjectOffering, and any of them
+ * passing assertSectionAccess could previously overwrite a record another
+ * teacher had already marked for a different subject/period — Teacher B
+ * editing Teacher A's attendance with no ownership check at all. The rule
+ * enforced here is the "Option 1 / Option 2" split from the bug report:
+ *   - a period-specific mark (periodNo set) belongs to whichever teacher is
+ *     timetabled for that section+day+period;
+ *   - a whole-day mark (periodNo null) belongs to the section's class teacher.
+ * Non-teacher ALL-scope actors (admin, principal) are unrestricted, same as
+ * assertSectionAccess.
+ */
+async function assertCanMarkAttendance(actor, scope, sectionId, day, periodNo) {
+  if (scope === 'ALL' || actor.roleKey !== 'TEACHER') return;
+
+  if (periodNo === null) {
+    const section = await Section.findById(sectionId).select('classTeacherId');
+    if (String(section?.classTeacherId) !== String(actor.profileId)) {
+      throw new AppError('Only this section\'s class teacher can mark whole-day attendance', 403);
+    }
+    return;
+  }
+
+  const dow = day.getUTCDay() === 0 ? 7 : day.getUTCDay();
+  const slot = await TimetableSlot.findOne({ sectionId, dayOfWeek: dow, periodNo })
+    .populate('subjectOfferingId');
+  if (String(slot?.subjectOfferingId?.teacherId) !== String(actor.profileId)) {
+    throw new AppError('You are not the teacher timetabled for this period', 403);
+  }
+}
+
+/**
  * Roster for a section on a date, optionally for one timetabled period.
  *
  * `periodNo` null means whole-day attendance, which is all this used to
@@ -144,6 +179,7 @@ export async function markAttendance(actor, scope, { date, periodNo = null, reco
   // alike. A teacher is unaffected: they hold OWN and are still checked
   // against the sections they actually teach.
   await assertSectionAccess(actor, scope, sectionId);
+  await assertCanMarkAttendance(actor, scope, sectionId, day, periodNo);
 
   const items = records || entries || [];
   if (items.length === 0) throw new AppError('No attendance records provided', 400);
