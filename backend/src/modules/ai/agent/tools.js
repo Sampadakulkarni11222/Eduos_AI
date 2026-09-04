@@ -250,6 +250,11 @@ export const TOOLS = {
   get_hostel_summary: {
     description: 'Hostel occupancy: beds, rooms, and open inquiries',
     permission: 'hostel.read',
+    // Same reasoning as get_library_summary, applied before it is needed rather
+    // than after: nobody holds hostel.read at OWN today, but the moment a
+    // resident is granted it to see their own room, an unscoped school-wide
+    // aggregate would go with it.
+    minScope: 'ALL',
     mutates: false,
     params: {},
     async execute() {
@@ -311,6 +316,15 @@ export const TOOLS = {
   get_library_summary: {
     description: 'Library catalog size, books on loan, and overdue count',
     permission: 'library.read',
+    // execute() takes no scope and calls library.getSummary() unscoped, so this
+    // is school-wide by construction and an OWN holder must not reach it.
+    //
+    // Not hypothetical: students hold library.read at OWN so they can see their
+    // own borrowings, and without this line that grant also handed them the
+    // school's totals -- in their WhatsApp briefing, unasked, since this tool is
+    // in BRIEFING_TOOLS. The permission is the same key; only the scope
+    // separates "my loans" from "the library's".
+    minScope: 'ALL',
     mutates: false,
     params: {},
     async execute() {

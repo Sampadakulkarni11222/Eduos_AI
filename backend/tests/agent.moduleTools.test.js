@@ -62,6 +62,18 @@ const gate = (roleKey, toolName) => {
   }
 };
 
+/**
+ * Refused for any reason — the property that actually matters.
+ *
+ * Both refusal codes mean "this role cannot run this tool"; the difference is
+ * whether they hold the permission at too narrow a scope or not at all, which
+ * is a fact about the permission catalogue rather than about the gate. Use this
+ * wherever the catalogue could reasonably grant either, and the exact code
+ * where the role provably holds nothing.
+ */
+const refused = (roleKey, toolName) =>
+  ['AGENT_FORBIDDEN', 'AGENT_FORBIDDEN_SCOPE'].includes(gate(roleKey, toolName));
+
 const run = (toolName, roleKey, args = {}) => {
   const tool = getTool(toolName);
   const actor = actorFor(roleKey);
@@ -105,9 +117,19 @@ describe('the new capabilities are shared, read-only and permission-gated', () =
     // Library: LIBRARIAN and ADMIN.
     expect(gate('LIBRARIAN', 'get_library_summary')).toBe('ALLOW');
     expect(gate('ADMIN', 'get_overdue_books')).toBe('ALLOW');
+    // Holds no library.read at all, so the refusal is the plain one.
     expect(gate('WARDEN', 'get_overdue_books')).toBe('AGENT_FORBIDDEN');
-    expect(gate('STUDENT', 'get_overdue_books')).toBe('AGENT_FORBIDDEN');
     expect(gate('PARENT', 'get_library_summary')).toBe('AGENT_FORBIDDEN');
+
+    // A student is refused both, but *which* refusal depends on the permission
+    // catalogue: where students hold library.read at OWN (so they can see their
+    // own borrowings) it is a scope refusal, and where they hold nothing it is a
+    // plain one. Pinning one of those was a bug in this test — it passed on a
+    // branch whose catalogue withheld the grant and failed the moment it met one
+    // that gives it. What must hold either way is that they are refused, so that
+    // is what is asserted.
+    expect(refused('STUDENT', 'get_overdue_books')).toBe(true);
+    expect(refused('STUDENT', 'get_library_summary')).toBe(true);
 
     // Announcements: everyone who can read them, which is every shipped role.
     for (const role of ['STUDENT', 'PARENT', 'TEACHER', 'ADMIN', 'WARDEN', 'LIBRARIAN', 'FINANCE', 'PRINCIPAL']) {
@@ -122,15 +144,34 @@ describe('the new capabilities are shared, read-only and permission-gated', () =
     expect(gate('FINANCE', 'get_timetable')).toBe('AGENT_FORBIDDEN');
   });
 
-  it('closes the roster tools to an OWN-scoped holder', () => {
-    // A roster is other people's records. Nobody ships with hostel.read or
-    // library.read at OWN, so this guards a school that grants one that way.
+  it('closes every school-wide read to an OWN-scoped holder', () => {
+    // A roster is other people's records, and so is an aggregate over the whole
+    // school -- neither is "your own".
+    //
+    // This test used to end `expect(get_hostel_summary).not.toThrow()`, on the
+    // reasoning that a summary is a count rather than a list and OWN was
+    // therefore enough. That held only while nobody was granted these at OWN.
+    // Students hold library.read at OWN so they can see their own borrowings,
+    // which under the old rule also handed them the library's totals — and,
+    // because the summaries are in BRIEFING_TOOLS, pushed them into a student's
+    // opening WhatsApp message unasked.
+    //
+    // Neither summary tool takes a scope: both call getSummary() with no filter
+    // at all. So the only thing standing between an OWN grant and school-wide
+    // data is minScope, and both now declare it.
     const ownHostel = { roleKey: 'CUSTOM', profileId: 'x', permissions: { 'hostel.read': 'OWN' } };
     const ownLibrary = { roleKey: 'CUSTOM', profileId: 'x', permissions: { 'library.read': 'OWN' } };
-    expect(() => checkAuthorization(ownHostel, getTool('get_hostel_residents'))).toThrow(/limited to your own records/i);
-    expect(() => checkAuthorization(ownLibrary, getTool('get_overdue_books'))).toThrow(/limited to your own records/i);
-    // The summaries are aggregates, not rosters, so OWN is enough for those.
-    expect(() => checkAuthorization(ownHostel, getTool('get_hostel_summary'))).not.toThrow();
+
+    for (const [actor, toolName] of [
+      [ownHostel, 'get_hostel_residents'],
+      [ownLibrary, 'get_overdue_books'],
+      [ownHostel, 'get_hostel_summary'],
+      [ownLibrary, 'get_library_summary'],
+    ]) {
+      expect(() => checkAuthorization(actor, getTool(toolName)), toolName).toThrow(
+        /limited to your own records/i
+      );
+    }
   });
 
   it('gives the warden and the librarian a usable assistant at last', () => {
