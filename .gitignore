@@ -24,3 +24,7 @@ backend/uploads/*
 # Security notes especially: a list of what is weak does not belong in a repo.
 SECURITY_ACTIONS.md
 issues_sheet.md
+
+# Runtime logs, wherever a process happens to write them.
+logs/
+*.log

@@ -1,6 +1,6 @@
 # EduOS AI — AI-native School ERP
 
-EduOS AI is a multi-portal School/College ERP: one platform with dedicated, role-scoped portals for **Super Admin, Admin, Principal, Teacher, Parent, Student, Finance, Librarian, and Hostel Warden**, plus an AI copilot, WhatsApp assistant (simulation mode), online fee payments, file uploads, and a fully backend-enforced RBAC system.
+EduOS AI is a multi-portal School/College ERP: one platform with dedicated, role-scoped portals for **Super Admin, Admin, Principal, Teacher, Parent, Student, Finance, Librarian, and Hostel Warden**, plus an AI copilot and agentic assistant, AI-powered tutoring (Study Help), WhatsApp assistant (simulation mode), online fee payments, file uploads, in-app notifications, student leave management, and a fully backend-enforced RBAC system.
 
 ---
 
@@ -10,27 +10,33 @@ EduOS AI is a multi-portal School/College ERP: one platform with dedicated, role
 Eduos-AI/
 ├── backend/                ← Express + MongoDB REST API   (the entire backend)
 │   ├── src/
-│   │   ├── app.js              server bootstrap (helmet, CORS, rate limits, /uploads static)
+│   │   ├── app.js              server bootstrap (helmet, CORS, Brotli/Gzip compression, rate limits, /uploads static)
 │   │   ├── config/             env, db, swagger
 │   │   ├── constants/          permission catalog, system roles, demo users
 │   │   ├── middleware/         auth (JWT), requirePermission, rate limiters, error handler
 │   │   ├── models/             Mongoose schemas (students, fees, assignments, hostel, …)
 │   │   ├── modules/            one folder per domain: routes + controller + service
-│   │   ├── providers/          swappable integrations: notification (SMS/email OTP), payment
+│   │   ├── providers/          swappable integrations: notification (SMS/email OTP), payment, AI
+│   │   ├── routes/             top-level router that mounts all modules
 │   │   ├── seed/               seed.js (roles/permissions/demo users) + migrate.js (demo data)
+│   │   ├── tenancy/            AsyncLocalStorage scope + Mongoose plugin for per-school data isolation
 │   │   └── utils/              jwt, otp, crypto, scope resolution, response helpers
 │   ├── uploads/                uploaded files (served at /uploads/…)
 │   └── .env                    backend configuration
 │
-├── frontend/               ← Next.js 14 App Router frontend  (the entire frontend)
+├── frontend/               ← Next.js 15 App Router frontend  (the entire frontend)
 │   ├── src/
 │   │   ├── app/                one folder per portal: admin/ teacher/ parent/ student/ …
 │   │   │   ├── (auth)/         login + select-profile
+│   │   │   ├── [school]/       all school-scoped portals (admin, teacher, parent, student, …)
+│   │   │   ├── super-admin/    platform-level console (outside [school])
 │   │   │   └── api/            NextAuth route + dev-only Google demo exchange
 │   │   ├── components/         shell (sidebar/topbar/guards), ui (toasts, cards…),
 │   │   │                       file-input, ask-eduos, access-permissions, shared views
-│   │   └── lib/                api.ts (typed client + refresh rotation), auth.tsx,
-│   │                           permissions.tsx (server-trusted gating), portals.ts, types.ts
+│   │   ├── lib/                api.ts (typed client + refresh rotation), auth.tsx,
+│   │   │                       permissions.tsx (server-trusted gating), portals.ts,
+│   │   │                       school-path.ts, login-door.ts, acting-school.ts, types.ts
+│   │   └── types/              shared TypeScript type definitions
 │   └── .env                    frontend configuration
 │
 ├── .github/workflows/      CI: tests, lint, build, dependency audit
@@ -47,8 +53,8 @@ Eduos-AI/
 
 | Layer | Stack |
 |---|---|
-| Frontend | Next.js 14.2 (App Router), React 18, TypeScript 5.6, NextAuth 4 (Google), Tailwind/PostCSS, custom typed fetch client with refresh-token rotation |
-| Backend | Node ≥ 18, Express 4.21, Mongoose 8 / MongoDB, JWT (access 15 min + rotating refresh tokens), bcryptjs, Helmet, express-rate-limit, Winston logging, Swagger docs |
+| Frontend | Next.js 15.5 (App Router), React 18, TypeScript 5.6, NextAuth 4 (Google), Tailwind/PostCSS, custom typed fetch client with refresh-token rotation |
+| Backend | Node ≥ 18, Express 4.21, Mongoose 8 / MongoDB, JWT (access 15 min + rotating refresh tokens), bcryptjs, Helmet, Brotli/Gzip compression, express-rate-limit, Winston logging, Swagger docs |
 | Auth | Phone OTP, Email OTP, Google Sign-In (ID-token verified server-side), password login (API), multi-profile accounts with profile selection |
 | RBAC | DB-backed permission catalog × roles with ALL/OWN scopes, enforced by `requirePermission` on every route and mirrored to the UI from `/auth/me` |
 
@@ -77,6 +83,7 @@ Useful backend URLs:
 - API base: `http://localhost:5000/api/v1`
 - Swagger docs: `http://localhost:5000/api-docs`
 - Health check: `http://localhost:5000/api/v1/health`
+- Readiness probe: `http://localhost:5000/api/v1/observability/ready`
 - Uploaded files: `http://localhost:5000/uploads/<file>`
 
 ### 4.2 Frontend
@@ -306,11 +313,11 @@ Accounts can hold **multiple role profiles** (e.g. the same phone as Parent *and
 
 | Portal | Modules |
 |---|---|
-| **Admin** | Dashboard, Tickets, User Management, Student/Teacher Classes, Admission CRM, Attendance, Calendar, Timetable Builder, Payments & Fees (+receipts), Announcements, Library, Transport, Documents (real uploads), WhatsApp Assistant, Audit Logs, Access & Permissions (live RBAC editor), Tenant Settings |
-| **Teacher** | Dashboard, My Classes, Attendance (one-tap marking), Timetable, Assignments (create → submissions roster → grading), Exams & Performance, Course Material (uploads), Announcements, Calendar, Parent Queries, Medical Records |
-| **Parent** | Dashboard, Performance, Student View (growth score), Attendance, Assignments (submission status), Timetable, Calendar, Announcements, Medical Records, Library, Transport, **Payments with online Pay Now**, Documents, Support |
-| **Student** | Dashboard, Timetable, **Assignments with submit/resubmit + attachments**, Performance, Attendance, Calendar, Announcements, Library, Transport, Documents |
-| **Principal** | School Intelligence, Performance & Risk scan, Teacher Workload, Attendance Trends, Fee Health, Staff Directory, Announcements, Escalated Tickets, Audit Logs |
+| **Admin** | Dashboard, Tickets, User Management, Student/Teacher Classes, Classroom Management (Subject Offerings & Elective Registrations), Admission CRM, Attendance, Calendar, Timetable Builder, Payments & Fees (+receipts), Announcements, Library, Transport, Documents (real uploads), Medical Records, WhatsApp Assistant, Audit Logs, Access & Permissions (live RBAC editor), Tenant Settings |
+| **Teacher** | Dashboard, My Classes, Attendance (one-tap marking), Timetable, Assignments (create → submissions roster → grading), Exams & Performance, Course Material (uploads), Announcements, Calendar, Elective Registrations (review queue), Medical Records, Support Tickets |
+| **Parent** | Dashboard, Performance, Student View (growth score), Attendance, Assignments (submission status), Timetable, Calendar, Announcements, Medical Records, Library, Transport, Course Materials, **Payments with online Pay Now**, Documents, Study Help (AI tutor), AI Credits, Support Tickets |
+| **Student** | Dashboard, Timetable, **Assignments with submit/resubmit + attachments**, Performance, Attendance, Calendar, Announcements, Library, Transport, Documents, Course Materials, Subjects (elective registration), Study Help (AI tutor), AI Credits, Profile, Support Tickets |
+| **Principal** | School Intelligence, Performance & Risk Scan, Teacher Workload, Attendance Trends, Fee Health, Staff Directory, Announcements, Escalated Tickets, Audit Logs |
 | **Super Admin** | Dashboard (platform), Schools & Admins, School Dashboards (operations / finance / hostel / library), Audit Logs, Access & Permissions |
 | **Finance** | Dashboard, Payments & Fees, Reports |
 | **Librarian** | Dashboard, Catalog & Lending (issue/return + fines), Announcements, Tickets |
@@ -328,6 +335,7 @@ Every portal home is powered by a single role-scoped `GET /api/v1/dashboard/:rol
 - **Ownership checks**: parents can only pay their own invoices; students always submit assignments as themselves (enrollment resolved from the session, never trusted from the client); the manual payment ledger is staff-only.
 - Sessions: 15-min access tokens + rotating refresh tokens (revocable per device or account-wide on logout). Credential endpoints have a strict rate limit (30/15 min) separate from the general API limit (2000/15 min).
 - Medical records are encrypted at rest (`MEDICAL_ENCRYPTION_KEY`).
+- **Observability endpoints**: `GET /api/v1/observability/ready` (public — DB liveness for load balancers); `GET /api/v1/observability/metrics` (SUPER_ADMIN/ADMIN only — process uptime, memory, DB state). The metrics endpoint is auth-gated because runtime and version fingerprinting aids attackers.
 
 ---
 
@@ -345,6 +353,7 @@ Everything below works out of the box in **safe development modes**; going live 
 | **AI copilot / agent** | deterministic, data-grounded answers from the caller's own scoped data (attendance, fees, homework, timetable, exams), with confirm-before-commit on every write. **Needs no API key** | nothing — this is production behaviour, not a stub |
 | **AI-written answers** (tutor explanations, register OCR, intent fallback) | off unless a provider is configured | `AI_PROVIDER=gemini` + `GEMINI_API_KEY`, or `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`. Nothing else is implemented. Without one, tutor returns a labelled study plan from real data and charges no credits |
 | **AI credits** | students/parents get `AI_FREE_MONTHLY_CREDITS` (default 50) free AI answers a month, then buy packs; staff are never metered | set `AI_FREE_MONTHLY_CREDITS=0` to sell credits outright; add a real gateway for the top-up charge |
+| **In-app notifications** | all roles receive notifications (new announcements, assignment grades, fee receipts, elective decisions, etc.) via `GET /api/v1/notifications`; unread badge count via `/notifications/unread-count` | nothing — works in dev by default |
 | **File uploads** | stored on local disk under `backend/uploads/`, served at `/uploads/…` (type/size validated) | swap the handler in `backend/src/modules/uploads/upload.routes.js` for S3/GCS — the `{ fileUrl }` contract is unchanged |
 | **Growth/Risk scoring** | productized heuristics behind a service layer (deterministic, explainable) | replace the scoring services with an ML model when available |
 
@@ -393,8 +402,8 @@ Everything below works out of the box in **safe development modes**; going live 
 ## 10. Testing & quality gates
 
 ```bash
-cd backend  && npm test        # 164 tests
-cd frontend && npm test        # 43 tests
+cd backend  && npm test        # Vitest — 29 test suites
+cd frontend && npm test        # 9 test suites
 cd frontend && npm run lint    # ESLint — the baseline is zero warnings
 cd frontend && npm run typecheck
 ```
@@ -408,18 +417,36 @@ run downloads a MongoDB binary and is slow; later runs are not.
 | Suite | Covers |
 |---|---|
 | `fees.recordPayment` | Atomicity, concurrency, the overpayment guard |
+| `fees.authorization` | Role-based fee payment and refund access |
 | `admissions.admissionNo` | Sequence atomicity, seeding from existing numbering |
 | `auth.lockout` / `auth.otp` | Lockout policy; OTP hashing, expiry, throttling |
 | `authFlow.integration` | Refresh-token rotation, reuse detection, revocation |
+| `auth.door` | School sign-in door logic for all role x address combinations |
 | `medical.accessGate` | Per-role medical access matrix, read/denial auditing |
 | `csvImport` | Bulk import: header normalisation, partial failure |
 | `timetable` / `timetable.electives` | Scoping, slot upserts, elective visibility |
 | `paginate` | Opt-in pagination and its backward compatibility |
 | `registrations.notify`, `academics.updateOffering` | Elective workflow |
+| `agent.bulkAuthorization` | AI agent bulk-write authorization |
+| `announcements.audience` | Announcement audience filtering |
+| `attendance.markScope` | Attendance marking scope enforcement |
+| `audit.access` | Audit log access control |
+| `authorization.matrix` | Cross-role permission matrix |
+| `crm.leadAccess` | CRM lead assignment and access |
+| `dashboard.visibility` | Role-scoped dashboard panel visibility |
+| `documents.materialAccess` | Course material access by grant |
+| `exams.recordAccess` | Marks and report card access by role |
+| `platformView.scope` | Super Admin platform-wide view scoping |
+| `schoolAdmin.isolation` | School Admin cross-school isolation |
+| `superAdmin.googleAccess` / `superAdmin.schools` | Super Admin provisioning and school management |
+| `tenancy.isolation` | Multi-school data isolation |
+| `transport.access` | Bus assignment scope enforcement |
 
 **Frontend** uses Vitest + Testing Library (`jsdom`). Coverage is the pure
 logic and the components where a regression is silent — the timetable layout
-maths, the `clickable()` accessibility helper, and the elective catalogue.
+maths, the `clickable()` accessibility helper, the elective catalogue, the
+login-door logic, the open-school guard, permissions gating, platform-view nav,
+and division label formatting.
 
 **CI** (`.github/workflows/ci.yml`) runs on push and PR: backend tests, build,
 and a `node --check` on the built bundle (that bundle is what `npm start`
@@ -540,6 +567,10 @@ real data**, since it creates accounts.
 | `npm run electives:plan` / `electives:apply` | add elective offerings to an existing database (§12) |
 | `npm run registrations:plan` / `registrations:apply` | give existing students registrations for those electives (§12) |
 | `npm run seed:electives` | full elective demo scenario — **local databases only** |
+| `npm run superadmin:create` | provision a Super Admin account (§5) |
+| `npm run owner:drop` | remove the retired OWNER role and its profiles (§5) |
+| `npm run schools:migrate` | stamp tenantId on legacy data and create school records (§5) |
+| `npm run schools:rename` | rename a school's slug and repoint all its data |
 
 Frontend: `npm run dev`, `build`, `start`, `test`, `lint`, `lint:fix`, `typecheck`.
 
@@ -559,6 +590,8 @@ Frontend: `npm run dev`, `build`, `start`, `test`, `lint`, `lint:fix`, `typechec
 | `querySrv ECONNREFUSED` on a `mongodb+srv://` URI | Node's DNS resolver cannot complete the SRV lookup (`nslookup` may still work). Use a direct `mongodb://` URI listing the shard hosts |
 | Everything returns 403 | the role lacks that permission — check Admin → Access & Permissions |
 | Uploaded file 404s | file was uploaded before a change of `UPLOAD_DIR`; files live in `backend/uploads/` |
+| Notification bell shows no items | the notifications collection may be empty — announcements, fee receipts, and assignment grades each write a notification entry automatically |
+| `/observability/metrics` returns 403 | the metrics endpoint requires SUPER_ADMIN or ADMIN — use a seeded staff account |
 
 ---
 
@@ -574,3 +607,4 @@ Frontend: `npm run dev`, `build`, `start`, `test`, `lint`, `lint:fix`, `typechec
 8. Run `npm test` in both packages and `npm run lint` in the frontend — CI gates on these.
 9. Rebuild the backend bundle (`npm run build`); `npm start` runs `dist/`, which is gitignored and not deployed for you.
 10. If upgrading an existing database, run `npm run electives:plan` before `apply` and read the plan, then `npm run registrations:plan` / `apply` to give students registrations for them.
+11. If upgrading from a pre-multi-school database, run `npm run schools:migrate -- --apply` to stamp tenant IDs and create school records before starting the server.

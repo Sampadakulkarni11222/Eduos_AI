@@ -396,6 +396,57 @@ export async function getSummary(actor, scope, { enrollmentId, from, to, month }
  * scheduled daily now differ, because each is counted only on the days it is
  * actually taught.
  */
+/**
+ * Day-level attendance counts across the acting school for one date.
+ *
+ * Exists because there was no way to answer "how many students are absent
+ * today?" -- getSummary() is built around a set of enrollments and demands an
+ * enrollmentId at ALL scope, which is the right shape for "this person's
+ * attendance" and the wrong one for "the school's morning".
+ *
+ * No scoping argument, deliberately: AttendanceRecord is tenantScoped, so the
+ * aggregate is confined to the acting school by the plugin. Authorization is
+ * the caller's job -- the agent tool that fronts this declares
+ * attendance.read at ALL scope, and the REST layer would use requirePermission
+ * the same way.
+ *
+ * Counts day-level marks only (periodNo: null), matching how the teacher
+ * dashboard reports "today", so a school marking per-period attendance does
+ * not report one pupil absent six times.
+ */
+export async function getDailyAbsenceSummary({ date } = {}) {
+  // Local Y/M/D fed into Date.UTC, matching parseDateToMidnight's convention:
+  // a stored UTC-midnight Date represents an abstract calendar day, not a real
+  // UTC instant. Deriving "today" from toISOString() would take the server's
+  // UTC calendar date instead, so east of Greenwich every register marked
+  // after local midnight but before UTC midnight would be counted against the
+  // wrong day -- and in India that is the entire school morning.
+  const now = new Date();
+  const day = date
+    ? parseDateToMidnight(date)
+    : new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const next = new Date(day.getTime() + 24 * 60 * 60 * 1000);
+
+  const rows = await AttendanceRecord.aggregate([
+    { $match: { date: { $gte: day, $lt: next }, periodNo: null } },
+    { $group: { _id: '$status', count: { $sum: 1 } } },
+  ]);
+
+  const counts = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
+  for (const row of rows) counts[row._id] = row.count;
+
+  const marked = Object.values(counts).reduce((a, b) => a + b, 0);
+
+  return {
+    date: day.toISOString().slice(0, 10),
+    marked,
+    ...counts,
+    // Of those actually marked -- not of the roll. A register that is half
+    // taken must not be reported as though the missing half were present.
+    pctPresent: marked > 0 ? Math.round((counts.PRESENT / marked) * 100) : null,
+  };
+}
+
 export async function getSubjectWiseSummary(actor, scope, { enrollmentId, month, from, to } = {}) {
   const targetId = await resolveSingleEnrollmentId(actor, scope, enrollmentId);
 

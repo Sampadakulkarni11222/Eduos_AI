@@ -148,14 +148,64 @@ async function snapshotState(tool, actor, scope, args, prepared, phase) {
  * Tools return a message key plus parameters rather than a finished sentence,
  * so the same result reads correctly in every catalogued language. A tool that
  * still returns a literal `speak` string keeps working — it just stays English.
+ *
+ * Exported because the WhatsApp opening briefing renders tool results the same
+ * way this file does; a second copy would drift the moment a key changed.
  */
-function speakOf(result, lang) {
+export function speakOf(result, lang) {
   if (result?.speakKey) {
     const rendered = t(result.speakKey, lang, result.params ?? {});
     if (rendered) return rendered;
   }
   return result?.speak ?? '';
 }
+
+/**
+ * Error codes written for a person to read.
+ *
+ * Everything the agent itself raises is phrased as an answer -- "you may not do
+ * that", "which student?" -- and can be shown as-is. Anything else arriving as a
+ * 4xx came from a service being asked a question by an HTTP client, and is
+ * phrased for one.
+ */
+const AGENT_AUTHORED = new Set(['AGENT_FORBIDDEN', 'AGENT_FORBIDDEN_SCOPE', 'AGENT_NEEDS_INPUT']);
+
+/**
+ * Keeps service-layer validation errors out of the conversation.
+ *
+ * The surfaces below treat any 4xx as a "meaningful refusal" and show its
+ * message to the user. That is right for the refusals the agent writes and
+ * wrong for the ones the services do. A real example, from an administrator who
+ * asked the WhatsApp bot for their attendance percentage:
+ *
+ *     enrollmentId is required
+ *
+ * A correct 400 for a REST caller that omitted a query parameter, and
+ * meaningless to a person on WhatsApp -- as well as a small leak of internal
+ * shape: field names, and which ones a request is missing.
+ *
+ * So an unrecognised 4xx becomes a sentence saying what the assistant can do
+ * instead, and the original is logged for whoever fixes the tool. Deliberately
+ * logged at warn: this firing means a tool asked the caller for something the
+ * conversation has no way to supply, which is a bug in that tool.
+ */
+function humaniseToolError(err, { actor, lang, tool }) {
+  if (!isMeaningfulRefusal(err)) return err;
+  if (AGENT_AUTHORED.has(err?.code)) return err;
+
+  logger.warn(
+    `Tool ${tool} refused with a service-level message ("${err.message}") -- ` +
+      'the tool should answer this case itself rather than leave it to the caller.'
+  );
+
+  const capabilities = toolsAvailableTo(actor)
+    .map((entry) => entry.description.toLowerCase())
+    .slice(0, 5)
+    .join('; ');
+
+  return new AppError(t('agent.cannotAnswer', lang, { capabilities }), 400, [], 'AGENT_CANNOT_ANSWER');
+}
+
 
 /* ── Entry point ───────────────────────────────────────────── */
 /**
@@ -233,7 +283,15 @@ export async function runAgentSafely(opts) {
   }
 }
 
-export async function runAgent({ message, actor, source = 'WEB', lang: langOverride } = {}) {
+/**
+ * @param {object[]} [history] Recent turns of the same conversation, oldest
+ *   first, as `{ role: 'user' | 'assistant', text }`. Used only to resolve what
+ *   a follow-up refers to. It is transcript, never authority: identity, role
+ *   and permissions come from `actor` on every single turn, so nothing said
+ *   earlier in a thread can widen what this one may do. Empty by default, so
+ *   callers that pass none (the web assistant) behave exactly as before.
+ */
+export async function runAgent({ message, actor, source = 'WEB', lang: langOverride, history = [] } = {}) {
   if (!actor?.profileId) throw new AppError('Select a profile first', 403);
 
   // An explicit language (from the voice picker or a UI preference) wins over
@@ -270,7 +328,7 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
     };
   }
 
-  const intent = await parseIntentWithLlm(message, actor);
+  const intent = await parseIntentWithLlm(message, actor, { history });
   if (!intent) {
     // Attempt RAG fallback for unstructured queries or generic greetings
     const ragReply = await handleRagFallback(message, actor, lang);
@@ -317,7 +375,12 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
 
   // Reads run straight away.
   if (!tool.mutates) {
-    const result = await tool.execute(actor, scope, intent.args ?? {});
+    let result;
+    try {
+      result = await tool.execute(actor, scope, intent.args ?? {});
+    } catch (err) {
+      throw humaniseToolError(err, { actor, lang, tool: intent.tool });
+    }
     await auditAgentAction({ actor, tool: intent.tool, args: intent.args, source, status: 'READ' });
     // `tool` is reported so callers (and tests) can see which capability
     // answered, rather than having to infer it from the wording of the reply.
@@ -329,7 +392,12 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
   // A tool may prepare its payload now (drafting homework, for example) so the
   // summary describes something that already exists in full rather than a
   // promise to generate it later. The result is stored with the proposal.
-  const prepared = tool.prepare ? await tool.prepare(actor, scope, intent.args ?? {}) : null;
+  let prepared = null;
+  try {
+    prepared = tool.prepare ? await tool.prepare(actor, scope, intent.args ?? {}) : null;
+  } catch (err) {
+    throw humaniseToolError(err, { actor, lang, tool: intent.tool });
+  }
 
   const token = crypto.randomBytes(24).toString('hex');
   const summary = tool.summarise ? tool.summarise(intent.args ?? {}, actor, prepared) : tool.description;

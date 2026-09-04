@@ -372,6 +372,15 @@ async function seedSchool() {
         accountId: sAccId,
         roleId: roleMap.get('STUDENT'),
         displayName: `${displayName} (${gradeLabel}–${section.name} #${i})`,
+        // Without this the profile falls back to the schema default
+        // ('eduos-demo-tenant') while this student's Student, Enrollment and
+        // AttendanceRecord rows are all stamped with the seed school. The
+        // account then signs in scoped to a school that owns none of its own
+        // data, and every OWN-scoped read -- attendance, fees, results,
+        // timetable -- resolves to nothing. Staff and teacher profiles above
+        // have always set it; students and parents were the two that did not.
+        tenantId: SEED_SCHOOL_SLUG,
+        tenantName: SEED_SCHOOL_NAME,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -423,6 +432,8 @@ async function seedSchool() {
         accountId: pAccId,
         roleId: roleMap.get('PARENT'),
         displayName: `Parent of ${first}`,
+        tenantId: SEED_SCHOOL_SLUG,
+        tenantName: SEED_SCHOOL_NAME,
         createdAt: new Date(),
         updatedAt: new Date(),
       });

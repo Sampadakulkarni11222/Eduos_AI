@@ -7,6 +7,9 @@ import * as assignments from '../../assignments/assignment.service.js';
 import * as academics from '../../academics/academics.service.js';
 import * as dashboard from '../../dashboard/dashboard.service.js';
 import * as exams from '../../exams/exam.service.js';
+import * as hostel from '../../hostel/hostel.service.js';
+import * as library from '../../library/library.service.js';
+import * as timetable from '../../timetable/timetable.service.js';
 import { AppError } from '../../../utils/AppError.js';
 
 /**
@@ -45,12 +48,61 @@ export function needsInput(message, speakKey = null) {
 export const TOOLS = {
   // ── Reads ────────────────────────────────────────────────
   get_attendance: {
-    description: "Attendance summary for the caller (or their child)",
+    description: "Attendance summary — your own, your child's, or the school's",
     permission: 'attendance.read',
     mutates: false,
     params: { month: 'YYYY-MM, optional' },
-    async execute(actor, scope, args) {
-      const summary = await attendance.getSummary(actor, scope, { month: args.month });
+    /**
+     * Answers the attendance question the caller can actually be asking.
+     *
+     * "My attendance" only denotes something for someone with an enrolment: a
+     * student, or a parent standing in for their child. An administrator has
+     * none, and attendance.getSummary() -- correctly, for a REST caller --
+     * answers that with `enrollmentId is required`, a 400 written for a client
+     * that forgot a query parameter. That message used to travel intact to
+     * WhatsApp, so asking "what's my attendance percentage?" as an admin got
+     * back the words "enrollmentId is required".
+     *
+     * Two different situations were hiding behind that one error, and they want
+     * opposite answers:
+     *
+     *   ALL scope  -- the caller can see the whole school, so the only sensible
+     *                 reading of an unqualified question is the school's own
+     *                 register. Answer it rather than ask which student.
+     *   OWN scope, no enrolment -- a teacher, who has neither a record of their
+     *                 own nor the right to read anyone else's. Say so plainly.
+     */
+    async execute(actor, scope, args = {}) {
+      if (scope !== 'OWN') {
+        // Same read who_is_absent_today uses; the briefing drops the duplicate
+        // line when both run for the same person.
+        const data = await attendance.getDailyAbsenceSummary({ date: args.date });
+        if (data.marked === 0) return { speakKey: 'absent.notMarked', data };
+        return {
+          speakKey: 'absent.today',
+          params: {
+            absent: data.ABSENT,
+            present: data.PRESENT,
+            late: data.LATE,
+            excused: data.EXCUSED,
+            marked: data.marked,
+          },
+          data,
+        };
+      }
+
+      let summary;
+      try {
+        summary = await attendance.getSummary(actor, scope, { month: args.month });
+      } catch (err) {
+        // 404 from resolveSummaryEnrollmentIds: OWN scope, but this account is
+        // attached to no enrolment at all.
+        if ((err?.statusCode ?? err?.status) === 404) {
+          return { speakKey: 'attendance.noEnrolment', data: null };
+        }
+        throw err;
+      }
+
       return summary?.pctPresent != null
         ? {
             speakKey: 'attendance.summary',
@@ -166,10 +218,227 @@ export const TOOLS = {
     permission: 'attendance.read',
     minScope: 'ALL',
     mutates: false,
+    params: { date: 'YYYY-MM-DD, optional; defaults to today' },
+    /**
+     * Reports today's register, not the size of the school.
+     *
+     * This used to return getAdminDashboard().totalStudents and say "there are
+     * N students on roll" -- a true sentence that answers a question nobody
+     * asked. "How many students are absent today?" now gets a count of
+     * absences, and an unmarked register says so rather than implying nobody
+     * is missing.
+     */
+    async execute(actor, scope, args = {}) {
+      const data = await attendance.getDailyAbsenceSummary({ date: args.date });
+      if (data.marked === 0) return { speakKey: 'absent.notMarked', data };
+      return {
+        speakKey: 'absent.today',
+        params: {
+          absent: data.ABSENT,
+          present: data.PRESENT,
+          late: data.LATE,
+          excused: data.EXCUSED,
+          marked: data.marked,
+        },
+        data,
+      };
+    },
+  },
+
+  /* ── Hostel (warden, and anyone else granted hostel.read) ── */
+
+  get_hostel_summary: {
+    description: 'Hostel occupancy: beds, rooms, and open inquiries',
+    permission: 'hostel.read',
+    mutates: false,
+    params: {},
+    async execute() {
+      // Same aggregate the hostel dashboard renders, so the bot and the screen
+      // can never disagree about how many beds are free.
+      const data = await hostel.getSummary();
+      return {
+        speakKey: 'hostel.summary',
+        params: {
+          occupied: data.occupiedBeds,
+          capacity: data.totalCapacity,
+          rate: data.occupancyRate,
+          available: data.availableBeds,
+          rooms: data.totalRooms,
+          inquiries: data.hostelInquiries,
+        },
+        data,
+      };
+    },
+  },
+
+  get_hostel_residents: {
+    description: 'Students currently allocated a hostel bed',
+    permission: 'hostel.read',
+    // A resident roster is other people's records, so an OWN-scoped holder of
+    // hostel.read must not reach it.
+    minScope: 'ALL',
+    mutates: false,
+    params: {},
+    async execute() {
+      const allocations = await hostel.listHostelStudents();
+      if (allocations.length === 0) return { speakKey: 'hostel.residents.none', data: { residents: [] } };
+
+      const residents = allocations.map((a) => ({
+        name: [a.studentId?.firstName, a.studentId?.lastName].filter(Boolean).join(' ').trim() || 'Unknown',
+        admissionNo: a.studentId?.admissionNo ?? null,
+        room: a.roomId?.roomNo ?? null,
+        block: a.roomId?.block ?? null,
+      }));
+
+      // A full roster can run to hundreds of names and WhatsApp caps a message
+      // at 4096 characters, so the spoken answer is the count plus the first
+      // few. `data` still carries every row for callers that can render a list.
+      const shown = residents.slice(0, 10);
+      const list = shown
+        .map((r) => `${r.name}${r.room ? ` (room ${r.room}${r.block ? `, block ${r.block}` : ''})` : ''}`)
+        .join('; ');
+
+      return {
+        speakKey: residents.length > shown.length ? 'hostel.residents.more' : 'hostel.residents',
+        params: { count: residents.length, shown: shown.length, list },
+        data: { residents },
+      };
+    },
+  },
+
+  /* ── Library (librarian, and anyone else granted library.read) ── */
+
+  get_library_summary: {
+    description: 'Library catalog size, books on loan, and overdue count',
+    permission: 'library.read',
+    mutates: false,
+    params: {},
+    async execute() {
+      const data = await library.getSummary();
+      return {
+        speakKey: 'library.summary',
+        params: {
+          books: data.totalCatalogBooks,
+          titles: data.uniqueTitles,
+          onLoan: data.activeBookIssues,
+          overdue: data.overdueReturns,
+        },
+        data,
+      };
+    },
+  },
+
+  get_overdue_books: {
+    description: 'Books that are past their return date',
+    permission: 'library.read',
+    // Naming who is holding a book late is other people's records.
+    minScope: 'ALL',
+    mutates: false,
+    params: {},
+    async execute() {
+      // listIssues() re-marks anything past its due date before reading, so an
+      // overdue book that nobody has looked at yet still shows up here.
+      const issues = await library.listIssues({ status: 'OVERDUE' });
+      if (issues.length === 0) return { speakKey: 'library.overdue.none', data: { overdue: [] } };
+
+      const shown = issues.slice(0, 10);
+      const list = shown
+        .map((i) => `${i.bookTitle} - ${i.studentName}${i.dueAt ? ` (due ${new Date(i.dueAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })})` : ''}`)
+        .join('; ');
+
+      return {
+        speakKey: issues.length > shown.length ? 'library.overdue.more' : 'library.overdue',
+        params: { count: issues.length, shown: shown.length, list },
+        data: { overdue: issues },
+      };
+    },
+  },
+
+  /* ── Announcements (read) ─────────────────────────────────── */
+
+  get_announcements: {
+    description: 'Recent announcements addressed to you',
+    permission: 'announcements.read',
+    mutates: false,
     params: {},
     async execute(actor) {
-      const data = await dashboard.getAdminDashboard();
-      return { speakKey: 'absent.today', params: { total: data?.totalStudents ?? 0 }, data };
+      // list() applies the same audience filter the announcements screen does,
+      // so the assistant cannot read out a notice the caller was not addressed
+      // in -- which is why the actor is passed rather than the scope.
+      const items = await announcements.list(actor);
+      if (items.length === 0) return { speakKey: 'announcements.none', data: { announcements: [] } };
+
+      const shown = items.slice(0, 5);
+      const list = shown
+        .map((a) => `${a.title}${a.publishedAt ? ` (${new Date(a.publishedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })})` : ''}`)
+        .join('; ');
+
+      return {
+        speakKey: 'announcements.list',
+        params: { count: items.length, shown: shown.length, list },
+        data: { announcements: items },
+      };
+    },
+  },
+
+  /* ── Timetable ────────────────────────────────────────────── */
+
+  get_timetable: {
+    description: 'Class timetable for a day',
+    permission: 'timetable.read',
+    mutates: false,
+    params: { day: 'day name, optional; defaults to today' },
+    /**
+     * Fronts timetable.getTimetable(), which already resolves whose timetable
+     * this is: a teacher sees the periods they personally teach, a student or
+     * parent sees their own section with unregistered electives hidden, and an
+     * ALL-scope holder sees the school. Reproducing any of that here would be
+     * a second copy of the rule to keep in step, so the tool only chooses the
+     * day and renders the result.
+     */
+    async execute(actor, scope, args = {}) {
+      const slots = await timetable.getTimetable(actor, scope, null);
+
+      const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      // Relative words are resolved here rather than at parse time, because
+      // this is where the current date is known. "Tomorrow" is how people
+      // actually ask, and treating it as an unrecognised day silently answered
+      // with today's periods.
+      const RELATIVE = { yesterday: -1, today: 0, tomorrow: 1, 'day after tomorrow': 2 };
+      const asked = String(args.day ?? '').trim().toLowerCase();
+
+      const now = new Date();
+      let jsDay;
+      if (asked in RELATIVE) {
+        jsDay = (now.getDay() + RELATIVE[asked] + 7) % 7;
+      } else {
+        const askedIndex = DAYS.indexOf(asked);
+        jsDay = askedIndex >= 0 ? askedIndex : now.getDay();
+      }
+
+      // The model stores 1=Mon..7=Sun; JS getDay() is 0=Sun..6=Sat.
+      const dayOfWeek = jsDay === 0 ? 7 : jsDay;
+      const dayName = DAYS[jsDay].replace(/^./, (c) => c.toUpperCase());
+
+      const today = slots
+        .filter((s) => s.dayOfWeek === dayOfWeek)
+        .sort((a, b) => a.periodNo - b.periodNo);
+
+      if (today.length === 0) return { speakKey: 'timetable.none', params: { day: dayName }, data: { slots: [] } };
+
+      const shown = today.slice(0, 12);
+      const list = shown
+        .map((s) => {
+          const subject = s.subjectOfferingId?.subjectId?.name ?? 'Break';
+          return `P${s.periodNo} ${s.startTime}-${s.endTime} ${subject}`;
+        })
+        .join('; ');
+
+      return {
+        speakKey: today.length > shown.length ? 'timetable.day.more' : 'timetable.day',
+        params: { day: dayName, count: today.length, shown: shown.length, list },
+        data: { slots: today },
+      };
     },
   },
 
