@@ -1,7 +1,8 @@
 import { LeaveApplication } from '../../models/leaveApplication.model.js';
 import { Student, Enrollment } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
-import { paginate } from '../../utils/paginate.js';
+import { paginate, mapPage } from '../../utils/paginate.js';
+import { getTeacherSectionIds } from '../../utils/scope.js';
 
 /**
  * Parses a calendar date to UTC midnight, ignoring any time or offset supplied.
@@ -91,4 +92,76 @@ export async function listMine(actor, opts = {}) {
     filter,
     { page: opts.page, pageSize: opts.pageSize, label: 'leave.listMine' }
   );
+}
+
+/**
+ * Leave requests a teacher/principal/admin is entitled to act on.
+ *
+ * A student's own leave.apply had nowhere to surface: /leave/mine only ever
+ * read the applicant's own enrollment back, and no endpoint queried by
+ * section at all — a teacher holding leave.read: OWN had a grant with
+ * nothing behind it. This joins applications to the enrolled student's
+ * section so a teacher sees requests for the classes they actually teach
+ * (mirroring assertSectionAccess in attendance), and ALL-scope roles see
+ * every request in the school.
+ */
+export async function listForReview(actor, scope, { status = 'PENDING', page, pageSize } = {}) {
+  const filter = {};
+  if (status && status !== 'ALL') filter.status = status;
+
+  if (scope !== 'ALL') {
+    if (actor.roleKey !== 'TEACHER') throw new AppError('You are not allowed to view leave requests', 403);
+    const sectionIds = await getTeacherSectionIds(actor.profileId);
+    const enrollmentIds = await Enrollment.find({ sectionId: { $in: sectionIds } }).select('_id');
+    filter.enrollmentId = { $in: enrollmentIds.map((e) => e._id) };
+  }
+
+  const result = await paginate(
+    LeaveApplication.find(filter)
+      .sort({ createdAt: -1 })
+      .populate({ path: 'enrollmentId', populate: { path: 'studentId', select: 'firstName lastName admissionNo' } })
+      .lean(),
+    LeaveApplication,
+    filter,
+    { page, pageSize, label: 'leave.listForReview' }
+  );
+
+  return mapPage(result, (a) => ({
+    ...a,
+    enrollmentId: a.enrollmentId?._id ?? a.enrollmentId,
+    studentName: a.enrollmentId?.studentId
+      ? `${a.enrollmentId.studentId.firstName} ${a.enrollmentId.studentId.lastName ?? ''}`.trim()
+      : 'Unknown',
+    admissionNo: a.enrollmentId?.studentId?.admissionNo ?? null,
+  }));
+}
+
+/** Approve or reject a pending leave request. */
+export async function review(actor, scope, { id, status, remarks }) {
+  if (!['APPROVED', 'REJECTED'].includes(status)) {
+    throw new AppError('status must be APPROVED or REJECTED', 400);
+  }
+
+  const application = await LeaveApplication.findById(id).populate('enrollmentId', 'sectionId');
+  if (!application) throw new AppError('Leave application not found', 404);
+
+  if (scope !== 'ALL') {
+    if (actor.roleKey !== 'TEACHER') throw new AppError('You are not allowed to review leave requests', 403);
+    const sectionIds = await getTeacherSectionIds(actor.profileId);
+    if (!sectionIds.includes(String(application.enrollmentId?.sectionId))) {
+      throw new AppError('This student is not in one of your classes', 403);
+    }
+  }
+
+  if (application.status !== 'PENDING') {
+    throw new AppError('This leave request has already been reviewed', 409);
+  }
+
+  application.status = status;
+  application.reviewedByProfileId = actor.profileId;
+  application.reviewedAt = new Date();
+  application.remarks = remarks?.trim() || null;
+  await application.save();
+
+  return application;
 }

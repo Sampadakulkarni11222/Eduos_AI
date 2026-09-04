@@ -179,7 +179,7 @@ export default function UsersPage() {
           title="Bulk create users"
           description="Upload a CSV to create many users at once. Student rows may include gradeName + sectionName to assign a class immediately."
           templateHeaders={['roleKey', 'displayName', 'phone', 'email', 'password', 'admissionNo', 'gradeName', 'sectionName']}
-          templateSampleRow={['STUDENT', 'Diya Tharian', '+919555000111', 'diya@example.com', '', 'CA-2026-005', 'Grade 5', 'A']}
+          templateSampleRow={['STUDENT', 'Diya Tharian', '+919555000111', 'diya@example.com', '', 'CA-2026-005', 'Class 5', 'A']}
           onSubmit={(file) => api.bulkCreateUsers(file)}
           onClose={() => setShowBulkModal(false)}
           onImported={(r) => { toast(`Created ${r.imported} of ${r.imported + r.failed} users.`, r.failed > 0 ? 'error' : 'success'); void load(); }}

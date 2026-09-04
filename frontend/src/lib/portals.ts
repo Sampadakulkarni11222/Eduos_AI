@@ -103,6 +103,7 @@ export const PORTALS: Record<string, Portal> = {
       ]},
       { title: 'STUDENTS', items: [
         item('Subject Registrations', '⊕', '/teacher/registrations', { ready: true }),
+        item('Leave Requests', '⛱', '/teacher/leave', { ready: true }),
         item('Medical Records', '✚', '/teacher/medical', { ready: true }),
       ]},
     ],

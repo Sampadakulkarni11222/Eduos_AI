@@ -230,11 +230,19 @@ export async function deleteBook(id) {
 }
 
 // ─── Issues (lending records) ────────────────────────────────
-export async function listIssues({ status, bookId, studentId } = {}) {
+/**
+ * `studentId` here is actually a borrowerProfileId (see toIssueDto/issueBook).
+ * A non-ALL-scope caller (a student, holding library.read: OWN) may only ever
+ * see their own lending records — their own profileId overrides whatever
+ * studentId they sent, rather than trusting it, or they could read anyone's
+ * borrow history just by supplying a different id.
+ */
+export async function listIssues(actor, scope, { status, bookId, studentId } = {}) {
   const filter = {};
   if (status) filter.status = status;
   if (bookId) filter.bookId = bookId;
-  if (studentId) filter.borrowerProfileId = studentId;
+  const effectiveStudentId = scope === 'ALL' ? studentId : actor.profileId;
+  if (effectiveStudentId) filter.borrowerProfileId = effectiveStudentId;
 
   // Auto-mark overdue issues
   await BookIssue.updateMany(

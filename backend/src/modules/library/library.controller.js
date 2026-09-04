@@ -40,7 +40,7 @@ export const deleteBook = asyncHandler(async (req, res) => {
 });
 
 export const listIssues = asyncHandler(async (req, res) => {
-  const issues = await service.listIssues(req.query);
+  const issues = await service.listIssues(req.actor, req.scope, req.query);
   sendSuccess(res, issues, 'Issues fetched');
 });
 
