@@ -302,8 +302,10 @@ script names any account left with none.
 On the login page:
 - **Staff** → *Continue via Email OTP* with the email above.
 - **Parent / Student** → *Continue with Phone Number*.
-- In development the 6-digit OTP is **shown directly in the login UI** (the backend echoes `devOtp` outside production). In production, codes are only delivered through the configured SMS/email provider.
-- *Continue with Google (demo)* — dev-only picker of the demo emails; becomes real Google OAuth once credentials are configured (see §8), and disappears in production if unconfigured.
+- The 6-digit OTP is **shown directly in the login UI** — on both the email and the phone path — whenever the backend echoes `devOtp`: always in development, and in a production build that sets `ALLOW_DEV_OTP_IN_PRODUCTION=true`. **This project is in its testing phase, so that flag is on** (see the ⚠ note below). With it off, codes are only delivered through the configured SMS/email provider.
+- *Continue with Google (demo)* — picker of the demo emails; it signs in by reading that same echoed code, so it needs `ALLOW_DEV_OTP_IN_PRODUCTION` on the backend plus `NEXT_PUBLIC_ALLOW_DEV_OTP=true` on the frontend to appear in a production build. It becomes real Google OAuth once credentials are configured (see §8).
+
+> ⚠ **Testing phase only.** While `ALLOW_DEV_OTP_IN_PRODUCTION` is on, anyone who knows an email address or phone number can request a code and read it straight out of the HTTP response — that is account takeover for every account, including Super Admin. Set it (and `NEXT_PUBLIC_ALLOW_DEV_OTP`) to `false` and configure real SMS/email providers before real users sign in.
 
 Accounts can hold **multiple role profiles** (e.g. the same phone as Parent *and* Teacher) — after OTP verification you'll get a profile picker.
 
@@ -367,7 +369,8 @@ Everything below works out of the box in **safe development modes**; going live 
 |---|---|---|
 | `PORT` / `HOST` | `5000` / `localhost` | server bind |
 | `MONGO_URI` / `MONGO_URI_ATLAS` | `mongodb://localhost:27017/school_erp` | database. **`MONGO_URI_ATLAS` is production-only**: outside `NODE_ENV=production` it is ignored entirely (and the boot log says so), so development always uses `MONGO_URI`. In production Atlas wins when set. The boot line prints `target=…, source=MONGO_URI\|MONGO_URI_ATLAS\|default` — check it before trusting a seed or migration. Note the shipped `.env` may point `MONGO_URI` at a remote cluster; see §4.3 for a way to run against a throwaway database instead |
-| `NODE_ENV` | `development` | in production, `devOtp` is never returned and Swagger defaults off |
+| `NODE_ENV` | `development` | in production, `devOtp` is never returned (unless `ALLOW_DEV_OTP_IN_PRODUCTION=true`) and Swagger defaults off |
+| `ALLOW_DEV_OTP_IN_PRODUCTION` | `false` (`true` in this repo's testing-phase config) | echoes the OTP as `devOtp` on every login path even in production, and lets the server boot on the `console` SMS/email providers. **Testing phase only** — it makes any known email or phone number a way into that account. Pair it with `NEXT_PUBLIC_ALLOW_DEV_OTP` on the frontend to keep the demo Google popup |
 | `JWT_SECRET` | change-me | **must change in production** |
 | `ACCESS_TOKEN_EXPIRES_IN` / `REFRESH_TOKEN_TTL_DAYS` | `15m` / `30` | session lifetimes |
 | `OTP_TTL_MINUTES` / `OTP_MAX_ATTEMPTS` | `5` / `5` | OTP policy |
@@ -598,13 +601,14 @@ Frontend: `npm run dev`, `build`, `start`, `test`, `lint`, `lint:fix`, `typechec
 ## 15. Production checklist
 
 1. Set strong `JWT_SECRET` and `MEDICAL_ENCRYPTION_KEY`; set `NODE_ENV=production` (disables `devOtp` echo and Swagger).
-2. Configure real `SMS_PROVIDER` / `EMAIL_PROVIDER` — with `console` in production, OTP requests fail loudly instead of pretending to send.
-3. Decide `PAYMENT_PROVIDER`: a real gateway, or `none` until then (sandbox is for demos only).
-4. Configure Google OAuth env on both apps, or leave unset (the button hides itself in production).
-5. Lock `CORS_ORIGIN` to your frontend origin.
-6. Replace/rotate all seeded demo accounts and the shared demo password.
-7. Point uploads at object storage if the server disk isn't durable.
-8. Run `npm test` in both packages and `npm run lint` in the frontend — CI gates on these.
-9. Rebuild the backend bundle (`npm run build`); `npm start` runs `dist/`, which is gitignored and not deployed for you.
+2. **Remove `ALLOW_DEV_OTP_IN_PRODUCTION` and `NEXT_PUBLIC_ALLOW_DEV_OTP`** (both are set to `true` in `render.yaml` for the testing phase). Until they are gone, the OTP is handed to whoever asks for it.
+3. Configure real `SMS_PROVIDER` / `EMAIL_PROVIDER` — with `console` in production, OTP requests fail loudly instead of pretending to send.
+4. Decide `PAYMENT_PROVIDER`: a real gateway, or `none` until then (sandbox is for demos only).
+5. Configure Google OAuth env on both apps, or leave unset (the button hides itself in production).
+6. Lock `CORS_ORIGIN` to your frontend origin.
+7. Replace/rotate all seeded demo accounts and the shared demo password.
+8. Point uploads at object storage if the server disk isn't durable.
+9. Run `npm test` in both packages and `npm run lint` in the frontend — CI gates on these.
+10. Rebuild the backend bundle (`npm run build`); `npm start` runs `dist/`, which is gitignored and not deployed for you.
 10. If upgrading an existing database, run `npm run electives:plan` before `apply` and read the plan, then `npm run registrations:plan` / `apply` to give students registrations for them.
 11. If upgrading from a pre-multi-school database, run `npm run schools:migrate -- --apply` to stamp tenant IDs and create school records before starting the server.

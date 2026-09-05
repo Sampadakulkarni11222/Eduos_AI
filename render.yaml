@@ -34,6 +34,16 @@ services:
         sync: false
       - key: SWAGGER_ENABLED
         value: "false"
+      # ── TESTING PHASE ONLY ───────────────────────────────────────
+      # The project has no SMS/email provider yet, so the 6-digit code is
+      # echoed back to the client (`devOtp`) and shown on the sign-in screen
+      # for every login path. This also lets the service boot with the
+      # console providers instead of refusing to start.
+      # ⚠ REMOVE THIS (and set SMS_PROVIDER/EMAIL_PROVIDER to real vendors)
+      # before real users sign in — while it is on, anyone who knows an email
+      # or phone number can read that account's code out of the response.
+      - key: ALLOW_DEV_OTP_IN_PRODUCTION
+        value: "true"
 
   - type: web
     name: school-erp-frontend
@@ -45,6 +55,12 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # ── TESTING PHASE ONLY — pair of ALLOW_DEV_OTP_IN_PRODUCTION above ──
+      # Keeps the demo "Continue with Google" popup available in this build.
+      # The OTP hint on the sign-in screen needs no flag here: it renders
+      # whenever the backend echoes a code. Remove both before launch.
+      - key: NEXT_PUBLIC_ALLOW_DEV_OTP
+        value: "true"
       - key: NEXT_PUBLIC_BACKEND_URL
         fromService:
           type: web
