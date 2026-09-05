@@ -143,7 +143,14 @@ Copy `.env.example` to `.env` and fill in your values.
 | `OTP_MAX_ATTEMPTS` | `5` | Max wrong-code attempts before an OTP is locked out |
 | `BCRYPT_SALT_ROUNDS` | `10` | Password hashing cost |
 | `MEDICAL_ENCRYPTION_KEY` | — | Key used to encrypt medical record fields at rest |
-| `WHATSAPP_VERIFY_TOKEN` | — | Token checked during the WhatsApp webhook handshake (stand-in) |
+| `WHATSAPP_VERIFY_TOKEN` | — | Token echoed back during Meta's webhook subscription handshake |
+| `WA_PHONE_NUMBER_ID` | — | Meta's id for the sending number. Set together with `WA_ACCESS_TOKEN` to leave simulation mode |
+| `WA_ACCESS_TOKEN` | — | Meta Cloud API access token used to send replies |
+| `WA_APP_SECRET` | — | App Secret. Authenticates inbound webhooks (`X-Hub-Signature-256`). Required once live |
+| `SCHOOL_WHATSAPP_NUMBER` | — | Dialable number families message, for the portal's "Chat on WhatsApp" link |
+| `WHATSAPP_ENABLED` | `true` | Master switch for the WhatsApp hand-off entry point |
+| `WHATSAPP_SESSION_IDLE_MINUTES` | `120` | Idle gap after which the next message starts a fresh conversation session |
+| `WHATSAPP_HISTORY_TURNS` | `6` | Turns of transcript given to the model so a follow-up can be resolved |
 
 ---
 
@@ -180,12 +187,102 @@ This project implements a single-school RBAC-driven ERP: every collection below 
 | Growth ⚠️ | `/growth` | `ai.insights.read` | **Stand-in** — heuristic score (60% marks + 40% attendance), not a trained model |
 | Risk ⚠️ | `/risk` | `ai.insights.read` | **Stand-in** — rule-based thresholds, not a trained model |
 | AI ⚠️ | `/ai` | `ai.copilot.use` | **Stand-in** — rule-based intent matcher, no LLM key configured |
-| WhatsApp ⚠️ | `/whatsapp` | public webhook + `ai.copilot.use` for `/simulate` | **Stand-in** — no WhatsApp Business credentials; webhook logs payloads, `/simulate` exercises the flow locally |
+| WhatsApp | `/whatsapp` | signed public webhook; `ai.copilot.use` on the sender's own profile | The portal assistant, reachable from WhatsApp. Runs in simulation until `WA_*` is set. See [The WhatsApp assistant](#the-whatsapp-assistant) |
 | Observability | `/observability` | public | `/ready` (DB connection check), `/metrics` (uptime/memory) |
 
 ⚠️ = clearly-marked stand-in. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for what swapping in a real provider would look like.
 
 Full request/response schemas for every endpoint are in Swagger UI at `/api-docs` once the server is running.
+
+### The WhatsApp assistant
+
+The same assistant as the portal's Ask Agent, reached from a phone. It is not a
+second bot: `whatsapp.agent.js` turns a phone number into the identical `actor`
+object `middleware/auth.js` builds from a JWT, then calls the same
+`runAgentSafely()` orchestrator. Everything downstream — intent parsing, tool
+authorization, confirm-before-write, the audit trail — is shared code, and
+`source` is the only thing that differs.
+
+**Who the sender is.** `Account.phoneE164` is already the platform's identity
+key, so no new user or profile system was added. The number Meta verified is
+normalised to digits and matched against it (anchored on the whole number, never
+on a suffix — a suffix match would let `+44…` resolve to a `+91…` account). The
+most recent active profile is used, and a multi-profile account is told which
+hat it is wearing. Nothing the sender *writes* is ever consulted for identity:
+"I am Admin" is just text handed to the intent parser, and the parser's proposal
+is filtered to the tools that number's profile actually holds.
+
+Each way of failing gets its own answer, because "your account is suspended" and
+"we don't know this number" need different actions from the person reading them:
+
+| Outcome | Reply |
+|---|---|
+| `UNKNOWN_NUMBER` | Not registered — ask the school office to add it |
+| `ACCOUNT_INACTIVE` / `NO_PROFILE` / `NO_SCHOOL_ASSIGNED` | Account is no longer active — contact the office |
+| `AMBIGUOUS_NUMBER` | Linked to more than one record — the office must deduplicate |
+| `ASSISTANT_NOT_PERMITTED` | The role lacks `ai.copilot.use` |
+
+**School isolation.** A webhook has no `authenticate` middleware, so it does not
+get a tenant scope for free — and with no scope the `tenantScoped` plugin filters
+nothing at all, which would read across every school on the platform. Each turn
+is therefore wrapped in `runInActorScope()`, which pins it to the sender's own
+school exactly as the middleware would, or runs a platform Super Admin
+cross-school (which also means `assertSchoolContext()` refuses their writes, just
+as it does on the web).
+
+**Permissions.** `ai.copilot.use` is checked explicitly, because the webhook has
+no route to hang `requirePermission` on. Beyond that, no permission logic lives
+in the WhatsApp module: `checkAuthorization()` reads the sender's live permission
+map, so revoking a role takes effect on the next message.
+
+**Conversation memory.** `WhatsappConversation` (one row per number) and
+`WhatsappMessage` (the transcript) persist in MongoDB, so context survives
+restarts, redeploys and hours between messages. The last
+`WHATSAPP_HISTORY_TURNS` turns of the current session are passed to the intent
+parser as transcript — enough to resolve "what about last month?", bounded so a
+long thread does not grow every request. After
+`WHATSAPP_SESSION_IDLE_MINUTES` of silence the session rotates, so tomorrow's
+question is not answered against yesterday's subject. The cached identity on the
+conversation row is for auditing only; authorization is re-resolved every turn.
+
+**Duplicate deliveries.** Meta redelivers any webhook it did not get a 2xx for.
+`providerMessageId` carries a unique index and is written *before* the message is
+processed, so a redelivered "YES" cannot execute a pending write twice. The
+webhook also never throws — a 500 would simply invite the redelivery it is
+trying to avoid.
+
+**AI credits are untouched.** Metering lives in `aiCredit.service.js` and is
+wired into `/ai/tutor` only; the web assistant's `/ai/agent` charges nothing for
+a turn. WhatsApp matches that exactly — it is neither a cheaper way in nor a
+stricter one — and a 402 from the credit system reaches the sender as itself
+rather than as a generic failure. No credit code was modified.
+
+**Testing it locally.** With no `WA_*` set the module runs in simulation:
+outbound replies are logged instead of sent, and `POST /whatsapp/simulate`
+drives the same code path as the logged-in user, sharing the persisted thread so
+multi-turn context can actually be exercised. To drive the real shape of the
+payload, POST Meta's envelope at the webhook:
+
+```bash
+curl -X POST http://localhost:5000/api/v1/whatsapp/webhook \
+  -H 'Content-Type: application/json' \
+  -d '{"entry":[{"changes":[{"value":{"messages":[
+        {"id":"wamid.test1","from":"919999900001","type":"text",
+         "text":{"body":"What is my attendance?"}}]}}]}]}'
+```
+
+In development an unset `WA_APP_SECRET` is accepted with a warning; outside
+development an unsigned webhook is refused, and the app refuses to start live
+without it.
+
+**Going live** (Meta app dashboard): add the WhatsApp product, set
+`WA_PHONE_NUMBER_ID` and `WA_ACCESS_TOKEN` from the sending number, put the App
+Secret in `WA_APP_SECRET`, then register the callback URL
+`https://<host>/api/v1/whatsapp/webhook` with `WHATSAPP_VERIFY_TOKEN` as the
+verify token and subscribe to the `messages` field. The number must be reachable
+over public HTTPS for the handshake to complete.
+
+---
 
 ### Authentication & RBAC
 

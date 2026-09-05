@@ -28,7 +28,9 @@
     "electives:plan": "node scripts/add-electives.js",
     "electives:apply": "node scripts/add-electives.js --apply",
     "registrations:plan": "node scripts/seed-registrations.js",
-    "registrations:apply": "node scripts/seed-registrations.js --apply"
+    "registrations:apply": "node scripts/seed-registrations.js --apply",
+    "whatsapp:webhook": "node scripts/whatsapp-webhook-setup.js",
+    "whatsapp:webhook:check": "node scripts/whatsapp-webhook-setup.js --check"
   },
   "keywords": [
     "school",
@@ -39,6 +41,10 @@
   ],
   "author": "",
   "license": "ISC",
+  "//overrides": "qs <=6.15.3 is GHSA-4mjr-xmp4-gh2g (DoS via attacker-controlled isBuffer). express -> body-parser pins qs to ~6.15.1, so npm cannot reach the patched 6.16.0 on its own. Drop this override once body-parser widens its range.",
+  "overrides": {
+    "qs": "^6.16.0"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
     "@google/generative-ai": "^0.21.0",

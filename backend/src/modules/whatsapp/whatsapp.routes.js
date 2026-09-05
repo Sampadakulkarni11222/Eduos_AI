@@ -10,9 +10,13 @@ const router = Router();
  * tags:
  *   name: WhatsApp
  *   description: >
- *     WhatsApp webhook (STAND-IN — no WhatsApp Business credentials
- *     configured). Webhook endpoints are public per Meta's protocol;
- *     /simulate is protected and lets you test the flow locally.
+ *     The portal's AI assistant, reached over WhatsApp. The sender's number is
+ *     resolved to their ERP account, and the turn then runs through the same
+ *     agent core, permission checks and school scoping as the web assistant.
+ *     Webhook endpoints are public per Meta's protocol and are authenticated by
+ *     its X-Hub-Signature-256 HMAC instead; /simulate is session-protected and
+ *     drives the same path locally. With no WA_* credentials set, outbound
+ *     replies are logged rather than sent.
  */
 
 /**
@@ -27,11 +31,20 @@ const router = Router();
  *         description: Challenge echoed back
  *   post:
  *     summary: Receive an inbound WhatsApp webhook event
+ *     description: >
+ *       Verifies Meta's signature, then for each message: deduplicates on the
+ *       provider message id, resolves the sender to an ERP account, loads the
+ *       persisted conversation, answers through the shared agent inside that
+ *       account's school scope, and replies. Always answers 200 once the
+ *       signature checks out — a non-2xx makes Meta redeliver, which is how a
+ *       single message turns into a loop.
  *     tags: [WhatsApp]
  *     security: []
  *     responses:
  *       200:
  *         description: Webhook received
+ *       401:
+ *         description: Missing or invalid X-Hub-Signature-256
  */
 router.get('/webhook', controller.verifyWebhook);
 router.post('/webhook', controller.receiveWebhook);
@@ -62,12 +75,16 @@ router.post('/simulate', authenticate, requirePermission('ai.copilot.use'), cont
  * @swagger
  * /whatsapp/assistant-link:
  *   get:
- *     summary: Deep link handing the signed-in family over to the school's WhatsApp
+ *     summary: Deep link handing the signed-in user over to the school's WhatsApp
  *     description: >
- *       Returns `{ enabled: false, reason }` when WhatsApp is switched off, no
- *       number is configured, or the caller is not a student/parent — the client
- *       hides the entry point in each case. The prefilled message is built from
- *       server-held records, not from anything the client asserts.
+ *       Offered to anyone holding `ai.copilot.use` — families and staff alike —
+ *       except a Super Admin, who belongs to no single school. Returns
+ *       `{ enabled: false, reason }` when WhatsApp is switched off, no number is
+ *       configured, or the caller is not eligible, and the client hides the entry
+ *       point in each case. The prefilled message is a bare greeting: the
+ *       assistant identifies the sender from their number and opens with their
+ *       own records, so nothing identifying is put in the user's mouth or
+ *       trusted from the client.
  *     tags: [WhatsApp]
  *     responses:
  *       200:

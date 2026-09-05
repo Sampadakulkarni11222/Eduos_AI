@@ -119,6 +119,23 @@ export const env = {
   WA_PHONE_NUMBER_ID: process.env.WA_PHONE_NUMBER_ID ?? '',
   WA_ACCESS_TOKEN: process.env.WA_ACCESS_TOKEN ?? '',
   WA_APP_SECRET: process.env.WA_APP_SECRET ?? '',
+  // ── Webhook registration (scripts/whatsapp-webhook-setup.js only) ──
+  //
+  // Receiving messages takes one more step than the credentials above: Meta has
+  // to be told the callback URL *and* subscribed to the `messages` field. A URL
+  // that verifies but is not subscribed goes quiet forever, which looks exactly
+  // like a broken bot -- so these exist to let the setup script do both over the
+  // API instead of by hand in the dashboard.
+  //
+  // Identifiers, not secrets: the App ID is public and the WABA ID is visible to
+  // anyone in the Business account. Neither is read at runtime.
+  WA_APP_ID: process.env.WA_APP_ID ?? '',
+  WA_WABA_ID: process.env.WA_WABA_ID ?? '',
+  // Public HTTPS origin Meta should deliver to, without a trailing slash. The
+  // script appends the webhook path itself, because getting that path wrong
+  // (/api/whatsapp instead of /api/v1/whatsapp) is a 404 Meta reports as a
+  // verification failure with no hint as to why.
+  WA_CALLBACK_ORIGIN: process.env.WA_CALLBACK_ORIGIN ?? '',
   // The number families message, in international format. Distinct from
   // WA_PHONE_NUMBER_ID, which is Meta's internal id for the sending number and
   // is not dialable — putting that in a wa.me link produces a dead link.
@@ -126,6 +143,16 @@ export const env = {
   // Master switch for the "Chat on WhatsApp" entry point. Defaults on so a
   // configured number is enough; set false to hide it without unsetting config.
   WHATSAPP_ENABLED: process.env.WHATSAPP_ENABLED !== 'false',
+  // ── WhatsApp conversation memory ──
+  // How long a thread may sit idle before the next message starts a fresh
+  // session. Not a security boundary: identity, role and permissions are
+  // re-resolved on every turn regardless. It is a relevance boundary, so a
+  // question tomorrow is not answered against yesterday's subject.
+  WHATSAPP_SESSION_IDLE_MINUTES: Number(process.env.WHATSAPP_SESSION_IDLE_MINUTES) || 120,
+  // Turns of transcript handed to the model to resolve a follow-up. Small on
+  // purpose -- "what about last month?" refers a turn or two back, and sending
+  // the whole thread grows every request without making the answer better.
+  WHATSAPP_HISTORY_TURNS: Number(process.env.WHATSAPP_HISTORY_TURNS) || 6,
   // ── Provider abstractions (all optional — safe fallbacks in dev) ──
   // Google Sign-In: when set, /auth/google verifies the ID token audience.
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? '',

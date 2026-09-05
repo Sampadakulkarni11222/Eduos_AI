@@ -1,12 +1,18 @@
 import crypto from 'crypto';
-import { handleInboundMessage, converse } from './whatsapp.agent.js';
+import { handleInboundMessage, resolveActorByPhone, converse } from './whatsapp.agent.js';
 import { t } from '../../utils/language.js';
 import { env, isWhatsappLive, isWhatsappSignatureConfigured } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
-import { Student } from '../../models/student.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { AuditLog } from '../../models/auditLog.model.js';
-import { getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
+import {
+  loadConversation,
+  attachIdentity,
+  recordInbound,
+  recordOutbound,
+  markProcessed,
+  buildHistory,
+} from './whatsapp.session.js';
 
 /**
  * WhatsApp integration.
@@ -85,23 +91,43 @@ export function normaliseWhatsappNumber(raw) {
   return digits;
 }
 
+/**
+ * The permission that decides who is offered the hand-off.
+ *
+ * Deliberately the same key the assistant routes require and the same one
+ * resolveActorByPhone() checks, so a role that loses the assistant loses the
+ * WhatsApp entry point in the same breath.
+ */
+const COPILOT_PERMISSION = 'ai.copilot.use';
+
+/** Platform-level role: no school of its own, so no WhatsApp hand-off. */
+const SUPER_ADMIN_ROLE_KEY = 'SUPER_ADMIN';
+
 /** True when the "Chat on WhatsApp" entry point should be offered at all. */
 export function isAssistantLinkEnabled() {
   return env.WHATSAPP_ENABLED && normaliseWhatsappNumber(env.SCHOOL_WHATSAPP_NUMBER) !== null;
 }
 
 /**
- * Builds the deep link that hands a signed-in student or parent over to the
- * school's WhatsApp number, with their identity already typed out.
+ * Builds the deep link that hands a signed-in user over to the school's
+ * WhatsApp number.
  *
- * Built on the server rather than in the browser for two reasons: the
- * identifiers (admission number, guardian profile) come from records the
- * client cannot be trusted to assert, and the number itself is configuration
- * the client has no business knowing before it is switched on.
+ * The prefill is a bare "Hi", and that is the whole design. It used to be a
+ * form the user sent about themselves -- name, admission number, "I need
+ * assistance" -- which asked people to introduce themselves to a bot that
+ * already knows exactly who they are from the number they are messaging from.
+ * It also read as a support ticket, when what is on the other end is an
+ * assistant that can answer straight away.
  *
- * The message is a *convenience*, not authentication. The bot re-resolves who
- * the sender is from their phone number when they actually message, so editing
- * this text before sending gains nothing — see resolveActorByPhone.
+ * So the opener is now just an opener, and whatsapp.briefing.js answers it by
+ * fetching that user's own records and replying with them -- which leaves
+ * their next message free to be a real question.
+ *
+ * Built on the server rather than in the browser because the number is
+ * configuration the client has no business knowing before it is switched on.
+ * Nothing in the link authenticates anything: the bot resolves the sender from
+ * their phone number on every turn, so editing this text before sending gains
+ * nothing -- see resolveActorByPhone.
  */
 export async function buildAssistantLink(actor) {
   if (!env.WHATSAPP_ENABLED) {
@@ -113,31 +139,37 @@ export async function buildAssistantLink(actor) {
     return { enabled: false, reason: 'NUMBER_NOT_CONFIGURED' };
   }
 
-  const role = actor?.roleKey;
-  if (role !== 'STUDENT' && role !== 'PARENT') {
-    // Staff have the in-portal assistant and the tools it fronts; the WhatsApp
-    // hand-off exists for families, whose data is scoped to themselves.
+  // Eligibility is the assistant permission, not a list of roles.
+  //
+  // This used to be `role === 'STUDENT' || role === 'PARENT'`, on the reasoning
+  // that staff have the portal. But a teacher between periods and a parent on a
+  // bus are in the same situation -- away from the laptop, wanting one answer --
+  // and a second, hand-maintained idea of who may use the assistant is exactly
+  // how the WhatsApp surface drifts out of step with the web one. `ai.copilot.use`
+  // is what the route already requires and what resolveActorByPhone() re-checks
+  // when the message actually arrives, so making it the gate here means the
+  // three agree by construction.
+  //
+  // Nothing widens: a teacher's briefing and answers are built from their own
+  // OWN-scoped tools, the same ones the portal gives them.
+  if (!actor?.permissions?.[COPILOT_PERMISSION]) {
+    return { enabled: false, reason: 'ASSISTANT_NOT_PERMITTED' };
+  }
+
+  // The exception, and it is not about seniority. A Super Admin belongs to no
+  // school, so their turn runs cross-school (runInActorScope) -- an opening
+  // briefing would read every school on the platform at once, and the
+  // orchestrator refuses their writes anyway. Platform administration stays in
+  // the portal.
+  if (actor.roleKey === SUPER_ADMIN_ROLE_KEY) {
     return { enabled: false, reason: 'ROLE_NOT_ELIGIBLE' };
   }
 
-  const name = actor.displayName ?? 'a parent/guardian';
-  let message;
-
-  if (role === 'STUDENT') {
-    const studentId = await getOwnStudentId(actor.profileId);
-    const student = studentId ? await Student.findById(studentId).select('admissionNo').lean() : null;
-    // The admission number is what office staff actually look people up by;
-    // the internal id would be useless to whoever picks up the conversation.
-    const reference = student?.admissionNo ?? actor.profileId;
-    message = `Hello,\n\nI am ${name}.\n\nStudent ID: ${reference}\n\nI need assistance.`;
-  } else {
-    const childIds = await getGuardianStudentIds(actor.profileId);
-    const children = await Student.find({ _id: { $in: childIds } }).select('admissionNo firstName lastName').lean();
-    const childLine = children.length
-      ? `\n\nChild: ${children.map((c) => `${c.firstName} ${c.lastName ?? ''}`.trim() + ` (${c.admissionNo})`).join(', ')}`
-      : '';
-    message = `Hello,\nI am ${name}.\n\nParent ID: ${actor.profileId}${childLine}\n\nI need assistance regarding my child.`;
-  }
+  // One word, and it is the user's to change. Anything longer is a script
+  // being put in their mouth; anything empty leaves them staring at a blank
+  // compose box wondering what the bot expects. isOpeningMessage() in
+  // whatsapp.briefing.js recognises this and every ordinary variant of it.
+  const message = 'Hi';
 
   return {
     enabled: true,
@@ -203,8 +235,105 @@ export function extractMessages(payload) {
 }
 
 /**
+ * Handles one inbound message: dedupe, resolve, answer, persist, reply.
+ *
+ * Each message is isolated from the others in the batch. Meta can deliver
+ * several at once, and one sender's failure must not stop the rest of the
+ * batch being answered.
+ */
+async function handleOne(msg) {
+  const conversation = await loadConversation(msg.from);
+  if (!conversation) {
+    logger.warn('Ignoring a WhatsApp message with an unusable sender number');
+    return { to: msg.from, reply: null, skipped: 'INVALID_NUMBER' };
+  }
+
+  // Dedupe FIRST, before anything is resolved or executed. Meta redelivers any
+  // webhook it did not get a 200 for, and a redelivered "YES" would otherwise
+  // execute a pending write a second time. The uniqueness lives on an index,
+  // so two concurrent redeliveries race into it rather than past it.
+  const { duplicate, message: inboundDoc } = await recordInbound(conversation, {
+    providerMessageId: msg.id,
+    type: msg.type,
+    text: msg.text ?? '',
+  });
+  if (duplicate) {
+    return { to: msg.from, reply: null, skipped: 'DUPLICATE' };
+  }
+
+  if (!msg.text) {
+    // No text to detect a language from, so English is the only honest default.
+    const reply =
+      msg.type === 'image' ? t('agent.imageNotSupported', 'en') : t('agent.sendText', 'en');
+    await markProcessed(inboundDoc, { status: 'PROCESSED', metadata: { unsupportedType: msg.type } });
+    await deliver(conversation, msg.from, reply, { unsupportedType: msg.type });
+    return { to: msg.from, reply };
+  }
+
+  try {
+    const result = await handleInboundMessage({
+      from: msg.from,
+      text: msg.text,
+      conversation,
+    });
+
+    // Recorded after the turn, from what the number actually resolved to.
+    // Cached for auditing only -- the next turn re-resolves from live records.
+    await attachIdentity(conversation, result.unknownSender ? null : await resolveActorByPhone(msg.from));
+
+    await markProcessed(inboundDoc, {
+      status: 'PROCESSED',
+      metadata: {
+        tool: result.tool ?? null,
+        lang: result.lang ?? null,
+        unknownSender: Boolean(result.unknownSender),
+        reason: result.reason ?? null,
+      },
+    });
+    await deliver(conversation, msg.from, result.reply, { tool: result.tool ?? null });
+    return { to: msg.from, reply: result.reply };
+  } catch (err) {
+    // A refusal ("you don't have permission to do that", "you are out of AI
+    // credits") is a legitimate, expected answer and must reach the user as
+    // itself -- burying it under a generic failure leaves people retrying
+    // something that will never work. Only genuinely unexpected errors get the
+    // vague message, and none of them get a stack trace.
+    const expected = err?.statusCode >= 400 && err?.statusCode < 500;
+    const reply = expected ? err.message : t('agent.failed', 'en');
+    if (!expected) logger.error(`WhatsApp agent failed for a sender: ${err.message}`);
+    await markProcessed(inboundDoc, {
+      status: 'FAILED',
+      metadata: { code: err?.code ?? null, status: err?.statusCode ?? null },
+    });
+    await deliver(conversation, msg.from, reply, { error: err?.code ?? 'UNEXPECTED' });
+    return { to: msg.from, reply };
+  }
+}
+
+/**
+ * Sends a reply and records it, in that order.
+ *
+ * The transcript is written whether or not the send succeeded, with the
+ * outcome on the row: a reply Meta rejected still happened as far as the
+ * conversation's context is concerned, and losing it would leave the next
+ * follow-up with a hole in the middle of the thread.
+ */
+async function deliver(conversation, to, text, metadata = null) {
+  const sent = await sendMessage(to, text);
+  await recordOutbound(conversation, {
+    text,
+    metadata,
+    status: sent.sent === false && sent.error ? 'SEND_FAILED' : 'SENT',
+  });
+  return sent;
+}
+
+/**
  * Processes an inbound webhook: every text message is answered by the shared
  * agent core, so WhatsApp is not a second implementation of anything.
+ *
+ * Always resolves. Meta retries any webhook that does not return 2xx, so
+ * throwing here turns one bad message into an indefinite redelivery loop.
  */
 export async function receiveWebhook(payload) {
   const messages = extractMessages(payload);
@@ -215,32 +344,24 @@ export async function receiveWebhook(payload) {
 
   const replies = [];
   for (const msg of messages) {
-    if (!msg.text) {
-      replies.push({
-        to: msg.from,
-        // No text to detect from, so English is the only honest default.
-        reply: msg.type === 'image' ? t('agent.imageNotSupported', 'en') : t('agent.sendText', 'en'),
-      });
-      continue;
-    }
     try {
-      const result = await handleInboundMessage({ from: msg.from, text: msg.text });
-      replies.push({ to: msg.from, reply: result.reply });
-      await sendMessage(msg.from, result.reply);
+      const outcome = await handleOne(msg);
+      if (outcome.reply !== null) replies.push({ to: outcome.to, reply: outcome.reply });
+      else replies.push({ to: outcome.to, skipped: outcome.skipped });
     } catch (err) {
-      // A refusal ("you don't have permission to do that") is a legitimate,
-      // expected answer and must reach the user as itself — burying it under
-      // a generic failure leaves people retrying something that will never
-      // work. Only genuinely unexpected errors get the vague message.
-      const expected = err?.statusCode >= 400 && err?.statusCode < 500;
-      const reply = expected ? err.message : t('agent.failed', 'en');
-      if (!expected) logger.error(`WhatsApp agent failed for ${msg.from}: ${err.message}`);
-      replies.push({ to: msg.from, reply });
-      await sendMessage(msg.from, reply);
+      // Reaching here means the session store itself failed. Acknowledge the
+      // delivery anyway rather than inviting Meta to redeliver forever.
+      logger.error(`WhatsApp message could not be processed at all: ${err.message}`);
+      replies.push({ to: msg.from, skipped: 'INTERNAL_ERROR' });
     }
   }
 
-  return { received: true, handled: replies.length, replies };
+  return {
+    received: true,
+    handled: replies.filter((r) => r.reply).length,
+    skipped: replies.filter((r) => r.skipped).length,
+    replies,
+  };
 }
 
 /**
@@ -254,11 +375,14 @@ export async function sendMessage(to, text) {
   }
   try {
     const res = await fetch(
-      `https://graph.facebook.com/v20.0/${process.env.WA_PHONE_NUMBER_ID}/messages`,
+      // Read through `env` rather than process.env: config.env.js is the one
+      // place these are validated and defaulted, and reading around it is how
+      // a deployment ends up "live" against `undefined`.
+      `https://graph.facebook.com/v20.0/${env.WA_PHONE_NUMBER_ID}/messages`,
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${process.env.WA_ACCESS_TOKEN}`,
+          Authorization: `Bearer ${env.WA_ACCESS_TOKEN}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -272,6 +396,9 @@ export async function sendMessage(to, text) {
     if (!res.ok) throw new Error(`WhatsApp send failed: ${res.status}`);
     return { sent: true };
   } catch (err) {
+    // Never rethrown. A Meta outage must not turn into a 500 on the webhook,
+    // because Meta answers a 500 by redelivering the same message -- which
+    // would re-run the agent, and for a confirmation, re-run the write.
     logger.error(`WhatsApp send error: ${err.message}`);
     return { sent: false, error: err.message };
   }
@@ -292,7 +419,40 @@ const SUGGESTIONS = [
  * phone — including confirmation prompts for anything that writes.
  */
 export async function simulate({ text, message }, actor) {
-  const result = await converse({ actor, text: text ?? message ?? '' });
+  const body = text ?? message ?? '';
+
+  // The simulator shares the real thread for this person's number, so a
+  // preview exercises the same persisted memory a real conversation would --
+  // including follow-ups like "what about last month?". Without this it could
+  // only ever demonstrate single-turn behaviour, which is precisely the part
+  // that needs checking. Falls back to a scratch turn when the account has no
+  // usable number.
+  const conversation = await loadConversation(actor?.phone);
+  let history = [];
+  let inboundDoc = null;
+  if (conversation) {
+    history = await buildHistory(conversation);
+    ({ message: inboundDoc } = await recordInbound(conversation, {
+      // No provider id: this did not come from Meta, and giving it one would
+      // let a simulated turn suppress a real delivery through the dedupe index.
+      providerMessageId: null,
+      type: 'text',
+      text: body,
+    }));
+  }
+
+  // No tenant wrapper here: /simulate arrives through `authenticate`, which
+  // has already scoped the request to the caller's school.
+  const result = await converse({ actor, text: body, history });
+
+  if (conversation) {
+    await markProcessed(inboundDoc, { status: 'PROCESSED', metadata: { simulated: true } });
+    await recordOutbound(conversation, {
+      text: result.reply,
+      metadata: { simulated: true, tool: result.tool ?? null },
+      status: 'SENT',
+    });
+  }
 
   return {
     reply: result.reply,

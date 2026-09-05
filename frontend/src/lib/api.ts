@@ -688,9 +688,9 @@ export const api = {
     request<AiReply>('/ai/chat', { method: 'POST', body: JSON.stringify({ message, conversationId }) }),
 
   // ── WhatsApp hand-off for families ──
-  // The link is built server-side: the identifiers in the prefilled message
-  // come from records the client cannot assert, and the number is not exposed
-  // until the feature is switched on.
+  // The link is built server-side: the number is not exposed until the feature
+  // is switched on. The prefill is just "Hi" — the bot identifies the sender
+  // from their phone number and opens with their own records.
   whatsappAssistantLink: () => request<WhatsappAssistantLink>('/whatsapp/assistant-link'),
   trackWhatsappAssistantClick: (device: 'MOBILE' | 'DESKTOP' | 'TABLET') =>
     request<{ recorded: boolean }>('/whatsapp/assistant-link/click', { method: 'POST', body: JSON.stringify({ device }) }),
