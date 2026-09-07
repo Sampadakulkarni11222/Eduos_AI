@@ -65,11 +65,23 @@ export default function AttendancePage() {
 
   useEffect(() => { if (sectionId) void load(sectionId, date, periodNo); }, [sectionId, date, periodNo, load]);
 
-  // A period only exists on the day it is timetabled, so switching to a day
-  // that lacks the selected one falls back to whole-day rather than erroring.
+  /**
+   * Keep the selected slot on something this teacher may actually mark.
+   *
+   * Two cases: a period that is not timetabled on the newly chosen day, and
+   * the whole day when the caller is a subject teacher rather than the class
+   * teacher. Both used to leave the roll editable and fail only on save.
+   */
   useEffect(() => {
-    if (periodNo === null || !data) return;
-    if (!data.periods.some((p) => p.periodNo === periodNo)) setPeriodNo(null);
+    if (!data) return;
+    if (periodNo !== null && !data.periods.some((p) => p.periodNo === periodNo)) {
+      setPeriodNo(null);
+      return;
+    }
+    if (periodNo === null && data.canMarkWholeDay === false) {
+      const mine = data.periods.find((p) => p.canMark);
+      if (mine) setPeriodNo(mine.periodNo);
+    }
   }, [data, periodNo]);
 
   const allPresent = () => {
@@ -140,12 +152,14 @@ export default function AttendancePage() {
             className="input"
             value={periodNo ?? ''}
             onChange={(e) => setPeriodNo(e.target.value === '' ? null : Number(e.target.value))}
-            aria-label="Period"
+            aria-label="Subject"
             disabled={saving}
-            title="Mark the whole day, or one timetabled period for per-subject attendance"
+            title="Mark one subject period, or the whole day if you are the class teacher"
           >
-            <option value="">Whole day</option>
-            {data.periods.map((p) => (
+            {/* Whole-day is the class teacher's register, so it is offered
+                only to someone the server would accept it from. */}
+            {data.canMarkWholeDay !== false && <option value="">Whole day</option>}
+            {data.periods.filter((p) => p.canMark !== false).map((p) => (
               <option key={p.periodNo} value={p.periodNo}>
                 P{p.periodNo} · {p.subject}{p.startTime ? ` (${p.startTime})` : ''}
               </option>
@@ -159,6 +173,25 @@ export default function AttendancePage() {
           </span>
         )}
       </div>
+
+      {/* Whose register this is. A teacher covering an unfamiliar class should
+          not have to guess which class, or whose subject, they are marking. */}
+      {data && (
+        <div className="att-context">
+          <span><b>Class</b> {data.section.grade ?? data.section.name}</span>
+          {data.section.sectionName && <span><b>Section</b> {data.section.sectionName}</span>}
+          {data.section.classTeacher && <span><b>Class teacher</b> {data.section.classTeacher}</span>}
+          <span><b>Subject</b> {data.subject ?? 'Whole day'}</span>
+          {data.subjectTeacher && <span><b>Subject teacher</b> {data.subjectTeacher}</span>}
+        </div>
+      )}
+
+      {data && data.canMark === false && (
+        <p className="att-locked" role="status">
+          This register belongs to another teacher — you can view it, but only the
+          teacher of this period (or the class teacher) can save it.
+        </p>
+      )}
 
       {showBulk && data && (
         <BulkUploadModal
@@ -237,7 +270,9 @@ export default function AttendancePage() {
                 {summary.PRESENT}P · {summary.ABSENT}A · {summary.LATE}L · {summary.EXCUSED}E
               </span>
             )}
-            <Button onClick={() => void save()} disabled={saving || markedCount === 0}>
+            {/* A register this teacher may not save is read-only here as well
+                as at the API, so the refusal is visible before the work. */}
+            <Button onClick={() => void save()} disabled={saving || markedCount === 0 || data.canMark === false}>
               {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save attendance'}
             </Button>
           </div>

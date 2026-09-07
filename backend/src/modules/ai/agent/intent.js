@@ -1,4 +1,7 @@
 import { generate, isLlmEnabled } from '../../../providers/ai.provider.js';
+
+/** Enough for a reasoning model to think and then emit a small JSON object. */
+const ROUTING_MAX_TOKENS = 4096;
 import { toolsAvailableTo } from './tools.js';
 import { logger } from '../../../utils/logger.js';
 
@@ -505,7 +508,16 @@ async function defaultCallModel(message, actor, history = []) {
       : []),
   ].join('\n');
 
-  const result = await generate({ system, message, maxTokens: 512 });
+  /**
+   * The budget has to cover the model's own reasoning, not just the JSON.
+   *
+   * At 512 tokens a reasoning model spends the whole allowance thinking and
+   * the response is its thinking, truncated mid-sentence — which parses as
+   * nothing and is thrown away, so the assistant answered "I'm not sure" to
+   * every message the rules missed. The wall-clock timeout in the provider,
+   * not a small token budget, is what bounds the wait.
+   */
+  const result = await generate({ system, message, maxTokens: ROUTING_MAX_TOKENS });
   if (!result.generated) return null;
 
   try {

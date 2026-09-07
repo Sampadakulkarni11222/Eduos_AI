@@ -7,6 +7,7 @@ import { AppError } from '../../utils/AppError.js';
 import { tenantFilter } from '../../tenancy/tenantContext.js';
 import { register } from '../auth/auth.service.js';
 import { enroll } from '../students/student.service.js';
+import { rowError } from '../../utils/csvImport.js';
 
 /**
  * List all accounts with their linked profiles.
@@ -362,7 +363,11 @@ export async function bulkCreateUsers(rows) {
 
     if (!roleKey || !displayName || !phone) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: 'roleKey, displayName, and phone are required' });
+      results.errors.push(rowError(rowNo, {
+        field: !roleKey ? 'roleKey' : !displayName ? 'displayName' : 'phone',
+        problem: 'is required',
+        suggestion: 'a user needs a role, a name and the phone they will sign in with',
+      }));
       continue;
     }
 
@@ -371,7 +376,12 @@ export async function bulkCreateUsers(rows) {
       sectionId = sectionMap.get(`${gradeName.toLowerCase()}|${sectionName.toLowerCase()}`);
       if (!sectionId) {
         results.failed++;
-        results.errors.push({ row: rowNo, error: `No section "${sectionName}" found in grade "${gradeName}"` });
+        results.errors.push(rowError(rowNo, {
+          field: 'sectionName',
+          value: sectionName,
+          problem: 'does not exist in that class',
+          suggestion: 'create the class and section first, or correct the names',
+        }));
         continue;
       }
     }
@@ -381,7 +391,7 @@ export async function bulkCreateUsers(rows) {
       results.imported++;
     } catch (err) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: err.message });
+      results.errors.push(rowError(rowNo, { problem: err.message }));
     }
   }
 

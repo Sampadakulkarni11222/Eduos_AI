@@ -98,13 +98,39 @@ export interface StaffAccountDto {
 }
 export interface RosterRow { enrollmentId: string; rollNo: number | null; studentName: string; status: AttStatus | null; note: string | null }
 export type AttStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY';
-export interface TimetabledPeriod { periodNo: number; subject: string; startTime: string | null; endTime: string | null }
+export interface TimetabledPeriod {
+  periodNo: number;
+  subject: string;
+  subjectId?: string | null;
+  /** Who teaches this period, so the register says whose it is. */
+  subjectTeacher?: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  /**
+   * Whether *this* caller may mark this period. The server decides: a subject
+   * teacher gets their own periods, the class teacher gets all of them, and a
+   * school-wide grant gets everything. Offering a period the server would
+   * refuse is how a teacher ends up marking a roll and losing it at save time.
+   */
+  canMark?: boolean;
+}
 /** `periodNo: null` is whole-day attendance; `periods` lists what is timetabled that weekday. */
 export interface AttendanceRoster {
-  section: { id: string; name: string };
+  section: {
+    id: string;
+    name: string;
+    grade?: string | null;
+    sectionName?: string | null;
+    classTeacher?: string | null;
+  };
   date: string;
   periodNo: number | null;
   subject: string | null;
+  subjectTeacher?: string | null;
+  /** Whole-day marking belongs to the class teacher. */
+  canMarkWholeDay?: boolean;
+  /** Whether the slot currently selected is markable by this caller. */
+  canMark?: boolean;
   periods: TimetabledPeriod[];
   roster: RosterRow[];
 }
@@ -212,11 +238,42 @@ export interface SubjectRegistrationDto {
 
 export interface InvoiceDto { id: string; invoiceNo: string; studentName: string; class: string | null; status: string; totalPaise: number; paidPaise: number; dueOn: string; sectionId?: string; studentId?: string; enrollmentId?: string; academicYearId?: string; academicYearName?: string; planId?: string | null; installmentSeq?: number | null; createdAt?: string }
 export interface FeeSummary { totalBilledPaise: number; totalCollectedPaise: number; pendingPaise: number; pendingCount: number; collectionPct: number; overduePaise: number; overdueCount: number; onlinePaymentEnabled?: boolean }
-export interface AnnouncementAudience { all: boolean; gradeIds: string[]; sectionIds: string[]; subjectIds: string[] }
+/** `roleKeys` narrows a class-wise notice to one role, e.g. the parents of a section. */
+export interface AnnouncementAudience {
+  all: boolean; gradeIds: string[]; sectionIds: string[]; subjectIds: string[]; roleKeys?: string[];
+}
 export interface AnnouncementChannels { app: boolean; email: boolean; whatsapp: boolean }
 export interface AnnouncementDto {
   id: string; title: string; content: string; publishedAt: string;
   audience: AnnouncementAudience; audienceLabel: string; channels: AnnouncementChannels;
+  attachments?: string[];
+}
+
+/** What the composer sends, for both the preview and the publish call. */
+export interface AnnouncementDraft {
+  title: string;
+  content: string;
+  audience?: { all?: boolean; gradeIds?: string[]; sectionIds?: string[]; subjectIds?: string[]; roleKeys?: string[] };
+  channels?: { app?: boolean; email?: boolean; whatsapp?: boolean };
+  attachments?: string[];
+}
+
+/**
+ * The server's answer to "what would this send, and to whom".
+ *
+ * The channel renderings are built server-side so the preview cannot drift
+ * from the fan-out; `null` means that channel is switched off.
+ */
+export interface AnnouncementPreviewDto {
+  title: string;
+  content: string;
+  audience: AnnouncementAudience;
+  audienceLabel: string;
+  recipientCount: number;
+  channels: AnnouncementChannels;
+  attachments: string[];
+  email: { subject: string; body: string; attachments: string[] } | null;
+  whatsapp: { body: string; attachments: string[] } | null;
 }
 export interface TicketDto { id: string; subject: string; status: string; priority: string; routedToRoleKey: string | null; raisedBy: string; assignedTo?: string | null; studentName?: string | null; createdAt: string; messageCount: number }
 export interface TicketThread { id: string; subject: string; status: string; routedToRoleKey: string | null; studentName?: string | null; documentUrl?: string | null; documentName?: string | null; messages: Array<{ id: string; body: string; channel: string; mine: boolean; createdAt: string }> }
@@ -322,8 +379,48 @@ export interface TransportRouteDto { id: string; name: string; operatorName: str
 export interface TransportStopDto { id: string; routeId: string; name: string; sequenceNo: number; etaMinutesFromStart: number }
 export interface MyBusDto { route: Omit<TransportRouteDto, 'stopCount'>; stop: TransportStopDto; direction: string; nextEta: string | null }
 
+/**
+ * One student's travel arrangements as a class list shows them.
+ *
+ * `route` and `stop` are null for a student who does not travel by school
+ * transport - a real answer, which is why `status` says NOT_ENROLLED rather
+ * than the row being absent.
+ */
+export interface TransportRosterRow {
+  studentId: string;
+  studentName: string;
+  admissionNo: string | null;
+  rollNo: number | null;
+  class: string | null;
+  sectionId: string | null;
+  route: { id: string; name: string; vehicleNo: string | null } | null;
+  stop: { id: string; name: string; etaMinutesFromStart: number | null } | null;
+  direction: string | null;
+  status: 'ENROLLED' | 'NOT_ENROLLED';
+}
+
 // ── Phase 8: Library ──
-export interface BookDto { id: string; title: string; author: string; isbn: string | null; category: string; resourceType?: 'PHYSICAL' | 'DIGITAL'; resourceUrl?: string | null; publisher?: string | null; publishedYear?: number | null; totalCopies: number; availableCopies: number }
+/** What kind of catalogue row this is. A note and a question paper are library
+ *  resources, filed and searched by the same code that serves the books. */
+export type LibraryResourceKind = 'BOOK' | 'NOTE' | 'QUESTION_PAPER';
+
+export interface BookDto {
+  id: string; title: string; author: string; isbn: string | null; category: string;
+  resourceType?: 'PHYSICAL' | 'DIGITAL'; resourceUrl?: string | null;
+  publisher?: string | null; publishedYear?: number | null;
+  totalCopies: number; availableCopies: number;
+
+  resourceKind?: LibraryResourceKind;
+  subjectId?: string | null; subject?: string | null;
+  gradeId?: string | null; grade?: string | null;
+  academicYearId?: string | null; academicYear?: string | null;
+  language?: string | null;
+  examType?: string | null;
+  /** A note that is written rather than uploaded keeps its text here. */
+  body?: string | null;
+  uploadedBy?: string | null;
+  uploadedAt?: string | null;
+}
 export interface BookIssueDto { id: string; bookId: string; bookTitle: string; bookAuthor?: string | null; category?: string | null; resourceType?: 'PHYSICAL' | 'DIGITAL'; resourceUrl?: string | null; studentId: string; studentName: string; issuedAt: string; dueAt: string; returnedAt: string | null; status: 'ACTIVE' | 'RETURNED' | 'OVERDUE'; finePaise: number }
 
 // ── Phase 8: Documents ──
@@ -352,6 +449,8 @@ export interface InvoiceDetailDto extends InvoiceDto {
 /** Cheque / DD / bank-transfer details captured with a manual payment. */
 export interface PaymentInstrumentDto {
   number: string | null;
+  /** The transfer's UTR / reference id. Null on cheque and DD. */
+  referenceNo?: string | null;
   bankName: string | null;
   instrumentDate: string | null;
   proofUrl: string | null;
@@ -376,6 +475,20 @@ export interface PaymentReceiptDto {
   paidOn?: string;
   instrument?: PaymentInstrumentDto | null;
   createdAt: string;
+
+  /**
+   * The verification facing of the same record: `recordStatus` in the words
+   * the finance office uses, plus who made the call and when. Derived
+   * server-side from `recordStatus`, never stored twice.
+   */
+  verificationStatus?: 'PENDING_VERIFICATION' | 'VERIFIED' | 'REJECTED';
+  recordedBy?: string | null;
+  recordedByRole?: string | null;
+  verifiedBy?: string | null;
+  verifiedAt?: string | null;
+  rejectedBy?: string | null;
+  rejectedAt?: string | null;
+  rejectionReason?: string | null;
 }
 
 // ── Fee plans (installment configuration + approval workflow) ──
@@ -585,10 +698,27 @@ export interface CreateUserDto {
 export interface UploadResult { fileUrl: string; filename: string; size: number; mimeType: string }
 
 // ── Bulk CSV import (leads / enrollments / attendance) ──
+/**
+ * A per-row import report.
+ *
+ * Each failure names the row, the column, what is wrong with it and what to
+ * put there instead, so a rejected sheet can be fixed without guesswork.
+ * `error` is the same facts flattened into one sentence, kept because it is
+ * what older callers render.
+ */
+export interface BulkRowError {
+  row: number;
+  field?: string | null;
+  value?: string | number | null;
+  problem?: string;
+  suggestion?: string | null;
+  error: string;
+}
+
 export interface BulkImportResult {
   imported: number;
   failed: number;
-  errors: { row: number; error: string }[];
+  errors: BulkRowError[];
 }
 
 // ── Online payments ──
@@ -909,6 +1039,8 @@ export interface BookFacetsDto {
   categories: string[];
   authors: string[];
   resourceTypes: string[];
+  languages?: string[];
+  examTypes?: string[];
 }
 
 // ── Student-raised requests reviewed by the class teacher ──

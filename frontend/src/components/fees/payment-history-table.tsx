@@ -1,9 +1,8 @@
 'use client';
 import { Button, Pill, rupees } from '../ui';
 import { api } from '@/lib/api';
+import { PaymentMethod } from './payment-verification';
 import type { PaymentReceiptDto } from '@/lib/types';
-
-const MODE_LABEL: Record<string, string> = { GATEWAY: 'Online', CASH: 'Cash', CHEQUE: 'Cheque', BANK: 'Bank Transfer' };
 const STATUS_TONE: Record<string, 'green' | 'amber' | 'red' | 'gray'> = {
   SUCCESS: 'green', CAPTURED: 'green', INITIATED: 'amber', FAILED: 'red', REFUNDED: 'gray',
 };
@@ -28,8 +27,9 @@ export function PaymentHistoryTable({ payments }: { payments: PaymentReceiptDto[
           <tr key={p.id}>
             <td className="cell-primary" data-label="Transaction ID">{p.receiptNo}</td>
             <td data-label="Invoice">{p.invoiceNo}</td>
-            <td data-label="Date">{fmtDateTime(p.createdAt)}</td>
-            <td data-label="Method"><Pill tone="blue">{MODE_LABEL[p.mode] ?? p.mode}</Pill></td>
+            {/* When the money changed hands, not when the row was keyed in. */}
+            <td data-label="Date">{fmtDateTime(p.paidOn ?? p.createdAt)}</td>
+            <td data-label="Method"><PaymentMethod payment={p} showProof={false} /></td>
             <td data-label="Amount">{rupees(p.amountPaise)}</td>
             <td data-label="Status"><Pill tone={STATUS_TONE[p.status] ?? 'gray'}>{p.status.toLowerCase()}</Pill></td>
             <td data-label="Actions">

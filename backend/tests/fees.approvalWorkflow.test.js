@@ -5,6 +5,7 @@ import { Invoice, Payment, FeePlan, PaymentChangeRequest } from '../src/models/f
 import { Student, Enrollment } from '../src/models/student.model.js';
 import { AcademicYear } from '../src/models/academics.model.js';
 import { AuditLog } from '../src/models/auditLog.model.js';
+import { Profile } from '../src/models/profile.model.js';
 import * as fees from '../src/modules/fees/fee.service.js';
 import * as plans from '../src/modules/fees/plan.service.js';
 
@@ -40,6 +41,16 @@ const CHEQUE = {
   instrumentDate: '2026-06-10',
   proofUrl: '/uploads/cheque-1.jpg',
   proofName: 'cheque.jpg',
+};
+
+/** A bank transfer carries both identifiers the server now insists on. */
+const TRANSFER = {
+  number: 'TXN-99881',
+  referenceNo: 'UTR12345678',
+  bankName: 'State Bank',
+  instrumentDate: '2026-06-10',
+  proofUrl: '/uploads/transfer-1.pdf',
+  proofName: 'transfer.pdf',
 };
 
 let year;
@@ -169,11 +180,120 @@ describe('finance registers payments but cannot finalize them', () => {
   });
 });
 
+describe('a verified payment cannot be edited by an actor who could not verify it', () => {
+  /**
+   * Tested at the service rather than through the route, because the route
+   * guard is not the claim under test: the claim is that the rule holds for
+   * *any* caller that reaches the function — a script, an agent tool, a route
+   * added later without the middleware.
+   */
+  const publishedPayment = async () => {
+    const invoice = await seedInvoice();
+    const res = await fees.recordPayment(ADMIN, 'ALL', {
+      invoiceId: invoice._id.toString(), amountPaise: 100_000, mode: 'CASH',
+    });
+    return res.payment;
+  };
+
+  it('refuses a Finance edit of a verified payment', async () => {
+    const payment = await publishedPayment();
+    await expect(
+      fees.updatePayment(FINANCE, payment._id.toString(), { notes: 'quietly changed' })
+    ).rejects.toMatchObject({ code: 'PAYMENT_VERIFIED_LOCKED', statusCode: 403 });
+
+    const after = await Payment.findById(payment._id).lean();
+    expect(after.notes ?? null).toBeNull();
+  });
+
+  it('still lets an approver edit it, and records the before/after', async () => {
+    const payment = await publishedPayment();
+    await fees.updatePayment(ADMIN, payment._id.toString(), { notes: 'corrected at the counter' });
+    const after = await Payment.findById(payment._id).lean();
+    expect(after.notes).toBe('corrected at the counter');
+    expect(await AuditLog.countDocuments({ action: 'fees.payment.edit' })).toBe(1);
+  });
+
+  it('leaves Finance its own pending record to correct', async () => {
+    const invoice = await seedInvoice();
+    const queued = await fees.recordPayment(FINANCE, 'ALL', {
+      invoiceId: invoice._id.toString(), amountPaise: 100_000, mode: 'CASH',
+    });
+    await fees.updatePayment(FINANCE, queued.payment._id.toString(), { notes: 'typo fixed before approval' });
+    expect((await Payment.findById(queued.payment._id).lean()).notes).toBe('typo fixed before approval');
+  });
+});
+
+describe('a verified payment says who verified it, and when', () => {
+  /**
+   * The names come from real Profile rows because that is the only way the
+   * assertion means anything: the service populates the profile behind each
+   * stamp, and a test that stubbed the name would pass with the populate
+   * removed.
+   */
+  const profileFor = async (actorObj, displayName) => Profile.create({
+    _id: actorObj.profileId,
+    accountId: new mongoose.Types.ObjectId(),
+    roleId: new mongoose.Types.ObjectId(),
+    displayName,
+  });
+
+  it('reads PENDING_VERIFICATION while queued and VERIFIED once approved', async () => {
+    await profileFor(FINANCE, 'Meera Cashier');
+    await profileFor(ADMIN, 'Rajan Principal');
+
+    const invoice = await seedInvoice();
+    const queued = await fees.recordPayment(FINANCE, 'ALL', {
+      invoiceId: invoice._id.toString(), amountPaise: 100_000, mode: 'CASH',
+    });
+
+    const [pending] = await fees.listPayments(ADMIN, 'ALL', {});
+    expect(pending.verificationStatus).toBe('PENDING_VERIFICATION');
+    expect(pending.recordedBy).toBe('Meera Cashier');
+    expect(pending.recordedByRole).toBe('FINANCE');
+    expect(pending.verifiedBy).toBeNull();
+    expect(pending.verifiedAt).toBeNull();
+
+    await fees.approvePayment(ADMIN, queued.payment._id.toString());
+
+    const [verified] = await fees.listPayments(ADMIN, 'ALL', {});
+    expect(verified.verificationStatus).toBe('VERIFIED');
+    expect(verified.verifiedBy).toBe('Rajan Principal');
+    expect(verified.verifiedAt).toBeInstanceOf(Date);
+  });
+
+  it('reads REJECTED, with the decider and the reason', async () => {
+    await profileFor(ADMIN, 'Rajan Principal');
+    const invoice = await seedInvoice();
+    const queued = await fees.recordPayment(FINANCE, 'ALL', {
+      invoiceId: invoice._id.toString(), amountPaise: 100_000, mode: 'CASH',
+    });
+    await fees.rejectPayment(ADMIN, queued.payment._id.toString(), 'Cash never reached the safe');
+
+    const [row] = await fees.listPayments(ADMIN, 'ALL', { recordStatus: 'REJECTED' });
+    expect(row.verificationStatus).toBe('REJECTED');
+    expect(row.rejectedBy).toBe('Rajan Principal');
+    expect(row.rejectionReason).toBe('Cash never reached the safe');
+  });
+
+  it('a payment written before the workflow existed still reads VERIFIED', async () => {
+    const invoice = await seedInvoice();
+    await Payment.collection.insertOne({
+      invoiceId: invoice._id,
+      amountPaise: 5_000,
+      mode: 'CASH',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const [row] = await fees.listPayments(ADMIN, 'ALL', {});
+    expect(row.verificationStatus).toBe('VERIFIED');
+  });
+});
+
 describe('payment method validation is enforced by the server', () => {
   it.each([
     ['CHEQUE', /Cheque number.*Bank name.*Cheque date.*Cheque image/s],
     ['DD', /DD number.*Bank name.*DD date.*DD image/s],
-    ['BANK', /Transaction.*Bank name.*Transfer date.*Transfer proof/s],
+    ['BANK', /Transaction ID.*Reference ID \/ UTR.*Bank name.*Transfer date.*Transfer proof/s],
   ])('%s is refused with no instrument details at all', async (mode, pattern) => {
     const invoice = await seedInvoice();
     await expect(
@@ -223,6 +343,32 @@ describe('payment method validation is enforced by the server', () => {
     expect(stored.instrument.bankName).toBe('State Bank');
     expect(stored.instrument.proofUrl).toBe('/uploads/cheque-1.jpg');
     expect(new Date(stored.paidOn).toISOString().slice(0, 10)).toBe('2026-06-12');
+  });
+
+  it.each(['number', 'referenceNo', 'bankName', 'instrumentDate', 'proofUrl'])(
+    'a bank transfer missing only %s is still refused',
+    async (field) => {
+      const invoice = await seedInvoice();
+      await expect(
+        fees.recordPayment(FINANCE, 'ALL', {
+          invoiceId: invoice._id.toString(),
+          amountPaise: 10_000,
+          mode: 'BANK',
+          instrument: { ...TRANSFER, [field]: '' },
+        })
+      ).rejects.toMatchObject({ code: 'PAYMENT_DETAILS_INCOMPLETE' });
+      expect(await Payment.countDocuments()).toBe(0);
+    }
+  );
+
+  it('stores both transfer identifiers, so a UTR reconciliation can match', async () => {
+    const invoice = await seedInvoice();
+    await fees.recordPayment(FINANCE, 'ALL', {
+      invoiceId: invoice._id.toString(), amountPaise: 10_000, mode: 'BANK', instrument: TRANSFER,
+    });
+    const stored = await Payment.findOne().lean();
+    expect(stored.instrument.number).toBe('TXN-99881');
+    expect(stored.instrument.referenceNo).toBe('UTR12345678');
   });
 
   it('cash needs no instrument', async () => {

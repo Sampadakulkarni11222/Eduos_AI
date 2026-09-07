@@ -6,6 +6,7 @@ import { Pagination } from '@/components/pagination';
 import { api, fileHref } from '@/lib/api';
 import { RecordPaymentModal, PaymentRecordedNotice } from '@/components/fees/record-payment-modal';
 import { PaymentChangeRequestModal } from '@/components/fees/change-request-modal';
+import { PaymentMethod, PaymentVerification } from '@/components/fees/payment-verification';
 import { FeePlanModal } from '@/components/fees/fee-plan-modal';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
@@ -199,8 +200,8 @@ export default function FinancePayments() {
                     <th>Student Name</th>
                     <th>Class</th>
                     <th>Amount Paid</th>
-                    <th>Mode</th>
-                    <th>Approval</th>
+                    <th>Method &amp; reference</th>
+                    <th>Verification</th>
                     <th>Date</th>
                     <th></th>
                   </tr>
@@ -215,26 +216,10 @@ export default function FinancePayments() {
                         <td data-label="Student Name">{r.studentName}</td>
                         <td data-label="Class">{r.class}</td>
                         <td data-label="Amount Paid">{rupees(r.amountPaise)}</td>
-                        <td data-label="Mode">
-                          <Pill tone="blue">{r.mode}</Pill>
-                          {r.instrument?.proofUrl && (
-                            <a
-                              href={fileHref(r.instrument.proofUrl)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{ display: 'block', fontSize: 11, marginTop: 3, color: 'var(--accent)', fontWeight: 600 }}
-                            >
-                              proof
-                            </a>
-                          )}
-                        </td>
-                        {/* The record's approval state, which is a different
+                        <td data-label="Method &amp; reference"><PaymentMethod payment={r} /></td>
+                        {/* The record's verification state, which is a different
                             question from whether the transaction succeeded. */}
-                        <td data-label="Approval">
-                          <Pill tone={published ? 'green' : r.recordStatus === 'REJECTED' ? 'red' : 'amber'}>
-                            {published ? 'published' : (r.recordStatus ?? '').toLowerCase().replace(/_/g, ' ')}
-                          </Pill>
-                        </td>
+                        <td data-label="Verification"><PaymentVerification payment={r} /></td>
                         <td style={{ color: 'var(--text-faint)' }} data-label="Date">
                           {new Date(r.paidOn ?? r.createdAt).toLocaleDateString('en-IN')}
                         </td>

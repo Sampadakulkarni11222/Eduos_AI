@@ -124,3 +124,13 @@ export const bulkEnrollStudents = asyncHandler(async (req, res) => {
   const result = await service.bulkEnrollStudents(rows);
   sendSuccess(res, result, `Enrolled ${result.imported} of ${rows.length} students`, 201);
 });
+
+/**
+ * The class-level view. Deliberately not behind `transport.read`: a teacher
+ * holds no transport grant, and the students they may see are decided by the
+ * service from their own section assignments.
+ */
+export const roster = asyncHandler(async (req, res) => {
+  const rows = await service.listTransportRoster(req.actor, { sectionId: req.query.sectionId });
+  sendSuccess(res, rows, 'Transport roster fetched');
+});

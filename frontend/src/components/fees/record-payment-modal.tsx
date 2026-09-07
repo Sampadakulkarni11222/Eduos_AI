@@ -26,19 +26,33 @@ type Mode = 'CASH' | 'CHEQUE' | 'DD' | 'BANK';
  * has a cheque number, a transfer has a UTR, and showing a cashier the wrong
  * word is how the wrong number ends up in the box.
  */
-const METHOD_FIELDS: Record<Mode, null | { number: string; bank: string; date: string; proof: string; hint: string }> = {
+type MethodFields = {
+  number: string;
+  /** Only a transfer has a second identifier; null elsewhere. */
+  reference: string | null;
+  bank: string;
+  date: string;
+  proof: string;
+  hint: string;
+};
+
+const METHOD_FIELDS: Record<Mode, null | MethodFields> = {
   CASH: null,
   CHEQUE: {
-    number: 'Cheque number', bank: 'Bank name', date: 'Cheque date', proof: 'Cheque image',
+    number: 'Cheque number', reference: null, bank: 'Bank name', date: 'Cheque date', proof: 'Cheque image',
     hint: 'A photo or scan of the cheque is required.',
   },
   DD: {
-    number: 'DD number', bank: 'Bank name', date: 'DD date', proof: 'DD image',
+    number: 'DD number', reference: null, bank: 'Bank name', date: 'DD date', proof: 'DD image',
     hint: 'A photo or scan of the demand draft is required.',
   },
   BANK: {
-    number: 'Transaction / UTR number', bank: 'Bank name', date: 'Transfer date', proof: 'Transfer proof',
-    hint: 'The bank receipt or transfer screenshot is required.',
+    number: 'Transaction ID',
+    reference: 'Reference ID / UTR',
+    bank: 'Bank name',
+    date: 'Transfer date',
+    proof: 'Transfer proof',
+    hint: 'Both the transaction ID and the bank’s UTR are required — a reconciliation months later matches on the UTR.',
   },
 };
 
@@ -64,6 +78,10 @@ export function RecordPaymentModal({
   const [notes, setNotes] = useState('');
 
   const [number, setNumber] = useState('');
+  const [referenceNo, setReferenceNo] = useState('');
+  // Optional on cash: the paper receipt or reference the office already wrote
+  // out. Left blank, the server generates one.
+  const [receiptNo, setReceiptNo] = useState('');
   const [bankName, setBankName] = useState('');
   const [instrumentDate, setInstrumentDate] = useState('');
   const [proof, setProof] = useState<{ url: string; name: string } | null>(null);
@@ -110,6 +128,7 @@ export function RecordPaymentModal({
     if (!paidOn) missing.push('The payment date');
     if (fields) {
       if (!number.trim()) missing.push(fields.number);
+      if (fields.reference && !referenceNo.trim()) missing.push(fields.reference);
       if (!bankName.trim()) missing.push(fields.bank);
       if (!instrumentDate) missing.push(fields.date);
       if (!proof?.url) missing.push(fields.proof);
@@ -132,9 +151,11 @@ export function RecordPaymentModal({
         mode,
         paidOn,
         notes: notes.trim() || undefined,
+        receiptNo: receiptNo.trim() || undefined,
         instrument: fields
           ? {
             number: number.trim(),
+            referenceNo: referenceNo.trim() || undefined,
             bankName: bankName.trim(),
             instrumentDate,
             proofUrl: proof!.url,
@@ -213,7 +234,7 @@ export function RecordPaymentModal({
             <option value="CASH">Cash</option>
             <option value="CHEQUE">Cheque</option>
             <option value="DD">DD / Demand Draft</option>
-            <option value="BANK">Bank transfer</option>
+            <option value="BANK">Online / Bank transfer</option>
           </select>
 
           {fields && (
@@ -224,6 +245,17 @@ export function RecordPaymentModal({
                   <div className="field-label">{fields.number}<Req /></div>
                   <input className="field-input" value={number} onChange={(e) => setNumber(e.target.value)} required />
                 </div>
+                {fields.reference && (
+                  <div>
+                    <div className="field-label">{fields.reference}<Req /></div>
+                    <input
+                      className="field-input"
+                      value={referenceNo}
+                      onChange={(e) => setReferenceNo(e.target.value)}
+                      required
+                    />
+                  </div>
+                )}
                 <div>
                   <div className="field-label">{fields.bank}<Req /></div>
                   <input className="field-input" value={bankName} onChange={(e) => setBankName(e.target.value)} required />
@@ -268,6 +300,21 @@ export function RecordPaymentModal({
               )}
               {uploadError && <p style={{ color: 'var(--red)', fontSize: 12.5, margin: '4px 0 0' }}>{uploadError}</p>}
             </div>
+          )}
+
+          {!fields && (
+            <>
+              {/* Cash leaves no instrument behind, so the only trace is the
+                  receipt the office wrote out. Optional: left blank the server
+                  issues its own number. */}
+              <div className="field-label">Receipt / reference number (optional)</div>
+              <input
+                className="field-input"
+                value={receiptNo}
+                onChange={(e) => setReceiptNo(e.target.value)}
+                placeholder="e.g. the counterfoil number on the paper receipt"
+              />
+            </>
           )}
 
           <div className="field-label">Notes (optional)</div>

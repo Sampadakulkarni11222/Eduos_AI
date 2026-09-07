@@ -14,31 +14,11 @@ import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '..
 import { runInTransaction } from '../../utils/transaction.js';
 import { SubjectRegistration } from '../../models/subjectRegistration.model.js';
 import { tenantFilter } from '../../tenancy/tenantContext.js';
+import { insertRows, rowError } from '../../utils/csvImport.js';
 
-const CHUNK_SIZE = 100;
-
-/** Chunked insertMany with per-chunk error collection, shared by the bulk importers below. */
-async function chunkedInsert(Model, validRows, dupField) {
-  const results = { imported: 0, failed: 0, errors: [] };
-  for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
-    const chunk = validRows.slice(i, i + CHUNK_SIZE);
-    try {
-      await runInTransaction(async (session) => {
-        await Model.insertMany(chunk.map((c) => c.doc), { session });
-      });
-      results.imported += chunk.length;
-    } catch (err) {
-      results.failed += chunk.length;
-      chunk.forEach((c) => {
-        const msg = err.code === 11000 && dupField
-          ? `"${c.doc[dupField]}" already exists`
-          : err.message;
-        results.errors.push({ row: c.rowNo, error: msg });
-      });
-    }
-  }
-  return results;
-}
+// Chunked, unordered insertion now lives in utils/csvImport.js so every bulk
+// importer reports failures the same way — and so one bad row stops costing
+// the ninety-nine good ones around it.
 
 // ── Academic Years ──
 export const listYears = () => AcademicYear.find().sort({ startsOn: -1 });
@@ -108,12 +88,17 @@ export async function bulkCreateGrades(rows) {
     const level = Number(row.level);
     if (!name || !Number.isFinite(level)) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: 'name and a numeric level are required' });
+      results.errors.push(rowError(rowNo, {
+        field: !name ? 'name' : 'level',
+        value: !name ? row.name : row.level,
+        problem: !name ? 'is required' : 'must be a number',
+        suggestion: !name ? 'e.g. "Class 5"' : 'e.g. 5 for Class 5',
+      }));
       continue;
     }
     validRows.push({ rowNo, doc: { name, level } });
   }
-  const chunked = await chunkedInsert(Grade, validRows, 'name');
+  const chunked = await insertRows(Grade, validRows, { dupField: 'name', dupLabel: 'name' });
   return {
     imported: results.imported + chunked.imported,
     failed: results.failed + chunked.failed,
@@ -137,6 +122,14 @@ export const listSections = (gradeId) =>
  * Returns null for any other role, meaning "not a family member", so callers
  * can tell an empty result apart from a role this does not apply to.
  */
+/**
+ * Whether this actor may see the school's structure at all. The `/mine`
+ * endpoints carry no route guard — they have to stay open to teachers and
+ * families, who hold no `academics.read` — so the school-wide fallback checks
+ * the same permission `/academics/sections` demands.
+ */
+const canReadAcademics = (actor) => actor?.permissions?.['academics.read'] === 'ALL';
+
 async function getFamilySectionIds(actor) {
   let studentIds;
   if (actor.roleKey === 'STUDENT') {
@@ -162,7 +155,10 @@ async function getFamilySectionIds(actor) {
  * read the school's entire section roster from `/academics/sections/mine` —
  * gating `/academics/sections` alone would just have moved that one URL over.
  *
- * Staff still get the full list: they hold `academics.read` for it anyway.
+ * Staff still get the full list — but because they hold `academics.read`, not
+ * because they are "not a family member". A school that builds a custom role
+ * without that grant gets nothing here rather than the whole roster, so the
+ * `/mine` fallback can never be wider than `/academics/sections` itself.
  */
 export async function getMySections(actor) {
   if (actor.roleKey === 'TEACHER') {
@@ -177,7 +173,7 @@ export async function getMySections(actor) {
       .sort({ name: 1 });
   }
 
-  return listSections();
+  return canReadAcademics(actor) ? listSections() : [];
 }
 
 /**
@@ -200,7 +196,7 @@ export async function getMyOfferings(actor) {
       .populate('subjectId termId teacherId');
   }
 
-  return listOfferings();
+  return canReadAcademics(actor) ? listOfferings() : [];
 }
 
 export async function createSection(data) {
@@ -235,13 +231,23 @@ export async function bulkCreateSections(rows) {
     const name = row.name?.trim();
     if (!gradeName || !name) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: 'gradeName and name are required' });
+      results.errors.push(rowError(rowNo, {
+        field: !gradeName ? 'gradeName' : 'name',
+        value: !gradeName ? row.gradename : row.name,
+        problem: 'is required',
+        suggestion: !gradeName ? 'the class this section belongs to, e.g. "Class 5"' : 'the section letter, e.g. "A"',
+      }));
       continue;
     }
     const gradeId = gradeMap.get(gradeName.toLowerCase());
     if (!gradeId) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `Grade "${gradeName}" not found` });
+      results.errors.push(rowError(rowNo, {
+        field: 'gradeName',
+        value: gradeName,
+        problem: 'does not match any class in this school',
+        suggestion: `known classes: ${[...gradeMap.keys()].slice(0, 8).join(', ') || 'none yet — create the class first'}`,
+      }));
       continue;
     }
 
@@ -257,7 +263,12 @@ export async function bulkCreateSections(rows) {
         : null;
       if (!profile) {
         results.failed++;
-        results.errors.push({ row: rowNo, error: `No profile found for phone "${phone}"` });
+        results.errors.push(rowError(rowNo, {
+          field: 'classTeacherPhone',
+          value: phone,
+          problem: 'does not match a staff member in this school',
+          suggestion: 'use the phone the teacher signs in with, in +91XXXXXXXXXX form, or leave it blank',
+        }));
         continue;
       }
       classTeacherId = profile._id;
@@ -265,7 +276,7 @@ export async function bulkCreateSections(rows) {
 
     validRows.push({ rowNo, doc: { gradeId, name, classTeacherId } });
   }
-  const chunked = await chunkedInsert(Section, validRows);
+  const chunked = await insertRows(Section, validRows, { dupField: 'name', dupLabel: 'name' });
   return {
     imported: results.imported + chunked.imported,
     failed: results.failed + chunked.failed,
@@ -289,12 +300,17 @@ export async function bulkCreateSubjects(rows) {
     const name = row.name?.trim();
     if (!name) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: 'name is required' });
+      results.errors.push(rowError(rowNo, {
+        field: 'name',
+        value: row.name,
+        problem: 'is required',
+        suggestion: 'the subject name, e.g. "Mathematics"',
+      }));
       continue;
     }
     validRows.push({ rowNo, doc: { name, code: row.code?.trim() || undefined } });
   }
-  const chunked = await chunkedInsert(Subject, validRows, 'name');
+  const chunked = await insertRows(Subject, validRows, { dupField: 'name' });
   return {
     imported: results.imported + chunked.imported,
     failed: results.failed + chunked.failed,

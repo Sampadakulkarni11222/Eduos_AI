@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, EmptyState, Pill, SkeletonRows, rupees, useToast } from '../ui';
 import { api, errorMessage, fileHref } from '@/lib/api';
+import { PaymentMethod } from './payment-verification';
 import type { FeePlanDto, PaymentChangeRequestDto, PaymentHistoryDto, PaymentReceiptDto } from '@/lib/types';
 
 /**
@@ -119,14 +120,9 @@ export function PaymentApprovalsPanel({ canApprove }: { canApprove: boolean }) {
                   </td>
                   <td data-label="Student">{p.studentName}<div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{p.class}</div></td>
                   <td data-label="Amount"><strong>{rupees(p.amountPaise)}</strong></td>
-                  <td data-label="Method">
-                    <Pill tone="blue">{p.mode}</Pill>
-                    {p.instrument?.number && (
-                      <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 3 }}>
-                        {p.instrument.number} · {p.instrument.bankName}
-                      </div>
-                    )}
-                  </td>
+                  {/* Every identifier the payment carries — a reviewer
+                      approving a transfer needs its UTR, not just "BANK". */}
+                  <td data-label="Method"><PaymentMethod payment={p} showProof={false} /></td>
                   <td data-label="Paid on">{p.paidOn ? new Date(p.paidOn).toLocaleDateString('en-IN') : '—'}</td>
                   <td data-label="Proof">
                     {p.instrument?.proofUrl

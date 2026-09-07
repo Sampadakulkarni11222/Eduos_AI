@@ -8,6 +8,7 @@ import { AppError } from '../../utils/AppError.js';
 import { runInTransaction } from '../../utils/transaction.js';
 import { nextSequence } from '../../utils/sequence.js';
 import { logger } from '../../utils/logger.js';
+import { rowError } from '../../utils/csvImport.js';
 
 // Helper: map a raw Lead doc to the DTO the frontend expects
 function toLeadDto(lead) {
@@ -218,7 +219,11 @@ export async function bulkCreateLeads(rows) {
 
     if (!childName || !guardianName || !phone) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: 'childName, guardianName, and phone are required' });
+      results.errors.push(rowError(rowNo, {
+        field: !row.childname ? 'childName' : !row.guardianname ? 'guardianName' : 'phone',
+        problem: 'is required',
+        suggestion: 'every lead needs the child, the guardian and a contact number',
+      }));
       continue;
     }
 
@@ -226,12 +231,22 @@ export async function bulkCreateLeads(rows) {
     const stage = row.stage?.trim().toUpperCase();
     if (source && !LEAD_SOURCES.has(source)) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `Invalid source "${row.source}"` });
+      results.errors.push(rowError(rowNo, {
+        field: 'source',
+        value: row.source,
+        problem: 'is not a source this CRM knows',
+        suggestion: 'check the template for the accepted values',
+      }));
       continue;
     }
     if (stage && !LEAD_STAGES.has(stage)) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `Invalid stage "${row.stage}"` });
+      results.errors.push(rowError(rowNo, {
+        field: 'stage',
+        value: row.stage,
+        problem: 'is not a pipeline stage',
+        suggestion: 'check the template for the accepted values',
+      }));
       continue;
     }
 
@@ -266,7 +281,7 @@ export async function bulkCreateLeads(rows) {
     } catch (err) {
       results.failed += chunk.length;
       chunk.forEach(c => {
-        results.errors.push({ row: c.rowNo, error: err.message });
+        results.errors.push(rowError(c.rowNo, { problem: err.message }));
       });
     }
   }

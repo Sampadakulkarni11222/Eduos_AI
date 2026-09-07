@@ -2,10 +2,13 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, EmptyState, Pill, SkeletonRows } from './ui';
 import { ExpandableText } from './expandable-text';
-import { api, ApiError } from '@/lib/api';
+import { AnnouncementPreview } from './announcement-preview';
+import { api, ApiError, fileHref } from '@/lib/api';
 import { useCachedResource } from '@/lib/cache';
 import { useAuth } from '@/lib/auth';
-import type { AnnouncementDto, GradeDto, SectionDto, SubjectDto } from '@/lib/types';
+import type {
+  AnnouncementDraft, AnnouncementDto, AnnouncementPreviewDto, GradeDto, SectionDto, SubjectDto,
+} from '@/lib/types';
 
 export function AnnouncementsView({ canPublish }: { canPublish: boolean }) {
   const [showForm, setShowForm] = useState(false);
@@ -76,6 +79,13 @@ function NewAnnouncement({ onDone }: { onDone: () => void }) {
 
   const [emailOn, setEmailOn] = useState(false);
   const [whatsappOn, setWhatsappOn] = useState(false);
+  const [attachments, setAttachments] = useState<{ url: string; name: string }[]>([]);
+  const [uploading, setUploading] = useState(false);
+
+  // The draft is previewed before it is sent: `preview` holds the server's
+  // answer to "what would this send, and to whom", and its presence is what
+  // switches the card from the form to the preview.
+  const [preview, setPreview] = useState<AnnouncementPreviewDto | null>(null);
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -116,26 +126,59 @@ function NewAnnouncement({ onDone }: { onDone: () => void }) {
     sections: sections.filter((s) => s.gradeName === g.name),
   })), [grades, sections]);
 
-  const submit = async (e: FormEvent) => {
+  /** The draft exactly as both the preview and the publish call receive it. */
+  const draft = (): AnnouncementDraft => ({
+    title,
+    content,
+    audience:
+      mode === 'ALL' ? { all: true } :
+      mode === 'CLASS' ? (
+        isTeacherScope
+          ? { sectionIds: sectionId ? [sectionId] : [] }
+          : classSelection.startsWith('section:') ? { sectionIds: [classSelection.slice('section:'.length)] }
+          : classSelection.startsWith('grade:') ? { gradeIds: [classSelection.slice('grade:'.length)] }
+          : { all: true }
+      ) :
+      { subjectIds: subjectId ? [subjectId] : [] },
+    channels: { app: true, email: emailOn, whatsapp: whatsappOn },
+    attachments: attachments.map((a) => a.url),
+  });
+
+  const attach = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true); setErr(null);
+    try {
+      const res = await api.uploadFile(file);
+      setAttachments((prev) => [...prev, { url: res.fileUrl, name: res.filename ?? file.name }]);
+    } catch (e2) {
+      setErr(e2 instanceof ApiError ? e2.message : 'Could not attach that file.');
+    } finally { setUploading(false); }
+  };
+
+  /**
+   * Step one. Nothing is published here — the server resolves the audience and
+   * renders the channels, and refuses the draft now if it would refuse it at
+   * send time.
+   */
+  const requestPreview = async (e: FormEvent) => {
     e.preventDefault();
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true); setErr(null);
     try {
-      const audience =
-        mode === 'ALL' ? { all: true } :
-        mode === 'CLASS' ? (
-          isTeacherScope
-            ? { sectionIds: sectionId ? [sectionId] : [] }
-            : classSelection.startsWith('section:') ? { sectionIds: [classSelection.slice('section:'.length)] }
-            : classSelection.startsWith('grade:') ? { gradeIds: [classSelection.slice('grade:'.length)] }
-            : { all: true }
-        ) :
-        { subjectIds: subjectId ? [subjectId] : [] };
-      await api.createAnnouncement({
-        title, content, audience,
-        channels: { app: true, email: emailOn, whatsapp: whatsappOn },
-      });
+      setPreview(await api.previewAnnouncement(draft()));
+    } catch (e2) {
+      setErr(e2 instanceof ApiError ? e2.message : 'Could not build a preview. Please try again.');
+    } finally { setBusy(false); busyRef.current = false; }
+  };
+
+  /** Step two, from the preview only. */
+  const publish = async () => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true); setErr(null);
+    try {
+      await api.createAnnouncement(draft());
       onDone();
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : 'Failed to post announcement. Please try again.');
@@ -149,9 +192,24 @@ function NewAnnouncement({ onDone }: { onDone: () => void }) {
     (mode === 'CLASS' && (isTeacherScope ? !!sectionId : !!classSelection)) ||
     (mode === 'SUBJECT' && !!subjectId);
 
+  if (preview) {
+    return (
+      <Card style={{ marginBottom: 16 }}>
+        <AnnouncementPreview
+          preview={preview}
+          attachmentNames={attachments}
+          busy={busy}
+          error={err}
+          onEdit={() => { setPreview(null); setErr(null); }}
+          onPublish={() => void publish()}
+        />
+      </Card>
+    );
+  }
+
   return (
     <Card style={{ marginBottom: 16 }}>
-      <form onSubmit={submit}>
+      <form onSubmit={requestPreview}>
         <div className="field-label">Title</div>
         <input className="field-input" value={title} onChange={(e) => setTitle(e.target.value)} required />
         <div className="field-label">Content</div>
@@ -216,8 +274,38 @@ function NewAnnouncement({ onDone }: { onDone: () => void }) {
           </label>
         </div>
 
+        <div className="field-label" style={{ marginTop: 12 }}>Attachments (optional)</div>
+        <input
+          type="file"
+          className="field-input"
+          onChange={(e) => { void attach(e.target.files?.[0]); e.target.value = ''; }}
+          disabled={uploading}
+          aria-label="Attach a file"
+        />
+        {uploading && <p style={{ fontSize: 12.5, color: 'var(--text-2)', margin: '6px 0 0' }}>Uploading…</p>}
+        {attachments.length > 0 && (
+          <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12.5 }}>
+            {attachments.map((a) => (
+              <li key={a.url}>
+                <a href={fileHref(a.url)} target="_blank" rel="noopener noreferrer">{a.name}</a>
+                <button
+                  type="button"
+                  onClick={() => setAttachments((prev) => prev.filter((x) => x.url !== a.url))}
+                  style={{ marginLeft: 8, background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer', fontSize: 12 }}
+                >
+                  remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
         {err && <p style={{ color: 'var(--red)', fontSize: 13, marginTop: 8, marginBottom: 8 }}>{err}</p>}
-        <Button type="submit" disabled={busy || !canSubmit} style={{ marginTop: 12 }}>{busy ? 'Posting…' : 'Post announcement'}</Button>
+        {/* Create → Preview → Edit → Send: the composer never publishes
+            directly, so nobody discovers the audience was wrong afterwards. */}
+        <Button type="submit" disabled={busy || uploading || !canSubmit} style={{ marginTop: 12 }}>
+          {busy ? 'Preparing…' : 'Preview'}
+        </Button>
       </form>
     </Card>
   );

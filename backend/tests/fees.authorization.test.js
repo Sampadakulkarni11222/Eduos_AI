@@ -45,14 +45,16 @@ const inNvmp = (fn) => runWithTenant(NVMP, fn);
  * Instrument details for the modes that require them.
  *
  * Cheque, DD and bank transfer are refused server-side without a number, a
- * bank, a date and a proof image, so a test recording one has to supply them —
+ * bank, a date and a proof image — and a transfer also without its UTR — so a
+ * test recording one has to supply them —
  * which is the point of the rule, and why it is expressed here as data rather
  * than skipped.
  */
 const instrumentFor = (mode) => (
   ['CHEQUE', 'DD', 'BANK'].includes(mode)
     ? {
-      number: mode === 'BANK' ? 'UTR12345678' : '000123',
+      number: mode === 'BANK' ? 'TXN-99881' : '000123',
+      referenceNo: mode === 'BANK' ? 'UTR12345678' : undefined,
       bankName: 'State Bank',
       instrumentDate: '2026-06-10',
       proofUrl: '/uploads/proof-abc.jpg',

@@ -24,8 +24,13 @@ export const getBookById = asyncHandler(async (req, res) => {
 });
 
 export const createBook = asyncHandler(async (req, res) => {
-  const book = await service.createBook(req.body);
-  sendSuccess(res, book, 'Book created', 201);
+  // The actor is passed separately so the service can stamp who uploaded the
+  // resource rather than trusting the body to say.
+  const book = await service.createBook(req.body, req.actor);
+  const label = book.resourceKind === 'NOTE' ? 'Note'
+    : book.resourceKind === 'QUESTION_PAPER' ? 'Question paper'
+      : 'Book';
+  sendSuccess(res, book, `${label} created`, 201);
 });
 
 export const bulkCreateBooks = asyncHandler(async (req, res) => {

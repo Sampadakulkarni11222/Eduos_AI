@@ -1,8 +1,12 @@
 import { Book, BookIssue } from '../../models/library.model.js';
+// Registered, not assumed: the catalogue populates the uploader's profile, and
+// populate needs the model present even when only the library module is loaded.
+import '../../models/profile.model.js';
 import { Student } from '../../models/student.model.js';
 import { getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
 import { AppError } from '../../utils/AppError.js';
 import { paginate, mapPage } from '../../utils/paginate.js';
+import { insertRows, rowError } from '../../utils/csvImport.js';
 
 /**
  * A YYYY-MM-DD filter bound, read as a calendar day at UTC midnight.
@@ -82,6 +86,19 @@ function toBookDto(b) {
     totalCopies: b.totalCopies,
     availableCopies: b.availableCopies,
     coverUrl: b.coverUrl,
+
+    resourceKind: b.resourceKind ?? 'BOOK',
+    subjectId: b.subjectId ? String(b.subjectId._id ?? b.subjectId) : null,
+    subject: b.subjectId?.name ?? null,
+    gradeId: b.gradeId ? String(b.gradeId._id ?? b.gradeId) : null,
+    grade: b.gradeId?.name ?? null,
+    academicYearId: b.academicYearId ? String(b.academicYearId._id ?? b.academicYearId) : null,
+    academicYear: b.academicYearId?.name ?? null,
+    language: b.resourceLanguage ?? null,
+    examType: b.examType ?? null,
+    body: b.body ?? null,
+    uploadedBy: b.uploadedByProfileId?.displayName ?? null,
+    uploadedAt: b.createdAt ?? null,
   };
 }
 
@@ -99,7 +116,10 @@ function escapeRegex(str) {
  * narrowing the result to nothing.
  */
 export async function listBooks(opts = {}) {
-  const { search, category, author, resourceType, availability } = opts;
+  const {
+    search, category, author, resourceType, availability,
+    resourceKind, subjectId, gradeId, academicYearId, language, examType,
+  } = opts;
   const filter = { deletedAt: null };
   if (search) {
     const rx = escapeRegex(search);
@@ -109,8 +129,24 @@ export async function listBooks(opts = {}) {
       { isbn: { $regex: rx, $options: 'i' } },
       { category: { $regex: rx, $options: 'i' } },
       { publisher: { $regex: rx, $options: 'i' } },
+      // Notes are written, not authored on a title page, so the body has to be
+      // searchable or a note can only be found by its own title.
+      { body: { $regex: rx, $options: 'i' } },
+      { examType: { $regex: rx, $options: 'i' } },
     ];
   }
+  // A row written before resourceKind existed is a book, so "books" has to
+  // mean "not marked as something else" rather than an equality match.
+  if (resourceKind === 'BOOK') {
+    filter.resourceKind = { $in: [null, 'BOOK'] };
+  } else if (resourceKind && resourceKind !== 'ALL') {
+    filter.resourceKind = resourceKind;
+  }
+  if (subjectId && subjectId !== 'ALL') filter.subjectId = subjectId;
+  if (gradeId && gradeId !== 'ALL') filter.gradeId = gradeId;
+  if (academicYearId && academicYearId !== 'ALL') filter.academicYearId = academicYearId;
+  if (language && language !== 'ALL') filter.resourceLanguage = language;
+  if (examType && examType !== 'ALL') filter.examType = examType;
   if (category && category !== 'ALL') filter.category = category;
   if (author && author !== 'ALL') filter.author = author;
   if (resourceType === 'PHYSICAL') {
@@ -123,7 +159,13 @@ export async function listBooks(opts = {}) {
   if (availability === 'AVAILABLE') filter.availableCopies = { $gte: 1 };
 
   const page = await paginate(
-    Book.find(filter).sort({ title: 1 }).lean(),
+    Book.find(filter)
+      .populate('subjectId', 'name')
+      .populate('gradeId', 'name')
+      .populate('academicYearId', 'name')
+      .populate('uploadedByProfileId', 'displayName')
+      .sort({ title: 1 })
+      .lean(),
     Book,
     filter,
     { page: opts.page, pageSize: opts.pageSize, label: 'library.listBooks' }
@@ -136,36 +178,72 @@ export async function listBooks(opts = {}) {
  * offer choices that actually match something.
  */
 export async function listBookFacets() {
-  const [categories, authors, types] = await Promise.all([
+  const [categories, authors, types, languages, examTypes] = await Promise.all([
     Book.distinct('category', { deletedAt: null }),
     Book.distinct('author', { deletedAt: null }),
     Book.distinct('resourceType', { deletedAt: null }),
+    Book.distinct('resourceLanguage', { deletedAt: null }),
+    Book.distinct('examType', { deletedAt: null }),
   ]);
   const sorted = (values) => values.filter(Boolean).map(String).sort((a, b) => a.localeCompare(b));
   return {
     categories: sorted(categories),
     authors: sorted(authors),
     resourceTypes: sorted(types.length ? types : ['PHYSICAL']),
+    languages: sorted(languages),
+    examTypes: sorted(examTypes),
   };
 }
 
 export async function getBookById(id) {
-  const book = await Book.findOne({ _id: id, deletedAt: null }).lean();
+  const book = await Book.findOne({ _id: id, deletedAt: null })
+    .populate('subjectId', 'name')
+    .populate('gradeId', 'name')
+    .populate('academicYearId', 'name')
+    .populate('uploadedByProfileId', 'displayName')
+    .lean();
   if (!book) throw new AppError('Book not found', 404);
   return toBookDto(book);
 }
 
-export async function createBook(data) {
+const RESOURCE_KINDS = ['BOOK', 'NOTE', 'QUESTION_PAPER'];
+
+export async function createBook(data, actor = null) {
+  const resourceKind = data.resourceKind ?? 'BOOK';
+  if (!RESOURCE_KINDS.includes(resourceKind)) {
+    throw new AppError(`resourceKind must be one of: ${RESOURCE_KINDS.join(', ')}`, 400, [], 'INVALID_RESOURCE_KIND');
+  }
+
+  // A note or a question paper has to be *somewhere* — a file to open, or, for
+  // a note, text to read. Storing one with neither creates a catalogue entry
+  // that cannot be used, which is worse than refusing it.
+  if (resourceKind !== 'BOOK' && !data.resourceUrl && !String(data.body ?? '').trim()) {
+    throw new AppError(
+      'Attach a file or write the note text — a library note or question paper needs one of them',
+      400, [], 'RESOURCE_EMPTY',
+    );
+  }
+
   // A digital resource has no shelf copies to lend, so it is never counted as
   // stock — otherwise it would show up as "1 available" and be borrowable.
-  const isDigital = data.resourceType === 'DIGITAL';
+  // Notes and question papers are never lent either.
+  const isDigital = data.resourceType === 'DIGITAL' || resourceKind !== 'BOOK';
   const totalCopies = isDigital ? 0 : data.totalCopies ?? 1;
+  const { language, ...rest } = data;
   const book = await Book.create({
-    ...data,
+    ...rest,
+    resourceKind,
+    resourceLanguage: language ?? data.resourceLanguage ?? null,
+    resourceType: isDigital ? 'DIGITAL' : (data.resourceType ?? 'PHYSICAL'),
+    // Recorded from the actor, never from the request: "who uploaded this" is
+    // not something a client should be able to claim.
+    uploadedByProfileId: actor?.profileId ?? null,
     totalCopies,
     availableCopies: totalCopies,
   });
-  return toBookDto(book);
+  // Read back resolved, so the caller can render the row it just filed rather
+  // than showing raw ids until the next refresh.
+  return getBookById(book._id);
 }
 
 export async function bulkCreateBooks(rows) {
@@ -178,13 +256,22 @@ export async function bulkCreateBooks(rows) {
     const author = row.author?.trim();
     if (!title || !author) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: 'title and author are required' });
+      results.errors.push(rowError(rowNo, {
+        field: !title ? 'title' : 'author',
+        problem: 'is required',
+        suggestion: 'both columns must be filled for every book',
+      }));
       continue;
     }
     const totalCopies = row.totalcopies?.trim() ? Number(row.totalcopies) : 1;
     if (!Number.isFinite(totalCopies) || totalCopies < 0) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `Invalid totalCopies "${row.totalcopies}"` });
+      results.errors.push(rowError(rowNo, {
+        field: 'totalCopies',
+        value: row.totalcopies,
+        problem: 'must be a whole number of copies',
+        suggestion: 'e.g. 3 — leave it blank for a single copy',
+      }));
       continue;
     }
     docs.push({
@@ -198,19 +285,17 @@ export async function bulkCreateBooks(rows) {
     });
   }
 
-  const CHUNK_SIZE = 100;
-  for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
-    const chunk = docs.slice(i, i + CHUNK_SIZE);
-    try {
-      await Book.insertMany(chunk.map(({ rowNo, ...doc }) => doc));
-      results.imported += chunk.length;
-    } catch (err) {
-      results.failed += chunk.length;
-      chunk.forEach((c) => results.errors.push({ row: c.rowNo, error: err.message }));
-    }
-  }
+  const inserted = await insertRows(
+    Book,
+    docs.map(({ rowNo, ...doc }) => ({ rowNo, doc })),
+    { dupField: 'isbn', dupLabel: 'isbn' },
+  );
 
-  return results;
+  return {
+    imported: results.imported + inserted.imported,
+    failed: results.failed + inserted.failed,
+    errors: [...results.errors, ...inserted.errors],
+  };
 }
 
 /**
@@ -238,21 +323,35 @@ export async function bulkIssueBooks(rows) {
 
     if (!admissionNo || !isbn || !dueAt) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: 'admissionNo, isbn, and dueAt are required' });
+      results.errors.push(rowError(rowNo, {
+        field: !admissionNo ? 'admissionNo' : !isbn ? 'isbn' : 'dueAt',
+        problem: 'is required',
+        suggestion: 'an issue needs the borrower, the book and a return date',
+      }));
       continue;
     }
 
     const studentId = studentIdByAdmissionNo.get(admissionNo.toLowerCase());
     if (!studentId) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `No student found with admissionNo "${admissionNo}"` });
+      results.errors.push(rowError(rowNo, {
+        field: 'admissionNo',
+        value: admissionNo,
+        problem: 'does not match any student in this school',
+        suggestion: 'check the admission number, or import the student first',
+      }));
       continue;
     }
 
     const bookId = bookIdByIsbn.get(isbn);
     if (!bookId) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `No book found with isbn "${isbn}"` });
+      results.errors.push(rowError(rowNo, {
+        field: 'isbn',
+        value: isbn,
+        problem: 'does not match any book in the catalogue',
+        suggestion: 'import the book first, or correct the ISBN',
+      }));
       continue;
     }
 
@@ -261,7 +360,7 @@ export async function bulkIssueBooks(rows) {
       results.imported++;
     } catch (err) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: err.message });
+      results.errors.push(rowError(rowNo, { problem: err.message }));
     }
   }
 
@@ -271,9 +370,13 @@ export async function bulkIssueBooks(rows) {
 export async function updateBook(id, updates) {
   const book = await Book.findOne({ _id: id, deletedAt: null });
   if (!book) throw new AppError('Book not found', 404);
-  Object.assign(book, updates);
+  // The API field is `language`; the stored one is `resourceLanguage` (see the
+  // model for why), so an edit has to be translated the same way a create is.
+  const { language, ...rest } = updates;
+  Object.assign(book, rest);
+  if (language !== undefined) book.resourceLanguage = language;
   await book.save();
-  return toBookDto(book);
+  return getBookById(book._id);
 }
 
 export async function deleteBook(id) {

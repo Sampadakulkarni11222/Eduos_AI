@@ -4,6 +4,10 @@ import {
   FeeHead, FeeStructure, Invoice, InvoiceLine, Payment, PaymentChangeRequest,
 } from '../../models/fee.model.js';
 import { Student, Enrollment } from '../../models/student.model.js';
+// Registered here rather than relied on: payment rows populate the profiles
+// that recorded and verified them, and populate needs the model present even
+// when a caller has imported only the fee module.
+import '../../models/profile.model.js';
 import { AcademicYear, Section } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { recordAudit } from '../../utils/auditTrail.js';
@@ -18,6 +22,7 @@ import {
 } from '../../providers/payment.provider.js';
 import { logger } from '../../utils/logger.js';
 import { runInTransaction } from '../../utils/transaction.js';
+import { rowError } from '../../utils/csvImport.js';
 
 // Mirrors the enum on paymentSchema in models/fee.model.js.
 const PAYMENT_MODES = ['GATEWAY', 'CASH', 'CHEQUE', 'DD', 'BANK'];
@@ -34,8 +39,13 @@ const PAYMENT_MODES = ['GATEWAY', 'CASH', 'CHEQUE', 'DD', 'BANK'];
 const INSTRUMENT_RULES = {
   CHEQUE: { number: 'Cheque number', bankName: 'Bank name', instrumentDate: 'Cheque date', proofUrl: 'Cheque image' },
   DD: { number: 'DD number', bankName: 'Bank name', instrumentDate: 'DD date', proofUrl: 'DD image' },
+  // A transfer carries two identifiers, not one: the transaction id the payer
+  // reads off their app, and the UTR/reference the bank settles under. A
+  // reconciliation done months later matches on the UTR, so recording only the
+  // transaction id leaves the payment unmatchable — both are required.
   BANK: {
-    number: 'Transaction/reference number',
+    number: 'Transaction ID',
+    referenceNo: 'Reference ID / UTR',
     bankName: 'Bank name',
     instrumentDate: 'Transfer date',
     proofUrl: 'Transfer proof',
@@ -103,6 +113,9 @@ export function buildInstrument(mode, instrument = {}) {
 
   return {
     number: String(instrument.number).trim(),
+    // Required on BANK by the table above; on cheque and DD there is no second
+    // number, so it stays null unless the school chose to record one.
+    referenceNo: instrument.referenceNo ? String(instrument.referenceNo).trim() : null,
     bankName: String(instrument.bankName).trim(),
     instrumentDate,
     proofUrl,
@@ -431,28 +444,48 @@ export async function bulkCreateInvoices(rows) {
 
     if (!admissionNo || !description || !Number.isFinite(amount) || amount <= 0 || !dueOn) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: 'admissionNo, description, a positive amount, and dueOn are required' });
+      results.errors.push(rowError(rowNo, {
+        field: !admissionNo ? 'admissionNo' : !description ? 'description' : !Number.isFinite(amount) || amount <= 0 ? 'amount' : 'dueOn',
+        value: !admissionNo ? row.admissionno : !description ? row.description : row.amount,
+        problem: 'is required',
+        suggestion: 'every row needs admissionNo, description, a positive amount and a due date',
+      }));
       continue;
     }
 
     const studentId = studentIdByAdmissionNo.get(admissionNo.toLowerCase());
     if (!studentId) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `No student found with admissionNo "${admissionNo}"` });
+      results.errors.push(rowError(rowNo, {
+        field: 'admissionNo',
+        value: admissionNo,
+        problem: 'does not match any student in this school',
+        suggestion: 'check the admission number, or import the student first',
+      }));
       continue;
     }
 
     const enrollmentId = enrollmentIdByStudent.get(studentId.toString());
     if (!enrollmentId) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `Student "${admissionNo}" has no active enrollment` });
+      results.errors.push(rowError(rowNo, {
+        field: 'admissionNo',
+        value: admissionNo,
+        problem: 'names a student with no active enrolment, so there is no class to bill',
+        suggestion: 'enrol the student for the current year, then re-upload this row',
+      }));
       continue;
     }
 
     const parsedDueOn = new Date(dueOn);
     if (isNaN(parsedDueOn.getTime())) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `Invalid dueOn date "${dueOn}"` });
+      results.errors.push(rowError(rowNo, {
+        field: 'dueOn',
+        value: dueOn,
+        problem: 'is not a date this can read',
+        suggestion: 'use YYYY-MM-DD, e.g. 2026-06-10',
+      }));
       continue;
     }
 
@@ -468,7 +501,14 @@ export async function bulkCreateInvoices(rows) {
       results.imported++;
     } catch (err) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: err.code === 11000 ? `Invoice number "${invoiceNo}" already exists` : err.message });
+      results.errors.push(err.code === 11000
+        ? rowError(rowNo, {
+          field: 'invoiceNo',
+          value: invoiceNo,
+          problem: 'already exists',
+          suggestion: 'leave the column blank to have one generated, or use an unused number',
+        })
+        : rowError(rowNo, { problem: err.message }));
     }
   }
 
@@ -884,8 +924,8 @@ export async function rejectPayment(actor, paymentId, reason) {
  */
 const EDITABLE_PAYMENT_FIELDS = new Set([
   'amountPaise', 'mode', 'paidOn', 'receiptNo', 'notes',
-  'instrument.number', 'instrument.bankName', 'instrument.instrumentDate',
-  'instrument.proofUrl', 'instrument.proofName',
+  'instrument.number', 'instrument.referenceNo', 'instrument.bankName',
+  'instrument.instrumentDate', 'instrument.proofUrl', 'instrument.proofName',
 ]);
 
 function readPaymentField(payment, field) {
@@ -1004,6 +1044,20 @@ async function applyPaymentFieldChange(actor, payment, field, rawValue, { action
 export async function updatePayment(actor, paymentId, patch = {}) {
   const payment = await Payment.findById(paymentId);
   if (!payment) throw new AppError('Payment not found', 404);
+
+  // Defence in depth. The route already demands `fees.payments.approve`, but a
+  // verified payment is the record a dispute is settled from, so the service
+  // refuses to edit one for an actor who could not have verified it in the
+  // first place. That way an agent tool, a script or a future route reaching
+  // this function directly gets the same answer the API gives.
+  if ((payment.recordStatus ?? 'PUBLISHED') === 'PUBLISHED' && !canPublishPayments(actor)) {
+    throw new AppError(
+      'Changing a verified payment needs payment-approval rights — file a change request instead',
+      403,
+      [],
+      'PAYMENT_VERIFIED_LOCKED'
+    );
+  }
 
   const fields = Object.keys(patch).filter((k) => k !== 'reason');
   if (!fields.length) throw new AppError('Nothing to change', 400, [], 'NO_CHANGES');
@@ -1545,6 +1599,9 @@ export async function listPayments(actor, scope, {
   const pageNo = paginate ? Math.min(Math.max(parseInt(page, 10) || 1, 1), totalPagesCalc) : 1;
 
   const query = Payment.find(filter)
+    .populate({ path: 'createdByProfileId', select: 'displayName' })
+    .populate({ path: 'approvedByProfileId', select: 'displayName' })
+    .populate({ path: 'rejectedByProfileId', select: 'displayName' })
     .populate({
       path: 'invoiceId',
       select: 'invoiceNo enrollmentId',
@@ -1581,11 +1638,45 @@ export async function listPayments(actor, scope, {
       paidOn: p.paidOn ?? p.createdAt,
       instrument: p.instrument ?? null,
       createdAt: p.createdAt,
+      // Who keyed it in and who made it final — the two facts a receipt is
+      // useless without when it is questioned later. Sent on the list rather
+      // than only on the history dialog so a verified payment says so in place.
+      ...verificationOf(p),
     };
   });
 
   if (!paginate) return items;
   return { items, total, page: pageNo, pageSize: size, totalPages: totalPagesCalc };
+}
+
+/**
+ * The verification facing of a payment row.
+ *
+ * `recordStatus` is the stored state machine; `verificationStatus` is the same
+ * fact in the vocabulary the finance office and the QA report use. They are
+ * derived from one another rather than stored twice, so no row can ever say
+ * PUBLISHED in one field and "Pending verification" in the other.
+ */
+export const VERIFICATION_STATUS = {
+  PENDING_ADMIN_APPROVAL: 'PENDING_VERIFICATION',
+  PUBLISHED: 'VERIFIED',
+  REJECTED: 'REJECTED',
+};
+
+const nameOf = (ref) => (ref && typeof ref === 'object' ? ref.displayName ?? null : null);
+
+export function verificationOf(payment) {
+  const recordStatus = payment.recordStatus ?? 'PUBLISHED';
+  return {
+    verificationStatus: VERIFICATION_STATUS[recordStatus] ?? 'VERIFIED',
+    recordedBy: nameOf(payment.createdByProfileId),
+    recordedByRole: payment.createdByRole ?? null,
+    verifiedBy: nameOf(payment.approvedByProfileId),
+    verifiedAt: payment.approvedAt ?? null,
+    rejectedBy: nameOf(payment.rejectedByProfileId),
+    rejectedAt: payment.rejectedAt ?? null,
+    rejectionReason: payment.rejectionReason ?? null,
+  };
 }
 
 /**
@@ -1705,7 +1796,12 @@ export async function getInvoiceDetail(actor, scope, invoiceId) {
 
   const [lines, payments] = await Promise.all([
     InvoiceLine.find({ invoiceId }).sort({ createdAt: 1 }).lean(),
-    Payment.find(paymentFilter).sort({ createdAt: 1 }).lean(),
+    Payment.find(paymentFilter)
+      .populate({ path: 'createdByProfileId', select: 'displayName' })
+      .populate({ path: 'approvedByProfileId', select: 'displayName' })
+      .populate({ path: 'rejectedByProfileId', select: 'displayName' })
+      .sort({ createdAt: 1 })
+      .lean(),
   ]);
 
   const obj = invoice.toObject();
@@ -1741,7 +1837,12 @@ export async function getInvoiceDetail(actor, scope, invoiceId) {
       amountPaise: p.amountPaise,
       mode: p.mode,
       status: p.status ?? 'SUCCESS',
+      paidOn: p.paidOn ?? p.createdAt,
+      // How the money actually arrived — cheque no., transaction id, UTR —
+      // beside the row that claims it did.
+      instrument: p.instrument ?? null,
       createdAt: p.createdAt,
+      ...verificationOf(p),
     })),
   };
 }

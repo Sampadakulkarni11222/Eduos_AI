@@ -6,19 +6,30 @@ import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
 import { AppError } from '../../utils/AppError.js';
 import { tenantFilter } from '../../tenancy/tenantContext.js';
+import { SYSTEM_ROLES } from '../../constants/permissions.js';
 
 const MAX_LIMIT = 200;
 
 /**
- * The roles the primary view is about.
+ * The roles the primary view is about: everyone who acts for the school.
  *
  * The screen calls itself "a complete record of all administrative actions",
  * but it listed every actor — a student opening their timetable sat between
- * two staff actions, and the entries that matter were buried. The default is
- * therefore staff activity; a reader who wants another role asks for it by
- * name through `roleKey`, which is still gated by audit.read.
+ * two staff actions, and the entries that matter were buried. So the default
+ * is staff activity.
+ *
+ * It was pinned to TEACHER and ADMIN, which quietly excluded the rest of the
+ * staff: a payment registered by Finance, a plan approved by the Principal, a
+ * book written off by the Librarian, a room reassigned by the Warden — all
+ * recorded, none of them shown unless the reader already knew to filter by
+ * that role. Money actions being invisible by default is the worst case of it.
+ *
+ * Derived from the role catalogue now, so a school that adds a staff role gets
+ * it here without a code change. The two family roles are the only ones left
+ * out, and `roleKey` still asks for them by name.
  */
-const PRIMARY_VIEW_ROLES = ['TEACHER', 'ADMIN'];
+const FAMILY_ROLES = new Set(['STUDENT', 'PARENT']);
+const PRIMARY_VIEW_ROLES = SYSTEM_ROLES.map((r) => r.key).filter((k) => !FAMILY_ROLES.has(k));
 
 /**
  * Reading an import or export entry needs this permission on top of audit.read.

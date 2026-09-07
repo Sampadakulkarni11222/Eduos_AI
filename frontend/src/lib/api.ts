@@ -13,7 +13,7 @@
 import { cachedFetch, invalidateCache } from './cache';
 import { getActingSchool } from './acting-school';
 import { SESSION_MARKER } from './session-cookie';
-import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto } from './types';
+import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto, AnnouncementDraft, AnnouncementPreviewDto, TransportRosterRow, LibraryResourceKind } from './types';
 
 /**
  * A document exactly as the API returns it, before this layer normalises it.
@@ -567,8 +567,10 @@ export const api = {
     gatewayRef?: string;
     paidOn?: string;
     notes?: string;
+    receiptNo?: string;
     instrument?: {
-      number?: string; bankName?: string; instrumentDate?: string; proofUrl?: string; proofName?: string;
+      number?: string; referenceNo?: string; bankName?: string;
+      instrumentDate?: string; proofUrl?: string; proofName?: string;
     };
   }) =>
     request<{
@@ -644,11 +646,15 @@ export const api = {
 
   // ── announcements ──
   announcements: () => cachedRequest<AnnouncementDto[]>('/announcements'),
-  createAnnouncement: (body: {
-    title: string; content: string;
-    audience?: { all?: boolean; gradeIds?: string[]; sectionIds?: string[]; subjectIds?: string[] };
-    channels?: { app?: boolean; email?: boolean; whatsapp?: boolean };
-  }) => request<{ id: string }>('/announcements', { method: 'POST', body: JSON.stringify(body) }),
+  createAnnouncement: (body: AnnouncementDraft) =>
+    request<{ id: string }>('/announcements', { method: 'POST', body: JSON.stringify(body) }),
+  /**
+   * Resolves what the draft would look like and reach. The server runs the
+   * same audience check the send path runs, so a refusal shows up here rather
+   * than after the author has pressed Send.
+   */
+  previewAnnouncement: (body: AnnouncementDraft) =>
+    request<AnnouncementPreviewDto>('/announcements/preview', { method: 'POST', body: JSON.stringify(body) }),
 
   // ── tickets ──
   academicYears: () => cachedRequest<AcademicYearDto[]>('/academics/years'),
@@ -795,6 +801,12 @@ export const api = {
   listRoutes: () => cachedRequest<TransportRouteDto[]>('/transport/routes'),
   listStops: (routeId: string) => request<TransportStopDto[]>(`/transport/routes/${routeId}/stops`),
   myBus: (studentId?: string) => request<MyBusDto | null>(`/transport/my-bus${studentId ? `?studentId=${studentId}` : ''}`),
+  /**
+   * Travel arrangements for every student the caller may see. A teacher gets
+   * their own sections; a sectionId narrows that and never widens it.
+   */
+  transportRoster: (sectionId?: string) =>
+    request<TransportRosterRow[]>(`/transport/roster${sectionId ? `?sectionId=${sectionId}` : ''}`),
   createRoute: (body: { name: string; operatorName?: string; vehicleNo?: string; driverName?: string; driverPhone?: string }) =>
     request<{ id: string }>('/transport/routes', { method: 'POST', body: JSON.stringify(body) }),
   bulkCreateRoutes: (file: File) => uploadCsv('/transport/routes/bulk', file),
@@ -855,6 +867,11 @@ export const api = {
   listBooks: (params: {
     search?: string; category?: string; author?: string;
     resourceType?: 'PHYSICAL' | 'DIGITAL'; availability?: 'ALL' | 'AVAILABLE';
+    // The shelf, and the metadata the digital library is browsed by. Omitting
+    // resourceKind returns everything, which is what the older screens expect.
+    resourceKind?: LibraryResourceKind;
+    subjectId?: string; gradeId?: string; academicYearId?: string;
+    language?: string; examType?: string;
   } | string = {}) => {
     // A bare string is the original signature (search only); kept so the
     // librarian and admin screens are untouched.
@@ -865,6 +882,11 @@ export const api = {
     if (p.author && p.author !== 'ALL') q.set('author', p.author);
     if (p.resourceType) q.set('resourceType', p.resourceType);
     if (p.availability && p.availability !== 'ALL') q.set('availability', p.availability);
+    if (p.resourceKind) q.set('resourceKind', p.resourceKind);
+    for (const key of ['subjectId', 'gradeId', 'academicYearId', 'language', 'examType'] as const) {
+      const value = p[key];
+      if (value && value !== 'ALL') q.set(key, value);
+    }
     const qs = q.toString();
     return request<BookDto[]>(`/library/books${qs ? `?${qs}` : ''}`);
   },
@@ -888,8 +910,19 @@ export const api = {
     const qs = q.toString();
     return request<BookIssueDto[]>(`/library/issues${qs ? `?${qs}` : ''}`);
   },
-  createBook: (body: { title: string; author: string; isbn?: string; category: string; totalCopies?: number; resourceType?: 'PHYSICAL' | 'DIGITAL'; resourceUrl?: string }) =>
-    request<{ id: string }>('/library/books', { method: 'POST', body: JSON.stringify(body) }),
+  createBook: (body: {
+    title: string; author: string; isbn?: string; category: string; totalCopies?: number;
+    resourceType?: 'PHYSICAL' | 'DIGITAL'; resourceUrl?: string;
+    resourceKind?: LibraryResourceKind;
+    subjectId?: string; gradeId?: string; academicYearId?: string;
+    language?: string; examType?: string; body?: string;
+  }) => request<BookDto>('/library/books', { method: 'POST', body: JSON.stringify(body) }),
+  updateBook: (id: string, body: Partial<{
+    title: string; author: string; category: string; resourceUrl: string;
+    subjectId: string; gradeId: string; academicYearId: string;
+    language: string; examType: string; body: string;
+  }>) => request<BookDto>(`/library/books/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteBook: (id: string) => request<{ id: string }>(`/library/books/${id}`, { method: 'DELETE' }),
   bulkCreateBooks: (file: File) => uploadCsv('/library/books/bulk', file),
   issueBook: (body: { bookId: string; studentId: string; dueAt: string }) =>
     request<BookIssueDto>('/library/issues', { method: 'POST', body: JSON.stringify(body) }),

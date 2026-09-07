@@ -113,11 +113,22 @@ export function BulkUploadModal({
                 ✓ {result.imported} imported{result.failed > 0 ? `, ${result.failed} failed` : ''}
               </div>
               {result.errors.length > 0 && (
-                <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12, color: 'var(--text-2)', maxHeight: 160, overflowY: 'auto' }}>
-                  {result.errors.map((e, i) => (
-                    <li key={i}>Row {e.row}: {e.error}</li>
-                  ))}
-                </ul>
+                <>
+                  <div className="bulk-errors-head">Fix these rows and upload them again:</div>
+                  {/* Row, column, what is wrong, and what to put there. A bare
+                      message leaves the operator hunting through the sheet. */}
+                  <ul className="bulk-errors">
+                    {result.errors.map((e, i) => (
+                      <li key={i}>
+                        <strong>Row {e.row}</strong>
+                        {e.field ? <> · <code>{e.field}</code></> : null}
+                        {e.value !== undefined && e.value !== null && e.value !== '' ? <> = &quot;{String(e.value)}&quot;</> : null}
+                        <div className="bulk-error-problem">{e.problem ?? e.error}</div>
+                        {e.suggestion ? <div className="bulk-error-fix">Try: {e.suggestion}</div> : null}
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
             </div>
           )}

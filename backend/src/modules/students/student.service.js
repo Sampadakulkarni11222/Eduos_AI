@@ -14,6 +14,7 @@ import * as medicalService from '../medical/medical.service.js';
 import { recordPiiRead } from '../../utils/auditTrail.js';
 import * as attendanceService from '../attendance/attendance.service.js';
 import * as examService from '../exams/exam.service.js';
+import { rowError } from '../../utils/csvImport.js';
 
 /**
  * Resolves the list of student IDs the actor is allowed to see when scope is OWN.
@@ -610,14 +611,23 @@ export async function bulkEnroll({ sectionId, academicYearId, rows }) {
 
     if (!admissionNo) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: 'admissionNo is required' });
+      results.errors.push(rowError(rowNo, {
+        field: 'admissionNo',
+        problem: 'is required',
+        suggestion: 'the admission number of the student to enrol',
+      }));
       continue;
     }
 
     const studentId = studentMap.get(admissionNo.toLowerCase());
     if (!studentId) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `No student found with admissionNo "${admissionNo}"` });
+      results.errors.push(rowError(rowNo, {
+        field: 'admissionNo',
+        value: admissionNo,
+        problem: 'does not match any student in this school',
+        suggestion: 'check the admission number, or add the student first',
+      }));
       continue;
     }
 
@@ -626,7 +636,12 @@ export async function bulkEnroll({ sectionId, academicYearId, rows }) {
       rollNo = Number(row.rollno);
       if (!Number.isFinite(rollNo)) {
         results.failed++;
-        results.errors.push({ row: rowNo, error: `Invalid rollNo "${row.rollno}"` });
+        results.errors.push(rowError(rowNo, {
+          field: 'rollNo',
+          value: row.rollno,
+          problem: 'must be a whole number',
+          suggestion: 'e.g. 12 — leave it blank to have one assigned',
+        }));
         continue;
       }
     } else {
@@ -660,11 +675,21 @@ export async function bulkEnroll({ sectionId, academicYearId, rows }) {
       chunk.forEach(c => {
         const rollNo = c.doc.rollNo;
         if (err.code === 11000 && err.keyPattern?.rollNo) {
-          results.errors.push({ row: c.rowNo, error: `Roll number ${rollNo} is already assigned in this section` });
+          results.errors.push(rowError(c.rowNo, {
+            field: 'rollNo',
+            value: rollNo,
+            problem: 'is already assigned in this section',
+            suggestion: 'use a free roll number, or leave the column blank',
+          }));
         } else if (err.code === 11000) {
-          results.errors.push({ row: c.rowNo, error: `Student "${c.admissionNo}" is already enrolled in the selected academic year` });
+          results.errors.push(rowError(c.rowNo, {
+            field: 'admissionNo',
+            value: c.admissionNo,
+            problem: 'is already enrolled for the selected academic year',
+            suggestion: 'remove the row, or choose a different academic year',
+          }));
         } else {
-          results.errors.push({ row: c.rowNo, error: err.message });
+          results.errors.push(rowError(c.rowNo, { problem: err.message }));
         }
       });
     }

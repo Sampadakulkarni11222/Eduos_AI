@@ -11,6 +11,7 @@ import type { FeeSummary, InvoiceDto, PaymentReceiptDto, StudentListItem, GradeD
 import { FeeStructuresPanel } from '@/components/fees/fee-structures-panel';
 import { RecordPaymentModal, PaymentRecordedNotice } from '@/components/fees/record-payment-modal';
 import { PaymentApprovalsPanel } from '@/components/fees/payment-approvals-panel';
+import { PaymentMethod, PaymentVerification } from '@/components/fees/payment-verification';
 import { FeePlanModal } from '@/components/fees/fee-plan-modal';
 
 const STATUS_TONE: Record<string, 'green' | 'amber' | 'red' | 'gray' | 'blue'> = {
@@ -373,8 +374,9 @@ export default function AdminPayments() {
                     <th>Student Name</th>
                     <th>Class</th>
                     <th>Amount Paid</th>
-                    <th>Mode</th>
+                    <th>Method &amp; reference</th>
                     <th>Status</th>
+                    <th>Verification</th>
                     <th>Date</th>
                   </tr>
                 </thead>
@@ -386,9 +388,12 @@ export default function AdminPayments() {
                       <td data-label="Student Name">{r.studentName}</td>
                       <td data-label="Class">{r.class}</td>
                       <td data-label="Amount Paid">{rupees(r.amountPaise)}</td>
-                      <td data-label="Mode"><Pill tone="blue">{r.mode}</Pill></td>
+                      <td data-label="Method &amp; reference"><PaymentMethod payment={r} /></td>
                       <td data-label="Status"><Pill tone={r.status === 'SUCCESS' ? 'green' : 'gray'}>{r.status}</Pill></td>
-                      <td style={{ color: 'var(--text-faint)' }} data-label="Date">{new Date(r.createdAt).toLocaleDateString('en-IN')}</td>
+                      <td data-label="Verification"><PaymentVerification payment={r} /></td>
+                      <td style={{ color: 'var(--text-faint)' }} data-label="Date">
+                        {new Date(r.paidOn ?? r.createdAt).toLocaleDateString('en-IN')}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { env } from '../config/env.js';
 import { logger } from '../utils/logger.js';
+import { CircuitBreaker } from '../utils/circuitBreaker.js';
 
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-opus-5';
 
@@ -58,6 +59,30 @@ function getGeminiClient() {
  * caller must present its own deterministic content rather than passing off
  * a placeholder as a model answer.
  */
+/**
+ * Every model call goes through this.
+ *
+ * Two problems it solves, both measured rather than imagined. The SDKs carry
+ * no timeout, so one slow generation held an HTTP request — and the user's
+ * chat box — for as long as the provider felt like taking: agent turns were
+ * running 30-40 seconds. And when a key is out of quota (this project's was,
+ * answering 429 to everything), every single message paid that round-trip
+ * before falling back to the deterministic answer it was always going to give.
+ *
+ * Failing fast for a minute after three consecutive failures is the difference
+ * between "the assistant is a little slower today" and "the assistant is
+ * broken", which is how the QA report found it.
+ */
+const llmBreaker = new CircuitBreaker('llm', {
+  failureThreshold: 3,
+  cooldownPeriod: 60_000,
+  timeoutMs: env.AI_TIMEOUT_MS,
+  concurrencyLimit: 20,
+});
+
+/** The shape every caller treats as "no model answer" — never a thrown error. */
+const notGenerated = (reason) => ({ text: null, generated: false, reason });
+
 export async function generate({ system, message, maxTokens = MAX_TOKENS }) {
   if (!isLlmEnabled()) {
     return { text: null, generated: false, reason: 'LLM_NOT_CONFIGURED' };
@@ -72,15 +97,15 @@ export async function generate({ system, message, maxTokens = MAX_TOKENS }) {
         systemInstruction: system,
       });
 
-      const response = await genModel.generateContent({
+      const response = await llmBreaker.execute(() => genModel.generateContent({
         contents: [{ role: 'user', parts: [{ text: message }] }],
         generationConfig: {
           maxOutputTokens: maxTokens,
         },
-      });
+      }));
 
       const text = response.response.text();
-      if (!text) return { text: null, generated: false, reason: 'EMPTY_RESPONSE' };
+      if (!text) return notGenerated('EMPTY_RESPONSE');
 
       return {
         text,
@@ -98,13 +123,13 @@ export async function generate({ system, message, maxTokens = MAX_TOKENS }) {
   }
 
   try {
-    const response = await getAnthropicClient().messages.create({
+    const response = await llmBreaker.execute(() => getAnthropicClient().messages.create({
       model: ANTHROPIC_MODEL,
       max_tokens: maxTokens,
       output_config: { effort: 'medium' },
       system,
       messages: [{ role: 'user', content: message }],
-    });
+    }));
 
     if (response.stop_reason === 'refusal') {
       logger.warn(`LLM refused a tutor request (category: ${response.stop_details?.category ?? 'unknown'})`);

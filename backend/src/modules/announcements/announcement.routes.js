@@ -32,4 +32,16 @@ router.use(authenticate);
 router.get('/', requirePermission('announcements.read'), controller.list);
 router.post('/', requirePermission('announcements.publish'), controller.create);
 
+/**
+ * @swagger
+ * /announcements/preview:
+ *   post:
+ *     summary: Resolve what an announcement would look like and reach, without publishing it
+ *     tags: [Announcements]
+ *     responses:
+ *       200:
+ *         description: Preview resolved
+ */
+router.post('/preview', requirePermission('announcements.publish'), controller.preview);
+
 export default router;

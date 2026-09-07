@@ -55,15 +55,23 @@ const invoiceLineSchema = new Schema(
  * The instrument a non-cash payment was made with.
  *
  * One shape for cheque, DD and bank transfer rather than three: what they need
- * recording is the same four things — a number, a bank, the date on the
- * instrument, and an image of it — and only the words differ. `number` is the
- * cheque no., the DD no. or the transaction/UTR reference; `proofUrl` is the
- * uploaded image or receipt, which is mandatory for all three (enforced in
- * fee.service.js, not here, because "mandatory" depends on the mode).
+ * recording is largely the same — a number, a bank, the date on the
+ * instrument, and an image of it — and mostly only the words differ.
+ * `number` is the cheque no., the DD no. or the bank transaction id;
+ * `proofUrl` is the uploaded image or receipt, which is mandatory for all
+ * three (enforced in fee.service.js, not here, because "mandatory" depends on
+ * the mode).
+ *
+ * `referenceNo` is the one field a transfer needs and a cheque does not: a
+ * bank transfer is identified by *two* numbers — the transaction id the payer
+ * sees and the UTR/reference the bank settles on — and reconciliation needs
+ * both. It stays null on cheque and DD, where there is no second number to
+ * record.
  */
 const paymentInstrumentSchema = new Schema(
   {
     number: { type: String, trim: true, default: null },
+    referenceNo: { type: String, trim: true, default: null },
     bankName: { type: String, trim: true, default: null },
     instrumentDate: { type: Date, default: null },
     proofUrl: { type: String, default: null },

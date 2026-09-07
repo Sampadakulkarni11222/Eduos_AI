@@ -285,18 +285,21 @@ export default function ClassroomManagement() {
           <Card pad={false}>
             {offerings === null && <div style={{ padding: 20 }}><SkeletonRows rows={4} /></div>}
             {offerings !== null && offerings.length === 0 && (
-              <EmptyState title="No subject offerings yet" sub="Assign a subject + teacher to a class section for a term." />
+              <EmptyState
+                title="No subject offerings yet"
+                sub="Assign a subject + teacher to a class section for a term, then mark the ones students choose as electives."
+              />
             )}
             {offerings && offerings.length > 0 && (
               <table className="data-table data-table-cards">
-                <thead><tr><th>Class</th><th>Subject</th><th>Teacher</th><th>Student registration</th></tr></thead>
+                <thead><tr><th>Class</th><th>Subject</th><th>Teacher</th><th>Core / elective</th></tr></thead>
                 <tbody>
                   {offerings.map((o) => (
                     <tr key={o.id}>
                       <td className="cell-primary" data-label="Class">{divisionLabel(o.gradeName, o.sectionName)}</td>
                       <td data-label="Subject"><Pill tone="gray">{o.subject}</Pill></td>
                       <td data-label="Teacher">{o.teacherName ?? <span style={{ color: 'var(--text-faint)' }}>Unassigned</span>}</td>
-                      <td data-label="Student registration">
+                      <td data-label="Core / elective">
                         <ElectiveControls offering={o} onChanged={loadOfferings} />
                       </td>
                     </tr>

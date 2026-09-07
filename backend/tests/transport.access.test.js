@@ -50,6 +50,8 @@ let otherStudent;    // in a colleague's section
 let studentProfileId;
 let parentProfileId;
 let nvmpStudent;
+let mySection;
+let otherSection;
 
 /** A student in `section`, with a bus enrolment on the given route/stop. */
 const seedRider = async (section, admissionNo, profileId = null) => {
@@ -75,8 +77,8 @@ const seedRider = async (section, admissionNo, profileId = null) => {
 beforeEach(async () => {
   await inOak(async () => {
     const grade = await Grade.create({ name: 'Class 6', level: 6 });
-    const mySection = await Section.create({ gradeId: grade._id, name: 'A', classTeacherId: teacherId });
-    const otherSection = await Section.create({ gradeId: grade._id, name: 'B', classTeacherId: otherTeacherId });
+    mySection = await Section.create({ gradeId: grade._id, name: 'A', classTeacherId: teacherId });
+    otherSection = await Section.create({ gradeId: grade._id, name: 'B', classTeacherId: otherTeacherId });
 
     studentProfileId = new mongoose.Types.ObjectId();
     parentProfileId = new mongoose.Types.ObjectId();
@@ -205,5 +207,60 @@ describe('2 & 3. school boundaries', () => {
     for (const roleKey of ['TEACHER', 'STUDENT', 'PARENT', 'PRINCIPAL', 'WARDEN']) {
       expect(canReach(roleKey, 'transport.manage'), roleKey).toBe(false);
     }
+  });
+});
+
+describe('6. the class-level roster a teacher actually needs', () => {
+  /**
+   * Knowing who goes home on which bus is a question about a whole class at
+   * the last bell, not about one child at a time. The roster answers it — and
+   * takes its authorization from the same place the single lookup does, so it
+   * cannot become a wider door than getOwnBus.
+   */
+  it('lists the riders of the sections the teacher teaches', async () => {
+    const rows = await inOak(() => transport.listTransportRoster(actorFor('TEACHER', teacherId)));
+
+    expect(rows.map((r) => r.admissionNo)).toEqual(['IN-6A']);
+    expect(rows[0].route.name).toBe('Route IN-6A');
+    expect(rows[0].stop.name).toBe('Main Gate');
+    expect(rows[0].status).toBe('ENROLLED');
+  });
+
+  it('never includes a colleague section, even when that section is asked for', async () => {
+    const rows = await inOak(() => transport.listTransportRoster(
+      actorFor('TEACHER', teacherId),
+      { sectionId: otherSection._id.toString() },
+    ));
+    expect(rows).toEqual([]);
+  });
+
+  it('a teacher assigned to nothing gets an empty roster, not the school', async () => {
+    expect(await inOak(() => transport.listTransportRoster(actorFor('TEACHER')))).toEqual([]);
+  });
+
+  it('a role with no transport grant and no students reaches nobody', async () => {
+    expect(await inOak(() => transport.listTransportRoster(actorFor('LIBRARIAN')))).toEqual([]);
+  });
+
+  it('an admin sees the school, because the permission says so', async () => {
+    const rows = await inOak(() => transport.listTransportRoster(actorFor('ADMIN')));
+    expect(rows.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('says so plainly when a student does not travel by bus', async () => {
+    // A walker is a real answer, not a missing record.
+    const walker = await inOak(async () => {
+      const student = await Student.create({ admissionNo: 'IN-6W', firstName: 'Walks', lastName: 'Home' });
+      await Enrollment.create({
+        studentId: student._id, sectionId: mySection._id,
+        academicYearId: new mongoose.Types.ObjectId(), status: 'ACTIVE',
+      });
+      return student;
+    });
+
+    const rows = await inOak(() => transport.listTransportRoster(actorFor('TEACHER', teacherId)));
+    const row = rows.find((r) => r.studentId === walker._id.toString());
+    expect(row.status).toBe('NOT_ENROLLED');
+    expect(row.route).toBeNull();
   });
 });

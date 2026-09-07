@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { Announcement } from '../../models/announcement.model.js';
 import { Grade, Section, Subject, SubjectOffering } from '../../models/academics.model.js';
 import { Role } from '../../models/role.model.js';
+import { Profile } from '../../models/profile.model.js';
 import { Enrollment } from '../../models/student.model.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 import { currentTenantId } from '../../tenancy/tenantContext.js';
@@ -286,6 +287,103 @@ export const list = async (actor) => {
   );
 };
 
+/**
+ * Attachment URLs, restricted to files this server issued.
+ *
+ * The composer uploads through /uploads and sends back the `fileUrl` it was
+ * given. Accepting an arbitrary string would turn every announcement into a
+ * link the school appears to vouch for, so anything that is not one of our own
+ * upload paths is dropped rather than stored.
+ */
+function normalizeAttachments(attachments) {
+  if (!Array.isArray(attachments)) return [];
+  return attachments
+    .map((a) => (typeof a === 'string' ? a.trim() : ''))
+    .filter((a) => a.startsWith('/uploads/'))
+    .slice(0, 10);
+}
+
+/**
+ * What an announcement *would* be, without writing one.
+ *
+ * The preview runs the same `resolveAudience` the send path runs, so what the
+ * composer shows is the audience the server would actually accept — including
+ * the refusal. A preview that resolved the audience in the browser would show
+ * a teacher the whole school and then fail at send time, which is precisely
+ * the confusion this is meant to remove. Nothing is created and nothing is
+ * dispatched.
+ */
+export const preview = async (actor, scope, data) => {
+  if (!currentTenantId()) {
+    throw new AppError('Choose a school before posting an announcement', 400, [], 'SCHOOL_REQUIRED');
+  }
+  const audience = await resolveAudience(actor, scope, data.audience);
+  const channels = {
+    app: data.channels?.app ?? true,
+    email: !!data.channels?.email,
+    whatsapp: !!data.channels?.whatsapp,
+  };
+  const attachments = normalizeAttachments(data.attachments);
+  const title = String(data.title ?? '').trim();
+  const content = String(data.content ?? '').trim();
+
+  return {
+    title,
+    content,
+    audience,
+    audienceLabel: await labelAudience(audience),
+    recipientCount: await countRecipients(audience),
+    channels,
+    attachments,
+    // Channel renderings are built here, not in the browser, so the preview
+    // cannot drift from what the fan-out would send.
+    email: channels.email
+      ? { subject: title, body: content, attachments }
+      : null,
+    whatsapp: channels.whatsapp
+      // WhatsApp's own markup: *bold* for the title, a blank line, the body.
+      ? { body: `*${title}*\n\n${content}`, attachments }
+      : null,
+  };
+};
+
+/**
+ * How many profiles the resolved audience reaches.
+ *
+ * Counted from enrolments and profiles rather than guessed, because "who will
+ * actually receive this" is the one question a preview exists to answer.
+ */
+async function countRecipients(audience) {
+  const roleKeys = audience.roleKeys ?? [];
+  const roleFilter = async () => {
+    if (!roleKeys.length) return {};
+    const roles = await Role.find({ key: { $in: roleKeys } }).select('_id').lean();
+    return { roleId: { $in: roles.map((r) => r._id) } };
+  };
+
+  if (audience.all || (!audience.sectionIds?.length && !audience.gradeIds?.length && !audience.subjectIds?.length)) {
+    return Profile.countDocuments({
+      tenantId: currentTenantId(), deletedAt: null, ...(await roleFilter()),
+    });
+  }
+
+  let sectionIds = [...(audience.sectionIds ?? [])];
+  if (audience.gradeIds?.length) {
+    const sections = await Section.find({ gradeId: { $in: audience.gradeIds } }).select('_id').lean();
+    sectionIds.push(...sections.map((s) => s._id));
+  }
+  if (audience.subjectIds?.length) {
+    const offerings = await SubjectOffering.find({ subjectId: { $in: audience.subjectIds } }).select('sectionId').lean();
+    sectionIds.push(...offerings.map((o) => o.sectionId));
+  }
+  sectionIds = [...new Set(sectionIds.map(String))];
+  if (!sectionIds.length) return 0;
+
+  // Students in those sections. Parents are reached through their children, so
+  // counting enrolments is the honest floor for "people this reaches".
+  return Enrollment.countDocuments({ sectionId: { $in: sectionIds }, status: 'ACTIVE' });
+};
+
 export const create = async (actor, scope, data) => {
   // An announcement belongs to a school. A platform administrator acting on no
   // school in particular has no audience to address, and the row would carry
@@ -305,6 +403,7 @@ export const create = async (actor, scope, data) => {
     content: data.content,
     audience,
     channels,
+    attachments: normalizeAttachments(data.attachments),
     createdByProfileId: actor.profileId,
   });
   dispatch(doc, channels);
