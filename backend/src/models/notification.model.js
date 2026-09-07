@@ -16,7 +16,9 @@ const notificationSchema = new Schema(
       type: String,
       enum: [
         'ANNOUNCEMENT', 'ASSIGNMENT', 'MARKS', 'ATTENDANCE',
-        'FEES', 'LIBRARY', 'TICKET', 'LEAVE', 'REGISTRATION', 'SYSTEM',
+        'FEES', 'LIBRARY', 'TICKET', 'LEAVE', 'REGISTRATION',
+        // Student-raised requests decided by a class teacher.
+        'COCURRICULAR', 'PROFILE_EDIT', 'SYSTEM',
       ],
       default: 'SYSTEM',
     },

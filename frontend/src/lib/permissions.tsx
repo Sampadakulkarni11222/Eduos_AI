@@ -62,6 +62,7 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   '/warden/students': 'hostel.read',
   '/warden/medical': 'medical.read',
   '/teacher/medical': 'medical.read',
+  '/teacher/student-requests': 'cocurricular.review',
   '/parent/medical': 'medical.read',
   '/admin/medical': 'medical.read',
 };

@@ -577,6 +577,91 @@ export async function getCalendar(actor, scope, { enrollmentId, month }) {
   };
 }
 
+/**
+ * Lecture-by-lecture attendance for one enrollment over a date range.
+ *
+ * Only rows that were actually captured per period (`periodNo != null`) count
+ * as a lecture — a day-level record says nothing about any individual class,
+ * and inventing seven lectures out of one daily mark would be presenting a
+ * guess as a register. Each record is matched to the timetable slot for its
+ * weekday and period, which is where the subject, room and clock times come
+ * from; a record with no matching slot is still returned, labelled by its
+ * period number alone, so an absence is never silently dropped.
+ */
+export async function getLectureAttendance(actor, scope, { enrollmentId, month, from, to } = {}) {
+  const targetId = await resolveSingleEnrollmentId(actor, scope, enrollmentId);
+
+  const enrollment = await Enrollment.findById(targetId).select('sectionId');
+  if (!enrollment) throw new AppError('Enrollment not found', 404);
+
+  let dateFrom = from ? parseDateToMidnight(from) : null;
+  // `to` names a calendar day, and records are stored at that day's midnight,
+  // so the bound covers the whole of it — otherwise a from/to range on a
+  // single day matches nothing.
+  let dateTo = to ? parseDateToMidnight(to) : null;
+  if (dateTo) dateTo = new Date(dateTo.getTime() + 24 * 60 * 60 * 1000 - 1);
+  if (month && !dateFrom && !dateTo) {
+    const [y, m] = month.split('-');
+    dateFrom = new Date(Date.UTC(Number(y), Number(m) - 1, 1));
+    dateTo = new Date(Date.UTC(Number(y), Number(m), 0, 23, 59, 59, 999));
+  }
+
+  const slots = await TimetableSlot.find({ sectionId: enrollment.sectionId }).populate({
+    path: 'subjectOfferingId',
+    populate: [
+      { path: 'subjectId', select: 'name' },
+      { path: 'teacherId', select: 'displayName' },
+    ],
+  });
+  const slotByKey = new Map(slots.map((sl) => [`${sl.dayOfWeek}:${sl.periodNo}`, sl]));
+
+  const match = { enrollmentId: new mongoose.Types.ObjectId(String(targetId)), periodNo: { $ne: null } };
+  if (dateFrom || dateTo) {
+    match.date = {};
+    if (dateFrom) match.date.$gte = dateFrom;
+    if (dateTo) match.date.$lte = dateTo;
+  }
+
+  const records = await AttendanceRecord.find(match)
+    .select('date periodNo status note')
+    .sort({ date: -1, periodNo: 1 })
+    .limit(500)
+    .lean();
+
+  const lectures = records.map((rec) => {
+    // getUTCDay(): 0=Sun..6=Sat; the timetable uses 1=Mon..7=Sun.
+    const dow = rec.date.getUTCDay() === 0 ? 7 : rec.date.getUTCDay();
+    const slot = slotByKey.get(`${dow}:${rec.periodNo}`);
+    return {
+      id: String(rec._id),
+      date: rec.date.toISOString().slice(0, 10),
+      dayOfWeek: dow,
+      periodNo: rec.periodNo,
+      subject: slot?.subjectOfferingId?.subjectId?.name ?? null,
+      teacher: slot?.subjectOfferingId?.teacherId?.displayName ?? null,
+      startTime: slot?.startTime ?? null,
+      endTime: slot?.endTime ?? null,
+      room: slot?.room ?? null,
+      status: rec.status,
+      note: rec.note ?? null,
+    };
+  });
+
+  const counts = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
+  for (const l of lectures) counts[l.status] = (counts[l.status] ?? 0) + 1;
+  const attended = counts.PRESENT + counts.LATE;
+
+  return {
+    enrollmentId: String(targetId),
+    from: dateFrom ? dateFrom.toISOString().slice(0, 10) : null,
+    to: dateTo ? dateTo.toISOString().slice(0, 10) : null,
+    totalLectures: lectures.length,
+    counts,
+    pctPresent: lectures.length > 0 ? Math.round((attended / lectures.length) * 100) : null,
+    lectures,
+  };
+}
+
 export async function getTrend(actor, scope, { enrollmentId, months }) {
   const targetId = await resolveSingleEnrollmentId(actor, scope, enrollmentId);
   const n = Math.min(Math.max(parseInt(months, 10) || 6, 1), 12);

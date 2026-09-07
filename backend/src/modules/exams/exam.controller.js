@@ -41,6 +41,11 @@ export const getPerformance = asyncHandler(async (req, res) => {
   sendSuccess(res, performance, 'Performance fetched');
 });
 
+export const getPerformanceHistory = asyncHandler(async (req, res) => {
+  const history = await service.getPerformanceHistory(req.actor, req.scope, req.query);
+  sendSuccess(res, history, 'Performance history fetched');
+});
+
 export const enterMarks = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.enterMarks(req.actor, req.scope, req.body), 'Marks entered', 201);
 });

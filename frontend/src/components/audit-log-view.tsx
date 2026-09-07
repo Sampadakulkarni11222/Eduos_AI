@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
-import { Card, EmptyState, SkeletonRows, Button, useToast } from '@/components/ui';
+import { Card, DateField, EmptyState, SkeletonRows, Button, useToast } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { AuditLogDto } from '@/lib/types';
 
@@ -112,17 +112,17 @@ export function AuditLogView() {
         />
         {!month && (
           <>
-            <input
-              className="field-input"
-              style={{ marginBottom: 0, width: 'auto' }}
-              type="date" value={from} onChange={(e) => setFrom(e.target.value)}
-              aria-label="From date"
+            <DateField
+              inputClassName="field-input"
+              className="date-field-inline"
+              value={from} max={to || undefined} onChange={setFrom}
+              ariaLabel="From date"
             />
-            <input
-              className="field-input"
-              style={{ marginBottom: 0, width: 'auto' }}
-              type="date" value={to} onChange={(e) => setTo(e.target.value)}
-              aria-label="To date"
+            <DateField
+              inputClassName="field-input"
+              className="date-field-inline"
+              value={to} min={from || undefined} onChange={setTo}
+              ariaLabel="To date"
             />
           </>
         )}

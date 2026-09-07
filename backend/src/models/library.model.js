@@ -8,6 +8,16 @@ const bookSchema = new Schema(
     author: { type: String, required: true, trim: true },
     isbn: { type: String, trim: true, default: null },
     category: { type: String, trim: true, default: 'General' },
+    /**
+     * Physical shelf copy or an online resource (e-book, journal, video).
+     *
+     * Defaults to PHYSICAL so every catalogue row that predates this field
+     * keeps behaving exactly as it did — the borrowing flow, the availability
+     * counts and the librarian's screens are all unchanged for them.
+     */
+    resourceType: { type: String, enum: ['PHYSICAL', 'DIGITAL'], default: 'PHYSICAL' },
+    /** Where a digital resource is read. Ignored for physical copies. */
+    resourceUrl: { type: String, trim: true, default: null },
     publisher: { type: String, trim: true, default: null },
     publishedYear: { type: Number, default: null },
     totalCopies: { type: Number, default: 1, min: 0 },
@@ -18,6 +28,8 @@ const bookSchema = new Schema(
   { timestamps: true }
 );
 bookSchema.index({ title: 'text', author: 'text', isbn: 1 });
+// The student catalogue filters on these before sorting by title.
+bookSchema.index({ deletedAt: 1, resourceType: 1, category: 1, title: 1 });
 
 // ─── BookIssue (lending record) ────────────────────────────
 const bookIssueSchema = new Schema(

@@ -1,6 +1,6 @@
 'use client';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
-import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from './ui';
+import { Button, Card, DateField, EmptyState, Pill, SkeletonRows, useToast } from './ui';
 import { api, ApiError } from '@/lib/api';
 import { useCachedResource } from '@/lib/cache';
 import { usePermissions } from '@/lib/permissions';
@@ -121,11 +121,11 @@ function AddEventForm({ onCreated }: { onCreated: () => void }) {
           </div>
           <div>
             <div className="field-label">Starts</div>
-            <input className="field-input" type="date" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} required />
+            <DateField inputClassName="field-input" ariaLabel="Starts" value={startsAt} max={endsAt || undefined} onChange={setStartsAt} required />
           </div>
           <div>
             <div className="field-label">Ends</div>
-            <input className="field-input" type="date" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} />
+            <DateField inputClassName="field-input" ariaLabel="Ends" value={endsAt} min={startsAt || undefined} onChange={setEndsAt} />
           </div>
         </div>
         <div style={{ marginTop: -4 }}>

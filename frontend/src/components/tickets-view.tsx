@@ -1,14 +1,30 @@
 'use client';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Button, Card, EmptyState, Pill, SkeletonRows } from './ui';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, fileHref } from '@/lib/api';
+import { OptionalDocumentInput, type AttachedDocument } from './optional-document-input';
 import type { StudentListItem, TicketDto, TicketThread } from '@/lib/types';
 
 const STATUS_TONE: Record<string, 'green' | 'amber' | 'red' | 'gray' | 'blue'> = {
   NEW: 'blue', OPEN: 'amber', WAITING: 'gray', RESOLVED: 'green', CLOSED: 'gray',
 };
 
-export function TicketsView({ canCreate, canRespond }: { canCreate: boolean; canRespond: boolean }) {
+export function TicketsView({
+  canCreate,
+  canRespond,
+  allowAttachment = false,
+}: {
+  canCreate: boolean;
+  canRespond: boolean;
+  /**
+   * Offer an optional supporting document on the compose form.
+   *
+   * Opt-in rather than always on, so the staff portals that share this
+   * component keep the form they had. It is turned on for the student portal,
+   * where "attach the letter you are asking about" is the common case.
+   */
+  allowAttachment?: boolean;
+}) {
   const [items, setItems] = useState<TicketDto[] | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -19,7 +35,7 @@ export function TicketsView({ canCreate, canRespond }: { canCreate: boolean; can
     <div style={{ display: 'grid', gridTemplateColumns: openId ? '1fr 1.2fr' : '1fr', gap: 16 }}>
       <div>
         {canCreate && <div style={{ marginBottom: 14 }}><Button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Close' : '+ New ticket'}</Button></div>}
-        {showForm && <NewTicket onDone={() => { setShowForm(false); void reload(); }} />}
+        {showForm && <NewTicket allowAttachment={allowAttachment} onDone={() => { setShowForm(false); void reload(); }} />}
         {items === null && <Card><SkeletonRows rows={4} /></Card>}
         {items?.length === 0 && <EmptyState title="No tickets" sub="Support requests appear here." />}
         {items && items.length > 0 && (
@@ -98,6 +114,16 @@ function ThreadPanel({ ticketId, canRespond, onChanged }: { ticketId: string; ca
       <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--hairline)' }}>
         <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>{thread.subject}</strong>
         {thread.studentName && <div style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 2 }}>Re: {thread.studentName}</div>}
+        {thread.documentUrl && (
+          <a
+            href={fileHref(thread.documentUrl)}
+            target="_blank"
+            rel="noreferrer"
+            style={{ display: 'inline-block', marginTop: 6, fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}
+          >
+            🗎 {thread.documentName ?? 'Attached document'}
+          </a>
+        )}
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {thread.messages.map((m: any) => (
@@ -126,12 +152,14 @@ function ThreadPanel({ ticketId, canRespond, onChanged }: { ticketId: string; ca
   );
 }
 
-function NewTicket({ onDone }: { onDone: () => void }) {
+function NewTicket({ onDone, allowAttachment }: { onDone: () => void; allowAttachment: boolean }) {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [routedToRoleKey, setRoute] = useState('ADMIN');
   const [studentId, setStudentId] = useState('');
   const [kids, setKids] = useState<StudentListItem[] | null>(null);
+  const [doc, setDoc] = useState<AttachedDocument | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -143,6 +171,9 @@ function NewTicket({ onDone }: { onDone: () => void }) {
       await api.createTicket({
         subject, body, routedToRoleKey,
         studentId: routedToRoleKey === 'CLASS_TEACHER' ? studentId : undefined,
+        // Null is a complete request — the field never gates submission.
+        documentUrl: doc?.documentUrl ?? null,
+        documentName: doc?.documentName ?? null,
       });
       onDone();
     } catch (x) {
@@ -169,8 +200,15 @@ function NewTicket({ onDone }: { onDone: () => void }) {
             </select>
           </>
         )}
+        {allowAttachment && (
+          <OptionalDocumentInput
+            value={doc}
+            onChange={setDoc}
+            onBusyChange={setUploading}
+          />
+        )}
         {err && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 8 }}>{err}</p>}
-        <Button type="submit" disabled={busy}>{busy ? 'Raising…' : 'Raise ticket'}</Button>
+        <Button type="submit" disabled={busy || uploading}>{busy ? 'Raising…' : 'Raise ticket'}</Button>
       </form>
     </Card>
   );

@@ -103,6 +103,9 @@ export const PORTALS: Record<string, Portal> = {
       ]},
       { title: 'STUDENTS', items: [
         item('Subject Registrations', '⊕', '/teacher/registrations', { ready: true }),
+        // Class-teacher approvals for the two things a student may raise about
+        // their own record: co-curricular achievements and profile corrections.
+        item('Student Requests', '✓', '/teacher/student-requests', { ready: true }),
         item('Medical Records', '✚', '/teacher/medical', { ready: true }),
       ]},
     ],

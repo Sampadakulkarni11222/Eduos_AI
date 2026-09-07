@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, SkeletonRows, Pill, rupees, useToast } from '@/components/ui';
+import { Button, Card, DateField, EmptyState, SkeletonRows, Pill, rupees, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api, ApiError } from '@/lib/api';
 import type { BookDto, BookIssueDto, StudentListItem } from '@/lib/types';
@@ -258,7 +258,7 @@ export default function AdminLibrary() {
               </select>
 
               <div className="field-label">Due Date *</div>
-              <input className="field-input" type="date" required value={issueForm.dueAt} onChange={(e) => setIssueForm({ ...issueForm, dueAt: e.target.value })} />
+              <DateField inputClassName="field-input" ariaLabel="Due date" required value={issueForm.dueAt} onChange={(v) => setIssueForm({ ...issueForm, dueAt: v })} />
 
               <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
                 <Button type="submit">Issue Book</Button>

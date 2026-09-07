@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
-import { Button, useToast } from '../ui';
+import { Button, DateField, useToast } from '../ui';
+import { OptionalDocumentInput, type AttachedDocument } from '../optional-document-input';
 import { api, errorMessage } from '@/lib/api';
 import { toISODate } from '@/lib/timetable-dates';
 
@@ -9,6 +10,8 @@ export function ApplyLeaveModal({ onClose, onApplied }: { onClose: () => void; o
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);
   const [reason, setReason] = useState('');
+  const [doc, setDoc] = useState<AttachedDocument | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const toast = useToast();
 
@@ -26,7 +29,15 @@ export function ApplyLeaveModal({ onClose, onApplied }: { onClose: () => void; o
     }
     setBusy(true);
     try {
-      await api.applyLeave({ fromDate, toDate, reason: reason.trim() });
+      await api.applyLeave({
+        fromDate,
+        toDate,
+        reason: reason.trim(),
+        // Optional throughout: null here is a complete application, and the
+        // server treats it the same way.
+        documentUrl: doc?.documentUrl ?? null,
+        documentName: doc?.documentName ?? null,
+      });
       toast('Leave application submitted.', 'success');
       onApplied();
     } catch (err: unknown) {
@@ -47,11 +58,11 @@ export function ApplyLeaveModal({ onClose, onApplied }: { onClose: () => void; o
           <div style={{ display: 'flex', gap: 12 }}>
             <div style={{ flex: 1 }}>
               <div className="field-label">From Date *</div>
-              <input className="field-input" type="date" required min={today} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              <DateField inputClassName="field-input" ariaLabel="From date" required min={today} value={fromDate} onChange={setFromDate} />
             </div>
             <div style={{ flex: 1 }}>
               <div className="field-label">To Date *</div>
-              <input className="field-input" type="date" required min={fromDate || today} value={toDate} onChange={(e) => setToDate(e.target.value)} />
+              <DateField inputClassName="field-input" ariaLabel="To date" required min={fromDate || today} value={toDate} onChange={setToDate} />
             </div>
           </div>
 
@@ -66,8 +77,16 @@ export function ApplyLeaveModal({ onClose, onApplied }: { onClose: () => void; o
             style={{ resize: 'vertical', fontFamily: 'inherit' }}
           />
 
+          <OptionalDocumentInput
+            label="Supporting document"
+            hint="Optional — a medical certificate, for example. You can submit without one."
+            value={doc}
+            onChange={setDoc}
+            onBusyChange={setUploading}
+          />
+
           <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-            <Button type="submit" disabled={busy}>{busy ? 'Submitting…' : 'Submit Application'}</Button>
+            <Button type="submit" disabled={busy || uploading}>{busy ? 'Submitting…' : 'Submit Application'}</Button>
             <Button variant="ghost" type="button" onClick={onClose}>Cancel</Button>
           </div>
         </form>

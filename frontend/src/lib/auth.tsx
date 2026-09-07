@@ -2,6 +2,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api, clearSession, hasSession, setSession } from './api';
+import { useSessionActivity } from './session-activity';
 import { portalHome } from './school-path';
 import { invalidateCache } from './cache';
 import { clearActingSchool } from './acting-school';
@@ -99,8 +100,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{ loading, me, reload, switchProfile, signOut }}>
+      <SessionKeeper active={Boolean(me)} signOut={signOut} />
       {children}
     </AuthContext.Provider>
+  );
+}
+
+/**
+ * Renews a session that is in use and ends one that is not.
+ *
+ * Rendered inside the provider rather than being a bare hook call so the
+ * warning has somewhere to live. It draws nothing at all until the last minute
+ * of the inactivity window, at which point the person gets the chance to say
+ * they are still there — being dropped mid-sentence with no warning is the
+ * part of an inactivity policy people actually resent.
+ */
+function SessionKeeper({ active, signOut }: { active: boolean; signOut: () => Promise<void> }) {
+  const { secondsUntilSignOut, keepAlive } = useSessionActivity(active, () => { void signOut(); });
+
+  if (!active || secondsUntilSignOut == null) return null;
+
+  return (
+    <div
+      role="alertdialog"
+      aria-live="assertive"
+      aria-label="Session about to expire"
+      style={{
+        position: 'fixed', left: 20, bottom: 20, zIndex: 9998, maxWidth: 340,
+        background: 'var(--panel-bg, #FBF6EC)', border: '1px solid var(--input-border, #E2D7BF)',
+        borderRadius: 12, padding: '14px 16px', boxShadow: '0 10px 34px rgba(40,20,15,.18)',
+      }}
+    >
+      <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text-1, #332b25)' }}>
+        Still there?
+      </div>
+      <div style={{ fontSize: 12.5, color: 'var(--text-2, #716757)', marginTop: 4, lineHeight: 1.5 }}>
+        You will be signed out in {secondsUntilSignOut} second{secondsUntilSignOut === 1 ? '' : 's'} because of inactivity.
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button type="button" className="btn btn-accent btn-sm" onClick={keepAlive}>Stay signed in</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => void signOut()}>Sign out now</button>
+      </div>
+    </div>
   );
 }
 

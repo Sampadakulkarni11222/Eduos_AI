@@ -309,6 +309,165 @@ router.post('/pay/verify', requirePermission('fees.pay'), controller.verifyCheck
 
 /**
  * @swagger
+ * /fees/academic-years:
+ *   get:
+ *     summary: Academic years the caller has fee records for (OWN-scoped for students/parents)
+ *     tags: [Fees]
+ *     responses:
+ *       200:
+ *         description: Academic years fetched
+ */
+router.get('/academic-years', requirePermission('fees.read'), controller.listPaymentAcademicYears);
+
+/**
+ * @swagger
+ * /fees/overview:
+ *   get:
+ *     summary: One academic year's fee plans, invoices, payments and totals for the caller
+ *     description: >
+ *       Backs the student payment page. Everything returned belongs to the one
+ *       selected year, so the page cannot mix years; omitting academicYearId
+ *       selects the caller's current year.
+ *     tags: [Fees]
+ *     parameters:
+ *       - in: query
+ *         name: academicYearId
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Payment overview fetched
+ */
+router.get('/overview', requirePermission('fees.read'), controller.getStudentPaymentOverview);
+
+// ── Installment plans ────────────────────────────────────────────────────
+/**
+ * @swagger
+ * /fees/plans:
+ *   get:
+ *     summary: List fee/installment plans (students and parents see published plans only)
+ *     tags: [Fees]
+ *   post:
+ *     summary: Create a draft installment plan for an enrollment
+ *     description: Requires fees.plan.request. Installment amounts must sum to the total payable.
+ *     tags: [Fees]
+ */
+router.get('/plans', requirePermission('fees.read'), controller.listFeePlans);
+router.post('/plans', requirePermission('fees.plan.request', 'ALL'), controller.createFeePlan);
+
+/**
+ * @swagger
+ * /fees/plans/{id}:
+ *   get:
+ *     summary: One plan with its installments and full approval provenance
+ *     tags: [Fees]
+ *   patch:
+ *     summary: Edit a draft (or rejected) plan
+ *     tags: [Fees]
+ */
+router.get('/plans/:id', requirePermission('fees.read'), controller.getFeePlan);
+router.patch('/plans/:id', requirePermission('fees.plan.request', 'ALL'), controller.updateFeePlan);
+
+/**
+ * @swagger
+ * /fees/plans/{id}/{step}:
+ *   post:
+ *     summary: Move a plan through the approval workflow
+ *     description: >
+ *       step is one of submit | review | requestApproval | approve | reject.
+ *       Each step checks its own permission (fees.plan.request, .review or
+ *       .approve) and the plan's current status, so no step can be skipped.
+ *     tags: [Fees]
+ */
+router.post(
+  '/plans/:id/:step(submit|review|requestApproval|approve|reject)',
+  requirePermission('fees.read', 'ALL'),
+  controller.transitionFeePlan
+);
+
+/**
+ * @swagger
+ * /fees/plans/{id}/publish:
+ *   post:
+ *     summary: Publish an approved plan, raising one invoice per installment
+ *     description: Requires fees.plan.approve. Idempotent per installment.
+ *     tags: [Fees]
+ */
+router.post('/plans/:id/publish', requirePermission('fees.plan.approve', 'ALL'), controller.publishFeePlan);
+
+// ── Payment approval workflow ────────────────────────────────────────────
+/**
+ * @swagger
+ * /fees/payments/change-requests:
+ *   get:
+ *     summary: List Finance's requests to change published payments
+ *     tags: [Fees]
+ */
+router.get(
+  '/payments/change-requests',
+  requirePermission('fees.read', 'ALL'),
+  controller.listPaymentChangeRequests
+);
+
+/**
+ * @swagger
+ * /fees/payments/change-requests/{id}/decide:
+ *   post:
+ *     summary: Approve or reject a payment change request (admin only)
+ *     tags: [Fees]
+ */
+router.post(
+  '/payments/change-requests/:id/decide',
+  requirePermission('fees.payments.approve', 'ALL'),
+  controller.decidePaymentChangeRequest
+);
+
+/**
+ * @swagger
+ * /fees/payments/{id}/history:
+ *   get:
+ *     summary: Full audit provenance of one payment
+ *     tags: [Fees]
+ */
+router.get('/payments/:id/history', requirePermission('fees.read', 'ALL'), controller.getPaymentHistory);
+
+/**
+ * @swagger
+ * /fees/payments/{id}/approve:
+ *   post:
+ *     summary: Approve a pending payment and credit it to its invoice (admin only)
+ *     tags: [Fees]
+ */
+router.post('/payments/:id/approve', requirePermission('fees.payments.approve', 'ALL'), controller.approvePayment);
+
+/**
+ * @swagger
+ * /fees/payments/{id}/reject:
+ *   post:
+ *     summary: Reject a pending payment (admin only)
+ *     tags: [Fees]
+ */
+router.post('/payments/:id/reject', requirePermission('fees.payments.approve', 'ALL'), controller.rejectPayment);
+
+/**
+ * @swagger
+ * /fees/payments/{id}:
+ *   patch:
+ *     summary: Edit a payment record directly (admin only)
+ *     tags: [Fees]
+ */
+router.patch('/payments/:id', requirePermission('fees.payments.approve', 'ALL'), controller.updatePayment);
+
+/**
+ * @swagger
+ * /fees/payments/{id}/change-request:
+ *   post:
+ *     summary: Ask an admin to change a published payment (Finance's only route after publication)
+ *     tags: [Fees]
+ */
+router.post('/payments/:id/change-request', requirePermission('fees.manage', 'ALL'), controller.createPaymentChangeRequest);
+
+/**
+ * @swagger
  * /fees/payments/{id}/refund:
  *   post:
  *     summary: Refund a payment

@@ -10,7 +10,7 @@ export default function StudentTickets() {
     >
       {/* Students raise and follow their own tickets; replying to others is
           staff-only, so canRespond stays false. */}
-      <TicketsView canCreate canRespond={false} />
+      <TicketsView canCreate canRespond={false} allowAttachment />
     </PortalShell>
   );
 }

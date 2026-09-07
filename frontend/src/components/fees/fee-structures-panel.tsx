@@ -2,7 +2,7 @@
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '@/lib/api';
 import type { AcademicYearDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, GradeDto } from '@/lib/types';
-import { Button, Card, EmptyState, Field, Modal, SkeletonRows, rupees, useToast } from '../ui';
+import { Button, Card, DateField, EmptyState, Field, Modal, SkeletonRows, rupees, useToast } from '../ui';
 
 /**
  * Fee plans + bulk invoice generation.
@@ -266,7 +266,7 @@ function FeeStructureModal({
           </select>
         </Field>
         <Field label="Due date" required>
-          <input className="field-input" type="date" value={dueOn} onChange={(e) => setDueOn(e.target.value)} />
+          <DateField inputClassName="field-input" ariaLabel="Due date" value={dueOn} onChange={setDueOn} />
         </Field>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
           <Button variant="ghost" type="button" onClick={onClose} disabled={busy}>Cancel</Button>

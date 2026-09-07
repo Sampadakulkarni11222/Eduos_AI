@@ -506,6 +506,25 @@ export async function refresh(refreshTokenValue, opts) {
   // user's token was stolen and already used. We can't tell which, so we end
   // every session on the account and force a fresh sign-in.
   if (stored.revokedAt) {
+    // …unless it was rotated moments ago. Two tabs whose access tokens expire
+    // together both send the cookie they were holding; one rotates it and the
+    // other arrives a few hundred milliseconds late with what is now the old
+    // value. That is the honest user twice over, not an attacker, and ending
+    // every session over it is exactly the "logged out again" the students
+    // were reporting. Outside the window the original reading stands.
+    // `rotatedAt`, not `revokedAt`: a token killed by signing out stays dead
+    // however recently it died, and only one spent by rotation gets the grace.
+    const rotatedAt = stored.rotatedAt;
+    const ageMs = rotatedAt ? Date.now() - rotatedAt.getTime() : Infinity;
+    if (ageMs <= env.REFRESH_ROTATION_GRACE_SECONDS * 1000) {
+      logger.info(
+        `Refresh token replayed ${Math.round(ageMs)}ms after rotation for account ${stored.accountId} — treating as a concurrent refresh`
+      );
+      const graceAccount = await Account.findById(stored.accountId);
+      if (!graceAccount) throw new AppError('Account not found', 401);
+      return issueSession(graceAccount, { profileId: stored.profileId, door: stored.door, ...opts });
+    }
+
     await RefreshToken.updateMany(
       { accountId: stored.accountId, revokedAt: null },
       { revokedAt: new Date() }
@@ -520,7 +539,9 @@ export async function refresh(refreshTokenValue, opts) {
     throw new AppError('Invalid or expired refresh token', 401);
   }
 
-  stored.revokedAt = new Date();
+  const now = new Date();
+  stored.revokedAt = now;
+  stored.rotatedAt = now;
   await stored.save();
 
   const account = await Account.findById(stored.accountId);

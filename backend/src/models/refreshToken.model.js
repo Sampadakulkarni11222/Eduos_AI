@@ -12,6 +12,17 @@ const refreshTokenSchema = new Schema(
     door: { type: String },
     expiresAt: { type: Date, required: true },
     revokedAt: { type: Date, default: null },
+    /**
+     * Set only when this token was spent by a *rotation* — never by a logout
+     * or by reuse detection.
+     *
+     * The distinction matters because the two are revoked the same way but
+     * mean opposite things. A token rotated a moment ago and presented again
+     * is almost always a second tab that raced the first, and re-issuing is
+     * correct. A token revoked by signing out and presented again is a dead
+     * session, and must stay dead however recently it died.
+     */
+    rotatedAt: { type: Date, default: null },
     userAgent: { type: String },
     ip: { type: String },
   },

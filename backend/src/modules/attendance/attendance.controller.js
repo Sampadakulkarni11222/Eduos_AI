@@ -36,6 +36,11 @@ export const getSubjectWise = asyncHandler(async (req, res) => {
   sendSuccess(res, summary, 'Subject-wise attendance fetched');
 });
 
+export const getLectures = asyncHandler(async (req, res) => {
+  const lectures = await service.getLectureAttendance(req.actor, req.scope, req.query);
+  sendSuccess(res, lectures, 'Lecture attendance fetched');
+});
+
 export const getCalendar = asyncHandler(async (req, res) => {
   const calendar = await service.getCalendar(req.actor, req.scope, req.query);
   sendSuccess(res, calendar, 'Attendance calendar fetched');

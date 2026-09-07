@@ -187,7 +187,7 @@ async function answerLibrary(actor, toolsUsed) {
   if (actor?.roleKey === 'STUDENT') {
     toolsUsed.push('library.myIssues');
     const studentId = await getOwnStudentId(actor.profileId);
-    const issues = studentId ? await library.listIssues({ studentId }) : [];
+    const issues = studentId ? await library.listIssues(actor, 'OWN', { studentId }) : [];
     const borrowed = issues.filter((i) => i.status !== 'RETURNED');
     if (!borrowed.length) return 'You have no books currently borrowed from the library.';
     const lines = borrowed.slice(0, 5).map((i) => `• ${i.bookTitle} — due ${shortDate(i.dueAt)}${i.status === 'OVERDUE' ? ' (overdue)' : ''}`);

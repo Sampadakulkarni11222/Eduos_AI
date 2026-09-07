@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pill, SkeletonRows, divisionLabel, useToast } from '@/components/ui';
+import { Button, Card, DateField, EmptyState, Pill, SkeletonRows, divisionLabel, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api, ApiError } from '@/lib/api';
 import type { GradeDto, SectionDto, SubjectDto, TermDto, OfferingDto, StaffAccountDto, StudentListItem } from '@/lib/types';
@@ -467,11 +467,11 @@ export default function ClassroomManagement() {
                   <div style={{ display: 'flex', gap: 8 }}>
                     <div style={{ flex: 1 }}>
                       <div className="field-label">Starts On *</div>
-                      <input className="field-input" type="date" value={termForm.startsOn} onChange={(e) => setTermForm({ ...termForm, startsOn: e.target.value })} />
+                      <DateField inputClassName="field-input" ariaLabel="Term starts on" value={termForm.startsOn} max={termForm.endsOn || undefined} onChange={(v) => setTermForm({ ...termForm, startsOn: v })} />
                     </div>
                     <div style={{ flex: 1 }}>
                       <div className="field-label">Ends On *</div>
-                      <input className="field-input" type="date" value={termForm.endsOn} onChange={(e) => setTermForm({ ...termForm, endsOn: e.target.value })} />
+                      <DateField inputClassName="field-input" ariaLabel="Term ends on" value={termForm.endsOn} min={termForm.startsOn || undefined} onChange={(v) => setTermForm({ ...termForm, endsOn: v })} />
                     </div>
                   </div>
                   <Button type="button" small style={{ marginTop: 8 }} onClick={createTerm}>Create Term</Button>

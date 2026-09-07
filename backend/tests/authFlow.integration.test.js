@@ -6,6 +6,7 @@ import { Profile } from '../src/models/profile.model.js';
 import { Role } from '../src/models/role.model.js';
 import { RefreshToken } from '../src/models/refreshToken.model.js';
 import { School } from '../src/models/school.model.js';
+import { hashRefreshToken } from '../src/utils/refreshToken.js';
 import { login, refresh, logout, me } from '../src/modules/auth/auth.service.js';
 
 /**
@@ -19,7 +20,9 @@ import { login, refresh, logout, me } from '../src/modules/auth/auth.service.js'
  *      if the route failed to persist the rotated one, the next refresh would
  *      replay a revoked token and kill the whole session.
  *   2. Replaying a used refresh token revokes every session on the account,
- *      which is why the cookie must be overwritten on each refresh.
+ *      which is why the cookie must be overwritten on each refresh — except
+ *      inside the short rotation grace window, where a replay is far more
+ *      likely to be a second tab that raced the first than an attacker.
  */
 
 const EMAIL = 'flow@example.test';
@@ -75,9 +78,32 @@ describe('token lifecycle — what the BFF cookie flow depends on', () => {
     }
   });
 
-  it('replaying a spent refresh token is rejected and kills the session', async () => {
+  it('a token replayed within the rotation grace window is re-issued, not treated as theft', async () => {
+    // Two tabs whose access tokens expire together both send the cookie they
+    // hold; one rotates it and the other arrives moments later with what is
+    // now the old value. Killing the account's sessions over that is what
+    // logged active users out every quarter of an hour.
     const first = await signIn();
     const second = await refresh(first.refreshToken, { ip: '10.0.0.1' });
+
+    const raced = await refresh(first.refreshToken, { ip: '10.0.0.1' });
+    expect(raced.accessToken).toBeTruthy();
+    expect(raced.refreshToken).toBeTruthy();
+
+    // The winner's token is untouched: nothing was revoked.
+    const stillValid = await refresh(second.refreshToken, { ip: '10.0.0.1' });
+    expect(stillValid.accessToken).toBeTruthy();
+  });
+
+  it('replaying a spent refresh token past the grace window kills the session', async () => {
+    const first = await signIn();
+    const second = await refresh(first.refreshToken, { ip: '10.0.0.1' });
+
+    // Back-date the rotation so the replay is no longer a plausible race.
+    await RefreshToken.updateOne(
+      { tokenHash: hashRefreshToken(first.refreshToken) },
+      { rotatedAt: new Date(Date.now() - 10 * 60 * 1000) }
+    );
 
     // Simulates a BFF that forgot to overwrite the cookie.
     await expect(refresh(first.refreshToken, { ip: '10.0.0.1' })).rejects.toMatchObject({

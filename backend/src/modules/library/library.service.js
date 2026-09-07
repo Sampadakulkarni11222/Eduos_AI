@@ -1,7 +1,23 @@
 import { Book, BookIssue } from '../../models/library.model.js';
 import { Student } from '../../models/student.model.js';
+import { getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
 import { AppError } from '../../utils/AppError.js';
 import { paginate, mapPage } from '../../utils/paginate.js';
+
+/**
+ * A YYYY-MM-DD filter bound, read as a calendar day at UTC midnight.
+ *
+ * A due date is a day, so the browser's offset must not shift it: taking
+ * `new Date('2026-09-01')` on a UTC+5:30 client and comparing it against
+ * stored dates is how a range starting "1 September" starts dropping the 1st.
+ */
+function toCalendarDay(value) {
+  const m = String(value ?? '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const [, y, mo, d] = m.map(Number);
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  return date.getUTCMonth() === mo - 1 && date.getUTCDate() === d ? date : null;
+}
 
 // ─── Helper: map a raw BookIssue doc to BookIssueDto ───────
 function toIssueDto(issue) {
@@ -11,6 +27,10 @@ function toIssueDto(issue) {
     id: raw._id,
     bookId: book?._id ?? raw.bookId,
     bookTitle: book?.title ?? 'Unknown',
+    bookAuthor: book?.author ?? null,
+    category: book?.category ?? null,
+    resourceType: book?.resourceType ?? 'PHYSICAL',
+    resourceUrl: book?.resourceUrl ?? null,
     studentId: String(raw.borrowerProfileId ?? ''),
     studentName: raw.borrowerName ?? 'Unknown',
     issuedAt: raw.issuedAt,
@@ -46,64 +66,106 @@ export async function getSummary() {
 }
 
 // ─── Books (catalog) ────────────────────────────────────────
+
+/** The catalogue row every read returns, so the shape can't drift per caller. */
+function toBookDto(b) {
+  return {
+    id: b._id,
+    title: b.title,
+    author: b.author,
+    isbn: b.isbn,
+    category: b.category,
+    resourceType: b.resourceType ?? 'PHYSICAL',
+    resourceUrl: b.resourceUrl ?? null,
+    publisher: b.publisher ?? null,
+    publishedYear: b.publishedYear ?? null,
+    totalCopies: b.totalCopies,
+    availableCopies: b.availableCopies,
+    coverUrl: b.coverUrl,
+  };
+}
+
+/** Escapes user text so it is matched literally inside a $regex. */
+function escapeRegex(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * The catalogue, filtered.
+ *
+ * Every filter here maps to a field that exists on the Book document —
+ * `category`, `author`, `resourceType`, and availability derived from
+ * `availableCopies`. Unknown query parameters are ignored rather than
+ * narrowing the result to nothing.
+ */
 export async function listBooks(opts = {}) {
-  const { search, category } = opts;
+  const { search, category, author, resourceType, availability } = opts;
   const filter = { deletedAt: null };
   if (search) {
+    const rx = escapeRegex(search);
     filter.$or = [
-      { title: { $regex: search, $options: 'i' } },
-      { author: { $regex: search, $options: 'i' } },
-      { isbn: { $regex: search, $options: 'i' } },
+      { title: { $regex: rx, $options: 'i' } },
+      { author: { $regex: rx, $options: 'i' } },
+      { isbn: { $regex: rx, $options: 'i' } },
+      { category: { $regex: rx, $options: 'i' } },
+      { publisher: { $regex: rx, $options: 'i' } },
     ];
   }
-  if (category) filter.category = category;
+  if (category && category !== 'ALL') filter.category = category;
+  if (author && author !== 'ALL') filter.author = author;
+  if (resourceType === 'PHYSICAL') {
+    // Rows written before resourceType existed have no value at all and are
+    // physical copies, so "physical" has to mean "not marked digital".
+    filter.resourceType = { $ne: 'DIGITAL' };
+  } else if (resourceType === 'DIGITAL') {
+    filter.resourceType = 'DIGITAL';
+  }
+  if (availability === 'AVAILABLE') filter.availableCopies = { $gte: 1 };
+
   const page = await paginate(
     Book.find(filter).sort({ title: 1 }).lean(),
     Book,
     filter,
     { page: opts.page, pageSize: opts.pageSize, label: 'library.listBooks' }
   );
-  return mapPage(page, (b) => ({
-    id: b._id,
-    title: b.title,
-    author: b.author,
-    isbn: b.isbn,
-    category: b.category,
-    totalCopies: b.totalCopies,
-    availableCopies: b.availableCopies,
-    coverUrl: b.coverUrl,
-  }));
+  return mapPage(page, toBookDto);
+}
+
+/**
+ * The distinct values behind the catalogue filters, so the pickers only ever
+ * offer choices that actually match something.
+ */
+export async function listBookFacets() {
+  const [categories, authors, types] = await Promise.all([
+    Book.distinct('category', { deletedAt: null }),
+    Book.distinct('author', { deletedAt: null }),
+    Book.distinct('resourceType', { deletedAt: null }),
+  ]);
+  const sorted = (values) => values.filter(Boolean).map(String).sort((a, b) => a.localeCompare(b));
+  return {
+    categories: sorted(categories),
+    authors: sorted(authors),
+    resourceTypes: sorted(types.length ? types : ['PHYSICAL']),
+  };
 }
 
 export async function getBookById(id) {
   const book = await Book.findOne({ _id: id, deletedAt: null }).lean();
   if (!book) throw new AppError('Book not found', 404);
-  return {
-    id: book._id,
-    title: book.title,
-    author: book.author,
-    isbn: book.isbn,
-    category: book.category,
-    totalCopies: book.totalCopies,
-    availableCopies: book.availableCopies,
-    coverUrl: book.coverUrl,
-  };
+  return toBookDto(book);
 }
 
 export async function createBook(data) {
+  // A digital resource has no shelf copies to lend, so it is never counted as
+  // stock — otherwise it would show up as "1 available" and be borrowable.
+  const isDigital = data.resourceType === 'DIGITAL';
+  const totalCopies = isDigital ? 0 : data.totalCopies ?? 1;
   const book = await Book.create({
     ...data,
-    availableCopies: data.totalCopies ?? 1,
+    totalCopies,
+    availableCopies: totalCopies,
   });
-  return {
-    id: book._id,
-    title: book.title,
-    author: book.author,
-    isbn: book.isbn,
-    category: book.category,
-    totalCopies: book.totalCopies,
-    availableCopies: book.availableCopies,
-  };
+  return toBookDto(book);
 }
 
 export async function bulkCreateBooks(rows) {
@@ -211,15 +273,7 @@ export async function updateBook(id, updates) {
   if (!book) throw new AppError('Book not found', 404);
   Object.assign(book, updates);
   await book.save();
-  return {
-    id: book._id,
-    title: book.title,
-    author: book.author,
-    isbn: book.isbn,
-    category: book.category,
-    totalCopies: book.totalCopies,
-    availableCopies: book.availableCopies,
-  };
+  return toBookDto(book);
 }
 
 export async function deleteBook(id) {
@@ -230,11 +284,46 @@ export async function deleteBook(id) {
 }
 
 // ─── Issues (lending records) ────────────────────────────────
-export async function listIssues({ status, bookId, studentId } = {}) {
+/**
+ * Whose lending records an OWN-scoped caller may see.
+ *
+ * A student holds `library.read` at OWN scope so they can look up the
+ * catalogue and their own loans. Without this the same permission returned
+ * every borrowing record in the school — who has which book out, by name.
+ */
+async function resolveOwnBorrowerIds(actor) {
+  if (actor?.roleKey === 'STUDENT') {
+    const id = await getOwnStudentId(actor.profileId);
+    return id ? [id] : [];
+  }
+  if (actor?.roleKey === 'PARENT') {
+    return getGuardianStudentIds(actor.profileId);
+  }
+  return [];
+}
+
+export async function listIssues(actor, scope, { status, bookId, studentId, from, to, resourceType } = {}) {
   const filter = {};
-  if (status) filter.status = status;
+  if (status && status !== 'ALL') filter.status = status;
   if (bookId) filter.bookId = bookId;
   if (studentId) filter.borrowerProfileId = studentId;
+
+  if (scope === 'OWN') {
+    const ownIds = await resolveOwnBorrowerIds(actor);
+    // An empty list must match nothing, not everything.
+    filter.borrowerProfileId = ownIds.length ? { $in: ownIds } : null;
+  }
+
+  // Due-date range. The student's list is a list of books that are due, so the
+  // date filter belongs on dueDate rather than on when the loan was issued.
+  // Parsed as calendar days at UTC midnight, with `to` covering its whole day,
+  // so a same-day from/to range returns that day's loans instead of nothing.
+  const dueRange = {};
+  const fromDate = toCalendarDay(from);
+  const toDate = toCalendarDay(to);
+  if (fromDate) dueRange.$gte = fromDate;
+  if (toDate) dueRange.$lte = new Date(toDate.getTime() + 24 * 60 * 60 * 1000 - 1);
+  if (Object.keys(dueRange).length) filter.dueDate = dueRange;
 
   // Auto-mark overdue issues
   await BookIssue.updateMany(
@@ -243,10 +332,13 @@ export async function listIssues({ status, bookId, studentId } = {}) {
   );
 
   const issues = await BookIssue.find(filter)
-    .populate('bookId', 'title author isbn')
-    .sort({ issuedAt: -1 });
+    .populate('bookId', 'title author isbn category resourceType resourceUrl')
+    .sort({ dueDate: 1, issuedAt: -1 });
 
-  return issues.map(toIssueDto);
+  const rows = issues.map(toIssueDto);
+  if (resourceType === 'PHYSICAL') return rows.filter((r) => r.resourceType !== 'DIGITAL');
+  if (resourceType === 'DIGITAL') return rows.filter((r) => r.resourceType === 'DIGITAL');
+  return rows;
 }
 
 // Frontend sends: { bookId, studentId, dueAt }

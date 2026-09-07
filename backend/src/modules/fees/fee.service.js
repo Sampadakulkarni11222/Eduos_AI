@@ -1,9 +1,12 @@
 import crypto from 'crypto';
 import mongoose from 'mongoose';
-import { FeeHead, FeeStructure, Invoice, InvoiceLine, Payment } from '../../models/fee.model.js';
+import {
+  FeeHead, FeeStructure, Invoice, InvoiceLine, Payment, PaymentChangeRequest,
+} from '../../models/fee.model.js';
 import { Student, Enrollment } from '../../models/student.model.js';
-import { Section } from '../../models/academics.model.js';
+import { AcademicYear, Section } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
+import { recordAudit } from '../../utils/auditTrail.js';
 import { getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 import {
   chargeOnline,
@@ -17,7 +20,95 @@ import { logger } from '../../utils/logger.js';
 import { runInTransaction } from '../../utils/transaction.js';
 
 // Mirrors the enum on paymentSchema in models/fee.model.js.
-const PAYMENT_MODES = ['GATEWAY', 'CASH', 'CHEQUE', 'BANK'];
+const PAYMENT_MODES = ['GATEWAY', 'CASH', 'CHEQUE', 'DD', 'BANK'];
+
+/**
+ * What each manual payment mode has to carry.
+ *
+ * This table is the backend half of requirement 12: the form asks for these
+ * fields, and so does the server, so bypassing the form buys nothing. `label`
+ * names the field the way the mode's own paperwork does — a cheque has a
+ * cheque number, a transfer has a UTR — which is what makes the rejection
+ * message usable by the cashier who triggered it.
+ */
+const INSTRUMENT_RULES = {
+  CHEQUE: { number: 'Cheque number', bankName: 'Bank name', instrumentDate: 'Cheque date', proofUrl: 'Cheque image' },
+  DD: { number: 'DD number', bankName: 'Bank name', instrumentDate: 'DD date', proofUrl: 'DD image' },
+  BANK: {
+    number: 'Transaction/reference number',
+    bankName: 'Bank name',
+    instrumentDate: 'Transfer date',
+    proofUrl: 'Transfer proof',
+  },
+};
+
+// Proof is an image of a physical instrument or a bank receipt. Anything
+// executable or unopenable is refused: the extension list is intentionally
+// narrower than the upload endpoint's, because this is evidence someone will
+// have to read years later.
+const PROOF_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'webp'];
+
+/**
+ * Whether this actor may make payment information final — publish it, approve
+ * someone else's, or edit an already-published record.
+ *
+ * Derived from the permission map rather than from the role name so that a
+ * school which builds its own role gets the same rule. Finance is not granted
+ * `fees.payments.approve` (see constants/permissions.js), which is precisely
+ * what makes every payment it registers land in the approval queue.
+ */
+export function canPublishPayments(actor) {
+  return Boolean(actor?.permissions?.['fees.payments.approve']);
+}
+
+/**
+ * Validates the instrument details for a manual payment and returns the
+ * subdocument to store. Throws with the specific missing fields named.
+ */
+export function buildInstrument(mode, instrument = {}) {
+  const rules = INSTRUMENT_RULES[mode];
+  if (!rules) return null; // CASH and GATEWAY carry no instrument of their own.
+
+  const missing = Object.entries(rules)
+    .filter(([field]) => {
+      const value = instrument?.[field];
+      return value === undefined || value === null || String(value).trim() === '';
+    })
+    .map(([, label]) => label);
+
+  if (missing.length) {
+    throw new AppError(
+      `${mode === 'BANK' ? 'Bank transfer' : mode} payments require: ${missing.join(', ')}`,
+      400,
+      missing,
+      'PAYMENT_DETAILS_INCOMPLETE'
+    );
+  }
+
+  const instrumentDate = new Date(instrument.instrumentDate);
+  if (Number.isNaN(instrumentDate.getTime())) {
+    throw new AppError(`${rules.instrumentDate} is not a valid date`, 400, [], 'PAYMENT_DETAILS_INCOMPLETE');
+  }
+
+  const proofUrl = String(instrument.proofUrl).trim();
+  const ext = proofUrl.split('?')[0].split('.').pop()?.toLowerCase();
+  if (!ext || !PROOF_EXTENSIONS.includes(ext)) {
+    throw new AppError(
+      `${rules.proofUrl} must be one of: ${PROOF_EXTENSIONS.join(', ')}`,
+      400,
+      [],
+      'PAYMENT_PROOF_INVALID'
+    );
+  }
+
+  return {
+    number: String(instrument.number).trim(),
+    bankName: String(instrument.bankName).trim(),
+    instrumentDate,
+    proofUrl,
+    proofName: instrument.proofName ? String(instrument.proofName).trim() : null,
+  };
+}
 
 export const createFeeHead = (data) => FeeHead.create(data);
 export const createFeeStructure = (data) => FeeStructure.create(data);
@@ -210,9 +301,13 @@ export async function listInvoices(actor, scope, query = {}) {
     filter.enrollmentId = query.enrollmentId ?? { $in: ids };
   }
 
-  // Student/section/grade live on the enrollment, so narrowing by them means
-  // resolving to a set of enrollment ids first.
+  // Student/section/grade/year live on the enrollment, so narrowing by them
+  // means resolving to a set of enrollment ids first.
   const enrollmentNarrowing = [];
+  if (query.academicYearId) {
+    const enrs = await Enrollment.find({ academicYearId: query.academicYearId }).select('_id');
+    enrollmentNarrowing.push(enrs.map((e) => e._id.toString()));
+  }
   if (query.sectionId) {
     const enrs = await Enrollment.find({ sectionId: query.sectionId }).select('_id');
     enrollmentNarrowing.push(enrs.map((e) => e._id.toString()));
@@ -256,7 +351,10 @@ export async function listInvoices(actor, scope, query = {}) {
       path: 'enrollmentId',
       populate: [
         { path: 'studentId' },
-        { path: 'sectionId', populate: { path: 'gradeId' } }
+        { path: 'sectionId', populate: { path: 'gradeId' } },
+        // The year an invoice belongs to is the year of the enrollment it was
+        // raised against — there is no second copy of it to drift.
+        { path: 'academicYearId', select: 'name startsOn endsOn isCurrent' },
       ]
     })
     // _id breaks ties: every invoice in a batch can share the same dueOn, and
@@ -281,6 +379,11 @@ export async function listInvoices(actor, scope, query = {}) {
       if (section) {
         obj.class = grade ? `${grade.name} - ${section.name}` : section.name;
         obj.sectionId = section._id.toString();
+      }
+      const year = obj.enrollmentId.academicYearId;
+      if (year) {
+        obj.academicYearId = year._id.toString();
+        obj.academicYearName = year.name;
       }
       obj.enrollmentId = obj.enrollmentId._id.toString();
     }
@@ -380,7 +483,25 @@ async function assertInvoiceOwnership(actor, invoice) {
   }
 }
 
-export async function recordPayment(actor, scope, { invoiceId, amountPaise, mode, gatewayRef, receiptNo }) {
+/**
+ * Registers a payment on the ledger.
+ *
+ * Two outcomes, decided by `fees.payments.approve`:
+ *
+ *  - An actor holding it (Admin) publishes directly, exactly as before: the
+ *    invoice is credited in the same atomic statement that guards against
+ *    overpayment.
+ *  - An actor without it (Finance) creates a PENDING_ADMIN_APPROVAL row that
+ *    credits nothing. The money only reaches the invoice — and the student's
+ *    view of it — when an admin approves it in approvePayment().
+ *
+ * That is requirement 4 expressed where it cannot be routed around: not as a
+ * hidden button, but as the only path from "keyed in" to "counted".
+ */
+export async function recordPayment(actor, scope, {
+  invoiceId, amountPaise, mode, gatewayRef, receiptNo,
+  instrument, paidOn, notes, planId, installmentSeq,
+}) {
   // Parents/students (OWN scope) cannot use the manual-ledger path — they can
   // only pay online via payOnline(), never "mark" an invoice as paid. Checked
   // before the invoice is read so an unauthorised caller learns nothing about
@@ -400,6 +521,31 @@ export async function recordPayment(actor, scope, { invoiceId, amountPaise, mode
   // leaving the compensating path below for genuinely exceptional failures.
   if (!PAYMENT_MODES.includes(mode)) {
     throw new AppError(`mode must be one of: ${PAYMENT_MODES.join(', ')}`, 400, [], 'INVALID_PAYMENT_MODE');
+  }
+
+  // Cheque / DD / bank transfer: the instrument details and their proof image
+  // are mandatory, server-side, whatever the form did or did not collect.
+  const storedInstrument = buildInstrument(mode, instrument);
+
+  const paidOnDate = paidOn ? new Date(paidOn) : new Date();
+  if (Number.isNaN(paidOnDate.getTime())) {
+    throw new AppError('paidOn is not a valid date', 400, [], 'INVALID_PAYMENT_DATE');
+  }
+
+  const publishes = canPublishPayments(actor);
+
+  if (!publishes) {
+    return submitPaymentForApproval(actor, {
+      invoiceId,
+      amount,
+      mode,
+      instrument: storedInstrument,
+      paidOn: paidOnDate,
+      notes,
+      planId,
+      installmentSeq,
+      receiptNo,
+    });
   }
 
   return runInTransaction(async (session) => {
@@ -451,15 +597,40 @@ export async function recordPayment(actor, scope, { invoiceId, amountPaise, mode
           mode,
           gatewayRef,
           receiptNo: receiptNo ?? `RCPT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+          instrument: storedInstrument,
+          paidOn: paidOnDate,
+          notes: notes ?? null,
+          planId: planId ?? null,
+          installmentSeq: installmentSeq ?? null,
+          recordStatus: 'PUBLISHED',
+          createdByProfileId: actor?.profileId ?? null,
+          createdByRole: actor?.roleKey ?? null,
+          approvedByProfileId: actor?.profileId ?? null,
+          approvedAt: new Date(),
         }],
         opts
       );
+
+      await recordAudit({
+        actor,
+        action: 'fees.payment.publish',
+        entityType: 'Payment',
+        entityId: payment._id,
+        after: {
+          invoiceId: String(invoiceId),
+          amountPaise: amount,
+          mode,
+          recordStatus: 'PUBLISHED',
+          direct: true,
+        },
+      });
 
       return {
         payment,
         invoice,
         receiptNo: payment.receiptNo,
         status: invoice.status,
+        recordStatus: 'PUBLISHED',
         paidPaise: invoice.paidPaise,
       };
     } catch (err) {
@@ -491,6 +662,553 @@ export async function recordPayment(actor, scope, { invoiceId, amountPaise, mode
       throw err;
     }
   });
+}
+
+/**
+ * Money already keyed in against an invoice but not yet approved.
+ *
+ * An aggregate rather than a find-and-sum so the arithmetic stays in the
+ * database; the tenant plugin prepends its own $match, so this cannot count
+ * another school's payments.
+ */
+async function pendingCreditPaise(invoiceId) {
+  const [agg] = await Payment.aggregate([
+    {
+      $match: {
+        // Aggregation does not cast strings to ObjectIds the way a query does.
+        invoiceId: new mongoose.Types.ObjectId(String(invoiceId)),
+        recordStatus: 'PENDING_ADMIN_APPROVAL',
+      },
+    },
+    { $group: { _id: null, total: { $sum: '$amountPaise' } } },
+  ]);
+  return agg?.total ?? 0;
+}
+
+/**
+ * Files a payment Finance has keyed in, for an admin to approve.
+ *
+ * Nothing is credited here. The overpayment check still runs, and it counts
+ * what is already awaiting approval as well as what is already paid — two
+ * cashiers each queueing the full balance would otherwise both be accepted and
+ * the second would only fail at approval time, long after the payer left.
+ */
+async function submitPaymentForApproval(actor, {
+  invoiceId, amount, mode, instrument, paidOn, notes, planId, installmentSeq, receiptNo,
+}) {
+  const invoice = await Invoice.findById(invoiceId).lean();
+  if (!invoice) throw new AppError('Invoice not found', 404);
+  if (invoice.status === 'CANCELLED') {
+    throw new AppError('This invoice has been cancelled', 409, [], 'INVOICE_CANCELLED');
+  }
+
+  const queued = await pendingCreditPaise(invoiceId);
+  const headroom = invoice.totalPaise - invoice.paidPaise - queued;
+  if (amount > headroom) {
+    throw new AppError(
+      headroom <= 0
+        ? 'This invoice is already fully paid or fully covered by payments awaiting approval'
+        : `Payment of ${amount} paise exceeds the ${headroom} paise still unpaid and unclaimed on this invoice`,
+      409,
+      [],
+      'PAYMENT_EXCEEDS_BALANCE'
+    );
+  }
+
+  const payment = await Payment.create({
+    invoiceId,
+    amountPaise: amount,
+    mode,
+    instrument,
+    paidOn,
+    notes: notes ?? null,
+    planId: planId ?? null,
+    installmentSeq: installmentSeq ?? null,
+    receiptNo: receiptNo ?? `RCPT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+    recordStatus: 'PENDING_ADMIN_APPROVAL',
+    createdByProfileId: actor?.profileId ?? null,
+    createdByRole: actor?.roleKey ?? null,
+  });
+
+  await recordAudit({
+    actor,
+    action: 'fees.payment.submit',
+    entityType: 'Payment',
+    entityId: payment._id,
+    after: {
+      invoiceId: String(invoiceId),
+      amountPaise: amount,
+      mode,
+      recordStatus: 'PENDING_ADMIN_APPROVAL',
+      hasProof: Boolean(instrument?.proofUrl),
+    },
+  });
+
+  return {
+    payment,
+    receiptNo: payment.receiptNo,
+    recordStatus: 'PENDING_ADMIN_APPROVAL',
+    status: invoice.status,
+    paidPaise: invoice.paidPaise,
+    awaitingApproval: true,
+    message: 'Payment recorded and sent for admin approval. It is not counted against the invoice until approved.',
+  };
+}
+
+/**
+ * Admin approval: the single point where a queued payment becomes money.
+ *
+ * The claim on the payment row is atomic (`recordStatus` must still be
+ * pending), so two admins approving the same payment at once credit the
+ * invoice once. The invoice update carries the same overpayment guard the
+ * direct path uses, because the balance can have moved since submission.
+ */
+export async function approvePayment(actor, paymentId) {
+  const claimed = await Payment.findOneAndUpdate(
+    { _id: paymentId, recordStatus: 'PENDING_ADMIN_APPROVAL' },
+    {
+      $set: {
+        recordStatus: 'PUBLISHED',
+        approvedByProfileId: actor?.profileId ?? null,
+        approvedAt: new Date(),
+        rejectedByProfileId: null,
+        rejectedAt: null,
+        rejectionReason: null,
+      },
+    },
+    { new: true }
+  );
+
+  if (!claimed) {
+    const existing = await Payment.findById(paymentId).select('recordStatus').lean();
+    if (!existing) throw new AppError('Payment not found', 404);
+    throw new AppError(
+      `This payment is already ${(existing.recordStatus ?? 'PUBLISHED').toLowerCase().replace(/_/g, ' ')}`,
+      409,
+      [],
+      'PAYMENT_NOT_PENDING'
+    );
+  }
+
+  const invoice = await Invoice.findOneAndUpdate(
+    {
+      _id: claimed.invoiceId,
+      status: { $ne: 'CANCELLED' },
+      $expr: { $lte: [{ $add: ['$paidPaise', claimed.amountPaise] }, '$totalPaise'] },
+    },
+    [
+      { $set: { paidPaise: { $add: ['$paidPaise', claimed.amountPaise] } } },
+      { $set: { status: { $cond: [{ $gte: ['$paidPaise', '$totalPaise'] }, 'PAID', 'PARTIAL'] } } },
+    ],
+    { new: true }
+  );
+
+  if (!invoice) {
+    // The balance moved between submission and approval. Put the payment back
+    // in the queue rather than leaving it published against nothing.
+    await Payment.updateOne(
+      { _id: claimed._id },
+      { $set: { recordStatus: 'PENDING_ADMIN_APPROVAL', approvedByProfileId: null, approvedAt: null } }
+    );
+    throw new AppError(
+      'This payment no longer fits the invoice balance — the invoice has been paid or cancelled since it was submitted.',
+      409,
+      [],
+      'PAYMENT_EXCEEDS_BALANCE'
+    );
+  }
+
+  await recordAudit({
+    actor,
+    action: 'fees.payment.approve',
+    entityType: 'Payment',
+    entityId: claimed._id,
+    before: { recordStatus: 'PENDING_ADMIN_APPROVAL' },
+    after: {
+      recordStatus: 'PUBLISHED',
+      amountPaise: claimed.amountPaise,
+      invoiceId: String(claimed.invoiceId),
+      invoiceStatus: invoice.status,
+      paidPaise: invoice.paidPaise,
+    },
+  });
+
+  return { payment: claimed, invoice, status: invoice.status, paidPaise: invoice.paidPaise };
+}
+
+/** Admin rejection. Nothing was credited, so nothing has to be reversed. */
+export async function rejectPayment(actor, paymentId, reason) {
+  if (!reason || !String(reason).trim()) {
+    throw new AppError('A reason is required to reject a payment', 400, [], 'REASON_REQUIRED');
+  }
+
+  const rejected = await Payment.findOneAndUpdate(
+    { _id: paymentId, recordStatus: 'PENDING_ADMIN_APPROVAL' },
+    {
+      $set: {
+        recordStatus: 'REJECTED',
+        status: 'FAILED',
+        rejectedByProfileId: actor?.profileId ?? null,
+        rejectedAt: new Date(),
+        rejectionReason: String(reason).trim(),
+      },
+    },
+    { new: true }
+  );
+
+  if (!rejected) {
+    const existing = await Payment.findById(paymentId).select('recordStatus').lean();
+    if (!existing) throw new AppError('Payment not found', 404);
+    throw new AppError('Only a payment awaiting approval can be rejected', 409, [], 'PAYMENT_NOT_PENDING');
+  }
+
+  await recordAudit({
+    actor,
+    action: 'fees.payment.reject',
+    entityType: 'Payment',
+    entityId: rejected._id,
+    before: { recordStatus: 'PENDING_ADMIN_APPROVAL' },
+    after: { recordStatus: 'REJECTED', reason: rejected.rejectionReason },
+  });
+
+  return rejected;
+}
+
+/**
+ * Direct edit of a payment record — admin only.
+ *
+ * Finance reaches this same set of fields through a change request; an admin
+ * may apply one immediately. Either way the before/after pair is written to
+ * the audit trail, which is the only durable record of what a figure used to
+ * say.
+ */
+const EDITABLE_PAYMENT_FIELDS = new Set([
+  'amountPaise', 'mode', 'paidOn', 'receiptNo', 'notes',
+  'instrument.number', 'instrument.bankName', 'instrument.instrumentDate',
+  'instrument.proofUrl', 'instrument.proofName',
+]);
+
+function readPaymentField(payment, field) {
+  if (field.startsWith('instrument.')) return payment.instrument?.[field.split('.')[1]] ?? null;
+  return payment[field] ?? null;
+}
+
+/** Coerces a submitted value into the type the field actually stores. */
+function coercePaymentField(field, value) {
+  if (field === 'amountPaise') {
+    const n = Number(value);
+    if (!Number.isInteger(n) || n <= 0) {
+      throw new AppError('amountPaise must be a positive whole number of paise', 400, [], 'INVALID_AMOUNT');
+    }
+    return n;
+  }
+  if (field === 'mode') {
+    if (!PAYMENT_MODES.includes(value)) {
+      throw new AppError(`mode must be one of: ${PAYMENT_MODES.join(', ')}`, 400, [], 'INVALID_PAYMENT_MODE');
+    }
+    return value;
+  }
+  if (field === 'paidOn' || field === 'instrument.instrumentDate') {
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) throw new AppError(`${field} is not a valid date`, 400, [], 'INVALID_PAYMENT_DATE');
+    return d;
+  }
+  return value == null ? null : String(value);
+}
+
+/**
+ * Applies one field change to a payment, adjusting the invoice when the amount
+ * moves. Shared by the admin's direct edit and by an approved change request,
+ * so both leave the ledger in the same state.
+ */
+async function applyPaymentFieldChange(actor, payment, field, rawValue, { action, extra = {} }) {
+  if (!EDITABLE_PAYMENT_FIELDS.has(field)) {
+    throw new AppError(
+      `"${field}" is not an editable payment field. Editable: ${[...EDITABLE_PAYMENT_FIELDS].join(', ')}`,
+      400,
+      [],
+      'FIELD_NOT_EDITABLE'
+    );
+  }
+
+  const before = readPaymentField(payment, field);
+  const value = coercePaymentField(field, rawValue);
+
+  if (field === 'amountPaise' && payment.recordStatus !== 'REJECTED') {
+    const delta = value - payment.amountPaise;
+    if (delta !== 0 && (payment.recordStatus ?? 'PUBLISHED') === 'PUBLISHED') {
+      // Only a published payment is on the invoice, so only that one needs the
+      // invoice moved with it — and only if the new figure still fits.
+      const invoice = await Invoice.findOneAndUpdate(
+        {
+          _id: payment.invoiceId,
+          status: { $ne: 'CANCELLED' },
+          $expr: { $lte: [{ $add: ['$paidPaise', delta] }, '$totalPaise'] },
+        },
+        [
+          { $set: { paidPaise: { $max: [0, { $add: ['$paidPaise', delta] }] } } },
+          {
+            $set: {
+              status: {
+                $switch: {
+                  branches: [
+                    { case: { $gte: ['$paidPaise', '$totalPaise'] }, then: 'PAID' },
+                    { case: { $gt: ['$paidPaise', 0] }, then: 'PARTIAL' },
+                  ],
+                  default: 'PENDING',
+                },
+              },
+            },
+          },
+        ],
+        { new: true }
+      );
+      if (!invoice) {
+        throw new AppError(
+          'That amount would take the invoice past its total, or the invoice is cancelled',
+          409,
+          [],
+          'PAYMENT_EXCEEDS_BALANCE'
+        );
+      }
+    }
+  }
+
+  if (field.startsWith('instrument.')) {
+    payment.instrument = payment.instrument ?? {};
+    payment.instrument[field.split('.')[1]] = value;
+    payment.markModified('instrument');
+  } else {
+    payment[field] = value;
+  }
+  await payment.save();
+
+  await recordAudit({
+    actor,
+    action,
+    entityType: 'Payment',
+    entityId: payment._id,
+    before: { field, value: before instanceof Date ? before.toISOString() : before },
+    after: {
+      field,
+      value: value instanceof Date ? value.toISOString() : value,
+      invoiceId: String(payment.invoiceId),
+      ...extra,
+    },
+  });
+
+  return payment;
+}
+
+/** Admin edit of a payment record, one or more fields at a time. */
+export async function updatePayment(actor, paymentId, patch = {}) {
+  const payment = await Payment.findById(paymentId);
+  if (!payment) throw new AppError('Payment not found', 404);
+
+  const fields = Object.keys(patch).filter((k) => k !== 'reason');
+  if (!fields.length) throw new AppError('Nothing to change', 400, [], 'NO_CHANGES');
+
+  for (const field of fields) {
+    await applyPaymentFieldChange(actor, payment, field, patch[field], {
+      action: 'fees.payment.edit',
+      extra: { reason: patch.reason ?? null, byRole: actor?.roleKey ?? null },
+    });
+  }
+  return payment;
+}
+
+/**
+ * Finance's route to changing a published payment: a request, not an edit.
+ *
+ * Refused outright while the payment is still pending, because at that point
+ * Finance can simply correct the record itself — a change request there would
+ * be ceremony with no separation of duties behind it.
+ */
+export async function createPaymentChangeRequest(actor, { paymentId, field, requestedValue, reason, documentUrl, documentName }) {
+  if (!reason || !String(reason).trim()) {
+    throw new AppError('A reason is required for a change request', 400, [], 'REASON_REQUIRED');
+  }
+  if (!EDITABLE_PAYMENT_FIELDS.has(field)) {
+    throw new AppError(
+      `"${field}" is not an editable payment field. Editable: ${[...EDITABLE_PAYMENT_FIELDS].join(', ')}`,
+      400,
+      [],
+      'FIELD_NOT_EDITABLE'
+    );
+  }
+
+  const payment = await Payment.findById(paymentId).lean();
+  if (!payment) throw new AppError('Payment not found', 404);
+  if ((payment.recordStatus ?? 'PUBLISHED') !== 'PUBLISHED') {
+    throw new AppError(
+      'Only a published payment needs a change request — this one is still awaiting a decision.',
+      409,
+      [],
+      'PAYMENT_NOT_PUBLISHED'
+    );
+  }
+
+  // Validate now rather than at approval, so Finance finds out immediately.
+  coercePaymentField(field, requestedValue);
+
+  const current = readPaymentField(payment, field);
+  const request = await PaymentChangeRequest.create({
+    paymentId,
+    field,
+    currentValue: current instanceof Date ? current.toISOString() : current == null ? null : String(current),
+    requestedValue: requestedValue == null ? null : String(requestedValue),
+    reason: String(reason).trim(),
+    documentUrl: documentUrl ?? null,
+    documentName: documentName ?? null,
+    requestedByProfileId: actor?.profileId ?? null,
+    requestedByRole: actor?.roleKey ?? null,
+  });
+
+  await recordAudit({
+    actor,
+    action: 'fees.payment.changeRequest',
+    entityType: 'PaymentChangeRequest',
+    entityId: request._id,
+    before: { field, value: request.currentValue },
+    after: { field, value: request.requestedValue, reason: request.reason, paymentId: String(paymentId) },
+  });
+
+  return request;
+}
+
+export async function listPaymentChangeRequests({ status, paymentId } = {}) {
+  const filter = {};
+  if (status) filter.status = status;
+  if (paymentId) filter.paymentId = paymentId;
+
+  const requests = await PaymentChangeRequest.find(filter)
+    .populate({ path: 'requestedByProfileId', select: 'displayName' })
+    .populate({ path: 'decidedByProfileId', select: 'displayName' })
+    .populate({ path: 'paymentId', select: 'receiptNo amountPaise mode invoiceId recordStatus' })
+    .sort({ createdAt: -1 })
+    .limit(200)
+    .lean();
+
+  return requests.map((r) => ({
+    id: r._id.toString(),
+    paymentId: r.paymentId?._id?.toString() ?? String(r.paymentId),
+    receiptNo: r.paymentId?.receiptNo ?? '—',
+    field: r.field,
+    currentValue: r.currentValue,
+    requestedValue: r.requestedValue,
+    reason: r.reason,
+    documentUrl: r.documentUrl,
+    documentName: r.documentName,
+    status: r.status,
+    requestedBy: r.requestedByProfileId?.displayName ?? null,
+    requestedByRole: r.requestedByRole,
+    requestedAt: r.requestedAt ?? r.createdAt,
+    decidedBy: r.decidedByProfileId?.displayName ?? null,
+    decidedAt: r.decidedAt,
+    decisionReason: r.decisionReason,
+  }));
+}
+
+/** Admin decision on a change request. Approving is what applies the change. */
+export async function decidePaymentChangeRequest(actor, requestId, { approve, reason }) {
+  const request = await PaymentChangeRequest.findOneAndUpdate(
+    { _id: requestId, status: 'PENDING_ADMIN_APPROVAL' },
+    {
+      $set: {
+        status: approve ? 'APPROVED' : 'REJECTED',
+        decidedByProfileId: actor?.profileId ?? null,
+        decidedAt: new Date(),
+        decisionReason: reason ? String(reason).trim() : null,
+      },
+    },
+    { new: true }
+  );
+
+  if (!request) {
+    const existing = await PaymentChangeRequest.findById(requestId).select('status').lean();
+    if (!existing) throw new AppError('Change request not found', 404);
+    throw new AppError('This change request has already been decided', 409, [], 'REQUEST_ALREADY_DECIDED');
+  }
+
+  if (!approve) {
+    if (!reason || !String(reason).trim()) {
+      // Put it back: a rejection with no reason is not a decision anyone can act on.
+      await PaymentChangeRequest.updateOne(
+        { _id: requestId },
+        { $set: { status: 'PENDING_ADMIN_APPROVAL', decidedByProfileId: null, decidedAt: null, decisionReason: null } }
+      );
+      throw new AppError('A reason is required to reject a change request', 400, [], 'REASON_REQUIRED');
+    }
+    await recordAudit({
+      actor,
+      action: 'fees.payment.changeRequest.reject',
+      entityType: 'PaymentChangeRequest',
+      entityId: request._id,
+      after: { field: request.field, keptValue: request.currentValue, reason: request.decisionReason },
+    });
+    return request;
+  }
+
+  const payment = await Payment.findById(request.paymentId);
+  if (!payment) throw new AppError('The payment this request refers to no longer exists', 404);
+
+  await applyPaymentFieldChange(actor, payment, request.field, request.requestedValue, {
+    action: 'fees.payment.changeRequest.approve',
+    extra: {
+      changeRequestId: String(request._id),
+      reason: request.reason,
+      requestedByRole: request.requestedByRole,
+    },
+  });
+
+  return request;
+}
+
+/**
+ * The provenance of one payment: who created it, who submitted, reviewed,
+ * approved or rejected it, and every value that has changed since.
+ */
+export async function getPaymentHistory(paymentId) {
+  const { AuditLog } = await import('../../models/auditLog.model.js');
+  const payment = await Payment.findById(paymentId)
+    .populate({ path: 'createdByProfileId', select: 'displayName' })
+    .populate({ path: 'approvedByProfileId', select: 'displayName' })
+    .populate({ path: 'rejectedByProfileId', select: 'displayName' })
+    .lean();
+  if (!payment) throw new AppError('Payment not found', 404);
+
+  const [entries, changeRequests] = await Promise.all([
+    AuditLog.find({ entityType: 'Payment', entityId: String(paymentId) })
+      .populate({ path: 'actorProfileId', select: 'displayName' })
+      .sort({ createdAt: 1 })
+      .lean(),
+    listPaymentChangeRequests({ paymentId }),
+  ]);
+
+  return {
+    id: payment._id.toString(),
+    receiptNo: payment.receiptNo ?? '—',
+    amountPaise: payment.amountPaise,
+    mode: payment.mode,
+    recordStatus: payment.recordStatus ?? 'PUBLISHED',
+    createdBy: payment.createdByProfileId?.displayName ?? null,
+    createdByRole: payment.createdByRole ?? null,
+    createdAt: payment.createdAt,
+    approvedBy: payment.approvedByProfileId?.displayName ?? null,
+    approvedAt: payment.approvedAt,
+    rejectedBy: payment.rejectedByProfileId?.displayName ?? null,
+    rejectedAt: payment.rejectedAt,
+    rejectionReason: payment.rejectionReason,
+    changeRequests,
+    trail: entries.map((e) => ({
+      id: e._id.toString(),
+      action: e.action,
+      actor: e.actorProfileId?.displayName ?? null,
+      before: e.before ?? null,
+      after: e.after ?? null,
+      at: e.createdAt,
+    })),
+  };
 }
 
 /**
@@ -762,7 +1480,9 @@ async function invoiceIdsMatchingSearch(search) {
  * `page`/`pageSize` returns `{ items, total, page, pageSize, totalPages }`;
  * without them the plain array shape existing callers rely on is unchanged.
  */
-export async function listPayments(actor, scope, { invoiceId, search, from, to, page, pageSize } = {}) {
+export async function listPayments(actor, scope, {
+  invoiceId, search, from, to, page, pageSize, academicYearId, recordStatus,
+} = {}) {
   const filter = {};
   if (invoiceId) filter.invoiceId = invoiceId;
 
@@ -774,6 +1494,23 @@ export async function listPayments(actor, scope, { invoiceId, search, from, to, 
     if (invoiceId && !allowed.some((id) => id.toString() === invoiceId)) {
       throw new AppError('This invoice does not belong to your account', 403);
     }
+    // A family sees settled money only. A payment Finance has keyed in but no
+    // admin has approved is an internal draft, and showing it would tell a
+    // student their fees are paid before anyone has agreed that they are.
+    // `$ne` rather than `$eq` so rows written before recordStatus existed
+    // (which have no value at all) still count as published.
+    filter.recordStatus = { $nin: ['PENDING_ADMIN_APPROVAL', 'REJECTED'] };
+  } else if (recordStatus) {
+    filter.recordStatus = recordStatus === 'PUBLISHED'
+      ? { $nin: ['PENDING_ADMIN_APPROVAL', 'REJECTED'] }
+      : recordStatus;
+  }
+
+  // Payments belong to the year of the invoice they settle.
+  if (academicYearId) {
+    const enrs = await Enrollment.find({ academicYearId }).select('_id');
+    const yearInvoices = await Invoice.find({ enrollmentId: { $in: enrs.map((e) => e._id) } }).select('_id');
+    filter.$and = [...(filter.$and ?? []), { invoiceId: { $in: yearInvoices.map((i) => i._id) } }];
   }
 
   if (from || to) {
@@ -840,12 +1577,108 @@ export async function listPayments(actor, scope, { invoiceId, search, from, to, 
       amountPaise: p.amountPaise,
       mode: p.mode,
       status: p.status ?? 'CAPTURED',
+      recordStatus: p.recordStatus ?? 'PUBLISHED',
+      paidOn: p.paidOn ?? p.createdAt,
+      instrument: p.instrument ?? null,
       createdAt: p.createdAt,
     };
   });
 
   if (!paginate) return items;
   return { items, total, page: pageNo, pageSize: size, totalPages: totalPagesCalc };
+}
+
+/**
+ * The academic years this caller actually has fee records for.
+ *
+ * Populated from the caller's own enrollments rather than from the school's
+ * year list: a student who joined in 2025 should not be offered 2019 in a
+ * dropdown and then shown an empty page. Ordered newest first so the year a
+ * family cares about is the default.
+ *
+ * This is also why the student portal does not need `academics.read` — that
+ * permission would hand a family the school's entire structure to answer a
+ * question about their own invoices.
+ */
+export async function listPaymentAcademicYears(actor, scope) {
+  const enrollmentFilter = {};
+  if (scope === 'OWN') {
+    const studentIds =
+      actor.roleKey === 'PARENT'
+        ? await getGuardianStudentIds(actor.profileId)
+        : [await getOwnStudentId(actor.profileId)].filter(Boolean);
+    enrollmentFilter.studentId = { $in: studentIds };
+  }
+
+  const enrollments = await Enrollment.find(enrollmentFilter).select('_id academicYearId').lean();
+  if (!enrollments.length) return [];
+
+  const yearIds = [...new Set(enrollments.map((e) => String(e.academicYearId)).filter(Boolean))];
+  const years = await AcademicYear.find({ _id: { $in: yearIds } }).sort({ startsOn: -1 }).lean();
+
+  // How many invoices sit behind each year, so the picker can say when a year
+  // is empty before the student clicks into it.
+  const byYear = new Map(yearIds.map((id) => [id, []]));
+  for (const e of enrollments) {
+    byYear.get(String(e.academicYearId))?.push(e._id);
+  }
+  const counts = await Promise.all(
+    years.map((y) => Invoice.countDocuments({ enrollmentId: { $in: byYear.get(String(y._id)) ?? [] } }))
+  );
+
+  return years.map((y, i) => ({
+    id: y._id.toString(),
+    name: y.name,
+    startsOn: y.startsOn,
+    endsOn: y.endsOn,
+    isCurrent: Boolean(y.isCurrent),
+    invoiceCount: counts[i],
+  }));
+}
+
+/**
+ * Everything the student payments page shows for one academic year: the year
+ * itself, the totals, the published installment plans, the invoices and the
+ * settled payments — all filtered by the same year, in one round trip.
+ *
+ * Fetching them together is what makes "do not mix payments from different
+ * years" a property of the endpoint rather than of four separate calls the
+ * page has to keep in step.
+ */
+export async function getStudentPaymentOverview(actor, scope, { academicYearId } = {}) {
+  const years = await listPaymentAcademicYears(actor, scope);
+  if (!years.length) {
+    return { years: [], academicYearId: null, summary: null, plans: [], invoices: [], payments: [] };
+  }
+
+  // Default to the school's current year when the caller has records in it,
+  // else the most recent year they do have records in.
+  const selected =
+    years.find((y) => String(y.id) === String(academicYearId))
+    ?? years.find((y) => y.isCurrent)
+    ?? years[0];
+
+  // Imported here rather than at the top: plan.service.js calls back into this
+  // module (it raises invoices when a plan is published), and a static pair of
+  // imports would be a cycle.
+  const { listFeePlans } = await import('./plan.service.js');
+
+  const [invoices, payments, plans, summary] = await Promise.all([
+    listInvoices(actor, scope, { academicYearId: selected.id }),
+    listPayments(actor, scope, { academicYearId: selected.id }),
+    listFeePlans(actor, scope, { academicYearId: selected.id }),
+    getSummary(actor, scope, { academicYearId: selected.id }),
+  ]);
+
+  return {
+    years,
+    academicYearId: selected.id,
+    academicYearName: selected.name,
+    summary,
+    plans,
+    invoices: Array.isArray(invoices) ? invoices : invoices.items,
+    payments: Array.isArray(payments) ? payments : payments.items,
+  };
 }
 
 /**
@@ -865,9 +1698,14 @@ export async function getInvoiceDetail(actor, scope, invoiceId) {
     ],
   });
 
+  // Same rule as listPayments: a family's timeline shows settled money only,
+  // never a record still waiting on an admin.
+  const paymentFilter = { invoiceId };
+  if (scope === 'OWN') paymentFilter.recordStatus = { $nin: ['PENDING_ADMIN_APPROVAL', 'REJECTED'] };
+
   const [lines, payments] = await Promise.all([
     InvoiceLine.find({ invoiceId }).sort({ createdAt: 1 }).lean(),
-    Payment.find({ invoiceId }).sort({ createdAt: 1 }).lean(),
+    Payment.find(paymentFilter).sort({ createdAt: 1 }).lean(),
   ]);
 
   const obj = invoice.toObject();
@@ -987,6 +1825,18 @@ export async function getSummary(actor, scope, query = {}) {
     filter.enrollmentId = { $in: ids.map(toObjectId) };
   }
   if (query.enrollmentId) filter.enrollmentId = toObjectId(query.enrollmentId);
+  // A year-scoped summary has to agree with the year-scoped invoice list under
+  // it, so it narrows through the same enrollment→year relation.
+  if (query.academicYearId) {
+    const enrs = await Enrollment.find({ academicYearId: query.academicYearId }).select('_id').lean();
+    const yearIds = enrs.map((e) => e._id);
+    filter.enrollmentId = filter.enrollmentId
+      ? { $in: yearIds.filter((id) => {
+        const allowed = filter.enrollmentId.$in ?? [filter.enrollmentId];
+        return allowed.some((a) => String(a) === String(id));
+      }) }
+      : { $in: yearIds };
+  }
 
   // Aggregate in the DB instead of loading every invoice into memory.
   const now = new Date();

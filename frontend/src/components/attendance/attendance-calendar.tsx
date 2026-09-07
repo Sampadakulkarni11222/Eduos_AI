@@ -8,6 +8,7 @@ import { AttendanceMonthGrid } from './attendance-month-grid';
 import { AttendanceTrendChart } from './attendance-trend-chart';
 import { ApplyLeaveModal } from './apply-leave-modal';
 import { LeaveStatusList } from './leave-status-list';
+import { AttendanceStatusTag, LectureAttendanceList } from './lecture-attendance-list';
 import { ATTENDANCE_LEGEND, type DayInfo } from './attendance-status';
 
 interface MonthSummary {
@@ -127,6 +128,7 @@ export function AttendanceCalendar() {
   const subjectBreakdown = subjectAttendance?.subjects ?? [];
 
   const selectedDayInfo = selectedDate ? dayInfoByDate.get(toISODate(selectedDate)) : null;
+  const monthKey = `${anchorDate.getFullYear()}-${String(anchorDate.getMonth() + 1).padStart(2, '0')}`;
 
   if (!loading && !student) {
     return <EmptyState title="No student record linked" sub="Contact the administration office to link your student profile." />;
@@ -265,6 +267,10 @@ export function AttendanceCalendar() {
               </div>
             </Card>
           )}
+
+          {/* Lecture-level detail. Empty unless the school records attendance
+              per period, which is checked on the server rather than inferred. */}
+          <LectureAttendanceList enrollmentId={enrollmentId} month={monthKey} />
         </>
       )}
 
@@ -282,10 +288,19 @@ export function AttendanceCalendar() {
               </div>
               <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setSelectedDate(null)}>×</button>
             </div>
-            <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
-              Status: <strong style={{ color: 'var(--text-1)' }}>
-                {selectedDayInfo?.isHoliday ? 'Holiday' : selectedDayInfo?.status ? selectedDayInfo.status.replace('_', ' ') : selectedDayInfo?.isNonSchoolDay ? 'Non-school day' : 'No record'}
-              </strong>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
+              Status:{' '}
+              {/* The same worded tag used in the lecture list, so "Absent" reads
+                  identically wherever it appears — and reads at all without colour. */}
+              {selectedDayInfo?.isHoliday ? (
+                <strong style={{ color: 'var(--text-1)' }}>Holiday</strong>
+              ) : selectedDayInfo?.status ? (
+                <AttendanceStatusTag status={selectedDayInfo.status} />
+              ) : (
+                <strong style={{ color: 'var(--text-1)' }}>
+                  {selectedDayInfo?.isNonSchoolDay ? 'Non-school day' : 'No record'}
+                </strong>
+              )}
             </div>
             {selectedDayInfo && selectedDayInfo.subjects.length > 0 && (
               <>

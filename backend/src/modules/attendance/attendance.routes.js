@@ -169,4 +169,35 @@ router.get('/subject-wise', requirePermission('attendance.read'), controller.get
  */
 router.get('/trend', requirePermission('attendance.read'), controller.getTrend);
 
+/**
+ * @swagger
+ * /attendance/lectures:
+ *   get:
+ *     summary: Lecture/period-level attendance for one enrollment
+ *     description: >
+ *       Returns every per-period attendance record in the range, matched to the
+ *       timetable slot it belongs to for subject, room and times. Day-level
+ *       records are excluded — they say nothing about an individual lecture.
+ *     tags: [Attendance]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: enrollmentId
+ *         schema: { type: string }
+ *       - in: query
+ *         name: month
+ *         schema: { type: string, example: '2026-09' }
+ *       - in: query
+ *         name: from
+ *         schema: { type: string, format: date }
+ *       - in: query
+ *         name: to
+ *         schema: { type: string, format: date }
+ *     responses:
+ *       200:
+ *         description: Lecture attendance fetched
+ */
+router.get('/lectures', requirePermission('attendance.read'), controller.getLectures);
+
 export default router;

@@ -1,6 +1,7 @@
 import { Exam, ExamSubject, Mark } from '../../models/exam.model.js';
 import { Enrollment, Student, StudentGuardian } from '../../models/student.model.js';
-import { SubjectOffering } from '../../models/academics.model.js';
+import { SubjectOffering, Term } from '../../models/academics.model.js';
+import * as attendanceService from '../attendance/attendance.service.js';
 import { AppError } from '../../utils/AppError.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 import { gradeForPercentage, percentage, summarise } from '../../utils/grading.js';
@@ -207,7 +208,10 @@ export async function getPerformance(actor, scope, { enrollmentId }) {
   const marks = await Mark.find(filter).populate({
     path: 'examSubjectId',
     populate: [
-      { path: 'examId' },
+      // The term and year come along for the ride so a result can be filed
+      // under the year and term it belongs to, which is what the performance
+      // history view is built from.
+      { path: 'examId', populate: { path: 'termId', populate: { path: 'academicYearId' } } },
       {
         path: 'subjectOfferingId',
         populate: [{ path: 'subjectId' }, { path: 'sectionId', populate: { path: 'gradeId' } }]
@@ -243,8 +247,18 @@ export async function getPerformance(actor, scope, { enrollmentId }) {
     const maxMarks = examSubject.maxMarks || 100;
     const pct = marksObtained !== null ? Math.round((marksObtained / maxMarks) * 100) : null;
 
+    const exam = examSubject.examId;
+    const term = exam?.termId;
+    const year = term?.academicYearId;
+
     results.push({
       exam: examName,
+      examId: exam?._id ? String(exam._id) : null,
+      examDate: examSubject.examDate ?? exam?.startsOn ?? null,
+      termId: term?._id ? String(term._id) : null,
+      termName: term?.name ?? null,
+      academicYearId: year?._id ? String(year._id) : null,
+      academicYearName: year?.name ?? null,
       subject: subjectName,
       marks: marksObtained,
       maxMarks,
@@ -323,6 +337,184 @@ export async function getReportCard(actor, scope, { enrollmentId, exam }) {
     bestSubject: performance.bestSubject,
     needsSupport: performance.needsSupport,
   };
+}
+
+/**
+ * Totals, percentage, letter grade and GPA for a set of published results.
+ *
+ * Shares the school's grade bands with the report card (utils/grading.js), so
+ * a term summary and a report card can never disagree about what 82% is
+ * called.
+ */
+function summariseResults(results) {
+  const subjects = (results ?? []).map((r) => {
+    const pct = percentage(r.marks, r.maxMarks);
+    const band = gradeForPercentage(pct);
+    return {
+      subject: r.subject,
+      exam: r.exam,
+      marks: r.marks,
+      maxMarks: r.maxMarks,
+      percentage: pct,
+      grade: band?.label ?? null,
+      gradePoints: band?.points ?? null,
+    };
+  });
+  return { ...summarise(subjects), subjects };
+}
+
+/**
+ * Every academic year the student has a record in, each with its terms and the
+ * published results filed under them.
+ *
+ * Built on getPerformance(), one call per enrollment, for the same reason
+ * getReportCard() is: that function owns the whole visibility model (a parent
+ * only their own child, a subject teacher only the subjects they teach), and a
+ * second copy of those rules here would be the easiest place in this codebase
+ * to leak a record.
+ *
+ * A year with no published marks is still returned with an empty result set —
+ * "you were in Class 8 and nothing has been published" is a different and more
+ * useful answer than the year simply being missing.
+ */
+export async function getPerformanceHistory(actor, scope, { studentId } = {}) {
+  // Whose history: the caller's own when they are the student, otherwise the
+  // student named — checked against the same OWN rules as everything else.
+  let targetStudentId = studentId ?? null;
+  if (scope === 'OWN') {
+    if (actor.roleKey === 'STUDENT') {
+      const ownId = await getOwnStudentId(actor.profileId);
+      if (!ownId) throw new AppError('No student record is linked to this account', 404, [], 'STUDENT_NOT_LINKED');
+      if (targetStudentId && String(targetStudentId) !== ownId) {
+        throw new AppError('You may only view your own performance', 403);
+      }
+      targetStudentId = ownId;
+    } else if (actor.roleKey === 'PARENT') {
+      const childIds = await getGuardianStudentIds(actor.profileId);
+      if (!childIds.length) throw new AppError('No student is linked to this account', 404);
+      if (targetStudentId && !childIds.includes(String(targetStudentId))) {
+        throw new AppError('You do not have access to this student', 403);
+      }
+      targetStudentId = targetStudentId ?? childIds[0];
+    } else if (actor.roleKey === 'TEACHER') {
+      if (!targetStudentId) throw new AppError('studentId is required', 400);
+      const sectionIds = await getTeacherSectionIds(actor.profileId);
+      const inMyClass = await Enrollment.exists({ studentId: targetStudentId, sectionId: { $in: sectionIds } });
+      if (!inMyClass) throw new AppError('This student is not in your classes', 403);
+    } else {
+      throw new AppError('You do not have access to these records', 403);
+    }
+  }
+  if (!targetStudentId) throw new AppError('studentId is required', 400);
+
+  const enrollments = await Enrollment.find({ studentId: targetStudentId })
+    .populate({ path: 'sectionId', populate: { path: 'gradeId' } })
+    .populate('academicYearId')
+    .lean();
+
+  if (!enrollments.length) return { student: null, years: [] };
+
+  // Newest year first, so the current one opens by default.
+  enrollments.sort((a, b) => {
+    const av = a.academicYearId?.startsOn ? new Date(a.academicYearId.startsOn).getTime() : 0;
+    const bv = b.academicYearId?.startsOn ? new Date(b.academicYearId.startsOn).getTime() : 0;
+    return bv - av;
+  });
+
+  const yearIds = enrollments.map((e) => e.academicYearId?._id).filter(Boolean);
+  const terms = await Term.find({ academicYearId: { $in: yearIds } }).sort({ startsOn: 1 }).lean();
+  const termsByYear = new Map();
+  for (const t of terms) {
+    const key = String(t.academicYearId);
+    if (!termsByYear.has(key)) termsByYear.set(key, []);
+    termsByYear.get(key).push(t);
+  }
+
+  let student = null;
+  const years = [];
+
+  for (const enrollment of enrollments) {
+    const enrollmentId = String(enrollment._id);
+
+    let performance = null;
+    try {
+      performance = await getPerformance(actor, scope, { enrollmentId });
+    } catch {
+      // A year this actor may not read is left out rather than failing the
+      // whole history.
+      continue;
+    }
+    student = student ?? performance.student;
+
+    let attendance = null;
+    try {
+      const summary = await attendanceService.getSummary(actor, scope, { enrollmentId });
+      attendance = summary && typeof summary.pctPresent === 'number' ? summary : null;
+    } catch {
+      // Attendance is supporting detail here; its absence must not hide marks.
+    }
+
+    const yearDoc = enrollment.academicYearId;
+    const results = performance.results ?? [];
+
+    // Group by the term the exam belongs to. Results whose exam has no term
+    // (older data) collect under one "Other exams" group rather than vanishing.
+    const byTerm = new Map();
+    for (const r of results) {
+      const key = r.termId ?? 'UNASSIGNED';
+      if (!byTerm.has(key)) {
+        byTerm.set(key, { termId: r.termId ?? null, name: r.termName ?? 'Other exams', results: [] });
+      }
+      byTerm.get(key).results.push(r);
+    }
+
+    // Every term defined for the year appears, even with nothing published, so
+    // "Term 2 has no results yet" is visible rather than looking like Term 2
+    // does not exist.
+    const yearTerms = (termsByYear.get(String(yearDoc?._id)) ?? []).map((t) => {
+      const found = byTerm.get(String(t._id));
+      byTerm.delete(String(t._id));
+      return {
+        termId: String(t._id),
+        name: t.name,
+        startsOn: t.startsOn,
+        endsOn: t.endsOn,
+        results: found?.results ?? [],
+        summary: summariseResults(found?.results ?? []),
+      };
+    });
+    for (const leftover of byTerm.values()) {
+      yearTerms.push({
+        termId: leftover.termId,
+        name: leftover.name,
+        startsOn: null,
+        endsOn: null,
+        results: leftover.results,
+        summary: summariseResults(leftover.results),
+      });
+    }
+
+    years.push({
+      academicYearId: yearDoc?._id ? String(yearDoc._id) : null,
+      academicYearName: yearDoc?.name ?? 'Unknown year',
+      startsOn: yearDoc?.startsOn ?? null,
+      endsOn: yearDoc?.endsOn ?? null,
+      isCurrent: Boolean(yearDoc?.isCurrent),
+      enrollmentId,
+      class: enrollment.sectionId
+        ? `${enrollment.sectionId.gradeId?.name ?? ''} ${enrollment.sectionId.name}`.trim()
+        : null,
+      rollNo: enrollment.rollNo ?? null,
+      enrollmentStatus: enrollment.status,
+      attendance,
+      bestSubject: performance.bestSubject,
+      needsSupport: performance.needsSupport,
+      summary: summariseResults(results),
+      terms: yearTerms,
+    });
+  }
+
+  return { student, years };
 }
 
 export async function enterMarks(actor, scope, { examSubjectId, entries }) {

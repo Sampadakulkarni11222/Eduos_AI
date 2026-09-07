@@ -352,7 +352,8 @@ export const TOOLS = {
     async execute() {
       // listIssues() re-marks anything past its due date before reading, so an
       // overdue book that nobody has looked at yet still shows up here.
-      const issues = await library.listIssues({ status: 'OVERDUE' });
+      // minScope ALL above, so this tool is only ever reached school-wide.
+      const issues = await library.listIssues(null, 'ALL', { status: 'OVERDUE' });
       if (issues.length === 0) return { speakKey: 'library.overdue.none', data: { overdue: [] } };
 
       const shown = issues.slice(0, 10);

@@ -111,7 +111,10 @@ export interface AttendanceRoster {
 export interface MySubmission { status: 'PENDING' | 'SUBMITTED' | 'LATE' | 'GRADED' | 'EXEMPT'; submittedAt: string | null; marks: number | null; feedback: string | null; attachments: string[] }
 export interface AssignmentDto {
   id: string; title: string; description?: string | null; type: string; chapter?: string | null;
-  dueAt: string; maxMarks: number | null; subject: string; subjectId?: string | null; class: string;
+  dueAt: string; maxMarks: number | null; subject: string; subjectId?: string | null;
+  /** Who set the work, from the subject offering. Null when the offering has no teacher. */
+  teacher?: string | null;
+  class: string;
   gradeId?: string | null; gradeName?: string | null; sectionId?: string | null; sectionName?: string | null;
   subjectOfferingId?: string | null; submissionCount: number; mySubmission?: MySubmission | null;
 }
@@ -124,7 +127,13 @@ export interface PerformanceDto {
   overallAvgPct: number | null;
   bestSubject: { subject: string; pct: number | null } | null;
   needsSupport: { subject: string; pct: number | null } | null;
-  results: Array<{ exam: string; subject: string; marks: number | null; maxMarks: number; pct: number | null }>;
+  results: Array<{
+    exam: string; subject: string; marks: number | null; maxMarks: number; pct: number | null;
+    // Populated since the year/term history view; older callers ignore them.
+    examId?: string | null; examDate?: string | null;
+    termId?: string | null; termName?: string | null;
+    academicYearId?: string | null; academicYearName?: string | null;
+  }>;
 }
 export interface ExamDto { id: string; name: string; startsOn: string; endsOn: string }
 export interface ExamSubjectDto { id: string; examId: string; examName: string; subject: string; class: string; maxMarks: number; examDate: string | null }
@@ -159,6 +168,8 @@ export type LeaveStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export interface LeaveApplicationDto {
   _id: string; enrollmentId: string; fromDate: string; toDate: string; reason: string;
   status: LeaveStatus; remarks: string | null; createdAt: string;
+  /** Optional supporting document, e.g. a medical certificate. Null when none was attached. */
+  documentUrl?: string | null; documentName?: string | null;
 }
 
 // ── Elective subject registration ──
@@ -199,7 +210,7 @@ export interface SubjectRegistrationDto {
   requestedAt: string;
 }
 
-export interface InvoiceDto { id: string; invoiceNo: string; studentName: string; class: string | null; status: string; totalPaise: number; paidPaise: number; dueOn: string; sectionId?: string; studentId?: string; createdAt?: string }
+export interface InvoiceDto { id: string; invoiceNo: string; studentName: string; class: string | null; status: string; totalPaise: number; paidPaise: number; dueOn: string; sectionId?: string; studentId?: string; enrollmentId?: string; academicYearId?: string; academicYearName?: string; planId?: string | null; installmentSeq?: number | null; createdAt?: string }
 export interface FeeSummary { totalBilledPaise: number; totalCollectedPaise: number; pendingPaise: number; pendingCount: number; collectionPct: number; overduePaise: number; overdueCount: number; onlinePaymentEnabled?: boolean }
 export interface AnnouncementAudience { all: boolean; gradeIds: string[]; sectionIds: string[]; subjectIds: string[] }
 export interface AnnouncementChannels { app: boolean; email: boolean; whatsapp: boolean }
@@ -208,7 +219,7 @@ export interface AnnouncementDto {
   audience: AnnouncementAudience; audienceLabel: string; channels: AnnouncementChannels;
 }
 export interface TicketDto { id: string; subject: string; status: string; priority: string; routedToRoleKey: string | null; raisedBy: string; assignedTo?: string | null; studentName?: string | null; createdAt: string; messageCount: number }
-export interface TicketThread { id: string; subject: string; status: string; routedToRoleKey: string | null; studentName?: string | null; messages: Array<{ id: string; body: string; channel: string; mine: boolean; createdAt: string }> }
+export interface TicketThread { id: string; subject: string; status: string; routedToRoleKey: string | null; studentName?: string | null; documentUrl?: string | null; documentName?: string | null; messages: Array<{ id: string; body: string; channel: string; mine: boolean; createdAt: string }> }
 export interface MedicalDto { studentId: string; bloodGroup: string | null; heightCm: number | null; weightKg: number | null; emergencyContact: { name: string; phone: string; relation: string } | null; allergies: string[]; medications: string[]; history: string | null; attachments?: Array<{ name: string; fileUrl: string }> | null }
 export interface LeadCard { id: string; childName: string; guardianName: string; gradeApplying: string | null; source: string; nextActionAt: string | null; assigneeProfileId?: string | null; assigneeName?: string | null }
 export interface Pipeline { stages: string[]; byStage: Record<string, LeadCard[]> }
@@ -312,8 +323,8 @@ export interface TransportStopDto { id: string; routeId: string; name: string; s
 export interface MyBusDto { route: Omit<TransportRouteDto, 'stopCount'>; stop: TransportStopDto; direction: string; nextEta: string | null }
 
 // ── Phase 8: Library ──
-export interface BookDto { id: string; title: string; author: string; isbn: string | null; category: string; totalCopies: number; availableCopies: number }
-export interface BookIssueDto { id: string; bookId: string; bookTitle: string; studentId: string; studentName: string; issuedAt: string; dueAt: string; returnedAt: string | null; status: 'ACTIVE' | 'RETURNED' | 'OVERDUE'; finePaise: number }
+export interface BookDto { id: string; title: string; author: string; isbn: string | null; category: string; resourceType?: 'PHYSICAL' | 'DIGITAL'; resourceUrl?: string | null; publisher?: string | null; publishedYear?: number | null; totalCopies: number; availableCopies: number }
+export interface BookIssueDto { id: string; bookId: string; bookTitle: string; bookAuthor?: string | null; category?: string | null; resourceType?: 'PHYSICAL' | 'DIGITAL'; resourceUrl?: string | null; studentId: string; studentName: string; issuedAt: string; dueAt: string; returnedAt: string | null; status: 'ACTIVE' | 'RETURNED' | 'OVERDUE'; finePaise: number }
 
 // ── Phase 8: Documents ──
 export interface DocumentDto { id: string; title: string; type: string; fileUrl: string; mimeType: string; visibleToRoles: string[]; studentId: string | null; studentName: string | null; academicYearId: string | null; sectionId?: string | null; subjectOfferingId?: string | null; issuedAt: string }
@@ -338,6 +349,15 @@ export interface InvoiceDetailDto extends InvoiceDto {
   payments: PaymentReceiptDto[];
 }
 
+/** Cheque / DD / bank-transfer details captured with a manual payment. */
+export interface PaymentInstrumentDto {
+  number: string | null;
+  bankName: string | null;
+  instrumentDate: string | null;
+  proofUrl: string | null;
+  proofName: string | null;
+}
+
 export interface PaymentReceiptDto {
   id: string;
   receiptNo: string;
@@ -347,7 +367,152 @@ export interface PaymentReceiptDto {
   amountPaise: number;
   mode: string;
   status: string;
+  /**
+   * Where the record sits in the approval workflow. Families are only ever
+   * served PUBLISHED rows, so on the student portal this is always PUBLISHED;
+   * staff screens use it to tell settled money from a queued record.
+   */
+  recordStatus?: 'PENDING_ADMIN_APPROVAL' | 'PUBLISHED' | 'REJECTED';
+  paidOn?: string;
+  instrument?: PaymentInstrumentDto | null;
   createdAt: string;
+}
+
+// ── Fee plans (installment configuration + approval workflow) ──
+export type FeePlanMode = 'ONE_TIME' | 'PARTIAL' | 'INSTALLMENT';
+
+export type FeePlanStatus =
+  | 'DRAFT'
+  | 'PENDING_FINANCE_REVIEW'
+  | 'FINANCE_REVIEWED'
+  | 'PENDING_ADMIN_APPROVAL'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'PUBLISHED';
+
+export interface FeePlanInstallmentDto {
+  seq: number;
+  label: string | null;
+  amountPaise: number;
+  dueOn: string;
+  invoiceId: string | null;
+  invoiceNo: string | null;
+  paidPaise: number;
+  remainingPaise: number;
+  status: 'NOT_BILLED' | 'PAID' | 'PARTIALLY_PAID' | 'OVERDUE' | 'DUE';
+}
+
+export interface FeePlanDto {
+  id: string;
+  name: string;
+  mode: FeePlanMode;
+  status: FeePlanStatus;
+  academicYearId: string;
+  academicYearName: string | null;
+  studentId: string;
+  enrollmentId: string;
+  totalPaise: number;
+  paidPaise: number;
+  remainingPaise: number;
+  firstPaymentOn: string | null;
+  notes: string | null;
+  installments: FeePlanInstallmentDto[];
+  publishedAt: string | null;
+  createdAt: string;
+}
+
+/** Who did what to a plan — shown on the admin review screen. */
+export interface FeePlanWorkflowDto {
+  createdBy: string | null;
+  createdByRole: string | null;
+  createdAt: string | null;
+  submittedBy: string | null;
+  submittedAt: string | null;
+  financeReviewedBy: string | null;
+  financeReviewedAt: string | null;
+  financeNote: string | null;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  rejectedBy: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+  publishedAt: string | null;
+}
+
+export interface FeePlanDetailDto extends FeePlanDto {
+  studentName: string | null;
+  admissionNo: string | null;
+  workflow: FeePlanWorkflowDto;
+}
+
+export interface PaymentChangeRequestDto {
+  id: string;
+  paymentId: string;
+  receiptNo: string;
+  field: string;
+  currentValue: string | null;
+  requestedValue: string | null;
+  reason: string;
+  documentUrl: string | null;
+  documentName: string | null;
+  status: 'PENDING_ADMIN_APPROVAL' | 'APPROVED' | 'REJECTED';
+  requestedBy: string | null;
+  requestedByRole: string | null;
+  requestedAt: string;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionReason: string | null;
+}
+
+export interface PaymentHistoryDto {
+  id: string;
+  receiptNo: string;
+  amountPaise: number;
+  mode: string;
+  recordStatus: string;
+  createdBy: string | null;
+  createdByRole: string | null;
+  createdAt: string;
+  approvedBy: string | null;
+  approvedAt: string | null;
+  rejectedBy: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+  changeRequests: PaymentChangeRequestDto[];
+  trail: Array<{
+    id: string;
+    action: string;
+    actor: string | null;
+    before: Record<string, unknown> | null;
+    after: Record<string, unknown> | null;
+    at: string;
+  }>;
+}
+
+/** An academic year the caller actually has fee records for. */
+export interface PaymentAcademicYearDto {
+  id: string;
+  name: string;
+  startsOn: string;
+  endsOn: string;
+  isCurrent: boolean;
+  invoiceCount: number;
+}
+
+/**
+ * Everything the student payment page shows for ONE academic year.
+ *
+ * The year is resolved server-side and every list inside belongs to it, which
+ * is what keeps two years from ever appearing in the same table.
+ */
+export interface PaymentOverviewDto {
+  years: PaymentAcademicYearDto[];
+  academicYearId: string | null;
+  academicYearName?: string;
+  summary: FeeSummary | null;
+  plans: FeePlanDto[];
+  invoices: InvoiceDto[];
+  payments: PaymentReceiptDto[];
 }
 
 export interface UserDto {
@@ -650,4 +815,153 @@ export interface AgentReply {
   action: AgentProposedAction | null;
   flagged?: string;
   suggestions?: string[];
+}
+
+/* ── Student assignments: extra fields used by the student filters ──
+   `teacher` comes from the subject offering, so a student can search their
+   assignment list by who set the work. */
+
+// ── Lecture-level attendance ──
+export interface LectureAttendanceRow {
+  id: string;
+  date: string;
+  dayOfWeek: number;
+  periodNo: number;
+  subject: string | null;
+  teacher: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  room: string | null;
+  status: AttStatus;
+  note: string | null;
+}
+export interface LectureAttendanceDto {
+  enrollmentId: string;
+  from: string | null;
+  to: string | null;
+  totalLectures: number;
+  counts: Record<AttStatus, number>;
+  pctPresent: number | null;
+  lectures: LectureAttendanceRow[];
+}
+
+// ── Performance history (year → term → results) ──
+export interface PerformanceResultRow {
+  exam: string;
+  examId: string | null;
+  examDate: string | null;
+  termId: string | null;
+  termName: string | null;
+  academicYearId: string | null;
+  academicYearName: string | null;
+  subject: string;
+  marks: number | null;
+  maxMarks: number;
+  pct: number | null;
+}
+export interface PerformanceSummary {
+  totalMarks: number;
+  totalMaxMarks: number;
+  percentage: number | null;
+  grade: { label: string; points: number; descriptor: string } | null;
+  gpa: number | null;
+  subjectsMarked: number;
+  subjectsTotal: number;
+  passed: boolean | null;
+  failedSubjects: string[];
+  subjects: Array<{
+    subject: string; exam?: string; marks: number | null; maxMarks: number;
+    percentage: number | null; grade: string | null; gradePoints: number | null;
+  }>;
+}
+export interface PerformanceTermDto {
+  termId: string | null;
+  name: string;
+  startsOn: string | null;
+  endsOn: string | null;
+  results: PerformanceResultRow[];
+  summary: PerformanceSummary;
+}
+export interface PerformanceYearDto {
+  academicYearId: string | null;
+  academicYearName: string;
+  startsOn: string | null;
+  endsOn: string | null;
+  isCurrent: boolean;
+  enrollmentId: string;
+  class: string | null;
+  rollNo: number | null;
+  enrollmentStatus: string;
+  attendance: AttendanceSummaryDto | null;
+  bestSubject: { subject: string; pct: number | null } | null;
+  needsSupport: { subject: string; pct: number | null } | null;
+  summary: PerformanceSummary;
+  terms: PerformanceTermDto[];
+}
+export interface PerformanceHistoryDto {
+  student: { name: string; class: string } | null;
+  years: PerformanceYearDto[];
+}
+
+// ── Library filters ──
+export type LibraryResourceType = 'PHYSICAL' | 'DIGITAL';
+export interface BookFacetsDto {
+  categories: string[];
+  authors: string[];
+  resourceTypes: string[];
+}
+
+// ── Student-raised requests reviewed by the class teacher ──
+export type StudentRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface CoCurricularActivityDto {
+  id: string;
+  studentId: string | null;
+  studentName: string | null;
+  admissionNo: string | null;
+  name: string;
+  category: string;
+  description: string | null;
+  activityDate: string | null;
+  achievement: string | null;
+  level: string;
+  documentUrl: string | null;
+  documentName: string | null;
+  status: StudentRequestStatus;
+  rejectionReason: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  requestedAt: string | null;
+  class?: string | null;
+}
+
+export interface ProfileEditFieldDto {
+  field: string;
+  label: string;
+  type: 'text' | 'date';
+  required: boolean;
+}
+
+export interface ProfileEditChangeDto {
+  field: string;
+  label: string;
+  oldValue: string | null;
+  newValue: string | null;
+}
+
+export interface ProfileEditRequestDto {
+  id: string;
+  studentId: string | null;
+  studentName: string | null;
+  admissionNo: string | null;
+  changes: ProfileEditChangeDto[];
+  note: string | null;
+  documentUrl: string | null;
+  documentName: string | null;
+  status: StudentRequestStatus;
+  rejectionReason: string | null;
+  requestedAt: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  class?: string | null;
 }

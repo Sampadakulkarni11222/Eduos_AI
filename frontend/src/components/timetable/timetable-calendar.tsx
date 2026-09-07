@@ -12,7 +12,26 @@ import { addDays, addMonths, addWeeks, formatMonthLabel, formatWeekRangeLabel, b
 
 type ViewMode = 'month' | 'week' | 'day';
 
-export function TimetableCalendar({ scopeLabel, canEdit = false }: { scopeLabel: string; canEdit?: boolean }) {
+export function TimetableCalendar({
+  scopeLabel,
+  canEdit = false,
+  showClassPicker = true,
+}: {
+  scopeLabel: string;
+  canEdit?: boolean;
+  /**
+   * Whether to offer the grade/section pickers.
+   *
+   * A student is enrolled in exactly one class, so the pickers offered them a
+   * choice of one and then made them make it. Turning them off leaves the same
+   * timetable on screen — the class is still resolved from
+   * `/academics/sections/mine`, which for a student returns only their own —
+   * just without a control that never had a second option. Every other portal
+   * leaves this at its default: an admin picks any section, and a teacher
+   * moves between the classes they take.
+   */
+  showClassPicker?: boolean;
+}) {
   const [sections, setSections] = useState<SectionDto[] | null>(null);
   const [selectedGrade, setSelectedGrade] = useState('');
   const [sectionId, setSectionId] = useState('');
@@ -84,19 +103,28 @@ export function TimetableCalendar({ scopeLabel, canEdit = false }: { scopeLabel:
   return (
     <>
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', flex: '1 1 auto' }}>
-          <div style={{ minWidth: 140, flex: '1 1 160px', maxWidth: 220 }}>
-            <select className="input" value={selectedGrade} onChange={(e) => handleGradeChange(e.target.value)} aria-label="Grade" style={{ width: '100%' }}>
-              {sections === null && <option>Loading…</option>}
-              {grades.map((g) => <option key={g} value={g}>{g}</option>)}
-            </select>
+        {showClassPicker ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', flex: '1 1 auto' }}>
+            <div style={{ minWidth: 140, flex: '1 1 160px', maxWidth: 220 }}>
+              <select className="input select-field" value={selectedGrade} onChange={(e) => handleGradeChange(e.target.value)} aria-label="Grade">
+                {sections === null && <option>Loading…</option>}
+                {grades.map((g) => <option key={g} value={g}>{g}</option>)}
+              </select>
+            </div>
+            <div style={{ minWidth: 120, flex: '1 1 140px', maxWidth: 200 }}>
+              <select className="input select-field" value={sectionId} onChange={(e) => setSectionId(e.target.value)} aria-label="Section">
+                {filteredSections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
           </div>
-          <div style={{ minWidth: 120, flex: '1 1 140px', maxWidth: 200 }}>
-            <select className="input" value={sectionId} onChange={(e) => setSectionId(e.target.value)} aria-label="Section" style={{ width: '100%' }}>
-              {filteredSections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
+        ) : (
+          // The class is still named — it just is not a control any more.
+          <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+            {division && (
+              <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17, color: 'var(--text-1b)' }}>{division}</strong>
+            )}
           </div>
-        </div>
+        )}
         {canEdit && sectionId && (
           <Button onClick={openAddSlot}>Add Timetable Slot</Button>
         )}

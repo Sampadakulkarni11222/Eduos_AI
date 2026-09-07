@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, SkeletonRows, cx } from '@/components/ui';
+import { Button, Card, DateField, EmptyState, SkeletonRows, cx } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api, errorMessage } from '@/lib/api';
 import type { AttStatus, AttendanceRoster, SectionDto } from '@/lib/types';
@@ -134,7 +134,7 @@ export default function AttendancePage() {
             </option>
           ))}
         </select>
-        <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Date" disabled={saving} />
+        <DateField className="date-field-inline" value={date} onChange={setDate} ariaLabel="Date" disabled={saving} />
         {data && data.periods.length > 0 && (
           <select
             className="input"

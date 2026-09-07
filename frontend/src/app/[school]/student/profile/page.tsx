@@ -1,8 +1,10 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Avatar, Card, EmptyState, Pill, SkeletonRows } from '@/components/ui';
 import { IdCardPanel } from '@/components/id-card-action';
+import { ProfileEditRequestPanel } from '@/components/student/profile-edit-request';
+import { CoCurricularPanel } from '@/components/student/cocurricular-panel';
 import { api, ApiError, fileHref } from '@/lib/api';
 import type { StudentOverviewDto } from '@/lib/types';
 
@@ -17,8 +19,12 @@ function formatDate(iso: string | null) {
 
 /**
  * Student profile: identity, enrolment, guardians and emergency contacts,
- * plus the live-generated ID card. Everything is read-only — corrections go
- * through the school office, which is also who owns the source data.
+ * the co-curricular record, and the live-generated ID card.
+ *
+ * The record itself stays read-only here. Corrections go through "Request
+ * Edit", which files a request for the class teacher rather than writing to
+ * the student's own record — the school still owns the source data, the
+ * student now has a way to say what is wrong with it.
  */
 export default function StudentProfile() {
   const [overview, setOverview] = useState<StudentOverviewDto | null>(null);
@@ -45,20 +51,31 @@ export default function StudentProfile() {
     }
   };
 
+  const loadOverview = useCallback(async () => {
+    const r = await api.students();
+    const me = r.items[0];
+    return me ? api.studentOverview(me.id) : null;
+  }, []);
+
   useEffect(() => {
     let stale = false;
-    api
-      .students()
-      .then(async (r) => {
-        const me = r.items[0];
-        if (!me) return null;
-        return api.studentOverview(me.id);
-      })
+    loadOverview()
       .then((o) => !stale && setOverview(o ?? null))
       .catch(() => !stale && setOverview(null))
       .finally(() => !stale && setLoading(false));
     return () => { stale = true; };
-  }, []);
+  }, [loadOverview]);
+
+  /**
+   * Re-read the record after a request is raised or a decision lands.
+   *
+   * An approval is applied server-side, so the profile on screen is stale from
+   * the moment it happens; this is what makes an approved correction actually
+   * appear without a page reload.
+   */
+  const refresh = useCallback(() => {
+    loadOverview().then((o) => setOverview(o ?? null)).catch(() => {});
+  }, [loadOverview]);
 
   const rows: Array<[string, string]> = overview
     ? [
@@ -167,6 +184,10 @@ export default function StudentProfile() {
 
           <IdCardPanel studentId={overview.id} />
 
+          <ProfileEditRequestPanel overview={overview} onApprovedChange={refresh} />
+
+          <CoCurricularPanel />
+
           <Card pad={false} style={{ marginBottom: 16 }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--hairline)' }}>
               <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>School record</strong>
@@ -218,8 +239,9 @@ export default function StudentProfile() {
           </Card>
 
           <p style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 14, lineHeight: 1.6 }}>
-            Something wrong here? These details are maintained by the school office — raise a
-            request from <strong>Help &amp; Support</strong> and they will correct it.
+            Your admission number, class and roll number are set by the school office and cannot be
+            changed by request — ask from <strong>Help &amp; Support</strong> if one of those is wrong.
+            Everything else can be corrected through <strong>Request Edit</strong> above.
           </p>
         </>
       )}

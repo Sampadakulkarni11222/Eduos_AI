@@ -108,6 +108,21 @@ router.post('/books/bulk', requirePermission('library.manage'), csvUploadSingle(
  *       200:
  *         description: Book deleted successfully
  */
+/**
+ * @swagger
+ * /library/books/facets:
+ *   get:
+ *     summary: Distinct categories, authors and resource types in the catalog
+ *     tags: [Library]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Filters fetched successfully
+ */
+// Declared before /books/:id so "facets" is not read as a book id.
+router.get('/books/facets', requirePermission('library.read'), controller.listBookFacets);
+
 router.get('/books/:id', requirePermission('library.read'), controller.getBookById);
 router.patch('/books/:id', requirePermission('library.manage'), controller.updateBook);
 router.delete('/books/:id', requirePermission('library.manage'), controller.deleteBook);

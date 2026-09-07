@@ -45,6 +45,9 @@ export async function list(actor, scope, query = {}) {
       populate: [
         { path: 'subjectId', select: 'name' },
         { path: 'sectionId', select: 'name', populate: { path: 'gradeId', select: 'name' } },
+        // Who set the work. Surfaced so a student can search their assignment
+        // list by teacher alongside subject and title.
+        { path: 'teacherId', select: 'displayName' },
       ],
     })
     .sort({ dueAt: -1 })
@@ -78,6 +81,7 @@ export async function list(actor, scope, query = {}) {
       dueAt: a.dueAt?.toISOString() ?? null,
       maxMarks: a.maxMarks ?? null,
       subject: offering?.subjectId?.name ?? 'Subject',
+      teacher: offering?.teacherId?.displayName ?? null,
       subjectId: offering?.subjectId?._id ?? null,
       class: section ? [section.gradeId?.name, section.name].filter(Boolean).join(' - ') : '—',
       gradeId: section?.gradeId?._id ?? null,

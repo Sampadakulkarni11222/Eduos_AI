@@ -1,7 +1,10 @@
 'use client';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from '@/components/ui';
+import {
+  Button, Card, DateRangeFilter, EmptyState, FilterBar, Pill, SearchInput, Select,
+  SkeletonRows, matchesSearch, useToast, withinDateRange,
+} from '@/components/ui';
 import { FileOrUrlInput } from '@/components/file-input';
 import { api, ApiError, fileHref } from '@/lib/api';
 import type { AssignmentDto } from '@/lib/types';
@@ -13,7 +16,63 @@ const STATUS_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'gray'> =
   PENDING: 'gray', SUBMITTED: 'blue', LATE: 'amber', GRADED: 'green', EXEMPT: 'gray',
 };
 
-const emptyFilters = { subject: '', chapter: '', dateFrom: '', dateTo: '' };
+/**
+ * The state a student actually cares about, derived from the submission and
+ * the due date together.
+ *
+ * The stored submission status alone cannot answer "what have I not done?":
+ * PENDING means the same thing for work due next week and work that was due a
+ * fortnight ago, and only the second is a problem. So:
+ *
+ *   pending    — nothing handed in yet, and there is still time.
+ *   incomplete — nothing handed in and the due date has passed.
+ *   completed  — handed in, however late, or excused.
+ *   graded     — a mark has been recorded.
+ *   nongraded  — handed in and still waiting on the teacher.
+ *
+ * These overlap on purpose: graded work is also completed work, and the filter
+ * is a lens on the same list rather than a partition of it.
+ */
+type DerivedStatus = 'pending' | 'incomplete' | 'completed' | 'graded' | 'nongraded';
+
+const STATUS_OPTIONS: Array<{ value: '' | DerivedStatus; label: string }> = [
+  { value: '', label: 'All statuses' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'incomplete', label: 'Incomplete' },
+  { value: 'graded', label: 'Graded' },
+  { value: 'nongraded', label: 'Non-graded' },
+];
+
+function derivedStatuses(a: AssignmentDto, now: Date): Set<DerivedStatus> {
+  const out = new Set<DerivedStatus>();
+  const status = a.mySubmission?.status ?? 'PENDING';
+  const handedIn = status === 'SUBMITTED' || status === 'LATE' || status === 'GRADED';
+  const overdue = new Date(a.dueAt) < now;
+
+  if (handedIn || status === 'EXEMPT') out.add('completed');
+  if (!handedIn && status !== 'EXEMPT') out.add(overdue ? 'incomplete' : 'pending');
+  if (status === 'GRADED') out.add('graded');
+  else if (handedIn) out.add('nongraded');
+
+  return out;
+}
+
+/** The label under the Status column, so the filter and the row agree. */
+function statusLabel(a: AssignmentDto, now: Date): { text: string; tone: 'green' | 'amber' | 'red' | 'blue' | 'gray' } {
+  const status = a.mySubmission?.status ?? 'PENDING';
+  if (status === 'PENDING') {
+    return new Date(a.dueAt) < now
+      ? { text: 'Incomplete', tone: 'red' }
+      : { text: 'Pending', tone: 'gray' };
+  }
+  const labels: Record<string, string> = {
+    SUBMITTED: 'Completed', LATE: 'Completed (late)', GRADED: 'Graded', EXEMPT: 'Exempt',
+  };
+  return { text: labels[status] ?? status, tone: STATUS_TONE[status] ?? 'gray' };
+}
+
+const emptyFilters = { search: '', subject: '', status: '' as '' | DerivedStatus, dueFrom: '', dueTo: '' };
 
 export default function StudentAssignments() {
   const [assignments, setAssignments] = useState<AssignmentDto[] | null>(null);
@@ -24,27 +83,40 @@ export default function StudentAssignments() {
   const load = () => api.assignments().then(setAssignments).catch(() => setAssignments([]));
   useEffect(() => { void load(); }, []);
 
-  const subjects = useMemo(() => [...new Set(assignments?.map((a) => a.subject) ?? [])].sort(), [assignments]);
+  const subjects = useMemo(
+    () => [...new Set(assignments?.map((a) => a.subject).filter(Boolean) ?? [])].sort(),
+    [assignments],
+  );
   const hasFilters = Object.values(filters).some(Boolean);
 
-  const filtered = useMemo(() => assignments?.filter((a) => {
-    if (filters.subject && a.subject !== filters.subject) return false;
-    if (filters.chapter && !(a.chapter ?? '').toLowerCase().includes(filters.chapter.toLowerCase())) return false;
-    if (filters.dateFrom && new Date(a.dueAt) < new Date(filters.dateFrom)) return false;
-    if (filters.dateTo && new Date(a.dueAt) > new Date(`${filters.dateTo}T23:59:59`)) return false;
-    return true;
-  }) ?? null, [assignments, filters]);
+  const filtered = useMemo(() => {
+    if (!assignments) return null;
+    const now = new Date();
+    return assignments.filter((a) => {
+      if (filters.subject && a.subject !== filters.subject) return false;
+      if (filters.status && !derivedStatuses(a, now).has(filters.status)) return false;
+      // Filtered on the due date, never on when the teacher created the work —
+      // "show me what is due this fortnight" is the question being asked.
+      if (!withinDateRange(a.dueAt, filters.dueFrom, filters.dueTo)) return false;
+      // One box across every column a student might remember the work by.
+      return matchesSearch(filters.search, [
+        a.title, a.subject, a.teacher, a.chapter, a.type,
+        statusLabel(a, now).text,
+        a.dueAt ? fmtDate(a.dueAt) : null,
+      ]);
+    });
+  }, [assignments, filters]);
 
   const now = new Date();
   const upcoming = filtered?.filter((a) => new Date(a.dueAt) >= now) ?? [];
   const past = filtered?.filter((a) => new Date(a.dueAt) < now) ?? [];
 
   const statusCell = (a: AssignmentDto) => {
-    const s = a.mySubmission?.status ?? 'PENDING';
+    const label = statusLabel(a, now);
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Pill tone={STATUS_TONE[s] ?? 'gray'}>{s.toLowerCase()}</Pill>
-        {s === 'GRADED' && a.mySubmission?.marks != null && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <Pill tone={label.tone}>{label.text}</Pill>
+        {a.mySubmission?.status === 'GRADED' && a.mySubmission?.marks != null && (
           <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-1)' }}>
             {a.mySubmission.marks}{a.maxMarks ? `/${a.maxMarks}` : ''}
           </span>
@@ -76,12 +148,13 @@ export default function StudentAssignments() {
   const table = (rows: AssignmentDto[], dueLabel: string, dim = false) => (
     <Card pad={false} style={{ marginBottom: 20 }}>
       <table className="data-table data-table-cards">
-        <thead><tr><th>Subject</th><th>Title</th><th>Chapter</th><th>Type</th><th>{dueLabel}</th><th>Status</th><th>Action</th></tr></thead>
+        <thead><tr><th>Subject</th><th>Title</th><th>Teacher</th><th>Chapter</th><th>Type</th><th>{dueLabel}</th><th>Status</th><th>Action</th></tr></thead>
         <tbody>
           {rows.map((a) => (
             <tr key={a.id} style={dim ? { opacity: 0.75 } : undefined}>
               <td style={{ color: 'var(--text-faint)' }} data-label="Subject">{a.subject}</td>
               <td className="cell-primary" data-label="Title">{a.title}</td>
+              <td data-label="Teacher">{a.teacher || '—'}</td>
               <td data-label="Chapter">{a.chapter || '—'}</td>
               <td data-label="Type"><Pill tone={TYPE_TONE[a.type] ?? 'gray'}>{a.type.toLowerCase()}</Pill></td>
               <td style={{ color: !dim && isOverdue(a.dueAt) ? 'var(--red)' : 'var(--text-2)' }} data-label={dueLabel}>{fmtDate(a.dueAt)}</td>
@@ -97,16 +170,46 @@ export default function StudentAssignments() {
   return (
     <PortalShell expectedSlug="student" topbar={{ title: 'Assignments', desc: 'Your homework — submit your work before the due date.' }}>
       {assignments && assignments.length > 0 && (
-        <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-          <select className="input" value={filters.subject} onChange={(e) => setFilters((f) => ({ ...f, subject: e.target.value }))} aria-label="Subject">
-            <option value="">All subjects</option>
-            {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <input className="input" placeholder="Chapter…" value={filters.chapter} onChange={(e) => setFilters((f) => ({ ...f, chapter: e.target.value }))} aria-label="Chapter" style={{ width: 140 }} />
-          <input className="input" type="date" value={filters.dateFrom} onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))} aria-label="Due from" title="Due from" />
-          <input className="input" type="date" value={filters.dateTo} onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value }))} aria-label="Due to" title="Due to" />
-          {hasFilters && <Button variant="ghost" small onClick={() => setFilters(emptyFilters)}>Clear filters</Button>}
-        </div>
+        <>
+          <FilterBar
+            actions={hasFilters
+              ? <Button variant="ghost" small onClick={() => setFilters(emptyFilters)}>Clear filters</Button>
+              : undefined}
+          >
+            <SearchInput
+              label="Search"
+              value={filters.search}
+              onChange={(search) => setFilters((f) => ({ ...f, search }))}
+              placeholder="Title, subject, teacher, status…"
+            />
+            <Select
+              label="Subject"
+              value={filters.subject}
+              placeholder="All subjects"
+              onChange={(subject) => setFilters((f) => ({ ...f, subject }))}
+              options={subjects.map((s) => ({ value: s, label: s }))}
+            />
+            <Select
+              label="Status"
+              value={filters.status}
+              onChange={(status) => setFilters((f) => ({ ...f, status: status as '' | DerivedStatus }))}
+              options={STATUS_OPTIONS.filter((o) => o.value !== '').map((o) => ({ value: o.value, label: o.label }))}
+              placeholder="All statuses"
+            />
+            <DateRangeFilter
+              label="Due date"
+              from={filters.dueFrom}
+              to={filters.dueTo}
+              onChange={({ from, to }) => setFilters((f) => ({ ...f, dueFrom: from, dueTo: to }))}
+            />
+          </FilterBar>
+
+          {filtered && (
+            <div style={{ fontSize: 12.5, color: 'var(--text-2)', marginBottom: 12 }}>
+              Showing {filtered.length} of {assignments.length} assignment{assignments.length === 1 ? '' : 's'}
+            </div>
+          )}
+        </>
       )}
 
       {assignments === null && <Card><SkeletonRows rows={5} /></Card>}

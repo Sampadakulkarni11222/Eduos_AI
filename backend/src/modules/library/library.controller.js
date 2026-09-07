@@ -13,6 +13,11 @@ export const listBooks = asyncHandler(async (req, res) => {
   sendSuccess(res, books, 'Books fetched');
 });
 
+export const listBookFacets = asyncHandler(async (_req, res) => {
+  const facets = await service.listBookFacets();
+  sendSuccess(res, facets, 'Book filters fetched');
+});
+
 export const getBookById = asyncHandler(async (req, res) => {
   const book = await service.getBookById(req.params.id);
   sendSuccess(res, book, 'Book fetched');
@@ -40,7 +45,7 @@ export const deleteBook = asyncHandler(async (req, res) => {
 });
 
 export const listIssues = asyncHandler(async (req, res) => {
-  const issues = await service.listIssues(req.query);
+  const issues = await service.listIssues(req.actor, req.scope, req.query);
   sendSuccess(res, issues, 'Issues fetched');
 });
 

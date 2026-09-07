@@ -105,6 +105,19 @@ export const env = {
   MULTI_PROFILE_ENABLED: process.env.MULTI_PROFILE_ENABLED !== 'false',
   ACCESS_TOKEN_EXPIRES_IN: process.env.ACCESS_TOKEN_EXPIRES_IN ?? '15m',
   REFRESH_TOKEN_TTL_DAYS: Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 30,
+  // How long a just-rotated refresh token still works.
+  //
+  // Refresh tokens rotate on every use, and presenting a revoked one is
+  // treated as theft: every session on the account is killed. That is right
+  // for a token replayed hours later and wrong for the ordinary case of two
+  // browser tabs whose access tokens expire in the same second — both send the
+  // cookie they hold, one wins the rotation, and the loser's perfectly honest
+  // request used to log the account out of everything. Anything replayed
+  // inside this window is treated as that race instead, and re-issued.
+  //
+  // Small on purpose: seconds, not minutes. It has to cover a request already
+  // in flight, nothing more.
+  REFRESH_ROTATION_GRACE_SECONDS: numFromEnv('REFRESH_ROTATION_GRACE_SECONDS', 30),
   OTP_TTL_MINUTES: Number(process.env.OTP_TTL_MINUTES) || 5,
   OTP_MAX_ATTEMPTS: Number(process.env.OTP_MAX_ATTEMPTS) || 5,
   BCRYPT_SALT_ROUNDS: Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
