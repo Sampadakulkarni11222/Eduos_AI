@@ -56,6 +56,7 @@ async function assertSectionAccess(actor, scope, sectionId) {
   throw new AppError('You are not allowed to view this section roster', 403);
 }
 
+
 /**
  * Roster for a section on a date, optionally for one timetabled period.
  *
@@ -223,7 +224,7 @@ async function assertMarkAccess(actor, scope, sectionId, periodNo, day) {
   // The class teacher keeps the register for their own class in every period —
   // they cover absences and they answer for the day's roll either way.
   if (!teachesIt && !isClassTeacher) {
-    throw new AppError('You do not teach the subject timetabled in that period', 403, [], 'NOT_SUBJECT_TEACHER');
+    throw new AppError('You are not the teacher timetabled for this period', 403, [], 'NOT_SUBJECT_TEACHER');
   }
 }
 

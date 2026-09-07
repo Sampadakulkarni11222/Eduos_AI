@@ -87,7 +87,14 @@ export default function AssignmentsPage() {
             <tbody>
               {filtered.map((a) => (
                 <tr key={a.id}>
-                  <td className="cell-primary" data-label="Title">{a.title}</td>
+                  <td className="cell-primary" data-label="Title">
+                    {a.title}
+                    {a.attachments.length > 0 && (
+                      <a href={fileHref(a.attachments[0])} target="_blank" rel="noreferrer" style={{ marginLeft: 8, fontSize: 11.5, color: 'var(--accent)', fontWeight: 600 }}>
+                        📎
+                      </a>
+                    )}
+                  </td>
                   <td data-label="Class">{a.class}</td>
                   <td data-label="Subject">{a.subject}</td>
                   <td data-label="Chapter">{a.chapter || '—'}</td>
@@ -251,9 +258,20 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
   const [chapter, setChapter] = useState('');
   const [dueAt, setDueAt] = useState('');
   const [maxMarks, setMaxMarks] = useState('20');
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { if (!offeringId && offerings[0]) setOfferingId(offerings[0].id); }, [offerings, offeringId]);
+
+  const addFile = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true); setErr(null);
+    try {
+      const uploaded = await api.uploadFile(file);
+      setAttachments((prev) => [...prev, uploaded.fileUrl]);
+    } catch { setErr('Could not upload the file. Please try again.'); } finally { setUploading(false); }
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setBusy(true); setErr(null);
@@ -261,6 +279,7 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
       await api.createAssignment({
         subjectOfferingId: offeringId, title, type, chapter: chapter || undefined,
         dueAt: new Date(dueAt).toISOString(), maxMarks: maxMarks ? parseInt(maxMarks, 10) : undefined,
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
       onCreated();
     } catch { setErr('Could not create. Check the fields and try again.'); } finally { setBusy(false); }
@@ -296,8 +315,28 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
             {CHAPTER_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
+        <div style={{ marginTop: 12 }}>
+          <div className="field-label">Attach a worksheet or document (optional)</div>
+          <input
+            className="field-input"
+            type="file"
+            disabled={uploading}
+            onChange={(e) => { void addFile(e.target.files?.[0]); e.target.value = ''; }}
+          />
+          {uploading && <p style={{ fontSize: 12.5, color: 'var(--text-faint)', marginTop: 4 }}>Uploading…</p>}
+          {attachments.length > 0 && (
+            <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12.5 }}>
+              {attachments.map((a, i) => (
+                <li key={a} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {a.split('/').pop()}
+                  <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', color: 'var(--red, #b52a2a)', cursor: 'pointer', fontSize: 12 }}>Remove</button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         {err && <p style={{ color: 'var(--red)', fontSize: 13, marginTop: 8, marginBottom: 8 }}>{err}</p>}
-        <Button type="submit" disabled={busy || !offeringId} style={{ marginTop: 12 }}>{busy ? 'Creating…' : 'Create assignment'}</Button>
+        <Button type="submit" disabled={busy || !offeringId || uploading} style={{ marginTop: 12 }}>{busy ? 'Creating…' : 'Create assignment'}</Button>
       </form>
     </Card>
   );

@@ -13,7 +13,7 @@
 import { cachedFetch, invalidateCache } from './cache';
 import { getActingSchool } from './acting-school';
 import { SESSION_MARKER } from './session-cookie';
-import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto, AnnouncementDraft, AnnouncementPreviewDto, TransportRosterRow, LibraryResourceKind } from './types';
+import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto, AnnouncementDraft, AnnouncementPreviewDto, TransportRosterRow, LibraryResourceKind, LeaveRequestDto, LeaveStatus } from './types';
 
 /**
  * A document exactly as the API returns it, before this layer normalises it.
@@ -464,6 +464,10 @@ export const api = {
   applyLeave: (body: { fromDate: string; toDate: string; reason: string; documentUrl?: string | null; documentName?: string | null }) =>
     request<LeaveApplicationDto>('/leave/apply', { method: 'POST', body: JSON.stringify(body) }),
   myLeaveApplications: () => request<LeaveApplicationDto[]>('/leave/mine'),
+  leaveForReview: (status: LeaveStatus | 'ALL' = 'PENDING') =>
+    request<LeaveRequestDto[]>(`/leave?status=${status}`),
+  decideLeave: (id: string, status: 'APPROVED' | 'REJECTED', remarks?: string) =>
+    request<LeaveApplicationDto>(`/leave/${id}/review`, { method: 'POST', body: JSON.stringify({ status, remarks }) }),
 
   // ── elective subject registration ──
   availableElectives: () => request<AvailableElectiveDto[]>('/registrations/available'),
@@ -491,7 +495,7 @@ export const api = {
   // ── assignments ──
   assignments: (offeringId?: string) =>
     request<AssignmentDto[]>(`/assignments${offeringId ? `?offeringId=${offeringId}` : ''}`),
-  createAssignment: (body: { subjectOfferingId: string; title: string; type?: string; chapter?: string; dueAt: string; maxMarks?: number; description?: string }) =>
+  createAssignment: (body: { subjectOfferingId: string; title: string; type?: string; chapter?: string; dueAt: string; maxMarks?: number; description?: string; attachments?: string[] }) =>
     request<{ id: string; seededSubmissions: number }>('/assignments', { method: 'POST', body: JSON.stringify(body) }),
   submitAssignment: (body: { assignmentId: string; attachments?: string[] }) =>
     request<{ status: string; submittedAt: string }>('/assignments/submit', { method: 'POST', body: JSON.stringify(body) }),

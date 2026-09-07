@@ -3,6 +3,10 @@ import { AppError } from '../../utils/AppError.js';
 import { SubjectOffering } from '../../models/academics.model.js';
 import { getTeacherSectionIds, getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
 import { Enrollment } from '../../models/student.model.js';
+// Registered, not assumed: the list populates the teacher's profile, and
+// populate needs the model present even when a caller has imported only the
+// assignments module.
+import '../../models/profile.model.js';
 
 /** Resolve the ACTIVE enrollment ids for the actor's own student(s). */
 async function getOwnEnrollmentIds(actor) {
@@ -80,6 +84,7 @@ export async function list(actor, scope, query = {}) {
       chapter: a.chapter ?? null,
       dueAt: a.dueAt?.toISOString() ?? null,
       maxMarks: a.maxMarks ?? null,
+      attachments: a.attachments ?? [],
       subject: offering?.subjectId?.name ?? 'Subject',
       teacher: offering?.teacherId?.displayName ?? null,
       subjectId: offering?.subjectId?._id ?? null,

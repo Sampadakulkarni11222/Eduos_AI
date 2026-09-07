@@ -137,7 +137,7 @@ export interface AttendanceRoster {
 export interface MySubmission { status: 'PENDING' | 'SUBMITTED' | 'LATE' | 'GRADED' | 'EXEMPT'; submittedAt: string | null; marks: number | null; feedback: string | null; attachments: string[] }
 export interface AssignmentDto {
   id: string; title: string; description?: string | null; type: string; chapter?: string | null;
-  dueAt: string; maxMarks: number | null; subject: string; subjectId?: string | null;
+  dueAt: string; maxMarks: number | null; attachments: string[]; subject: string; subjectId?: string | null;
   /** Who set the work, from the subject offering. Null when the offering has no teacher. */
   teacher?: string | null;
   class: string;
@@ -196,6 +196,10 @@ export interface LeaveApplicationDto {
   status: LeaveStatus; remarks: string | null; createdAt: string;
   /** Optional supporting document, e.g. a medical certificate. Null when none was attached. */
   documentUrl?: string | null; documentName?: string | null;
+}
+/** LeaveApplicationDto plus the applicant fields listForReview() joins in for a teacher's queue. */
+export interface LeaveRequestDto extends LeaveApplicationDto {
+  studentName: string; admissionNo: string | null;
 }
 
 // ── Elective subject registration ──

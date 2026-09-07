@@ -106,6 +106,7 @@ export const PORTALS: Record<string, Portal> = {
         // Class-teacher approvals for the two things a student may raise about
         // their own record: co-curricular achievements and profile corrections.
         item('Student Requests', '✓', '/teacher/student-requests', { ready: true }),
+        item('Leave Requests', '⛱', '/teacher/leave', { ready: true }),
         item('Medical Records', '✚', '/teacher/medical', { ready: true }),
         // Route, stop and vehicle for the students they teach — read-only.
         // Managing routes stays behind the transport permission they do not hold.

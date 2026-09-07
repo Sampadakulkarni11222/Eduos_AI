@@ -390,28 +390,40 @@ export async function deleteBook(id) {
 /**
  * Whose lending records an OWN-scoped caller may see.
  *
+ * `studentId` here is actually a borrowerProfileId (see toIssueDto/issueBook).
  * A student holds `library.read` at OWN scope so they can look up the
- * catalogue and their own loans. Without this the same permission returned
- * every borrowing record in the school — who has which book out, by name.
+ * catalogue and their own loans; without narrowing, the same permission
+ * returned every borrowing record in the school — who has which book out, by
+ * name. So a non-ALL-scope caller only ever sees their own records, whatever
+ * studentId they sent, rather than that id being trusted.
  */
 async function resolveOwnBorrowerIds(actor) {
+  const ids = [];
   if (actor?.roleKey === 'STUDENT') {
     const id = await getOwnStudentId(actor.profileId);
-    return id ? [id] : [];
+    if (id) ids.push(id);
+  } else if (actor?.roleKey === 'PARENT') {
+    ids.push(...await getGuardianStudentIds(actor.profileId));
   }
-  if (actor?.roleKey === 'PARENT') {
-    return getGuardianStudentIds(actor.profileId);
-  }
-  return [];
+
+  // `borrowerProfileId` is a misnomer: issueBook() writes the *Student* id into
+  // it, because that is what the lending screen sends. Rows written through the
+  // borrowerProfileId parameter carry a Profile id instead, so both forms exist
+  // in the field and both belong to the same person. Matching either is what
+  // makes this correct on real data — keying on the profile id alone returns a
+  // student none of their own loans.
+  if (actor?.profileId) ids.push(String(actor.profileId));
+  return ids;
 }
 
 export async function listIssues(actor, scope, { status, bookId, studentId, from, to, resourceType } = {}) {
   const filter = {};
   if (status && status !== 'ALL') filter.status = status;
   if (bookId) filter.bookId = bookId;
-  if (studentId) filter.borrowerProfileId = studentId;
+  // Only a school-wide caller may ask about somebody else.
+  if (scope === 'ALL' && studentId) filter.borrowerProfileId = studentId;
 
-  if (scope === 'OWN') {
+  if (scope !== 'ALL') {
     const ownIds = await resolveOwnBorrowerIds(actor);
     // An empty list must match nothing, not everything.
     filter.borrowerProfileId = ownIds.length ? { $in: ownIds } : null;
