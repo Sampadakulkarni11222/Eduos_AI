@@ -5,7 +5,11 @@ import { Grade, Section, Subject, SubjectOffering } from '../src/models/academic
 import { Role } from '../src/models/role.model.js';
 import { AuditLog } from '../src/models/auditLog.model.js';
 import { SYSTEM_ROLES } from '../src/constants/permissions.js';
-import { create as createAnnouncement, list as listAnnouncements } from '../src/modules/announcements/announcement.service.js';
+import {
+  create as createAnnouncement,
+  list as listAnnouncements,
+  preview as previewAnnouncement,
+} from '../src/modules/announcements/announcement.service.js';
 import { Student, Enrollment } from '../src/models/student.model.js';
 import { buildPermissionMap } from '../src/utils/buildPermissionMap.js';
 import { getTool } from '../src/modules/ai/agent/tools.js';
@@ -338,5 +342,90 @@ describe('a reader sees only the announcements addressed to them', () => {
 
   it('a role with no class of its own still sees the school-wide notice', async () => {
     expect(await titlesFor(reader('LIBRARIAN'))).toEqual(['Whole school']);
+  });
+});
+
+describe('the preview step resolves without publishing', () => {
+  /**
+   * The preview exists so nobody discovers at send time that their audience
+   * was refused — so what it must prove is that it answers with the *same*
+   * decision the send path makes, and that nothing is written on the way.
+   */
+  const preview = (actor, scope, body, school = OAK) =>
+    runWithTenant(school, () => previewAnnouncement(actor, scope, body));
+
+  it('creates nothing', async () => {
+    await preview(admin, 'ALL', { title: 'Sports day', content: 'Body', audience: { all: true } });
+    expect(await Announcement.countDocuments()).toBe(0);
+  });
+
+  it('labels the audience the same way the published list does', async () => {
+    const res = await preview(teacher, 'OWN', {
+      title: 'Test paper', content: 'Bring a calculator', audience: { sectionIds: [ownSection._id.toString()] },
+    });
+    expect(res.audience.all).toBe(false);
+    expect(res.audienceLabel).toContain('Class 6');
+  });
+
+  it('refuses the same audience the send path refuses', async () => {
+    await expect(
+      preview(teacher, 'OWN', { title: 'x', content: 'y', audience: { all: true } })
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    await expect(
+      preview(teacher, 'OWN', { title: 'x', content: 'y', audience: { sectionIds: [otherSection._id.toString()] } })
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('renders only the channels that are switched on', async () => {
+    const appOnly = await preview(admin, 'ALL', { title: 'T', content: 'B', audience: { all: true } });
+    expect(appOnly.email).toBeNull();
+    expect(appOnly.whatsapp).toBeNull();
+
+    const both = await preview(admin, 'ALL', {
+      title: 'T', content: 'B', audience: { all: true }, channels: { email: true, whatsapp: true },
+    });
+    expect(both.email).toMatchObject({ subject: 'T', body: 'B' });
+    expect(both.whatsapp.body).toBe('*T*\n\nB');
+  });
+
+  it('keeps only attachments this server issued', async () => {
+    const res = await preview(admin, 'ALL', {
+      title: 'T',
+      content: 'B',
+      audience: { all: true },
+      attachments: ['/uploads/circular-1.pdf', 'https://evil.example/malware.exe', ''],
+    });
+    expect(res.attachments).toEqual(['/uploads/circular-1.pdf']);
+  });
+
+  it('counts the students a class-wise notice reaches', async () => {
+    await inOak(async () => {
+      for (const admissionNo of ['P-1', 'P-2']) {
+        const student = await Student.create({ admissionNo, firstName: 'Kid', lastName: admissionNo });
+        await Enrollment.create({
+          studentId: student._id,
+          sectionId: ownSection._id,
+          academicYearId: new mongoose.Types.ObjectId(),
+          status: 'ACTIVE',
+        });
+      }
+    });
+    const res = await preview(teacher, 'OWN', {
+      title: 'T', content: 'B', audience: { sectionIds: [ownSection._id.toString()] },
+    });
+    expect(res.recipientCount).toBe(2);
+  });
+});
+
+describe('a published announcement keeps its attachments', () => {
+  it('stores the uploaded file and drops anything else', async () => {
+    const doc = await inOak(() => createAnnouncement(admin, 'ALL', {
+      title: 'Circular',
+      content: 'See attached',
+      audience: { all: true },
+      attachments: ['/uploads/circular-2.pdf', 'https://evil.example/x.exe'],
+    }));
+    expect(doc.attachments).toEqual(['/uploads/circular-2.pdf']);
   });
 });

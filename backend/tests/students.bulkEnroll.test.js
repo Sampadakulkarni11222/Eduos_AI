@@ -49,5 +49,10 @@ it('accurately reports an admissionNo that was never seeded, exactly as the repo
     rows: [{ admissionno: 'ADM-2026-2011' }],
   }));
   expect(result.imported).toBe(0);
-  expect(result.errors[0].error).toMatch(/No student found with admissionNo "ADM-2026-2011"/);
+  // The wording moved when bulk errors gained structure (row, field, value,
+  // problem, suggestion) for the QA findings; the claim is unchanged — the
+  // report names the exact admission number that could not be found.
+  expect(result.errors[0]).toMatchObject({ row: 2, field: 'admissionNo', value: 'ADM-2026-2011' });
+  expect(result.errors[0].error).toMatch(/ADM-2026-2011/);
+  expect(result.errors[0].problem).toMatch(/does not match any student/i);
 });

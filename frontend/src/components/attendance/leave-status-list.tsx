@@ -1,5 +1,6 @@
 'use client';
 import { Pill } from '../ui';
+import { fileHref } from '@/lib/api';
 import { formatCalendarDate } from '@/lib/timetable-dates';
 import type { LeaveApplicationDto, LeaveStatus } from '@/lib/types';
 
@@ -29,6 +30,16 @@ export function LeaveStatusList({ applications }: { applications: LeaveApplicati
               <div style={{ fontSize: 12, color: 'var(--text-2b)', marginTop: 2 }}>{a.reason}</div>
               {a.remarks && (
                 <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 4 }}>Remarks: {a.remarks}</div>
+              )}
+              {a.documentUrl && (
+                <a
+                  href={fileHref(a.documentUrl)}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ display: 'inline-block', fontSize: 11.5, color: 'var(--accent)', fontWeight: 600, marginTop: 4 }}
+                >
+                  🗎 {a.documentName ?? 'Supporting document'}
+                </a>
               )}
             </div>
             <Pill tone={STATUS_TONE[a.status]}>{a.status}</Pill>

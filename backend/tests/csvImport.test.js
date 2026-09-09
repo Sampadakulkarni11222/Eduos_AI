@@ -80,14 +80,16 @@ describe('bulkCreateLeads — partial failure', () => {
     );
     const res = await bulkCreateLeads(rows);
     expect(res.imported).toBe(1);
-    expect(res.errors[0].error).toMatch(/Invalid source/i);
+    expect(res.errors[0]).toMatchObject({ field: 'source', value: 'CARRIER_PIGEON' });
+    expect(res.errors[0].problem).toMatch(/not a source/i);
   });
 
   it('rejects an unknown stage', async () => {
     const rows = parseCsvRows(req('childName,guardianName,phone,stage\nAva,Bo,+919000000001,MAYBE\n'));
     const res = await bulkCreateLeads(rows);
     expect(res.imported).toBe(0);
-    expect(res.errors[0].error).toMatch(/Invalid stage/i);
+    expect(res.errors[0]).toMatchObject({ field: 'stage', value: 'MAYBE' });
+    expect(res.errors[0].problem).toMatch(/not a pipeline stage/i);
   });
 
   it('accepts case-insensitive source and stage values', async () => {
@@ -132,29 +134,46 @@ describe('bulkCreateSubjects', () => {
   });
 
   /**
-   * Pins CURRENT behaviour, which differs from bulkCreateLeads.
+   * A duplicate costs its own row and nothing else.
    *
-   * chunkedInsert() runs each 100-row chunk as one transactional insertMany,
-   * so a single duplicate aborts the whole chunk and the valid rows alongside
-   * it roll back too. The report is honest — every row in the chunk is counted
-   * as failed, so nothing is silently dropped — but an operator whose 100-row
-   * sheet contains one existing subject gets zero rows imported.
+   * The importers used to run each 100-row chunk as one transactional,
+   * *ordered* insertMany, so a single existing subject rolled back the
+   * ninety-nine valid rows beside it and reported all hundred as failed —
+   * each blamed for the offending row's problem. That is the "bulk import
+   * does nothing" in the QA report: the sheet was right apart from one line.
    *
-   * bulkCreateLeads, by contrast, validates per row and imports the good ones.
-   * Changing this means dropping the per-chunk transaction for
-   * insertMany({ ordered: false }) with per-document error collection.
+   * Unordered insertion writes what it can and reports the rest by index, so
+   * the operator keeps the good rows and gets told exactly which line to fix.
    */
-  it('rejects the whole chunk when any row duplicates an existing subject', async () => {
+  it('imports the valid rows and fails only the duplicate', async () => {
+    // Awaited because Mongoose builds indexes lazily and insertMany does not
+    // wait for them: without it the unique constraint may not exist yet when
+    // the rows land, and the test would pass or fail on what ran before it.
+    await Subject.init();
     await Subject.create({ name: 'Mathematics', code: 'MATH' });
     const rows = parseCsvRows(req('name,code\nMathematics,MATH\nPhysics,PHY\n'));
     const res = await bulkCreateSubjects(rows);
 
-    expect(res.imported).toBe(0);
-    expect(res.failed).toBe(2);
-    // Physics was valid, but rolls back with the chunk.
-    expect(await Subject.countDocuments({ name: 'Physics' })).toBe(0);
-    // The operator is told about every affected row, not just the bad one.
-    expect(res.errors).toHaveLength(2);
-    expect(res.errors.some((e) => /already exists/i.test(e.error))).toBe(true);
+    expect(res.imported).toBe(1);
+    expect(res.failed).toBe(1);
+    expect(await Subject.countDocuments({ name: 'Physics' })).toBe(1);
+
+    expect(res.errors).toHaveLength(1);
+    const [only] = res.errors;
+    // Row 2 is the first data row: the header is row 1.
+    expect(only.row).toBe(2);
+    expect(only.field).toBe('name');
+    expect(only.value).toBe('Mathematics');
+    expect(only.problem).toMatch(/already exists/i);
+    expect(only.suggestion).toBeTruthy();
+    // The flattened sentence the upload modal has always rendered.
+    expect(only.error).toMatch(/already exists/i);
+  });
+
+  it('a row that is invalid before it reaches the database names its field too', async () => {
+    const res = await bulkCreateSubjects(parseCsvRows(req('name,code\n,PHY\nChemistry,CHEM\n')));
+    expect(res.imported).toBe(1);
+    expect(res.failed).toBe(1);
+    expect(res.errors[0]).toMatchObject({ row: 2, field: 'name' });
   });
 });

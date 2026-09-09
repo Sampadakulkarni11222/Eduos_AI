@@ -103,8 +103,14 @@ export const PORTALS: Record<string, Portal> = {
       ]},
       { title: 'STUDENTS', items: [
         item('Subject Registrations', '⊕', '/teacher/registrations', { ready: true }),
+        // Class-teacher approvals for the two things a student may raise about
+        // their own record: co-curricular achievements and profile corrections.
+        item('Student Requests', '✓', '/teacher/student-requests', { ready: true }),
         item('Leave Requests', '⛱', '/teacher/leave', { ready: true }),
         item('Medical Records', '✚', '/teacher/medical', { ready: true }),
+        // Route, stop and vehicle for the students they teach — read-only.
+        // Managing routes stays behind the transport permission they do not hold.
+        item('Transport', '⛒', '/teacher/transport', { ready: true }),
       ]},
     ],
   },
@@ -155,6 +161,8 @@ export const PORTALS: Record<string, Portal> = {
         item('Calendar & Events', '▤', '/student/calendar', { ready: true }),
         item('Announcements', '◍', '/student/announcements', { ready: true }),
         item('Library', '▢', '/student/library', { ready: true }),
+        item('Library Notes', '✎', '/student/notes', { ready: true }),
+        item('Question Papers', '❑', '/student/question-papers', { ready: true }),
         item('Transport', '⛒', '/student/transport', { ready: true }),
         item('Documents', '🗎', '/student/documents', { ready: true }),
       ]},
@@ -211,6 +219,10 @@ export const PORTALS: Record<string, Portal> = {
       { title: 'WORKSPACE', items: [
         item('Dashboard', '◫', '/librarian', { ready: true }),
         item('Catalog & Lending', '▢', '/librarian/books', { ready: true }),
+        // Notes and question papers are shelves of the same catalogue, not a
+        // separate document store — see components/library/resource-shelf.
+        item('Library Notes', '✎', '/librarian/notes', { ready: true }),
+        item('Question Papers', '❑', '/librarian/question-papers', { ready: true }),
       ]},
       { title: 'COMMUNICATION', items: [
         item('Announcements', '◍', '/librarian/announcements', { ready: true }),

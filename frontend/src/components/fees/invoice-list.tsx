@@ -20,11 +20,20 @@ function fmtDate(iso: string) {
 }
 
 export function InvoiceList({
-  invoices, onPay, onViewTimeline, canPayOnline = true,
+  invoices, onPay, onViewTimeline, canPayOnline = true, downloadLabel = 'PDF',
 }: {
   invoices: InvoiceDto[];
   onPay: (invoice: InvoiceDto) => void;
   onViewTimeline: (invoice: InvoiceDto) => void;
+  /**
+   * What the download action is called.
+   *
+   * The file is a PDF either way; the question is what the *document* is. To a
+   * family this is their invoice, and "PDF" names the container rather than the
+   * thing. Staff screens keep the short label, where the column sits among
+   * several other file actions and the row is already unambiguous.
+   */
+  downloadLabel?: string;
   /**
    * Whether online payment is configured for this school. Pay is the only
    * method a family has, so when it is off the action is hidden rather than
@@ -62,7 +71,7 @@ export function InvoiceList({
                     <Button small onClick={() => onPay(inv)}>Pay {rupees(due)}</Button>
                   )}
                   <Button small variant="ghost" onClick={() => onViewTimeline(inv)}>Timeline</Button>
-                  <Button small variant="ghost" onClick={() => api.downloadInvoicePdf(inv.id)}>PDF</Button>
+                  <Button small variant="ghost" onClick={() => api.downloadInvoicePdf(inv.id)}>{downloadLabel}</Button>
                 </div>
               </td>
             </tr>

@@ -1,7 +1,7 @@
 'use client';
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, Pill, SkeletonRows, useToast } from '@/components/ui';
+import { Button, Card, DateField, Pill, SkeletonRows, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -402,7 +402,7 @@ function LeadDetailDrawer({
                   {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABEL[s]}</option>)}
                 </select>
                 <div className="field-label">Next action date</div>
-                <input className="field-input" type="date" value={nextActionAt} onChange={(e) => setNextActionAt(e.target.value)} />
+                <DateField inputClassName="field-input" ariaLabel="Next action date" value={nextActionAt} onChange={setNextActionAt} />
                 <div className="field-label">Notes</div>
                 <textarea
                   className="field-input"

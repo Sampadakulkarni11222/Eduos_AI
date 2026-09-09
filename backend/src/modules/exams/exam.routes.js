@@ -84,6 +84,30 @@ router.get('/marks-grid', requirePermission('marks.read'), controller.getMarksGr
  *       200:
  *         description: Performance fetched
  */
+/**
+ * @swagger
+ * /exams/performance/history:
+ *   get:
+ *     summary: Published results for every academic year and term the student has a record in
+ *     description: >
+ *       Scoped exactly like /performance — a student sees only their own years,
+ *       a parent only their child's, a subject teacher only the subjects they
+ *       teach. Years with nothing published are returned with empty results
+ *       rather than omitted.
+ *     tags: [Exams]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: studentId
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Performance history fetched
+ */
+// Declared before /performance so the more specific path wins.
+router.get('/performance/history', requirePermission('marks.read'), controller.getPerformanceHistory);
+
 router.get('/performance', requirePermission('marks.read'), controller.getPerformance);
 
 /**

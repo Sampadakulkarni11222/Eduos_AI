@@ -56,8 +56,30 @@ export async function getById(actor, scope, id) {
  * assignee is resolved server-side from the section's classTeacherId — the
  * parent picks a child, never a specific teacher.
  */
+/**
+ * Validates an optional supporting document.
+ *
+ * Absent is valid; a present value has to be either a file this server stored
+ * or a plain http(s) link. The browser makes the same check, but the browser's
+ * copy is advice and this one is the rule.
+ */
+function normaliseAttachment(documentUrl, documentName) {
+  const url = documentUrl == null ? '' : String(documentUrl).trim();
+  if (!url) return { documentUrl: null, documentName: null };
+  if (!url.startsWith('/uploads/') && !/^https?:\/\//i.test(url)) {
+    throw new AppError('Supporting document must be an uploaded file or an http(s) link', 400, [], 'INVALID_ATTACHMENT');
+  }
+  const name = documentName == null ? '' : String(documentName).trim();
+  return { documentUrl: url.slice(0, 600), documentName: name ? name.slice(0, 160) : null };
+}
+
 export async function create(actor, data) {
-  const payload = { ...data, raisedByProfileId: actor.profileId, status: 'NEW' };
+  const payload = {
+    ...data,
+    ...normaliseAttachment(data.documentUrl, data.documentName),
+    raisedByProfileId: actor.profileId,
+    status: 'NEW',
+  };
 
   if (data.routedToRoleKey === 'CLASS_TEACHER') {
     if (!data.studentId) throw new AppError('Select the child this query is about', 400);

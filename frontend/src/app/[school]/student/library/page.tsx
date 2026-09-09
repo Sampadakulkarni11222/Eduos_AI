@@ -1,99 +1,311 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Card, EmptyState, SkeletonRows, Pill, rupees } from '@/components/ui';
+import {
+  Button, Card, DateRangeFilter, EmptyState, FilterBar, Pill, SearchInput, Select,
+  SkeletonRows, matchesSearch, rupees, withinDateRange,
+} from '@/components/ui';
 import { api } from '@/lib/api';
-import type { BookDto, BookIssueDto } from '@/lib/types';
+import type { BookDto, BookFacetsDto, BookIssueDto } from '@/lib/types';
 
+type ResourceFilter = '' | 'PHYSICAL' | 'DIGITAL';
+
+const RESOURCE_OPTIONS = [
+  { value: 'PHYSICAL', label: 'Physical books' },
+  { value: 'DIGITAL', label: 'Digital resources' },
+];
+
+/** How far ahead "Due soon" looks. */
+const DUE_SOON_DAYS = 7;
+
+/**
+ * An active loan whose due date falls between today and a week out.
+ *
+ * Anything already past its date is OVERDUE and belongs under that option
+ * instead, so the window starts at today rather than at the epoch.
+ */
+function isDueSoon(issue: BookIssueDto): boolean {
+  if (issue.status !== 'ACTIVE' || !issue.dueAt) return false;
+  const due = new Date(issue.dueAt);
+  if (Number.isNaN(due.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const limit = new Date(today);
+  limit.setDate(limit.getDate() + DUE_SOON_DAYS);
+  limit.setHours(23, 59, 59, 999);
+  return due >= today && due <= limit;
+}
+
+/**
+ * The student's library: what they currently have out, and the catalogue.
+ *
+ * Both halves filter on fields that exist on the records themselves — the
+ * borrowing list on due date and resource type, the catalogue on category,
+ * author and resource type. Nothing is invented to fill a filter: the pickers
+ * are populated from the catalogue's own distinct values, so an option is only
+ * offered when something is behind it.
+ *
+ * Which loans appear is decided by the server, not here: a student's
+ * `library.read` is OWN-scoped and the lending endpoint narrows to their own
+ * records, so this page cannot show someone else's borrowing whatever it asks
+ * for.
+ */
 export default function StudentLibrary() {
   const [issued, setIssued] = useState<BookIssueDto[] | null>(null);
   const [books, setBooks] = useState<BookDto[] | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [facets, setFacets] = useState<BookFacetsDto | null>(null);
   const [loading, setLoading] = useState(true);
+  const [booksLoading, setBooksLoading] = useState(false);
+
+  // Catalogue filters — applied by the server.
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('');
+  const [author, setAuthor] = useState('');
+  const [resourceType, setResourceType] = useState<ResourceFilter>('');
+  const [availableOnly, setAvailableOnly] = useState('');
+
+  // My-books filters — applied here, over a list that is already small.
+  const [dueRange, setDueRange] = useState({ from: '', to: '' });
+  const [issueStatus, setIssueStatus] = useState('');
+  const [issueSearch, setIssueSearch] = useState('');
 
   useEffect(() => {
-    Promise.all([
-      api.listIssued().then(setIssued),
-      api.listBooks().then(setBooks),
-    ]).catch(() => {}).finally(() => setLoading(false));
+    Promise.allSettled([
+      api.listIssued(),
+      api.bookFacets(),
+    ]).then(([iss, fac]) => {
+      setIssued(iss.status === 'fulfilled' ? iss.value : []);
+      setFacets(fac.status === 'fulfilled' ? fac.value : null);
+      setLoading(false);
+    });
   }, []);
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    api.listBooks(e.target.value).then(setBooks).catch(() => setBooks([]));
-  };
+  // Debounced so typing in the catalogue box does not fire a request per
+  // keystroke, while still feeling live.
+  useEffect(() => {
+    setBooksLoading(true);
+    const handle = setTimeout(() => {
+      api.listBooks({
+        search: search || undefined,
+        category: category || undefined,
+        author: author || undefined,
+        resourceType: resourceType || undefined,
+        availability: availableOnly === 'AVAILABLE' ? 'AVAILABLE' : undefined,
+      })
+        .then(setBooks)
+        .catch(() => setBooks([]))
+        .finally(() => setBooksLoading(false));
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [search, category, author, resourceType, availableOnly]);
+
+  const filteredIssues = useMemo(() => (issued ?? []).filter((i) => {
+    // Filtered on the due date — this list is "books that are due", so that is
+    // the date a range is about.
+    if (!withinDateRange(i.dueAt, dueRange.from, dueRange.to)) return false;
+    // "Due soon" is not a stored status: it is an active loan whose due date
+    // is inside the next week, which is the thing a student actually scans
+    // this list for. Everything else matches the stored status directly.
+    if (issueStatus === 'DUE_SOON') {
+      if (!isDueSoon(i)) return false;
+    } else if (issueStatus && i.status !== issueStatus) return false;
+    // Resource type and the date range work together, on the same list.
+    if (resourceType === 'DIGITAL' && i.resourceType !== 'DIGITAL') return false;
+    if (resourceType === 'PHYSICAL' && i.resourceType === 'DIGITAL') return false;
+    return matchesSearch(issueSearch, [i.bookTitle, i.bookAuthor, i.category, i.status]);
+  }), [issued, dueRange, issueStatus, issueSearch, resourceType]);
+
+  const hasCatalogFilters = Boolean(search || category || author || resourceType || availableOnly);
+  const hasIssueFilters = Boolean(dueRange.from || dueRange.to || issueStatus || issueSearch);
 
   return (
-    <PortalShell expectedSlug="student" topbar={{ title: 'My Library Accounts', desc: 'Manage your active issues, returns and track book due dates.' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 16 }}>
-        <Card pad={false}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--hairline)' }}>
-            <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>My Checked Out Books</strong>
-          </div>
-          {loading && <div style={{ padding: 20 }}><SkeletonRows rows={3} /></div>}
-          {!loading && issued && issued.length === 0 && (
-            <EmptyState title="No active checkouts" sub="Borrow books from the librarian to see checkout info." />
-          )}
-          {!loading && issued && issued.length > 0 && (
-            <table className="data-table data-table-cards">
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Due Date</th>
-                  <th>Fine</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {issued.map((i) => (
-                  <tr key={i.id}>
-                    <td className="cell-primary" data-label="Title">{i.bookTitle}</td>
-                    <td data-label="Due Date">{new Date(i.dueAt).toLocaleDateString('en-IN')}</td>
-                    <td data-label="Fine">{i.finePaise > 0 ? rupees(i.finePaise) : '—'}</td>
-                    <td data-label="Status">
-                      <Pill tone={i.status === 'RETURNED' ? 'green' : i.status === 'OVERDUE' ? 'red' : 'amber'}>
-                        {i.status}
-                      </Pill>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </Card>
+    <PortalShell
+      expectedSlug="student"
+      topbar={{ title: 'My Library', desc: 'Your borrowed books, due dates, and the school catalogue.' }}
+    >
+      <Card pad={false} style={{ marginBottom: 16 }}>
+        <div style={{ padding: '16px 20px 0' }}>
+          <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>My checked-out books</strong>
+          <p style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 2, marginBottom: 12 }}>
+            Filter by due date to see what is coming back when.
+          </p>
+          <FilterBar
+            actions={hasIssueFilters
+              ? (
+                <Button
+                  variant="ghost"
+                  small
+                  onClick={() => { setDueRange({ from: '', to: '' }); setIssueStatus(''); setIssueSearch(''); }}
+                >
+                  Clear
+                </Button>
+              )
+              : undefined}
+          >
+            <SearchInput
+              label="Search my books"
+              value={issueSearch}
+              onChange={setIssueSearch}
+              placeholder="Title, author, category…"
+            />
+            <Select
+              label="Status"
+              value={issueStatus}
+              placeholder="All statuses"
+              onChange={setIssueStatus}
+              options={[
+                { value: 'DUE_SOON', label: 'Due soon' },
+                { value: 'OVERDUE', label: 'Overdue' },
+                { value: 'RETURNED', label: 'Returned' },
+              ]}
+            />
+            <DateRangeFilter label="Due date" from={dueRange.from} to={dueRange.to} onChange={setDueRange} />
+          </FilterBar>
+        </div>
 
-        <Card pad={false}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--hairline)' }}>
-            <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Catalog Search</strong>
-            <input className="input" style={{ width: '100%', marginTop: 10 }} placeholder="Search library catalog..." value={searchQuery} onChange={handleSearch} />
-          </div>
-          <div style={{ maxHeight: '350px', overflowY: 'auto' }}>
-            {loading && <div style={{ padding: 20 }}><SkeletonRows rows={3} /></div>}
-            {!loading && books && books.length === 0 && (
-              <EmptyState title="No books matched" sub="Try searching for a different title." />
-            )}
-            {!loading && books && books.length > 0 && (
-              <table className="data-table data-table-cards">
-                <tbody>
-                  {books.map((b) => (
-                    <tr key={b.id}>
-                      <td data-label="Book">
-                        <div style={{ fontWeight: 600, color: 'var(--text-1)' }}>{b.title}</div>
-                        <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>{b.author}</div>
-                      </td>
-                      <td style={{ textAlign: 'right' }} data-label="Availability">
-                        <Pill tone={b.availableCopies > 0 ? 'green' : 'red'}>
-                          {b.availableCopies > 0 ? 'Available' : 'Out'}
-                        </Pill>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </Card>
-      </div>
+        {loading && <div style={{ padding: 20 }}><SkeletonRows rows={3} /></div>}
+
+        {!loading && issued && issued.length === 0 && (
+          <EmptyState title="No books borrowed" sub="Books you borrow from the library will appear here with their due dates." />
+        )}
+
+        {!loading && issued && issued.length > 0 && filteredIssues.length === 0 && (
+          <p style={{ fontSize: 12.5, color: 'var(--text-2b)', padding: '4px 20px 20px' }}>
+            None of your books match these filters.
+          </p>
+        )}
+
+        {!loading && filteredIssues.length > 0 && (
+          <table className="data-table data-table-cards">
+            <thead>
+              <tr><th>Title</th><th>Type</th><th>Issued</th><th>Due date</th><th>Fine</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {filteredIssues.map((i) => (
+                <tr key={i.id}>
+                  <td className="cell-primary" data-label="Title">
+                    {i.bookTitle}
+                    {i.bookAuthor && <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{i.bookAuthor}</div>}
+                  </td>
+                  <td data-label="Type">
+                    {i.resourceType === 'DIGITAL'
+                      ? <Pill tone="blue">Digital</Pill>
+                      : <Pill tone="gray">Physical</Pill>}
+                  </td>
+                  <td data-label="Issued">{i.issuedAt ? new Date(i.issuedAt).toLocaleDateString('en-IN') : '—'}</td>
+                  <td data-label="Due date">{new Date(i.dueAt).toLocaleDateString('en-IN')}</td>
+                  <td data-label="Fine">{i.finePaise > 0 ? rupees(i.finePaise) : '—'}</td>
+                  <td data-label="Status">
+                    <Pill tone={i.status === 'RETURNED' ? 'green' : i.status === 'OVERDUE' ? 'red' : 'amber'}>
+                      {i.status}
+                    </Pill>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      <Card pad={false}>
+        <div style={{ padding: '16px 20px 0' }}>
+          <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Library catalogue</strong>
+          <p style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 2, marginBottom: 12 }}>
+            Search across titles, authors, ISBNs, categories and publishers, or narrow with the filters.
+          </p>
+          <FilterBar
+            actions={hasCatalogFilters
+              ? (
+                <Button
+                  variant="ghost"
+                  small
+                  onClick={() => { setSearch(''); setCategory(''); setAuthor(''); setResourceType(''); setAvailableOnly(''); }}
+                >
+                  Clear
+                </Button>
+              )
+              : undefined}
+          >
+            <SearchInput
+              label="Search catalogue"
+              value={search}
+              onChange={setSearch}
+              placeholder="Title, author, ISBN…"
+            />
+            <Select
+              label="Resource type"
+              value={resourceType}
+              placeholder="All resources"
+              onChange={(v) => setResourceType(v as ResourceFilter)}
+              options={RESOURCE_OPTIONS}
+            />
+            <Select
+              label="Category"
+              value={category}
+              placeholder="All categories"
+              onChange={setCategory}
+              options={(facets?.categories ?? []).map((c) => ({ value: c, label: c }))}
+            />
+            <Select
+              label="Author"
+              value={author}
+              placeholder="All authors"
+              onChange={setAuthor}
+              options={(facets?.authors ?? []).map((a) => ({ value: a, label: a }))}
+            />
+            <Select
+              label="Availability"
+              value={availableOnly}
+              placeholder="Any availability"
+              onChange={setAvailableOnly}
+              options={[{ value: 'AVAILABLE', label: 'Available now' }]}
+            />
+          </FilterBar>
+        </div>
+
+        {booksLoading && <div style={{ padding: 20 }}><SkeletonRows rows={3} /></div>}
+
+        {!booksLoading && books && books.length === 0 && (
+          <EmptyState title="No books matched" sub="Try a different search, or clear the filters." />
+        )}
+
+        {!booksLoading && books && books.length > 0 && (
+          <table className="data-table data-table-cards">
+            <thead>
+              <tr><th>Title</th><th>Category</th><th>Type</th><th>Availability</th></tr>
+            </thead>
+            <tbody>
+              {books.map((b) => (
+                <tr key={b.id}>
+                  <td className="cell-primary" data-label="Title">
+                    {b.title}
+                    <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>
+                      {b.author}{b.publishedYear ? ` · ${b.publishedYear}` : ''}
+                    </div>
+                  </td>
+                  <td data-label="Category">{b.category || '—'}</td>
+                  <td data-label="Type">
+                    {b.resourceType === 'DIGITAL'
+                      ? <Pill tone="blue">Digital</Pill>
+                      : <Pill tone="gray">Physical</Pill>}
+                  </td>
+                  <td data-label="Availability">
+                    {b.resourceType === 'DIGITAL' ? (
+                      b.resourceUrl
+                        ? <a href={b.resourceUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', fontWeight: 600, fontSize: 12.5 }}>Open resource</a>
+                        : <Pill tone="blue">Online</Pill>
+                    ) : (
+                      <Pill tone={b.availableCopies > 0 ? 'green' : 'red'}>
+                        {b.availableCopies > 0 ? `${b.availableCopies} available` : 'All out'}
+                      </Pill>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
     </PortalShell>
   );
 }

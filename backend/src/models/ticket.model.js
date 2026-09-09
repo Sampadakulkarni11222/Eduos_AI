@@ -10,6 +10,15 @@ const ticketSchema = new Schema(
     routedToRoleKey: { type: String }, // ADMIN | WARDEN | LIBRARIAN | CLASS_TEACHER
     assigneeProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
     studentId: { type: Schema.Types.ObjectId, ref: 'Student', default: null },
+    /**
+     * Optional supporting document attached when the ticket was raised.
+     *
+     * Null for every ticket that does not carry one, which is most of them —
+     * nothing requires it, and nothing downstream treats its absence as an
+     * incomplete request.
+     */
+    documentUrl: { type: String, default: null },
+    documentName: { type: String, default: null },
   },
   { timestamps: true }
 );

@@ -124,6 +124,44 @@ describe('2 & 3. the primary view shows teacher and admin activity', () => {
   });
 });
 
+describe('every staff role appears in the default view', () => {
+  /**
+   * The default was pinned to TEACHER and ADMIN, so a payment registered by
+   * Finance — the entry an audit is most often opened for — was recorded and
+   * then invisible unless the reader already knew to filter by that role.
+   */
+  it('shows a Finance payment action without asking for it by role', async () => {
+    const finance = await inOak(() => makeProfile('FINANCE', 'A Cashier'));
+    await inOak(() => AuditLog.create({
+      actorProfileId: finance._id,
+      action: 'fees.payment.submit',
+      entityType: 'Payment',
+      createdAt: new Date('2026-03-13T10:00:00Z'),
+    }));
+
+    const items = await inOak(() => fetchLogs(actorFor('ADMIN')));
+    expect(items.map((i) => i.action)).toContain('fees.payment.submit');
+  });
+
+  it('still leaves the family roles out of the default view', async () => {
+    const items = await inOak(() => fetchLogs(actorFor('ADMIN')));
+    expect(items.map((i) => i.action)).not.toContain('auth.login');
+  });
+
+  it('shows an admin approving a payment, with the actor named', async () => {
+    await inOak(() => AuditLog.create({
+      actorProfileId: adminProfile._id,
+      action: 'fees.payment.approve',
+      entityType: 'Payment',
+      createdAt: new Date('2026-03-15T10:00:00Z'),
+    }));
+
+    const items = await inOak(() => fetchLogs(actorFor('ADMIN'), { action: 'fees.payment.approve' }));
+    expect(items).toHaveLength(1);
+    expect(items[0].actor ?? items[0].actorName).toBe('An Admin');
+  });
+});
+
 describe('6. filtering', () => {
   it('by role — another role is reachable when asked for by name', async () => {
     const items = await inOak(() => fetchLogs(actorFor('ADMIN'), { roleKey: 'STUDENT' }));

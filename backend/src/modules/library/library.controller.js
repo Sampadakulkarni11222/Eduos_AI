@@ -13,14 +13,24 @@ export const listBooks = asyncHandler(async (req, res) => {
   sendSuccess(res, books, 'Books fetched');
 });
 
+export const listBookFacets = asyncHandler(async (_req, res) => {
+  const facets = await service.listBookFacets();
+  sendSuccess(res, facets, 'Book filters fetched');
+});
+
 export const getBookById = asyncHandler(async (req, res) => {
   const book = await service.getBookById(req.params.id);
   sendSuccess(res, book, 'Book fetched');
 });
 
 export const createBook = asyncHandler(async (req, res) => {
-  const book = await service.createBook(req.body);
-  sendSuccess(res, book, 'Book created', 201);
+  // The actor is passed separately so the service can stamp who uploaded the
+  // resource rather than trusting the body to say.
+  const book = await service.createBook(req.body, req.actor);
+  const label = book.resourceKind === 'NOTE' ? 'Note'
+    : book.resourceKind === 'QUESTION_PAPER' ? 'Question paper'
+      : 'Book';
+  sendSuccess(res, book, `${label} created`, 201);
 });
 
 export const bulkCreateBooks = asyncHandler(async (req, res) => {

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Card, EmptyState, SkeletonRows } from '@/components/ui';
+import { Card, DateField, EmptyState, SkeletonRows } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { AttendanceRoster, SectionDto } from '@/lib/types';
 
@@ -41,7 +41,7 @@ export default function AdminAttendance() {
             </option>
           ))}
         </select>
-        <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <DateField ariaLabel="Date" value={date} onChange={setDate} />
       </div>
       {sections === null && <Card><SkeletonRows rows={6} /></Card>}
       {sections?.length === 0 && <EmptyState title="No sections available" sub="Sections assigned to your account appear here. Contact the system admin if you expect to see sections." />}

@@ -6,6 +6,7 @@ import { parseCsvRows } from '../../utils/csvImport.js';
 import { renderInvoicePdf } from '../../utils/invoicePdf.js';
 import { renderReceiptPdf } from '../../utils/receiptPdf.js';
 import * as service from './fee.service.js';
+import * as planService from './plan.service.js';
 
 export const createFeeHead = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.createFeeHead(req.body), 'Fee head created', 201);
@@ -73,7 +74,93 @@ export const bulkCreateInvoices = asyncHandler(async (req, res) => {
 });
 
 export const recordPayment = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.recordPayment(req.actor, req.scope, req.body), 'Payment recorded', 201);
+  const result = await service.recordPayment(req.actor, req.scope, req.body);
+  // Two genuinely different outcomes, so two different messages: a cashier who
+  // is told "Payment recorded" when it is actually queued will tell the payer
+  // the same thing.
+  sendSuccess(
+    res,
+    result,
+    result.awaitingApproval ? 'Payment recorded and sent for admin approval' : 'Payment recorded',
+    201
+  );
+});
+
+export const approvePayment = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.approvePayment(req.actor, req.params.id), 'Payment approved and published');
+});
+
+export const rejectPayment = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.rejectPayment(req.actor, req.params.id, req.body?.reason), 'Payment rejected');
+});
+
+export const updatePayment = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.updatePayment(req.actor, req.params.id, req.body), 'Payment updated');
+});
+
+export const getPaymentHistory = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.getPaymentHistory(req.params.id), 'Payment history fetched');
+});
+
+export const createPaymentChangeRequest = asyncHandler(async (req, res) => {
+  sendSuccess(
+    res,
+    await service.createPaymentChangeRequest(req.actor, { ...req.body, paymentId: req.params.id }),
+    'Change request submitted for admin approval',
+    201
+  );
+});
+
+export const listPaymentChangeRequests = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.listPaymentChangeRequests(req.query), 'Change requests fetched');
+});
+
+export const decidePaymentChangeRequest = asyncHandler(async (req, res) => {
+  const approve = req.body?.approve === true;
+  const result = await service.decidePaymentChangeRequest(req.actor, req.params.id, {
+    approve,
+    reason: req.body?.reason,
+  });
+  sendSuccess(res, result, approve ? 'Change approved and applied' : 'Change request rejected');
+});
+
+export const listPaymentAcademicYears = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.listPaymentAcademicYears(req.actor, req.scope), 'Academic years fetched');
+});
+
+export const getStudentPaymentOverview = asyncHandler(async (req, res) => {
+  sendSuccess(
+    res,
+    await service.getStudentPaymentOverview(req.actor, req.scope, req.query),
+    'Payment overview fetched'
+  );
+});
+
+// ── Installment plans ────────────────────────────────────────────────────
+export const createFeePlan = asyncHandler(async (req, res) => {
+  sendSuccess(res, await planService.createFeePlan(req.actor, req.body), 'Fee plan created', 201);
+});
+
+export const updateFeePlan = asyncHandler(async (req, res) => {
+  sendSuccess(res, await planService.updateFeePlan(req.actor, req.params.id, req.body), 'Fee plan updated');
+});
+
+export const listFeePlans = asyncHandler(async (req, res) => {
+  sendSuccess(res, await planService.listFeePlans(req.actor, req.scope, req.query), 'Fee plans fetched');
+});
+
+export const getFeePlan = asyncHandler(async (req, res) => {
+  sendSuccess(res, await planService.getFeePlanDetail(req.actor, req.scope, req.params.id), 'Fee plan fetched');
+});
+
+export const transitionFeePlan = asyncHandler(async (req, res) => {
+  const plan = await planService.transitionFeePlan(req.actor, req.params.id, req.params.step, req.body ?? {});
+  sendSuccess(res, plan, `Fee plan is now ${plan.status.toLowerCase().replace(/_/g, ' ')}`);
+});
+
+export const publishFeePlan = asyncHandler(async (req, res) => {
+  const result = await planService.publishFeePlan(req.actor, req.params.id);
+  sendSuccess(res, result, `Fee plan published — ${result.invoicesRaised.length} invoice(s) raised`);
 });
 
 export const listPayments = asyncHandler(async (req, res) => {

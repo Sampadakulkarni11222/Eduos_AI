@@ -4,6 +4,7 @@ import { AcademicYear } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { Enrollment } from '../../models/student.model.js';
 import { getOwnStudentId, getGuardianStudentIds, getTeacherSectionIds } from '../../utils/scope.js';
+import { insertRows, rowError } from '../../utils/csvImport.js';
 
 /**
  * The student id(s) this actor may query a bus assignment for.
@@ -94,6 +95,74 @@ export async function getOwnBus(actor, studentId) {
   };
 }
 
+/**
+ * Every authorized student's travel arrangements in one read.
+ *
+ * `getOwnBus` answers about one student at a time, which is right for a family
+ * and useless for a teacher: knowing who goes home on which bus is a
+ * class-level question — it is asked when the last bell rings, about thirty
+ * children at once, not one by one.
+ *
+ * Authorization is not re-invented here. The same `resolveOwnStudentIds` that
+ * gates the single lookup decides which students are in reach, so a teacher
+ * sees their own sections, a family sees their own children, and a role with
+ * no transport grant and no link to a student sees nothing. A `sectionId` may
+ * narrow that set; it can never widen it.
+ */
+export async function listTransportRoster(actor, { sectionId } = {}) {
+  const ownIds = await resolveOwnStudentIds(actor);
+
+  const enrolmentFilter = { status: 'ACTIVE' };
+  if (sectionId) enrolmentFilter.sectionId = sectionId;
+  if (ownIds !== null) {
+    if (!ownIds.length) return [];
+    enrolmentFilter.studentId = { $in: ownIds };
+  }
+
+  const enrolments = await Enrollment.find(enrolmentFilter)
+    .populate({ path: 'studentId', select: 'firstName lastName admissionNo' })
+    .populate({ path: 'sectionId', select: 'name', populate: { path: 'gradeId', select: 'name' } })
+    .sort({ rollNo: 1 })
+    .lean();
+
+  if (!enrolments.length) return [];
+
+  const studentIds = enrolments.map((e) => e.studentId?._id).filter(Boolean);
+  const busEnrolments = await BusEnrollment.find({ studentId: { $in: studentIds } })
+    .populate('routeId')
+    .populate('stopId')
+    .sort({ createdAt: -1 })
+    .lean();
+
+  // Newest first, so the first entry seen for a student is their current one.
+  const busByStudent = new Map();
+  for (const b of busEnrolments) {
+    const key = String(b.studentId);
+    if (!busByStudent.has(key)) busByStudent.set(key, b);
+  }
+
+  return enrolments
+    .filter((e) => e.studentId)
+    .map((e) => {
+      const bus = busByStudent.get(String(e.studentId._id));
+      const section = e.sectionId;
+      return {
+        studentId: String(e.studentId._id),
+        studentName: `${e.studentId.firstName} ${e.studentId.lastName ?? ''}`.trim(),
+        admissionNo: e.studentId.admissionNo ?? null,
+        rollNo: e.rollNo ?? null,
+        class: section ? [section.gradeId?.name, section.name].filter(Boolean).join(' - ') : null,
+        sectionId: section ? String(section._id) : null,
+        // Null means the student does not travel by school transport, which is
+        // a real answer and not a missing record.
+        route: bus?.routeId ? { id: String(bus.routeId._id), name: bus.routeId.name, vehicleNo: bus.routeId.vehicleNo ?? null } : null,
+        stop: bus?.stopId ? { id: String(bus.stopId._id), name: bus.stopId.name, etaMinutesFromStart: bus.stopId.etaMinutesFromStart ?? null } : null,
+        direction: bus?.direction ?? null,
+        status: bus ? 'ENROLLED' : 'NOT_ENROLLED',
+      };
+    });
+}
+
 export async function bulkCreateRoutes(rows) {
   const results = { imported: 0, failed: 0, errors: [] };
   const docs = [];
@@ -104,7 +173,11 @@ export async function bulkCreateRoutes(rows) {
     const name = row.name?.trim();
     if (!name) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: 'name is required' });
+      results.errors.push(rowError(rowNo, {
+        field: 'name',
+        problem: 'is required',
+        suggestion: 'the route name, e.g. "Route 4 - Kothrud"',
+      }));
       continue;
     }
     docs.push({
@@ -117,19 +190,17 @@ export async function bulkCreateRoutes(rows) {
     });
   }
 
-  const CHUNK_SIZE = 100;
-  for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
-    const chunk = docs.slice(i, i + CHUNK_SIZE);
-    try {
-      await TransportRoute.insertMany(chunk.map(({ rowNo, ...doc }) => doc));
-      results.imported += chunk.length;
-    } catch (err) {
-      results.failed += chunk.length;
-      chunk.forEach((c) => results.errors.push({ row: c.rowNo, error: err.message }));
-    }
-  }
+  const inserted = await insertRows(
+    TransportRoute,
+    docs.map(({ rowNo, ...doc }) => ({ rowNo, doc })),
+    { dupField: 'name', dupLabel: 'name' },
+  );
 
-  return results;
+  return {
+    imported: results.imported + inserted.imported,
+    failed: results.failed + inserted.failed,
+    errors: [...results.errors, ...inserted.errors],
+  };
 }
 
 export async function bulkCreateStops(rows) {
@@ -149,35 +220,39 @@ export async function bulkCreateStops(rows) {
 
     if (!routeName || !name || !Number.isFinite(sequenceNo)) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: 'routeName, name, and a numeric sequenceNo are required' });
+      results.errors.push(rowError(rowNo, {
+        field: !routeName ? 'routeName' : !name ? 'name' : 'sequenceNo',
+        problem: 'is required',
+        suggestion: 'sequenceNo is the stop order along the route, starting at 1',
+      }));
       continue;
     }
     const routeId = routeIdByName.get(routeName.toLowerCase());
     if (!routeId) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `No route found named "${routeName}"` });
+      results.errors.push(rowError(rowNo, {
+        field: 'routeName',
+        value: routeName,
+        problem: 'does not match any route in this school',
+        suggestion: 'create the route first, or correct the spelling',
+      }));
       continue;
     }
     const etaMinutesFromStart = row.etaminutesfromstart?.trim() ? Number(row.etaminutesfromstart) : 0;
     docs.push({ rowNo, routeId, name, sequenceNo, etaMinutesFromStart });
   }
 
-  const CHUNK_SIZE = 100;
-  for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
-    const chunk = docs.slice(i, i + CHUNK_SIZE);
-    try {
-      await TransportStop.insertMany(chunk.map(({ rowNo, ...doc }) => doc));
-      results.imported += chunk.length;
-    } catch (err) {
-      results.failed += chunk.length;
-      chunk.forEach((c) => {
-        const msg = err.code === 11000 ? `Sequence ${c.sequenceNo} already used on this route` : err.message;
-        results.errors.push({ row: c.rowNo, error: msg });
-      });
-    }
-  }
+  const inserted = await insertRows(
+    TransportStop,
+    docs.map(({ rowNo, ...doc }) => ({ rowNo, doc })),
+    { dupField: 'sequenceNo', dupLabel: 'sequenceNo' },
+  );
 
-  return results;
+  return {
+    imported: results.imported + inserted.imported,
+    failed: results.failed + inserted.failed,
+    errors: [...results.errors, ...inserted.errors],
+  };
 }
 
 /**
@@ -214,26 +289,45 @@ export async function bulkEnrollStudents(rows) {
 
     if (!admissionNo || !routeName || !stopName) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: 'admissionNo, routeName, and stopName are required' });
+      results.errors.push(rowError(rowNo, {
+        field: !admissionNo ? 'admissionNo' : !routeName ? 'routeName' : 'stopName',
+        problem: 'is required',
+        suggestion: 'each row names the student, their route and the stop they board at',
+      }));
       continue;
     }
     if (!VALID_DIRECTIONS.has(direction)) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `Invalid direction "${row.direction}" (expected BOTH, PICKUP, or DROP)` });
+      results.errors.push(rowError(rowNo, {
+        field: 'direction',
+        value: row.direction,
+        problem: 'is not a travel direction',
+        suggestion: 'use one of: BOTH, PICKUP, DROP',
+      }));
       continue;
     }
 
     const studentId = studentIdByAdmissionNo.get(admissionNo.toLowerCase());
     if (!studentId) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `No student found with admissionNo "${admissionNo}"` });
+      results.errors.push(rowError(rowNo, {
+        field: 'admissionNo',
+        value: admissionNo,
+        problem: 'does not match any student in this school',
+        suggestion: 'check the admission number, or import the student first',
+      }));
       continue;
     }
 
     const routeId = routeIdByName.get(routeName.toLowerCase());
     if (!routeId) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `No route found named "${routeName}"` });
+      results.errors.push(rowError(rowNo, {
+        field: 'routeName',
+        value: routeName,
+        problem: 'does not match any route in this school',
+        suggestion: 'create the route first, or correct the spelling',
+      }));
       continue;
     }
 
@@ -241,7 +335,12 @@ export async function bulkEnrollStudents(rows) {
     const stop = await TransportStop.findOne({ routeId, name: stopName }).select('_id').lean();
     if (!stop) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `No stop named "${stopName}" found on route "${routeName}"` });
+      results.errors.push(rowError(rowNo, {
+        field: 'stopName',
+        value: stopName,
+        problem: 'is not a stop on that route',
+        suggestion: 'add the stop to the route first, or correct the spelling',
+      }));
       continue;
     }
 
@@ -254,7 +353,7 @@ export async function bulkEnrollStudents(rows) {
       results.imported++;
     } catch (err) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: err.message });
+      results.errors.push(rowError(rowNo, { problem: err.message }));
     }
   }
 

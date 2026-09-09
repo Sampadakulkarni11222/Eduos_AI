@@ -27,6 +27,8 @@ export const getById = asyncHandler(async (req, res) => {
     status: ticket.status,
     routedToRoleKey: ticket.routedToRoleKey ?? null,
     studentName: ticket.studentId ? `${ticket.studentId.firstName} ${ticket.studentId.lastName ?? ''}`.trim() : null,
+    documentUrl: ticket.documentUrl ?? null,
+    documentName: ticket.documentName ?? null,
     messages: messages.map((m) => ({
       id: m._id,
       body: m.body,

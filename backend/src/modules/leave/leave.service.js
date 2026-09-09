@@ -54,7 +54,24 @@ async function resolveOwnActiveEnrollmentId(actor) {
   return enrollment._id.toString();
 }
 
-export async function apply(actor, { fromDate, toDate, reason }) {
+/**
+ * Validates the optional attachment.
+ *
+ * Absent is valid — that is what "optional" has to mean on the server too, not
+ * just in the form. What is refused is a *present* value that is neither a
+ * file this server stored nor a plain http(s) link.
+ */
+function normaliseAttachment(documentUrl, documentName) {
+  const url = documentUrl == null ? '' : String(documentUrl).trim();
+  if (!url) return { documentUrl: null, documentName: null };
+  if (!url.startsWith('/uploads/') && !/^https?:\/\//i.test(url)) {
+    throw new AppError('Supporting document must be an uploaded file or an http(s) link', 400, [], 'INVALID_ATTACHMENT');
+  }
+  const name = documentName == null ? '' : String(documentName).trim();
+  return { documentUrl: url.slice(0, 600), documentName: name ? name.slice(0, 160) : null };
+}
+
+export async function apply(actor, { fromDate, toDate, reason, documentUrl, documentName }) {
   if (!fromDate || !toDate) throw new AppError('fromDate and toDate are required', 400);
   if (!reason || !reason.trim()) throw new AppError('reason is required', 400);
 
@@ -71,6 +88,7 @@ export async function apply(actor, { fromDate, toDate, reason }) {
     throw new AppError('Leave cannot be applied for a date in the past', 400, [], 'LEAVE_DATE_IN_PAST');
   }
 
+  const attachment = normaliseAttachment(documentUrl, documentName);
   const enrollmentId = await resolveOwnActiveEnrollmentId(actor);
 
   const application = await LeaveApplication.create({
@@ -78,6 +96,7 @@ export async function apply(actor, { fromDate, toDate, reason }) {
     fromDate: from,
     toDate: to,
     reason: reason.trim(),
+    ...attachment,
   });
 
   return application;

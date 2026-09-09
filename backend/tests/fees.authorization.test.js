@@ -41,6 +41,28 @@ const NVMP = 'nvmp';
 const inOak = (fn) => runWithTenant(OAK, fn);
 const inNvmp = (fn) => runWithTenant(NVMP, fn);
 
+/**
+ * Instrument details for the modes that require them.
+ *
+ * Cheque, DD and bank transfer are refused server-side without a number, a
+ * bank, a date and a proof image — and a transfer also without its UTR — so a
+ * test recording one has to supply them —
+ * which is the point of the rule, and why it is expressed here as data rather
+ * than skipped.
+ */
+const instrumentFor = (mode) => (
+  ['CHEQUE', 'DD', 'BANK'].includes(mode)
+    ? {
+      number: mode === 'BANK' ? 'TXN-99881' : '000123',
+      referenceNo: mode === 'BANK' ? 'UTR12345678' : undefined,
+      bankName: 'State Bank',
+      instrumentDate: '2026-06-10',
+      proofUrl: '/uploads/proof-abc.jpg',
+      proofName: 'proof.jpg',
+    }
+    : undefined
+);
+
 const seedInvoice = async (amountPaise = 500000) => {
   const student = await Student.create({
     admissionNo: `ADM-${Math.random().toString(36).slice(2, 8)}`, firstName: 'A', lastName: 'Student',
@@ -104,10 +126,30 @@ describe('who may reach finance data at all', () => {
     expect(canReach('FINANCE', 'fees.pay')).toBe(true);
 
     const invoice = await inOak(() => seedInvoice(150000));
-    await inOak(() => fees.recordPayment(actorFor('FINANCE'), 'ALL', {
+    const result = await inOak(() => fees.recordPayment(actorFor('FINANCE'), 'ALL', {
       invoiceId: invoice._id.toString(), amountPaise: 150000, mode: 'CASH',
     }));
-    expect((await inOak(() => Invoice.findById(invoice._id).lean())).status).toBe('PAID');
+
+    // Recorded, but not yet money: Finance holds fees.pay, not
+    // fees.payments.approve, so the row waits for an admin and the invoice is
+    // untouched until then.
+    expect(result.recordStatus).toBe('PENDING_ADMIN_APPROVAL');
+    expect((await inOak(() => Invoice.findById(invoice._id).lean())).status).toBe('PENDING');
+  });
+
+  it('finance holds neither approval key — that is what the workflow rests on', () => {
+    expect(permsOf('FINANCE')['fees.payments.approve']).toBeUndefined();
+    expect(permsOf('FINANCE')['fees.plan.approve']).toBeUndefined();
+    expect(canReach('FINANCE', 'fees.payments.approve', 'ALL')).toBe(false);
+    expect(canReach('FINANCE', 'fees.plan.approve', 'ALL')).toBe(false);
+    // But it does hold the two preparation keys.
+    expect(canReach('FINANCE', 'fees.plan.request')).toBe(true);
+    expect(canReach('FINANCE', 'fees.plan.review')).toBe(true);
+  });
+
+  it('an admin holds the approval keys finance does not', () => {
+    expect(canReach('ADMIN', 'fees.payments.approve', 'ALL')).toBe(true);
+    expect(canReach('ADMIN', 'fees.plan.approve', 'ALL')).toBe(true);
   });
 
   it('granting it widened nothing else for finance', () => {
@@ -160,10 +202,10 @@ describe('a family cannot write the ledger, only pay it', () => {
 });
 
 describe('staff record payments in the configured modes', () => {
-  it.each(['CASH', 'CHEQUE', 'BANK'])('an admin may record a %s payment', async (mode) => {
+  it.each(['CASH', 'CHEQUE', 'DD', 'BANK'])('an admin may record a %s payment', async (mode) => {
     const invoice = await inOak(() => seedInvoice(200000));
     await inOak(() => fees.recordPayment(actorFor('ADMIN'), 'ALL', {
-      invoiceId: invoice._id.toString(), amountPaise: 200000, mode,
+      invoiceId: invoice._id.toString(), amountPaise: 200000, mode, instrument: instrumentFor(mode),
     }));
 
     const after = await inOak(() => Invoice.findById(invoice._id).lean());

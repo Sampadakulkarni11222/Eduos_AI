@@ -1,12 +1,16 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees } from '@/components/ui';
+import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees, useToast } from '@/components/ui';
 import { Pagination } from '@/components/pagination';
-import { ApiError, api, errorMessage } from '@/lib/api';
+import { api, fileHref } from '@/lib/api';
+import { RecordPaymentModal, PaymentRecordedNotice } from '@/components/fees/record-payment-modal';
+import { PaymentChangeRequestModal } from '@/components/fees/change-request-modal';
+import { PaymentMethod, PaymentVerification } from '@/components/fees/payment-verification';
+import { FeePlanModal } from '@/components/fees/fee-plan-modal';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
-import type { FeeSummary, InvoiceDto, PaymentReceiptDto } from '@/lib/types';
+import type { FeePlanDto, FeeSummary, InvoiceDto, PaymentReceiptDto } from '@/lib/types';
 
 const STATUS_TONE: Record<string, 'green' | 'amber' | 'red' | 'gray' | 'blue'> = {
   PAID: 'green', PARTIAL: 'amber', PENDING: 'gray', OVERDUE: 'red', CANCELLED: 'gray',
@@ -17,7 +21,13 @@ export default function FinancePayments() {
   const [invoices, setInvoices] = useState<InvoiceDto[] | null>(null);
   const [receipts, setReceipts] = useState<PaymentReceiptDto[] | null>(null);
   const [paying, setPaying] = useState<InvoiceDto | null>(null);
-  const [activeTab, setActiveTab] = useState<'invoices' | 'receipts'>('invoices');
+  const [recorded, setRecorded] = useState<{ receiptNo: string; awaitingApproval: boolean } | null>(null);
+  const [changing, setChanging] = useState<PaymentReceiptDto | null>(null);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [plans, setPlans] = useState<FeePlanDto[] | null>(null);
+  const [planBusy, setPlanBusy] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'invoices' | 'receipts' | 'plans'>('invoices');
+  const toast = useToast();
 
   // Invoices are school-wide (hundreds of rows), so the table is paged in the
   // browser over the list already fetched for the summary figures. Receipts
@@ -46,10 +56,15 @@ export default function FinancePayments() {
       .finally(() => setReceiptsBusy(false));
   }, [receiptPage, receiptPageSize]);
 
+  const loadPlans = useCallback(() => {
+    api.feePlans().then(setPlans).catch(() => setPlans([]));
+  }, []);
+
   const reload = useCallback(() => {
     api.feeSummary().then(setSummary).catch(() => {});
     loadReceipts();
-  }, [loadReceipts]);
+    loadPlans();
+  }, [loadReceipts, loadPlans]);
 
   useEffect(() => { api.feeSummary().then(setSummary).catch(() => {}); }, []);
 
@@ -66,13 +81,31 @@ export default function FinancePayments() {
   }, [statusFilter, invoicePage, invoicePageSize]);
 
   useEffect(() => { loadReceipts(); }, [loadReceipts]);
+  useEffect(() => { loadPlans(); }, [loadPlans]);
 
   useEffect(() => { setInvoicePage(1); }, [statusFilter, invoicePageSize]);
 
   const { me } = useAuth();
   const { hasAccess } = usePermissions();
-  // Matches the guard on POST /fees/payments.
+  // Matches the guard on POST /fees/payments. Whether a payment recorded here
+  // publishes or queues for approval is the server's call, not this flag's —
+  // Finance holds fees.pay but not fees.payments.approve, so its payments wait.
   const canRecord = hasAccess(me?.profile?.role, 'fees.pay');
+  const canPlan = hasAccess(me?.profile?.role, 'fees.plan.request');
+  const canReviewPlans = hasAccess(me?.profile?.role, 'fees.plan.review');
+
+  const advancePlan = async (id: string, step: string, done: string) => {
+    setPlanBusy(id);
+    try {
+      await api.transitionFeePlan(id, step);
+      toast(done);
+      loadPlans();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'That step could not be completed.');
+    } finally {
+      setPlanBusy(null);
+    }
+  };
 
   // Status filtering and paging are done by the server.
   const filteredInvoices = invoices ?? [];
@@ -91,6 +124,9 @@ export default function FinancePayments() {
       <div style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
         <button className={`chip-tab ${activeTab === 'invoices' ? 'active' : ''}`} onClick={() => setActiveTab('invoices')}>Invoices</button>
         <button className={`chip-tab ${activeTab === 'receipts' ? 'active' : ''}`} onClick={() => setActiveTab('receipts')}>Payment Receipts</button>
+        <button className={`chip-tab ${activeTab === 'plans' ? 'active' : ''}`} onClick={() => setActiveTab('plans')}>
+          Installment Plans{plans?.length ? ` (${plans.length})` : ''}
+        </button>
       </div>
 
       {activeTab === 'invoices' && (
@@ -164,24 +200,39 @@ export default function FinancePayments() {
                     <th>Student Name</th>
                     <th>Class</th>
                     <th>Amount Paid</th>
-                    <th>Mode</th>
-                    <th>Status</th>
+                    <th>Method &amp; reference</th>
+                    <th>Verification</th>
                     <th>Date</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {receipts.map((r) => (
-                    <tr key={r.id}>
-                      <td className="cell-primary" style={{ fontWeight: 600 }} data-label="Receipt No.">{r.receiptNo}</td>
-                      <td data-label="Invoice No.">{r.invoiceNo}</td>
-                      <td data-label="Student Name">{r.studentName}</td>
-                      <td data-label="Class">{r.class}</td>
-                      <td data-label="Amount Paid">{rupees(r.amountPaise)}</td>
-                      <td data-label="Mode"><Pill tone="blue">{r.mode}</Pill></td>
-                      <td data-label="Status"><Pill tone={r.status === 'SUCCESS' ? 'green' : 'gray'}>{r.status}</Pill></td>
-                      <td style={{ color: 'var(--text-faint)' }} data-label="Date">{new Date(r.createdAt).toLocaleDateString('en-IN')}</td>
-                    </tr>
-                  ))}
+                  {receipts.map((r) => {
+                    const published = (r.recordStatus ?? 'PUBLISHED') === 'PUBLISHED';
+                    return (
+                      <tr key={r.id}>
+                        <td className="cell-primary" style={{ fontWeight: 600 }} data-label="Receipt No.">{r.receiptNo}</td>
+                        <td data-label="Invoice No.">{r.invoiceNo}</td>
+                        <td data-label="Student Name">{r.studentName}</td>
+                        <td data-label="Class">{r.class}</td>
+                        <td data-label="Amount Paid">{rupees(r.amountPaise)}</td>
+                        <td data-label="Method &amp; reference"><PaymentMethod payment={r} /></td>
+                        {/* The record's verification state, which is a different
+                            question from whether the transaction succeeded. */}
+                        <td data-label="Verification"><PaymentVerification payment={r} /></td>
+                        <td style={{ color: 'var(--text-faint)' }} data-label="Date">
+                          {new Date(r.paidOn ?? r.createdAt).toLocaleDateString('en-IN')}
+                        </td>
+                        <td data-label="Actions">
+                          {/* A published payment can no longer be edited here,
+                              only asked about. That is the rule, not a hint. */}
+                          {published && (
+                            <Button small variant="ghost" onClick={() => setChanging(r)}>Request change</Button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
               <Pagination
@@ -199,101 +250,102 @@ export default function FinancePayments() {
         </>
       )}
 
-      {paying && <RecordModal invoice={paying} onClose={() => setPaying(null)} onDone={() => { setPaying(null); reload(); }} />}
-    </PortalShell>
-  );
-}
-
-function RecordModal({ invoice, onClose, onDone }: { invoice: InvoiceDto; onClose: () => void; onDone: () => void }) {
-  const remaining = invoice.totalPaise - invoice.paidPaise;
-  const [amount, setAmount] = useState(String(remaining / 100));
-  const [mode, setMode] = useState('CASH');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  
-  const [receipt, setReceipt] = useState<{ receiptNo: string; status: string; paidPaise: number } | null>(null);
-
-  const submit = async () => {
-    setBusy(true); setErr(null);
-    try {
-      const res = await api.recordPayment({ invoiceId: invoice.id, amountPaise: Math.round(parseFloat(amount) * 100), mode });
-      setReceipt(res);
-    } catch (e: unknown) {
-      // The server names the specific failure and, for an over-payment, states
-      // the exact balance remaining — better than anything we could word here.
-      // ('OVERPAYMENT' was the code this checked for before the server actually
-      // emitted one; the real code is PAYMENT_EXCEEDS_BALANCE.)
-      const known = e instanceof ApiError
-        && ['PAYMENT_EXCEEDS_BALANCE', 'INVOICE_CANCELLED', 'INVALID_AMOUNT', 'INVALID_PAYMENT_MODE'].includes(e.code);
-      setErr(known ? (e as ApiError).message : errorMessage(e, 'Could not record payment.'));
-    } finally { setBusy(false); }
-  };
-
-  return (
-    // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
-    // Escape-to-close and a focus trap, and a backdrop must not be a tab stop.
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
-    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && (receipt ? onDone : onClose)()}>
-      <div className="modal" style={{ maxWidth: 400 }}>
-        {receipt ? (
-          <div style={{ textAlign: 'center', padding: '8px 0' }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>✅</div>
-            <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8, color: 'var(--text-1)' }}>Payment Successful</h3>
-            <p style={{ fontSize: 13, color: 'var(--text-faint)', marginBottom: 20 }}>The payment has been recorded successfully.</p>
-            
-            <div style={{ background: 'var(--card-bg-header)', border: '1px solid var(--hairline)', borderRadius: 8, padding: 16, textAlign: 'left', marginBottom: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>Receipt No:</span>
-                <span style={{ fontWeight: 600, fontSize: 13, fontFamily: 'monospace' }}>{receipt.receiptNo}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>Invoice No:</span>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{invoice.invoiceNo}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>Student Name:</span>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{invoice.studentName}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>Class:</span>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{invoice.class || '—'}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>Amount Paid:</span>
-                <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--green)' }}>{rupees(Math.round(parseFloat(amount) * 100))}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>Mode:</span>
-                <span style={{ fontWeight: 600, fontSize: 13 }}>{mode}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ color: 'var(--text-faint)', fontSize: 12 }}>Invoice Status:</span>
-                <span style={{ fontWeight: 600, fontSize: 13 }}><Pill tone={STATUS_TONE[receipt.status] ?? 'gray'}>{receipt.status}</Pill></span>
-              </div>
-            </div>
-
-            <Button onClick={onDone} className="btn-block">Close & Reload</Button>
-          </div>
-        ) : (
-          <>
-            <div className="modal-header">
-              <div className="modal-title">Record payment</div>
-              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={onClose}>×</button>
-            </div>
-            <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>
-              {invoice.invoiceNo} · {invoice.studentName} · balance {rupees(remaining)}
+      {activeTab === 'plans' && (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+            <p style={{ fontSize: 12.5, color: 'var(--text-2)', margin: 0, maxWidth: 620 }}>
+              A plan sets a student&rsquo;s total fee and how it may be paid. It goes to finance review and then to an
+              administrator &mdash; no invoice exists until the plan is approved and published.
             </p>
-            <div className="field-label">Amount (₹)</div>
-            <input className="field-input" type="number" value={amount} onChange={(e) => setAmount(e.target.value)} />
-            <div className="field-label">Mode</div>
-            <select className="field-input" value={mode} onChange={(e) => setMode(e.target.value)}>
-              <option value="CASH">Cash</option><option value="CHEQUE">Cheque</option><option value="BANK">Bank transfer</option>
-            </select>
-            {err && <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 10 }}>{err}</p>}
-            <Button onClick={submit} disabled={busy} className="btn-block">{busy ? 'Recording…' : 'Record payment'}</Button>
-          </>
-        )}
-      </div>
-    </div>
+            {canPlan && <Button small onClick={() => setPlanOpen(true)}>New plan</Button>}
+          </div>
+
+          {plans === null && <Card><SkeletonRows rows={4} /></Card>}
+          {plans?.length === 0 && (
+            <EmptyState title="No fee plans yet" sub="Create one to offer a student a one-time, partial or installment schedule." />
+          )}
+          {plans && plans.length > 0 && (
+            <Card pad={false}>
+              <table className="data-table data-table-cards">
+                <thead>
+                  <tr><th>Plan</th><th>Year</th><th>Mode</th><th>Total</th><th>Paid</th><th>Status</th><th></th></tr>
+                </thead>
+                <tbody>
+                  {plans.map((p) => (
+                    <tr key={p.id}>
+                      <td className="cell-primary" data-label="Plan">
+                        {p.name}
+                        <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                          {p.installments.length} installment(s) · first due {new Date(p.firstPaymentOn ?? p.createdAt).toLocaleDateString('en-IN')}
+                        </div>
+                      </td>
+                      <td data-label="Year">{p.academicYearName ?? '—'}</td>
+                      <td data-label="Mode">{p.mode.toLowerCase().replace(/_/g, ' ')}</td>
+                      <td data-label="Total">{rupees(p.totalPaise)}</td>
+                      <td data-label="Paid">{rupees(p.paidPaise)}</td>
+                      <td data-label="Status">
+                        <Pill tone={p.status === 'PUBLISHED' ? 'green' : p.status === 'REJECTED' ? 'red' : 'amber'}>
+                          {p.status.toLowerCase().replace(/_/g, ' ')}
+                        </Pill>
+                      </td>
+                      <td data-label="Actions">
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {canPlan && (p.status === 'DRAFT' || p.status === 'REJECTED') && (
+                            <Button small disabled={planBusy === p.id} onClick={() => advancePlan(p.id, 'submit', 'Submitted for finance review.')}>
+                              Submit for review
+                            </Button>
+                          )}
+                          {canReviewPlans && p.status === 'PENDING_FINANCE_REVIEW' && (
+                            <Button small disabled={planBusy === p.id} onClick={() => advancePlan(p.id, 'review', 'Marked as reviewed.')}>
+                              Mark reviewed
+                            </Button>
+                          )}
+                          {canReviewPlans && p.status === 'FINANCE_REVIEWED' && (
+                            <Button small disabled={planBusy === p.id} onClick={() => advancePlan(p.id, 'requestApproval', 'Sent for admin approval.')}>
+                              Request admin approval
+                            </Button>
+                          )}
+                          {p.status === 'PENDING_ADMIN_APPROVAL' && (
+                            <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>Waiting on an administrator</span>
+                          )}
+                          {p.status === 'PUBLISHED' && (
+                            <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>Live for the student</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          )}
+        </>
+      )}
+
+      {paying && (
+        <RecordPaymentModal
+          invoice={paying}
+          onClose={() => setPaying(null)}
+          onDone={(res) => { setPaying(null); setRecorded(res); reload(); }}
+        />
+      )}
+      {recorded && (
+        <PaymentRecordedNotice
+          receiptNo={recorded.receiptNo}
+          awaitingApproval={recorded.awaitingApproval}
+          onClose={() => setRecorded(null)}
+        />
+      )}
+      {changing && (
+        <PaymentChangeRequestModal
+          payment={changing}
+          onClose={() => setChanging(null)}
+          onDone={() => { setChanging(null); toast('Change request submitted for admin approval.'); reload(); }}
+        />
+      )}
+      {planOpen && (
+        <FeePlanModal onClose={() => setPlanOpen(false)} onDone={(msg) => { setPlanOpen(false); toast(msg); loadPlans(); }} />
+      )}
+    </PortalShell>
   );
 }

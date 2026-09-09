@@ -1,13 +1,14 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Card, EmptyState, SkeletonRows } from '@/components/ui';
+import { Card, DateRangeFilter, EmptyState, FilterBar, SearchInput, SkeletonRows, matchesSearch, withinDateRange } from '@/components/ui';
 import { api, fileHref } from '@/lib/api';
 import type { DocumentDto } from '@/lib/types';
 
 export default function StudentMaterial() {
   const [docs, setDocs] = useState<DocumentDto[] | null>(null);
   const [search, setSearch] = useState('');
+  const [range, setRange] = useState({ from: '', to: '' });
 
   useEffect(() => {
     api.listDocuments()
@@ -15,19 +16,22 @@ export default function StudentMaterial() {
       .catch(() => setDocs([]));
   }, []);
 
-  const filtered = docs?.filter((d) => d.title.toLowerCase().includes(search.toLowerCase())) ?? [];
+  // Across every column on screen, not the title alone.
+  const filtered = docs?.filter((d) =>
+    withinDateRange(d.issuedAt, range.from, range.to)
+    && matchesSearch(search, [d.title, d.studentName, fmtShared(d.issuedAt)])) ?? [];
 
   return (
     <PortalShell expectedSlug="student" topbar={{ title: 'Course Material', desc: 'Study materials shared by your teachers.' }}>
-      <div style={{ marginBottom: 16 }}>
-        <input
-          className="input search-input"
-          style={{ maxWidth: 280 }}
-          placeholder="Search by title…"
+      <FilterBar>
+        <SearchInput
+          label="Search materials"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={setSearch}
+          placeholder="Title or date…"
         />
-      </div>
+        <DateRangeFilter label="Shared on" from={range.from} to={range.to} onChange={setRange} />
+      </FilterBar>
 
       <Card pad={false}>
         {docs === null && <div style={{ padding: 20 }}><SkeletonRows rows={4} /></div>}
@@ -47,7 +51,7 @@ export default function StudentMaterial() {
               {filtered.map((d) => (
                 <tr key={d.id}>
                   <td className="cell-primary" data-label="Title">{d.title}</td>
-                  <td style={{ color: 'var(--text-faint)' }} data-label="Shared On">{new Date(d.issuedAt).toLocaleDateString('en-IN')}</td>
+                  <td style={{ color: 'var(--text-faint)' }} data-label="Shared On">{fmtShared(d.issuedAt)}</td>
                   <td data-label="Actions">
                     <a href={fileHref(d.fileUrl)} target="_blank" rel="noopener noreferrer" className="btn btn-soft btn-sm">
                       Download / View
@@ -61,4 +65,9 @@ export default function StudentMaterial() {
       </Card>
     </PortalShell>
   );
+}
+
+function fmtShared(iso: string) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-IN');
 }

@@ -36,7 +36,9 @@ export function ElectiveControls({ offering, onChanged }: { offering: OfferingDt
 
   const toggle = () => save(
     { isElective: !offering.isElective },
-    offering.isElective ? 'No longer an elective.' : 'Marked as an elective — students can now register.',
+    offering.isElective
+      ? 'Now a core subject — students no longer register for it.'
+      : 'Marked as an elective — students can now register.',
   );
 
   const saveCap = () => {
@@ -50,11 +52,17 @@ export function ElectiveControls({ offering, onChanged }: { offering: OfferingDt
     return save({ capacity: n }, `Seat limit set to ${n}.`);
   };
 
+  // A core subject is a state, not the absence of one: it says so, and offers
+  // the change beside it. Reading down the column now tells you which subjects
+  // a student chooses and which they are simply taught.
   if (!offering.isElective) {
     return (
-      <Button variant="ghost" small disabled={busy} onClick={toggle}>
-        {busy ? '…' : 'Make elective'}
-      </Button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <Pill tone="gray">Core</Pill>
+        <Button variant="ghost" small disabled={busy} onClick={toggle}>
+          {busy ? '…' : 'Make elective'}
+        </Button>
+      </div>
     );
   }
 
@@ -86,7 +94,7 @@ export function ElectiveControls({ offering, onChanged }: { offering: OfferingDt
         </Button>
       )}
 
-      <Button variant="ghost" small disabled={busy} onClick={toggle}>Remove</Button>
+      <Button variant="ghost" small disabled={busy} onClick={toggle}>Make core</Button>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pill, SkeletonRows, divisionLabel, useToast } from '@/components/ui';
+import { Button, Card, DateField, EmptyState, Pill, SkeletonRows, divisionLabel, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api, ApiError } from '@/lib/api';
 import type { GradeDto, SectionDto, SubjectDto, TermDto, OfferingDto, StaffAccountDto, StudentListItem } from '@/lib/types';
@@ -285,18 +285,21 @@ export default function ClassroomManagement() {
           <Card pad={false}>
             {offerings === null && <div style={{ padding: 20 }}><SkeletonRows rows={4} /></div>}
             {offerings !== null && offerings.length === 0 && (
-              <EmptyState title="No subject offerings yet" sub="Assign a subject + teacher to a class section for a term." />
+              <EmptyState
+                title="No subject offerings yet"
+                sub="Assign a subject + teacher to a class section for a term, then mark the ones students choose as electives."
+              />
             )}
             {offerings && offerings.length > 0 && (
               <table className="data-table data-table-cards">
-                <thead><tr><th>Class</th><th>Subject</th><th>Teacher</th><th>Student registration</th></tr></thead>
+                <thead><tr><th>Class</th><th>Subject</th><th>Teacher</th><th>Core / elective</th></tr></thead>
                 <tbody>
                   {offerings.map((o) => (
                     <tr key={o.id}>
                       <td className="cell-primary" data-label="Class">{divisionLabel(o.gradeName, o.sectionName)}</td>
                       <td data-label="Subject"><Pill tone="gray">{o.subject}</Pill></td>
                       <td data-label="Teacher">{o.teacherName ?? <span style={{ color: 'var(--text-faint)' }}>Unassigned</span>}</td>
-                      <td data-label="Student registration">
+                      <td data-label="Core / elective">
                         <ElectiveControls offering={o} onChanged={loadOfferings} />
                       </td>
                     </tr>
@@ -467,11 +470,11 @@ export default function ClassroomManagement() {
                   <div style={{ display: 'flex', gap: 8 }}>
                     <div style={{ flex: 1 }}>
                       <div className="field-label">Starts On *</div>
-                      <input className="field-input" type="date" value={termForm.startsOn} onChange={(e) => setTermForm({ ...termForm, startsOn: e.target.value })} />
+                      <DateField inputClassName="field-input" ariaLabel="Term starts on" value={termForm.startsOn} max={termForm.endsOn || undefined} onChange={(v) => setTermForm({ ...termForm, startsOn: v })} />
                     </div>
                     <div style={{ flex: 1 }}>
                       <div className="field-label">Ends On *</div>
-                      <input className="field-input" type="date" value={termForm.endsOn} onChange={(e) => setTermForm({ ...termForm, endsOn: e.target.value })} />
+                      <DateField inputClassName="field-input" ariaLabel="Term ends on" value={termForm.endsOn} min={termForm.startsOn || undefined} onChange={(v) => setTermForm({ ...termForm, endsOn: v })} />
                     </div>
                   </div>
                   <Button type="button" small style={{ marginTop: 8 }} onClick={createTerm}>Create Term</Button>

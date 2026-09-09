@@ -2,9 +2,14 @@ import mongoose from 'mongoose';
 import { AttendanceRecord } from '../../models/attendanceRecord.model.js';
 import { Enrollment } from '../../models/student.model.js';
 import { Section } from '../../models/academics.model.js';
+// Registered, not assumed: the roster populates the class teacher's and the
+// subject teacher's profiles, and populate needs the model present even when a
+// caller has imported only the attendance module.
+import '../../models/profile.model.js';
 import { TimetableSlot } from '../../models/timetableSlot.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
+import { rowError } from '../../utils/csvImport.js';
 
 export function parseDateToMidnight(dateStr) {
   if (!dateStr) return null;
@@ -51,40 +56,6 @@ async function assertSectionAccess(actor, scope, sectionId) {
   throw new AppError('You are not allowed to view this section roster', 403);
 }
 
-/**
- * Gate for actually writing an attendance record (as opposed to reading the
- * roster, which any teacher of the section may do via assertSectionAccess).
- *
- * "Teaches this section" is too coarse for writes: a section has one class
- * teacher but many subject teachers via SubjectOffering, and any of them
- * passing assertSectionAccess could previously overwrite a record another
- * teacher had already marked for a different subject/period — Teacher B
- * editing Teacher A's attendance with no ownership check at all. The rule
- * enforced here is the "Option 1 / Option 2" split from the bug report:
- *   - a period-specific mark (periodNo set) belongs to whichever teacher is
- *     timetabled for that section+day+period;
- *   - a whole-day mark (periodNo null) belongs to the section's class teacher.
- * Non-teacher ALL-scope actors (admin, principal) are unrestricted, same as
- * assertSectionAccess.
- */
-async function assertCanMarkAttendance(actor, scope, sectionId, day, periodNo) {
-  if (scope === 'ALL' || actor.roleKey !== 'TEACHER') return;
-
-  if (periodNo === null) {
-    const section = await Section.findById(sectionId).select('classTeacherId');
-    if (String(section?.classTeacherId) !== String(actor.profileId)) {
-      throw new AppError('Only this section\'s class teacher can mark whole-day attendance', 403);
-    }
-    return;
-  }
-
-  const dow = day.getUTCDay() === 0 ? 7 : day.getUTCDay();
-  const slot = await TimetableSlot.findOne({ sectionId, dayOfWeek: dow, periodNo })
-    .populate('subjectOfferingId');
-  if (String(slot?.subjectOfferingId?.teacherId) !== String(actor.profileId)) {
-    throw new AppError('You are not the teacher timetabled for this period', 403);
-  }
-}
 
 /**
  * Roster for a section on a date, optionally for one timetabled period.
@@ -111,7 +82,7 @@ export async function getRoster(actor, scope, sectionId, date, periodNo = null) 
 
   await assertSectionAccess(actor, scope, sectionId);
 
-  const section = await Section.findById(sectionId).populate('gradeId');
+  const section = await Section.findById(sectionId).populate('gradeId').populate('classTeacherId', 'displayName');
   if (!section) throw new AppError('Section not found', 404);
 
   const enrollments = await Enrollment.find({ sectionId, status: 'ACTIVE' })
@@ -121,17 +92,36 @@ export async function getRoster(actor, scope, sectionId, date, periodNo = null) 
   // getUTCDay(): 0=Sun..6=Sat; the timetable uses 1=Mon..7=Sun.
   const dow = day.getUTCDay() === 0 ? 7 : day.getUTCDay();
   const slots = await TimetableSlot.find({ sectionId, dayOfWeek: dow })
-    .populate({ path: 'subjectOfferingId', populate: { path: 'subjectId', select: 'name' } })
+    .populate({
+      path: 'subjectOfferingId',
+      populate: [
+        { path: 'subjectId', select: 'name' },
+        { path: 'teacherId', select: 'displayName' },
+      ],
+    })
     .sort({ periodNo: 1 });
 
+  const isClassTeacher = String(section.classTeacherId?._id ?? section.classTeacherId ?? '') === String(actor?.profileId ?? '');
+
+  // Each period says who teaches it and whether *this* caller may mark it, so
+  // the composer can offer a subject teacher exactly their own periods rather
+  // than showing them the whole day and failing at save time.
   const periods = slots
     .filter((s) => s.subjectOfferingId?.subjectId?.name)
-    .map((s) => ({
-      periodNo: s.periodNo,
-      subject: s.subjectOfferingId.subjectId.name,
-      startTime: s.startTime ?? null,
-      endTime: s.endTime ?? null,
-    }));
+    .map((s) => {
+      const offering = s.subjectOfferingId;
+      const teacher = offering.teacherId;
+      const mine = String(teacher?._id ?? teacher ?? '') === String(actor?.profileId ?? '');
+      return {
+        periodNo: s.periodNo,
+        subject: offering.subjectId.name,
+        subjectId: offering.subjectId._id ? String(offering.subjectId._id) : null,
+        subjectTeacher: teacher?.displayName ?? null,
+        startTime: s.startTime ?? null,
+        endTime: s.endTime ?? null,
+        canMark: scope === 'ALL' || mine || isClassTeacher,
+      };
+    });
 
   if (period !== null && !periods.some((p) => p.periodNo === period)) {
     throw new AppError(`Period ${period} is not timetabled for this section on that day.`, 400, [], 'PERIOD_NOT_SCHEDULED');
@@ -152,17 +142,90 @@ export async function getRoster(actor, scope, sectionId, date, periodNo = null) 
     note: recordByEnrollment.get(e._id.toString())?.note ?? null,
   }));
 
+  const chosen = period === null ? null : periods.find((p) => p.periodNo === period) ?? null;
+
   return {
     section: {
       id: section._id.toString(),
       name: `${section.gradeId?.name ?? ''} ${section.name}`.trim(),
+      // Named so the teacher can see whose register they are looking at.
+      grade: section.gradeId?.name ?? null,
+      sectionName: section.name,
+      classTeacher: section.classTeacherId?.displayName ?? null,
     },
     date,
     periodNo: period,
-    subject: period === null ? null : periods.find((p) => p.periodNo === period)?.subject ?? null,
+    subject: chosen?.subject ?? null,
+    subjectTeacher: chosen?.subjectTeacher ?? null,
+    // Whole-day marking is the class teacher's; a subject teacher marks periods.
+    canMarkWholeDay: scope === 'ALL' || isClassTeacher,
+    canMark: period === null ? (scope === 'ALL' || isClassTeacher) : (chosen?.canMark ?? false),
     periods,
     roster,
   };
+}
+
+/**
+ * Which slot of the day a teacher may mark, not merely which section.
+ *
+ * Marking used to check the section alone, so any teacher who took *one*
+ * subject in a class could mark that class's whole-day register — the class
+ * teacher's job — and could equally mark a colleague's period. Both are the
+ * same defect: the section is too coarse a unit to authorize a register on.
+ *
+ *   - whole day (`periodNo` null) belongs to the class teacher, who is the
+ *     person accountable for the day's roll;
+ *   - a period belongs to whoever teaches the offering timetabled in it.
+ *
+ * A school-wide grant is unaffected, and so is the class teacher, who reaches
+ * their own periods through the second rule anyway.
+ */
+async function assertMarkAccess(actor, scope, sectionId, periodNo, day) {
+  if (scope === 'ALL') return;
+
+  if (actor?.roleKey !== 'TEACHER') {
+    throw new AppError('You are not allowed to mark this register', 403);
+  }
+
+  const sectionIds = await getTeacherSectionIds(actor.profileId);
+  if (!sectionIds.includes(String(sectionId))) {
+    throw new AppError('You do not teach this section', 403);
+  }
+
+  const section = await Section.findById(sectionId).select('classTeacherId').lean();
+  const isClassTeacher = String(section?.classTeacherId ?? '') === String(actor.profileId);
+
+  if (periodNo === null || periodNo === undefined) {
+    if (!isClassTeacher) {
+      throw new AppError(
+        'Whole-day attendance is the class teacher\'s register. Choose the period you teach instead.',
+        403,
+        [],
+        'NOT_CLASS_TEACHER',
+      );
+    }
+    return;
+  }
+
+  // getUTCDay(): 0=Sun..6=Sat; the timetable uses 1=Mon..7=Sun.
+  const dow = day.getUTCDay() === 0 ? 7 : day.getUTCDay();
+  const slot = await TimetableSlot.findOne({ sectionId, dayOfWeek: dow, periodNo })
+    .populate({ path: 'subjectOfferingId', select: 'teacherId subjectId' })
+    .lean();
+
+  if (!slot) {
+    throw new AppError(
+      `Period ${periodNo} is not timetabled for this section on that day.`,
+      400, [], 'PERIOD_NOT_SCHEDULED',
+    );
+  }
+
+  const teachesIt = String(slot.subjectOfferingId?.teacherId ?? '') === String(actor.profileId);
+  // The class teacher keeps the register for their own class in every period —
+  // they cover absences and they answer for the day's roll either way.
+  if (!teachesIt && !isClassTeacher) {
+    throw new AppError('You are not the teacher timetabled for this period', 403, [], 'NOT_SUBJECT_TEACHER');
+  }
 }
 
 export async function markAttendance(actor, scope, { date, periodNo = null, records, entries, sectionId }) {
@@ -172,14 +235,10 @@ export async function markAttendance(actor, scope, { date, periodNo = null, reco
   const day = parseDateToMidnight(date);
   if (!day) throw new AppError('Invalid date format', 400);
 
-  // The caller's real scope, not a hardcoded 'OWN'. assertSectionAccess()
-  // returns early for a school-wide grant and refuses any non-teacher at OWN,
-  // so pinning it to 'OWN' here meant an Admin holding attendance.mark at ALL
-  // was refused every section — through the UI, the CSV import and the agent
-  // alike. A teacher is unaffected: they hold OWN and are still checked
-  // against the sections they actually teach.
-  await assertSectionAccess(actor, scope, sectionId);
-  await assertCanMarkAttendance(actor, scope, sectionId, day, periodNo);
+  // The caller's real scope, not a hardcoded 'OWN'. A school-wide grant is
+  // unrestricted; a teacher is checked against the exact slot being marked —
+  // their own period, or their own class's day if they are its class teacher.
+  await assertMarkAccess(actor, scope, sectionId, periodNo, day);
 
   const items = records || entries || [];
   if (items.length === 0) throw new AppError('No attendance records provided', 400);
@@ -271,11 +330,21 @@ export async function markAttendanceBulk(actor, scope, { date, periodNo = null, 
     const enrollmentId =
       (admissionNo && byAdmissionNo.get(admissionNo.toLowerCase())) || (rollNo && byRollNo.get(rollNo));
     if (!enrollmentId) {
-      errors.push({ row: rowNo, error: 'No matching active student in this section (check admissionNo/rollNo)' });
+      errors.push(rowError(rowNo, {
+        field: admissionNo ? 'admissionNo' : 'rollNo',
+        value: admissionNo || rollNo,
+        problem: 'does not match an active student in this section',
+        suggestion: 'check the student is enrolled in the section you chose, and that the number is spelt as it is on the roll',
+      }));
       return;
     }
     if (!VALID_STATUSES.has(status)) {
-      errors.push({ row: rowNo, error: `Invalid status "${row.status ?? ''}"` });
+      errors.push(rowError(rowNo, {
+        field: 'status',
+        value: row.status,
+        problem: 'is not a status the register accepts',
+        suggestion: `use one of: ${[...VALID_STATUSES].join(', ')}`,
+      }));
       return;
     }
 
@@ -610,6 +679,91 @@ export async function getCalendar(actor, scope, { enrollmentId, month }) {
     enrollmentId: targetId,
     month,
     days: records.map((r) => ({ date: r.date.toISOString().slice(0, 10), status: r.status })),
+  };
+}
+
+/**
+ * Lecture-by-lecture attendance for one enrollment over a date range.
+ *
+ * Only rows that were actually captured per period (`periodNo != null`) count
+ * as a lecture — a day-level record says nothing about any individual class,
+ * and inventing seven lectures out of one daily mark would be presenting a
+ * guess as a register. Each record is matched to the timetable slot for its
+ * weekday and period, which is where the subject, room and clock times come
+ * from; a record with no matching slot is still returned, labelled by its
+ * period number alone, so an absence is never silently dropped.
+ */
+export async function getLectureAttendance(actor, scope, { enrollmentId, month, from, to } = {}) {
+  const targetId = await resolveSingleEnrollmentId(actor, scope, enrollmentId);
+
+  const enrollment = await Enrollment.findById(targetId).select('sectionId');
+  if (!enrollment) throw new AppError('Enrollment not found', 404);
+
+  let dateFrom = from ? parseDateToMidnight(from) : null;
+  // `to` names a calendar day, and records are stored at that day's midnight,
+  // so the bound covers the whole of it — otherwise a from/to range on a
+  // single day matches nothing.
+  let dateTo = to ? parseDateToMidnight(to) : null;
+  if (dateTo) dateTo = new Date(dateTo.getTime() + 24 * 60 * 60 * 1000 - 1);
+  if (month && !dateFrom && !dateTo) {
+    const [y, m] = month.split('-');
+    dateFrom = new Date(Date.UTC(Number(y), Number(m) - 1, 1));
+    dateTo = new Date(Date.UTC(Number(y), Number(m), 0, 23, 59, 59, 999));
+  }
+
+  const slots = await TimetableSlot.find({ sectionId: enrollment.sectionId }).populate({
+    path: 'subjectOfferingId',
+    populate: [
+      { path: 'subjectId', select: 'name' },
+      { path: 'teacherId', select: 'displayName' },
+    ],
+  });
+  const slotByKey = new Map(slots.map((sl) => [`${sl.dayOfWeek}:${sl.periodNo}`, sl]));
+
+  const match = { enrollmentId: new mongoose.Types.ObjectId(String(targetId)), periodNo: { $ne: null } };
+  if (dateFrom || dateTo) {
+    match.date = {};
+    if (dateFrom) match.date.$gte = dateFrom;
+    if (dateTo) match.date.$lte = dateTo;
+  }
+
+  const records = await AttendanceRecord.find(match)
+    .select('date periodNo status note')
+    .sort({ date: -1, periodNo: 1 })
+    .limit(500)
+    .lean();
+
+  const lectures = records.map((rec) => {
+    // getUTCDay(): 0=Sun..6=Sat; the timetable uses 1=Mon..7=Sun.
+    const dow = rec.date.getUTCDay() === 0 ? 7 : rec.date.getUTCDay();
+    const slot = slotByKey.get(`${dow}:${rec.periodNo}`);
+    return {
+      id: String(rec._id),
+      date: rec.date.toISOString().slice(0, 10),
+      dayOfWeek: dow,
+      periodNo: rec.periodNo,
+      subject: slot?.subjectOfferingId?.subjectId?.name ?? null,
+      teacher: slot?.subjectOfferingId?.teacherId?.displayName ?? null,
+      startTime: slot?.startTime ?? null,
+      endTime: slot?.endTime ?? null,
+      room: slot?.room ?? null,
+      status: rec.status,
+      note: rec.note ?? null,
+    };
+  });
+
+  const counts = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
+  for (const l of lectures) counts[l.status] = (counts[l.status] ?? 0) + 1;
+  const attended = counts.PRESENT + counts.LATE;
+
+  return {
+    enrollmentId: String(targetId),
+    from: dateFrom ? dateFrom.toISOString().slice(0, 10) : null,
+    to: dateTo ? dateTo.toISOString().slice(0, 10) : null,
+    totalLectures: lectures.length,
+    counts,
+    pctPresent: lectures.length > 0 ? Math.round((attended / lectures.length) * 100) : null,
+    lectures,
   };
 }
 

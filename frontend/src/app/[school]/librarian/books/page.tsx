@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, SkeletonRows, Pill, rupees, useToast } from '@/components/ui';
+import { Button, Card, DateField, EmptyState, SkeletonRows, Pill, rupees, useToast } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import type { BookDto, BookIssueDto, StudentListItem } from '@/lib/types';
 
@@ -15,7 +15,7 @@ export default function LibrarianBooks() {
 
   // Modals state
   const [showBookModal, setShowBookModal] = useState(false);
-  const [newBook, setNewBook] = useState({ title: '', author: '', isbn: '', category: 'GENERAL', totalCopies: 1 });
+  const [newBook, setNewBook] = useState({ title: '', author: '', isbn: '', category: 'GENERAL', totalCopies: 1, resourceType: 'PHYSICAL' as 'PHYSICAL' | 'DIGITAL', resourceUrl: '' });
 
   const [showIssueModal, setShowIssueModal] = useState(false);
   const [issueForm, setIssueForm] = useState({ studentId: '', bookId: '', dueAt: '' });
@@ -43,7 +43,7 @@ export default function LibrarianBooks() {
     try {
       await api.createBook(newBook);
       setShowBookModal(false);
-      setNewBook({ title: '', author: '', isbn: '', category: 'GENERAL', totalCopies: 1 });
+      setNewBook({ title: '', author: '', isbn: '', category: 'GENERAL', totalCopies: 1, resourceType: 'PHYSICAL' as 'PHYSICAL' | 'DIGITAL', resourceUrl: '' });
       toast('Book added to the catalog.');
       loadBooks();
     } catch (err) {
@@ -207,8 +207,31 @@ export default function LibrarianBooks() {
                 <option value="REFERENCE">Reference</option>
               </select>
 
-              <div className="field-label">Total Copies</div>
-              <input className="field-input" type="number" required value={newBook.totalCopies} onChange={(e) => setNewBook({ ...newBook, totalCopies: Number(e.target.value) })} />
+              {/* A digital resource is read online, so it has no shelf copies to
+                  lend — the copy count is replaced by the link students open. */}
+              <div className="field-label">Resource Type</div>
+              <select className="field-input" value={newBook.resourceType} onChange={(e) => setNewBook({ ...newBook, resourceType: e.target.value as 'PHYSICAL' | 'DIGITAL' })}>
+                <option value="PHYSICAL">Physical book</option>
+                <option value="DIGITAL">Digital resource</option>
+              </select>
+
+              {newBook.resourceType === 'DIGITAL' ? (
+                <>
+                  <div className="field-label">Resource Link</div>
+                  <input
+                    className="field-input"
+                    type="url"
+                    value={newBook.resourceUrl}
+                    onChange={(e) => setNewBook({ ...newBook, resourceUrl: e.target.value })}
+                    placeholder="https://…"
+                  />
+                </>
+              ) : (
+                <>
+                  <div className="field-label">Total Copies</div>
+                  <input className="field-input" type="number" required value={newBook.totalCopies} onChange={(e) => setNewBook({ ...newBook, totalCopies: Number(e.target.value) })} />
+                </>
+              )}
 
               <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
                 <Button type="submit">Add Book</Button>
@@ -245,7 +268,7 @@ export default function LibrarianBooks() {
               </select>
 
               <div className="field-label">Due Date *</div>
-              <input className="field-input" type="date" required value={issueForm.dueAt} onChange={(e) => setIssueForm({ ...issueForm, dueAt: e.target.value })} />
+              <DateField inputClassName="field-input" ariaLabel="Due date" required value={issueForm.dueAt} onChange={(v) => setIssueForm({ ...issueForm, dueAt: v })} />
 
               <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
                 <Button type="submit">Issue Book</Button>

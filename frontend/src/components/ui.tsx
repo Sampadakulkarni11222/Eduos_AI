@@ -333,3 +333,354 @@ export function clickable(onClick: () => void, opts: { label?: string; disabled?
         },
   };
 }
+
+/* ── Filters ─────────────────────────────────────────────────────
+   The controls the student portal filters with. They live here rather than
+   being re-declared per page so a fix to dropdown sizing, keyboard labelling
+   or theming lands everywhere at once — which is the whole reason the mobile
+   alignment problem had to be fixed in one place. */
+
+export interface SelectOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * A native `<select>`, styled.
+ *
+ * Native on purpose: on a phone the OS picker is a better control than
+ * anything we could build — it cannot be clipped by an overflow container, it
+ * scrolls a long list properly, and it is already accessible. What was wrong
+ * was the styling of the *control*, and its width; `.select-field` handles
+ * both.
+ */
+export function Select({
+  label, value, onChange, options, placeholder, id, className, disabled, hideLabel,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: SelectOption[];
+  /** Shown as the first, empty-valued option — usually "All …". */
+  placeholder?: string;
+  id?: string;
+  className?: string;
+  disabled?: boolean;
+  /** Keeps the accessible name without printing a visible label. */
+  hideLabel?: boolean;
+}) {
+  const auto = useId();
+  const selectId = id ?? auto;
+  return (
+    <div className="filter-field">
+      {!hideLabel && <label className="field-label" htmlFor={selectId}>{label}</label>}
+      <select
+        id={selectId}
+        className={cx('input', 'select-field', className)}
+        value={value}
+        disabled={disabled}
+        aria-label={hideLabel ? label : undefined}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {placeholder !== undefined && <option value="">{placeholder}</option>}
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
+/**
+ * One search box over several columns.
+ *
+ * Deliberately not one input per column: a student looking for "chemistry"
+ * does not know or care whether that word is the subject, the title or the
+ * teacher's specialism. Pair it with `matchesSearch` below, which is where the
+ * case-insensitive partial matching actually happens.
+ */
+export function SearchInput({
+  label = 'Search', value, onChange, placeholder, id, hideLabel,
+}: {
+  label?: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  id?: string;
+  hideLabel?: boolean;
+}) {
+  const auto = useId();
+  const inputId = id ?? auto;
+  return (
+    <div className="filter-field">
+      {!hideLabel && <label className="field-label" htmlFor={inputId}>{label}</label>}
+      <div className="search-wrap">
+        <span className="search-icon" aria-hidden="true">⌕</span>
+        <input
+          id={inputId}
+          type="search"
+          className="input search-input"
+          value={value}
+          placeholder={placeholder ?? 'Search…'}
+          aria-label={hideLabel ? label : undefined}
+          onChange={(e) => onChange(e.target.value)}
+          style={{ width: '100%' }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * True when `query` appears in any of `haystacks`, case-insensitively and as a
+ * partial match. An empty query matches everything, so a page can call this
+ * unconditionally.
+ */
+export function matchesSearch(query: string, haystacks: Array<string | number | null | undefined>): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return haystacks.some((h) => h != null && String(h).toLowerCase().includes(q));
+}
+
+/* ===== Date picker ======================================================
+ *
+ * A themed calendar instead of `<input type="date">`. The native control's
+ * popup is browser chrome: CSS cannot reach inside it, and `color-scheme` only
+ * chooses between a white sheet and a near-black one — neither of which is the
+ * parchment this app is built on. Owning the popup is the only way to make it
+ * match the page.
+ *
+ * The value stays a plain `YYYY-MM-DD` string in and out, so every caller and
+ * `withinDateRange` keep working unchanged, and no `Date` ever crosses a
+ * timezone boundary: parsing and formatting both go through local Y/M/D parts.
+ */
+const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/** `YYYY-MM-DD` for a local calendar day. */
+function isoDay(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** A local `Date` at noon, which no DST shift can push onto another day. */
+function parseDay(value: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return null;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** What the trigger shows: the same dd-mm-yyyy order the native field used. */
+function displayDay(value: string): string {
+  const d = parseDay(value);
+  return d ? `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}` : '';
+}
+
+export function DateField({
+  value, onChange, id, min, max, ariaLabel, className, inputClassName = 'input',
+  required, disabled, placeholder = 'dd-mm-yyyy',
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  id?: string;
+  min?: string;
+  max?: string;
+  ariaLabel?: string;
+  /** Extra classes on the wrapper. */
+  className?: string;
+  /** The field class of the surrounding form — `input` in filter bars,
+   *  `field-input` inside modals. */
+  inputClassName?: string;
+  required?: boolean;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const popId = `${useId()}-cal`;
+
+  // The month on show. It follows the value while the popup is closed, so
+  // reopening always lands on the selected date rather than where the user
+  // last browsed to.
+  const selected = parseDay(value);
+  const [month, setMonth] = useState(() => selected ?? new Date());
+  useEffect(() => {
+    if (!open) setMonth(parseDay(value) ?? new Date());
+  }, [open, value]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e: MouseEvent) => {
+      if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const first = new Date(month.getFullYear(), month.getMonth(), 1, 12);
+  const gridStart = new Date(first);
+  gridStart.setDate(1 - first.getDay());
+  const days = Array.from({ length: 42 }, (_, i) => {
+    const d = new Date(gridStart);
+    d.setDate(gridStart.getDate() + i);
+    return d;
+  });
+  const today = isoDay(new Date());
+
+  const pick = (iso: string) => { onChange(iso); setOpen(false); };
+  const shiftMonth = (by: number) => setMonth(new Date(month.getFullYear(), month.getMonth() + by, 1, 12));
+
+  return (
+    <div className={cx('date-field', className)} ref={wrap}>
+      {/* A real text input rather than a button, so `required` still takes
+          part in native form validation. The value only ever comes from the
+          calendar, so typing into it is inert. */}
+      <input
+        id={id}
+        type="text"
+        className={cx(inputClassName, 'date-field-trigger')}
+        value={value ? displayDay(value) : ''}
+        placeholder={placeholder}
+        required={required}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        role="combobox"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={`${popId}`}
+        autoComplete="off"
+        inputMode="none"
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') { setOpen(false); return; }
+          if (e.key === 'Tab') return;
+          e.preventDefault();
+          if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') setOpen(true);
+          if (e.key === 'Backspace' || e.key === 'Delete') onChange('');
+        }}
+        onMouseDown={() => { if (!disabled) setOpen((o) => !o); }}
+        onFocus={() => { if (!disabled) setOpen(true); }}
+        onChange={() => {}}
+      />
+      <span className="date-field-icon" aria-hidden="true">▦</span>
+      {open && (
+        <div className="date-pop" id={popId} role="dialog" aria-label={ariaLabel ?? 'Choose a date'}>
+          <div className="date-pop-head">
+            <button type="button" className="date-pop-nav" onClick={() => shiftMonth(-1)} aria-label="Previous month">‹</button>
+            <div className="date-pop-month">{MONTHS[month.getMonth()]} {month.getFullYear()}</div>
+            <button type="button" className="date-pop-nav" onClick={() => shiftMonth(1)} aria-label="Next month">›</button>
+          </div>
+          <div className="date-pop-grid" role="grid">
+            {WEEKDAYS.map((w) => <span key={w} className="date-pop-dow">{w}</span>)}
+            {days.map((d) => {
+              const iso = isoDay(d);
+              const disabled = (!!min && iso < min) || (!!max && iso > max);
+              return (
+                <button
+                  key={iso}
+                  type="button"
+                  className={cx(
+                    'date-pop-day',
+                    d.getMonth() !== month.getMonth() && 'is-outside',
+                    iso === value && 'is-selected',
+                    iso === today && iso !== value && 'is-today',
+                  )}
+                  disabled={disabled}
+                  aria-pressed={iso === value}
+                  onClick={() => pick(iso)}
+                >
+                  {d.getDate()}
+                </button>
+              );
+            })}
+          </div>
+          <div className="date-pop-foot">
+            <button type="button" className="date-pop-link" onClick={() => pick('')}>Clear</button>
+            <button type="button" className="date-pop-link" onClick={() => pick(today)}>Today</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A FROM/TO pair of dates.
+ *
+ * Both bounds are plain `YYYY-MM-DD` strings and stay that way: turning them
+ * into `Date` objects here is what introduces the timezone bug, because
+ * `new Date('2026-09-01')` is midnight *UTC*, which is the previous evening
+ * for anyone west of Greenwich. Comparison happens on the strings via
+ * `withinDateRange`, which is exact for every timezone.
+ */
+export function DateRangeFilter({
+  label, from, to, onChange, id,
+}: {
+  label: string;
+  from: string;
+  to: string;
+  onChange: (range: { from: string; to: string }) => void;
+  id?: string;
+}) {
+  const auto = useId();
+  const base = id ?? auto;
+  return (
+    <div className="filter-field filter-field--range">
+      <span className="field-label">{label}</span>
+      <div className="date-range">
+        <label className="date-range-sep" htmlFor={`${base}-from`}>FROM</label>
+        <DateField
+          id={`${base}-from`}
+          ariaLabel={`${label} from`}
+          value={from}
+          max={to || undefined}
+          onChange={(next) => onChange({ from: next, to })}
+        />
+        <label className="date-range-sep" htmlFor={`${base}-to`}>TO</label>
+        <DateField
+          id={`${base}-to`}
+          ariaLabel={`${label} to`}
+          value={to}
+          min={from || undefined}
+          onChange={(next) => onChange({ from, to: next })}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Whether an ISO timestamp falls inside a `YYYY-MM-DD` range, inclusive at
+ * both ends.
+ *
+ * The instant is reduced to the calendar day it happened on *in the reader's
+ * own timezone* and then compared as text. That is what makes a same-day range
+ * work — from and to both being 2026-09-15 keeps everything due on the 15th,
+ * where a naive `>= new Date(from) && <= new Date(to)` keeps only something
+ * due at exactly midnight.
+ */
+export function withinDateRange(iso: string | null | undefined, from: string, to: string): boolean {
+  if (!from && !to) return true;
+  if (!iso) return false;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  if (from && day < from) return false;
+  if (to && day > to) return false;
+  return true;
+}
+
+/** The wrapping row filters sit in. Grid, so nothing can overflow a phone. */
+export function FilterBar({ children, actions }: { children: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="filter-bar">
+      {children}
+      {actions && <div className="filter-field" style={{ justifyContent: 'flex-end' }}>{actions}</div>}
+    </div>
+  );
+}

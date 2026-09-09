@@ -1,7 +1,7 @@
 'use client';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pill, SkeletonRows, divisionLabel, useToast } from '@/components/ui';
+import { Button, Card, DateField, EmptyState, Pill, SkeletonRows, divisionLabel, useToast } from '@/components/ui';
 import { api, ApiError, fileHref } from '@/lib/api';
 import type { AssignmentDto, OfferingDto, SubmissionRoster, SubmissionRow } from '@/lib/types';
 
@@ -69,8 +69,8 @@ export default function AssignmentsPage() {
             <option value="">All chapters</option>
             {chapters.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <input className="input" type="date" value={filters.dateFrom} onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))} aria-label="Due from" title="Due from" />
-          <input className="input" type="date" value={filters.dateTo} onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value }))} aria-label="Due to" title="Due to" />
+          <DateField className="date-field-inline" value={filters.dateFrom} max={filters.dateTo || undefined} onChange={(v) => setFilters((f) => ({ ...f, dateFrom: v }))} ariaLabel="Due from" />
+          <DateField className="date-field-inline" value={filters.dateTo} min={filters.dateFrom || undefined} onChange={(v) => setFilters((f) => ({ ...f, dateTo: v }))} ariaLabel="Due to" />
           {hasFilters && <Button variant="ghost" small onClick={() => setFilters(emptyFilters)}>Clear filters</Button>}
         </div>
       )}

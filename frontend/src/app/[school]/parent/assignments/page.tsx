@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, Pill, SkeletonRows } from '@/components/ui';
+import { Button, Card, DateField, EmptyState, Pill, SkeletonRows } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { AssignmentDto } from '@/lib/types';
 
@@ -58,8 +58,8 @@ export default function ParentAssignments() {
             {subjects.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
           <input className="input" placeholder="Chapter…" value={filters.chapter} onChange={(e) => setFilters((f) => ({ ...f, chapter: e.target.value }))} aria-label="Chapter" style={{ width: 140 }} />
-          <input className="input" type="date" value={filters.dateFrom} onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))} aria-label="Due from" title="Due from" />
-          <input className="input" type="date" value={filters.dateTo} onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value }))} aria-label="Due to" title="Due to" />
+          <DateField className="date-field-inline" value={filters.dateFrom} max={filters.dateTo || undefined} onChange={(v) => setFilters((f) => ({ ...f, dateFrom: v }))} ariaLabel="Due from" />
+          <DateField className="date-field-inline" value={filters.dateTo} min={filters.dateFrom || undefined} onChange={(v) => setFilters((f) => ({ ...f, dateTo: v }))} ariaLabel="Due to" />
           {hasFilters && <Button variant="ghost" small onClick={() => setFilters(emptyFilters)}>Clear filters</Button>}
         </div>
       )}

@@ -26,6 +26,22 @@ router.post('/stops/bulk', requirePermission('transport.manage'), csvUploadSingl
 // and deliberately has no transport.* permission gate — those roles are
 // never granted transport.read, only staff manage the routes themselves.
 router.get('/my-bus', controller.myBus);
+
+/**
+ * @swagger
+ * /transport/roster:
+ *   get:
+ *     summary: Travel arrangements for every student the caller is authorized to see
+ *     tags: [Transport]
+ *     parameters:
+ *       - in: query
+ *         name: sectionId
+ *         schema: { type: string }
+ *         description: Narrows the list to one section. It can never widen it.
+ *     responses:
+ *       200: { description: Roster fetched }
+ */
+router.get('/roster', controller.roster);
 router.post('/enroll', requirePermission('transport.manage'), controller.enrollStudent);
 router.post('/enroll/bulk', requirePermission('transport.manage'), csvUploadSingle('file'), controller.bulkEnrollStudents);
 

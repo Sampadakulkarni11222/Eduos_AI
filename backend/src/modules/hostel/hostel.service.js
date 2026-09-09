@@ -6,6 +6,7 @@ import { AppError } from '../../utils/AppError.js';
 import { decrypt } from '../../utils/crypto.js';
 import { recordPiiRead } from '../../utils/auditTrail.js';
 import { assertCanAccess as assertCanAccessMedical } from '../medical/medical.service.js';
+import { insertRows, rowError } from '../../utils/csvImport.js';
 
 // ─── Dashboard Summary ──────────────────────────────────────
 export async function getSummary() {
@@ -84,13 +85,23 @@ export async function bulkCreateRooms(rows) {
     const capacity = Number(row.capacity);
     if (!roomNo || !Number.isFinite(capacity) || capacity <= 0) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: 'roomNo and a positive capacity are required' });
+      results.errors.push(rowError(rowNo, {
+        field: !row.roomno ? 'roomNo' : 'capacity',
+        value: !row.roomno ? row.roomno : row.capacity,
+        problem: 'is required',
+        suggestion: 'capacity must be a whole number of beds, e.g. 4',
+      }));
       continue;
     }
     const type = row.type?.trim().toUpperCase() || 'GENERAL';
     if (!VALID_TYPES.has(type)) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `Invalid type "${row.type}" (expected BOYS, GIRLS, STAFF, or GENERAL)` });
+      results.errors.push(rowError(rowNo, {
+        field: 'type',
+        value: row.type,
+        problem: 'is not a room type',
+        suggestion: 'use one of: BOYS, GIRLS, STAFF, GENERAL',
+      }));
       continue;
     }
     docs.push({
@@ -103,22 +114,17 @@ export async function bulkCreateRooms(rows) {
     });
   }
 
-  const CHUNK_SIZE = 100;
-  for (let i = 0; i < docs.length; i += CHUNK_SIZE) {
-    const chunk = docs.slice(i, i + CHUNK_SIZE);
-    try {
-      await HostelRoom.insertMany(chunk.map(({ rowNo, ...doc }) => doc));
-      results.imported += chunk.length;
-    } catch (err) {
-      results.failed += chunk.length;
-      chunk.forEach((c) => {
-        const msg = err.code === 11000 ? `Room "${c.roomNo}" already exists` : err.message;
-        results.errors.push({ row: c.rowNo, error: msg });
-      });
-    }
-  }
+  const inserted = await insertRows(
+    HostelRoom,
+    docs.map(({ rowNo, ...doc }) => ({ rowNo, doc })),
+    { dupField: 'roomNo', dupLabel: 'roomNo' },
+  );
 
-  return results;
+  return {
+    imported: results.imported + inserted.imported,
+    failed: results.failed + inserted.failed,
+    errors: [...results.errors, ...inserted.errors],
+  };
 }
 
 /**
@@ -145,21 +151,35 @@ export async function bulkAllocate(rows) {
 
     if (!admissionNo || !roomNo) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: 'admissionNo and roomNo are required' });
+      results.errors.push(rowError(rowNo, {
+        field: !admissionNo ? 'admissionNo' : 'roomNo',
+        problem: 'is required',
+        suggestion: 'both columns name existing records — the student, and the room to put them in',
+      }));
       continue;
     }
 
     const studentId = studentIdByAdmissionNo.get(admissionNo.toLowerCase());
     if (!studentId) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `No student found with admissionNo "${admissionNo}"` });
+      results.errors.push(rowError(rowNo, {
+        field: 'admissionNo',
+        value: admissionNo,
+        problem: 'does not match any student in this school',
+        suggestion: 'check the admission number, or import the student first',
+      }));
       continue;
     }
 
     const roomId = roomIdByRoomNo.get(roomNo.toLowerCase());
     if (!roomId) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: `No room found with roomNo "${roomNo}"` });
+      results.errors.push(rowError(rowNo, {
+        field: 'roomNo',
+        value: roomNo,
+        problem: 'does not match any hostel room',
+        suggestion: 'create the room first, or correct the room number',
+      }));
       continue;
     }
 
@@ -168,7 +188,7 @@ export async function bulkAllocate(rows) {
       results.imported++;
     } catch (err) {
       results.failed++;
-      results.errors.push({ row: rowNo, error: err.message });
+      results.errors.push(rowError(rowNo, { problem: err.message }));
     }
   }
 

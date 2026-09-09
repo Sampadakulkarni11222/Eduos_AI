@@ -63,6 +63,17 @@ body.role-student{
   --accent:#3d2f26; --accent-2:#5c473a;
   --sidebar-text:#E7DEC9; --sidebar-heading:#FBF8F2; --sidebar-secondary:#BBA58B; --sidebar-group:#ab977e;
   --header-title:#3d2f26; --on-accent:#F7F0DF; --badge-on-accent-text:#3d2f26;
+  /* Surfaces, not just the accent.
+     Every other portal leaves these at the #fff fallback, so they are
+     unchanged. The student portal sets them because a stark white select on a
+     parchment page was the one thing on screen that looked borrowed from
+     somewhere else — the filters, chips, cards, popovers and modals now sit on
+     the same warm ground as the page they are on. */
+  --field-bg:#FBF6EC;
+  --surface-raised:#FCF8F0;
+  --card-bg:#FDFAF3;
+  --card-border:#E8DFCC;
+  --menu-bg:#FBF6EC;
 }
 /* Platform tier — deliberately the only indigo in the set, so a Super Admin
    can never mistake this console for one of the school-level portals. */
@@ -125,7 +136,7 @@ body.role-warden{
 .topbar-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:10px}
 .search-wrap{position:relative}
 .search-wrap .search-icon{position:absolute;left:11px;top:8px;color:#A99B82;font-size:14px}
-.input,.search-input,select.input,textarea.input{background:#fff;border:1px solid var(--input-border);border-radius:10px;padding:9px 12px;font-size:13px;font-family:inherit;color:var(--text-1)}
+.input,.search-input,select.input,textarea.input{background:var(--field-bg,#fff);border:1px solid var(--input-border);border-radius:10px;padding:9px 12px;font-size:13px;font-family:inherit;color:var(--text-1)}
 .search-input{padding-left:32px}
 
 .content{flex:1;overflow-y:auto;overflow-x:hidden;padding:26px 28px 60px}
@@ -153,6 +164,147 @@ body.role-warden{
 .stat-delta.flat{color:var(--text-faint)}
 .card-grid{display:grid;gap:14px}
 
+/* ===== Student payments: academic-year bar, plans, charts =================
+   Class-based rather than inline grids, so the breakpoints below own the
+   layout instead of the global "collapse any inline grid" safety net. */
+.year-bar{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  gap:14px;flex-wrap:wrap;
+}
+/* The picker keeps a readable width on desktop and takes the row on a phone. */
+.year-bar-field{flex:0 1 260px;min-width:200px}
+.year-bar-field .filter-field{min-width:0}
+.year-bar-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:2px}
+
+.fee-chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+
+.plan-head{
+  display:flex;align-items:flex-start;justify-content:space-between;
+  gap:16px;flex-wrap:wrap;padding:16px 20px 12px;
+}
+.plan-figures{display:flex;gap:22px;flex-wrap:wrap}
+.plan-figures > div{display:flex;flex-direction:column;gap:2px}
+.plan-figure-label{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint)}
+.plan-figure-value{font-family:'Newsreader',serif;font-size:17px;font-weight:600;color:var(--text-1)}
+.plan-progress{height:6px;background:var(--hairline);margin:0 20px 4px;border-radius:999px;overflow:hidden}
+.plan-progress-fill{height:100%;background:var(--green);border-radius:999px;transition:width .3s ease}
+
+@media (max-width:900px){
+  .fee-chart-grid{grid-template-columns:1fr}
+}
+@media (max-width:768px){
+  /* Tablet/phone: the year picker is the first thing on the page and gets the
+     full width, and the plan's three figures spread across the row rather than
+     stacking into a tall column. */
+  .year-bar{flex-direction:column;align-items:stretch}
+  .year-bar-field{flex:1 1 auto;min-width:0}
+  .plan-head{padding:14px 16px 10px}
+  .plan-progress{margin:0 16px 4px}
+  .plan-figures{gap:0;justify-content:space-between;width:100%}
+  .plan-figures > div{flex:1 1 0;min-width:0}
+  .plan-figure-value{font-size:15px}
+}
+
+/* ===== Approval queues ===== */
+.approval-head{
+  display:flex;align-items:flex-start;justify-content:space-between;
+  gap:12px;flex-wrap:wrap;padding:16px 20px 12px;
+}
+.audit-facts{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:12.5px}
+.audit-facts > div{display:flex;flex-direction:column;gap:1px;min-width:0}
+.audit-facts span{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-faint)}
+.audit-facts strong{font-weight:600;color:var(--text-1);word-break:break-word}
+.audit-trail{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;max-height:280px;overflow-y:auto}
+.audit-trail li{border-left:2px solid var(--hairline-2);padding-left:10px}
+@media (max-width:560px){
+  .audit-facts{grid-template-columns:1fr}
+}
+
+/* ===== Fee plan builder ===== */
+.plan-builder-controls{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+/* The running total of the schedule against the total payable. Turning green
+   is the signal that the server will accept it. */
+.plan-balance{
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  font-size:12.5px;color:var(--text-2);
+  padding:8px 10px;margin-bottom:12px;border-radius:9px;
+  background:rgba(145,97,18,.08);border:1px solid rgba(145,97,18,.25);
+}
+.plan-balance strong{color:var(--text-1)}
+.plan-balance.is-balanced{background:rgba(46,107,79,.08);border-color:rgba(46,107,79,.3);color:var(--green)}
+.plan-balance.is-balanced strong{color:var(--green)}
+
+/* ===== Payment registration form ===== */
+.pay-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pay-instrument{
+  border:1px solid var(--input-border);border-radius:10px;
+  padding:12px;margin:4px 0 12px;background:var(--panel-bg,#FBF6EC);
+}
+.pay-instrument-hint{font-size:12px;color:var(--text-2);margin-bottom:10px}
+.pay-upload-status{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-2b);margin-bottom:6px}
+.pay-error{
+  margin-top:12px;padding:10px 12px;border-radius:9px;font-size:12.5px;
+  background:rgba(168,50,46,.08);border:1px solid rgba(168,50,46,.25);color:var(--red);
+}
+@media (max-width:560px){
+  .pay-form-grid{grid-template-columns:1fr}
+}
+
+/* ===== Library note preview ===== */
+.lib-note-body{
+  font-size:11.5px;color:var(--text-2);margin-top:3px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+
+/* ===== Attendance context strip ===== */
+.att-context{
+  display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;
+  font-size:12.5px;color:var(--text-2);
+}
+.att-context b{color:var(--text-faint);font-weight:600;margin-right:4px;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.att-locked{
+  font-size:12.5px;color:var(--text-2b);background:#fff7ed;border:1px solid #fcd9a8;
+  border-radius:9px;padding:10px 12px;margin:0 0 14px;
+}
+
+/* ===== Bulk import report ===== */
+.bulk-errors-head{font-size:12px;font-weight:600;margin:10px 0 4px;color:var(--text-2b)}
+.bulk-errors{margin:0;padding-left:18px;font-size:12px;color:var(--text-2);max-height:220px;overflow-y:auto}
+.bulk-errors li{margin-bottom:8px}
+.bulk-errors code{font-size:11.5px;background:rgba(0,0,0,.05);padding:1px 4px;border-radius:4px}
+.bulk-error-problem{color:var(--text-2b)}
+.bulk-error-fix{color:var(--text-faint);font-style:italic}
+
+/* ===== Announcement preview ===== */
+.ann-preview-head{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+.ann-preview-head strong{font-family:Newsreader,serif;font-size:17px;color:var(--text-1b)}
+.ann-preview-note{font-size:12px;color:var(--text-faint)}
+.ann-preview-audience{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.ann-preview-count{font-size:12px;color:var(--text-2)}
+.ann-preview-channel{margin-bottom:14px}
+.ann-preview-channel-label{
+  font-size:11px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--text-muted);font-weight:700;margin-bottom:6px;
+}
+.ann-preview-app,.ann-preview-email,.ann-preview-whatsapp{
+  border:1px solid var(--input-border);border-radius:10px;padding:12px;
+  background:var(--panel-bg,#FBF6EC);
+}
+.ann-preview-whatsapp{background:#e7f6ea;border-color:#bfe3c6}
+.ann-preview-title{font-family:Newsreader,serif;font-size:16px;color:var(--text-1b);display:block}
+/* The author's own line breaks are the formatting; keep them. */
+.ann-preview-body{white-space:pre-wrap;font-size:13.5px;color:var(--text-2b);margin:6px 0 0}
+.ann-preview-email-subject{font-size:12.5px;color:var(--text-2)}
+.ann-preview-email-subject span{color:var(--text-faint)}
+.ann-preview-files{margin:8px 0 0;padding-left:18px;font-size:12.5px}
+.ann-preview-actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+
+/* ===== Payment method + verification cells ===== */
+.pay-method-line{font-size:11.5px;color:var(--text-2);margin-top:2px;white-space:nowrap}
+.pay-method-proof{display:block;font-size:11px;margin-top:3px;color:var(--accent);font-weight:600}
+.pay-verify-line{font-size:11.5px;color:var(--text-2);margin-top:3px;max-width:22ch}
+.pay-verify-faint{color:var(--text-faint)}
+
 /* ===== Tables ===== */
 .data-table{width:100%;border-collapse:collapse}
 .data-table thead th{text-align:left;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted);font-weight:700;padding:12px 20px}
@@ -177,8 +329,8 @@ body.role-warden{
 /* ===== Tabs ===== */
 .tabs{display:flex;gap:4px}
 .tab{border:none;border-radius:8px 8px 0 0;padding:9px 15px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;background:transparent;color:var(--text-faint)}
-.tab.active{background:#fff;color:var(--accent);border-bottom:2px solid var(--accent)}
-.chip-tab{border:none;border-radius:8px;padding:8px 15px;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:600;background:#fff;border:1px solid var(--input-border);color:var(--text-2)}
+.tab.active{background:var(--surface-raised,#fff);color:var(--accent);border-bottom:2px solid var(--accent)}
+.chip-tab{border:none;border-radius:8px;padding:8px 15px;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:600;background:var(--field-bg,#fff);border:1px solid var(--input-border);color:var(--text-2)}
 .chip-tab.active{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
 
 /* ===== Modal / side panel / AI panel ===== */
@@ -188,16 +340,16 @@ body.role-warden{
 .modal-title{font-family:'Newsreader',serif;font-size:21px;font-weight:600;color:var(--text-1b)}
 .modal-close{background:none;border:none;font-size:20px;color:var(--text-muted);cursor:pointer}
 .field-label{font-size:12px;color:var(--text-2);margin-bottom:4px}
-.field-input{width:100%;background:#fff;border:1px solid var(--input-border);border-radius:9px;padding:10px 12px;font-size:13.5px;font-family:inherit;margin-bottom:12px}
+.field-input{width:100%;background:var(--field-bg,#fff);border:1px solid var(--input-border);border-radius:9px;padding:10px 12px;font-size:13.5px;font-family:inherit;margin-bottom:12px}
 
 .side-panel-overlay{position:fixed;inset:0;background:rgba(40,25,20,.35);z-index:50;display:flex;justify-content:flex-end}
 .side-panel{width:400px;max-width:94vw;height:100%;background:var(--panel-bg);box-shadow:-20px 0 60px rgba(40,20,15,.2);animation:eduPanel .25s ease;display:flex;flex-direction:column}
-.side-panel-head{padding:20px;border-bottom:1px solid var(--hairline-2);background:#fff}
+.side-panel-head{padding:20px;border-bottom:1px solid var(--hairline-2);background:var(--surface-raised,#fff)}
 
 .ai-panel{position:fixed;top:0;right:0;width:400px;max-width:96vw;height:100vh;background:var(--panel-bg);border-left:1px solid var(--input-border);box-shadow:-24px 0 60px rgba(40,20,15,.16);z-index:40;display:flex;flex-direction:column;animation:eduPanel .25s ease}
 .ai-panel-header{padding:16px 18px;background:linear-gradient(120deg,var(--accent),var(--accent-2));color:var(--on-accent);display:flex;align-items:center;justify-content:space-between}
 .ai-panel-body{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:14px}
-.ai-panel-footer{padding:13px 16px;border-top:1px solid var(--input-border);display:flex;gap:8px;background:#fff}
+.ai-panel-footer{padding:13px 16px;border-top:1px solid var(--input-border);display:flex;gap:8px;background:var(--surface-raised,#fff)}
 .chat-bubble{padding:10px 13px;font-size:13px;line-height:1.5;border-radius:14px}
 .chat-bubble.me{align-self:flex-end;max-width:80%;background:var(--accent);color:var(--on-accent);border-radius:14px 14px 4px 14px}
 .chat-bubble.them{align-self:flex-start;max-width:88%;background:#fff;border:1px solid var(--card-border);color:var(--text-1);border-radius:14px 14px 14px 4px}
@@ -941,3 +1093,182 @@ body.ai-docked .modal-overlay{padding-right:var(--ai-dock-w)}
 .cal-event { transition: filter .12s ease, box-shadow .12s ease; }
 .cal-event:hover { filter: brightness(0.96); box-shadow: 0 1px 4px rgba(0,0,0,.18); }
 .cal-event:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ===== Student portal: dropdowns, filters and filter bars =================
+
+   Two problems this section exists for.
+
+   1. Theme. A native <select> renders its popup with the OS's own colours, but
+      the *control* is ours, and a white control on a parchment page read as a
+      component from another app. The tokens above supply the surface; the
+      rules here supply the chevron, because switching a select to
+      `appearance:none` removes the browser's one along with its white
+      background. Option rows are given the same ground where a browser lets
+      us style them (Chromium/Firefox on Windows and Android do; Safari and
+      the iOS wheel do not, and that is fine — those are OS surfaces).
+
+   2. Width on a phone. A select sized by its longest option is what pushes a
+      page sideways at 320px. Filters are laid out as a wrapping grid whose
+      columns can shrink to nothing (`minmax(0,1fr)`), and every control in one
+      is capped at the width of its cell, so nothing can overflow the viewport
+      and no dropdown is clipped by a scroll container it created itself.      */
+
+.select-field{
+  -webkit-appearance:none;-moz-appearance:none;appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 16px) calc(50% + 1px),calc(100% - 11px) calc(50% + 1px);
+  background-size:5px 5px,5px 5px;
+  background-repeat:no-repeat;
+  padding-right:32px;
+  width:100%;max-width:100%;min-width:0;
+  text-overflow:ellipsis;
+}
+/* The arrow is drawn in currentColor, so it must not inherit the accent. */
+.select-field{color:var(--text-1)}
+body.role-student .select-field option,
+body.role-student select.input option{background:var(--menu-bg,#fff);color:var(--text-1)}
+
+/* A row of filters. Wraps rather than scrolls, and each cell may shrink to
+   zero so a long label can never widen the row past the page. */
+.filter-bar{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));
+  gap:10px;align-items:end;margin-bottom:16px;
+}
+.filter-bar > *{min-width:0;max-width:100%}
+.filter-bar .input,
+.filter-bar .select-field,
+.filter-bar input[type="date"]{width:100%;max-width:100%}
+.filter-field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.filter-field > .field-label{margin-bottom:0}
+/* The from/to pair is a grid, not wrapping flex: a wrapped flex row leaves the
+   two dates on different baselines and the TO label orphaned above its input.
+   Four columns (label, field, label, field) while there is room; two columns
+   below that, which puts FROM and TO in a tidy stack with their inputs still
+   aligned to each other. */
+.date-range{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr);
+  align-items:center;gap:8px 10px;min-width:0;
+}
+.date-range input[type="date"]{width:100%;min-width:0}
+.date-range .date-field{width:100%;min-width:0}
+
+/* ===== Themed date picker =====
+   The native popup is browser chrome — unreachable by CSS and only ever white
+   or near-black — so DateField draws its own on the app's own surfaces. */
+.date-field{position:relative;min-width:0}
+.date-field-trigger{width:100%;cursor:pointer;padding-right:30px;caret-color:transparent}
+/* Date fields that sit in a flex toolbar rather than a stacked form: a fixed
+   width and no form-field bottom margin. */
+.date-field-inline{flex:0 0 auto;width:170px}
+.date-field-inline .field-input,.date-field-inline .input{margin-bottom:0}
+.date-field-trigger::placeholder{color:var(--text-faint)}
+.date-field-icon{
+  position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  color:var(--text-faint);font-size:12px;line-height:1;pointer-events:none;
+}
+.date-pop{
+  position:absolute;z-index:60;top:calc(100% + 6px);left:0;min-width:250px;
+  background:var(--menu-bg,var(--surface-raised,#fff));
+  border:1px solid var(--hairline-2);border-radius:12px;
+  box-shadow:0 12px 28px rgba(43,37,32,.16);padding:10px;
+  animation:eduFade .12s ease-out;
+}
+.date-pop-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px}
+.date-pop-month{font-weight:600;font-size:13px;color:var(--text-1)}
+.date-pop-nav{
+  background:none;border:1px solid transparent;border-radius:8px;
+  width:26px;height:26px;font-size:16px;line-height:1;color:var(--text-2);
+}
+.date-pop-nav:hover{background:var(--hairline);border-color:var(--hairline-2)}
+.date-pop-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.date-pop-dow{
+  text-align:center;font-size:10.5px;font-weight:700;letter-spacing:.05em;
+  color:var(--text-faint);padding-bottom:4px;
+}
+.date-pop-day{
+  background:none;border:none;border-radius:8px;padding:6px 0;
+  font-size:12.5px;color:var(--text-1);
+}
+.date-pop-day:hover:not(:disabled){background:var(--hairline)}
+.date-pop-day.is-outside{color:var(--text-faint);opacity:.65}
+.date-pop-day.is-today{box-shadow:inset 0 0 0 1px var(--input-border);font-weight:600}
+.date-pop-day.is-selected{background:var(--accent);color:var(--on-accent);font-weight:600}
+.date-pop-day:disabled{opacity:.3;cursor:not-allowed}
+.date-pop-foot{
+  display:flex;justify-content:space-between;gap:8px;
+  margin-top:8px;padding-top:8px;border-top:1px solid var(--hairline);
+}
+.date-pop-link{background:none;border:none;font-size:12px;font-weight:600;color:var(--accent);padding:2px 4px;border-radius:6px}
+.date-pop-link:hover{background:var(--hairline)}
+/* Near the right edge of a filter bar the popup would otherwise run off the
+   page, so the TO field anchors its popup to its right edge instead. */
+.date-range .date-field:last-of-type .date-pop{left:auto;right:0}
+.date-range .date-range-sep{font-size:11.5px;font-weight:700;color:var(--text-faint);letter-spacing:.06em;white-space:nowrap}
+
+/* A range holds two controls, so it gets two of the bar's columns; that is what
+   keeps it on one line beside the single-control filters on desktop. */
+@media (min-width:900px){
+  .filter-field--range{grid-column:span 2}
+}
+@media (max-width:899px){
+  .date-range{grid-template-columns:auto minmax(0,1fr)}
+}
+@media (max-width:768px){
+  /* Full-width controls are both easier to hit and impossible to overflow. */
+  .filter-bar{grid-template-columns:1fr}
+}
+@media (pointer:coarse){
+  .select-field,.filter-bar .input,.filter-bar input[type="date"]{min-height:44px}
+}
+
+/* Long option lists on desktop: a size>1 select scrolls natively, but the
+   popup of a plain select is the OS's and cannot be clipped by us. What we can
+   guarantee is that nothing around it introduces a horizontal scrollbar. */
+.student-scroll-guard{max-width:100%;overflow-x:hidden}
+
+/* ===== Student portal: every select, not just the ones we rewrote ========
+
+   `body.role-student` is set by PortalShell for the student portal only, so
+   this reaches every dropdown a student can see — including the ones inside
+   shared components (Ask Agent's language picker, the ticket form, the tutor
+   panel) that no student-side file owns. Fixing it here rather than in each of
+   those files is the point: the alignment problem was never specific to one
+   page, and neither is the fix. No other portal is touched.
+
+   `max-width:100%` and `min-width:0` are what stop a select sized by its
+   longest option from pushing the page sideways at 320px — a select is a
+   replaced element with an intrinsic width, and inside a flex or grid item it
+   will happily exceed its container unless told not to. Below 768px they go
+   full width, which is both easier to tap and impossible to overflow.        */
+
+body.role-student select,
+body.role-student select.input,
+body.role-student select.field-input{
+  max-width:100%;
+  min-width:0;
+  text-overflow:ellipsis;
+  background-color:var(--field-bg,#fff);
+}
+body.role-student select option{background:var(--menu-bg,#fff);color:var(--text-1)}
+
+@media (max-width:768px){
+  body.role-student select,
+  body.role-student select.input,
+  body.role-student select.field-input,
+  body.role-student input[type="date"],
+  body.role-student input[type="search"]{width:100%}
+  /* A modal is the other place a control can be wider than the phone. */
+  body.role-student .modal{width:min(440px,94vw);max-height:88vh;overflow-y:auto}
+}
+@media (pointer:coarse){
+  body.role-student select,
+  body.role-student input[type="date"]{min-height:44px}
+}
+
+/* Nothing in the student content area may create a sideways scroll. The shell
+   already clips the column; this stops a wide filter row from being the reason
+   a whole page can be dragged left and right on a phone. */
+body.role-student .content{overflow-x:hidden}
+body.role-student .filter-bar{max-width:100%}

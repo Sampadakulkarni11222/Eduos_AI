@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Card, EmptyState, SkeletonRows } from '@/components/ui';
+import { Card, DateField, EmptyState, SkeletonRows } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { AttendanceRoster, SectionDto } from '@/lib/types';
 
@@ -37,7 +37,7 @@ export default function PrincipalAttendance() {
             </option>
           ))}
         </select>
-        <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Date" style={{ maxWidth: 180 }} />
+        <DateField className="date-field-inline" value={date} onChange={setDate} ariaLabel="Date" />
         {data && pct !== null && (
           <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--text-2)', alignSelf: 'center' }}>
             <strong style={{ color: pct >= 75 ? 'var(--green)' : 'var(--red)' }}>{pct}%</strong> present · {present} present · {absent} absent

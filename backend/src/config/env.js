@@ -105,6 +105,19 @@ export const env = {
   MULTI_PROFILE_ENABLED: process.env.MULTI_PROFILE_ENABLED !== 'false',
   ACCESS_TOKEN_EXPIRES_IN: process.env.ACCESS_TOKEN_EXPIRES_IN ?? '15m',
   REFRESH_TOKEN_TTL_DAYS: Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 30,
+  // How long a just-rotated refresh token still works.
+  //
+  // Refresh tokens rotate on every use, and presenting a revoked one is
+  // treated as theft: every session on the account is killed. That is right
+  // for a token replayed hours later and wrong for the ordinary case of two
+  // browser tabs whose access tokens expire in the same second — both send the
+  // cookie they hold, one wins the rotation, and the loser's perfectly honest
+  // request used to log the account out of everything. Anything replayed
+  // inside this window is treated as that race instead, and re-issued.
+  //
+  // Small on purpose: seconds, not minutes. It has to cover a request already
+  // in flight, nothing more.
+  REFRESH_ROTATION_GRACE_SECONDS: numFromEnv('REFRESH_ROTATION_GRACE_SECONDS', 30),
   OTP_TTL_MINUTES: Number(process.env.OTP_TTL_MINUTES) || 5,
   OTP_MAX_ATTEMPTS: Number(process.env.OTP_MAX_ATTEMPTS) || 5,
   BCRYPT_SALT_ROUNDS: Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
@@ -192,6 +205,24 @@ export const env = {
   // AI copilot: set ANTHROPIC_API_KEY (or compatible) to upgrade the
   // deterministic data-grounded assistant to a full LLM integration.
   AI_PROVIDER: process.env.AI_PROVIDER ?? 'rules',
+  // Read here as well as from process.env so every consumer sees the same
+  // value. rag.js checked `env.GEMINI_API_KEY`, which this object never
+  // carried, so the retrieval fallback disabled itself on schools that had
+  // configured a key perfectly well.
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? null,
+  GEMINI_MODEL: process.env.GEMINI_MODEL ?? null,
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? null,
+  /**
+   * How long any single model call may take before the assistant stops
+   * waiting for it.
+   *
+   * The agent has a deterministic answer for everything it is asked; the model
+   * only ever improves the routing. Waiting indefinitely for it trades a good
+   * answer now for a possibly-better answer later, which is the wrong trade in
+   * a chat box - and with a provider that intermittently 503s, it is how the
+   * assistant comes to look broken.
+   */
+  AI_TIMEOUT_MS: Number(process.env.AI_TIMEOUT_MS) || 10_000,
   isDev: (process.env.NODE_ENV ?? 'development') === 'development',
   isProd: process.env.NODE_ENV === 'production',
 };

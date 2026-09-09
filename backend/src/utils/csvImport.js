@@ -65,3 +65,94 @@ export function parseCsvRows(req, { maxRows = DEFAULT_MAX_ROWS } = {}) {
 
   return rows;
 }
+
+/**
+ * One row's failure, described the way the person fixing the spreadsheet needs
+ * it: which row, which column, what is wrong, and what to put there instead.
+ *
+ * `error` is kept as the flattened sentence so callers written against the
+ * older `{ row, error }` shape — including the upload modal — keep working
+ * while the structured fields are added around it.
+ */
+export function rowError(row, { field = null, value = undefined, problem, suggestion = null }) {
+  const shown = value === undefined || value === null || value === '' ? null : `"${value}"`;
+  return {
+    row,
+    field,
+    value: value ?? null,
+    problem,
+    suggestion,
+    error: [
+      field ? `${field}${shown ? ` ${shown}` : ''}: ${problem}` : problem,
+      suggestion,
+    ].filter(Boolean).join(' — '),
+  };
+}
+
+const CHUNK_SIZE = 100;
+
+/**
+ * Inserts validated rows, keeping the good ones when a row is bad.
+ *
+ * Every bulk importer used to run `insertMany` inside a transaction, which is
+ * ordered and all-or-nothing: one duplicate in a 100-row chunk rolled back the
+ * other 99 and reported all 100 as failed, each blamed for the *offending*
+ * row's problem. That is the "bulk import silently does nothing" the QA report
+ * describes — the file was correct apart from one line.
+ *
+ * Unordered and untransacted, MongoDB inserts every row it can and reports the
+ * rest individually by index, which is exactly the per-row report a CSV import
+ * owes its user. A partial import is the right outcome here: the rows that
+ * were accepted are real, and the report names the ones to fix and re-upload.
+ *
+ * @param {import('mongoose').Model} Model
+ * @param {{rowNo:number, doc:object}[]} validRows
+ * @param {{dupField?:string, dupLabel?:string}} opts  Which field a duplicate
+ *   key error is about, so the message can name the value rather than echo a
+ *   raw E11000.
+ */
+export async function insertRows(Model, validRows, { dupField, dupLabel } = {}) {
+  const results = { imported: 0, failed: 0, errors: [] };
+
+  for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
+    const chunk = validRows.slice(i, i + CHUNK_SIZE);
+    try {
+      await Model.insertMany(chunk.map((c) => c.doc), { ordered: false });
+      results.imported += chunk.length;
+    } catch (err) {
+      // `writeErrors` carries the index of each row that failed *within this
+      // chunk*; everything not named in it was written.
+      const writeErrors = err?.writeErrors ?? (err?.index !== undefined ? [err] : []);
+      const failedIndexes = new Map(
+        writeErrors.map((we) => [we.index ?? we.err?.index, we])
+      );
+
+      chunk.forEach((c, idx) => {
+        const we = failedIndexes.get(idx);
+        if (!we && failedIndexes.size) {
+          results.imported += 1;
+          return;
+        }
+        // No index information at all (a non-write failure, e.g. the
+        // connection): the whole chunk is genuinely unaccounted for.
+        const cause = we ?? err;
+        const code = cause?.code ?? cause?.err?.code;
+        results.failed += 1;
+        results.errors.push(
+          code === 11000 && dupField
+            ? rowError(c.rowNo, {
+              field: dupLabel ?? dupField,
+              value: c.doc[dupField],
+              problem: 'already exists',
+              suggestion: 'remove the row, or give it a value that is not taken',
+            })
+            : rowError(c.rowNo, {
+              problem: cause?.errmsg ?? cause?.err?.errmsg ?? cause?.message ?? 'could not be saved',
+            })
+        );
+      });
+    }
+  }
+
+  return results;
+}

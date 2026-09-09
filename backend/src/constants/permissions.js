@@ -72,6 +72,18 @@ export const PERMISSION_CATALOG = [
   { key: 'fees.pay', group: 'fees', description: 'Make a fee payment' },
   { key: 'fees.payments.refund', group: 'fees', description: 'Refund a fee payment' },
 
+  // Fee-plan and payment governance.
+  //
+  // The split here is the whole point of the approval workflow: `.request` and
+  // `.review` are preparation, `.approve` is authority. Finance holds the
+  // first two and must never hold the third — that is what stops a payment or
+  // an installment plan becoming final without an admin, and it is enforced by
+  // which keys each role is granted below, not by anything in the UI.
+  { key: 'fees.plan.request', group: 'fees', description: 'Draft and submit a student installment/payment plan' },
+  { key: 'fees.plan.review', group: 'fees', description: 'Review a submitted installment plan and send it for admin approval' },
+  { key: 'fees.plan.approve', group: 'fees', description: 'Approve, reject and publish student installment plans' },
+  { key: 'fees.payments.approve', group: 'fees', description: 'Approve, reject, publish and amend finalized student payment records' },
+
   // communication
   { key: 'announcements.read', group: 'communication', description: 'View announcements' },
   { key: 'announcements.publish', group: 'communication', description: 'Publish announcements' },
@@ -91,6 +103,15 @@ export const PERMISSION_CATALOG = [
   // admissions
   { key: 'admissions.read', group: 'admissions', description: 'View admission leads/pipeline' },
   { key: 'admissions.manage', group: 'admissions', description: 'Create/update admission leads' },
+
+  // Student self-service requests (co-curricular achievements, profile corrections).
+  // Both are student-raised and class-teacher-reviewed, so each has a separate
+  // "request" and "review" key rather than one shared manage key.
+  { key: 'cocurricular.read', group: 'students', description: 'View co-curricular activity records and requests' },
+  { key: 'cocurricular.request', group: 'students', description: 'Request that a co-curricular activity be added to a profile' },
+  { key: 'cocurricular.review', group: 'students', description: 'Approve or reject co-curricular activity requests' },
+  { key: 'profile.edit.request', group: 'students', description: 'Request a correction to profile information' },
+  { key: 'profile.edit.review', group: 'students', description: 'Approve or reject student profile edit requests' },
 
   // Library
   { key: 'library.read', group: 'library', description: 'View book catalog and lending records' },
@@ -171,6 +192,9 @@ export const SYSTEM_ROLES = [
       ['academics.structure.manage', 'ALL'],
       ['academics.read', 'ALL'],
       ['registrations.review', 'ALL'],
+      ['cocurricular.read', 'ALL'],
+      ['cocurricular.review', 'ALL'],
+      ['profile.edit.review', 'ALL'],
     ]),
   },
   {
@@ -194,6 +218,11 @@ export const SYSTEM_ROLES = [
       // Scoped OWN: the review queue and every decision are filtered to
       // electives in sections this teacher actually teaches.
       ['registrations.review', 'OWN'],
+      // Class-teacher review of student-raised requests. OWN keeps each teacher
+      // to the sections they are class teacher of.
+      ['cocurricular.read', 'OWN'],
+      ['cocurricular.review', 'OWN'],
+      ['profile.edit.review', 'OWN'],
       // Read-only — allergy/emergency-contact visibility for a teacher's own
       // students; medical.manage stays parent/admin-only.
       ['medical.read', 'OWN'],
@@ -247,6 +276,9 @@ export const SYSTEM_ROLES = [
       ['leave.apply', 'OWN'],
       ['leave.read', 'OWN'],
       ['registrations.apply', 'OWN'],
+      ['cocurricular.read', 'OWN'],
+      ['cocurricular.request', 'OWN'],
+      ['profile.edit.request', 'OWN'],
       // The catalog itself isn't owned by anyone; OWN here means "your own
       // issued-books list", which listIssues() enforces server-side by
       // overriding any studentId a non-ALL-scope caller sends.
@@ -282,6 +314,13 @@ export const SYSTEM_ROLES = [
       // refused it, while every other fee capability was granted.
       ['fees.pay', 'ALL'],
       ['fees.payments.refund', 'ALL'],
+      // Finance prepares and reviews; it does not approve. `fees.plan.approve`
+      // and `fees.payments.approve` are deliberately absent — a payment Finance
+      // registers stays PENDING_ADMIN_APPROVAL, and an installment plan it
+      // reviews goes to an admin rather than live. Granting either key here
+      // would undo the separation of duties the whole workflow exists for.
+      ['fees.plan.request', 'ALL'],
+      ['fees.plan.review', 'ALL'],
       ['announcements.read', 'ALL'],
       ['analytics.school.read', 'ALL'],
       ['ai.copilot.use', 'ALL'],

@@ -8,7 +8,27 @@ import { recordPayment } from '../src/modules/fees/fee.service.js';
  * (no overpayment guard).
  */
 
-const STAFF = { profileId: new mongoose.Types.ObjectId().toString(), roleKey: 'FINANCE' };
+/**
+ * An actor holding `fees.payments.approve` — an admin. Only such an actor
+ * publishes a payment directly, so it is the one these ledger tests use: the
+ * atomicity and overpayment behaviour being covered here is the behaviour of
+ * the crediting path.
+ *
+ * A Finance actor (below) takes the approval path instead, which credits
+ * nothing until an admin approves. That split is covered in its own describe
+ * block at the end of this file.
+ */
+const STAFF = {
+  profileId: new mongoose.Types.ObjectId().toString(),
+  roleKey: 'ADMIN',
+  permissions: { 'fees.pay': 'ALL', 'fees.payments.approve': 'ALL' },
+};
+
+const FINANCE = {
+  profileId: new mongoose.Types.ObjectId().toString(),
+  roleKey: 'FINANCE',
+  permissions: { 'fees.pay': 'ALL' },
+};
 
 /** ₹500.00 invoice. Money is in paise throughout. */
 const TOTAL = 50_000;

@@ -3,6 +3,10 @@ import { AppError } from '../../utils/AppError.js';
 import { SubjectOffering } from '../../models/academics.model.js';
 import { getTeacherSectionIds, getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
 import { Enrollment } from '../../models/student.model.js';
+// Registered, not assumed: the list populates the teacher's profile, and
+// populate needs the model present even when a caller has imported only the
+// assignments module.
+import '../../models/profile.model.js';
 
 /** Resolve the ACTIVE enrollment ids for the actor's own student(s). */
 async function getOwnEnrollmentIds(actor) {
@@ -45,6 +49,9 @@ export async function list(actor, scope, query = {}) {
       populate: [
         { path: 'subjectId', select: 'name' },
         { path: 'sectionId', select: 'name', populate: { path: 'gradeId', select: 'name' } },
+        // Who set the work. Surfaced so a student can search their assignment
+        // list by teacher alongside subject and title.
+        { path: 'teacherId', select: 'displayName' },
       ],
     })
     .sort({ dueAt: -1 })
@@ -79,6 +86,7 @@ export async function list(actor, scope, query = {}) {
       maxMarks: a.maxMarks ?? null,
       attachments: a.attachments ?? [],
       subject: offering?.subjectId?.name ?? 'Subject',
+      teacher: offering?.teacherId?.displayName ?? null,
       subjectId: offering?.subjectId?._id ?? null,
       class: section ? [section.gradeId?.name, section.name].filter(Boolean).join(' - ') : '—',
       gradeId: section?.gradeId?._id ?? null,

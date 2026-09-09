@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Card, EmptyState, SkeletonRows, Pill, useToast } from '@/components/ui';
+import { Card, DateRangeFilter, EmptyState, FilterBar, Pill, SearchInput, SkeletonRows, matchesSearch, useToast, withinDateRange } from '@/components/ui';
 import { IdCardPanel } from '@/components/id-card-action';
 import { api, ApiError } from '@/lib/api';
 import type { DocumentDto } from '@/lib/types';
@@ -12,6 +12,8 @@ export default function StudentDocuments() {
   const [documents, setDocuments] = useState<DocumentDto[] | null>(null);
   const [ownStudentId, setOwnStudentId] = useState<string | undefined>(undefined);
   const [activeTypeFilter, setActiveTypeFilter] = useState('ALL');
+  const [search, setSearch] = useState('');
+  const [range, setRange] = useState({ from: '', to: '' });
   const [loading, setLoading] = useState(true);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const toast = useToast();
@@ -26,10 +28,12 @@ export default function StudentDocuments() {
     api.students().then((r) => setOwnStudentId(r.items[0]?.id)).catch(() => {});
   }, []);
 
-  const filteredDocs = documents?.filter((d) => {
-    if (activeTypeFilter === 'ALL') return true;
-    return d.type === activeTypeFilter;
-  }) ?? [];
+  // One box across every column on screen, rather than a field per column.
+  const filteredDocs = useMemo(() => (documents ?? []).filter((d) => {
+    if (activeTypeFilter !== 'ALL' && d.type !== activeTypeFilter) return false;
+    if (!withinDateRange(d.issuedAt, range.from, range.to)) return false;
+    return matchesSearch(search, [d.title, d.type.replace('_', ' '), fmtIssued(d.issuedAt)]);
+  }), [documents, activeTypeFilter, range, search]);
 
   const openDoc = async (d: DocumentDto) => {
     setOpeningId(d.id);
@@ -46,7 +50,17 @@ export default function StudentDocuments() {
     <PortalShell expectedSlug="student" topbar={{ title: 'My Documents', desc: 'Your ID card, report cards, and personal letters.' }}>
       <IdCardPanel studentId={ownStudentId} />
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <FilterBar>
+        <SearchInput
+          label="Search documents"
+          value={search}
+          onChange={setSearch}
+          placeholder="Name, type, date…"
+        />
+        <DateRangeFilter label="Issued date" from={range.from} to={range.to} onChange={setRange} />
+      </FilterBar>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
         {DOC_TYPES.map((t) => (
           <button key={t} className={`chip-tab ${activeTypeFilter === t ? 'active' : ''}`} onClick={() => setActiveTypeFilter(t)}>
             {t === 'ALL' ? 'All Files' : t.replace('_', ' ')}
@@ -74,7 +88,7 @@ export default function StudentDocuments() {
                 <tr key={d.id}>
                   <td className="cell-primary" data-label="Document Name">{d.title}</td>
                   <td data-label="Type"><Pill tone="blue">{d.type}</Pill></td>
-                  <td data-label="Issued Date">{new Date(d.issuedAt).toLocaleDateString('en-IN')}</td>
+                  <td data-label="Issued Date">{fmtIssued(d.issuedAt)}</td>
                   <td data-label="Action">
                     <button className="btn btn-soft btn-sm" onClick={() => openDoc(d)} disabled={openingId === d.id}>
                       {openingId === d.id ? 'Opening…' : 'Download / View'}
@@ -88,4 +102,9 @@ export default function StudentDocuments() {
       </Card>
     </PortalShell>
   );
+}
+
+function fmtIssued(iso: string) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-IN');
 }
