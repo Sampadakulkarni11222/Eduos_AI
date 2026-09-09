@@ -163,6 +163,31 @@ async function seedSchool() {
     });
   }
 
+  // The two OTP-only demo identities must point at real school records so
+  // their portals exercise the same populated paths as the staff accounts.
+  const demoStudentAccount = await Account.create({
+    phoneE164: '+910000000008',
+    passwordHash: null,
+    status: 'ACTIVE',
+  });
+  const demoStudentProfile = await Profile.create({
+    accountId: demoStudentAccount._id,
+    roleId: roleMap.get('STUDENT'),
+    displayName: 'Demo Student',
+    tenantId: SEED_SCHOOL_SLUG, tenantName: SEED_SCHOOL_NAME,
+  });
+  const demoParentAccount = await Account.create({
+    phoneE164: '+910000000007',
+    passwordHash: null,
+    status: 'ACTIVE',
+  });
+  const demoParentProfile = await Profile.create({
+    accountId: demoParentAccount._id,
+    roleId: roleMap.get('PARENT'),
+    displayName: 'Demo Parent',
+    tenantId: SEED_SCHOOL_SLUG, tenantName: SEED_SCHOOL_NAME,
+  });
+
   // 4. Seed 15 Teachers (3 per subject, with names, emails, and phone numbers).
   // Three teachers per subject is the minimum that lets every one of the 12
   // sections get every subject every day without any teacher being double
@@ -349,41 +374,38 @@ async function seedSchool() {
       const admissionNo = `ADM-2026-${String(count).padStart(4, '0')}`;
 
       // Student Account & Profile IDs
-      const sAccId = new mongoose.Types.ObjectId();
-      const sProfId = new mongoose.Types.ObjectId();
+      const sAccId = count === 1 ? demoStudentAccount._id : new mongoose.Types.ObjectId();
+      const sProfId = count === 1 ? demoStudentProfile._id : new mongoose.Types.ObjectId();
       const sStudentId = new mongoose.Types.ObjectId();
       const sEnrollId = new mongoose.Types.ObjectId();
 
       const sPhone = `+910000003${String(count).padStart(3, '0')}`;
       const sEmail = `student.${count}@schoolerp.com`;
 
-      accountsToInsert.push({
-        _id: sAccId,
-        phoneE164: sPhone,
-        email: sEmail,
-        passwordHash,
-        status: 'ACTIVE',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      if (count !== 1) {
+        accountsToInsert.push({
+          _id: sAccId,
+          phoneE164: sPhone,
+          email: sEmail,
+          passwordHash,
+          status: 'ACTIVE',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
 
-      profilesToInsert.push({
-        _id: sProfId,
-        accountId: sAccId,
-        roleId: roleMap.get('STUDENT'),
-        displayName: `${displayName} (${gradeLabel}–${section.name} #${i})`,
-        // Without this the profile falls back to the schema default
-        // ('eduos-demo-tenant') while this student's Student, Enrollment and
-        // AttendanceRecord rows are all stamped with the seed school. The
-        // account then signs in scoped to a school that owns none of its own
-        // data, and every OWN-scoped read -- attendance, fees, results,
-        // timetable -- resolves to nothing. Staff and teacher profiles above
-        // have always set it; students and parents were the two that did not.
-        tenantId: SEED_SCHOOL_SLUG,
-        tenantName: SEED_SCHOOL_NAME,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      if (count !== 1) {
+        profilesToInsert.push({
+          _id: sProfId,
+          accountId: sAccId,
+          roleId: roleMap.get('STUDENT'),
+          displayName: `${displayName} (${gradeLabel}–${section.name} #${i})`,
+          tenantId: SEED_SCHOOL_SLUG,
+          tenantName: SEED_SCHOOL_NAME,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
 
       studentsToInsert.push({
         _id: sStudentId,
@@ -411,32 +433,36 @@ async function seedSchool() {
       });
 
       // Parent Account & Profile IDs
-      const pAccId = new mongoose.Types.ObjectId();
-      const pProfId = new mongoose.Types.ObjectId();
+      const pAccId = count === 1 ? demoParentAccount._id : new mongoose.Types.ObjectId();
+      const pProfId = count === 1 ? demoParentProfile._id : new mongoose.Types.ObjectId();
 
       const pPhone = `+910000004${String(count).padStart(3, '0')}`;
       const pEmail = `parent.${count}@schoolerp.com`;
 
-      accountsToInsert.push({
-        _id: pAccId,
-        phoneE164: pPhone,
-        email: pEmail,
-        passwordHash,
-        status: 'ACTIVE',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      if (count !== 1) {
+        accountsToInsert.push({
+          _id: pAccId,
+          phoneE164: pPhone,
+          email: pEmail,
+          passwordHash,
+          status: 'ACTIVE',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
 
-      profilesToInsert.push({
-        _id: pProfId,
-        accountId: pAccId,
-        roleId: roleMap.get('PARENT'),
-        displayName: `Parent of ${first}`,
-        tenantId: SEED_SCHOOL_SLUG,
-        tenantName: SEED_SCHOOL_NAME,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
+      if (count !== 1) {
+        profilesToInsert.push({
+          _id: pProfId,
+          accountId: pAccId,
+          roleId: roleMap.get('PARENT'),
+          displayName: `Parent of ${first}`,
+          tenantId: SEED_SCHOOL_SLUG,
+          tenantName: SEED_SCHOOL_NAME,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      }
 
       const relation = i % 2 === 0 ? 'FATHER' : 'MOTHER';
       guardiansToInsert.push({
@@ -877,8 +903,8 @@ async function seedSchool() {
   logger.info(' - Principal: principal@schoolerp.com / ChangeMe@123!');
   logger.info(' - Teacher 1: teacher@schoolerp.com / ChangeMe@123! (+910000000003)');
   logger.info(' - Teacher 2: priya.science@schoolerp.com / ChangeMe@123! (+910000000011)');
-  logger.info(' - Student 1: student.1@schoolerp.com / ChangeMe@123! (+910000003001)');
-  logger.info(' - Parent 1:  parent.1@schoolerp.com / ChangeMe@123! (+910000004001)');
+  logger.info(' - Student:   OTP only (+910000000008)');
+  logger.info(' - Parent:    OTP only (+910000000007)');
   logger.info('====================================================');
 
   await mongoose.disconnect();

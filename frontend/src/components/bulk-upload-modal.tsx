@@ -72,7 +72,7 @@ export function BulkUploadModal({
         alignItems: 'center', justifyContent: 'center', padding: 24,
       }}
     >
-      <div style={{ width: '100%', maxWidth: 540 }}>
+      <div style={{ width: '100%', maxWidth: 540 }} onClick={(e) => e.stopPropagation()}>
         <Card style={{ padding: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
             <div style={{ fontFamily: 'Newsreader, serif', fontSize: 18, fontWeight: 700 }}>{title}</div>

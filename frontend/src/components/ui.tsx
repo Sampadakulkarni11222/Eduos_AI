@@ -12,6 +12,7 @@ export function Button({
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant; small?: boolean }) {
   return (
     <button
+      type="button"
       className={cx('btn', `btn-${variant}`, small && 'btn-sm', className)}
       {...props}
     />

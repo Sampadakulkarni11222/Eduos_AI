@@ -660,38 +660,32 @@ export async function bulkEnroll({ sectionId, academicYearId, rows }) {
     });
   }
 
-  // Chunk and insert
-  const CHUNK_SIZE = 100;
-  for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
-    const chunk = validRows.slice(i, i + CHUNK_SIZE);
+  for (const row of validRows) {
     try {
       await runInTransaction(async (session) => {
-        const docsToInsert = chunk.map(c => c.doc);
-        await Enrollment.insertMany(docsToInsert, { session });
+        await Enrollment.create([row.doc], { session });
       });
-      results.imported += chunk.length;
+      results.imported++;
     } catch (err) {
-      results.failed += chunk.length;
-      chunk.forEach(c => {
-        const rollNo = c.doc.rollNo;
-        if (err.code === 11000 && err.keyPattern?.rollNo) {
-          results.errors.push(rowError(c.rowNo, {
-            field: 'rollNo',
-            value: rollNo,
-            problem: 'is already assigned in this section',
-            suggestion: 'use a free roll number, or leave the column blank',
-          }));
-        } else if (err.code === 11000) {
-          results.errors.push(rowError(c.rowNo, {
-            field: 'admissionNo',
-            value: c.admissionNo,
-            problem: 'is already enrolled for the selected academic year',
-            suggestion: 'remove the row, or choose a different academic year',
-          }));
-        } else {
-          results.errors.push(rowError(c.rowNo, { problem: err.message }));
-        }
-      });
+      results.failed++;
+      const rollNo = row.doc.rollNo;
+      if (err.code === 11000 && err.keyPattern?.rollNo) {
+        results.errors.push(rowError(row.rowNo, {
+          field: 'rollNo',
+          value: rollNo,
+          problem: 'is already assigned in this section',
+          suggestion: 'use a free roll number, or leave the column blank',
+        }));
+      } else if (err.code === 11000) {
+        results.errors.push(rowError(row.rowNo, {
+          field: 'admissionNo',
+          value: row.admissionNo,
+          problem: 'is already enrolled for the selected academic year',
+          suggestion: 'remove the row, or choose a different academic year',
+        }));
+      } else {
+        results.errors.push(rowError(row.rowNo, { problem: err.message }));
+      }
     }
   }
 

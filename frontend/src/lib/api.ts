@@ -191,7 +191,7 @@ async function uploadFile(file: File): Promise<UploadResult> {
 }
 
 /** Multipart CSV upload (bulk imports). Extra non-file fields go alongside the file. */
-async function uploadCsv(path: string, file: File, fields: Record<string, string> = {}): Promise<BulkImportResult> {
+async function uploadCsv(path: string, file: File, fields: Record<string, string> = {}, retried = false): Promise<BulkImportResult> {
   const form = new FormData();
   Object.entries(fields).forEach(([k, v]) => form.append(k, v));
   form.append('file', file);
@@ -200,6 +200,9 @@ async function uploadCsv(path: string, file: File, fields: Record<string, string
     headers: authHeaders(),
     body: form,
   });
+  if (res.status === 401 && !retried && (await refresh())) {
+    return uploadCsv(path, file, fields, true);
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new ApiError(res.status, body?.error?.code ?? 'UPLOAD_FAILED', body?.message ?? 'Upload failed');

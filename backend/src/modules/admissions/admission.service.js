@@ -265,24 +265,16 @@ export async function bulkCreateLeads(rows) {
     });
   }
 
-  // Chunk and insert
-  const CHUNK_SIZE = 100;
-  for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
-    const chunk = validRows.slice(i, i + CHUNK_SIZE);
+  for (const row of validRows) {
     try {
       await runInTransaction(async (session) => {
-        const docsToInsert = chunk.map(c => c.doc);
-        const createdLeads = await Lead.insertMany(docsToInsert, { session });
-        for (const lead of createdLeads) {
-          await ensureStudentForEnrolledLead(lead, session);
-        }
+        const [lead] = await Lead.create([row.doc], { session });
+        await ensureStudentForEnrolledLead(lead, session);
       });
-      results.imported += chunk.length;
+      results.imported++;
     } catch (err) {
-      results.failed += chunk.length;
-      chunk.forEach(c => {
-        results.errors.push(rowError(c.rowNo, { problem: err.message }));
-      });
+      results.failed++;
+      results.errors.push(rowError(row.rowNo, { problem: err.message }));
     }
   }
 
