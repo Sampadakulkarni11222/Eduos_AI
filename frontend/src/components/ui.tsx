@@ -290,7 +290,7 @@ export function Modal({
       >
         <div className="modal-header">
           <span className="modal-title" id={titleId}>{title}</span>
-          <button className="modal-close" onClick={onClose} aria-label="Close dialog">×</button>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Close dialog">×</button>
         </div>
         {children}
         {footer && <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>{footer}</div>}

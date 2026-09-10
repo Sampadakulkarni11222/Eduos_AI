@@ -4,6 +4,7 @@ import { Role } from '../../models/role.model.js';
 import { Student, Enrollment } from '../../models/student.model.js';
 import { AcademicYear, Section } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
+import { normalizePhone } from '../../utils/phone.js';
 import { tenantFilter } from '../../tenancy/tenantContext.js';
 import { register } from '../auth/auth.service.js';
 import { enroll } from '../students/student.service.js';
@@ -295,9 +296,7 @@ export async function createUser(data) {
   if (!VALID_ROLE_KEYS.has(String(roleKey).toUpperCase())) {
     throw new AppError(`Invalid roleKey "${roleKey}"`, 400);
   }
-  if (!E164.test(String(phone).trim())) {
-    throw new AppError('phone must be in E.164 format, e.g. +919876543210', 400);
-  }
+  const normalizedPhone = normalizePhone(phone);
   if (email && !EMAIL_RE.test(String(email).trim())) {
     throw new AppError('email is not a valid email address', 400);
   }
@@ -307,7 +306,7 @@ export async function createUser(data) {
 
   const { account, profile } = await register({
     name: displayName,
-    phone,
+    phone: normalizedPhone,
     email,
     password,
     roleKey: roleKey.toUpperCase(),

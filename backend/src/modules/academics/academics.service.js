@@ -15,6 +15,7 @@ import { runInTransaction } from '../../utils/transaction.js';
 import { SubjectRegistration } from '../../models/subjectRegistration.model.js';
 import { tenantFilter } from '../../tenancy/tenantContext.js';
 import { insertRows, rowError } from '../../utils/csvImport.js';
+import { normalizePhone } from '../../utils/phone.js';
 
 // Chunked, unordered insertion now lives in utils/csvImport.js so every bulk
 // importer reports failures the same way — and so one bad row stops costing
@@ -254,7 +255,18 @@ export async function bulkCreateSections(rows) {
     let classTeacherId;
     const phone = row.classteacherphone?.trim();
     if (phone) {
-      const account = await Account.findOne({ phoneE164: phone });
+      let normalizedPhone;
+      try {
+        normalizedPhone = normalizePhone(phone);
+      } catch (err) {
+        results.failed++;
+        results.errors.push(rowError(rowNo, {
+          field: 'classTeacherPhone', value: phone, problem: err.message,
+          suggestion: 'use 9876543210, +91 98765 43210, or 0091-9876543210',
+        }));
+        continue;
+      }
+      const account = await Account.findOne({ phoneE164: normalizedPhone });
       // Accounts are platform-wide, so the phone alone can name someone who
       // teaches at a different school; the profile has to be one of ours, or
       // an import would hand a section to another school's teacher.

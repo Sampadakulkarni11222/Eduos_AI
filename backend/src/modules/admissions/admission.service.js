@@ -9,6 +9,7 @@ import { runInTransaction } from '../../utils/transaction.js';
 import { nextSequence } from '../../utils/sequence.js';
 import { logger } from '../../utils/logger.js';
 import { rowError } from '../../utils/csvImport.js';
+import { normalizePhone } from '../../utils/phone.js';
 
 // Helper: map a raw Lead doc to the DTO the frontend expects
 function toLeadDto(lead) {
@@ -215,14 +216,26 @@ export async function bulkCreateLeads(rows) {
     const row = rows[i];
     const childName = row.childname?.trim();
     const guardianName = row.guardianname?.trim();
-    const phone = row.phone?.trim();
+    const rawPhone = row.phone?.trim();
 
-    if (!childName || !guardianName || !phone) {
+    if (!childName || !guardianName || !rawPhone) {
       results.failed++;
       results.errors.push(rowError(rowNo, {
         field: !row.childname ? 'childName' : !row.guardianname ? 'guardianName' : 'phone',
         problem: 'is required',
         suggestion: 'every lead needs the child, the guardian and a contact number',
+      }));
+      continue;
+    }
+
+    let phone;
+    try {
+      phone = normalizePhone(rawPhone);
+    } catch (err) {
+      results.failed++;
+      results.errors.push(rowError(rowNo, {
+        field: 'phone', value: rawPhone, problem: err.message,
+        suggestion: 'use 9876543210, +91 98765 43210, or 0091-9876543210',
       }));
       continue;
     }

@@ -12,6 +12,8 @@
 credentials.md
 
 session
+!frontend/src/app/api/session/
+!frontend/src/app/api/session/**
 
 # Personal Claude Code permission overrides (per-developer, not team-wide)
 .claude/settings.local.json

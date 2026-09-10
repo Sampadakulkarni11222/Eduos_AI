@@ -206,7 +206,7 @@ export function PortalShell({
         <div className="topbar">
           <div className="topbar-headrow">
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-              <button className="hamburger-btn" onClick={() => setMobileOpen(true)} aria-label="Open Menu">
+              <button type="button" className="hamburger-btn" onClick={() => setMobileOpen(true)} aria-label="Open Menu">
                 ☰
               </button>
               <div style={{ minWidth: 0 }}>
@@ -316,7 +316,7 @@ function Sidebar({
           <div className="sidebar-school-name">{schoolName}</div>
           <div className="sidebar-school-sub">{portal.sublabel}</div>
         </div>
-        <button className="sidebar-close-btn" onClick={() => setMobileOpen(false)} aria-label="Close Menu">
+        <button type="button" className="sidebar-close-btn" onClick={() => setMobileOpen(false)} aria-label="Close Menu">
           ✕
         </button>
         <button

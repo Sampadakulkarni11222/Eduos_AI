@@ -5,6 +5,7 @@ import { AppError } from '../../utils/AppError.js';
 import { Enrollment } from '../../models/student.model.js';
 import { getOwnStudentId, getGuardianStudentIds, getTeacherSectionIds } from '../../utils/scope.js';
 import { insertRows, rowError } from '../../utils/csvImport.js';
+import { normalizePhone } from '../../utils/phone.js';
 
 /**
  * The student id(s) this actor may query a bus assignment for.
@@ -180,13 +181,27 @@ export async function bulkCreateRoutes(rows) {
       }));
       continue;
     }
+    let driverPhone;
+    if (row.driverphone?.trim()) {
+      try {
+        driverPhone = normalizePhone(row.driverphone);
+      } catch (err) {
+        results.failed++;
+        results.errors.push(rowError(rowNo, {
+          field: 'driverPhone', value: row.driverphone,
+          problem: err.message,
+          suggestion: 'use 9876543210, +91 98765 43210, or 0091-9876543210',
+        }));
+        continue;
+      }
+    }
     docs.push({
       rowNo,
       name,
       operatorName: row.operatorname?.trim() || undefined,
       vehicleNo: row.vehicleno?.trim() || undefined,
       driverName: row.drivername?.trim() || undefined,
-      driverPhone: row.driverphone?.trim() || undefined,
+      driverPhone,
     });
   }
 
