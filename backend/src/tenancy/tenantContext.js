@@ -61,3 +61,32 @@ export function tenantFilter() {
   const tenantId = currentTenantId();
   return tenantId ? { tenantId } : {};
 }
+
+/**
+ * The whole tenant context, as three distinguishable states.
+ *
+ * currentTenantId() collapses "no context" and "deliberately cross-school"
+ * into the same null. That is the right answer for a query filter and the
+ * wrong one for anybody who has to *re-establish* the context later. The MCP
+ * server does exactly that: a tool call arrives over an in-process transport
+ * and must run inside the same school the caller was in — not merely inside
+ * something that happens to filter the same way.
+ */
+export function currentTenantState() {
+  const ctx = store.getStore();
+  if (!ctx) return { tenantId: null, bypass: false, scoped: false };
+  if (ctx.bypass) return { tenantId: null, bypass: true, scoped: false };
+  return { tenantId: ctx.tenantId ?? null, bypass: false, scoped: Boolean(ctx.tenantId) };
+}
+
+/**
+ * Runs `fn` in a previously captured tenant state.
+ *
+ * The three states are not interchangeable: pinning a Super Admin to a school
+ * they never chose is as wrong as letting a school-level actor run unscoped.
+ */
+export function runInTenantState(state, fn) {
+  if (state?.bypass) return runAcrossSchools(fn);
+  if (state?.tenantId) return runWithTenant(state.tenantId, fn);
+  return Promise.resolve().then(fn);
+}

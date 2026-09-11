@@ -7,11 +7,26 @@ import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '..
 import { gradeForPercentage, percentage, summarise } from '../../utils/grading.js';
 import { notify } from '../notifications/notification.service.js';
 
-export const createExam = (data) => Exam.create(data);
+/**
+ * The term and the subject offering must exist in the acting school. These
+ * used to be written against whatever ids arrived, so an exam could be filed
+ * under another school's term, or an exam subject point at another school's
+ * class — rows that belong to no timetable anyone can see. The lookups go
+ * through the tenant-scoped models, so a foreign id is "not found".
+ */
+export async function createExam(data) {
+  const term = await Term.findById(data.termId);
+  if (!term) throw new AppError('Term not found', 404);
+  return Exam.create(data);
+}
 
 export async function createExamSubject(data) {
-  const exam = await Exam.findById(data.examId);
+  const [exam, offering] = await Promise.all([
+    Exam.findById(data.examId),
+    SubjectOffering.findById(data.subjectOfferingId),
+  ]);
   if (!exam) throw new AppError('Exam not found', 404);
+  if (!offering) throw new AppError('Subject offering not found', 404);
   return ExamSubject.create(data);
 }
 

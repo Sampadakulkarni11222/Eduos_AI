@@ -103,6 +103,15 @@ export const TOOLS = {
         throw err;
       }
 
+      // A teacher's own scope is their pupils, so "my attendance" comes back as
+      // one entry per pupil. That is not the teacher's attendance — EduOS keeps
+      // none for staff — and reading it out as if it were would be wrong. (A
+      // parent with several children gets the same shape and keeps the answer
+      // below; they are asking about their children.)
+      if (actor.roleKey === 'TEACHER' && summary && summary.enrollmentId === undefined) {
+        return { speakKey: 'attendance.noEnrolment', data: null };
+      }
+
       return summary?.pctPresent != null
         ? {
             speakKey: 'attendance.summary',

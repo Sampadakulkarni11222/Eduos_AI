@@ -90,10 +90,20 @@ export async function list(actor, scope, query = {}) {
   if (query.search) {
     const rx = { $regex: escapeRegex(query.search), $options: 'i' };
     const classMatchIds = await studentIdsMatchingClass(query.search);
+    // A full name ("Rahul Sharma") spans two fields, so neither matches it on
+    // its own: split it into first name + the rest as a surname.
+    const [first, ...others] = String(query.search).trim().split(/\s+/);
+    const fullName = others.length
+      ? [{
+          firstName: { $regex: escapeRegex(first), $options: 'i' },
+          lastName: { $regex: escapeRegex(others.join(' ')), $options: 'i' },
+        }]
+      : [];
     filter.$or = [
       { firstName: rx },
       { lastName: rx },
       { admissionNo: rx },
+      ...fullName,
       ...(classMatchIds.length ? [{ _id: { $in: classMatchIds } }] : []),
     ];
   }
@@ -200,8 +210,14 @@ export async function getById(actor, scope, id, { via = 'students.api', audit = 
  * narrower visibility rules (class-teacher-only medical, subject-teacher-only
  * marks/assignments).
  */
-export async function getOverview(actor, scope, id) {
+export async function getOverview(actor, scope, id, { sections = null } = {}) {
   const student = await getById(actor, scope, id, { via: 'students.overview' }); // throws 404 if not visible to this actor
+
+  // A caller may name the sections it needs. The panel names none and gets
+  // everything, as before; the assistant names only what the question asked
+  // for, so guardian contacts are not loaded — and medical data is neither
+  // decrypted nor recorded as disclosed — for a question that did not ask.
+  const wants = (section) => !sections || sections.includes(section);
 
   // Class teacher and CR are populated the same way the parent dashboard does
   // it (dashboard.service.js), so a student sees exactly what their guardian
@@ -247,11 +263,13 @@ export async function getOverview(actor, scope, id) {
       }
     : null;
 
-  const guardianLinks = await StudentGuardian.find({ studentId: id }).populate({
-    path: 'guardianProfileId',
-    select: 'displayName accountId',
-    populate: { path: 'accountId', select: 'phoneE164 email' },
-  });
+  const guardianLinks = wants('guardians')
+    ? await StudentGuardian.find({ studentId: id }).populate({
+        path: 'guardianProfileId',
+        select: 'displayName accountId',
+        populate: { path: 'accountId', select: 'phoneE164 email' },
+      })
+    : [];
   const guardians = guardianLinks.map((g) => ({
     name: g.guardianProfileId?.displayName ?? 'Unknown',
     relation: g.relation,
@@ -261,10 +279,12 @@ export async function getOverview(actor, scope, id) {
   }));
 
   let medical = null;
-  try {
-    medical = await medicalService.getByStudentId(actor, scope, id, { via: 'students.overview' });
-  } catch {
-    // No record, or (for a TEACHER) not this section's class teacher — omit.
+  if (wants('medical')) {
+    try {
+      medical = await medicalService.getByStudentId(actor, scope, id, { via: 'students.overview' });
+    } catch {
+      // No record, or (for a TEACHER) not this section's class teacher — omit.
+    }
   }
 
   let attendance = null;
@@ -399,7 +419,32 @@ export async function setPhoto(actor, scope, id, photoUrl) {
 
 export const create = (data) => Student.create(data);
 
+/**
+ * The fields update() may change, for every caller.
+ *
+ * update() is an Object.assign over the student, and it used to accept
+ * anything — so a request carrying `tenantId`, `deletedAt`, `anonymisedAt`,
+ * `status` or `profileId` would have written it. Those are system-controlled:
+ * tenancy is stamped by the plugin, deletion and erasure have their own audited
+ * paths (softDelete, anonymiseStudent), status follows the enrolment lifecycle,
+ * the login link is set on provisioning, and the photo has setPhoto(). The
+ * guard lives here, not only in the assistant's tool, so the REST route and
+ * any future caller get the same protection.
+ *
+ * The assistant's update_student tool is stricter still: it may not change
+ * admissionNo either (see ai/mcp/tools/students.js).
+ */
+export const STUDENT_EDITABLE_FIELDS = ['admissionNo', 'firstName', 'lastName', 'dob', 'gender', 'address'];
+
 export async function update(id, updates) {
+  const refused = Object.keys(updates ?? {}).filter((field) => !STUDENT_EDITABLE_FIELDS.includes(field));
+  if (refused.length) {
+    throw new AppError(
+      `These fields cannot be changed through a student update: ${refused.join(', ')}. ` +
+        `Editable: ${STUDENT_EDITABLE_FIELDS.join(', ')}.`,
+      400, refused, 'FIELD_NOT_EDITABLE',
+    );
+  }
   const student = await Student.findOne({ _id: id, deletedAt: null });
   if (!student) throw new AppError('Student not found', 404);
   Object.assign(student, updates);
@@ -721,6 +766,12 @@ export async function listEnrollments(filter = {}) {
     const g = sec?.gradeId;
     return {
       id: e._id.toString(),
+      // Additive: the ids behind the display strings, so a caller that needs
+      // to act on the enrolment (marking a named student's attendance) does
+      // not have to re-query for the section it is in.
+      studentId: s?._id?.toString() ?? null,
+      sectionId: sec?._id?.toString() ?? null,
+      academicYearId: e.academicYearId?._id?.toString() ?? e.academicYearId?.toString() ?? null,
       studentName: s ? `${s.firstName} ${s.lastName || ''}`.trim() : 'Unknown Student',
       class: sec ? (g ? `${g.name} - ${sec.name}` : sec.name) : 'No Class',
       rollNo: e.rollNo,

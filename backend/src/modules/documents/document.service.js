@@ -79,6 +79,40 @@ async function buildVisibilityFilter(actor, scope, studentId, categories = {}) {
   return query;
 }
 
+/**
+ * Deletes a document the actor is entitled to delete.
+ *
+ * Moved here from document.controller.js so the rule has one home: a
+ * school-wide holder of materials.manage may delete any document, anyone else
+ * only their own. The controller and the MCP tool both call this, so neither
+ * can drift into a looser version of the check.
+ *
+ * Returns what was deleted, so a caller can say which document is gone.
+ */
+export async function deleteForActor(actor, scope, id) {
+  const doc = await findDeletableForActor(actor, scope, id);
+  await Document.deleteOne({ _id: doc._id });
+  return { id: String(doc._id), title: doc.title, type: doc.type };
+}
+
+/**
+ * The document, if this actor may delete it — the rule deleteForActor applies,
+ * without deleting anything.
+ *
+ * Exported so a caller can check before it asks somebody to confirm: the
+ * assistant names the document in its confirmation prompt and refuses up front
+ * rather than asking a person to approve a deletion that cannot happen.
+ */
+export async function findDeletableForActor(actor, scope, id) {
+  const doc = await Document.findById(id);
+  if (!doc) throw new AppError('Document not found', 404);
+
+  if (scope !== 'ALL' && String(doc.authorProfileId) !== String(actor?.profileId)) {
+    throw new AppError('Not authorized to delete this document', 403);
+  }
+  return doc;
+}
+
 export async function listForActor(actor, scope, studentId, opts = {}) {
   const query = await buildVisibilityFilter(actor, scope, studentId, {
     type: opts.type,

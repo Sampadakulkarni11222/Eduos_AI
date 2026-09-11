@@ -1,9 +1,8 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
 import { AppError } from '../../utils/AppError.js';
-import * as service from './ai.service.js';
 import * as agentCore from './agent/orchestrator.js';
-import { toolsAvailableTo } from './agent/tools.js';
+import { mcpToolsFor } from './mcp/registry.js';
 import * as tutorService from './tutor.service.js';
 import * as creditService from './aiCredit.service.js';
 
@@ -45,12 +44,6 @@ export const creditOrders = asyncHandler(async (req, res) => {
   sendSuccess(res, await creditService.listOrders(req.actor), 'Credit orders fetched');
 });
 
-export const chat = asyncHandler(async (req, res) => {
-  const { message, conversationId } = req.body;
-  if (!message) throw new AppError('message is required', 400);
-  sendSuccess(res, await service.chat({ message, conversationId }, req.actor), 'AI response generated');
-});
-
 /* ── Agentic layer ──────────────────────────────────────────
    Shared by the in-app assistant and WhatsApp; `source` only affects the
    audit trail, never the authorization. */
@@ -86,8 +79,31 @@ export const agentConfirm = asyncHandler(async (req, res) => {
   );
 });
 
+/**
+ * What this caller can actually ask the assistant to do.
+ *
+ * Read from the MCP registry rather than the pre-MCP tool list, which was the
+ * one place still reporting the old eighteen capabilities — so the panel
+ * advertised a fraction of what the assistant could do, and none of the write
+ * operations. Filtering is the same permission-driven pass `tools/list` makes
+ * (`mcpToolsFor`), so this endpoint and the model are shown the same catalog.
+ *
+ * The `{ name, description, mutates }` shape is kept exactly as it was, since
+ * the frontend's `AgentTool` type declares it. The extra fields are additive:
+ * a client that ignores them behaves as before, and one that reads them can
+ * show which capabilities change data and which will ask before they do.
+ */
 export const agentCapabilities = asyncHandler(async (req, res) => {
-  sendSuccess(res, { tools: toolsAvailableTo(req.actor) }, 'Agent capabilities');
+  const tools = mcpToolsFor(req.actor).map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    mutates: tool.annotations.readOnlyHint === false,
+    module: tool.annotations.module,
+    operation: tool.annotations.operation,
+    risk: tool.annotations.risk,
+    confirmationRequired: tool.annotations.confirmationRequired,
+  }));
+  sendSuccess(res, { tools }, 'Agent capabilities');
 });
 
 /* ── Student tutor mode ─────────────────────────────────────

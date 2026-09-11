@@ -119,13 +119,15 @@ describe('bulk reach: a write is proposed, then confirmed', () => {
   });
 
   it('publishes only after the confirmation, and records who did it', async () => {
-    const proposal = await ask(
-      actorFor('ADMIN'),
-      'announce to everyone: Sports day is on Friday',
-    );
-    if (!proposal.action) return; // the rules parser did not offer this phrasing
-
+    // One actor for both turns. actorFor() mints a fresh profile id each call,
+    // so proposing as one and confirming as "another ADMIN" is a different
+    // person as far as the ownership check is concerned -- which correctly
+    // refuses. That only surfaced when a model was configured and routed a
+    // phrasing the rules miss, so the test passed by returning early.
     const actor = actorFor('ADMIN');
+    const proposal = await ask(actor, 'announce to everyone: Sports day is on Friday');
+    if (!proposal.action) return; // nothing routed this phrasing
+
     await inOak(() => confirmAction({
       confirmToken: proposal.action.confirmToken,
       actor,
@@ -139,15 +141,13 @@ describe('bulk reach: a write is proposed, then confirmed', () => {
   });
 
   it('a declined confirmation writes nothing', async () => {
-    const proposal = await ask(
-      actorFor('ADMIN'),
-      'announce to everyone: Sports day is on Friday',
-    );
+    const actor = actorFor('ADMIN');
+    const proposal = await ask(actor, 'announce to everyone: Sports day is on Friday');
     if (!proposal.action) return;
 
     await inOak(() => confirmAction({
       confirmToken: proposal.action.confirmToken,
-      actor: actorFor('ADMIN'),
+      actor,
       accept: false,
       source: 'WEB',
     }));
@@ -163,21 +163,31 @@ describe('the assistant obeys the same boundaries as the rest of the app', () =>
     expect(tools).not.toContain('mark_attendance');
   });
 
-  it('a teacher asking for the whole school is refused, not quietly narrowed to it', async () => {
-    const res = await ask(
-      actorFor('TEACHER', teacherId),
-      'announce to the whole school: exams are cancelled',
-    );
-    // Nothing may be published either way; if it proposed at all, confirming
-    // it must fail rather than reach the school.
+  it('a teacher asking for the whole school never reaches the whole school', async () => {
+    const actor = actorFor('TEACHER', teacherId);
+    const res = await ask(actor, 'announce to the whole school: exams are cancelled');
+
+    // Nothing is published on the asking turn, whatever was understood.
     expect(await inOak(() => Announcement.countDocuments())).toBe(0);
-    if (res.action) {
-      await expect(inOak(() => confirmAction({
-        confirmToken: res.action.confirmToken,
-        actor: actorFor('TEACHER', teacherId),
-        accept: true,
-        source: 'WEB',
-      }))).rejects.toMatchObject({ statusCode: 403 });
-    }
+    if (!res.action) return;
+
+    // The summary a teacher is asked to approve must not claim school-wide
+    // reach -- announcement.service decides the audience from their scope, and
+    // the confirmation has to describe what will actually happen.
+    expect(res.action.summary).not.toMatch(/whole school/i);
+
+    // Confirming either refuses outright (when the request named the whole
+    // school explicitly) or publishes to the teacher's own classes. What must
+    // never happen is an announcement addressed to everyone. Asserted on the
+    // stored audience rather than on which of the two paths ran, because both
+    // are correct and which one applies depends on how the request was parsed.
+    await inOak(() => confirmAction({
+      confirmToken: res.action.confirmToken, actor, accept: true, source: 'WEB',
+    })).catch((err) => {
+      expect(err.statusCode).toBe(403);
+    });
+
+    const schoolWide = await inOak(() => Announcement.findOne({ 'audience.all': true }).lean());
+    expect(schoolWide, 'a teacher published to the whole school').toBeNull();
   });
 });

@@ -109,23 +109,9 @@ export const updateDocument = asyncHandler(async (req, res) => {
 });
 
 export const deleteDocument = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  const doc = await Document.findById(id);
-  if (!doc) {
-    throw new AppError('Document not found', 404);
-  }
-
-  const profileId = req.actor?.profileId;
-
-  // A school-wide holder of materials.manage, or the author. This used to test
-  // the literal string 'ADMIN', so a Principal and a Super Admin — who both
-  // hold the permission at ALL — were refused, the same role-string bug the
-  // read path carried. Driven by scope now, so the grant decides.
-  if (req.scope !== 'ALL' && String(doc.authorProfileId) !== String(profileId)) {
-    throw new AppError('Not authorized to delete this document', 403);
-  }
-
-  await Document.deleteOne({ _id: id });
+  // The rule — a school-wide holder of materials.manage, or the author — lives
+  // in document.service.deleteForActor(), so this route and the assistant's
+  // delete_document tool enforce exactly the same check.
+  await service.deleteForActor(req.actor, req.scope, req.params.id);
   sendSuccess(res, null, 'Document deleted successfully');
 });

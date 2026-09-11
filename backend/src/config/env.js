@@ -263,6 +263,62 @@ export function isWhatsappSignatureConfigured() {
   return !isPlaceholderSecret(env.WA_APP_SECRET);
 }
 
+/** The hosts in a MongoDB URI, lower-cased and without ports or credentials. */
+export function databaseHostsOf(uri) {
+  const m = /^mongodb(?:\+srv)?:\/\/(?:[^@/]*@)?([^/?]+)/i.exec(String(uri ?? ''));
+  return m ? m[1].split(',').map((h) => h.replace(/:\d+$/, '').trim().toLowerCase()).filter(Boolean) : [];
+}
+
+/** The operator's settings for the database guard, read at call time. */
+export function databaseGuardConfig(processEnv = process.env) {
+  return {
+    allowRemote: processEnv.ALLOW_REMOTE_DB_OUTSIDE_PRODUCTION === 'true',
+    productionHosts: String(processEnv.PRODUCTION_DB_HOSTS ?? '')
+      .split(',').map((h) => h.trim().toLowerCase()).filter(Boolean),
+  };
+}
+
+/**
+ * Decides whether a process running as `nodeEnv` may connect to `uri`.
+ *
+ * The failure this exists to prevent is real in this repository: a developer
+ * `.env` whose MONGO_URI points at the live cluster, and a server whose boot
+ * sequence writes to whatever it connects to (it upserts every permission and
+ * system role). resolveMongoUri() already ignores MONGO_URI_ATLAS outside
+ * production; this closes the other door.
+ *
+ * Outside production:
+ *   - a host listed in PRODUCTION_DB_HOSTS is refused, whatever else is set;
+ *   - any remote cluster (mongodb+srv, or *.mongodb.net) is refused unless the
+ *     operator opts in with ALLOW_REMOTE_DB_OUTSIDE_PRODUCTION=true — which a
+ *     staging deployment on its own Atlas cluster sets deliberately.
+ * In production nothing is refused here; env.js's production gate applies.
+ *
+ * Pure: it reads nothing and connects to nothing, so the preflight script and
+ * the tests can call it directly.
+ */
+export function assessDatabaseTarget({ nodeEnv = 'development', uri = '', allowRemote = false, productionHosts = [] } = {}) {
+  const hosts = databaseHostsOf(uri);
+  const remote = /^mongodb\+srv:\/\//i.test(String(uri)) || hosts.some((h) => /\.mongodb\.net$/.test(h));
+  if (nodeEnv === 'production') return { ok: true, remote, hosts };
+
+  const listed = hosts.filter((h) => productionHosts.some((p) => h === p || h.endsWith(`.${p}`)));
+  if (listed.length) {
+    return {
+      ok: false, remote, hosts,
+      reason: `the database host is listed in PRODUCTION_DB_HOSTS, and NODE_ENV is "${nodeEnv}" — a non-production process may not connect to production`,
+    };
+  }
+  if (remote && !allowRemote) {
+    return {
+      ok: false, remote, hosts,
+      reason: `MONGO_URI points at a remote cluster while NODE_ENV is "${nodeEnv}". Use a local or staging database, ` +
+        'or — for a staging deployment on its own cluster — set ALLOW_REMOTE_DB_OUTSIDE_PRODUCTION=true',
+    };
+  }
+  return { ok: true, remote, hosts };
+}
+
 // ─── Production safety gate ───────────────────────────────
 // The development defaults above are deliberately weak so the app runs out of
 // the box. Booting production with any of them still set means anyone holding

@@ -365,7 +365,6 @@ export interface RiskScanParams {
   sortBy?: 'probability' | 'level' | 'student' | 'class' | 'category';
   sortDir?: 'asc' | 'desc';
 }
-export interface AiReply { conversationId: string; reply: string; toolsUsed: string[] }
 
 export interface WaSimReply { reply: string; buttons: Array<{ id: string; title: string }> | null }
 

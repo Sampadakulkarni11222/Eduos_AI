@@ -6,6 +6,136 @@ import { Enrollment } from '../../models/student.model.js';
 import { getOwnStudentId, getGuardianStudentIds, getTeacherSectionIds } from '../../utils/scope.js';
 import { insertRows, rowError } from '../../utils/csvImport.js';
 
+/* ── Routes, stops and bus enrolment ─────────────────────────
+   Moved here from transport.controller.js, which used to write the models
+   directly, so the REST routes and the assistant's transport tools share one
+   implementation instead of the tools having to copy the controller's. The
+   behaviour is unchanged: same validation, same defaults, same upsert. */
+
+/** Active routes with their stop and enrolment counts. */
+export async function listRoutes() {
+  const routes = await TransportRoute.find({ status: 'ACTIVE' }).sort({ name: 1 }).lean();
+  return Promise.all(routes.map(async (route) => {
+    const [stopsCount, enrollmentsCount] = await Promise.all([
+      TransportStop.countDocuments({ routeId: route._id }),
+      BusEnrollment.countDocuments({ routeId: route._id }),
+    ]);
+    return {
+      id: route._id,
+      name: route.name,
+      operatorName: route.operatorName,
+      vehicleNo: route.vehicleNo,
+      driverName: route.driverName,
+      driverPhone: route.driverPhone,
+      stopsCount,
+      enrollmentsCount,
+    };
+  }));
+}
+
+/** A route's stops, in the order the bus reaches them. */
+export async function listStops(routeId) {
+  const stops = await TransportStop.find({ routeId }).sort({ sequenceNo: 1 }).lean();
+  return stops.map((stop) => ({
+    id: stop._id,
+    routeId: stop.routeId,
+    name: stop.name,
+    sequenceNo: stop.sequenceNo,
+    etaMinutesFromStart: stop.etaMinutesFromStart,
+  }));
+}
+
+export async function createRoute({ name, operatorName, vehicleNo, driverName, driverPhone } = {}) {
+  if (!name) throw new AppError('Route name is required', 400);
+  return TransportRoute.create({ name, operatorName, vehicleNo, driverName, driverPhone });
+}
+
+/**
+ * One route, by id, in the acting school — or a 404.
+ *
+ * The tenant plugin on TransportRoute confines the lookup, so another school's
+ * route id is "not found" here exactly as it is everywhere else.
+ */
+export async function getRoute(routeId) {
+  const route = await TransportRoute.findById(routeId).select('name vehicleNo status').lean();
+  if (!route) throw new AppError('Route not found', 404);
+  return { id: String(route._id), name: route.name, vehicleNo: route.vehicleNo ?? null, status: route.status };
+}
+
+export async function createStop({ routeId, name, sequenceNo, etaMinutesFromStart } = {}) {
+  if (!routeId || !name || sequenceNo === undefined) {
+    throw new AppError('routeId, name, and sequenceNo are required', 400);
+  }
+  // A stop used to be created against whatever routeId arrived, so a stop could
+  // point at another school's route, or at none. The route must exist here.
+  await getRoute(routeId);
+  return TransportStop.create({ routeId, name, sequenceNo, etaMinutesFromStart: etaMinutesFromStart || 0 });
+}
+
+/**
+ * Checks that a bus enrolment names real things in the acting school, and
+ * resolves the academic year (the current one when none is named).
+ *
+ * The upsert below used to accept any ids: a student could be put on another
+ * school's route, on a stop that belongs to a different route, or on a year
+ * that does not exist, and the row would be written. Every id is now looked up
+ * through the tenant-scoped models, and the stop must be on the route.
+ *
+ * Returns names as well as ids, so a caller can describe the enrolment before
+ * it is made.
+ */
+export async function resolveEnrollment({ studentId, routeId, stopId, academicYearId } = {}) {
+  let targetYearId = academicYearId;
+  if (!targetYearId) {
+    const currentYear = await AcademicYear.findOne({ isCurrent: true });
+    targetYearId = currentYear?._id;
+  }
+
+  if (!studentId || !routeId || !stopId || !targetYearId) {
+    throw new AppError('studentId, routeId, stopId, and academicYearId are required', 400);
+  }
+
+  const [student, route, stop, year] = await Promise.all([
+    Student.findOne({ _id: studentId, deletedAt: null }).select('firstName lastName').lean(),
+    TransportRoute.findById(routeId).select('name').lean(),
+    TransportStop.findById(stopId).select('routeId name').lean(),
+    AcademicYear.findById(targetYearId).select('name').lean(),
+  ]);
+  if (!student) throw new AppError('Student not found', 404);
+  if (!route) throw new AppError('Route not found', 404);
+  if (!stop) throw new AppError('Stop not found', 404);
+  if (String(stop.routeId) !== String(routeId)) {
+    throw new AppError(`"${stop.name}" is not a stop on route "${route.name}"`, 400, [], 'STOP_NOT_ON_ROUTE');
+  }
+  if (!year) throw new AppError('Academic year not found', 404);
+
+  return {
+    studentId: String(student._id),
+    studentName: `${student.firstName} ${student.lastName ?? ''}`.trim(),
+    routeId: String(route._id),
+    routeName: route.name,
+    stopId: String(stop._id),
+    stopName: stop.name,
+    academicYearId: String(year._id),
+    academicYearName: year.name,
+  };
+}
+
+/**
+ * Puts a student on a route and stop for an academic year.
+ *
+ * One enrolment per student per year: enrolling again moves them rather than
+ * adding a second row. Defaults to the current academic year when none is named.
+ */
+export async function enrollStudent({ studentId, routeId, stopId, academicYearId, direction } = {}) {
+  const target = await resolveEnrollment({ studentId, routeId, stopId, academicYearId });
+  return BusEnrollment.findOneAndUpdate(
+    { studentId: target.studentId, academicYearId: target.academicYearId },
+    { routeId: target.routeId, stopId: target.stopId, direction: direction || 'BOTH' },
+    { upsert: true, new: true },
+  );
+}
+
 /**
  * The student id(s) this actor may query a bus assignment for.
  *

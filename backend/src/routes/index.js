@@ -61,13 +61,20 @@ router.use(auditLogger);
  *             schema:
  *               $ref: '#/components/schemas/SuccessResponse'
  */
-router.get('/health', (_req, res) =>
+// Checks the database as well as the process: an instance that is serving HTTP
+// but has lost MongoDB answers 503, so a load balancer stops sending it
+// traffic. The body says "ok" or "unavailable" and nothing about the target.
+router.get('/health', async (_req, res) => {
+  const { databaseHealth } = await import('../config/db.js');
+  const database = await databaseHealth();
+  const healthy = database === 'ok';
   sendSuccess(
     res,
-    { status: 'ok', env: env.NODE_ENV, timestamp: new Date().toISOString() },
-    'Server is healthy'
-  )
-);
+    { status: healthy ? 'ok' : 'degraded', database, env: env.NODE_ENV, timestamp: new Date().toISOString() },
+    healthy ? 'Server is healthy' : 'Database unavailable',
+    healthy ? 200 : 503
+  );
+});
 
 // ─── Module routes ──────────────────────────────────────────────
 router.use('/auth', authRoutes);
