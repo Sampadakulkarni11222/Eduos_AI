@@ -6,6 +6,7 @@ import { toolsAvailableTo } from './tools.js';
 import { monthFromText, looksLikeMonth } from '../../../utils/naturalDates.js';
 import { classFromText, refersToOwnClasses } from '../../../utils/classNames.js';
 import { detectSelfCategory } from './profileIntent.js';
+import { detectEntityIntent } from './entityIntent.js';
 import { logger } from '../../../utils/logger.js';
 
 /**
@@ -769,10 +770,29 @@ function selfStep(message, actor) {
   return { tool, args: rule?.args ? rule.args(String(message)) : {} };
 }
 
+/**
+ * Attendance, marks and homework, resolved by operation × entity × scope.
+ *
+ * Runs after the self-category step and before the pattern rules: it answers
+ * only when it can see the entity, the operation and whose data is meant, and
+ * yields otherwise, so every phrasing the rules already handled still reaches
+ * them. See agent/entityIntent.js.
+ */
+function entityStep(message, actor) {
+  if (!actor?.permissions?.['ai.copilot.use']) return null;
+  const detected = detectEntityIntent(message, actor);
+  return detected && getRuleTool(detected.tool) ? detected : null;
+}
+
+/** True when a tool name is one this parser is allowed to name. */
+const getRuleTool = (name) => (typeof name === 'string' && name ? name : null);
+
 /** Rule-based parse. Returns { tool, args } or null. */
 export function parseIntent(message, actor) {
   const own = selfStep(message, actor);
   if (own) return own;
+  const entity = entityStep(message, actor);
+  if (entity) return entity;
   const [best] = scoreRules(message, actor);
   if (!best) return null;
   return { tool: best.rule.tool, args: best.rule.args ? best.rule.args(String(message)) : {} };
@@ -805,6 +825,8 @@ export function parsePlan(message, actor) {
   // is one step and needs no planning.
   const own = selfStep(msg, actor);
   if (own) return [own];
+  const entity = entityStep(msg, actor);
+  if (entity) return [entity];
   const matches = scoreRules(msg, actor);
   if (!matches.length) return [];
 

@@ -3,6 +3,7 @@ import { AppError } from '../../utils/AppError.js';
 import { generate, isLlmEnabled } from '../../providers/ai.provider.js';
 import { languageInstruction } from '../../utils/language.js';
 import * as assignments from './assignment.service.js';
+import { classKey } from '../../utils/classNames.js';
 
 /**
  * Drafts homework for a class the teacher actually teaches.
@@ -21,6 +22,11 @@ import * as assignments from './assignment.service.js';
 const MAX_TITLE = 140;
 
 /** Finds the one offering matching a free-text subject/class hint. */
+/**
+ * Resolves the subject-and-class an action is for, among the offerings this
+ * teacher actually holds. Class names are compared canonically — see
+ * utils/classNames.js.
+ */
 export async function resolveOwnOffering(actor, { subjectOfferingId, subject, className }) {
   const mine = await SubjectOffering.find({ teacherId: actor.profileId })
     .populate({ path: 'sectionId', populate: { path: 'gradeId' } })
@@ -49,7 +55,16 @@ export async function resolveOwnOffering(actor, { subjectOfferingId, subject, cl
   const norm = (s) => String(s ?? '').toLowerCase().trim();
   let candidates = options;
   if (subject) candidates = candidates.filter((o) => norm(o.subject).includes(norm(subject)));
-  if (className) candidates = candidates.filter((o) => norm(o.className).includes(norm(className)));
+  if (className) {
+    // Matched on the canonical class key, so "Class 5-A", "class 5a" and "5-A"
+    // all find the offering stored as "Class 5 A". A plain substring compare
+    // matched none of them, so a teacher naming their own class the way they
+    // write it was told they teach something else.
+    const wanted = classKey(className);
+    candidates = candidates.filter((o) => (wanted
+      ? classKey(o.className) === wanted
+      : norm(o.className).includes(norm(className))));
+  }
 
   if (candidates.length === 1) return candidates[0];
 

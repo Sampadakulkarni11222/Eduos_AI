@@ -4,6 +4,7 @@ import { AppError } from '../../../../utils/AppError.js';
 import { getOwnStudentId, getGuardianStudentIds, getTeacherSectionIds } from '../../../../utils/scope.js';
 import { Section } from '../../../../models/academics.model.js';
 import { classKey, classLabel } from '../../../../utils/classNames.js';
+import { nameCandidates } from '../../../../utils/peopleNames.js';
 import { ok } from '../protocol.js';
 
 /**
@@ -182,13 +183,28 @@ export async function resolveStudentId(ctx, { studentId, admissionNo, studentNam
   // asked about Riya is a wrong answer about a real child. So a name must match
   // whole words of the student's name; a near miss is offered, never taken.
   const term = String(studentName).trim().toLowerCase().replace(/\s+/g, ' ');
-  const named = rows.filter((s) => ` ${String(s.name ?? '').toLowerCase()} `.includes(` ${term} `));
   const label = (s) => `${s.name} (${s.admissionNo})`;
 
+  // An exact full name wins outright. Without this, "Aarav Mishra" and the
+  // surname-only "Mishra" were treated alike, so a class with two Mishras made
+  // an exact request ambiguous.
+  const exact = rows.filter((s) => String(s.name ?? '').trim().toLowerCase().replace(/\s+/g, ' ') === term);
+  if (exact.length === 1) return exact[0].id;
+
+  const named = exact.length > 1 ? exact : rows.filter((s) => ` ${String(s.name ?? '').toLowerCase()} `.includes(` ${term} `));
+
   if (named.length === 0) {
+    // A misspelling ("Arav Mishra") finds nothing by substring, so the name is
+    // searched a token at a time and the results ranked by similarity. The
+    // close ones are OFFERED, never chosen: picking for the caller would mean
+    // guessing whose record to open, and a write must never rest on a guess.
+    const suggestions = await similarlyNamed(ctx, scope, term, rows);
     throw new AppError(
-      `No student named "${studentName}".` + (rows.length ? ` Did you mean: ${rows.slice(0, 5).map(label).join(', ')}?` : ''),
+      `No student named "${studentName}".` +
+        (suggestions.length ? ` Did you mean: ${suggestions.map(label).join(', ')}?` : ''),
       404,
+      [],
+      'STUDENT_NOT_FOUND',
     );
   }
   if (named.length > 1) {
@@ -198,6 +214,29 @@ export async function resolveStudentId(ctx, { studentId, admissionNo, studentNam
     );
   }
   return named[0].id;
+}
+
+/**
+ * Students whose names are close to what was asked for, best first.
+ *
+ * Only ever used to build a suggestion. The directory search is a substring
+ * match, so a single wrong letter finds nothing; each token of the name is
+ * searched separately and the union is ranked by similarity. Runs at the
+ * caller's own scope, so a suggestion can only ever name a student they were
+ * already allowed to find.
+ */
+async function similarlyNamed(ctx, scope, term, alreadyFound) {
+  const pool = new Map((alreadyFound ?? []).map((s) => [s.id, s]));
+  for (const token of term.split(' ').filter((t) => t.length >= 3)) {
+    try {
+      // eslint-disable-next-line no-await-in-loop -- a handful of tokens at most
+      const page = await students.list(ctx.actor, scope, { search: token, page: 1, pageSize: 10 });
+      for (const s of page.items ?? []) pool.set(s.id, s);
+    } catch {
+      // A token that finds nothing simply contributes nothing.
+    }
+  }
+  return nameCandidates(term, [...pool.values()]).map((x) => x.candidate);
 }
 
 /** The caller's own students.read scope, or a refusal when they hold none. */

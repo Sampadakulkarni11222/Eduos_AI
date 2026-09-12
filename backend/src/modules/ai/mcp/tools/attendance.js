@@ -1,4 +1,5 @@
 import * as attendance from '../../../attendance/attendance.service.js';
+import * as students from '../../../students/student.service.js';
 import { ok, action } from '../protocol.js';
 import { AppError } from '../../../../utils/AppError.js';
 import {
@@ -90,6 +91,7 @@ export const attendanceTools = {
         ...classIdentitySchema,
         sectionId: objectId('The class section, when the id is already known'),
         date: dateStr('Defaults to today'),
+        month: { type: 'string', pattern: MONTH, description: 'YYYY-MM — the class summary for a whole month' },
         periodNo: { type: 'integer', minimum: 1, maximum: 12, description: 'Omit for day-level attendance' },
       },
       additionalProperties: false,
@@ -106,6 +108,33 @@ export const attendanceTools = {
       if (!section) {
         throw new AppError('Which class? Name it, for example "Class 5 A".', 400, [], 'AGENT_NEEDS_INPUT');
       }
+      // A month names a class summary rather than one day's register.
+      // getSummary() is the authorized read for a range, and it is given the
+      // section's own enrolments — so "July attendance for Class 5-A" answers
+      // about that class instead of silently widening to the whole school,
+      // which is what dropping the class used to do.
+      if (args.month && !args.date) {
+        const enrolments = await students.listEnrollments({ sectionId: section.sectionId, status: 'ACTIVE' });
+        const tally = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
+        for (const enrolment of enrolments) {
+          // eslint-disable-next-line no-await-in-loop -- one class, and each
+          // call re-checks that this caller may read that enrolment.
+          const row = await attendance.getSummary(ctx.actor, ctx.scope, { enrollmentId: enrolment.id, month: args.month });
+          for (const key of Object.keys(tally)) tally[key] += Number(row?.[key] ?? 0);
+        }
+        const marked = Object.values(tally).reduce((sum, n) => sum + n, 0);
+        const pct = marked ? Math.round(((tally.PRESENT + tally.LATE + tally.HALF_DAY * 0.5) / marked) * 100) : null;
+        return ok(
+          { class: section.label, month: args.month, students: enrolments.length, marked, pctPresent: pct, ...tally },
+          {
+            speak: marked
+              ? `${section.label} in ${args.month}: ${pct}% present across ${marked} marked entr${marked === 1 ? 'y' : 'ies'} ` +
+                `for ${enrolments.length} student(s) — ${tally.PRESENT} present, ${tally.ABSENT} absent, ${tally.LATE} late.`
+              : `No attendance has been marked for ${section.label} in ${args.month}.`,
+          },
+        );
+      }
+
       const roster = await attendance.getRoster(
         ctx.actor, ctx.scope, section.sectionId,
         args.date ?? new Date().toISOString().slice(0, 10),
@@ -240,11 +269,41 @@ export const attendanceTools = {
         });
       }
       const summary = await attendance.getSummary(ctx.actor, ctx.scope, { month: args.month });
-      if (summary?.pctPresent == null) return ok({ basis: 'OWN', ...summary }, { speakKey: 'attendance.none' });
-      return ok({ basis: 'OWN', ...summary }, {
-        speakKey: 'attendance.summary',
-        params: { pct: summary.pctPresent, present: summary.PRESENT ?? 0, days: summary.workingDays ?? 0 },
-      });
+      if (summary?.pctPresent != null) {
+        return ok({ basis: 'OWN', ...summary }, {
+          speakKey: 'attendance.summary',
+          params: { pct: summary.pctPresent, present: summary.PRESENT ?? 0, days: summary.workingDays ?? 0 },
+        });
+      }
+
+      // A teacher's OWN scope covers every pupil they teach, so getSummary()
+      // answers with one entry per enrolment rather than a percentage. That
+      // shape used to fall through to "no attendance recorded" — and, on the
+      // per-student tool, to "Which student?" — which is how "show attendance
+      // for July" became a dead end. The same authorized figures are totalled
+      // here instead: it is a presentation of what the service already
+      // returned, not a wider read.
+      const perEnrolment = Object.values(summary ?? {}).filter((v) => v && typeof v === 'object' && !Array.isArray(v));
+      if (perEnrolment.length) {
+        const tally = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
+        for (const row of perEnrolment) {
+          for (const key of Object.keys(tally)) tally[key] += Number(row[key] ?? 0);
+        }
+        const marked = Object.values(tally).reduce((sum, n) => sum + n, 0);
+        if (marked > 0) {
+          const pct = Math.round(((tally.PRESENT + tally.LATE + tally.HALF_DAY * 0.5) / marked) * 100);
+          return ok(
+            { basis: 'MY_CLASSES', students: perEnrolment.length, marked, pctPresent: pct, ...tally },
+            {
+              speak:
+                `Across your classes${args.month ? ` in ${args.month}` : ''}: ${pct}% present over ${marked} marked ` +
+                `entr${marked === 1 ? 'y' : 'ies'} for ${perEnrolment.length} student(s) — ` +
+                `${tally.PRESENT} present, ${tally.ABSENT} absent, ${tally.LATE} late, ${tally.EXCUSED} excused.`,
+            },
+          );
+        }
+      }
+      return ok({ basis: 'OWN', ...summary }, { speakKey: 'attendance.none' });
     },
   },
 

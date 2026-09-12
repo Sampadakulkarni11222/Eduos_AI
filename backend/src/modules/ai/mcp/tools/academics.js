@@ -2,10 +2,16 @@ import * as academics from '../../../academics/academics.service.js';
 import * as exams from '../../../exams/exam.service.js';
 import * as assignments from '../../../assignments/assignment.service.js';
 import * as timetable from '../../../timetable/timetable.service.js';
+import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
 import {
-  RISK, objectId, dateStr, noArgs, summarise, wrapAgentTool, resolveEnrollmentId, studentIdentitySchema,
+  RISK, objectId, dateStr, noArgs, summarise, shortDate, wrapAgentTool, resolveEnrollmentId,
+  studentIdentitySchema, resolveSection, classIdentitySchema,
 } from './_shared.js';
+import { classKey } from '../../../../utils/classNames.js';
+
+/** How many exam papers a single class-marks answer summarises. */
+const MAX_MARKS_PAPERS = 6;
 
 /**
  * Academic structure, exams, marks, assignments and the timetable.
@@ -334,6 +340,106 @@ export const academicTools = {
     },
   },
 
+  get_class_marks: {
+    module: 'Exams',
+    operation: 'GET',
+    risk: RISK.LOW,
+    description:
+      "How a whole class performed: every student's marks for the class's exam papers, with the class average, highest and lowest, and how many papers are still unmarked. Name the class, and optionally one subject or exam. This is the class-level answer — for one student's report card use get_report_card. Read-only.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...classIdentitySchema,
+        sectionId: objectId('The class section, when the id is already known'),
+        subject: { type: 'string', maxLength: 80, description: 'Narrow to one subject, e.g. "Mathematics"' },
+        exam: { type: 'string', maxLength: 60, description: 'Narrow to one exam, e.g. "Unit Test 2"' },
+      },
+      additionalProperties: false,
+    },
+    permission: 'marks.read',
+    service: 'exam.service.listExamSubjects() + getMarksGrid()',
+    /**
+     * Composed from two existing authorized reads rather than a new query.
+     *
+     * "Show marks for Class 5-A" used to reach get_results, which answers for
+     * the CALLER or their child — so a teacher was shown one arbitrary pupil's
+     * report card in answer to a question about a class. There was no
+     * class-level marks read to route to.
+     *
+     * listExamSubjects() already narrows a teacher to the papers they
+     * personally teach, and getMarksGrid() re-checks ownership per paper
+     * (loadOwnedExamSubject) and returns every enrolled student's marks. So
+     * the class answer is those two, aggregated — nothing here touches a
+     * model, and a paper the caller may not see never enters the total.
+     */
+    async run(ctx, args) {
+      const section = await resolveSection(ctx, { sectionId: args.sectionId, className: args.className });
+      if (!section) throw new AppError('Which class? Name it, for example "Class 5 A".', 400, [], 'AGENT_NEEDS_INPUT');
+
+      const papers = await exams.listExamSubjects(ctx.actor, ctx.scope, null);
+      const wanted = (papers ?? []).filter((p) => {
+        if (classKey(p.class) !== classKey(section.label)) return false;
+        if (args.subject && !String(p.subject ?? '').toLowerCase().includes(args.subject.toLowerCase())) return false;
+        if (args.exam && !String(p.examName ?? '').toLowerCase().includes(args.exam.toLowerCase())) return false;
+        return true;
+      });
+
+      if (!wanted.length) {
+        const narrowed = [args.subject, args.exam].filter(Boolean).join(', ');
+        return ok(
+          { class: section.label, subjects: [], papers: 0 },
+          {
+            speak: narrowed
+              ? `No exam papers for ${section.label} match ${narrowed}.`
+              : `No exam papers have been set up for ${section.label} yet.`,
+          },
+        );
+      }
+
+      // Bounded: a class answer summarises its papers, it does not dump a term.
+      const grids = [];
+      for (const paper of wanted.slice(0, MAX_MARKS_PAPERS)) {
+        // eslint-disable-next-line no-await-in-loop -- per-paper ownership check
+        const grid = await exams.getMarksGrid(ctx.actor, ctx.scope, paper.id);
+        const rows = (grid?.rows ?? []).map((r) => ({
+          rollNo: r.rollNo ?? null,
+          studentName: r.studentName,
+          marks: r.marks ?? null,
+          gradeLabel: r.gradeLabel ?? null,
+          status: r.status ?? 'PENDING',
+        }));
+        const scored = rows.filter((r) => typeof r.marks === 'number');
+        const maxMarks = grid?.examSubject?.maxMarks ?? paper.maxMarks ?? 100;
+        const total = scored.reduce((sum, r) => sum + r.marks, 0);
+        grids.push({
+          subject: paper.subject,
+          exam: paper.examName,
+          maxMarks,
+          students: rows.length,
+          marked: scored.length,
+          unmarked: rows.length - scored.length,
+          averagePct: scored.length ? Math.round((total / (scored.length * maxMarks)) * 100) : null,
+          highest: scored.length ? Math.max(...scored.map((r) => r.marks)) : null,
+          lowest: scored.length ? Math.min(...scored.map((r) => r.marks)) : null,
+          rows,
+        });
+      }
+
+      const spoken = grids
+        .map((g) => {
+          if (!g.marked) return `${g.subject} (${g.exam}): no marks entered yet for ${g.students} student(s)`;
+          return `${g.subject} (${g.exam}): average ${g.averagePct}%, highest ${g.highest}/${g.maxMarks}, lowest ${g.lowest}/${g.maxMarks}` +
+            `${g.unmarked ? `, ${g.unmarked} still unmarked` : ''}`;
+        })
+        .join('; ');
+
+      return ok(
+        { class: section.label, papers: grids.length, ofPapers: wanted.length, subjects: grids },
+        { speak: `${section.label} — ${spoken}.` },
+      );
+    },
+  },
+
   get_marks_grid: {
     module: 'Exams',
     operation: 'GET',
@@ -527,11 +633,92 @@ export const academicTools = {
   },
 
   /* ── Assignments ─────────────────────────────────────── */
-  get_assignments: wrapAgentTool('get_assignments', {
+  get_assignments: {
     module: 'Assignments',
-    description: 'Homework and assignments still to be submitted, soonest deadline first. Read-only.',
+    operation: 'GET',
+    risk: RISK.LOW,
+    description:
+      'Homework and assignments. For a student or parent with no filters, the work still to be submitted, soonest deadline first. For a teacher, the work they have set — narrow it with a subject, a class, or both. Read-only.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...classIdentitySchema,
+        subject: { type: 'string', maxLength: 80, description: 'Narrow to one subject, e.g. "Mathematics"' },
+      },
+      additionalProperties: false,
+    },
+    permission: 'assignments.read',
     service: 'assignment.service.list()',
-  }),
+    /**
+     * One tool, two honest answers.
+     *
+     * The old version wrapped an agent tool that filtered on `mySubmission`,
+     * which is a STUDENT's question — "what do I still owe". A teacher asking
+     * "show Mathematics homework" got that filter applied to their own
+     * submissions, so the answer was other subjects' work and nothing they had
+     * set. It also declared no arguments at all, so the subject and the class
+     * in the question had nowhere to go.
+     *
+     * assignment.service.list() already scopes a teacher to the offerings they
+     * personally teach and returns the subject and section on every row, so
+     * filtering is done on that authorized result — never by widening the
+     * query. Passing no arguments as a student or parent behaves exactly as
+     * before.
+     */
+    async run(ctx, args) {
+      const isFamily = ctx.actor?.roleKey === 'STUDENT' || ctx.actor?.roleKey === 'PARENT';
+      const section = args.className || args.sectionId
+        ? await resolveSection(ctx, { sectionId: args.sectionId, className: args.className })
+        : null;
+
+      const all = await assignments.list(ctx.actor, ctx.scope, {});
+      const wantedSubject = args.subject ? String(args.subject).toLowerCase() : null;
+
+      let rows = all;
+      if (wantedSubject) rows = rows.filter((a) => String(a.subject ?? '').toLowerCase().includes(wantedSubject));
+      if (section) rows = rows.filter((a) => classKey(a.class) === classKey(section.label));
+
+      // A family's unfiltered question is about what is still due; a filtered
+      // one, or a teacher's, is about the work itself.
+      const pendingOnly = isFamily && !wantedSubject && !section;
+      if (pendingOnly) {
+        rows = rows.filter((a) => !['SUBMITTED', 'LATE', 'GRADED'].includes(a.mySubmission?.status));
+      }
+
+      const ordered = [...rows].sort((a, b) => new Date(a.dueAt ?? 0) - new Date(b.dueAt ?? 0));
+      const shown = ordered.slice(0, 10).map((a) => ({
+        id: String(a.id),
+        title: a.title,
+        subject: a.subject,
+        class: a.class,
+        dueAt: a.dueAt,
+        maxMarks: a.maxMarks ?? null,
+        submissionCount: a.submissionCount ?? 0,
+        ...(isFamily && { status: a.mySubmission?.status ?? 'PENDING' }),
+      }));
+
+      const scopeLabel = [args.subject, section?.label].filter(Boolean).join(' for ');
+      const view = summarise(shown, (a) => `${a.title} (${a.subject}${a.dueAt ? `, due ${shortDate(a.dueAt)}` : ''})`);
+
+      if (!ordered.length) {
+        return ok(
+          { assignments: [], count: 0, ...(section && { class: section.label }), ...(args.subject && { subject: args.subject }) },
+          { speak: scopeLabel ? `No homework found for ${scopeLabel}.` : (pendingOnly ? 'You have nothing due.' : 'No homework has been set.') },
+        );
+      }
+      return ok(
+        {
+          assignments: shown,
+          count: ordered.length,
+          ...(section && { class: section.label }),
+          ...(args.subject && { subject: args.subject }),
+        },
+        {
+          speak: `${ordered.length} ${pendingOnly ? 'still to submit' : 'homework item(s)'}${scopeLabel ? ` for ${scopeLabel}` : ''}: ${view.list}${view.more ? ', …' : ''}.`,
+        },
+      );
+    },
+  },
 
   get_submissions: {
     module: 'Assignments',

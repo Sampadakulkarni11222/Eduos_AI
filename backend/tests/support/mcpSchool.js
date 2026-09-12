@@ -219,6 +219,7 @@ export function readToolArgs(name, school) {
     list_transport_stops: { routeId: random() },
     get_ticket: { ticketId: random() },
     get_medical_record: { admissionNo: 'OAK-1' },
+    get_class_marks: { className: 'Class 6 A' },
     get_at_risk_students: { attendanceBelowPct: 75 },
     get_growth_score: { admissionNo: 'OAK-1' },
   }[name] ?? {};

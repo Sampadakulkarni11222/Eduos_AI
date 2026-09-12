@@ -1,16 +1,16 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 139,
+    "total": 140,
     "byOperation": {
-      "GET": 70,
+      "GET": 71,
       "CREATE": 21,
       "UPDATE": 13,
       "DELETE": 6,
       "ACTION": 29
     },
     "byRisk": {
-      "LOW": 70,
+      "LOW": 71,
       "MEDIUM": 41,
       "HIGH": 27,
       "CRITICAL": 1
@@ -2403,6 +2403,47 @@
       "wrapsAgentTool": null
     },
     {
+      "name": "get_class_marks",
+      "module": "Exams",
+      "operation": "GET",
+      "description": "How a whole class performed: every student's marks for the class's exam papers, with the class average, highest and lowest, and how many papers are still unmarked. Name the class, and optionally one subject or exam. This is the class-level answer — for one student's report card use get_report_card. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
+          "sectionId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "The class section, when the id is already known"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Narrow to one subject, e.g. \"Mathematics\""
+          },
+          "exam": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "Narrow to one exam, e.g. \"Unit Test 2\""
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "marks.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "exam.service.listExamSubjects() + getMarksGrid()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
       "name": "get_marks_grid",
       "module": "Exams",
       "operation": "GET",
@@ -2666,10 +2707,21 @@
       "name": "get_assignments",
       "module": "Assignments",
       "operation": "GET",
-      "description": "Homework and assignments still to be submitted, soonest deadline first. Read-only.",
+      "description": "Homework and assignments. For a student or parent with no filters, the work still to be submitted, soonest deadline first. For a teacher, the work they have set — narrow it with a subject, a class, or both. Read-only.",
       "input": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Narrow to one subject, e.g. \"Mathematics\""
+          }
+        },
         "additionalProperties": false
       },
       "permission": "assignments.read",
@@ -2680,7 +2732,7 @@
       "readOnly": true,
       "service": "assignment.service.list()",
       "status": "AVAILABLE",
-      "wrapsAgentTool": "get_assignments"
+      "wrapsAgentTool": null
     },
     {
       "name": "get_submissions",
@@ -5736,8 +5788,8 @@
     {
       "role": "SUPER_ADMIN",
       "custom": false,
-      "total": 139,
-      "GET": 70,
+      "total": 140,
+      "GET": 71,
       "CREATE": 21,
       "UPDATE": 13,
       "ACTION": 29,
@@ -5830,6 +5882,7 @@
         "upsert_timetable_slot",
         "get_results",
         "get_report_card",
+        "get_class_marks",
         "get_marks_grid",
         "list_exams",
         "get_performance_history",
@@ -5919,8 +5972,8 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 138,
-      "GET": 70,
+      "total": 139,
+      "GET": 71,
       "CREATE": 21,
       "UPDATE": 13,
       "ACTION": 28,
@@ -6011,6 +6064,7 @@
         "upsert_timetable_slot",
         "get_results",
         "get_report_card",
+        "get_class_marks",
         "get_marks_grid",
         "list_exams",
         "get_performance_history",
@@ -6100,8 +6154,8 @@
     {
       "role": "PRINCIPAL",
       "custom": false,
-      "total": 67,
-      "GET": 49,
+      "total": 68,
+      "GET": 50,
       "CREATE": 3,
       "UPDATE": 5,
       "ACTION": 9,
@@ -6153,6 +6207,7 @@
         "upsert_timetable_slot",
         "get_results",
         "get_report_card",
+        "get_class_marks",
         "get_marks_grid",
         "list_exams",
         "get_performance_history",
@@ -6190,8 +6245,8 @@
     {
       "role": "TEACHER",
       "custom": false,
-      "total": 51,
-      "GET": 36,
+      "total": 52,
+      "GET": 37,
       "CREATE": 2,
       "UPDATE": 1,
       "ACTION": 11,
@@ -6228,6 +6283,7 @@
         "get_timetable",
         "get_results",
         "get_report_card",
+        "get_class_marks",
         "get_marks_grid",
         "list_exams",
         "get_performance_history",
@@ -6264,8 +6320,8 @@
     {
       "role": "PARENT",
       "custom": false,
-      "total": 40,
-      "GET": 37,
+      "total": 41,
+      "GET": 38,
       "CREATE": 1,
       "UPDATE": 1,
       "ACTION": 0,
@@ -6299,6 +6355,7 @@
         "get_timetable",
         "get_results",
         "get_report_card",
+        "get_class_marks",
         "get_marks_grid",
         "list_exams",
         "get_performance_history",
@@ -6322,8 +6379,8 @@
     {
       "role": "STUDENT",
       "custom": false,
-      "total": 48,
-      "GET": 41,
+      "total": 49,
+      "GET": 42,
       "CREATE": 5,
       "UPDATE": 0,
       "ACTION": 1,
@@ -6354,6 +6411,7 @@
         "get_timetable",
         "get_results",
         "get_report_card",
+        "get_class_marks",
         "get_marks_grid",
         "list_exams",
         "get_performance_history",

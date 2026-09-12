@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**139 tools** — 70 GET, 21 CREATE, 13 UPDATE, 6 DELETE, 29 ACTION.
+**140 tools** — 71 GET, 21 CREATE, 13 UPDATE, 6 DELETE, 29 ACTION.
 
-Risk mix: 70 LOW, 41 MEDIUM, 27 HIGH, 1 CRITICAL.
+Risk mix: 71 LOW, 41 MEDIUM, 27 HIGH, 1 CRITICAL.
 
-Status: 137 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 138 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -27,12 +27,12 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
-| `SUPER_ADMIN` | 139 | 70 | 21 | 13 | 29 | 6 | 28 | 65 |
-| `ADMIN` | 138 | 70 | 21 | 13 | 28 | 6 | 27 | 64 |
-| `PRINCIPAL` | 67 | 49 | 3 | 5 | 9 | 1 | 7 | 18 |
-| `TEACHER` | 51 | 36 | 2 | 1 | 11 | 1 | 7 | 15 |
-| `PARENT` | 40 | 37 | 1 | 1 | 0 | 1 | 2 | 2 |
-| `STUDENT` | 48 | 41 | 5 | 0 | 1 | 1 | 0 | 4 |
+| `SUPER_ADMIN` | 140 | 71 | 21 | 13 | 29 | 6 | 28 | 65 |
+| `ADMIN` | 139 | 71 | 21 | 13 | 28 | 6 | 27 | 64 |
+| `PRINCIPAL` | 68 | 50 | 3 | 5 | 9 | 1 | 7 | 18 |
+| `TEACHER` | 52 | 37 | 2 | 1 | 11 | 1 | 7 | 15 |
+| `PARENT` | 41 | 38 | 1 | 1 | 0 | 1 | 2 | 2 |
+| `STUDENT` | 49 | 42 | 5 | 0 | 1 | 1 | 0 | 4 |
 | `FINANCE` | 28 | 21 | 2 | 1 | 4 | 0 | 7 | 7 |
 | `LIBRARIAN` | 26 | 20 | 1 | 1 | 3 | 1 | 1 | 6 |
 | `WARDEN` | 29 | 21 | 2 | 3 | 3 | 0 | 0 | 7 |
@@ -106,6 +106,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_attendance_trend` | Attendance | GET | `attendance.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_book` | Library | GET | `library.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_calendar_events` | Communication | GET | `calendar.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_class_marks` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_dashboard` | Analytics | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_editable_fields` | Student requests | GET | `profile.edit.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_fee_plans` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -627,7 +628,7 @@ The school's dashboard figures. Pass a `view` to choose which: admin (roll, tick
 
 ### `get_assignments`
 
-Homework and assignments still to be submitted, soonest deadline first. Read-only.
+Homework and assignments. For a student or parent with no filters, the work still to be submitted, soonest deadline first. For a teacher, the work they have set — narrow it with a subject, a class, or both. Read-only.
 
 | | |
 |---|---|
@@ -643,7 +644,7 @@ Homework and assignments still to be submitted, soonest deadline first. Read-onl
 
 **Input**
 
-_(no arguments)_
+`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — Narrow to one subject, e.g. "Mathematics"
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -1326,6 +1327,30 @@ A student's report card: subject marks, percentage, grade and GPA for a publishe
 **Input**
 
 `studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`enrollmentId`: string<br>`exam`: string
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `get_class_marks`
+
+How a whole class performed: every student's marks for the class's exam papers, with the class average, highest and lowest, and how many papers are still unmarked. Name the class, and optionally one subject or exam. This is the class-level answer — for one student's report card use get_report_card. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `marks.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `exam.service.listExamSubjects() + getMarksGrid()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_class_marks` |
+
+**Input**
+
+`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section, when the id is already known<br>`subject`: string — Narrow to one subject, e.g. "Mathematics"<br>`exam`: string — Narrow to one exam, e.g. "Unit Test 2"
 
 **Output** — `{ success: true, data: { … } }`.
 
