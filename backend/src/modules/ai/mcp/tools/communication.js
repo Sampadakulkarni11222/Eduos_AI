@@ -359,7 +359,7 @@ export const communicationTools = {
     service: 'calendar.service.create()',
     summarise: (args) => `Add "${args.title}" to the school calendar on ${String(args.startsAt).slice(0, 10)}`,
     async run(ctx, args) {
-      const event = await calendarEvents.create(ctx.actor, args);
+      const event = await calendarEvents.create(ctx.actor, ctx.scope, args);
       return action({ type: 'calendar_event_created', id: event._id, data: event, speak: `"${args.title}" has been added to the calendar.` });
     },
   },
