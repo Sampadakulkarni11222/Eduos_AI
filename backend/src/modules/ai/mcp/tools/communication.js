@@ -1,12 +1,25 @@
 import * as admissions from '../../../admissions/admission.service.js';
+import * as announcements from '../../../announcements/announcement.service.js';
 import * as calendarEvents from '../../../calendar/calendar.service.js';
 import * as notifications from '../../../notifications/notification.service.js';
 import * as whatsapp from '../../../whatsapp/whatsapp.service.js';
 import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
-import { RISK, objectId, dateStr, summarise, wrapAgentTool } from './_shared.js';
+import { RISK, objectId, dateStr, shortDate, summarise, wrapAgentTool, resolveSection } from './_shared.js';
 
 const LEAD_STAGES = ['NEW', 'CONTACTED', 'TOUR_SCHEDULED', 'APPLICATION', 'ENROLLED', 'LOST'];
+
+/**
+ * The announcements this caller may correct.
+ *
+ * A school-wide publisher (admin, principal) runs school communications and
+ * may correct any notice — announcement.service.update() allows exactly that —
+ * so their candidates are everything they can see. Everyone else is limited to
+ * what they posted themselves. Restricting both to "mine" refused an
+ * administrator a correction they were entitled to make.
+ */
+const editableAnnouncements = (ctx) =>
+  (ctx.scope === 'ALL' ? announcements.list(ctx.actor) : announcements.listMine(ctx.actor));
 
 /**
  * Admissions, announcements, calendar and outbound messaging.
@@ -201,6 +214,102 @@ export const communicationTools = {
     },
     service: 'announcement.service.create()',
   }),
+
+  update_announcement: {
+    module: 'Communication',
+    operation: 'UPDATE',
+    risk: RISK.HIGH,
+    confirm: true,
+    description:
+      'Correct an announcement the caller posted — its message, or its title. Identify it by id, or name the class it was sent to and say "latest"; when more than one could be meant it asks which rather than choosing. A school-wide publisher may correct any notice; anybody else only their own. Everyone who was addressed sees the change, so it always needs confirmation and nothing is written until that confirmation is accepted.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        announcementId: objectId('When the id is already known'),
+        className: { type: 'string', maxLength: 60, description: 'The class it was addressed to, e.g. "Class 5 A" or "Class 5-A"' },
+        latest: { type: 'boolean', description: 'Take the most recent one that matches' },
+        title: { type: 'string', maxLength: 200, description: 'A new title' },
+        content: { type: 'string', maxLength: 5000, description: 'The new message' },
+      },
+      additionalProperties: false,
+    },
+    permission: 'announcements.publish',
+    affectsOthers: true,
+    service: 'announcement.service.update()',
+    summarise: (args, _actor, prepared) =>
+      `Change the announcement "${prepared?.title ?? ''}"${prepared?.audienceLabel ? ` (${prepared.audienceLabel})` : ''}` +
+      `${args.content ? ` to say "${args.content}"` : ''}` +
+      `${args.title ? `${args.content ? ' and' : ''} retitle it "${args.title}"` : ''}`,
+    /**
+     * Resolves WHICH announcement, before anything is written.
+     *
+     * The candidate set is the caller's own posts (announcement.service
+     * listMine), so a notice somebody else wrote is never a candidate — the
+     * service re-checks authorship at execution time as well. A class named in
+     * words goes through the same canonical resolver the class tools use, so
+     * "Class 5-A", "class 5a" and "5-A" all find the same section, at the
+     * caller's own scope.
+     *
+     * Ambiguity is a question, never a guess: several candidates and no way to
+     * choose between them raises the shortlist for the person to pick from.
+     * That is the case that used to be answered with the whole announcement
+     * list, which read as though the request had been ignored.
+     */
+    async prepare(ctx, args) {
+      if (args.title === undefined && args.content === undefined) {
+        throw new AppError('What should the announcement say now?', 400, [], 'AGENT_NEEDS_INPUT');
+      }
+
+      const mine = await editableAnnouncements(ctx);
+      if (!mine.length) {
+        throw new AppError('There are no announcements you can change.', 404, [], 'NOT_FOUND');
+      }
+
+      let candidates = mine;
+      if (args.announcementId) {
+        candidates = mine.filter((a) => a.id === String(args.announcementId));
+        if (!candidates.length) {
+          throw new AppError('You can only change an announcement you posted.', 403, [], 'AGENT_FORBIDDEN');
+        }
+      } else if (args.className) {
+        const section = await resolveSection(ctx, { className: args.className });
+        candidates = mine.filter((a) => (a.audience?.sectionIds ?? []).map(String).includes(section.sectionId));
+        if (!candidates.length) {
+          throw new AppError(`You have not posted an announcement to ${section.label}.`, 404, [], 'NOT_FOUND');
+        }
+      }
+
+      if (candidates.length > 1 && !args.latest) {
+        const shortlist = candidates
+          .slice(0, 5)
+          .map((a) => `"${a.title}" (${shortDate(a.publishedAt)})`)
+          .join(', ');
+        throw new AppError(`Which announcement should I change — ${shortlist}?`, 400, [], 'AGENT_NEEDS_INPUT');
+      }
+
+      const target = candidates[0];
+      return { announcementId: target.id, title: target.title, audienceLabel: target.audienceLabel };
+    },
+    /** The notice as it stands, read live, so before and after are both true. */
+    async snapshot(ctx, _args, prepared) {
+      if (!prepared?.announcementId) return null;
+      const row = (await editableAnnouncements(ctx)).find((a) => a.id === prepared.announcementId);
+      return row ? { announcementId: row.id, title: row.title, content: row.content } : null;
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const updated = await announcements.update(ctx.actor, ctx.scope, plan.announcementId, {
+        ...(args.title !== undefined && { title: args.title }),
+        ...(args.content !== undefined && { content: args.content }),
+      });
+      return action({
+        type: 'announcement_updated',
+        id: updated.id,
+        data: { announcementId: updated.id, title: updated.title, audience: updated.audienceLabel },
+        speak: `The announcement "${updated.title}" now reads: "${updated.content}".`,
+      });
+    },
+  },
 
   get_calendar_events: {
     module: 'Communication',

@@ -10,6 +10,7 @@ import { Submission } from '../../models/assignment.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { runInTransaction } from '../../utils/transaction.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
+import { classKey } from '../../utils/classNames.js';
 import * as medicalService from '../medical/medical.service.js';
 import { recordPiiRead } from '../../utils/auditTrail.js';
 import * as attendanceService from '../attendance/attendance.service.js';
@@ -51,6 +52,12 @@ function escapeRegex(str) {
  */
 async function studentIdsMatchingClass(search) {
   const rx = new RegExp(escapeRegex(search), 'i');
+  // How the searcher wrote the class, canonically: "Class 5-A", "class 5a" and
+  // "5 A" all reduce to the same key as the stored "Class 5" + "A". Substring
+  // matching alone missed every one of those -- the hyphen in "Class 5-A" made
+  // it match nothing at all, which is how a teacher's class question became
+  // "No students match".
+  const key = classKey(search);
   // Sections are a small collection (a few dozen rows), so they are matched in
   // memory against the same "<grade> <section>" label the list renders. A pure
   // query can't do that: the label spans two collections, so "Class 10 B"
@@ -58,7 +65,9 @@ async function studentIdsMatchingClass(search) {
   const sections = await Section.find().select('_id name gradeId').populate('gradeId', 'name').lean();
   const matched = sections.filter((s) => {
     const gradeName = s.gradeId?.name ?? '';
-    return rx.test(`${gradeName} ${s.name}`.trim()) || rx.test(s.name) || rx.test(gradeName);
+    const label = `${gradeName} ${s.name}`.trim();
+    if (key && classKey(label) === key) return true;
+    return rx.test(label) || rx.test(s.name) || rx.test(gradeName);
   });
   if (!matched.length) return [];
   const enrollments = await Enrollment.find({

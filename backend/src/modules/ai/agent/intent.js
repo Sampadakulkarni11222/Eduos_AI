@@ -3,6 +3,9 @@ import { generate, isLlmEnabled } from '../../../providers/ai.provider.js';
 /** Enough for a reasoning model to think and then emit a small JSON object. */
 const ROUTING_MAX_TOKENS = 4096;
 import { toolsAvailableTo } from './tools.js';
+import { monthFromText, looksLikeMonth } from '../../../utils/naturalDates.js';
+import { classFromText, refersToOwnClasses } from '../../../utils/classNames.js';
+import { detectSelfCategory } from './profileIntent.js';
 import { logger } from '../../../utils/logger.js';
 
 /**
@@ -39,6 +42,75 @@ const RULES = [
      so the assistant works on a deployment with no model configured at all.
      Everything else routes through the model, which is given the MCP tool
      schemas (see parseIntentWithLlm). */
+  /* ── Class-level questions ───────────────────────────────
+     Declared first, and weighted above the per-student rules, because a class
+     named in a question is the subject of it. Without these, "How many students
+     are in Class 5-A?" reached the student directory and answered "No students
+     match", "Show the attendance of Class 5-A" reached a per-student tool and
+     asked "Which student?", and "What classes do I teach?" answered with
+     subjects. Every pattern here requires an explicit class reference, so a
+     school-wide question is left to the school-wide rules. */
+  {
+    tool: 'get_my_classes',
+    patterns: [
+      /\b(what|which)\b[^?]*\bclasses\b[^?]*\b(do i|i)\b[^?]*\b(teach|take|handle)\b/i,
+      /\bclasses\b[^?]*\b(am i|i am)\b[^?]*\b(assigned|teaching)\b/i,
+      /\b(which|what)\b[^?]*\bclass(es)?\b[^?]*\b(am i|i am)\b/i,
+      /\bmy\s+classes\b/i,
+      /\bclass(es)? (i|do i) teach\b/i,
+      /\b(am i|i am)\b[^?]*\bclass\s*teacher\b/i,
+      /\bclass\s*teacher\b[^?]*\b(of|for)\b[^?]*\bwhich\b/i,
+      /\bwhich class\b[^?]*\bclass\s*teacher\b/i,
+    ],
+    // A question about the students or the register inside a class is not a
+    // question about which classes exist.
+    exclude: [/\bstudents?\b/i, /\battendance\b/i, /\babsent\b/i, /\bsubject/i, /\btimetable\b/i],
+    requires: { permission: 'timetable.read' },
+    weight: 4,
+    args: () => ({}),
+  },
+  {
+    tool: 'search_students',
+    patterns: [
+      /\bhow many students\b[^?]*\b(?:class|grade|std)\s*\d{1,2}/i,
+      /\bhow many students\b[^?]*\b\d{1,2}\s*[-–—]\s*[a-z]\b/i,
+      /\bstudents?\b[^?]*\bin\b[^?]*\b(?:class|grade|std)\s*\d{1,2}/i,
+      /\bstudents?\b[^?]*\bin\b[^?]*\b\d{1,2}\s*[-–—]\s*[a-z]\b/i,
+      /\b(?:list|show|give)\b[^?]*\bstudents?\b[^?]*\b(?:class|grade|std)\s*\d{1,2}/i,
+      /\b(?:class|grade|std)\s*\d{1,2}\s*[-–—]?\s*[a-z]?\b[^?]*\bstudents?\b/i,
+      /\bstudents?\b[^?]*\bmy\s+class(es)?\b/i,
+      /\bmy\s+class(es)?\b[^?]*\bstudents?\b/i,
+    ],
+    // Attendance, fees and marks inside a class belong to their own tools.
+    exclude: [/\battendance\b/i, /\babsent\b/i, /\bpresent\b/i, /\bfee(s)?\b/i, /\bmarks?\b/i, /\bresults?\b/i],
+    requires: { permission: 'students.read' },
+    weight: 4,
+    args: (msg) => {
+      if (refersToOwnClasses(msg)) return { query: 'my classes' };
+      const named = classFromText(msg);
+      return named ? { query: named.text } : {};
+    },
+  },
+  {
+    tool: 'get_attendance_roster',
+    patterns: [
+      /\battendance\b[^?]*\b(?:of|for|in)\b[^?]*\b(?:class|grade|std)\s*\d{1,2}/i,
+      /\battendance\b[^?]*\b(?:of|for|in)\b[^?]*\b\d{1,2}\s*[-–—]\s*[a-z]\b/i,
+      /\bwho\b[^?]*\babsent\b[^?]*\b(?:class|grade|std)\s*\d{1,2}/i,
+      /\bwho\b[^?]*\babsent\b[^?]*\b\d{1,2}\s*[-–—]\s*[a-z]\b/i,
+      /\b(?:class|grade|std)\s*\d{1,2}\s*[-–—]?\s*[a-z]?\b[^?]*\battendance\b/i,
+      /\b(?:register|roster|roll call)\b[^?]*\b(?:class|grade|std)\s*\d{1,2}/i,
+    ],
+    // Marking is a write and has its own rule.
+    exclude: [/\b(mark|record|update|set)\b[^?]*\battendance\b/i, /\bmark\b/i],
+    requires: { permission: 'attendance.read' },
+    weight: 4,
+    args: (msg) => {
+      const named = classFromText(msg);
+      const date = /\btoday\b|\baaj\b|आज/i.test(msg) ? new Date().toISOString().slice(0, 10) : null;
+      return { ...(named && { className: named.text }), ...(date && { date }) };
+    },
+  },
   {
     tool: 'search_students',
     patterns: [
@@ -162,9 +234,12 @@ const RULES = [
     ],
     exclude: [/\b(below|under|less than)\b/i],
     weight: 3,
+    // "for july" and "last month" count as well as "2026-07". Without the name
+    // form these produced no month at all, and the tool answered for the
+    // CURRENT month -- a confident answer to a different question.
     args: (msg) => {
-      const m = msg.match(/\b(20\d{2})[-/](\d{1,2})\b/);
-      return m ? { month: `${m[1]}-${String(m[2]).padStart(2, '0')}` } : {};
+      const month = monthFromText(msg);
+      return month ? { month } : {};
     },
   },
   {
@@ -183,13 +258,17 @@ const RULES = [
     requires: { permission: 'attendance.read' },
     weight: 3,
     args: (msg) => {
-      const name = msg.match(/\b([\p{L}][\p{L}'-]{2,})(?:'s)\s+attendance\b/iu)?.[1]
+      const named = msg.match(/\b([\p{L}][\p{L}'-]{2,})(?:'s)\s+attendance\b/iu)?.[1]
         ?? msg.match(/\battendance\b[^?]*\b(?:of|for)\s+([\p{L}][\p{L} '-]{1,40}?)(?:[?.!,]|\s+(?:in|for|this|last)\b|$)/iu)?.[1];
+      // "attendance for july" names a month, not a pupil. Left alone, the
+      // capture above took it as a name and the answer was "No student named
+      // july" -- confusing, and about nobody.
+      const name = named && !looksLikeMonth(named.trim()) ? named : null;
       const admissionNo = msg.match(/\b([A-Z]{2,}-\d{1,6})\b/)?.[1];
-      const month = msg.match(/\b(20\d{2})[-/](\d{1,2})\b/);
+      const month = monthFromText(msg);
       return {
         ...(admissionNo ? { admissionNo } : name ? { studentName: name.trim() } : {}),
-        ...(month && { month: `${month[1]}-${String(month[2]).padStart(2, '0')}` }),
+        ...(month && { month }),
       };
     },
   },
@@ -211,9 +290,12 @@ const RULES = [
       // "Mark Rahul absent" is a write, never a read of the caller's own record.
       /\bmark\b/i,
     ],
+    // "for july" and "last month" count as well as "2026-07". Without the name
+    // form these produced no month at all, and the tool answered for the
+    // CURRENT month -- a confident answer to a different question.
     args: (msg) => {
-      const m = msg.match(/\b(20\d{2})[-/](\d{1,2})\b/);
-      return m ? { month: `${m[1]}-${String(m[2]).padStart(2, '0')}` } : {};
+      const month = monthFromText(msg);
+      return month ? { month } : {};
     },
   },
   {
@@ -297,6 +379,40 @@ const RULES = [
     requires: { permission: 'library.read', scope: 'ALL' },
     args: () => ({}),
   },
+  /* ── Correcting an announcement ──────────────────────────
+     A verb-and-entity rule rather than a set of sentences: any of the editing
+     verbs beside any of the words for a notice is an UPDATE request, in either
+     order. The target and the new wording are read out of the sentence, and
+     whatever cannot be read is asked for by the tool — an ambiguous request
+     must not be answered with the announcement list. */
+  {
+    tool: 'update_announcement',
+    // Verb STEMS, not whole words, so every inflection counts: "rewording",
+    // "changed", "modifying", "rewritten". Matching whole words missed "the
+    // circular needs rewording" and sent it to the list.
+    patterns: [
+      /\b(?:updat|chang|edit|modif|amend|revis|correct|reword|rewrit|fix)\w{0,4}\b[^?]*\b(?:announcement|notice|circular)s?\b/i,
+      /\b(?:announcement|notice|circular)s?\b[^?]*\b(?:updat|chang|edit|modif|amend|revis|correct|reword|rewrit)\w{0,4}\b/i,
+    ],
+    // Posting a new one is create_announcement's job.
+    exclude: [/\b(post|create|publish|draft|new)\b[^?]*\b(announcement|notice|circular)\b/i],
+    requires: { permission: 'announcements.publish' },
+    weight: 4,
+    args: (msg) => {
+      const named = classFromText(msg);
+      // The new wording, however it is introduced: quoted, or trailing after
+      // "to"/"as"/"say". Nothing is invented — when neither form is present the
+      // tool asks what it should say.
+      const quoted = msg.match(/["“”']([^"“”']{2,500})["“”']/)?.[1];
+      const trailing = msg.match(/\b(?:to say|says?|as|to|into|with)\s+(.{2,500})$/i)?.[1];
+      const content = (quoted ?? trailing ?? '').trim().replace(/[.?!]+$/, '') || null;
+      return {
+        ...(named && { className: named.text }),
+        ...(content && { content }),
+        ...(/\b(latest|last|most recent|recent|newest)\b/i.test(msg) && { latest: true }),
+      };
+    },
+  },
   {
     tool: 'get_announcements',
     patterns: [
@@ -304,9 +420,14 @@ const RULES = [
       /\bnews\b/i, /\bupdates?\b[^?]*\bschool\b/i,
       /सूचना/, /घोषणा/,
     ],
-    // Posting one is a write, and belongs to create_announcement.
+    // Posting one is a write, and belongs to create_announcement; correcting
+    // one is a write too, and belongs to update_announcement. Without the
+    // second pair of patterns, "update the announcement for Class 5-A" landed
+    // here and was answered with the list — the request read as ignored.
     exclude: [
       /\b(post|create|send|make|publish|write|draft)\b[^?]*\b(announcement|notice|circular)\b/i,
+      /\b(?:updat|chang|edit|modif|amend|revis|correct|reword|rewrit|fix)\w{0,4}\b[^?]*\b(?:announcement|notice|circular)s?\b/i,
+      /\b(?:announcement|notice|circular)s?\b[^?]*\b(?:updat|chang|edit|modif|amend|revis|correct|reword|rewrit)\w{0,4}\b/i,
       /\bnotice\b.*\b(post|send)\b/i,
       // "What did the announcement about the bus route say?" asks what a notice
       // *says* — a question about text, which the retrieval path answers from
@@ -378,8 +499,12 @@ const RULES = [
   },
   {
     tool: 'get_subjects',
+    // "what classes" and "which classes" used to live here, which is why a
+    // teacher asking "What classes do I teach?" was told their seven SUBJECTS.
+    // A question about classes belongs to get_my_classes; this tool answers
+    // only about subjects, which stays a distinct question.
     patterns: [
-      /\bsubject(s)?\b/i, /\bwhat classes\b/i, /\bwhich classes\b/i, /\bcourse(s)?\b/i,
+      /\bsubject(s)?\b/i, /\bcourse(s)?\b/i,
       /\bwhat do i study\b/i, /\bvishay\b/i, /विषय/,
     ],
     // "marks in each subject" is a results question; "subject teacher" is about
@@ -609,8 +734,45 @@ function scoreRules(message, actor) {
     .sort((a, b) => b.score - a.score);
 }
 
+/**
+ * The profile category a message asks about, as a plan step.
+ *
+ * Resolved by a category detector rather than by rules (see
+ * agent/profileIntent.js), because "any question about my own profile" is not a
+ * finite list of sentences and must not be written as one. It is consulted
+ * before the pattern rules and yields to every specific capability: the
+ * detector itself returns null when the message mentions classes, subjects, the
+ * timetable, attendance, fees or another person, so those keep their own tools.
+ */
+const SELF_CATEGORY_TOOLS = {
+  profile: 'get_my_profile',
+  classes: 'get_my_classes',
+  subjects: 'get_subjects',
+  timetable: 'get_timetable',
+};
+
+function selfStep(message, actor) {
+  if (!actor?.permissions?.['ai.copilot.use']) return null;
+  const detected = detectSelfCategory(message);
+  const tool = detected ? SELF_CATEGORY_TOOLS[detected.category] : null;
+  if (!tool) return null;
+
+  // The profile category has no rule behind it — the resolver decided the
+  // field, so it supplies the argument.
+  if (detected.category === 'profile') return { tool, args: { field: detected.field } };
+
+  // Every other category already has a rule that knows how to read its
+  // arguments out of the sentence, and the resolver only decided WHICH tool.
+  // Returning `{}` here instead threw that away: "what is my timetable on
+  // friday" routed correctly and then lost the day, answering about today.
+  const rule = RULES.find((entry) => entry.tool === tool);
+  return { tool, args: rule?.args ? rule.args(String(message)) : {} };
+}
+
 /** Rule-based parse. Returns { tool, args } or null. */
 export function parseIntent(message, actor) {
+  const own = selfStep(message, actor);
+  if (own) return own;
   const [best] = scoreRules(message, actor);
   if (!best) return null;
   return { tool: best.rule.tool, args: best.rule.args ? best.rule.args(String(message)) : {} };
@@ -639,6 +801,10 @@ export const MAX_PLAN_STEPS = 3;
  */
 export function parsePlan(message, actor) {
   const msg = String(message ?? '');
+  // A question about the caller's own profile, classes, subjects or timetable
+  // is one step and needs no planning.
+  const own = selfStep(msg, actor);
+  if (own) return [own];
   const matches = scoreRules(msg, actor);
   if (!matches.length) return [];
 
@@ -861,6 +1027,23 @@ export function narrowToolsForMessage(tools, message, limit = MAX_TOOLS_IN_PROMP
  * out of scope, and knows what arguments a tool takes rather than guessing. It
  * returns JSON only; anything else is treated as no match.
  */
+/**
+ * The shape a patterned argument wants, for the tool list the model is shown.
+ *
+ * Without this the list said only `month: string`, so a model filling it from
+ * "show my attendance for july" sent "july" -- which failed the schema, and the
+ * user was told the assistant needed more detail instead of being answered.
+ * An example is given rather than the pattern: a regex in a prompt invites a
+ * regex in the reply.
+ */
+function formatHint(rule) {
+  if (!rule?.pattern) return '';
+  const re = new RegExp(rule.pattern);
+  if (re.test('2026-07') && !re.test('2026-07-01')) return ' (YYYY-MM, e.g. 2026-07)';
+  if (re.test('2026-07-01')) return ' (YYYY-MM-DD, e.g. 2026-07-01)';
+  return '';
+}
+
 async function defaultCallModel(message, actor, history = [], mcpTools = null) {
   const all = mcpTools ?? toolsAvailableTo(actor);
   if (!all.length) return null;
@@ -870,7 +1053,7 @@ async function defaultCallModel(message, actor, history = [], mcpTools = null) {
     const props = t.inputSchema?.properties ?? {};
     const required = t.inputSchema?.required ?? [];
     const params = Object.entries(props)
-      .map(([k, v]) => `${k}${required.includes(k) ? '*' : ''}: ${v.type}`)
+      .map(([k, v]) => `${k}${required.includes(k) ? '*' : ''}: ${v.type}${formatHint(v)}`)
       .join(', ');
     const writes = t.annotations ? t.annotations.readOnlyHint === false : Boolean(t.mutates);
     const confirm = t.annotations?.confirmationRequired ? ', needs confirmation' : '';

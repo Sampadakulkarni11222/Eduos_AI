@@ -3,7 +3,7 @@ import { ok, action } from '../protocol.js';
 import { AppError } from '../../../../utils/AppError.js';
 import {
   RISK, objectId, dateStr, MONTH, resolveEnrollmentId, resolveStudentEnrollment, studentIdentitySchema,
-  wrapAgentTool, summarise,
+  wrapAgentTool, summarise, resolveSection, classIdentitySchema,
 } from './_shared.js';
 
 const STATUSES = ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY'];
@@ -83,31 +83,54 @@ export const attendanceTools = {
     operation: 'GET',
     risk: RISK.LOW,
     description:
-      'The register for one section on one date: every enrolled student with the status already marked for them, if any. Use this before mark_attendance to see who is in the class and what is currently recorded. Read-only.',
+      'Attendance for one whole class on one date: every enrolled student with the status marked for them, if any, and who is absent. This is the class-level answer — use it for "show the attendance of Class 5-A" and "who is absent in Class 5-A today". Name the class with className; sectionId is for when an id is already known. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
-        sectionId: objectId('The class section'),
+        ...classIdentitySchema,
+        sectionId: objectId('The class section, when the id is already known'),
         date: dateStr('Defaults to today'),
         periodNo: { type: 'integer', minimum: 1, maximum: 12, description: 'Omit for day-level attendance' },
       },
-      required: ['sectionId'],
       additionalProperties: false,
     },
     permission: 'attendance.read',
     service: 'attendance.service.getRoster()',
     async run(ctx, args) {
+      // A class named in words is resolved at the caller's own scope, so a
+      // teacher reaches their own classes and is refused another's by name
+      // rather than by a confusing empty answer. `required: ['sectionId']` was
+      // dropped because no conversation carries a section id -- the model was
+      // being asked for something it cannot know.
+      const section = await resolveSection(ctx, { sectionId: args.sectionId, className: args.className });
+      if (!section) {
+        throw new AppError('Which class? Name it, for example "Class 5 A".', 400, [], 'AGENT_NEEDS_INPUT');
+      }
       const roster = await attendance.getRoster(
-        ctx.actor, ctx.scope, args.sectionId,
+        ctx.actor, ctx.scope, section.sectionId,
         args.date ?? new Date().toISOString().slice(0, 10),
         args.periodNo ?? null,
       );
       // getRoster() returns its rows under `roster`, beside section and period details.
       const rows = Array.isArray(roster) ? roster : (roster?.roster ?? []);
       const marked = rows.filter((r) => r.status).length;
+      // The roster rows carry the name differently depending on how the service
+      // populated them, so each shape is tried in turn. Parenthesised because
+      // `??` and `||` may not be mixed without it.
+      const nameOf = (r) =>
+        r.studentName
+        ?? r.name
+        ?? ([r.studentId?.firstName, r.studentId?.lastName].filter(Boolean).join(' ').trim() || 'Unknown');
+      const absent = rows.filter((r) => r.status === 'ABSENT').map(nameOf);
+      const view = summarise(absent, (n) => n, { limit: 10 });
       return ok(
-        { roster, count: rows.length, marked },
-        { speak: `${rows.length} student(s) on the roster; ${marked} already marked.` },
+        { roster, count: rows.length, marked, absent, absentCount: absent.length, class: section.label },
+        {
+          speak: marked === 0
+            ? `${section.label} has ${rows.length} student(s); attendance has not been marked yet.`
+            : `${section.label}: ${rows.length} student(s), ${marked} marked. ` +
+              (absent.length ? `${absent.length} absent — ${view.list}${view.more ? ', …' : ''}.` : 'Nobody is marked absent.'),
+        },
       );
     },
   },

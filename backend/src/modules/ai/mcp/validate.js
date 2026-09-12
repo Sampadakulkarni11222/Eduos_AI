@@ -1,3 +1,5 @@
+import { toIsoMonth, toIsoDate } from '../../../utils/naturalDates.js';
+
 /**
  * Argument validation for MCP tool calls.
  *
@@ -14,6 +16,15 @@
  */
 
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * Whether a pattern is asking for an ISO month or an ISO date.
+ *
+ * Probed rather than string-compared, so every spelling of the same intent is
+ * covered -- `^\d{4}-\d{2}$` and `^\d{4}-(0[1-9]|1[0-2])$` both want a month.
+ */
+const wantsIsoMonth = (re) => re.test('2026-07') && !re.test('2026-07-01');
+const wantsIsoDate = (re) => re.test('2026-07-01');
 
 function typeOf(value) {
   if (value === null) return 'null';
@@ -51,8 +62,20 @@ function checkValue(key, rule, raw) {
   if (rule.enum && !rule.enum.includes(v)) {
     return [[`${key} must be one of: ${rule.enum.join(', ')}`], undefined];
   }
-  if (rule.pattern && typeof v === 'string' && !new RegExp(rule.pattern).test(v)) {
-    return [[`${key} is not in the expected format`], undefined];
+  // A month or a date that a person wrote ("july", "last month", "tomorrow") is
+  // normalised to the shape the pattern wants before it is judged, and only
+  // then re-checked -- so an unparseable value still fails, loudly, rather than
+  // becoming a confident answer about the wrong month. Which patterns mean
+  // "month" and "date" is decided by probing the pattern itself, not by
+  // comparing its source: get_growth_score spells its month pattern
+  // differently from MONTH and means exactly the same thing.
+  if (rule.pattern && typeof v === 'string') {
+    const re = new RegExp(rule.pattern);
+    if (!re.test(v)) {
+      const normalised = wantsIsoMonth(re) ? toIsoMonth(v) : wantsIsoDate(re) ? toIsoDate(v) : null;
+      if (normalised && re.test(normalised)) v = normalised;
+    }
+    if (!re.test(v)) return [[`${key} is not in the expected format`], undefined];
   }
   if (typeof v === 'number') {
     if (rule.minimum !== undefined && v < rule.minimum) errors.push(`${key} must be at least ${rule.minimum}`);

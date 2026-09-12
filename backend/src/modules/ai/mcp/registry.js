@@ -7,6 +7,7 @@ import { communicationTools } from './tools/communication.js';
 import { facilityTools } from './tools/facilities.js';
 import { welfareTools } from './tools/welfare.js';
 import { analyticsTools } from './tools/analytics.js';
+import { profileTools } from './tools/profile.js';
 
 /**
  * The EduOS MCP tool catalog.
@@ -50,6 +51,7 @@ export const MCP_TOOLS = {
   ...facilityTools,
   ...welfareTools,
   ...analyticsTools,
+  ...profileTools,
 };
 
 export function getMcpTool(name) {

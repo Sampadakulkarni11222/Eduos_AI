@@ -3,8 +3,9 @@ import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
 import { applyFieldAllowList } from '../validate.js';
 import {
-  RISK, objectId, resolveStudentId, studentIdentitySchema, summarise,
+  RISK, objectId, resolveStudentId, studentIdentitySchema, summarise, resolveSection,
 } from './_shared.js';
+import { classFromText, refersToOwnClasses } from '../../../../utils/classNames.js';
 
 /**
  * Student and enrolment tools.
@@ -74,11 +75,26 @@ export const studentTools = {
     permission: 'students.read',
     service: 'student.service.list()',
     async run(ctx, args) {
+      // "Class 5-A" is a class, not somebody's name. Resolving it as one is
+      // what makes "how many students are in Class 5-A?" answerable: the
+      // directory search it used to fall through to replied *No students match
+      // "Class 5-A"*, which claimed the class was empty when in fact nothing
+      // had resolved it. A class the caller does not teach is refused by name
+      // inside resolveSection(), never answered with a count.
+      const ownClasses = refersToOwnClasses(args.query);
+      const named = ownClasses ? null : classFromText(args.query);
+      const section = args.sectionId || named
+        ? await resolveSection(ctx, { sectionId: args.sectionId, className: named?.text })
+        : null;
+
       const page = await students.list(ctx.actor, ctx.scope, {
-        search: args.query,
-        ...(args.sectionId && { sectionId: args.sectionId }),
+        // A class question filters by section; a question about a person
+        // searches the text. "my classes" needs neither — an OWN-scoped
+        // teacher's list is already exactly their own students.
+        ...(section && { sectionId: section.sectionId }),
+        ...(!section && !ownClasses && { search: args.query }),
         page: 1,
-        pageSize: Math.min(Number(args.limit) || 20, 50),
+        pageSize: Math.min(Number(args.limit) || (section || ownClasses ? 50 : 20), 50),
       });
       const items = page.items ?? [];
       // Minimised on purpose: a search result is a way to pick a student, not a
@@ -93,12 +109,26 @@ export const studentTools = {
         enrollmentId: s.enrollment?.id ?? null,
       }));
       const view = summarise(rows, (s) => `${s.name}${s.class ? ` (${s.class})` : ''}`);
+      const total = page.total ?? rows.length;
+      // The count is the class's roll, from `total`, not the page of rows — so
+      // "how many students are in Class 5-A?" answers 61 rather than the 50 it
+      // happened to return.
+      const classAnswer = section
+        ? total
+          ? `${section.label} has ${total} student(s): ${view.list}${view.more ? ', …' : ''}.`
+          : `${section.label} has no students enrolled.`
+        : null;
+      const ownAnswer = ownClasses
+        ? total
+          ? `You have ${total} student(s) across your classes: ${view.list}${view.more ? ', …' : ''}.`
+          : 'No students are assigned to your classes.'
+        : null;
       return ok(
-        { students: rows, total: page.total ?? rows.length, returned: rows.length },
+        { students: rows, total, returned: rows.length, ...(section && { class: section.label }) },
         {
-          speak: rows.length
-            ? `Found ${page.total ?? rows.length} student(s) matching "${args.query}": ${view.list}.`
-            : `No students match "${args.query}".`,
+          speak: classAnswer ?? ownAnswer ?? (rows.length
+            ? `Found ${total} student(s) matching "${args.query}": ${view.list}.`
+            : `No students match "${args.query}".`),
         },
       );
     },

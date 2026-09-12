@@ -1,7 +1,9 @@
 import * as students from '../../../students/student.service.js';
 import * as agentTools from '../../agent/tools.js';
 import { AppError } from '../../../../utils/AppError.js';
-import { getOwnStudentId, getGuardianStudentIds } from '../../../../utils/scope.js';
+import { getOwnStudentId, getGuardianStudentIds, getTeacherSectionIds } from '../../../../utils/scope.js';
+import { Section } from '../../../../models/academics.model.js';
+import { classKey, classLabel } from '../../../../utils/classNames.js';
 import { ok } from '../protocol.js';
 
 /**
@@ -237,6 +239,116 @@ export async function resolveStudentEnrollment(ctx, ident) {
     class: enrolment.class,
   };
 }
+
+/* ── Classes ──────────────────────────────────────────────
+   A class is a Grade ("Class 5") plus a Section ("A"), and the ids the tools
+   take are section ids. Nothing in a conversation carries one, so a class named
+   in words has to be resolved -- and resolved at the caller's own scope, or the
+   assistant would become a way to read a class the caller does not teach. */
+
+/**
+ * The sections this caller may act on, or null when they are unrestricted.
+ *
+ * Driven by the scope the tool itself declares (`ctx.scope`), not by the role
+ * name, so the same helper is correct for an attendance tool and a student
+ * tool. An OWN-scoped caller who is not a teacher holds no classes at all: a
+ * class roster is a staff view, which is the same rule
+ * attendance.service.assertSectionAccess() enforces underneath.
+ */
+export async function allowedSectionIds(ctx) {
+  if (ctx?.scope === 'ALL') return null;
+  if (ctx?.actor?.roleKey === 'TEACHER') return await getTeacherSectionIds(ctx.actor.profileId);
+  return [];
+}
+
+/** Every section, with its grade, as the label a person would recognise. */
+async function sectionsWithLabels() {
+  const sections = await Section.find().select('_id name gradeId').populate('gradeId', 'name').lean();
+  return sections.map((s) => ({
+    sectionId: String(s._id),
+    label: classLabel(s.gradeId?.name, s.name),
+  }));
+}
+
+/**
+ * Resolves a class named in words into one section the caller may see.
+ *
+ * The three outcomes are deliberately different answers, because the reported
+ * bug was all three collapsing into one wrong sentence -- *No students match
+ * "Class 5-A"* -- which told a teacher their own class was empty when the real
+ * problem was that nothing had resolved it:
+ *
+ *   no such class          404 CLASS_NOT_FOUND     "I could not find a class
+ *                                                   called ..." (never "no
+ *                                                   students match")
+ *   exists, not theirs     403 CLASS_OUT_OF_SCOPE  named, and nothing about it
+ *                                                   disclosed -- not its size,
+ *                                                   not its students
+ *   a grade with several   400 AGENT_NEEDS_INPUT   asks which section
+ *   sections in scope
+ *
+ * Matching is on the canonical key (see utils/classNames.js), so "Class 5-A",
+ * "class 5a", "5-A" and "Class 5 A" all resolve to the same section. Tenant
+ * isolation is unchanged: Section is tenant-scoped, so this only ever sees the
+ * acting school's classes.
+ */
+export async function resolveSection(ctx, { sectionId, className } = {}) {
+  const allowed = await allowedSectionIds(ctx);
+  const permitted = (id) => allowed === null || allowed.includes(String(id));
+
+  if (sectionId) {
+    const all = await sectionsWithLabels();
+    const found = all.find((s) => s.sectionId === String(sectionId));
+    if (!found) throw new AppError('I could not find that class.', 404, [], 'CLASS_NOT_FOUND');
+    if (!permitted(found.sectionId)) {
+      throw new AppError(`${found.label} is not one of your classes.`, 403, [], 'CLASS_OUT_OF_SCOPE');
+    }
+    return found;
+  }
+
+  if (!className) return null;
+  const key = classKey(className);
+  if (!key) return null;
+
+  const all = await sectionsWithLabels();
+  // A grade on its own ("Class 5") matches every section in it; a full
+  // reference ("Class 5 A") matches exactly one.
+  const matches = all.filter((s) => classKey(s.label) === key)
+    .concat(all.filter((s) => classKey(s.label) !== key && classKey(s.label).split(' ')[0] === key));
+
+  if (!matches.length) {
+    throw new AppError(`I could not find a class called "${String(className).trim()}".`, 404, [], 'CLASS_NOT_FOUND');
+  }
+
+  const mine = matches.filter((s) => permitted(s.sectionId));
+  if (!mine.length) {
+    // Named so the teacher knows which request was refused, and nothing else:
+    // no roll count, no students, no ids.
+    const label = matches.length === 1 ? matches[0].label : String(className).trim();
+    throw new AppError(`${label} is not one of your classes.`, 403, [], 'CLASS_OUT_OF_SCOPE');
+  }
+  if (mine.length > 1) {
+    throw new AppError(
+      `Which one — ${mine.map((s) => s.label).join(', ')}?`,
+      400, [], 'AGENT_NEEDS_INPUT',
+    );
+  }
+  return mine[0];
+}
+
+/** resolveSection(), for callers that only want the id. */
+export async function resolveSectionId(ctx, args) {
+  return (await resolveSection(ctx, args))?.sectionId ?? null;
+}
+
+/** The class-identification argument every class-level tool accepts. */
+export const classIdentitySchema = {
+  className: {
+    type: 'string',
+    maxLength: 60,
+    description: 'The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"',
+  },
+};
 
 /** Student identification arguments, shared by every per-student tool. */
 export const studentIdentitySchema = {

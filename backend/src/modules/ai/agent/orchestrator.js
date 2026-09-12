@@ -168,7 +168,73 @@ export function speakOf(result, lang) {
  * 4xx came from a service being asked a question by an HTTP client, and is
  * phrased for one.
  */
-const AGENT_AUTHORED = new Set(['AGENT_FORBIDDEN', 'AGENT_FORBIDDEN_SCOPE', 'AGENT_NEEDS_INPUT']);
+const AGENT_AUTHORED = new Set([
+  'AGENT_FORBIDDEN', 'AGENT_FORBIDDEN_SCOPE', 'AGENT_NEEDS_INPUT',
+  // "Class 9-B is not one of your classes." is an answer, and a better one than
+  // the generic refusal that replaced it -- it tells the teacher which request
+  // was declined without disclosing anything about the class.
+  'CLASS_OUT_OF_SCOPE', 'CLASS_NOT_FOUND',
+]);
+
+/**
+ * Module names the catalog carries, in words a person would use.
+ *
+ * Deliberately a small map with a lowercase fallback, not a copy of the
+ * catalog: a module nobody has translated still reads as an ordinary noun.
+ */
+const TOPIC_LABELS = {
+  Students: 'students',
+  Attendance: 'attendance',
+  Fees: 'fees',
+  Academics: 'classes and subjects',
+  Exams: 'results',
+  Assignments: 'homework',
+  Timetable: 'the timetable',
+  Leave: 'leave',
+  Library: 'the library',
+  Hostel: 'the hostel',
+  Transport: 'transport',
+  Communication: 'announcements',
+  Notifications: 'notifications',
+  Tickets: 'support tickets',
+  Medical: 'medical records',
+  Documents: 'documents',
+  Analytics: 'reports',
+  Admissions: 'admissions',
+  Registrations: 'subject registrations',
+  'Student requests': 'student requests',
+};
+
+/**
+ * What the assistant can help with — and NEVER the tool descriptions.
+ *
+ * Those descriptions are written for the model. They name tools, say
+ * "read-only", enumerate `include` fields and explain when to prefer one tool
+ * over another. Interpolating them into `agent.unsure` / `agent.cannotAnswer` /
+ * `agent.degraded` dumped the internal catalog straight into the chat window —
+ * what a teacher actually saw was paragraphs of "...returns each match with
+ * class, roll number, student id and enrolment id. read-only." after a question
+ * that failed to route. The module each tool already declares is the
+ * user-facing vocabulary, so that is what is offered.
+ *
+ * @param {object[]} tools Entries from mcpToolsFor() or MCP tools/list.
+ */
+export function helpTopics(tools, limit = 6) {
+  const topics = [];
+  for (const tool of tools ?? []) {
+    // Three shapes reach this. A registry entry carries `annotations.module`;
+    // an entry that came back from MCP `tools/list` does NOT -- the SDK
+    // validates annotations against the protocol's own shape and drops
+    // everything else -- so the module is looked up by name from the registry.
+    // Without that fallback this produced "I can help with: ." on the one path
+    // that matters most, the question that failed to route.
+    const module = tool?.annotations?.module ?? tool?.module ?? getMcpTool(tool?.name)?.module;
+    if (!module) continue;
+    const label = TOPIC_LABELS[module] ?? String(module).toLowerCase();
+    if (!topics.includes(label)) topics.push(label);
+  }
+  return topics.slice(0, limit).join(', ');
+}
 
 /**
  * Keeps service-layer validation errors out of the conversation.
@@ -198,12 +264,10 @@ function humaniseToolError(err, { actor, lang, tool }) {
       'the tool should answer this case itself rather than leave it to the caller.'
   );
 
-  const capabilities = mcpToolsFor(actor)
-    .map((entry) => entry.description.toLowerCase())
-    .slice(0, 5)
-    .join('; ');
-
-  return new AppError(t('agent.cannotAnswer', lang, { capabilities }), 400, [], 'AGENT_CANNOT_ANSWER');
+  return new AppError(
+    t('agent.cannotAnswer', lang, { capabilities: helpTopics(mcpToolsFor(actor)) }),
+    400, [], 'AGENT_CANNOT_ANSWER',
+  );
 }
 
 
@@ -283,9 +347,7 @@ export async function runAgentSafely(opts) {
 
     const available = actor?.profileId ? mcpToolsFor(actor) : [];
     return {
-      reply: t('agent.degraded', lang, {
-        capabilities: available.map((tool) => tool.description.toLowerCase()).slice(0, 5).join('; '),
-      }),
+      reply: t('agent.degraded', lang, { capabilities: helpTopics(available) }),
       lang,
       action: null,
       degraded: true,
@@ -381,9 +443,7 @@ async function routeTurn({ mcpSession, message, actor, source, lang, history }) 
 
     const available = mcpTools;
     return {
-      reply: t('agent.unsure', lang, {
-        capabilities: available.map((tool) => tool.description.toLowerCase()).slice(0, 5).join('; '),
-      }),
+      reply: t('agent.unsure', lang, { capabilities: helpTopics(available) }),
       lang,
       action: null,
       suggestions: available.slice(0, 5).map((tool) => tool.name),
@@ -488,6 +548,20 @@ async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
     if (unsupported.length) {
       return { reply: unsupportedReply(tool, unsupported), lang, action: null, tool, refused: 'UNSUPPORTED_FIELD', via: 'MCP' };
     }
+    // A value the user *did* give that the tool cannot read ("july" for a
+    // month) is not a missing detail. It used to be answered with the tool's
+    // own description, so a student asking for July's attendance was shown
+    // "...Use get_student_attendance instead when the user names a particular
+    // student. Read-only." -- internal routing advice, about nothing they
+    // asked. One value is wrong, so that is what is said, with the shape that
+    // works.
+    const unreadable = unreadableParameters(result?.error?.details?.errors);
+    if (unreadable.length) {
+      return {
+        reply: unreadableReply(tool, unreadable, steps[0]?.args ?? {}),
+        lang, action: null, tool, refused: 'UNREADABLE_VALUE', via: 'MCP',
+      };
+    }
     if (err.code === 'AGENT_NEEDS_INPUT' || err.mcpCode === 'INVALID_INPUT') {
       return {
         reply: schemaErrors ? needsInputReply(tool, err, lang) : err.message,
@@ -561,6 +635,43 @@ function unsupportedReply(toolName, paths) {
     (accepted.length ? `. It accepts only: ${accepted.join(', ')}.` : '.');
 }
 
+/** The arguments a validation failure says it could not read ("month"). */
+function unreadableParameters(errors) {
+  if (!Array.isArray(errors)) return [];
+  return errors
+    .map((e) => /^([\w.[\]]+) is not in the expected format$/.exec(String(e))?.[1])
+    .filter(Boolean);
+}
+
+/**
+ * 'I could not read "july" as a month. Give it as 2026-07 and I'll look it up.'
+ *
+ * The expected shape comes from the tool's own schema, so the example is always
+ * a value that would actually pass. The offending value is quoted back because
+ * "the month you gave" leaves the person guessing which word was the problem.
+ */
+function unreadableReply(toolName, paths, args) {
+  const properties = getMcpTool(toolName)?.inputSchema?.properties ?? {};
+  const shapeOf = (path) => {
+    const rule = properties[path.split('.')[0]];
+    if (!rule?.pattern) return null;
+    const re = new RegExp(rule.pattern);
+    if (re.test('2026-07') && !re.test('2026-07-01')) return { noun: 'a month', example: '2026-07' };
+    if (re.test('2026-07-01')) return { noun: 'a date', example: '2026-07-01' };
+    return null;
+  };
+
+  const sentences = paths.map((path) => {
+    const given = args?.[path];
+    const quoted = typeof given === 'string' && given.trim() ? `"${given}"` : `what you gave for ${path}`;
+    const shape = shapeOf(path);
+    return shape
+      ? `I could not read ${quoted} as ${shape.noun}. Give it as ${shape.example} and I'll look it up.`
+      : `I could not read ${quoted}.`;
+  });
+  return sentences.join(' ');
+}
+
 /**
  * Turns a validation refusal into a question rather than an error message.
  *
@@ -572,9 +683,56 @@ function unsupportedReply(toolName, paths) {
 function needsInputReply(toolName, err, lang) {
   const tool = getMcpTool(toolName);
   if (err.code === 'AGENT_NEEDS_INPUT' || !tool) return err.message;
-  return t('agent.needsDetail', lang, { description: tool.description }) ||
-    `I need a bit more to do that. ${tool.description}`;
+  // The tool's description used to be read out here. It is written for the
+  // model -- it names other tools, says "read-only" and lists id-shaped
+  // arguments -- so a teacher whose question did not quite fit was shown the
+  // internal catalog. What is actually missing is said instead, in the words a
+  // person would use; a field nobody has a phrase for is simply left out.
+  const missing = missingParameters(err?.errors ?? err?.details?.errors)
+    .map((field) => FRIENDLY_FIELDS[field])
+    .filter(Boolean);
+  const unique = [...new Set(missing)];
+  const asked = unique.length
+    ? ` Tell me ${unique.length > 1 ? `${unique.slice(0, -1).join(', ')} and ${unique.at(-1)}` : unique[0]}.`
+    : '';
+  return `${t('agent.needsDetail', lang, { description: '' }).trim() || 'I need a bit more to do that.'}${asked}`;
 }
+
+/** The arguments a validation failure says were not supplied. */
+function missingParameters(errors) {
+  if (!Array.isArray(errors)) return [];
+  return errors.map((e) => /^([\w.[\]]+) is required$/.exec(String(e))?.[1]).filter(Boolean);
+}
+
+/**
+ * Internal argument names → what to call them when asking a person.
+ *
+ * Only fields with an honest everyday phrasing appear here. An argument with no
+ * entry is omitted from the question rather than shown raw: "tell me
+ * amountPaise" is the same leak in a friendlier sentence.
+ */
+const FRIENDLY_FIELDS = {
+  amountPaise: 'the amount',
+  invoiceId: 'which invoice',
+  invoiceNo: 'which invoice',
+  sectionId: 'which class',
+  className: 'which class',
+  studentId: 'which student',
+  studentName: 'which student',
+  admissionNo: 'which student',
+  enrollmentId: 'which student',
+  date: 'the date',
+  fromDate: 'the start date',
+  toDate: 'the end date',
+  month: 'the month',
+  reason: 'a reason',
+  title: 'a title',
+  content: 'what it should say',
+  body: 'what it should say',
+  subject: 'a subject',
+  status: 'the status',
+  query: 'what to search for',
+};
 
 /**
  * Executes a previously proposed write after the human confirms it — through

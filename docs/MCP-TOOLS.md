@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**137 tools** — 69 GET, 21 CREATE, 12 UPDATE, 6 DELETE, 29 ACTION.
+**139 tools** — 70 GET, 21 CREATE, 13 UPDATE, 6 DELETE, 29 ACTION.
 
-Risk mix: 69 LOW, 41 MEDIUM, 26 HIGH, 1 CRITICAL.
+Risk mix: 70 LOW, 41 MEDIUM, 27 HIGH, 1 CRITICAL.
 
-Status: 135 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 137 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -27,25 +27,25 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
-| `SUPER_ADMIN` | 137 | 69 | 21 | 12 | 29 | 6 | 27 | 64 |
-| `ADMIN` | 136 | 69 | 21 | 12 | 28 | 6 | 26 | 63 |
-| `PRINCIPAL` | 65 | 48 | 3 | 4 | 9 | 1 | 6 | 17 |
-| `TEACHER` | 49 | 35 | 2 | 0 | 11 | 1 | 6 | 14 |
-| `PARENT` | 39 | 36 | 1 | 1 | 0 | 1 | 2 | 2 |
-| `STUDENT` | 47 | 40 | 5 | 0 | 1 | 1 | 0 | 4 |
-| `FINANCE` | 27 | 20 | 2 | 1 | 4 | 0 | 7 | 7 |
-| `LIBRARIAN` | 25 | 19 | 1 | 1 | 3 | 1 | 1 | 6 |
-| `WARDEN` | 28 | 20 | 2 | 3 | 3 | 0 | 0 | 7 |
-| `COUNSELLOR (custom, example)` | 16 | 16 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `SUPER_ADMIN` | 139 | 70 | 21 | 13 | 29 | 6 | 28 | 65 |
+| `ADMIN` | 138 | 70 | 21 | 13 | 28 | 6 | 27 | 64 |
+| `PRINCIPAL` | 67 | 49 | 3 | 5 | 9 | 1 | 7 | 18 |
+| `TEACHER` | 51 | 36 | 2 | 1 | 11 | 1 | 7 | 15 |
+| `PARENT` | 40 | 37 | 1 | 1 | 0 | 1 | 2 | 2 |
+| `STUDENT` | 48 | 41 | 5 | 0 | 1 | 1 | 0 | 4 |
+| `FINANCE` | 28 | 21 | 2 | 1 | 4 | 0 | 7 | 7 |
+| `LIBRARIAN` | 26 | 20 | 1 | 1 | 3 | 1 | 1 | 6 |
+| `WARDEN` | 29 | 21 | 2 | 3 | 3 | 0 | 0 | 7 |
+| `COUNSELLOR (custom, example)` | 17 | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 Custom roles are database rows, created per school, so none can be listed here in advance. The COUNSELLOR row is the custom role the test suites create; any custom role is computed exactly this way from its own grants.
 
 <details><summary>High-risk actions visible to each role</summary>
 
-- **SUPER_ADMIN** (27): `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `refund_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`
-- **ADMIN** (26): `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`
-- **PRINCIPAL** (6): `transition_fee_plan`, `publish_marks`, `create_announcement`, `notify_users`, `send_whatsapp_message`, `delete_document`
-- **TEACHER** (6): `mark_attendance`, `bulk_mark_attendance`, `enter_marks`, `publish_marks`, `create_announcement`, `delete_document`
+- **SUPER_ADMIN** (28): `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `refund_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`
+- **ADMIN** (27): `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`
+- **PRINCIPAL** (7): `transition_fee_plan`, `publish_marks`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_document`
+- **TEACHER** (7): `mark_attendance`, `bulk_mark_attendance`, `enter_marks`, `publish_marks`, `create_announcement`, `update_announcement`, `delete_document`
 - **PARENT** (2): `upsert_medical_record`, `remove_medical_record`
 - **STUDENT** (0): _none_
 - **FINANCE** (7): `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `record_payment`, `refund_payment`, `transition_fee_plan`
@@ -123,6 +123,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_my_bus` | Transport | GET | `transport.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_classes` | Academics | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_electives` | Registrations | GET | `registrations.apply` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_my_profile` | Profile | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_overdue_books` | Library | GET | `library.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_payment_change_requests` | Fees | GET | `fees.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_payment_history` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -181,6 +182,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `submit_assignment` | Assignments | ACTION | `submissions.submit` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `transition_fee_plan` | Fees | ACTION | `fees.read` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_admission_lead` | Admissions | ACTION | `admissions.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
+| `update_announcement` | Communication | UPDATE | `announcements.publish` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_book` | Library | UPDATE | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_enrollment_status` | Students | UPDATE | `enrollments.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_fee_plan` | Fees | UPDATE | `fees.plan.request` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
@@ -819,7 +821,7 @@ Today's absence snapshot for the whole school: how many students are absent, pre
 
 ### `get_attendance_roster`
 
-The register for one section on one date: every enrolled student with the status already marked for them, if any. Use this before mark_attendance to see who is in the class and what is currently recorded. Read-only.
+Attendance for one whole class on one date: every enrolled student with the status marked for them, if any, and who is absent. This is the class-level answer — use it for "show the attendance of Class 5-A" and "who is absent in Class 5-A today". Name the class with className; sectionId is for when an id is already known. Read-only.
 
 | | |
 |---|---|
@@ -835,7 +837,7 @@ The register for one section on one date: every enrolled student with the status
 
 **Input**
 
-`sectionId`: string **(required)** — The class section<br>`date`: string — Defaults to today<br>`periodNo`: integer — Omit for day-level attendance
+`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section, when the id is already known<br>`date`: string — Defaults to today<br>`periodNo`: integer — Omit for day-level attendance
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -1104,6 +1106,30 @@ Publish an announcement. The audience is decided by the school's own rules from 
 **Input**
 
 `title`: string **(required)**<br>`content`: string<br>`audience`: object — Optional narrowing. Omit to let the school's rules decide what this publisher may address.
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `update_announcement`
+
+Correct an announcement the caller posted — its message, or its title. Identify it by id, or name the class it was sent to and say "latest"; when more than one could be meant it asks which rather than choosing. A school-wide publisher may correct any notice; anybody else only their own. Everyone who was addressed sees the change, so it always needs confirmation and nothing is written until that confirmation is accepted.
+
+| | |
+|---|---|
+| **Operation** | UPDATE |
+| **Risk** | HIGH |
+| **Confirmation** | REQUIRED |
+| **Permission** | `announcements.publish` |
+| **Scope** | OWN or ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `announcement.service.update()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.update_announcement` |
+
+**Input**
+
+`announcementId`: string — When the id is already known<br>`className`: string — The class it was addressed to, e.g. "Class 5 A" or "Class 5-A"<br>`latest`: boolean — Take the most recent one that matches<br>`title`: string — A new title<br>`content`: string — The new message
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2656,6 +2682,32 @@ The caller's own in-app notifications, and how many are unread. Read-only.
 **Input**
 
 `unreadOnly`: boolean<br>`limit`: integer
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+## Profile
+
+### `get_my_profile`
+
+The caller's own profile, from their signed-in identity: name, role, school, contact details, account status and when the profile was created. Use it for any question a person asks about themselves — "what is my name", "show my profile", "tell me about myself", "what is my designation", "what is my employee id", "when did I join". Pass `field` to answer one category, or omit it for everything. It answers only about the caller — there is no way to name another person — and it says plainly when the school does not record something rather than guessing. For the classes someone teaches use get_my_classes, for their subjects get_subjects, for their timetable get_timetable. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `ai.copilot.use` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `auth.service.me() + academics.service.getMySections()/getMyOfferings()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_my_profile` |
+
+**Input**
+
+`field`: string — one of: all, employeeId, reportingManager, joined, department, designation, email, phone, contact, name, school, status, role — Which category to answer: all (default), name, role, school, contact, status, joined, employeeId, designation, department, reportingManager
 
 **Output** — `{ success: true, data: { … } }`.
 

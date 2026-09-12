@@ -37,7 +37,7 @@ import * as transport from '../src/modules/transport/transport.service.js';
 import { seedSchool, seedPerson, mcp, inSchool, todayKey, OAK, RIVER } from './support/mcpSchool.js';
 
 /**
- * Every one of the 68 MCP write tools, executed through MCP.
+ * Every one of the 69 MCP write tools, executed through MCP.
  *
  * One case per tool — the role that should be able to do it (taken from the
  * real permission catalog), the records it needs, the arguments, and a
@@ -200,6 +200,15 @@ function world(s) {
     document: () => once('document', () => oak(() => Document.create({
       title: 'Old circular', type: 'CUSTOM', fileUrl: '/uploads/old.pdf', authorProfileId: s.people.ADMIN.profile._id, visibleToRoles: ['PARENT'],
     }))),
+    // Authored by the administrator, so an ALL-scope publisher resolves it as
+    // its own target and a teacher — who holds announcements.publish at OWN but
+    // did not write it — is the natural wrong-scope case.
+    announcement: () => once('announcement', () => oak(() => Announcement.create({
+      title: 'Library books',
+      content: 'Return the library books.',
+      audience: { all: false, sectionIds: [s.sectionA._id], gradeIds: [], subjectIds: [], roleKeys: [] },
+      createdByProfileId: s.people.ADMIN.profile._id,
+    }))),
     secondTeacher: () => once('teacher2', () => seedPerson({ roleKey: 'TEACHER', roleId: s.roleIds.TEACHER, displayName: 'Other teacher' })),
   };
   return w;
@@ -209,7 +218,7 @@ const read = (fn) => oak(fn);
 const count = (Model, filter = {}) => read(() => Model.countDocuments(filter));
 const field = (Model, id, path) => read(() => Model.findById(id).lean()).then((d) => (d ? path.split('.').reduce((o, k) => o?.[k], d) : '(gone)'));
 
-/* ── The 68 write tools ───────────────────────────────────── */
+/* ── The 69 write tools ───────────────────────────────────── */
 
 /**
  * role         who performs it (holds the permission at the scope it needs)
@@ -416,6 +425,14 @@ const CASES = [
     args: () => ({ title: 'PTM on Saturday', content: 'Parents are invited to meet class teachers.' }),
     footprint: () => count(Announcement, { title: 'PTM on Saturday' }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
+  { tool: 'update_announcement', role: 'ADMIN',
+    setup: async (w) => ({ announcement: await w.announcement() }),
+    args: (_s, c) => ({ announcementId: idOf(c.announcement), content: 'Submit the books by Friday.' }),
+    footprint: (_s, c) => field(Announcement, c.announcement._id, 'content'),
+    changed: (b, a) => { expect([b, a]).toEqual(['Return the library books.', 'Submit the books by Friday.']); },
+    // Permission held, record not theirs: a teacher may publish to their own
+    // classes but may not rewrite the office's notice.
+    wrongScope: { actor: (s) => s.people.TEACHER.actor, codes: ['FORBIDDEN', 'NOT_FOUND'] } },
   { tool: 'create_calendar_event', role: 'ADMIN', tenant: false,
     args: () => ({ title: 'Annual Day', startsAt: '2026-12-20', endsAt: '2026-12-20', type: 'EVENT' }),
     footprint: () => count(CalendarEvent, { title: 'Annual Day' }),
@@ -622,9 +639,9 @@ async function attempt(tenant, actor, name, args) {
 /* ── Coverage is complete ─────────────────────────────────── */
 
 describe('the write-tool matrix', () => {
-  it('has a case for every one of the 68 write tools', () => {
+  it('has a case for every one of the 69 write tools', () => {
     const writeTools = Object.entries(MCP_TOOLS).filter(([, t]) => mutates(t)).map(([n]) => n).sort();
-    expect(writeTools).toHaveLength(68);
+    expect(writeTools).toHaveLength(69);
     expect([...new Set(CASES.map((c) => c.tool))].sort()).toEqual(writeTools);
   });
 });
