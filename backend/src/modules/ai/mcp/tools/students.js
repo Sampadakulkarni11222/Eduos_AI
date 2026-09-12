@@ -4,6 +4,7 @@ import { ok, action } from '../protocol.js';
 import { applyFieldAllowList } from '../validate.js';
 import {
   RISK, objectId, resolveStudentId, studentIdentitySchema, summarise, resolveSection,
+  allowedSectionIds, classIdentitySchema,
 } from './_shared.js';
 import { classFromText, refersToOwnClasses } from '../../../../utils/classNames.js';
 
@@ -315,24 +316,56 @@ export const studentTools = {
     operation: 'GET',
     risk: RISK.LOW,
     description:
-      'Enrolment rows — student, class, roll number and enrolment status — optionally narrowed to one section or one student. Read-only.',
+      'Enrolment rows — student, class, roll number and enrolment status — optionally narrowed to one class, one student, or one academic year. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
+        ...classIdentitySchema,
         sectionId: objectId(),
         studentId: objectId(),
+        academicYearId: objectId(),
         status: { type: 'string', enum: ENROLLMENT_STATUSES },
         limit: { type: 'integer', minimum: 1, maximum: 200 },
       },
       additionalProperties: false,
     },
     permission: 'students.read',
-    minScope: 'ALL',
+    // No minScope: a teacher holds students.read at OWN, and the rows they get
+    // are narrowed below to the sections they actually teach. This used to
+    // require ALL, which meant a teacher could not read the enrolments of
+    // their own class -- the grant existed with nothing behind it. The
+    // narrowing is what makes the relaxation safe, so the two belong together.
     service: 'student.service.listEnrollments()',
-    async run(_ctx, args) {
+    async run(ctx, args) {
+      // Which sections this caller may see, re-resolved server-side from their
+      // own live grant -- never from an argument. `null` means unrestricted (a
+      // school-wide students.read); `[]` means they hold the grant but have no
+      // classes of their own, and an enrolment list is a staff view of a class
+      // rather than a record of one's own, so that is refused out loud instead
+      // of answered with a misleading empty list.
+      const mine = await allowedSectionIds(ctx);
+      if (mine !== null && mine.length === 0) {
+        throw new AppError(
+          'You are not assigned to any class, so there are no class enrolments for you to read.',
+          403, [], 'FORBIDDEN_SCOPE',
+        );
+      }
+
+      // A class named in words resolves at the caller's own scope, so naming a
+      // class they do not teach is refused (CLASS_OUT_OF_SCOPE) rather than
+      // silently returning nothing.
+      const wanted = (args.className || args.sectionId)
+        ? await resolveSection(ctx, { sectionId: args.sectionId, className: args.className })
+        : null;
+
+      // An OWN-scoped caller is always bounded by their own sections, whether
+      // or not they named one -- so a studentId from outside those classes
+      // cannot widen the result either. Tenant isolation is unchanged: the
+      // Enrollment model is tenant-scoped.
       const filter = {
-        ...(args.sectionId && { sectionId: args.sectionId }),
+        ...(wanted ? { sectionId: wanted.sectionId } : (mine === null ? {} : { sectionId: { $in: mine } })),
         ...(args.studentId && { studentId: args.studentId }),
+        ...(args.academicYearId && { academicYearId: args.academicYearId }),
         ...(args.status && { status: args.status }),
       };
       const rows = await students.listEnrollments(filter);

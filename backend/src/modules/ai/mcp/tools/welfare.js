@@ -31,6 +31,45 @@ import {
 const DECISIONS = ['APPROVED', 'REJECTED'];
 const asList = (rows) => (Array.isArray(rows) ? rows : (rows?.items ?? []));
 
+/** A value as the calendar day it falls on, on the same scale as a dateStr arg. */
+const dayOf = (value) => {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+};
+
+/**
+ * Inclusive calendar-day narrowing of rows a service already returned.
+ *
+ * None of the three services behind these lists takes a date range --
+ * leave.service.listForReview(), registration.service.listForReview() and
+ * ticket.service.list() each accept only a status and pagination -- so a date
+ * is honoured by narrowing rows the caller was already entitled to see, rather
+ * than by inventing a backend filter. It can only ever remove rows, never
+ * reach further, and the authorization that produced them is untouched.
+ *
+ * Known limit, deliberately not papered over: the services cap/paginate before
+ * this runs, so a window is applied to the page the service returned rather
+ * than to the whole history. Omit both bounds and nothing is filtered at all.
+ */
+const withinWindow = (value, from, to) => {
+  const day = dayOf(value);
+  if (!day) return !from && !to;
+  if (from && day < from) return false;
+  if (to && day > to) return false;
+  return true;
+};
+
+/** A date range overlapping a row's own from/to range, as a leave application has. */
+const overlapsWindow = (fromDate, toDate, from, to) => {
+  const start = dayOf(fromDate);
+  const end = dayOf(toDate) ?? start;
+  if (!start) return !from && !to;
+  if (from && (end ?? start) < from) return false;
+  if (to && start > to) return false;
+  return true;
+};
+
 /** The co-curricular categories and levels cocurricular.service accepts. */
 const ACTIVITY_CATEGORIES = [
   'SPORTS', 'ARTS', 'MUSIC', 'DANCE', 'DRAMA', 'LITERARY', 'SCIENCE', 'SOCIAL_SERVICE', 'LEADERSHIP', 'CLUB', 'OTHER',
@@ -60,6 +99,8 @@ export const welfareTools = {
       properties: {
         status: { type: 'string', enum: ['PENDING', 'APPROVED', 'REJECTED'] },
         mine: { type: 'boolean', description: "The caller's own applications, even if they can review" },
+        from: dateStr('Only leave overlapping this date or later'),
+        to: dateStr('Only leave overlapping this date or earlier'),
       },
       additionalProperties: false,
     },
@@ -68,9 +109,14 @@ export const welfareTools = {
     async run(ctx, args) {
       const reviewScope = ctx.actor?.permissions?.['leave.review'];
       const forReview = Boolean(reviewScope) && !args.mine;
-      const items = asList(forReview
+      const all = asList(forReview
         ? await leave.listForReview(ctx.actor, reviewScope, { status: args.status ?? 'PENDING' })
         : await leave.listMine(ctx.actor, { status: args.status }));
+      // A leave application spans days, so a window matches when the two
+      // ranges overlap -- asking about July finds leave that runs into it.
+      const items = (args.from || args.to)
+        ? all.filter((l) => overlapsWindow(l.fromDate, l.toDate, args.from, args.to))
+        : all;
       const view = summarise(items, (l) =>
         `${l.studentName ?? l.applicantName ?? 'you'} ${shortDate(l.fromDate)}–${shortDate(l.toDate)} (${l.status})`);
       return ok(
@@ -138,13 +184,24 @@ export const welfareTools = {
     description: 'Elective subject registrations waiting for a decision, with the student and subject each asked for. Read-only.',
     inputSchema: {
       type: 'object',
-      properties: { status: { type: 'string', enum: ['PENDING', 'APPROVED', 'REJECTED'] } },
+      properties: {
+        status: { type: 'string', enum: ['PENDING', 'APPROVED', 'REJECTED'] },
+        from: dateStr('Only requests made on this date or later'),
+        to: dateStr('Only requests made on this date or earlier'),
+      },
       additionalProperties: false,
     },
     permission: 'registrations.review',
     service: 'registration.service.listForReview()',
     async run(ctx, args) {
-      const items = asList(await registrations.listForReview(ctx.actor, ctx.scope, { status: args.status ?? 'PENDING' }));
+      const all = asList(await registrations.listForReview(ctx.actor, ctx.scope, { status: args.status ?? 'PENDING' }));
+      // Narrowed on when the request was made, which is the date the review
+      // queue shows. The section narrowing stays where it already is: the
+      // service filters an OWN-scoped teacher to electives in their own
+      // sections, so it is not something this tool needs to ask for.
+      const items = (args.from || args.to)
+        ? all.filter((r) => withinWindow(r.requestedAt, args.from, args.to))
+        : all;
       const view = summarise(items, (r) => `${r.studentName ?? r.admissionNo ?? '—'} → ${r.subjectName ?? '—'}`);
       return ok(
         { registrations: items, count: items.length },
@@ -561,6 +618,8 @@ export const welfareTools = {
       properties: {
         status: { type: 'string', enum: TICKET_STATUSES },
         limit: { type: 'integer', minimum: 1, maximum: 100 },
+        from: dateStr('Only tickets raised on this date or later'),
+        to: dateStr('Only tickets raised on this date or earlier'),
       },
       additionalProperties: false,
     },
@@ -568,7 +627,13 @@ export const welfareTools = {
     service: 'ticket.service.list()',
     async run(ctx, args) {
       // Rows are { ticket, messageCount }.
-      const rows = asList(await tickets.list(ctx.actor, ctx.scope, { status: args.status }));
+      const all = asList(await tickets.list(ctx.actor, ctx.scope, { status: args.status }));
+      // Narrowed on when the ticket was raised. A Ticket carries no section
+      // (see models/ticket.model.js), so there is no class-level filter to
+      // offer here and none is invented.
+      const rows = (args.from || args.to)
+        ? all.filter(({ ticket }) => withinWindow(ticket?.createdAt, args.from, args.to))
+        : all;
       const items = rows.slice(0, Math.min(Number(args.limit) || 20, 100)).map(({ ticket, messageCount }) => ({
         ticketId: String(ticket?._id),
         subject: ticket?.subject ?? null,

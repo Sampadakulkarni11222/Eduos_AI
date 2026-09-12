@@ -109,33 +109,61 @@ export const academicTools = {
     module: 'Academics',
     operation: 'GET',
     risk: RISK.LOW,
-    description: "The caller's own sections and subject offerings — for a teacher, the classes they teach. Read-only.",
-    inputSchema: noArgs,
+    description: "The caller's own sections and subject offerings — for a teacher, the classes they teach. Can be narrowed to one of those classes. Read-only.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...classIdentitySchema,
+        sectionId: objectId('One of the caller\'s own sections'),
+      },
+      additionalProperties: false,
+    },
     permission: 'timetable.read',
     service: 'academics.service.getMySections() + getMyOfferings()',
-    async run(ctx) {
+    async run(ctx, args = {}) {
       const [sections, offerings] = await Promise.all([
         academics.getMySections(ctx.actor),
         academics.getMyOfferings(ctx.actor),
       ]);
-      const secRows = (sections ?? []).map((s) => ({
+      let secRows = (sections ?? []).map((s) => ({
         sectionId: String(s._id ?? s.id),
         name: s.name,
         grade: s.gradeId?.name ?? s.grade ?? null,
       }));
-      return ok(
-        {
-          sections: secRows,
-          offerings: (offerings ?? []).map((o) => ({
-            offeringId: String(o._id ?? o.id),
-            subject: o.subjectId?.name ?? null,
-            section: o.sectionId?.name ?? null,
-          })),
+      // The section each offering belongs to is kept alongside the row rather
+      // than inside it, so narrowing can use it without changing the shape of
+      // what this tool has always returned.
+      const offAll = (offerings ?? []).map((o) => ({
+        sectionId: String(o.sectionId?._id ?? o.sectionId ?? ''),
+        row: {
+          offeringId: String(o._id ?? o.id),
+          subject: o.subjectId?.name ?? null,
+          section: o.sectionId?.name ?? null,
         },
+      }));
+
+      // Optional narrowing to one class. resolveSection() re-resolves the name
+      // or id at the caller's own scope and refuses a class that is not theirs
+      // (CLASS_OUT_OF_SCOPE), so this can only ever narrow what
+      // getMySections() already returned -- never widen it. Omit both and the
+      // answer is exactly what it was before.
+      const wanted = (args.className || args.sectionId)
+        ? await resolveSection(ctx, { sectionId: args.sectionId, className: args.className })
+        : null;
+      if (wanted) secRows = secRows.filter((s) => s.sectionId === wanted.sectionId);
+      const offRows = (wanted ? offAll.filter((o) => o.sectionId === wanted.sectionId) : offAll).map((o) => o.row);
+
+      const list = () => secRows.map((s) => `${s.grade ?? ''} ${s.name}`.trim()).join(', ');
+      return ok(
+        { sections: secRows, offerings: offRows },
         {
           speak: secRows.length
-            ? `You have ${secRows.length} section(s): ${secRows.map((s) => `${s.grade ?? ''} ${s.name}`.trim()).join(', ')}.`
-            : 'No classes are assigned to you.',
+            ? (wanted
+              ? `${list()}: ${offRows.length} subject(s) you teach there.`
+              : `You have ${secRows.length} section(s): ${list()}.`)
+            : (wanted
+              ? `You are not assigned to ${wanted.label}.`
+              : 'No classes are assigned to you.'),
         },
       );
     },
