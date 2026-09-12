@@ -1,6 +1,7 @@
 import * as students from '../../../students/student.service.js';
 import * as agentTools from '../../agent/tools.js';
 import { AppError } from '../../../../utils/AppError.js';
+import { getOwnStudentId, getGuardianStudentIds } from '../../../../utils/scope.js';
 import { ok } from '../protocol.js';
 
 /**
@@ -111,6 +112,35 @@ export function wrapAgentTool(name, { description, inputSchema = noArgs, module,
 }
 
 /**
+ * The student a caller *is*, or is the guardian of — resolved from the session.
+ *
+ * This is what stops the assistant asking a student who they are. A student
+ * asking "what is my attendance?" names nobody, and the honest reading of that
+ * is not "which student?" — it is their own record. The link is read from the
+ * profile the session carries, never from anything the model or the message
+ * said, so it cannot be steered: the same lookup the REST routes make
+ * (see utils/scope.js, used by every OWN-scoped service).
+ *
+ * Deliberately narrow:
+ *   STUDENT  their own record.
+ *   PARENT   their child, but only when they have exactly one. With several,
+ *            "my child's attendance" really is ambiguous and asking which is
+ *            the right answer rather than a guess about whose record to open.
+ *   anyone else — a teacher, an administrator — has no record of their own, so
+ *            this returns null and the caller is asked, exactly as before.
+ */
+export async function selfStudentId(ctx) {
+  const { roleKey, profileId } = ctx?.actor ?? {};
+  if (!profileId) return null;
+  if (roleKey === 'STUDENT') return await getOwnStudentId(profileId);
+  if (roleKey === 'PARENT') {
+    const children = await getGuardianStudentIds(profileId);
+    return children.length === 1 ? children[0] : null;
+  }
+  return null;
+}
+
+/**
  * Resolves however the caller named a student into a student id.
  *
  * Looking somebody up by name or admission number is a **student directory
@@ -130,7 +160,10 @@ export async function resolveStudentId(ctx, { studentId, admissionNo, studentNam
     await students.getById(ctx.actor, studentScopeOf(ctx), String(studentId), { via: 'mcp.resolve', audit: false });
     return String(studentId);
   }
-  if (!admissionNo && !studentName) return null;
+  // Nobody named. A student (or a single child's parent) is asking about
+  // themselves, so that is answered rather than asked back; everyone else still
+  // gets null, and their tool still asks who they mean.
+  if (!admissionNo && !studentName) return await selfStudentId(ctx);
 
   const scope = studentScopeOf(ctx);
   const search = admissionNo ?? studentName;

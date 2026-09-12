@@ -47,8 +47,29 @@ export const creditOrders = asyncHandler(async (req, res) => {
 /* ── Agentic layer ──────────────────────────────────────────
    Shared by the in-app assistant and WhatsApp; `source` only affects the
    audit trail, never the authorization. */
+/* Recent turns only, and trimmed: the transcript is a routing aid, not a
+   transport for arbitrary client-supplied text. */
+const MAX_HISTORY_TURNS = 10;
+const MAX_HISTORY_TEXT = 1000;
+
+/**
+ * Accepts the client's transcript, and nothing else from it.
+ *
+ * The shape is rebuilt field by field rather than passed through, so a client
+ * cannot smuggle extra keys into the object the agent reasons over. It stays
+ * transcript: runAgent reads identity, role and permissions from `actor` on
+ * every turn, so nothing in here can widen what this one may do.
+ */
+function sanitiseHistory(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((turn) => (turn?.role === 'user' || turn?.role === 'assistant') && typeof turn.text === 'string')
+    .slice(-MAX_HISTORY_TURNS)
+    .map((turn) => ({ role: turn.role, text: turn.text.slice(0, MAX_HISTORY_TEXT) }));
+}
+
 export const agent = asyncHandler(async (req, res) => {
-  const { message, source, lang } = req.body;
+  const { message, source, lang, history } = req.body;
   if (!message) throw new AppError('message is required', 400);
   sendSuccess(
     res,
@@ -59,6 +80,11 @@ export const agent = asyncHandler(async (req, res) => {
       actor: req.actor,
       source: source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB',
       lang,
+      // Without this the website had no conversation at all: every turn was a
+      // first turn, so a follow-up that named nobody was answered by asking
+      // who was meant — while WhatsApp, which has always passed history,
+      // resolved it. Same core, same behaviour now.
+      history: sanitiseHistory(history),
     }),
     'Agent response'
   );

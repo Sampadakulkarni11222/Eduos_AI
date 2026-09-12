@@ -940,6 +940,17 @@ export interface AgentProposedAction {
   expiresInMinutes: number;
 }
 
+/**
+ * One earlier turn of an assistant conversation, as the client replays it.
+ *
+ * Transcript only. The server resolves who is asking from the session on every
+ * turn, so nothing here establishes identity or what the caller may access.
+ */
+export interface AgentTurn {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
 export interface AgentReply {
   reply: string;
   /** Language the assistant answered in, echoed back by the server. */

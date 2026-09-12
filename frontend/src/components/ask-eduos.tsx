@@ -7,6 +7,14 @@ import { useAuth } from '@/lib/auth';
 import type { AgentProposedAction, WhatsappAssistantLink } from '@/lib/types';
 import { SPEECH_LANGUAGES, isSpeechSupported, startDictation } from '@/lib/speech';
 
+/**
+ * Turns of this conversation sent with each message, so a follow-up resolves
+ * against what came before. Kept short deliberately: it is a routing aid for
+ * the server, and the whole transcript would grow every request without making
+ * "what about last month?" any clearer.
+ */
+const HISTORY_TURNS = 10;
+
 interface Msg {
   role: 'user' | 'assistant';
   text: string;
@@ -134,7 +142,16 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
       // The agent endpoint answers questions AND proposes actions; anything
       // that writes comes back as `action` and is only performed once the
       // user confirms the summary below.
-      const res = await api.agentAsk(text, speechLang.lang);
+      // The turns before this one, so "what about last month?" and "mark him
+      // present" resolve against what was just said instead of being asked
+      // back. `slice(0, -1)` drops the message being sent, which is already in
+      // the ref. Identity is not in here and never needs to be: the server
+      // knows who is asking from the session.
+      const history = msgsRef.current
+        .slice(0, -1)
+        .slice(-HISTORY_TURNS)
+        .map((m) => ({ role: m.role, text: m.text }));
+      const res = await api.agentAsk(text, speechLang.lang, history);
       const aiMsg: Msg = { role: 'assistant', text: res.reply, action: res.action };
       msgsRef.current = [...msgsRef.current, aiMsg];
       setMsgs([...msgsRef.current]);

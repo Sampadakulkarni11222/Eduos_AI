@@ -13,7 +13,7 @@
 import { cachedFetch, invalidateCache } from './cache';
 import { getActingSchool } from './acting-school';
 import { SESSION_MARKER } from './session-cookie';
-import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto, AnnouncementDraft, AnnouncementPreviewDto, TransportRosterRow, LibraryResourceKind, LeaveRequestDto, LeaveStatus } from './types';
+import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AgentTurn, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto, AnnouncementDraft, AnnouncementPreviewDto, TransportRosterRow, LibraryResourceKind, LeaveRequestDto, LeaveStatus } from './types';
 
 /**
  * A document exactly as the API returns it, before this layer normalises it.
@@ -664,8 +664,13 @@ export const api = {
   academicYears: () => cachedRequest<AcademicYearDto[]>('/academics/years'),
 
   // ── agentic assistant (shared core with WhatsApp) ──
-  agentAsk: (message: string, lang?: string) =>
-    request<AgentReply>('/ai/agent', { method: 'POST', body: JSON.stringify({ message, source: 'WEB', lang }) }),
+  /**
+   * `history` is transcript, never authority: the server resolves who is asking
+   * from the session on every turn, and sends these only to work out what a
+   * follow-up ("what about last month?") refers to.
+   */
+  agentAsk: (message: string, lang?: string, history?: AgentTurn[]) =>
+    request<AgentReply>('/ai/agent', { method: 'POST', body: JSON.stringify({ message, source: 'WEB', lang, history }) }),
   agentConfirm: (confirmToken: string, accept: boolean, lang?: string) =>
     request<{ reply: string; executed?: boolean }>('/ai/agent/confirm', {
       method: 'POST',
