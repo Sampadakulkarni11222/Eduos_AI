@@ -346,6 +346,42 @@ export const welfareTools = {
     },
   },
 
+  list_cocurricular: {
+    module: 'Student requests',
+    operation: 'GET',
+    risk: RISK.LOW,
+    description:
+      "Co-curricular activities and achievements on a student's record, in every state — approved, pending and rejected. Distinct from the review queue: this is what the record holds, not what is waiting for a decision. Read-only.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...studentIdentitySchema,
+        status: { type: 'string', enum: ['ALL', 'PENDING', 'APPROVED', 'REJECTED'], description: 'Default: every state' },
+      },
+      additionalProperties: false,
+    },
+    permission: 'cocurricular.read',
+    service: 'cocurricular.service.listForStudent()',
+    async run(ctx, args) {
+      // Whose record may be read is decided inside the service, by
+      // resolveReadTarget(): a student gets their own, a class teacher the
+      // students of the sections they are class teacher of (a stricter set than
+      // the sections they merely teach a subject in), and a school-wide reader
+      // whoever they name. Naming nobody is legitimate — a class teacher then
+      // gets the activities of their own students.
+      const studentId = await resolveStudentId(ctx, args);
+      const rows = asList(await cocurricular.listForStudent(ctx.actor, ctx.scope, {
+        ...(studentId && { studentId }),
+        ...(args.status && { status: args.status }),
+      }));
+      const view = summarise(rows, (r) => `${r.name}${r.achievement ? ` — ${r.achievement}` : ''} (${r.status})`);
+      return ok(
+        { activities: rows, count: rows.length },
+        { speak: rows.length ? `${rows.length} co-curricular record(s): ${view.list}.` : 'No co-curricular activities are on record.' },
+      );
+    },
+  },
+
   request_cocurricular: {
     module: 'Student requests',
     operation: 'CREATE',

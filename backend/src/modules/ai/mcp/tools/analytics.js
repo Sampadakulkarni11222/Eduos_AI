@@ -7,7 +7,10 @@ import * as notifications from '../../../notifications/notification.service.js';
 import * as audit from '../../../audit/audit.service.js';
 import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
-import { RISK, objectId, dateStr, noArgs, summarise, shortDate, resolveEnrollmentId, studentIdentitySchema } from './_shared.js';
+import {
+  RISK, objectId, dateStr, noArgs, summarise, shortDate, resolveEnrollmentId, studentIdentitySchema,
+  resolveSection, classIdentitySchema,
+} from './_shared.js';
 
 /**
  * Analytics, dashboards, directory and audit — all read-only.
@@ -374,6 +377,128 @@ export const analyticsTools = {
         id: deleted.id,
         data: deleted,
         speak: `Deleted the document "${deleted.title}".`,
+      });
+    },
+  },
+
+  /**
+   * Course material, created and corrected.
+   *
+   * Both tools are thin on purpose. Every rule about what may be published and
+   * by whom — a teacher restricted to course material for a class they
+   * actually teach, the ID_CARD refusal, authorProfileId taken from the actor,
+   * authorship and CUSTOM-type on an edit, and the field allow-list — lives in
+   * document.service, where the REST routes meet it too. Repeating any of it
+   * here would be a second copy free to drift from the first.
+   */
+  create_course_material: {
+    module: 'Documents',
+    operation: 'CREATE',
+    risk: RISK.MEDIUM,
+    confirm: true,
+    description:
+      'Publish course material to a class — notes, a worksheet or a handout already uploaded to this system. The file must be one uploaded here (an /uploads/ path); a link to anywhere else is refused. A teacher may publish only to a class they teach, and only course material. A whole class sees it, so it needs confirmation.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', maxLength: 200 },
+        fileUrl: {
+          type: 'string',
+          maxLength: 600,
+          pattern: '^/uploads/[A-Za-z0-9._-]+$',
+          description: 'The path the upload endpoint returned, e.g. /uploads/chapter-3.pdf',
+        },
+        ...classIdentitySchema,
+        sectionId: objectId('The class this material is for'),
+        mimeType: { type: 'string', maxLength: 120 },
+        visibleToRoles: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 40 } },
+      },
+      required: ['title', 'fileUrl'],
+      additionalProperties: false,
+    },
+    permission: 'materials.manage',
+    affectsOthers: true,
+    service: 'document.service.createForActor()',
+    summarise: (args) => `Publish course material "${args.title}" to ${args.className ?? 'the class'}`,
+    async run(ctx, args) {
+      // A class named in words becomes the id the service expects; whether this
+      // may happen at all is still decided by createForActor().
+      const sectionId = args.sectionId
+        ?? (args.className ? (await resolveSection(ctx, { className: args.className }))?.sectionId : null);
+      const doc = await documents.createForActor(ctx.actor, ctx.scope, {
+        title: args.title,
+        fileUrl: args.fileUrl,
+        ...(args.mimeType && { mimeType: args.mimeType }),
+        ...(args.visibleToRoles && { visibleToRoles: args.visibleToRoles }),
+        ...(sectionId && { sectionId }),
+      });
+      return action({
+        type: 'course_material_created',
+        id: String(doc._id),
+        data: {
+          id: String(doc._id),
+          title: doc.title,
+          type: doc.type,
+          sectionId: doc.sectionId ? String(doc.sectionId) : null,
+        },
+        speak: `"${doc.title}" has been published to the class.`,
+      });
+    },
+  },
+
+  update_course_material: {
+    module: 'Documents',
+    operation: 'UPDATE',
+    risk: RISK.MEDIUM,
+    confirm: true,
+    description:
+      'Correct course material already published — its title, the uploaded file it points at, or the class it is for. A teacher may change only material they published themselves, and only course material. Use list_documents to find the id. A class sees the result, so it needs confirmation.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        documentId: objectId('From list_documents'),
+        title: { type: 'string', maxLength: 200 },
+        fileUrl: {
+          type: 'string',
+          maxLength: 600,
+          pattern: '^/uploads/[A-Za-z0-9._-]+$',
+          description: 'The path the upload endpoint returned',
+        },
+        ...classIdentitySchema,
+        sectionId: objectId(),
+        mimeType: { type: 'string', maxLength: 120 },
+        visibleToRoles: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 40 } },
+      },
+      required: ['documentId'],
+      additionalProperties: false,
+    },
+    permission: 'materials.manage',
+    affectsOthers: true,
+    service: 'document.service.updateForActor()',
+    summarise: (args) => {
+      const changed = ['title', 'fileUrl', 'mimeType', 'visibleToRoles'].filter((f) => args[f] !== undefined);
+      if (args.sectionId || args.className) changed.push('class');
+      return `Change ${changed.join(', ') || 'nothing'} on course material ${args.title ? `"${args.title}"` : args.documentId}`;
+    },
+    async run(ctx, args) {
+      const sectionId = args.sectionId
+        ?? (args.className ? (await resolveSection(ctx, { className: args.className }))?.sectionId : undefined);
+      const doc = await documents.updateForActor(ctx.actor, ctx.scope, args.documentId, {
+        ...(args.title !== undefined && { title: args.title }),
+        ...(args.fileUrl !== undefined && { fileUrl: args.fileUrl }),
+        ...(args.mimeType !== undefined && { mimeType: args.mimeType }),
+        ...(args.visibleToRoles !== undefined && { visibleToRoles: args.visibleToRoles }),
+        ...(sectionId !== undefined && { sectionId }),
+      });
+      return action({
+        type: 'course_material_updated',
+        id: String(doc._id),
+        data: {
+          id: String(doc._id),
+          title: doc.title,
+          sectionId: doc.sectionId ? String(doc.sectionId) : null,
+        },
+        speak: `"${doc.title}" has been updated.`,
       });
     },
   },

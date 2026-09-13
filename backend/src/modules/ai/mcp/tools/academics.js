@@ -540,6 +540,34 @@ export const academicTools = {
     },
   },
 
+  get_performance: {
+    module: 'Exams',
+    operation: 'GET',
+    risk: RISK.LOW,
+    description:
+      "A student's published marks as they stand — each graded paper with its subject and score. Distinct from get_performance_history, which reports results across years and terms to show a trend. Read-only.",
+    inputSchema: {
+      type: 'object',
+      properties: { ...studentIdentitySchema, enrollmentId: objectId() },
+      additionalProperties: false,
+    },
+    permission: 'marks.read',
+    service: 'exam.service.getPerformance()',
+    async run(ctx, args) {
+      const enrollmentId = await resolveEnrollmentId(ctx, args);
+      // The service is the authority on who may read this: at OWN scope it
+      // checks a teacher against their own sections, and narrows a subject
+      // teacher who is not the section's class teacher to the subjects they
+      // actually teach there rather than the whole student record.
+      const data = await exams.getPerformance(ctx.actor, ctx.scope, { enrollmentId });
+      const rows = data?.results ?? data?.subjects ?? data?.marks ?? [];
+      const count = Array.isArray(rows) ? rows.length : 0;
+      return ok(data, {
+        speak: count ? `${count} published result(s) on record.` : 'No published marks are on record yet.',
+      });
+    },
+  },
+
   create_exam: {
     module: 'Exams',
     operation: 'CREATE',

@@ -222,6 +222,13 @@ export function readToolArgs(name, school) {
     get_class_marks: { className: 'Class 6 A' },
     get_at_risk_students: { attendanceBelowPct: 75 },
     get_growth_score: { admissionNo: 'OAK-1' },
+    // Naming a student exercises the scoped-resolution path rather than the
+    // "nobody named" one, so these reads are tested the way they are used: a
+    // teacher reaching a pupil of their own class, and a student or parent
+    // reaching someone else's record being refused.
+    get_lecture_attendance: { admissionNo: 'OAK-1' },
+    get_performance: { admissionNo: 'OAK-1' },
+    list_cocurricular: { admissionNo: 'OAK-1' },
   }[name] ?? {};
 }
 

@@ -245,6 +245,45 @@ export const attendanceTools = {
     },
   },
 
+  get_lecture_attendance: {
+    module: 'Attendance',
+    operation: 'GET',
+    risk: RISK.LOW,
+    description:
+      'Lecture-by-lecture attendance for one student over a month or a date range: each period with its subject, time and the status recorded. Only periods actually marked per lecture are counted — a whole-day mark says nothing about an individual lecture. Read-only.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...studentIdentitySchema,
+        enrollmentId: objectId(),
+        month: { type: 'string', pattern: MONTH, description: 'YYYY-MM' },
+        from: dateStr(),
+        to: dateStr(),
+      },
+      additionalProperties: false,
+    },
+    permission: 'attendance.read',
+    service: 'attendance.service.getLectureAttendance()',
+    async run(ctx, args) {
+      // The service re-checks the enrolment through
+      // resolveSummaryEnrollmentIds(), which refuses an id the caller is not
+      // entitled to (404) rather than treating the id as proof of entitlement.
+      const enrollmentId = await resolveEnrollmentId(ctx, args);
+      const data = await attendance.getLectureAttendance(ctx.actor, ctx.scope, {
+        enrollmentId,
+        ...(args.month && { month: args.month }),
+        ...(args.from && { from: args.from }),
+        ...(args.to && { to: args.to }),
+      });
+      const total = data?.totalLectures ?? 0;
+      return ok(data, {
+        speak: total
+          ? `${total} lecture(s) recorded, ${data.pctPresent}% present, ${data.counts?.ABSENT ?? 0} absent.`
+          : 'No lecture-level attendance has been recorded for that period.',
+      });
+    },
+  },
+
   get_attendance_statistics: {
     module: 'Attendance',
     operation: 'GET',

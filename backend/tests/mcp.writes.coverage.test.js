@@ -37,7 +37,7 @@ import * as transport from '../src/modules/transport/transport.service.js';
 import { seedSchool, seedPerson, mcp, inSchool, todayKey, OAK, RIVER } from './support/mcpSchool.js';
 
 /**
- * Every one of the 69 MCP write tools, executed through MCP.
+ * Every one of the 71 MCP write tools, executed through MCP.
  *
  * One case per tool — the role that should be able to do it (taken from the
  * real permission catalog), the records it needs, the arguments, and a
@@ -218,7 +218,7 @@ const read = (fn) => oak(fn);
 const count = (Model, filter = {}) => read(() => Model.countDocuments(filter));
 const field = (Model, id, path) => read(() => Model.findById(id).lean()).then((d) => (d ? path.split('.').reduce((o, k) => o?.[k], d) : '(gone)'));
 
-/* ── The 69 write tools ───────────────────────────────────── */
+/* ── The 71 write tools ───────────────────────────────────── */
 
 /**
  * role         who performs it (holds the permission at the scope it needs)
@@ -534,6 +534,27 @@ const CASES = [
     changed: (b, a) => { expect([b, a]).toEqual([1, 0]); },
     wrongScope: { actor: (s) => s.people.TEACHER.actor, codes: ['FORBIDDEN'] } },
 
+  // Created by the teacher into a section they are class teacher of. A
+  // Riverside administrator running the same call creates it in Riverside — its
+  // own school, which is legitimate — so the cross-school expectation is that
+  // nothing appears in Oakridge, not that the call fails.
+  { tool: 'create_course_material', role: 'TEACHER', tenantEmptyOk: true,
+    args: (s) => ({ title: 'Chapter 3 notes', fileUrl: '/uploads/ch3.pdf', sectionId: idOf(s.sectionA) }),
+    footprint: () => count(Document, { title: 'Chapter 3 notes' }),
+    changed: (b, a) => { expect([b, a]).toEqual([0, 1]); },
+    // Holds materials.manage at OWN but teaches nothing, so not this section.
+    wrongScope: { actor: async (_s, w) => (await w.secondTeacher()).actor, codes: ['FORBIDDEN'] } },
+  { tool: 'update_course_material', role: 'TEACHER',
+    setup: async (_w, s) => ({ doc: await oak(() => Document.create({
+      title: 'Chapter 2 notes', type: 'CUSTOM', fileUrl: '/uploads/ch2.pdf',
+      authorProfileId: s.people.TEACHER.profile._id, sectionId: s.sectionA._id,
+    })) }),
+    args: (_s, c) => ({ documentId: idOf(c.doc), title: 'Chapter 2 notes (revised)' }),
+    footprint: (_s, c) => field(Document, c.doc._id, 'title'),
+    changed: (b, a) => { expect([b, a]).toEqual(['Chapter 2 notes', 'Chapter 2 notes (revised)']); },
+    // Another teacher did not write it, and authorship is the rule.
+    wrongScope: { actor: async (_s, w) => (await w.secondTeacher()).actor, codes: ['FORBIDDEN'] } },
+
   /* Leave, registrations, student requests */
   { tool: 'apply_for_leave', role: 'STUDENT', tenant: false,
     args: () => ({ fromDate: ymd(days(15)), toDate: ymd(days(16)), reason: 'Family function' }),
@@ -639,9 +660,9 @@ async function attempt(tenant, actor, name, args) {
 /* ── Coverage is complete ─────────────────────────────────── */
 
 describe('the write-tool matrix', () => {
-  it('has a case for every one of the 69 write tools', () => {
+  it('has a case for every one of the 71 write tools', () => {
     const writeTools = Object.entries(MCP_TOOLS).filter(([, t]) => mutates(t)).map(([n]) => n).sort();
-    expect(writeTools).toHaveLength(69);
+    expect(writeTools).toHaveLength(71);
     expect([...new Set(CASES.map((c) => c.tool))].sort()).toEqual(writeTools);
   });
 });
