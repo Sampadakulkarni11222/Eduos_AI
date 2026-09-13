@@ -257,9 +257,10 @@ describe('3. attendance: month, class and student scopes stay distinct', () => {
     // The day is carried in the arguments this tool actually declares.
     // get_student_attendance takes month/from/to and has no `date` property, so
     // one named day is the one-day range from..to. This used to assert `date`,
-    // which the tool's schema does not define and its body never reads — so
-    // "today" was accepted and then silently ignored, and the answer covered
-    // the student's whole history. The resolver now fills the arguments a
+    // which the tool does not accept: validateArgs enforces
+    // additionalProperties, so that call was refused outright as
+    // "date is not a parameter of this tool" (INVALID_INPUT) rather than
+    // answering about the wrong period. The resolver now fills the arguments a
     // capability declares rather than a fixed name.
     expect(intent.args.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(intent.args.to).toBe(intent.args.from);
