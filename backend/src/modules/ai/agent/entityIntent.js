@@ -94,12 +94,17 @@ const vocabulary = () => (vocabularyByEntity ??= new Map(ENTITY_VOCABULARY));
 /**
  * The entities this deterministic tier claims.
  *
- * Deliberately a list rather than a set of code paths: what each resolves to is
- * decided by capability metadata below, identically for every one of them, so
- * this is the only thing that changes to claim another entity. It is short on
- * purpose — these are the questions a school asks daily, where being instant
- * and deterministic is worth more than breadth. Everything else belongs to the
- * model tier, which now receives the caller's whole authorized catalog.
+ * Deliberately a list rather than a set of code paths: what each resolves to
+ * is decided by capability metadata below, identically for every one of them,
+ * so this is the only thing that changes to claim another entity.
+ *
+ * It is still three because widening it is blocked on argument extraction, not
+ * on capability selection: the legacy rules for fees, admissions, leave,
+ * announcements and payments carry extractors for dimensions this resolver has
+ * no generic equivalent for yet -- a money amount, an invoice id, a quoted
+ * title, a date range, an enum stage. Claiming those entities without them
+ * routes the request to the right capability with the wrong arguments, which
+ * is worse than leaving them to the rules. See the Phase 7B report.
  */
 const ROUTABLE_ENTITIES = ['attendance', 'marks', 'homework'];
 
@@ -241,13 +246,28 @@ const OPERATION_FAMILY = {
  * the registry classifies arguments into; see TARGET_ARGS/FILTER_ARGS.
  */
 const ARG_NAMES = {
-  class: ['className', 'sectionId'],
+  // `query` last: a capability that takes free text accepts a class named in
+  // words (search_students documents exactly that on its own property). It is
+  // reached only when the capability has no class argument of its own, and
+  // never for `sectionId`, which the identifier guard below excludes.
+  class: ['className', 'sectionId', 'query'],
   student: ['studentName', 'studentId', 'admissionNo'],
   subject: ['subject'],
   month: ['month'],
   date: ['date', 'dueAt', 'from'],
   topic: ['topic'],
 };
+
+/**
+ * Whether the request asks for a figure ABOUT a group rather than the records
+ * in it.
+ *
+ * A dimension of the request, read like the operation verb is -- not a list of
+ * questions, and not a route to any capability. It pairs with the resultShape a
+ * capability declares: asking how many is structurally a different question
+ * from asking which, and the catalog holds capabilities that answer each.
+ */
+const AGGREGATE_REQUEST = /\bhow\s+many\b|\bhow\s+much\b|\bcount\b|\bnumber\s+of\b|\btotal\b|\bsummar(y|ies)\b|\bstatistics\b|\bstats\b|\bpercentage\b/i;
 
 /** Everything the sentence names, in the dimensions capabilities are declared in. */
 function dimensionsNamed(str, entity, operation, now) {
@@ -261,6 +281,9 @@ function dimensionsNamed(str, entity, operation, now) {
     // Reading one from a question would turn "show homework on Friday" into a
     // topic of "Friday".
     topic: operation === 'GET' ? null : topicFromText(str),
+    // Not an argument to any tool: a property of the request, matched against
+    // what a capability says it returns.
+    aggregate: AGGREGATE_REQUEST.test(str),
   };
 }
 
@@ -295,9 +318,9 @@ function scoreCapability(capability, named) {
   let score = 0;
 
   for (const [dimension, value] of Object.entries(named)) {
-    if (!value) continue;
+    if (!value || dimension === 'aggregate') continue;
     // Never into an identifier argument. What a sentence carries is a name —
-    // "Class 5-A" — and writing that into  would be inventing an id
+    // "Class 5-A" — and writing that into `sectionId` would be inventing an id
     // for the server to reject. An id-shaped argument is filled only by a
     // resolver that actually looked one up, never from text.
     const argName = ARG_NAMES[dimension]?.find(
@@ -311,7 +334,7 @@ function scoreCapability(capability, named) {
     filled.add(dimension);
     // One named day, on a capability that takes a range rather than a date:
     // "today" is the one-day range today..today. Without this the day landed
-    // in  alone and meant "from today onwards".
+    // in `from` alone and meant "from today onwards".
     if (dimension === 'date' && argName === 'from' && capability.properties.includes('to')) args.to = value;
     score += capability.targets.includes(dimension) ? 3 : 2;
   }
@@ -321,6 +344,14 @@ function scoreCapability(capability, named) {
   // told it anything.
   if (capability.targets.length && !capability.targets.some((target) => filled.has(target))) score -= 2;
 
+  // Answer shape. Only ever additive, and only when the request actually asks
+  // for an aggregate: a capability that reports a figure about a group is the
+  // right answer to how many, and the rows are the wrong one. A request that
+  // asks for neither leaves this alone, so nothing is preferred by default.
+  if (named.aggregate && capability.resultShape) {
+    score += capability.resultShape === 'SUMMARY' ? 3 : -2;
+  }
+
   const missing = (capability.required ?? []).filter((name) => args[name] === undefined);
   if (missing.some((name) => (capability.ids ?? []).includes(name))) return { score: 0, args };
 
@@ -329,8 +360,14 @@ function scoreCapability(capability, named) {
 
 /** The best-fitting capability, or null when none fits well enough to be sure. */
 function chooseCapability(candidates, named) {
+  // Two names for one capability: the catalog says which is canonical (see
+  // capabilities.js, where it is derived from a shared service rather than
+  // declared), so the older name is not a candidate while the canonical one
+  // is available to this caller.
+  const offered = new Set(candidates.map((c) => c.name));
   let best = null;
   for (const capability of candidates) {
+    if (capability.supersededBy && offered.has(capability.supersededBy)) continue;
     const { score, args } = scoreCapability(capability, named);
     // Strictly greater, so a tie keeps catalog order — the order tools are
     // declared in, which puts the general form of a question first.
@@ -375,12 +412,9 @@ export function detectEntityIntent(text, actor, now = new Date()) {
   const aboutTheCaller = SELF.test(str) && !named.class && !named.student && !BY_THE_CALLER.test(str);
   if (aboutTheCaller && !(entity === 'homework' && named.subject)) return null;
 
-  // A date alone does not say what a question is ABOUT. "Who is absent
-  // today?" names no class and no person, and answering it from a class-level
-  // capability would narrow a school-wide question; those belong to the tools
-  // that answer for the school. So this tier claims a message only when
-  // something names its subject (a class, a person, a subject) or its period
-  // (a month), or supplies the content of a write (a topic).
+  // A date alone does not say what a question is ABOUT. Who is absent today
+  // names no class and no person, and answering it from a class-level
+  // capability would narrow a school-wide question.
   const claimed = named.class || named.student || named.subject || named.month || named.topic;
   if (!claimed) return null;
 

@@ -81,6 +81,7 @@ async function resolveInvoice(ctx, { invoiceId, invoiceNo }) {
 export const feeTools = {
   get_pending_fees: {
     module: 'Fees',
+    resultShape: 'LIST',
     operation: 'GET',
     risk: RISK.LOW,
     description:
@@ -168,6 +169,7 @@ export const feeTools = {
 
   get_fee_statistics: {
     module: 'Fees',
+    resultShape: 'SUMMARY',
     operation: 'GET',
     risk: RISK.LOW,
     description:

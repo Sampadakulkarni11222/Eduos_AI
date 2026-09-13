@@ -53,12 +53,14 @@ export const facilityTools = {
   /* ── Library ─────────────────────────────────────────── */
   get_library_summary: wrapAgentTool('get_library_summary', {
     module: 'Library',
+    resultShape: 'SUMMARY',
     description: 'Library totals: catalog size, unique titles, books currently on loan and how many are overdue. Read-only.',
     service: 'library.service.getSummary()',
   }),
 
   get_overdue_books: wrapAgentTool('get_overdue_books', {
     module: 'Library',
+    resultShape: 'LIST',
     description: 'Books past their return date, with who is holding each and when it was due. Read-only.',
     service: 'library.service.listIssues({ status: OVERDUE })',
   }),
@@ -309,12 +311,14 @@ export const facilityTools = {
   /* ── Hostel ──────────────────────────────────────────── */
   get_hostel_summary: wrapAgentTool('get_hostel_summary', {
     module: 'Hostel',
+    resultShape: 'SUMMARY',
     description: 'Hostel occupancy: beds occupied and free, occupancy rate, room count and open enquiries. Read-only.',
     service: 'hostel.service.getSummary()',
   }),
 
   get_hostel_residents: wrapAgentTool('get_hostel_residents', {
     module: 'Hostel',
+    resultShape: 'LIST',
     description: 'The students currently allocated a hostel bed, with room and block. Read-only.',
     service: 'hostel.service.listHostelStudents()',
   }),

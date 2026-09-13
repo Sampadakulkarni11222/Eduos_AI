@@ -57,6 +57,7 @@ export const attendanceTools = {
 
   get_absent_students: {
     module: 'Attendance',
+    resultShape: 'SUMMARY',
     operation: 'GET',
     risk: RISK.LOW,
     description:
@@ -81,6 +82,7 @@ export const attendanceTools = {
 
   get_attendance_roster: {
     module: 'Attendance',
+    resultShape: 'LIST',
     operation: 'GET',
     risk: RISK.LOW,
     description:
@@ -286,6 +288,7 @@ export const attendanceTools = {
 
   get_attendance_statistics: {
     module: 'Attendance',
+    resultShape: 'SUMMARY',
     operation: 'GET',
     risk: RISK.LOW,
     description:

@@ -59,6 +59,7 @@ function pick(obj, fields) {
 export const studentTools = {
   search_students: {
     module: 'Students',
+    resultShape: 'SUMMARY',
     operation: 'GET',
     risk: RISK.LOW,
     description:
@@ -313,6 +314,7 @@ export const studentTools = {
 
   list_enrollments: {
     module: 'Students',
+    resultShape: 'LIST',
     operation: 'GET',
     risk: RISK.LOW,
     description:

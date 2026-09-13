@@ -64,7 +64,7 @@ export function summarise(items, render, { limit = 5 } = {}) {
  * produced by `fee.service.getSummary()`, through the same tool body that
  * produced it before MCP existed.
  */
-export function wrapAgentTool(name, { description, inputSchema = noArgs, module, operation = 'GET', risk = RISK.LOW, confirm = false, service } = {}) {
+export function wrapAgentTool(name, { description, inputSchema = noArgs, module, operation = 'GET', risk = RISK.LOW, confirm = false, service, resultShape = null } = {}) {
   const agentTool = () => {
     const tool = agentTools.TOOLS?.[name];
     if (!tool) throw new Error(`MCP registry references a non-existent agent tool: ${name}`);
@@ -76,6 +76,10 @@ export function wrapAgentTool(name, { description, inputSchema = noArgs, module,
     operation,
     risk,
     confirm,
+    // Declared metadata has to survive the wrapper, or a fronted tool could
+    // never describe itself as fully as a native one -- which would make the
+    // capability index quietly less true for exactly the older tools.
+    resultShape,
     get description() {
       return description ?? agentTool().description;
     },

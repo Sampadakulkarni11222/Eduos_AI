@@ -137,14 +137,65 @@ function describe(name, tool) {
     // or a due date; it cannot ask them for an ObjectId, so a capability that
     // requires one it could not derive is not a candidate at all.
     ids: identifierArgs(tool.inputSchema),
+    // The service a capability fronts, and whether it is a wrapper around a
+    // legacy agent tool. Together these are what make a duplicate capability
+    // recognisable without anyone declaring that it is one.
+    service: tool.service ?? null,
+    wraps: tool.wraps ?? null,
+    // What the capability RETURNS: a figure about a group (SUMMARY), the rows
+    // themselves (LIST), or one record in full (DETAIL). Declared by the tool,
+    // absent where the distinction does not arise. It describes the answer
+    // shape, never the question that asks for it.
+    resultShape: tool.resultShape ?? null,
+    supersededBy: null,
   };
 }
 
 let cached = null;
 
+/** A service declaration as the set of functions it names, order-independent. */
+function servicesOf(service) {
+  return String(service ?? '').split('/').map((part) => part.trim()).filter(Boolean).sort()
+    .join(String.fromCharCode(30));
+}
+
+/**
+ * Marks a capability that duplicates another, and says which one to prefer.
+ *
+ * Derived, not declared. Two capabilities that front the SAME service with the
+ * same entity and operation are the same capability under two names; where one
+ * of them wraps a legacy agent tool and the other is native, the native one is
+ * the canonical form. That is a structural fact about the catalog, so nothing
+ * has to be hand-maintained and a future duplicate is recognised the day it
+ * appears.
+ *
+ * It is deliberately conservative: a group with no single native member is left
+ * alone rather than guessed at.
+ */
+function applySupersession(list) {
+  const groups = new Map();
+  for (const c of list) {
+    if (!c.service) continue;
+    // The services are compared as a SET, not as a string. Two entries that
+    // front the same pair of service functions describe the same capability
+    // whichever order their doc-string happens to list them in, and comparing
+    // the raw text missed exactly that case.
+    const key = [servicesOf(c.service), c.entity, c.operation].join(String.fromCharCode(31));
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  }
+  for (const members of groups.values()) {
+    if (members.length < 2) continue;
+    const native = members.filter((c) => !c.wraps);
+    if (native.length !== 1) continue;
+    for (const c of members) if (c.wraps) c.supersededBy = native[0].name;
+  }
+  return list;
+}
+
 /** Every capability in the catalog, regardless of who is asking. */
 export function capabilityIndex() {
-  if (!cached) cached = Object.entries(MCP_TOOLS).map(([name, tool]) => describe(name, tool));
+  if (!cached) cached = applySupersession(Object.entries(MCP_TOOLS).map(([name, tool]) => describe(name, tool)));
   return cached;
 }
 
