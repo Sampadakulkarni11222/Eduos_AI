@@ -19,7 +19,7 @@ import { seedSchool, inSchool, OAK } from './support/mcpSchool.js';
  *   mcpToolsFor(actor)                  the registry's own permission filter
  *
  * And the generated docs/mcp-tools.json must describe exactly the registry
- * that is running — the same 137 tools, statuses, aliases and blocked list.
+ * that is running — the same tools, statuses, aliases and blocked list.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -87,11 +87,11 @@ describe('the capabilities endpoint and MCP tools/list return the same role-filt
 });
 
 describe('the generated catalog matches the running registry', () => {
-  it('has the same 137 tools, with the same operation, permission, scope, risk and confirmation', () => {
+  it('has the same tools, with the same operation, permission, scope, risk and confirmation', () => {
     const stats = mcpCatalogStats();
-    // 138 since get_my_profile — the caller's own profile, fronting the same
-    // auth.service.me() the portal uses.
-    expect(stats.total).toBe(140);
+    // Moves when the catalog does; the assertions below are what keep the
+    // generated docs and the running registry describing the same thing.
+    expect(stats.total).toBe(145);
     expect(catalog.stats).toEqual(stats);
     expect(catalog.tools.map((t) => t.name).sort()).toEqual(Object.keys(MCP_TOOLS).sort());
     for (const t of catalog.tools) {
@@ -106,7 +106,7 @@ describe('the generated catalog matches the running registry', () => {
 
   it('reports statuses, aliases, deprecated and blocked entries as they are', () => {
     const byStatus = catalog.tools.reduce((acc, t) => ({ ...acc, [t.status]: (acc[t.status] ?? 0) + 1 }), {});
-    expect(byStatus).toEqual({ AVAILABLE: 138, PARTIAL: 2 });
+    expect(byStatus).toEqual({ AVAILABLE: 143, PARTIAL: 2 });
     expect(catalog.compatibilityAliases.map((a) => [a.legacyName, a.mcpTool])).toEqual(Object.entries(LEGACY_TOOL_ALIASES));
     expect(catalog.deprecated.map((d) => d.name)).toEqual(['record_fee_payment']);
     expect(catalog.deprecated.every((d) => !MCP_TOOLS[d.name])).toBe(true);

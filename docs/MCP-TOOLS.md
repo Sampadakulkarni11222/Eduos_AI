@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**140 tools** — 71 GET, 21 CREATE, 13 UPDATE, 6 DELETE, 29 ACTION.
+**145 tools** — 74 GET, 22 CREATE, 14 UPDATE, 6 DELETE, 29 ACTION.
 
-Risk mix: 71 LOW, 41 MEDIUM, 27 HIGH, 1 CRITICAL.
+Risk mix: 74 LOW, 43 MEDIUM, 27 HIGH, 1 CRITICAL.
 
-Status: 138 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 143 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -27,16 +27,16 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
-| `SUPER_ADMIN` | 140 | 71 | 21 | 13 | 29 | 6 | 28 | 65 |
-| `ADMIN` | 139 | 71 | 21 | 13 | 28 | 6 | 27 | 64 |
-| `PRINCIPAL` | 68 | 50 | 3 | 5 | 9 | 1 | 7 | 18 |
-| `TEACHER` | 52 | 37 | 2 | 1 | 11 | 1 | 7 | 15 |
-| `PARENT` | 41 | 38 | 1 | 1 | 0 | 1 | 2 | 2 |
-| `STUDENT` | 49 | 42 | 5 | 0 | 1 | 1 | 0 | 4 |
+| `SUPER_ADMIN` | 145 | 74 | 22 | 14 | 29 | 6 | 28 | 67 |
+| `ADMIN` | 144 | 74 | 22 | 14 | 28 | 6 | 27 | 66 |
+| `PRINCIPAL` | 73 | 53 | 4 | 6 | 9 | 1 | 7 | 20 |
+| `TEACHER` | 58 | 41 | 3 | 2 | 11 | 1 | 7 | 17 |
+| `PARENT` | 44 | 41 | 1 | 1 | 0 | 1 | 2 | 2 |
+| `STUDENT` | 53 | 46 | 5 | 0 | 1 | 1 | 0 | 4 |
 | `FINANCE` | 28 | 21 | 2 | 1 | 4 | 0 | 7 | 7 |
 | `LIBRARIAN` | 26 | 20 | 1 | 1 | 3 | 1 | 1 | 6 |
 | `WARDEN` | 29 | 21 | 2 | 3 | 3 | 0 | 0 | 7 |
-| `COUNSELLOR (custom, example)` | 17 | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `COUNSELLOR (custom, example)` | 18 | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 Custom roles are database rows, created per school, so none can be listed here in advance. The COUNSELLOR row is the custom role the test suites create; any custom role is computed exactly this way from its own grants.
 
@@ -71,6 +71,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `create_assignment` | Assignments | CREATE | `assignments.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_book` | Library | CREATE | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_calendar_event` | Communication | CREATE | `calendar.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `create_course_material` | Documents | CREATE | `materials.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_exam` | Exams | CREATE | `exams.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_exam_subject` | Exams | CREATE | `exams.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_fee_plan` | Fees | CREATE | `fees.plan.request` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
@@ -118,6 +119,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_hostel_summary` | Hostel | GET | `hostel.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_invoice` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_leave_requests` | Leave | GET | `leave.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_lecture_attendance` | Attendance | GET | `attendance.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_library_summary` | Library | GET | `library.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_marks_grid` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_medical_record` | Medical | GET | `medical.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -130,6 +132,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_payment_history` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_payment_link` | Fees | GET | `fees.pay` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_pending_fees` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_performance` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_performance_history` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_registration_reviews` | Registrations | GET | `registrations.review` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_report_card` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -151,8 +154,9 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `list_book_issues` | Library | GET | `library.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_books` | Library | GET | `library.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_classes` | Academics | GET | `academics.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `list_cocurricular` | Student requests | GET | `cocurricular.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_documents` | Documents | GET | `materials.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
-| `list_enrollments` | Students | GET | `students.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `list_enrollments` | Students | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_exams` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_guardians` | Students | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_hostel_allocations` | Hostel | GET | `hostel.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -185,6 +189,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `update_admission_lead` | Admissions | ACTION | `admissions.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_announcement` | Communication | UPDATE | `announcements.publish` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_book` | Library | UPDATE | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `update_course_material` | Documents | UPDATE | `materials.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_enrollment_status` | Students | UPDATE | `enrollments.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_fee_plan` | Fees | UPDATE | `fees.plan.request` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_hostel_inquiry` | Hostel | UPDATE | `hostel.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -310,7 +315,7 @@ Academic years and terms, with which year is current. Use this to get the academ
 
 ### `get_my_classes`
 
-The caller's own sections and subject offerings — for a teacher, the classes they teach. Read-only.
+The caller's own sections and subject offerings — for a teacher, the classes they teach. Can be narrowed to one of those classes. Read-only.
 
 | | |
 |---|---|
@@ -326,7 +331,7 @@ The caller's own sections and subject offerings — for a teacher, the classes t
 
 **Input**
 
-_(no arguments)_
+`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — One of the caller's own sections
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -838,7 +843,7 @@ Attendance for one whole class on one date: every enrolled student with the stat
 
 **Input**
 
-`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section, when the id is already known<br>`date`: string — Defaults to today<br>`periodNo`: integer — Omit for day-level attendance
+`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section, when the id is already known<br>`date`: string — Defaults to today<br>`month`: string — YYYY-MM — the class summary for a whole month<br>`periodNo`: integer — Omit for day-level attendance
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -911,6 +916,30 @@ A day-by-day attendance calendar for one student for one month, showing the stat
 **Input**
 
 `studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`enrollmentId`: string<br>`month`: string — YYYY-MM; defaults to the current month
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `get_lecture_attendance`
+
+Lecture-by-lecture attendance for one student over a month or a date range: each period with its subject, time and the status recorded. Only periods actually marked per lecture are counted — a whole-day mark says nothing about an individual lecture. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `attendance.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `attendance.service.getLectureAttendance()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_lecture_attendance` |
+
+**Input**
+
+`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`enrollmentId`: string<br>`month`: string — YYYY-MM<br>`from`: string<br>`to`: string
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -1282,6 +1311,54 @@ Permanently delete a published document — a report card, certificate, letter o
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+### `create_course_material`
+
+Publish course material to a class — notes, a worksheet or a handout already uploaded to this system. The file must be one uploaded here (an /uploads/ path); a link to anywhere else is refused. A teacher may publish only to a class they teach, and only course material. A whole class sees it, so it needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `materials.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `document.service.createForActor()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_course_material` |
+
+**Input**
+
+`title`: string **(required)**<br>`fileUrl`: string **(required)** — The path the upload endpoint returned, e.g. /uploads/chapter-3.pdf<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class this material is for<br>`mimeType`: string<br>`visibleToRoles`: array
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `update_course_material`
+
+Correct course material already published — its title, the uploaded file it points at, or the class it is for. A teacher may change only material they published themselves, and only course material. Use list_documents to find the id. A class sees the result, so it needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | UPDATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `materials.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `document.service.updateForActor()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.update_course_material` |
+
+**Input**
+
+`documentId`: string **(required)** — From list_documents<br>`title`: string<br>`fileUrl`: string — The path the upload endpoint returned<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string<br>`mimeType`: string<br>`visibleToRoles`: array
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Exams
 
 ### `get_results`
@@ -1423,6 +1500,30 @@ A student's published results across exams over time, for spotting a trend. Read
 **Input**
 
 `studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `get_performance`
+
+A student's published marks as they stand — each graded paper with its subject and score. Distinct from get_performance_history, which reports results across years and terms to show a trend. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `marks.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `exam.service.getPerformance()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_performance` |
+
+**Input**
+
+`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`enrollmentId`: string
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -2316,7 +2417,7 @@ Leave applications. For someone who reviews leave, the ones waiting on them (def
 
 **Input**
 
-`status`: string — one of: PENDING, APPROVED, REJECTED<br>`mine`: boolean — The caller's own applications, even if they can review
+`status`: string — one of: PENDING, APPROVED, REJECTED<br>`mine`: boolean — The caller's own applications, even if they can review<br>`from`: string — Only leave overlapping this date or later<br>`to`: string — Only leave overlapping this date or earlier
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -2758,7 +2859,7 @@ Elective subject registrations waiting for a decision, with the student and subj
 
 **Input**
 
-`status`: string — one of: PENDING, APPROVED, REJECTED
+`status`: string — one of: PENDING, APPROVED, REJECTED<br>`from`: string — Only requests made on this date or later<br>`to`: string — Only requests made on this date or earlier
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -2881,6 +2982,30 @@ Student-raised requests waiting for a decision: co-curricular achievements to ad
 **Input**
 
 `kind`: string — one of: COCURRICULAR, PROFILE_EDIT, BOTH — Default BOTH<br>`status`: string — one of: PENDING, APPROVED, REJECTED
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `list_cocurricular`
+
+Co-curricular activities and achievements on a student's record, in every state — approved, pending and rejected. Distinct from the review queue: this is what the record holds, not what is waiting for a decision. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `cocurricular.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `cocurricular.service.listForStudent()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.list_cocurricular` |
+
+**Input**
+
+`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`status`: string — one of: ALL, PENDING, APPROVED, REJECTED — Default: every state
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -3106,7 +3231,7 @@ The guardians linked to a student — name, relation and whether they are the pr
 
 ### `list_enrollments`
 
-Enrolment rows — student, class, roll number and enrolment status — optionally narrowed to one section or one student. Read-only.
+Enrolment rows — student, class, roll number and enrolment status — optionally narrowed to one class, one student, or one academic year. Read-only.
 
 | | |
 |---|---|
@@ -3114,7 +3239,7 @@ Enrolment rows — student, class, roll number and enrolment status — optional
 | **Risk** | LOW |
 | **Confirmation** | NOT_REQUIRED |
 | **Permission** | `students.read` |
-| **Scope** | ALL |
+| **Scope** | OWN or ALL |
 | **Affects others** | No |
 | **EduOS service** | `student.service.listEnrollments()` |
 | **Status** | AVAILABLE |
@@ -3122,7 +3247,7 @@ Enrolment rows — student, class, roll number and enrolment status — optional
 
 **Input**
 
-`sectionId`: string<br>`studentId`: string<br>`status`: string — one of: ACTIVE, TRANSFERRED, WITHDRAWN, GRADUATED<br>`limit`: integer
+`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string<br>`studentId`: string<br>`academicYearId`: string<br>`status`: string — one of: ACTIVE, TRANSFERRED, WITHDRAWN, GRADUATED<br>`limit`: integer
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -3292,7 +3417,7 @@ Support tickets — the caller's own, or the ones routed to them. Read-only.
 
 **Input**
 
-`status`: string — one of: NEW, OPEN, WAITING, RESOLVED, CLOSED<br>`limit`: integer
+`status`: string — one of: NEW, OPEN, WAITING, RESOLVED, CLOSED<br>`limit`: integer<br>`from`: string — Only tickets raised on this date or later<br>`to`: string — Only tickets raised on this date or earlier
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -3642,7 +3767,7 @@ Staff and user accounts, searchable by name, phone or email and filterable by ro
 
 ## Permission coverage
 
-57 of the 71 permissions in the catalog are reachable through MCP.
+58 of the 71 permissions in the catalog are reachable through MCP.
 
 Permissions **not** reachable through any tool:
 
@@ -3656,7 +3781,6 @@ Permissions **not** reachable through any tool:
 - `reportcards.read` — View report cards
 - `fees.structure.manage` — Manage fee heads and fee structures
 - `fees.plan.review` — Review a submitted installment plan and send it for admin approval
-- `cocurricular.read` — View co-curricular activity records and requests
 - `analytics.school.read` — View school-wide analytics
 - `analytics.class.read` — View class-level analytics
 - `analytics.child.read` — View a child's analytics

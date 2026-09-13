@@ -1,17 +1,17 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 140,
+    "total": 145,
     "byOperation": {
-      "GET": 71,
-      "CREATE": 21,
-      "UPDATE": 13,
+      "GET": 74,
+      "CREATE": 22,
+      "UPDATE": 14,
       "DELETE": 6,
       "ACTION": 29
     },
     "byRisk": {
-      "LOW": 71,
-      "MEDIUM": 41,
+      "LOW": 74,
+      "MEDIUM": 43,
       "HIGH": 27,
       "CRITICAL": 1
     }
@@ -186,15 +186,24 @@
       "name": "list_enrollments",
       "module": "Students",
       "operation": "GET",
-      "description": "Enrolment rows — student, class, roll number and enrolment status — optionally narrowed to one section or one student. Read-only.",
+      "description": "Enrolment rows — student, class, roll number and enrolment status — optionally narrowed to one class, one student, or one academic year. Read-only.",
       "input": {
         "type": "object",
         "properties": {
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
           "sectionId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
           "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$"
+          },
+          "academicYearId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
@@ -216,7 +225,7 @@
         "additionalProperties": false
       },
       "permission": "students.read",
-      "scope": "ALL",
+      "scope": "OWN or ALL",
       "risk": "LOW",
       "confirmation": "NOT_REQUIRED",
       "affectsOthers": false,
@@ -608,6 +617,11 @@
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
             "description": "Defaults to today"
           },
+          "month": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}$",
+            "description": "YYYY-MM — the class summary for a whole month"
+          },
           "periodNo": {
             "type": "integer",
             "minimum": 1,
@@ -759,6 +773,59 @@
       "affectsOthers": false,
       "readOnly": true,
       "service": "attendance.service.getCalendar()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_lecture_attendance",
+      "module": "Attendance",
+      "operation": "GET",
+      "description": "Lecture-by-lecture attendance for one student over a month or a date range: each period with its subject, time and the status recorded. Only periods actually marked per lecture are counted — a whole-day mark says nothing about an individual lecture. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
+          },
+          "enrollmentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$"
+          },
+          "month": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}$",
+            "description": "YYYY-MM"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "attendance.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "attendance.service.getLectureAttendance()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -2074,10 +2141,21 @@
       "name": "get_my_classes",
       "module": "Academics",
       "operation": "GET",
-      "description": "The caller's own sections and subject offerings — for a teacher, the classes they teach. Read-only.",
+      "description": "The caller's own sections and subject offerings — for a teacher, the classes they teach. Can be narrowed to one of those classes. Read-only.",
       "input": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
+          "sectionId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "One of the caller's own sections"
+          }
+        },
         "additionalProperties": false
       },
       "permission": "timetable.read",
@@ -2534,6 +2612,46 @@
       "affectsOthers": false,
       "readOnly": true,
       "service": "exam.service.getPerformanceHistory()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_performance",
+      "module": "Exams",
+      "operation": "GET",
+      "description": "A student's published marks as they stand — each graded paper with its subject and score. Distinct from get_performance_history, which reports results across years and terms to show a trend. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
+          },
+          "enrollmentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "marks.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "exam.service.getPerformance()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -4546,6 +4664,16 @@
           "mine": {
             "type": "boolean",
             "description": "The caller's own applications, even if they can review"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Only leave overlapping this date or later"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Only leave overlapping this date or earlier"
           }
         },
         "additionalProperties": false
@@ -4649,6 +4777,16 @@
               "APPROVED",
               "REJECTED"
             ]
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Only requests made on this date or later"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Only requests made on this date or earlier"
           }
         },
         "additionalProperties": false
@@ -4815,6 +4953,52 @@
       "affectsOthers": false,
       "readOnly": true,
       "service": "cocurricular.service.listForReview() + profileEdit.service.listForReview()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "list_cocurricular",
+      "module": "Student requests",
+      "operation": "GET",
+      "description": "Co-curricular activities and achievements on a student's record, in every state — approved, pending and rejected. Distinct from the review queue: this is what the record holds, not what is waiting for a decision. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ALL",
+              "PENDING",
+              "APPROVED",
+              "REJECTED"
+            ],
+            "description": "Default: every state"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "cocurricular.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "cocurricular.service.listForStudent()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -5233,6 +5417,16 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 100
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Only tickets raised on this date or later"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Only tickets raised on this date or earlier"
           }
         },
         "additionalProperties": false
@@ -5744,6 +5938,123 @@
       "wrapsAgentTool": null
     },
     {
+      "name": "create_course_material",
+      "module": "Documents",
+      "operation": "CREATE",
+      "description": "Publish course material to a class — notes, a worksheet or a handout already uploaded to this system. The file must be one uploaded here (an /uploads/ path); a link to anywhere else is refused. A teacher may publish only to a class they teach, and only course material. A whole class sees it, so it needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "fileUrl": {
+            "type": "string",
+            "maxLength": 600,
+            "pattern": "^/uploads/[A-Za-z0-9._-]+$",
+            "description": "The path the upload endpoint returned, e.g. /uploads/chapter-3.pdf"
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
+          "sectionId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "The class this material is for"
+          },
+          "mimeType": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "visibleToRoles": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "maxLength": 40
+            }
+          }
+        },
+        "required": [
+          "title",
+          "fileUrl"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "materials.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "document.service.createForActor()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "update_course_material",
+      "module": "Documents",
+      "operation": "UPDATE",
+      "description": "Correct course material already published — its title, the uploaded file it points at, or the class it is for. A teacher may change only material they published themselves, and only course material. Use list_documents to find the id. A class sees the result, so it needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From list_documents"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "fileUrl": {
+            "type": "string",
+            "maxLength": 600,
+            "pattern": "^/uploads/[A-Za-z0-9._-]+$",
+            "description": "The path the upload endpoint returned"
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
+          "sectionId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$"
+          },
+          "mimeType": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "visibleToRoles": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "maxLength": 40
+            }
+          }
+        },
+        "required": [
+          "documentId"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "materials.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "document.service.updateForActor()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
       "name": "get_my_profile",
       "module": "Profile",
       "operation": "GET",
@@ -5788,10 +6099,10 @@
     {
       "role": "SUPER_ADMIN",
       "custom": false,
-      "total": 140,
-      "GET": 71,
-      "CREATE": 21,
-      "UPDATE": 13,
+      "total": 145,
+      "GET": 74,
+      "CREATE": 22,
+      "UPDATE": 14,
       "ACTION": 29,
       "DELETE": 6,
       "highRiskActions": 28,
@@ -5825,7 +6136,7 @@
         "remove_medical_record",
         "delete_document"
       ],
-      "confirmationRequired": 65,
+      "confirmationRequired": 67,
       "names": [
         "search_students",
         "get_student",
@@ -5844,6 +6155,7 @@
         "get_attendance_trend",
         "get_subject_attendance",
         "get_attendance_calendar",
+        "get_lecture_attendance",
         "get_attendance_statistics",
         "who_is_absent_today",
         "get_attendance",
@@ -5886,6 +6198,7 @@
         "get_marks_grid",
         "list_exams",
         "get_performance_history",
+        "get_performance",
         "create_exam",
         "create_exam_subject",
         "enter_marks",
@@ -5945,6 +6258,7 @@
         "withdraw_elective_registration",
         "decide_registration",
         "get_student_requests",
+        "list_cocurricular",
         "request_cocurricular",
         "decide_cocurricular",
         "get_editable_fields",
@@ -5966,16 +6280,18 @@
         "list_documents",
         "list_audit_logs",
         "delete_document",
+        "create_course_material",
+        "update_course_material",
         "get_my_profile"
       ]
     },
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 139,
-      "GET": 71,
-      "CREATE": 21,
-      "UPDATE": 13,
+      "total": 144,
+      "GET": 74,
+      "CREATE": 22,
+      "UPDATE": 14,
       "ACTION": 28,
       "DELETE": 6,
       "highRiskActions": 27,
@@ -6008,7 +6324,7 @@
         "remove_medical_record",
         "delete_document"
       ],
-      "confirmationRequired": 64,
+      "confirmationRequired": 66,
       "names": [
         "search_students",
         "get_student",
@@ -6027,6 +6343,7 @@
         "get_attendance_trend",
         "get_subject_attendance",
         "get_attendance_calendar",
+        "get_lecture_attendance",
         "get_attendance_statistics",
         "who_is_absent_today",
         "get_attendance",
@@ -6068,6 +6385,7 @@
         "get_marks_grid",
         "list_exams",
         "get_performance_history",
+        "get_performance",
         "create_exam",
         "create_exam_subject",
         "enter_marks",
@@ -6127,6 +6445,7 @@
         "withdraw_elective_registration",
         "decide_registration",
         "get_student_requests",
+        "list_cocurricular",
         "request_cocurricular",
         "decide_cocurricular",
         "get_editable_fields",
@@ -6148,16 +6467,18 @@
         "list_documents",
         "list_audit_logs",
         "delete_document",
+        "create_course_material",
+        "update_course_material",
         "get_my_profile"
       ]
     },
     {
       "role": "PRINCIPAL",
       "custom": false,
-      "total": 68,
-      "GET": 50,
-      "CREATE": 3,
-      "UPDATE": 5,
+      "total": 73,
+      "GET": 53,
+      "CREATE": 4,
+      "UPDATE": 6,
       "ACTION": 9,
       "DELETE": 1,
       "highRiskActions": 7,
@@ -6170,7 +6491,7 @@
         "send_whatsapp_message",
         "delete_document"
       ],
-      "confirmationRequired": 18,
+      "confirmationRequired": 20,
       "names": [
         "search_students",
         "get_student",
@@ -6183,6 +6504,7 @@
         "get_attendance_trend",
         "get_subject_attendance",
         "get_attendance_calendar",
+        "get_lecture_attendance",
         "get_attendance_statistics",
         "who_is_absent_today",
         "get_attendance",
@@ -6211,6 +6533,7 @@
         "get_marks_grid",
         "list_exams",
         "get_performance_history",
+        "get_performance",
         "publish_marks",
         "get_assignments",
         "get_subjects",
@@ -6226,6 +6549,7 @@
         "get_registration_reviews",
         "decide_registration",
         "get_student_requests",
+        "list_cocurricular",
         "decide_cocurricular",
         "decide_profile_edit",
         "list_tickets",
@@ -6239,16 +6563,18 @@
         "list_documents",
         "list_audit_logs",
         "delete_document",
+        "create_course_material",
+        "update_course_material",
         "get_my_profile"
       ]
     },
     {
       "role": "TEACHER",
       "custom": false,
-      "total": 52,
-      "GET": 37,
-      "CREATE": 2,
-      "UPDATE": 1,
+      "total": 58,
+      "GET": 41,
+      "CREATE": 3,
+      "UPDATE": 2,
       "ACTION": 11,
       "DELETE": 1,
       "highRiskActions": 7,
@@ -6261,17 +6587,19 @@
         "update_announcement",
         "delete_document"
       ],
-      "confirmationRequired": 15,
+      "confirmationRequired": 17,
       "names": [
         "search_students",
         "get_student",
         "get_student_overview",
         "list_guardians",
+        "list_enrollments",
         "get_student_attendance",
         "get_attendance_roster",
         "get_attendance_trend",
         "get_subject_attendance",
         "get_attendance_calendar",
+        "get_lecture_attendance",
         "get_attendance_statistics",
         "get_attendance",
         "mark_attendance",
@@ -6287,6 +6615,7 @@
         "get_marks_grid",
         "list_exams",
         "get_performance_history",
+        "get_performance",
         "enter_marks",
         "publish_marks",
         "get_assignments",
@@ -6304,6 +6633,7 @@
         "get_registration_reviews",
         "decide_registration",
         "get_student_requests",
+        "list_cocurricular",
         "decide_cocurricular",
         "decide_profile_edit",
         "get_medical_record",
@@ -6314,14 +6644,16 @@
         "list_notifications",
         "list_documents",
         "delete_document",
+        "create_course_material",
+        "update_course_material",
         "get_my_profile"
       ]
     },
     {
       "role": "PARENT",
       "custom": false,
-      "total": 41,
-      "GET": 38,
+      "total": 44,
+      "GET": 41,
       "CREATE": 1,
       "UPDATE": 1,
       "ACTION": 0,
@@ -6337,11 +6669,13 @@
         "get_student",
         "get_student_overview",
         "list_guardians",
+        "list_enrollments",
         "get_student_attendance",
         "get_attendance_roster",
         "get_attendance_trend",
         "get_subject_attendance",
         "get_attendance_calendar",
+        "get_lecture_attendance",
         "get_attendance_statistics",
         "get_attendance",
         "get_pending_fees",
@@ -6359,6 +6693,7 @@
         "get_marks_grid",
         "list_exams",
         "get_performance_history",
+        "get_performance",
         "get_assignments",
         "get_subjects",
         "get_announcements",
@@ -6379,8 +6714,8 @@
     {
       "role": "STUDENT",
       "custom": false,
-      "total": 49,
-      "GET": 42,
+      "total": 53,
+      "GET": 46,
       "CREATE": 5,
       "UPDATE": 0,
       "ACTION": 1,
@@ -6393,11 +6728,13 @@
         "get_student",
         "get_student_overview",
         "list_guardians",
+        "list_enrollments",
         "get_student_attendance",
         "get_attendance_roster",
         "get_attendance_trend",
         "get_subject_attendance",
         "get_attendance_calendar",
+        "get_lecture_attendance",
         "get_attendance_statistics",
         "get_attendance",
         "get_pending_fees",
@@ -6415,6 +6752,7 @@
         "get_marks_grid",
         "list_exams",
         "get_performance_history",
+        "get_performance",
         "get_assignments",
         "submit_assignment",
         "get_subjects",
@@ -6428,6 +6766,7 @@
         "get_my_electives",
         "register_for_elective",
         "withdraw_elective_registration",
+        "list_cocurricular",
         "request_cocurricular",
         "get_editable_fields",
         "request_profile_edit",
@@ -6581,8 +6920,8 @@
     {
       "role": "COUNSELLOR (custom, example)",
       "custom": true,
-      "total": 17,
-      "GET": 17,
+      "total": 18,
+      "GET": 18,
       "CREATE": 0,
       "UPDATE": 0,
       "ACTION": 0,
@@ -6602,6 +6941,7 @@
         "get_attendance_trend",
         "get_subject_attendance",
         "get_attendance_calendar",
+        "get_lecture_attendance",
         "get_attendance_statistics",
         "who_is_absent_today",
         "get_attendance",

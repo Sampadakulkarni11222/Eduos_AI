@@ -254,7 +254,15 @@ describe('3. attendance: month, class and student scopes stay distinct', () => {
     const intent = asTeacher("Show Aarav Mishra's attendance today.");
     expect(intent.tool).toBe('get_student_attendance');
     expect(intent.args.studentName).toBe('Aarav Mishra');
-    expect(intent.args.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // The day is carried in the arguments this tool actually declares.
+    // get_student_attendance takes month/from/to and has no `date` property, so
+    // one named day is the one-day range from..to. This used to assert `date`,
+    // which the tool's schema does not define and its body never reads — so
+    // "today" was accepted and then silently ignored, and the answer covered
+    // the student's whole history. The resolver now fills the arguments a
+    // capability declares rather than a fixed name.
+    expect(intent.args.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(intent.args.to).toBe(intent.args.from);
 
     expect(asTeacher("Show Aarav's attendance today").args.studentName).toBe('Aarav');
   });

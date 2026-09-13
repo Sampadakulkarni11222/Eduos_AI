@@ -7,6 +7,7 @@ import { monthFromText, looksLikeMonth } from '../../../utils/naturalDates.js';
 import { classFromText, refersToOwnClasses } from '../../../utils/classNames.js';
 import { detectSelfCategory } from './profileIntent.js';
 import { detectEntityIntent } from './entityIntent.js';
+import { orderToolsByRelevance } from '../mcp/capabilities.js';
 import { logger } from '../../../utils/logger.js';
 
 /**
@@ -999,45 +1000,25 @@ export async function parseIntentWithLlm(message, actor, { callModel, history = 
 }
 
 /**
- * How many tool definitions the model is shown at once.
+ * The caller's authorized tools, ordered by what this message is about.
  *
- * Role filtering already cuts the catalog hard — a parent sees around forty
- * tools where an administrator could see over a hundred — but "over a hundred"
- * is still more than a router chooses well among, and every one costs tokens on
- * every turn. So the list is narrowed a second time, by relevance to this
- * message, and capped.
+ * This used to rank by word overlap with the tool's name and description and
+ * then cut the list to a fixed MAX_TOOLS_IN_PROMPT = 45. Both halves were
+ * wrong. A teacher is authorized for 58 tools, so the cut made thirteen of
+ * their own capabilities unreachable on every turn; and because the ranking
+ * was lexical, which thirteen depended on whether the words they happened to
+ * type appeared in a description. Raising the number would only have moved the
+ * cliff — the fix is to stop dropping capabilities and to order by what a tool
+ * is *about*, which the registry already declares.
  *
- * This is a routing aid, not a security boundary: the cap only decides what the
- * model is *shown*. Whatever it proposes is still authorized by the MCP server
- * against the caller's live permissions, and a tool left out of the prompt is
- * simply one the model will not think of this turn.
+ * The ordering therefore comes from capability metadata (entity per tool,
+ * derived from the registry) rather than from string matching, and nothing is
+ * removed. Still a routing aid and not a security boundary: the list handed in
+ * is the MCP server's tools/list for this caller, and every call it leads to is
+ * authorized again server-side.
  */
-const MAX_TOOLS_IN_PROMPT = 45;
-
-/**
- * Ranks tools by word overlap with the message, keeping ties in catalog order.
- *
- * Crude on purpose. It only has to float the fee tools up for a message about
- * fees; the model does the actual choosing. Reads are preferred over writes at
- * equal relevance, so an ambiguous message is likelier to be answered than to
- * propose changing something.
- */
-export function narrowToolsForMessage(tools, message, limit = MAX_TOOLS_IN_PROMPT) {
-  if (tools.length <= limit) return tools;
-  const words = String(message ?? '')
-    .toLowerCase()
-    .split(/\W+/)
-    .filter((w) => w.length > 3);
-
-  const scored = tools.map((tool, index) => {
-    const haystack = `${tool.name} ${tool.description ?? ''}`.toLowerCase();
-    const overlap = words.reduce((n, w) => n + (haystack.includes(w) ? 1 : 0), 0);
-    const isRead = tool.annotations?.readOnlyHint !== false;
-    return { tool, index, score: overlap * 2 + (isRead ? 1 : 0) };
-  });
-
-  scored.sort((a, b) => b.score - a.score || a.index - b.index);
-  return scored.slice(0, limit).map((s) => s.tool);
+export function narrowToolsForMessage(tools, message) {
+  return orderToolsByRelevance(tools, message);
 }
 
 /**

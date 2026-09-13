@@ -1,38 +1,41 @@
 /**
- * Operation × entity × scope, resolved once.
+ * Operation × entity × target, resolved from capability metadata.
  *
- * Six manual-testing failures had one shape between them: the words that
- * decide WHAT is being asked for (attendance, marks, homework), WHAT is being
- * done to it (show, add), and WHOSE it is (a class, a named pupil, the caller)
- * were each matched by a separate pattern rule, so whichever rule happened to
- * fire first answered — and the rest of the sentence was thrown away:
+ * This file used to hold one hand-written branch per entity: an `if` for
+ * attendance that knew get_attendance_roster took a class, an `if` for marks
+ * that knew get_class_marks did, an `if` for homework. Three entities, three
+ * branches — and a fourth entity would have meant a fourth branch, which is the
+ * growing list of special cases the architecture audit was about.
  *
- *   "Show attendance for July"            → asked "Which student?"
- *   "Show marks for Class 5-A"            → one arbitrary pupil's report card
- *   "Show Mathematics homework"           → the caller's pending homework, in
- *                                            a different subject
- *   "Add Mathematics homework for 5-A: …" → a list of existing homework
+ * The branches are gone. What replaces them is a scorer over what each
+ * capability ALREADY DECLARES in the MCP registry: the entity it belongs to,
+ * the operation it performs, which arguments name its subject (targets) and
+ * which merely narrow it (filters). The sentence is read for the same
+ * dimensions — a class, a person, a subject, a month, a date, a topic — and the
+ * capability whose declared shape best fits what was named wins.
  *
- * So the three dimensions are resolved together here, from vocabularies rather
- * than from sentences, and the result names a tool and its arguments with
- * nothing dropped. It deliberately covers only attendance, marks and homework:
- * announcements, the profile categories and the class tools already have their
- * own resolvers, and widening this one to them would mean two places deciding
- * the same thing.
+ * The consequence is the one the audit asked for: a capability becomes
+ * reachable by declaring correct metadata, not by someone adding a branch for
+ * it here. Which entities this deterministic tier claims is one list
+ * (ROUTABLE_ENTITIES) rather than one code path each, and everything outside it
+ * reaches the model tier, which now sees the caller's complete authorized
+ * catalog rather than an arbitrary 45 of it.
  *
- * It yields (returns null) whenever it cannot see all of what it needs, so the
- * existing rules keep every phrasing they already handled — including every
- * self-referential one, which is why "my attendance" still reaches the caller's
- * own summary rather than a class report.
+ * It still yields — returns null — whenever it cannot see enough to be sure, so
+ * every phrasing the pattern rules already handled still reaches them.
  *
- * Nothing here authorizes anything. It chooses; the MCP server permits, and
- * the class, subject and student named in the arguments are all re-resolved
- * server-side at the caller's own scope.
+ * Nothing here authorizes anything. `capabilitiesFor(actor, …)` reads the same
+ * permission-and-scope filter the MCP server applies, so this can only choose
+ * among capabilities the caller already holds and can never widen one. The
+ * server re-authorizes every call regardless, and the class, subject and
+ * student named in the arguments are re-resolved server-side at the caller's
+ * own scope.
  */
 
 import { classFromText } from '../../../utils/classNames.js';
 import { monthFromText, toIsoDate } from '../../../utils/naturalDates.js';
 import { nameFromText } from '../../../utils/peopleNames.js';
+import { capabilitiesFor, entitiesInText, ENTITY_VOCABULARY } from '../mcp/capabilities.js';
 
 /* ── Operation ────────────────────────────────────────────── */
 
@@ -56,7 +59,7 @@ const OPERATION_VERBS = [
  * when they govern an object, which is what distinguishes "mark attendance"
  * from "marks".
  */
-const GOVERNING_WRITE_VERBS =
+export const GOVERNING_WRITE_VERBS =
   /\b(?:mark|record|enter|regulari[sz]e)\w{0,3}\s+(?:the\s+|today'?s\s+)?(?:attendance|register|marks?|scores?|homework|present|absent)\b/i;
 
 export function detectOperation(text) {
@@ -75,21 +78,36 @@ export function detectOperation(text) {
 
 /* ── Entity ───────────────────────────────────────────────── */
 
-const ENTITIES = [
-  ['attendance', /\battendance\b|\babsent\b|\bpresent\b|\bregister\b|उपस्थिति/i],
-  ['marks', /\bmarks?\b|\bresults?\b|\bgrades?\b|\bscored?\b|\bscores?\b|\breport\s*card\b|\bgpa\b|अंक|परिणाम/i],
-  ['homework', /\bhomework\b|\bassignments?\b|\bworksheets?\b|गृहकार्य|होमवर्क/i],
-];
+/**
+ * The shared vocabulary, by entity — one table for the whole architecture.
+ *
+ * Built on first use rather than at module load. There is a genuine import
+ * cycle in this repository (agent/tools.js → announcement.service →
+ * whatsapp.service → whatsapp.agent → orchestrator → intent.js → here →
+ * mcp/capabilities.js), and reading an exported binding while that unwinds
+ * finds it uninitialised. Every other use of capabilities.js here is already
+ * inside a function body, which is why this was the only one that broke.
+ */
+let vocabularyByEntity = null;
+const vocabulary = () => (vocabularyByEntity ??= new Map(ENTITY_VOCABULARY));
+
+/**
+ * The entities this deterministic tier claims.
+ *
+ * Deliberately a list rather than a set of code paths: what each resolves to is
+ * decided by capability metadata below, identically for every one of them, so
+ * this is the only thing that changes to claim another entity. It is short on
+ * purpose — these are the questions a school asks daily, where being instant
+ * and deterministic is worth more than breadth. Everything else belongs to the
+ * model tier, which now receives the caller's whole authorized catalog.
+ */
+const ROUTABLE_ENTITIES = ['attendance', 'marks', 'homework'];
 
 export function detectEntity(text) {
-  const str = String(text ?? '');
-  for (const [entity, re] of ENTITIES) {
-    if (re.test(str)) return entity;
-  }
-  return null;
+  return entitiesInText(text).find((entity) => ROUTABLE_ENTITIES.includes(entity)) ?? null;
 }
 
-/* ── Scope and arguments ──────────────────────────────────── */
+/* ── Scope and the dimensions a sentence names ────────────── */
 
 /** The caller is asking about themselves, so their own tools keep the question. */
 const SELF = /\b(my|mine|myself|me|i|i'?ve|have\s+i|did\s+i)\b/i;
@@ -112,11 +130,17 @@ const NOT_A_SUBJECT = new Set([
   'my', 'the', 'a', 'an', 'this', 'that', 'all', 'any', 'some', 'todays', 'today', 'tomorrow', 'yesterday',
   'class', 'classes', 'section', 'grade', 'std', 'student', 'students', 'pending', 'new', 'latest', 'last', 'recent',
   'show', 'list', 'give', 'given', 'add', 'create', 'assign', 'set', 'what', 'which', 'whose', 'have', 'did', 'do', 'does',
+  // Function words. A subject is a noun; without these, "students are absent"
+  // yielded the subject "are", which is the kind of value that would be sent
+  // to a tool as though a person had named a subject.
+  'are', 'is', 'was', 'were', 'be', 'been', 'being', 'has', 'had', 'not', 'and', 'or', 'but',
+  'for', 'with', 'from', 'into', 'than', 'then', 'there', 'here', 'they', 'them', 'their',
+  'these', 'those', 'many', 'much', 'more', 'most', 'few', 'less', 'how', 'why', 'when', 'where', 'who',
 ]);
 
 export function subjectFromText(text, entity) {
   const str = String(text ?? '');
-  const entityRe = ENTITIES.find(([name]) => name === entity)?.[1];
+  const entityRe = vocabulary().get(entity);
   if (!entityRe) return null;
 
   const word = '[\\p{L}][\\p{L}&\'.-]*';
@@ -170,14 +194,159 @@ export function dateFromText(text, now = new Date()) {
   return null;
 }
 
-/* ── The routing table ────────────────────────────────────── */
+/**
+ * What a piece of homework is about.
+ *
+ * Taken from after a colon ("… for Class 5-A: Solve the linear equations"),
+ * from quotes, or from "on"/"about" — the three ways people actually write it.
+ * Nothing is invented: with no topic the tool asks, which is the honest
+ * outcome for "create Mathematics homework for Class 5-A".
+ */
+export function topicFromText(text) {
+  const str = String(text ?? '');
+  const afterColon = /:\s*(.{3,300})$/.exec(str)?.[1];
+  if (afterColon) return afterColon.trim().replace(/[.]+$/, '');
+  const quoted = /["“”']([^"“”']{3,300})["“”']/.exec(str)?.[1];
+  if (quoted) return quoted.trim();
+  const introduced = /\b(?:on|about)\s+(.{3,300})$/i.exec(str)?.[1];
+  if (introduced) return introduced.trim().replace(/[.?!]+$/, '');
+  return null;
+}
+
+/* ── Capability selection ─────────────────────────────────── */
+
+/**
+ * The operations a request of each kind can legitimately resolve to.
+ *
+ * A request to make something new is satisfied by a capability declared
+ * CREATE or ACTION: the registry draws that line by whether a tool writes one
+ * record or performs a task, which is a distinction about implementation, not
+ * about what was asked for. generate_homework is an ACTION and create_assignment
+ * a CREATE, and "add homework" means either.
+ */
+const OPERATION_FAMILY = {
+  GET: ['GET'],
+  CREATE: ['CREATE', 'ACTION'],
+  UPDATE: ['UPDATE', 'ACTION'],
+  DELETE: ['DELETE'],
+};
+
+/**
+ * The argument names each dimension can be written as.
+ *
+ * Ordered by preference and intersected with what a capability actually
+ * accepts — so the same dimension becomes `className` on one tool, `sectionId`
+ * on another, and is simply not offered to a tool that takes neither. The
+ * kinds themselves (class, student, subject, month, date, topic) are the ones
+ * the registry classifies arguments into; see TARGET_ARGS/FILTER_ARGS.
+ */
+const ARG_NAMES = {
+  class: ['className', 'sectionId'],
+  student: ['studentName', 'studentId', 'admissionNo'],
+  subject: ['subject'],
+  month: ['month'],
+  date: ['date', 'dueAt', 'from'],
+  topic: ['topic'],
+};
+
+/** Everything the sentence names, in the dimensions capabilities are declared in. */
+function dimensionsNamed(str, entity, operation, now) {
+  return {
+    class: classFromText(str)?.text ?? null,
+    student: nameFromText(str),
+    subject: subjectFromText(str, entity),
+    month: monthFromText(str, now),
+    date: dateFromText(str, now),
+    // A topic is what a piece of work is *about*, which only a write supplies.
+    // Reading one from a question would turn "show homework on Friday" into a
+    // topic of "Friday".
+    topic: operation === 'GET' ? null : topicFromText(str),
+  };
+}
+
+/**
+ * How well one capability fits what was named, and the arguments to call it with.
+ *
+ * Three signals, all from declared metadata:
+ *
+ *   a named dimension the capability accepts    + 3 when it is the SUBJECT of
+ *                                                 the capability (a target),
+ *                                                 + 2 when it merely narrows it
+ *   a named dimension it cannot express         − 1   the sentence said
+ *                                                     something this tool would
+ *                                                     silently drop
+ *   it is ABOUT something and nothing of that
+ *   kind was named                              − 2   a per-student tool for a
+ *                                                     question with no student
+ *                                                     in it
+ *
+ * A capability is disqualified only when a required argument it still lacks is
+ * an opaque IDENTIFIER. That distinction matters: a tool can reasonably ask a
+ * person for a topic or a due date, and answering "which topic?" is a better
+ * outcome than falling through to "I am not sure what you need" — so
+ * generate_homework, whose topic and dueAt are required, is still the right
+ * destination for "create Mathematics homework for Class 5-A". No tool can
+ * reasonably ask for an ObjectId, so a capability needing one it could not
+ * derive (get_submissions without an assignmentId) is not a candidate at all.
+ */
+function scoreCapability(capability, named) {
+  const args = {};
+  const filled = new Set();
+  let score = 0;
+
+  for (const [dimension, value] of Object.entries(named)) {
+    if (!value) continue;
+    // Never into an identifier argument. What a sentence carries is a name —
+    // "Class 5-A" — and writing that into  would be inventing an id
+    // for the server to reject. An id-shaped argument is filled only by a
+    // resolver that actually looked one up, never from text.
+    const argName = ARG_NAMES[dimension]?.find(
+      (name) => capability.properties.includes(name) && !(capability.ids ?? []).includes(name),
+    );
+    if (!argName) {
+      score -= 1;
+      continue;
+    }
+    args[argName] = value;
+    filled.add(dimension);
+    // One named day, on a capability that takes a range rather than a date:
+    // "today" is the one-day range today..today. Without this the day landed
+    // in  alone and meant "from today onwards".
+    if (dimension === 'date' && argName === 'from' && capability.properties.includes('to')) args.to = value;
+    score += capability.targets.includes(dimension) ? 3 : 2;
+  }
+
+  // Judged on what was actually FILLED, not what was merely mentioned: a class
+  // named in a sentence that this capability can only accept as an id has not
+  // told it anything.
+  if (capability.targets.length && !capability.targets.some((target) => filled.has(target))) score -= 2;
+
+  const missing = (capability.required ?? []).filter((name) => args[name] === undefined);
+  if (missing.some((name) => (capability.ids ?? []).includes(name))) return { score: 0, args };
+
+  return { score, args };
+}
+
+/** The best-fitting capability, or null when none fits well enough to be sure. */
+function chooseCapability(candidates, named) {
+  let best = null;
+  for (const capability of candidates) {
+    const { score, args } = scoreCapability(capability, named);
+    // Strictly greater, so a tie keeps catalog order — the order tools are
+    // declared in, which puts the general form of a question first.
+    if (score > 0 && (!best || score > best.score)) best = { capability, args, score };
+  }
+  return best;
+}
+
+/* ── The resolver ─────────────────────────────────────────── */
 
 /**
  * Resolves a message to one tool call, or null to leave it to the rules.
  *
  * @returns {{ tool: string, args: object } | null}
  */
-export function detectEntityIntent(text, _actor, now = new Date()) {
+export function detectEntityIntent(text, actor, now = new Date()) {
   const str = String(text ?? '');
   if (!str.trim()) return null;
 
@@ -197,83 +366,32 @@ export function detectEntityIntent(text, _actor, now = new Date()) {
   }
 
   const operation = detectOperation(str);
-  const className = classFromText(str)?.text ?? null;
-  const student = nameFromText(str);
-  const month = monthFromText(str, now);
-  const date = dateFromText(str, now);
-  const subject = subjectFromText(str, entity);
+  const named = dimensionsNamed(str, entity, operation, now);
 
   // Self-referential and naming nobody else: the caller's own tools already
   // answer this, and taking it here would change answers that are correct.
   // "What Mathematics homework did I give?" is NOT this case — the caller is
   // the author there, not the subject.
-  const aboutTheCaller = SELF.test(str) && !className && !student && !BY_THE_CALLER.test(str);
-  if (aboutTheCaller && !(entity === 'homework' && subject)) return null;
+  const aboutTheCaller = SELF.test(str) && !named.class && !named.student && !BY_THE_CALLER.test(str);
+  if (aboutTheCaller && !(entity === 'homework' && named.subject)) return null;
 
-  if (entity === 'attendance') {
-    // Marking a register is a write with its own rules and restrictions.
-    if (operation !== 'GET') return null;
-    if (student) {
-      return { tool: 'get_student_attendance', args: { studentName: student, ...(month && { month }), ...(date && { date }) } };
-    }
-    if (className) {
-      // A named class stays a class question. Routing "July attendance for
-      // Class 5-A" to the school/own-scope summary silently dropped the class
-      // and answered something broader than was asked -- the register is the
-      // class-level capability, so the class goes to it and the month travels
-      // along rather than being discarded.
-      return { tool: 'get_attendance_roster', args: { className, ...(date && { date }), ...(month && { month }) } };
-    }
-    if (month) return { tool: 'get_attendance_statistics', args: { month } };
-    return null;
-  }
+  // A date alone does not say what a question is ABOUT. "Who is absent
+  // today?" names no class and no person, and answering it from a class-level
+  // capability would narrow a school-wide question; those belong to the tools
+  // that answer for the school. So this tier claims a message only when
+  // something names its subject (a class, a person, a subject) or its period
+  // (a month), or supplies the content of a write (a topic).
+  const claimed = named.class || named.student || named.subject || named.month || named.topic;
+  if (!claimed) return null;
 
-  if (entity === 'marks') {
-    if (operation !== 'GET') return null;
-    if (student) return { tool: 'get_report_card', args: { studentName: student } };
-    if (className) {
-      return { tool: 'get_class_marks', args: { className, ...(subject && { subject }) } };
-    }
-    return null;
-  }
+  // Authorized capabilities only, narrowed by entity and operation before
+  // anything is scored. This is the entity-first step: the candidate set comes
+  // from the registry and the caller's own permissions, never from a list of
+  // sentences.
+  const candidates = (OPERATION_FAMILY[operation] ?? [operation])
+    .flatMap((op) => capabilitiesFor(actor, { entity, operation: op }));
+  const best = chooseCapability(candidates, named);
+  if (!best) return null;
 
-  if (entity === 'homework') {
-    if (operation === 'CREATE') {
-      return {
-        tool: 'generate_homework',
-        args: {
-          ...(subject && { subject }),
-          ...(className && { className }),
-          ...(topicFromText(str) && { topic: topicFromText(str) }),
-          ...(date && { dueAt: date }),
-        },
-      };
-    }
-    if (operation !== 'GET') return null;
-    if (subject || className) {
-      return { tool: 'get_assignments', args: { ...(subject && { subject }), ...(className && { className }) } };
-    }
-    return null;
-  }
-
-  return null;
-}
-
-/**
- * What a piece of homework is about.
- *
- * Taken from after a colon ("… for Class 5-A: Solve the linear equations"),
- * from quotes, or from "on"/"about" — the three ways people actually write it.
- * Nothing is invented: with no topic the tool asks, which is the honest
- * outcome for "create Mathematics homework for Class 5-A".
- */
-export function topicFromText(text) {
-  const str = String(text ?? '');
-  const afterColon = /:\s*(.{3,300})$/.exec(str)?.[1];
-  if (afterColon) return afterColon.trim().replace(/[.]+$/, '');
-  const quoted = /["“”']([^"“”']{3,300})["“”']/.exec(str)?.[1];
-  if (quoted) return quoted.trim();
-  const introduced = /\b(?:on|about)\s+(.{3,300})$/i.exec(str)?.[1];
-  if (introduced) return introduced.trim().replace(/[.?!]+$/, '');
-  return null;
+  return { tool: best.capability.name, args: best.args };
 }
