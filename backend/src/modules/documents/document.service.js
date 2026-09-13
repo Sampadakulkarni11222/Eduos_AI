@@ -1,6 +1,7 @@
 import { existsSync } from 'fs';
 import { join, resolve } from 'path';
 import { Document } from '../../models/document.model.js';
+import { Section } from '../../models/academics.model.js';
 import { Enrollment } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { logger } from '../../utils/logger.js';
@@ -89,6 +90,29 @@ async function buildVisibilityFilter(actor, scope, studentId, categories = {}) {
 const WRITABLE_FIELDS = ['title', 'fileUrl', 'mimeType', 'visibleToRoles', 'sectionId', 'subjectOfferingId'];
 
 /**
+ * The class a document is filed under must belong to the acting school.
+ *
+ * Section is tenant-scoped, so a section from another school simply is not
+ * found by this query — the tenant plugin is doing the work, and this is a
+ * lookup rather than a second copy of the tenancy rule.
+ *
+ * It matters for a school-wide caller specifically. A teacher is already
+ * bounded by getTeacherSectionIds(), which reads the same tenant-scoped
+ * collection and therefore cannot return another school's section; but an ALL
+ * scope skips that check entirely, and without this it could file a document
+ * in its own school against a section belonging to a different one. Nothing
+ * leaked — the row is stamped with the caller's school and unreadable from the
+ * other — but the reference was meaningless, and a class-filtered read would
+ * never match it.
+ */
+async function assertSectionInSchool(sectionId) {
+  const section = await Section.findById(sectionId).select('_id');
+  if (!section) {
+    throw new AppError('That class does not belong to this school', 403, [], 'SECTION_NOT_IN_SCHOOL');
+  }
+}
+
+/**
  * Creates a document the actor is entitled to create.
  *
  * Moved here from document.controller.js for the same reason deleteForActor
@@ -119,6 +143,10 @@ export async function createForActor(actor, scope, data = {}) {
   if (type === 'ID_CARD') {
     throw new AppError('ID cards are generated automatically and cannot be uploaded manually', 400);
   }
+
+  // Checked for every scope, before anything about who may use the section:
+  // belonging to the school is a property of the reference itself.
+  if (resolvedSectionId) await assertSectionInSchool(resolvedSectionId);
 
   if (scope === 'OWN' && actor?.roleKey === 'TEACHER') {
     type = 'CUSTOM';
@@ -166,6 +194,10 @@ export async function updateForActor(actor, scope, id, data = {}) {
       throw new AppError('Only course material can be edited', 403);
     }
   }
+
+  // A move to another school's class is refused whoever is asking, for the same
+  // reason it is on create.
+  if (data.sectionId) await assertSectionInSchool(data.sectionId);
 
   // A move between classes is re-checked, so a teacher cannot hand their own
   // material to a section they do not teach.

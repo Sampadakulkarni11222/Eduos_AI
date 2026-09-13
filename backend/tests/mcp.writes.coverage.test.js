@@ -535,10 +535,10 @@ const CASES = [
     wrongScope: { actor: (s) => s.people.TEACHER.actor, codes: ['FORBIDDEN'] } },
 
   // Created by the teacher into a section they are class teacher of. A
-  // Riverside administrator running the same call creates it in Riverside — its
-  // own school, which is legitimate — so the cross-school expectation is that
-  // nothing appears in Oakridge, not that the call fails.
-  { tool: 'create_course_material', role: 'TEACHER', tenantEmptyOk: true,
+  // Riverside administrator naming Oakridge's section is now refused outright:
+  // document.service checks that the section belongs to the acting school, so
+  // this no longer has to tolerate a no-op in the other school.
+  { tool: 'create_course_material', role: 'TEACHER',
     args: (s) => ({ title: 'Chapter 3 notes', fileUrl: '/uploads/ch3.pdf', sectionId: idOf(s.sectionA) }),
     footprint: () => count(Document, { title: 'Chapter 3 notes' }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); },
