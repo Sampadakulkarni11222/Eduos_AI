@@ -36,6 +36,7 @@ import { classFromText } from '../../../utils/classNames.js';
 import { monthFromText, toIsoDate } from '../../../utils/naturalDates.js';
 import { nameFromText } from '../../../utils/peopleNames.js';
 import { capabilitiesFor, entitiesInText, ENTITY_VOCABULARY } from '../mcp/capabilities.js';
+import { extractArgument, FOUND } from './argumentKinds.js';
 
 /* ── Operation ────────────────────────────────────────────── */
 
@@ -376,6 +377,52 @@ function chooseCapability(candidates, named) {
   return best;
 }
 
+/* ── Filling the rest of the arguments ────────────────────── */
+
+/**
+ * The message with the parts already understood taken out of it.
+ *
+ * A class is written "Class 5-A", and the 5 in it is part of a name rather than
+ * a number anybody said. Left in, a generic integer extractor would read it as
+ * a period number and answer about period 5 of a register nobody asked for. So
+ * the spans the dimensions above already accounted for are removed before
+ * anything else reads the sentence — which is generic: it is the same rule for
+ * every dimension and every capability.
+ */
+function residualMessage(str, named) {
+  let rest = String(str ?? '');
+  for (const spoken of [named.class, named.student, named.subject]) {
+    if (typeof spoken === 'string' && spoken.length) rest = rest.split(spoken).join(' ');
+  }
+  return rest;
+}
+
+/**
+ * Fills the arguments a capability declares that the dimensions did not answer.
+ *
+ * Runs AFTER the capability is chosen, never before: extraction may not
+ * influence which capability runs, or an argument that happened to be present
+ * would start deciding the answer. Each remaining property is read by the kind
+ * its own schema implies (see agent/argumentKinds.js), and only a `found`
+ * result is used — `missing` leaves the tool to ask, and `ambiguous` or
+ * `invalid` are never resolved by picking one, which is what keeps a write off
+ * a guess.
+ *
+ * Dimension-derived values are never overwritten: those went through entity
+ * resolution, and this is the weaker source.
+ */
+function fillDeclaredArguments(capability, args, message, { now, write }) {
+  const properties = capability.schema?.properties ?? {};
+  const filled = { ...args };
+
+  for (const [name, propertySchema] of Object.entries(properties)) {
+    if (filled[name] !== undefined) continue;
+    const result = extractArgument(name, propertySchema, message, { now, write });
+    if (result.status === FOUND) filled[name] = result.value;
+  }
+  return filled;
+}
+
 /* ── The resolver ─────────────────────────────────────────── */
 
 /**
@@ -427,5 +474,14 @@ export function detectEntityIntent(text, actor, now = new Date()) {
   const best = chooseCapability(candidates, named);
   if (!best) return null;
 
-  return { tool: best.capability.name, args: best.args };
+  // The capability is settled; only now are its remaining arguments read out of
+  // what is left of the sentence. A write is filled under the stricter rule.
+  const args = fillDeclaredArguments(
+    best.capability,
+    best.args,
+    residualMessage(str, named),
+    { now, write: operation !== 'GET' },
+  );
+
+  return { tool: best.capability.name, args };
 }

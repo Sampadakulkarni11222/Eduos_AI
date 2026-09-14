@@ -137,6 +137,11 @@ function describe(name, tool) {
     // or a due date; it cannot ask them for an ObjectId, so a capability that
     // requires one it could not derive is not a candidate at all.
     ids: identifierArgs(tool.inputSchema),
+    // The tool's own input schema, carried rather than copied. Argument
+    // extraction reads each property's shape from here — an ObjectId pattern,
+    // an enum, a bounded integer — so the schema stays the single statement of
+    // what an argument is, and nothing re-describes it a second time.
+    schema: tool.inputSchema ?? null,
     // The service a capability fronts, and whether it is a wrapper around a
     // legacy agent tool. Together these are what make a duplicate capability
     // recognisable without anyone declaring that it is one.
