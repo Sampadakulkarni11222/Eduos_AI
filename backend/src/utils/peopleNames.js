@@ -37,6 +37,16 @@ const NOT_A_NAME = new Set([
   'my', 'mine', 'me', 'myself', 'i', 'his', 'her', 'hers', 'their', 'theirs', 'them', 'your', 'yours', 'our', 'ours', 'its',
   'today', 'tomorrow', 'yesterday', 'week', 'month', 'year', 'term', 'class', 'classes', 'section', 'grade', 'std',
   'student', 'students', 'pupil', 'teacher', 'school', 'everyone', 'everybody', 'somebody', 'anyone', 'nobody',
+  // Kinship. A parent says "my child's marks", "my son's attendance" — the
+  // possessive slot holds a REFERENCE to a person, not their name, and the
+  // person referred to is already known from the session. Without these,
+  // "my child's marks" was answered with 'No student named "child".' while
+  // the parent's own child sat one lookup away: nameFromText claimed a name,
+  // which is what stops entityIntent from reading the question as being about
+  // the caller's own record (see selfStudentId in mcp/tools/_shared.js).
+  // 'child' was already among DOMAIN_STEMS, but those guard only the bare-name
+  // branch, never the possessive one.
+  'child', 'children', 'son', 'daughter', 'kid', 'kids', 'ward', 'wards',
   'homework', 'assignment', 'attendance', 'marks', 'results', 'exam', 'subject', 'timetable', 'profile', 'announcement',
   // Domain nouns that pair with those words in ordinary questions. Without
   // them "absent count" and "absence report" read as people's names, and a
