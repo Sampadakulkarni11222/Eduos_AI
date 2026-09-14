@@ -99,13 +99,34 @@ const vocabulary = () => (vocabularyByEntity ??= new Map(ENTITY_VOCABULARY));
  * is decided by capability metadata below, identically for every one of them,
  * so this is the only thing that changes to claim another entity.
  *
- * It is still three because widening it is blocked on argument extraction, not
- * on capability selection: the legacy rules for fees, admissions, leave,
- * announcements and payments carry extractors for dimensions this resolver has
- * no generic equivalent for yet -- a money amount, an invoice id, a quoted
- * title, a date range, an enum stage. Claiming those entities without them
- * routes the request to the right capability with the wrong arguments, which
- * is worse than leaving them to the rules. See the Phase 7B report.
+ * It is still three, but no longer for the reason first recorded here.
+ *
+ * Widening this list to the whole vocabulary was measured again after generic
+ * argument extraction landed (argumentKinds.js), against every natural-language
+ * string in the test suite -- 2,051 messages across four roles. The result:
+ * 223 MORE messages claimed by this tier, every one of them resolving to the
+ * same capability with the same arguments the rules produce, ZERO
+ * disagreements in either tool or arguments -- and ZERO messages routed that
+ * the rules did not already route.
+ *
+ * So widening is safe and gains nothing, because the blocker moved. It is no
+ * longer argument extraction; it is the `claimed` gate below. The rules this
+ * tier cannot replace are the ones for requests that name no class, student,
+ * subject, month or topic at all -- "show me the library summary", "what
+ * announcements are published", "show me the finance dashboard". Those are
+ * unnamed requests about an entity, and an unnamed request is genuinely
+ * ambiguous between the caller's own record and the whole school: "what is my
+ * attendance" and "who is absent today" name the same entity and the same
+ * nothing else, and answering the second from a self-scoped capability would
+ * narrow a school-wide question into a wrong answer.
+ *
+ * Resolving that needs a capability to declare whose record it answers about
+ * -- itself or the school -- which nothing in the registry says today and
+ * which is not derivable from the schema: `minScope` describes the permission
+ * scope required, not the subject of the answer. Adding it would mean hand-
+ * labelling 145 capabilities, which is capability-specific behaviour wearing
+ * the costume of generic metadata. So the rules stay until that abstraction is
+ * real. See the Phase 7B report for the earlier measurement.
  */
 const ROUTABLE_ENTITIES = ['attendance', 'marks', 'homework'];
 

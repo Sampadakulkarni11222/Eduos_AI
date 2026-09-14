@@ -619,6 +619,21 @@ export const studentTools = {
       if (!studentId) throw new AppError('Name a student — by id, admission number or name.', 400);
       return { studentId };
     },
+    /**
+     * Deliberately no snapshot(), and this is the one DELETE where that is the
+     * safe choice rather than an omission.
+     *
+     * Every other destructive capability records what it removed, so the audit
+     * trail still holds it afterwards. Here what is removed IS the personal
+     * data, and this runs to satisfy an erasure request: copying the name,
+     * date of birth, address and photo into an audit entry on the way out
+     * would leave the erased data in the system and defeat the erasure.
+     *
+     * What is recorded instead is the fact and the grounds — the actor, the
+     * student id, and the `reason` the schema requires — which is what an
+     * erasure needs to be accountable without being undone. Do not add a
+     * snapshot here.
+     */
     async run(ctx, args, prepared) {
       const plan = prepared ?? (await this.prepare(ctx, args));
       const result = await students.anonymiseStudent(ctx.actor, plan.studentId, { reason: args.reason });

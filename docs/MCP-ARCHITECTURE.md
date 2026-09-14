@@ -110,6 +110,75 @@ What used to sit outside MCP, and where it went:
 - **`/ai/chat`** and `ai.service.js` — a second assistant with its own intent
   handlers and its own copy of retrieval, called by no screen — are removed.
 
+## Roles and capability coverage
+
+The authorization system defines **nine** roles, not the five the assistant was
+first built around. All nine reach the assistant through the same path: there
+is no role-specific server, intent file, question list or keyword table
+anywhere, and adding one would be a regression. What differs between a warden
+and a principal is only the permission map their session carries, from which
+the same registry yields a different capability set.
+
+| Role | Granted permissions | Capabilities visible | Writes |
+|---|---|---|---|
+| `SUPER_ADMIN` | 71 | 145 | 71 |
+| `ADMIN` | 67 | 144 | 70 |
+| `PRINCIPAL` | 32 | 73 | 20 |
+| `TEACHER` | 28 | 58 | 17 |
+| `STUDENT` | 22 | 53 | 7 |
+| `PARENT` | 18 | 44 | 3 |
+| `WARDEN` | 11 | 29 | 8 |
+| `FINANCE` | 12 | 28 | 7 |
+| `LIBRARIAN` | 9 | 26 | 6 |
+
+`backend/tests/mcp.roleCoverage.test.js` compares the two surfaces for every
+role, reading the roles from `SYSTEM_ROLES` rather than from a list of its own,
+so a role added later is covered the day it is added.
+`backend/tests/mcp.roles.askAi.test.js` then asks each role about its own work
+through both doors people use — `POST /ai/agent` and the WhatsApp webhook.
+
+### Permissions with no capability of their own
+
+Thirteen granted permissions have no capability that declares them. None is a
+missing feature; each is recorded in the `UNCOVERED` ledger in
+`mcp.roleCoverage.test.js`, and the test fails both when a new permission
+appears without a reason and when a recorded reason stops being true.
+
+- **Reachable under another permission key** — `reportcards.read` (served by
+  `get_report_card`, gated on `marks.read`, exactly as its REST route is);
+  `fees.plan.review` (`plan.service.transitionFeePlan()` checks it itself, per
+  transition, so the tool gates visibility on `fees.read` and the service
+  enforces the real key); `analytics.school.read`, `analytics.class.read` and
+  `analytics.child.read` (the dashboard views, plus `get_at_risk_students` and
+  `get_growth_score`).
+- **Blocked** — `fees.structure.manage`: `createFeeHead` and
+  `createFeeStructure` are raw `Model.create(data)` pass-throughs with no
+  actor, no scope, no tenant check, no validation and no audit, so exposing
+  them would make the assistant an arbitrary-field writer over a school's fee
+  configuration. They need the actor-aware service treatment documents and
+  calendar received first. `settings.manage` and `attendance.regularize` have
+  no module, route or service anywhere in `src/` — there is nothing to wrap.
+- **Deliberately unavailable** — `users.manage`, `roles.manage` and
+  `permissions.manage` administer the authorization system that constrains the
+  assistant, so a capability there would let it widen its own reach (and bulk
+  user import is a CSV upload, which MCP has no channel for). `schools.read`
+  and `schools.manage` are cross-tenant and mint administrator credentials;
+  every MCP call runs inside one tenant's `AsyncLocalStorage` state.
+  `calendar.manage` **at `OWN` scope** is a fourteenth case of the same kind: a
+  `CalendarEvent` has no section, so there is no event a section-scoped holder
+  could safely create, and `calendar.service.create()` refuses a non-`ALL`
+  actor for that reason. At `ALL` scope it is covered.
+
+### Permissions the backend never enforces
+
+Six catalog permissions — `settings.manage`, `attendance.regularize`,
+`reportcards.read` and the three `analytics.*` keys — appear nowhere in `src/`
+outside the catalog that declares them. They are granted to roles and checked
+by nothing. This is not an MCP gap; the permission list is ahead of the
+application. `mcp.roleCoverage.test.js` pins the set in both directions, so
+implementing one of these features fails the test until a capability is exposed
+alongside it.
+
 ## Behaviour added in the production-readiness pass
 
 - **A write that times out is not abandoned.** Past `MCP_TOOL_TIMEOUT_MS` a
