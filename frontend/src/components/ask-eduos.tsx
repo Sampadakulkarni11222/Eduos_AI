@@ -5,7 +5,7 @@ import { api, ApiError } from '@/lib/api';
 import { Button, Spinner, cx } from './ui';
 import { useAuth } from '@/lib/auth';
 import type { AgentProposedAction, WhatsappAssistantLink } from '@/lib/types';
-import { SPEECH_LANGUAGES, isSpeechSupported, startDictation } from '@/lib/speech';
+import { isSpeechSupported, startDictation, detectLanguage, recordAudio } from '@/lib/speech';
 
 interface Msg {
   role: 'user' | 'assistant';
@@ -50,12 +50,11 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Voice input. `speechLang` drives both the recogniser and the language the
-  // assistant replies in, so a parent who speaks Hindi is answered in Hindi
-  // without having to set anything twice.
-  const [speechLang, setSpeechLang] = useState(SPEECH_LANGUAGES[0]);
+  // Voice input with automatic language detection.
   const [listening, setListening] = useState(false);
+  const [detecting, setDetecting] = useState(false);
   const [voiceNote, setVoiceNote] = useState<string | null>(null);
+  const [detectedLang, setDetectedLang] = useState<string | undefined>();
   const stopRef = useRef<(() => void) | null>(null);
   const [voiceAvailable, setVoiceAvailable] = useState(false);
   // Checked in an effect, not at render: the API is absent during SSR and a
@@ -129,12 +128,14 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
     if (!text || busy) return;
     const userMsg: Msg = { role: 'user', text };
     msgsRef.current = [...msgsRef.current, userMsg];
+    // Automatically detect language if not already set from speech dictation
+    const langToUse = detectedLang || detectLanguage(text).lang;
     setInput(''); setMsgs([...msgsRef.current]); setBusy(true);
     try {
       // The agent endpoint answers questions AND proposes actions; anything
       // that writes comes back as `action` and is only performed once the
       // user confirms the summary below.
-      const res = await api.agentAsk(text, speechLang.lang);
+      const res = await api.agentAsk(text, langToUse);
       const aiMsg: Msg = { role: 'assistant', text: res.reply, action: res.action };
       msgsRef.current = [...msgsRef.current, aiMsg];
       setMsgs([...msgsRef.current]);
@@ -147,7 +148,10 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
       const errMsg: Msg = { role: 'assistant', text };
       msgsRef.current = [...msgsRef.current, errMsg];
       setMsgs([...msgsRef.current]);
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+      setDetectedLang(undefined);
+    }
   };
 
   /** Confirms or declines a proposed write. */
@@ -156,7 +160,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
     if (!msg?.action || busy) return;
     setBusy(true);
     try {
-      const res = await api.agentConfirm(msg.action.confirmToken, accept, speechLang.lang);
+      const res = await api.agentConfirm(msg.action.confirmToken, accept, detectedLang);
       msgsRef.current = msgsRef.current.map((m, i) =>
         i === idx ? { ...m, action: null, resolved: accept ? 'done' : 'cancelled' } : m
       );
@@ -173,13 +177,88 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   const toggleDictation = () => {
     if (listening) { stopRef.current?.(); return; }
     setVoiceNote(null);
-    const stop = startDictation(speechLang.code, {
-      onPartial: (t) => setInput(t),
-      onFinal: (t) => setInput(t),
-      onError: (m) => { setVoiceNote(m); setListening(false); },
-      onEnd: () => { setListening(false); stopRef.current = null; },
+    setDetecting(false);
+
+    const startAudioRecordingFallback = () => {
+      setListening(true);
+      setVoiceNote('Recording audio…');
+      const stopRecord = recordAudio(
+        async (blob, mediaType) => {
+          setListening(false);
+          setDetecting(true);
+          setVoiceNote('Transcribing audio & detecting language…');
+          try {
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = async () => {
+              const base64data = (reader.result as string)?.split(',')[1];
+              if (!base64data) {
+                setVoiceNote("I didn't catch that. Try speaking again.");
+                setDetecting(false);
+                return;
+              }
+              const res = await api.transcribeAudio(base64data, mediaType);
+              if (res.transcript) {
+                setInput(res.transcript);
+                setDetectedLang(res.lang);
+                const langLabel = res.lang === 'hi' ? 'Hindi' : res.lang === 'en' ? 'English' : res.lang.toUpperCase();
+                setVoiceNote(`Transcribed. Language detected: ${langLabel}`);
+              } else {
+                setVoiceNote("I didn't catch that. Try speaking again.");
+              }
+              setDetecting(false);
+            };
+          } catch {
+            setVoiceNote('Speech recognition failed.');
+            setDetecting(false);
+          }
+        },
+        (errMsg) => {
+          setVoiceNote(errMsg);
+          setListening(false);
+          setDetecting(false);
+        }
+      );
+      stopRef.current = stopRecord;
+    };
+
+    const stop = startDictation(undefined, {
+      onPartial: (t) => {
+        setInput(t);
+        const res = detectLanguage(t);
+        setDetectedLang(res.lang);
+      },
+      onFinal: (t) => {
+        setInput(t);
+        setDetecting(true);
+        const res = detectLanguage(t);
+        setDetectedLang(res.lang);
+        const langLabel = res.lang === 'hi' ? 'Hindi' : res.lang === 'en' ? 'English' : res.lang.toUpperCase();
+        setVoiceNote(`Language detected: ${langLabel}`);
+      },
+      onError: (m) => {
+        // On no-speech or Web Speech failure, fall back to audio recording
+        if (m.includes("didn't catch that") || m.includes('not available')) {
+          console.log('[VoiceInput] Web Speech API returned no-speech/unsupported, falling back to MediaRecorder + backend STT');
+          stopRef.current?.();
+          startAudioRecordingFallback();
+          return;
+        }
+        setVoiceNote(m);
+        setListening(false);
+        setDetecting(false);
+      },
+      onEnd: () => {
+        setListening(false);
+        setDetecting(false);
+        stopRef.current = null;
+      },
     });
-    if (!stop) { setVoiceNote('Voice input is not available in this browser.'); return; }
+
+    if (!stop) {
+      startAudioRecordingFallback();
+      return;
+    }
     stopRef.current = stop;
     setListening(true);
   };
@@ -385,38 +464,23 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
             {voiceNote && <div className="ai-voice-note" role="status">{voiceNote}</div>}
             <form className="ai-input" onSubmit={send}>
               {voiceAvailable && (
-                <>
-                  <label className="sr-only" htmlFor="ai-speech-lang">Voice language</label>
-                  <select
-                    id="ai-speech-lang"
-                    className="ai-lang"
-                    value={speechLang.code}
-                    disabled={listening}
-                    onChange={(e) =>
-                      setSpeechLang(SPEECH_LANGUAGES.find((l) => l.code === e.target.value) ?? SPEECH_LANGUAGES[0])
-                    }
-                  >
-                    {SPEECH_LANGUAGES.map((l) => (
-                      <option key={l.code} value={l.code}>{l.label}</option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className={cx('ai-mic', listening && 'listening')}
-                    onClick={toggleDictation}
-                    disabled={busy}
-                    aria-label={listening ? 'Stop dictation' : `Speak your question in ${speechLang.label}`}
-                    aria-pressed={listening}
-                  >
-                    {listening ? '■' : '🎤'}
-                  </button>
-                </>
+                <button
+                  type="button"
+                  className={cx('ai-mic', listening && 'listening')}
+                  onClick={toggleDictation}
+                  disabled={busy}
+                  aria-label={listening ? 'Stop dictation' : 'Speak your question (auto language detection)'}
+                  aria-pressed={listening}
+                  title={listening ? 'Stop dictation' : 'Click to speak'}
+                >
+                  {listening ? '■' : '🎤'}
+                </button>
               )}
               <input
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={listening ? 'Listening…' : 'Ask anything…'}
+                placeholder={listening ? (detecting ? 'Detecting language…' : 'Listening…') : 'Ask anything…'}
                 disabled={busy}
                 aria-label="Message input"
               />

@@ -675,6 +675,11 @@ export const api = {
       body: JSON.stringify({ confirmToken, accept, source: 'WEB', lang }),
     }),
   agentCapabilities: () => request<{ tools: AgentTool[] }>('/ai/agent/capabilities'),
+  transcribeAudio: (audioBase64: string, mediaType = 'audio/webm') =>
+    request<{ transcript: string; lang: string; confident?: boolean }>('/ai/transcribe', {
+      method: 'POST',
+      body: JSON.stringify({ audioBase64, mediaType }),
+    }),
 
   // ── report cards ──
   reportCard: (enrollmentId?: string, exam?: string) => {

@@ -1,5 +1,7 @@
 import crypto from 'crypto';
 import { env } from '../../config/env.js';
+import { generateFromAudio } from '../../providers/ai.provider.js';
+import { AppError } from '../../utils/AppError.js';
 import * as dashboard from '../dashboard/dashboard.service.js';
 import * as fees from '../fees/fee.service.js';
 import * as library from '../library/library.service.js';
@@ -392,3 +394,41 @@ export async function chat({ message, conversationId }, actor) {
     isStandIn: env.AI_PROVIDER === 'rules',
   };
 }
+
+export async function transcribeAudio({ audioBase64, mediaType = 'audio/webm' }) {
+  if (!audioBase64) throw new AppError('audioBase64 is required', 400);
+
+  const system = `You are a speech-to-text transcriber and automatic language detector for an ERP system.
+Listen to the user's spoken audio carefully.
+Perform two tasks:
+1. Transcribe the spoken text accurately into text. If spoken in Hindi/Hinglish (e.g. "Meri attendance kitni hai" or "मेरी उपस्थिति कितनी है"), capture the exact spoken words.
+2. Detect the spoken language and assign its 2-letter ISO tag ('en' for English, 'hi' for Hindi/Hinglish/Marathi, 'bn' for Bengali, 'ta' for Tamil, 'te' for Telugu, 'gu' for Gujarati, 'pa' for Punjabi, 'kn' for Kannada, 'ml' for Malayalam, 'ur' for Urdu).
+
+Output MUST be a JSON object with keys "transcript" and "lang":
+{"transcript": "transcribed text here", "lang": "en"}
+Do NOT include markdown formatting or commentary.`;
+
+  const message = "Transcribe this audio clip and detect its language.";
+  const res = await generateFromAudio({ system, message, audioBase64, mediaType });
+
+  if (!res.generated || !res.text) {
+    return { transcript: '', lang: 'en', confident: false, reason: res.reason ?? 'TRANSCRIPTION_FAILED' };
+  }
+
+  try {
+    const cleaned = res.text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleaned);
+    return {
+      transcript: parsed.transcript ?? '',
+      lang: parsed.lang ?? 'en',
+      confident: true,
+    };
+  } catch {
+    return {
+      transcript: res.text.trim(),
+      lang: 'en',
+      confident: false,
+    };
+  }
+}
+

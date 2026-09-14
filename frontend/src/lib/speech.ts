@@ -82,24 +82,83 @@ export interface DictationHandlers {
 }
 
 /**
+ * Language detection matching the backend utils/language.js logic.
+ */
+const SCRIPT_RANGES = [
+  { lang: 'hi', re: /[ऀ-ॿ]/ }, // Devanagari — Hindi/Marathi
+  { lang: 'bn', re: /[ঀ-৿]/ }, // Bengali
+  { lang: 'gu', re: /[઀-૿]/ }, // Gujarati
+  { lang: 'pa', re: /[਀-੿]/ }, // Gurmukhi — Punjabi
+  { lang: 'ta', re: /[஀-௿]/ }, // Tamil
+  { lang: 'te', re: /[ఀ-౿]/ }, // Telugu
+  { lang: 'kn', re: /[ಀ-೿]/ }, // Kannada
+  { lang: 'ml', re: /[ഀ-ൿ]/ }, // Malayalam
+  { lang: 'or', re: /[଀-୿]/ }, // Odia
+  { lang: 'ur', re: /[؀-ۿ]/ }, // Arabic script — Urdu
+];
+
+const HINGLISH_MARKERS = [
+  'kitna', 'kitni', 'kitne', 'kaise', 'kaisa', 'kaha', 'kahan', 'kyun', 'kyu',
+  'nahi', 'nahin', 'haan', 'chahiye', 'bataye', 'bataiye', 'batao',
+  'chutti', 'haazri', 'hajri', 'shulk', 'pariksha', 'kal', 'aaj',
+  'mera', 'meri', 'mere', 'aapka', 'aapki', 'tumhara',
+  'karna', 'karna hai', 'hona', 'lagega', 'bakaya', 'jama',
+];
+
+export interface DetectedLanguageResult {
+  lang: string;
+  confident: boolean;
+  romanised?: boolean;
+}
+
+export function detectLanguage(text: string): DetectedLanguageResult {
+  const s = String(text ?? '');
+  if (!s.trim()) return { lang: 'en', confident: false };
+
+  for (const { lang, re } of SCRIPT_RANGES) {
+    if (re.test(s)) return { lang, confident: true };
+  }
+
+  const words = s.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  const hits = words.filter((w) => HINGLISH_MARKERS.includes(w)).length;
+  if (hits >= 2 || (hits === 1 && words.length <= 6)) {
+    return { lang: 'hi', confident: true, romanised: true };
+  }
+
+  return { lang: 'en', confident: false };
+}
+
+/**
  * Starts dictation. Returns a stop function, or null if unsupported.
  *
  * Errors are translated into something a parent can act on — "no-speech" and
  * "not-allowed" are the two that actually happen, and the raw codes mean
  * nothing to a user.
  */
-export function startDictation(languageCode: string, handlers: DictationHandlers): (() => void) | null {
+/**
+ * Starts dictation. Returns a stop function, or null if unsupported.
+ *
+ * Includes full event lifecycle debug logs and uses continuous mode so the
+ * recogniser does not prematurely abort when the user pauses.
+ */
+export function startDictation(languageCode?: string, handlers?: DictationHandlers): (() => void) | null {
   const Ctor = getConstructor();
-  if (!Ctor) return null;
+  if (!Ctor || !handlers) return null;
 
+  const defaultLang = typeof navigator !== 'undefined' && navigator.language ? navigator.language : 'en-IN';
   const recogniser = new Ctor();
-  recogniser.lang = languageCode;
-  recogniser.continuous = false;
+  const selectedLang = languageCode || defaultLang;
+  recogniser.lang = selectedLang;
+  recogniser.continuous = true;
   recogniser.interimResults = true;
 
   let settled = '';
+  let receivedSpeech = false;
+
+  console.log('[SpeechRecognition] Initialising dictation, lang:', selectedLang);
 
   recogniser.onresult = (event) => {
+    receivedSpeech = true;
     let interim = '';
     for (let i = event.resultIndex; i < event.results.length; i++) {
       const result = event.results[i];
@@ -107,10 +166,18 @@ export function startDictation(languageCode: string, handlers: DictationHandlers
       if (result.isFinal) settled += text;
       else interim += text;
     }
-    if (interim && handlers.onPartial) handlers.onPartial((settled + interim).trim());
+    console.log('[SpeechRecognition] onresult:', { settled, interim });
+    const currentText = (settled + interim).trim();
+    if (currentText && handlers.onPartial) handlers.onPartial(currentText);
   };
 
   recogniser.onerror = (e) => {
+    console.warn('[SpeechRecognition] onerror fired:', e.error);
+    // If we already captured text or the user is speaking, don't abort with no-speech
+    if (e.error === 'no-speech' && receivedSpeech) {
+      return;
+    }
+
     const message =
       e.error === 'not-allowed' || e.error === 'service-not-allowed'
         ? 'Microphone access was blocked. Allow it in your browser settings to use voice.'
@@ -123,16 +190,74 @@ export function startDictation(languageCode: string, handlers: DictationHandlers
   };
 
   recogniser.onend = () => {
+    console.log('[SpeechRecognition] onend fired, settled text:', settled);
     if (settled.trim()) handlers.onFinal(settled.trim());
     handlers.onEnd?.();
   };
 
   try {
     recogniser.start();
-  } catch {
+    console.log('[SpeechRecognition] Started recognition stream.');
+  } catch (err) {
+    console.error('[SpeechRecognition] Failed to start:', err);
     handlers.onError?.('Could not start voice input.');
     return null;
   }
 
-  return () => recogniser.stop();
+  return () => {
+    console.log('[SpeechRecognition] Stopping recognition manually.');
+    try {
+      recogniser.stop();
+    } catch {
+      // Ignore if already stopped
+    }
+  };
 }
+
+/**
+ * Fallback MediaRecorder audio recording helper for environments where
+ * Web Speech API fails or returns no-speech.
+ */
+export function recordAudio(onAudioCaptured: (blob: Blob, mediaType: string) => void, onError?: (msg: string) => void): (() => void) | null {
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+    onError?.('Microphone recording is not supported in this browser.');
+    return null;
+  }
+
+  let mediaRecorder: MediaRecorder | null = null;
+  let chunks: Blob[] = [];
+
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then((stream) => {
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
+      mediaRecorder = new MediaRecorder(stream, { mimeType });
+      chunks = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        if (chunks.length > 0) {
+          const blob = new Blob(chunks, { type: mimeType });
+          onAudioCaptured(blob, mimeType);
+        }
+      };
+
+      mediaRecorder.start();
+      console.log('[MediaRecorder] Recording started, mimeType:', mimeType);
+    })
+    .catch((err) => {
+      console.error('[MediaRecorder] getUserMedia error:', err);
+      onError?.('Microphone access was blocked. Allow it in your browser settings.');
+    });
+
+  return () => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      console.log('[MediaRecorder] Stopping recording.');
+      mediaRecorder.stop();
+    }
+  };
+}
+

@@ -248,4 +248,27 @@ router.post('/credits/purchase', requirePermission('ai.copilot.use'), controller
  */
 router.post('/credits/purchase/verify', requirePermission('ai.copilot.use'), controller.verifyCreditPurchase);
 
+/**
+ * @swagger
+ * /ai/transcribe:
+ *   post:
+ *     summary: Transcribe spoken audio and detect language
+ *     tags: [AI]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [audioBase64]
+ *             properties:
+ *               audioBase64: { type: string }
+ *               mediaType: { type: string, default: 'audio/webm' }
+ *     responses:
+ *       200:
+ *         description: Audio transcribed
++ */
+router.post('/transcribe', requirePermission('ai.copilot.use'), controller.transcribe);
+
 export default router;
+

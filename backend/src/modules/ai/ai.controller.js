@@ -105,3 +105,10 @@ export const tutor = asyncHandler(async (req, res) => {
   const { subject, topic, mode, lang } = req.body;
   sendSuccess(res, await tutorService.tutor(req.actor, { subject, topic, mode, lang }), 'Tutor response');
 });
+
+export const transcribe = asyncHandler(async (req, res) => {
+  const { audioBase64, mediaType } = req.body;
+  if (!audioBase64) throw new AppError('audioBase64 is required', 400);
+  sendSuccess(res, await service.transcribeAudio({ audioBase64, mediaType }), 'Audio transcribed');
+});
+

@@ -240,3 +240,62 @@ export async function generateFromImage({ system, message, imageBase64, mediaTyp
   }
 }
 
+/**
+ * Transcribes audio and performs language detection from audio base64.
+ */
+export async function generateFromAudio({ system, message, audioBase64, mediaType = 'audio/webm', maxTokens = 1024 }) {
+  if (!isLlmEnabled()) {
+    return { text: null, generated: false, reason: 'LLM_NOT_CONFIGURED' };
+  }
+
+  if (env.AI_PROVIDER === 'gemini') {
+    try {
+      const client = getGeminiClient();
+      const modelName = GEMINI_MODEL;
+      const genModel = client.getGenerativeModel({
+        model: modelName,
+        systemInstruction: system,
+      });
+
+      const response = await llmBreaker.execute(() => genModel.generateContent({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  data: audioBase64,
+                  mimeType: mediaType,
+                },
+              },
+              { text: message },
+            ],
+          },
+        ],
+        generationConfig: {
+          maxOutputTokens: maxTokens,
+        },
+      }));
+
+      const text = response.response?.text?.();
+      if (!text) return notGenerated('EMPTY_RESPONSE');
+
+      return {
+        text,
+        generated: true,
+        model: modelName,
+        usage: {
+          input_tokens: response.response.usageMetadata?.promptTokenCount ?? 0,
+          output_tokens: response.response.usageMetadata?.candidatesTokenCount ?? 0,
+        },
+      };
+    } catch (err) {
+      logger.error(`Gemini audio generation failed: ${err.message}`);
+      return { text: null, generated: false, reason: 'PROVIDER_ERROR' };
+    }
+  }
+
+  return notGenerated('UNSUPPORTED_PROVIDER');
+}
+
+
