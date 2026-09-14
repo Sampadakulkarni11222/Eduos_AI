@@ -377,7 +377,12 @@ const RULES = [
       /विलंबित[^?]*पुस्तक/,
     ],
     // Fees also speak of things being overdue; the fee rules own that wording.
-    exclude: [/\bfee(s)?\b/i, /\binvoice\b/i, /\bpayment\b/i, /फीस/],
+    // The plurals matter: `\binvoice\b` cannot match "invoices" (the boundary
+    // fails before the s), so "which invoices are overdue?" was excluded from
+    // nothing, matched `\boverdue\b` here, and an administrator asking about
+    // money was told about library books — a confident answer to a different
+    // question. Same hole in "payments".
+    exclude: [/\bfees?\b/i, /\binvoices?\b/i, /\bpayments?\b/i, /फीस/],
     requires: { permission: 'library.read', scope: 'ALL' },
     args: () => ({}),
   },
