@@ -277,7 +277,17 @@ const TRANSITIONS = {
   },
 };
 
-export async function transitionFeePlan(actor, planId, step, body = {}) {
+/**
+ * Every check a workflow step makes before it changes anything: the step's own
+ * permission, a reason where one is required, that the plan exists in this
+ * school, and that it is in a state the step can move it from.
+ *
+ * Exported so a caller can check before asking somebody to confirm — the
+ * assistant refuses a step the person may not take, rather than asking them to
+ * approve something that would then fail. transitionFeePlan() runs the same
+ * checks again at the moment of change, so nothing relies on the early call.
+ */
+export async function checkTransition(actor, planId, step, body = {}) {
   const rule = TRANSITIONS[step];
   if (!rule) throw new AppError(`Unknown workflow step "${step}"`, 400, [], 'UNKNOWN_STEP');
   requirePermission(actor, rule.permission, rule.what);
@@ -297,6 +307,12 @@ export async function transitionFeePlan(actor, planId, step, body = {}) {
       'INVALID_PLAN_TRANSITION'
     );
   }
+
+  return { plan, rule };
+}
+
+export async function transitionFeePlan(actor, planId, step, body = {}) {
+  const { plan, rule } = await checkTransition(actor, planId, step, body);
 
   const before = plan.status;
   plan.status = rule.to;

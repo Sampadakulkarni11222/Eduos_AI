@@ -13,7 +13,7 @@
 import { cachedFetch, invalidateCache } from './cache';
 import { getActingSchool } from './acting-school';
 import { SESSION_MARKER } from './session-cookie';
-import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto, AnnouncementDraft, AnnouncementPreviewDto, TransportRosterRow, LibraryResourceKind, LeaveRequestDto, LeaveStatus } from './types';
+import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AgentTurn, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto, AnnouncementDraft, AnnouncementPreviewDto, TransportRosterRow, LibraryResourceKind, LeaveRequestDto, LeaveStatus, BookRequestDto, TransportRequestDto, AvailableRoutesDto, RequestStatus } from './types';
 
 /**
  * A document exactly as the API returns it, before this layer normalises it.
@@ -664,8 +664,13 @@ export const api = {
   academicYears: () => cachedRequest<AcademicYearDto[]>('/academics/years'),
 
   // ── agentic assistant (shared core with WhatsApp) ──
-  agentAsk: (message: string, lang?: string) =>
-    request<AgentReply>('/ai/agent', { method: 'POST', body: JSON.stringify({ message, source: 'WEB', lang }) }),
+  /**
+   * `history` is transcript, never authority: the server resolves who is asking
+   * from the session on every turn, and sends these only to work out what a
+   * follow-up ("what about last month?") refers to.
+   */
+  agentAsk: (message: string, lang?: string, history?: AgentTurn[]) =>
+    request<AgentReply>('/ai/agent', { method: 'POST', body: JSON.stringify({ message, source: 'WEB', lang, history }) }),
   agentConfirm: (confirmToken: string, accept: boolean, lang?: string) =>
     request<{ reply: string; executed?: boolean }>('/ai/agent/confirm', {
       method: 'POST',
@@ -790,8 +795,6 @@ export const api = {
       totalPages: envelope.totalPages ?? 1,
     } as RiskScan;
   },
-  aiChat: (message: string, conversationId?: string) =>
-    request<AiReply>('/ai/chat', { method: 'POST', body: JSON.stringify({ message, conversationId }) }),
 
   // ── WhatsApp hand-off for families ──
   // The link is built server-side: the number is not exposed until the feature
@@ -804,6 +807,26 @@ export const api = {
   // ── transport (Phase 8) ──
   listRoutes: () => cachedRequest<TransportRouteDto[]>('/transport/routes'),
   listStops: (routeId: string) => request<TransportStopDto[]>(`/transport/routes/${routeId}/stops`),
+  // ── Transport requests ──
+  // The routes a student may choose from, then the asking. Self-service: the
+  // student is resolved from the session, never from an argument.
+  availableRoutes: () => request<AvailableRoutesDto>('/transport/routes/available'),
+  requestTransportRoute: (routeId: string, stopId: string, direction: 'BOTH' | 'PICKUP' | 'DROP' = 'BOTH') =>
+    request<TransportRequestDto>('/transport/requests', {
+      method: 'POST',
+      body: JSON.stringify({ routeId, stopId, direction }),
+    }),
+  myTransportRequests: () => request<TransportRequestDto[]>('/transport/requests/mine'),
+  cancelTransportRequest: (id: string) =>
+    request<TransportRequestDto>(`/transport/requests/${id}/cancel`, { method: 'PATCH' }),
+  transportRequestsForReview: (status: RequestStatus | 'ALL' = 'PENDING') =>
+    request<Paged<TransportRequestDto>>(`/transport/requests/review?status=${status}`),
+  decideTransportRequest: (id: string, status: 'APPROVED' | 'REJECTED', note?: string) =>
+    request<TransportRequestDto>(`/transport/requests/${id}/decision`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, note }),
+    }),
+
   myBus: (studentId?: string) => request<MyBusDto | null>(`/transport/my-bus${studentId ? `?studentId=${studentId}` : ''}`),
   /**
    * Travel arrangements for every student the caller may see. A teacher gets
@@ -811,8 +834,22 @@ export const api = {
    */
   transportRoster: (sectionId?: string) =>
     request<TransportRosterRow[]>(`/transport/roster${sectionId ? `?sectionId=${sectionId}` : ''}`),
-  createRoute: (body: { name: string; operatorName?: string; vehicleNo?: string; driverName?: string; driverPhone?: string }) =>
+  createRoute: (body: { name: string; operatorName?: string; vehicleNo?: string; driverName?: string; driverPhone?: string; fareAmountPaise?: number }) =>
     request<{ id: string }>('/transport/routes', { method: 'POST', body: JSON.stringify(body) }),
+  /**
+   * Corrects a route. The fare decides what a family is charged when a
+   * request for this route is approved; changing it does not re-bill anyone,
+   * because each approved request was invoiced at the fare it was granted at.
+   */
+  updateRoute: (routeId: string, body: {
+    name?: string; operatorName?: string; vehicleNo?: string;
+    driverName?: string; driverPhone?: string;
+    status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'; fareAmountPaise?: number;
+  }) =>
+    request<{ id: string; fareAmountPaise: number }>(`/transport/routes/${routeId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   bulkCreateRoutes: (file: File) => uploadCsv('/transport/routes/bulk', file),
   createStop: (body: { routeId: string; name: string; sequenceNo: number; etaMinutesFromStart: number }) =>
     request<{ id: string }>('/transport/stops', { method: 'POST', body: JSON.stringify(body) }),
@@ -895,6 +932,23 @@ export const api = {
     return request<BookDto[]>(`/library/books${qs ? `?${qs}` : ''}`);
   },
   bookFacets: () => cachedRequest<BookFacetsDto>('/library/books/facets'),
+  // ── Book requests ──
+  // A student asks for a copy; a librarian decides, and the approval is what
+  // issues the book. The student is taken from the session server-side, so
+  // none of these carries a studentId.
+  requestBook: (bookId: string) =>
+    request<BookRequestDto>('/library/requests', { method: 'POST', body: JSON.stringify({ bookId }) }),
+  myBookRequests: () => request<BookRequestDto[]>('/library/requests/mine'),
+  cancelBookRequest: (id: string) =>
+    request<BookRequestDto>(`/library/requests/${id}/cancel`, { method: 'PATCH' }),
+  bookRequestsForReview: (status: RequestStatus | 'ALL' = 'PENDING') =>
+    request<Paged<BookRequestDto>>(`/library/requests/review?status=${status}`),
+  decideBookRequest: (id: string, status: 'APPROVED' | 'REJECTED', note?: string, dueAt?: string) =>
+    request<BookRequestDto>(`/library/requests/${id}/decision`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, note, dueAt }),
+    }),
+
   /**
    * Lending records. The server scopes these to the caller when their
    * `library.read` is OWN, so a student always gets their own loans whether or

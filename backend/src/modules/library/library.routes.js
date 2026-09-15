@@ -172,4 +172,123 @@ router.post('/issues/bulk', requirePermission('library.manage'), csvUploadSingle
  */
 router.patch('/issues/:id/return', requirePermission('library.manage'), controller.returnBook);
 
+
+// ── Book requests ──
+// A student asks for a copy; a librarian holding library.manage decides, and
+// the approval is what issues the book. `library.request` is deliberately a
+// separate permission from `library.read`: browsing the catalogue and asking
+// for something off it are different acts, and only the second writes a record.
+
+/**
+ * @swagger
+ * /library/requests/mine:
+ *   get:
+ *     summary: The signed-in student's own book requests
+ *     tags: [Library]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Your book requests fetched
+ */
+router.get('/requests/mine', requirePermission('library.request'), controller.listMyBookRequests);
+
+/**
+ * @swagger
+ * /library/requests/review:
+ *   get:
+ *     summary: The librarian's review queue of book requests
+ *     tags: [Library]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [PENDING, APPROVED, REJECTED, CANCELLED, ALL]
+ *     responses:
+ *       200:
+ *         description: Book requests fetched
+ */
+router.get('/requests/review', requirePermission('library.manage'), controller.listBookRequestsForReview);
+
+/**
+ * @swagger
+ * /library/requests:
+ *   post:
+ *     summary: Ask for a book to be issued (created as PENDING for a librarian)
+ *     tags: [Library]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [bookId]
+ *             properties:
+ *               bookId: { type: string }
+ *     responses:
+ *       201:
+ *         description: Request submitted for approval
+ *       409:
+ *         description: You already have a request for this book
+ */
+router.post('/requests', requirePermission('library.request'), controller.requestBook);
+
+/**
+ * @swagger
+ * /library/requests/{id}/cancel:
+ *   patch:
+ *     summary: Withdraw your own pending book request
+ *     tags: [Library]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Request cancelled
+ */
+router.patch('/requests/:id/cancel', requirePermission('library.request'), controller.cancelBookRequest);
+
+/**
+ * @swagger
+ * /library/requests/{id}/decision:
+ *   patch:
+ *     summary: Approve or reject a book request (approval issues the book)
+ *     tags: [Library]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [status]
+ *             properties:
+ *               status: { type: string, enum: [APPROVED, REJECTED] }
+ *               note: { type: string }
+ *               dueAt: { type: string, format: date-time }
+ *     responses:
+ *       200:
+ *         description: Request decided
+ *       409:
+ *         description: Already decided, or no copies are available
+ */
+router.patch('/requests/:id/decision', requirePermission('library.manage'), controller.decideBookRequest);
+
 export default router;

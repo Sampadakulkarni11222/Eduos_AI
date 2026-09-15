@@ -1,4 +1,5 @@
 import { Book, BookIssue } from '../../models/library.model.js';
+import { BookRequest } from '../../models/bookRequest.model.js';
 // Registered, not assumed: the catalogue populates the uploader's profile, and
 // populate needs the model present even when only the library module is loaded.
 import '../../models/profile.model.js';
@@ -7,6 +8,8 @@ import { getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
 import { AppError } from '../../utils/AppError.js';
 import { paginate, mapPage } from '../../utils/paginate.js';
 import { insertRows, rowError } from '../../utils/csvImport.js';
+import { recordAudit } from '../../utils/auditTrail.js';
+import { notify } from '../notifications/notification.service.js';
 
 /**
  * A YYYY-MM-DD filter bound, read as a calendar day at UTC midnight.
@@ -518,4 +521,243 @@ export async function returnBook(issueId) {
 
   const populated = await BookIssue.findById(issueId).populate('bookId', 'title author isbn');
   return toIssueDto(populated);
+}
+
+/* ── Book requests: a student asks, a librarian decides ───── */
+
+/**
+ * The student's own record, or a clear error saying what is missing.
+ *
+ * A request has to belong to a student, and a profile with no student record
+ * behind it cannot make one. Read from the session profile through the same
+ * lookup every OWN-scoped route uses — never from anything the caller sent.
+ */
+async function requestingStudentId(actor) {
+  const studentId = await getOwnStudentId(actor?.profileId);
+  if (!studentId) {
+    throw new AppError('No student record is linked to this account', 404, [], 'STUDENT_NOT_LINKED');
+  }
+  return studentId;
+}
+
+const toRequestDto = (req) => {
+  const book = req.bookId && typeof req.bookId === 'object' ? req.bookId : null;
+  const student = req.studentId && typeof req.studentId === 'object' ? req.studentId : null;
+  return {
+    id: req._id.toString(),
+    status: req.status,
+    bookId: book?._id?.toString() ?? req.bookId?.toString() ?? null,
+    bookTitle: book?.title ?? null,
+    bookAuthor: book?.author ?? null,
+    availableCopies: book?.availableCopies ?? null,
+    studentId: student?._id?.toString() ?? req.studentId?.toString() ?? null,
+    studentName: student?.firstName ? `${student.firstName} ${student.lastName ?? ''}`.trim() : null,
+    admissionNo: student?.admissionNo ?? null,
+    decisionNote: req.decisionNote ?? null,
+    decidedAt: req.decidedAt ?? null,
+    decidedBy: req.decidedByProfileId?.displayName ?? null,
+    issueId: req.issueId?.toString() ?? null,
+    requestedAt: req.createdAt,
+  };
+};
+
+/** A student asks for a copy. Lands as PENDING for a librarian to decide. */
+export async function requestBook(actor, bookId) {
+  const studentId = await requestingStudentId(actor);
+
+  const book = await Book.findOne({ _id: bookId, deletedAt: null });
+  if (!book) throw new AppError('Book not found', 404);
+  // A digital resource is read where it lives; there is no copy to hand over,
+  // so asking for one to be issued is a request nobody could fulfil.
+  if (book.resourceType === 'DIGITAL') {
+    throw new AppError(
+      'This is an online resource — open it from the catalogue instead of requesting a copy.',
+      400, [], 'NOT_BORROWABLE'
+    );
+  }
+
+  const existing = await BookRequest.findOne({
+    studentId,
+    bookId,
+    status: { $in: ['PENDING', 'APPROVED'] },
+  });
+  if (existing) {
+    throw new AppError(
+      existing.status === 'APPROVED'
+        ? 'This book has already been issued to you'
+        : 'You already have a pending request for this book',
+      409, [], 'ALREADY_REQUESTED'
+    );
+  }
+
+  let request;
+  try {
+    request = await BookRequest.create({
+      bookId,
+      studentId,
+      requestedByProfileId: actor.profileId,
+      status: 'PENDING',
+    });
+  } catch (err) {
+    // Two rapid submissions race past the findOne above; the partial unique
+    // index settles it, so translate rather than surfacing a 500.
+    if (err?.code === 11000) {
+      throw new AppError('You already have a request for this book', 409, [], 'ALREADY_REQUESTED');
+    }
+    throw err;
+  }
+
+  await recordAudit({
+    actor,
+    action: 'book_request.request',
+    entityType: 'BookRequest',
+    entityId: request._id,
+    after: { book: book.title, status: 'PENDING' },
+  });
+
+  // Copies are NOT held by a pending request. A request is an ask, and
+  // reserving a copy for every ask would empty the shelf to requests that may
+  // never be approved. Availability is re-checked, and the copy actually
+  // claimed, at the decision.
+  const populated = await BookRequest.findById(request._id).populate('bookId', 'title author availableCopies');
+  return toRequestDto(populated);
+}
+
+/** Every request the signed-in student has made, newest first. */
+export async function listMyBookRequests(actor) {
+  const studentId = await requestingStudentId(actor);
+  const requests = await BookRequest.find({ studentId })
+    .sort({ createdAt: -1 })
+    .populate('bookId', 'title author availableCopies resourceType')
+    .populate('decidedByProfileId', 'displayName');
+  return requests.map(toRequestDto);
+}
+
+/** A student withdraws their own request, while it is still pending. */
+export async function cancelBookRequest(actor, requestId) {
+  const studentId = await requestingStudentId(actor);
+
+  const request = await BookRequest.findOne({ _id: requestId, studentId });
+  if (!request) throw new AppError('Request not found', 404);
+  if (request.status !== 'PENDING') {
+    throw new AppError(`This request was already ${request.status.toLowerCase()}`, 409, [], 'NOT_CANCELLABLE');
+  }
+
+  request.status = 'CANCELLED';
+  await request.save();
+
+  await recordAudit({
+    actor,
+    action: 'book_request.cancel',
+    entityType: 'BookRequest',
+    entityId: request._id,
+    before: { status: 'PENDING' },
+    after: { status: 'CANCELLED' },
+  });
+
+  const populated = await BookRequest.findById(request._id).populate('bookId', 'title author availableCopies');
+  return toRequestDto(populated);
+}
+
+/** The librarian's review queue. */
+export async function listBookRequestsForReview(actor, scope, { status = 'PENDING', ...opts } = {}) {
+  const filter = {};
+  if (status && status !== 'ALL') filter.status = status;
+
+  // library.manage is only ever granted school-wide today, but a narrower
+  // holder must not see the whole school's requests if that ever changes.
+  if (scope !== 'ALL') {
+    const ownIds = await resolveOwnBorrowerIds(actor);
+    filter.studentId = ownIds.length ? { $in: ownIds } : null;
+  }
+
+  const page = await paginate(
+    BookRequest.find(filter)
+      .sort({ createdAt: -1 })
+      .populate('bookId', 'title author availableCopies resourceType')
+      .populate('studentId', 'firstName lastName admissionNo')
+      .populate('decidedByProfileId', 'displayName'),
+    BookRequest,
+    filter,
+    { page: opts.page, pageSize: opts.pageSize, label: 'library.listBookRequestsForReview' }
+  );
+
+  return mapPage(page, toRequestDto);
+}
+
+/**
+ * A librarian approves or rejects a pending request.
+ *
+ * An approval issues the book in the same step, through the same issueBook()
+ * the lending screen uses — so the copy is claimed atomically and there is one
+ * code path that puts a book on loan rather than two free to drift apart. If
+ * no copy is free the approval fails and the request stays PENDING, which is
+ * the honest outcome: a copy comes back, and it can be approved then.
+ */
+export async function decideBookRequest(actor, requestId, { status, note = null, dueAt = null } = {}) {
+  if (!['APPROVED', 'REJECTED'].includes(status)) {
+    throw new AppError('status must be APPROVED or REJECTED', 400);
+  }
+
+  const request = await BookRequest.findById(requestId).populate('bookId', 'title author availableCopies');
+  if (!request) throw new AppError('Request not found', 404);
+  if (request.status !== 'PENDING') {
+    throw new AppError(`This request was already ${request.status.toLowerCase()}`, 409, [], 'ALREADY_DECIDED');
+  }
+
+  let issue = null;
+  if (status === 'APPROVED') {
+    // Default loan: a fortnight, the period the lending screen offers.
+    const due = dueAt ? new Date(dueAt) : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    if (Number.isNaN(due.getTime())) throw new AppError('dueAt is not a valid date', 400);
+    issue = await issueBook({
+      bookId: request.bookId?._id ?? request.bookId,
+      studentId: request.studentId,
+      dueAt: due,
+    });
+  }
+
+  request.status = status;
+  request.decidedByProfileId = actor.profileId;
+  request.decidedAt = new Date();
+  request.decisionNote = note ? String(note).trim().slice(0, 500) : null;
+  if (issue) request.issueId = issue.id;
+  await request.save();
+
+  await recordAudit({
+    actor,
+    action: `book_request.${status.toLowerCase()}`,
+    entityType: 'BookRequest',
+    entityId: request._id,
+    before: { status: 'PENDING' },
+    after: {
+      status,
+      book: request.bookId?.title ?? null,
+      note: request.decisionNote,
+      issueId: issue?.id ?? null,
+    },
+  });
+
+  // Tell the student. Without this the decision exists only in the audit trail
+  // and on a page they would have to remember to revisit.
+  const student = await Student.findById(request.studentId).select('profileId').lean();
+  if (student?.profileId) {
+    const title = request.bookId?.title ?? 'the book you asked for';
+    await notify({
+      recipientProfileIds: [student.profileId],
+      type: 'LIBRARY',
+      title: status === 'APPROVED'
+        ? `"${title}" has been issued to you`
+        : `Your request for "${title}" was not approved`,
+      body: request.decisionNote ?? undefined,
+      link: '/student/library',
+      meta: { bookRequestId: request._id.toString(), status },
+    });
+  }
+
+  const populated = await BookRequest.findById(request._id)
+    .populate('bookId', 'title author availableCopies')
+    .populate('studentId', 'firstName lastName admissionNo')
+    .populate('decidedByProfileId', 'displayName');
+  return toRequestDto(populated);
 }

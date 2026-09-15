@@ -1,5 +1,6 @@
-import { TOOLS, getTool } from '../ai/agent/tools.js';
-import { checkAuthorization, speakOf } from '../ai/agent/orchestrator.js';
+import { withMcpSession, callTool as callMcpTool } from '../ai/mcp/client.js';
+import { getMcpTool } from '../ai/mcp/registry.js';
+import { speakOf } from '../ai/agent/response.js';
 import { t } from '../../utils/language.js';
 import { logger } from '../../utils/logger.js';
 
@@ -102,20 +103,29 @@ const EMPTY_RESULT = /\.(?:none|empty)$/;
  * -- forbidden, missing record, service down -- costs one line and nothing
  * else.
  */
-async function lineFor(name, actor, lang) {
-  const tool = getTool(name);
-  if (!tool || tool.mutates) return null;
+async function lineFor(mcpSession, name, lang) {
+  const tool = getMcpTool(name);
+  // A briefing is unasked-for, so it may only ever read. Even if this list
+  // grew a write by accident, it would be dropped here rather than performed
+  // on somebody who said nothing but "Hi".
+  if (!tool || tool.operation !== 'GET') return null;
 
   try {
-    const scope = checkAuthorization(actor, tool);
-    const result = await tool.execute(actor, scope, {});
+    // Through MCP like every other tool call, so the permission check, the
+    // school scope and the audit entry are the same ones an ordinary question
+    // gets. Nothing here is a second data path.
+    const result = await callMcpTool(mcpSession, name, {});
+    if (!result?.success) {
+      // For most actors most of this list is legitimately forbidden, and
+      // logging that at warning level would bury real faults.
+      logger.debug?.(`Briefing skipped ${name}: ${result?.error?.code}`);
+      return null;
+    }
     if (EMPTY_RESULT.test(result?.speakKey ?? '')) return null;
 
     const text = speakOf(result, lang).trim();
     return text ? { tool: name, text } : null;
   } catch (err) {
-    // Debug, not warn: for most actors most of this list is legitimately
-    // forbidden, and logging that at warning level would bury real faults.
     logger.debug?.(`Briefing skipped ${name}: ${err.message}`);
     return null;
   }
@@ -140,14 +150,19 @@ function examplesFor(roleKey, lang) {
  * unscoped read would cross schools.
  */
 export async function buildBriefing({ actor, lang = 'en' }) {
+  // Pre-filtered on the permission so the obviously-forbidden reads are not
+  // attempted at all. The MCP server checks again on each call — this only
+  // saves nine refusals per greeting, it does not decide anything.
   const available = BRIEFING_TOOLS.filter((name) => {
-    const tool = TOOLS[name];
+    const tool = getMcpTool(name);
     return tool && actor?.permissions?.[tool.permission];
   });
 
-  // Fetched together: a sequential round trip per tool is a visibly slow first
-  // reply, and no line depends on another.
-  const settled = await Promise.all(available.map((name) => lineFor(name, actor, lang)));
+  // One session for the whole briefing, closed when it is built. Fetched
+  // together: a sequential round trip per tool is a visibly slow first reply,
+  // and no line depends on another.
+  const settled = await withMcpSession({ actor, channel: 'WHATSAPP' }, (mcpSession) =>
+    Promise.all(available.map((name) => lineFor(mcpSession, name, lang))));
 
   // Deduplicated on the rendered sentence, not the tool name. For an ALL-scoped
   // caller get_attendance and who_is_absent_today are deliberately the same

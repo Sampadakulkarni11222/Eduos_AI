@@ -122,6 +122,11 @@ const MESSAGES = {
     'whatsapp.examples.staff': '“What are my periods today?”, “Who is absent today?”, “Any new announcements?”',
     'agent.failed': 'Something went wrong handling that. Please try again.',
     'agent.degraded': "The AI service is unavailable right now, so I can't answer that one. I can still look up: {capabilities}.",
+    // Asked when a tool genuinely needs a detail nobody has supplied — never for
+    // who the caller is, which the server resolves itself. See
+    // needsInputReply() in orchestrator.js, which had no key here at all and so
+    // always answered in English.
+    'agent.needsDetail': 'I need a bit more to do that. {description}',
 
     'attendance.summary': 'Attendance is {pct}% ({present} present of {days} working days).',
     'attendance.none': 'No attendance has been recorded yet.',
@@ -192,6 +197,7 @@ const MESSAGES = {
     'whatsapp.examples.staff': '“आज मेरे कालांश कौन से हैं?”, “आज कौन अनुपस्थित है?”, “कोई नई घोषणा?”',
     'agent.failed': 'कुछ गड़बड़ हो गई। कृपया दोबारा कोशिश करें।',
     'agent.degraded': 'AI सेवा अभी उपलब्ध नहीं है, इसलिए मैं इसका उत्तर नहीं दे सकता। मैं अब भी ये देख सकता हूँ: {capabilities}।',
+    'agent.needsDetail': 'इसके लिए मुझे थोड़ी और जानकारी चाहिए। {description}',
 
     'attendance.summary': 'उपस्थिति {pct}% है ({days} कार्य दिवसों में से {present} दिन उपस्थित)।',
     'attendance.none': 'अभी तक कोई उपस्थिति दर्ज नहीं की गई है।',

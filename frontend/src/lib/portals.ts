@@ -74,6 +74,9 @@ export const PORTALS: Record<string, Portal> = {
         item('Announcements', '◍', '/admin/announcements', { ready: true }),
         item('Library Books', '▢', '/admin/library', { ready: true }),
         item('Transport Routes', '⛒', '/admin/transport', { ready: true }),
+        // Students asking for a place on a route; approving grants it and
+        // bills the fare.
+        item('Transport Requests', '⇄', '/admin/transport-requests', { ready: true }),
         item('Documents', '🗎', '/admin/documents', { ready: true }),
       ]},
       { title: 'SYSTEM', items: [
@@ -219,6 +222,8 @@ export const PORTALS: Record<string, Portal> = {
       { title: 'WORKSPACE', items: [
         item('Dashboard', '◫', '/librarian', { ready: true }),
         item('Catalog & Lending', '▢', '/librarian/books', { ready: true }),
+        // Students ask for a copy here; approving is what issues it.
+        item('Book Requests', '⇄', '/librarian/requests', { ready: true }),
         // Notes and question papers are shelves of the same catalogue, not a
         // separate document store — see components/library/resource-shelf.
         item('Library Notes', '✎', '/librarian/notes', { ready: true }),

@@ -1,5 +1,5 @@
 import { TimetableSlot } from '../../models/timetableSlot.model.js';
-import { SubjectOffering } from '../../models/academics.model.js';
+import { SubjectOffering, Section } from '../../models/academics.model.js';
 import { Enrollment } from '../../models/student.model.js';
 import { SubjectRegistration } from '../../models/subjectRegistration.model.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
@@ -95,8 +95,27 @@ export async function getTimetable(actor, scope, sectionId) {
     .sort({ dayOfWeek: 1, periodNo: 1 });
 }
 
-export const upsertSlot = (data) =>
-  TimetableSlot.findOneAndUpdate(
+/**
+ * Creates or replaces one period.
+ *
+ * The section — and, unless the period is a break, the subject offering — must
+ * exist in the acting school, and the offering must belong to that section.
+ * This used to upsert against whatever ids arrived, so a slot could be filed
+ * under another school's section or show one class another class's subject.
+ * The lookups go through the tenant-scoped models, so a foreign id is "not
+ * found"; the REST route and the assistant both get the check.
+ */
+export async function upsertSlot(data) {
+  const section = await Section.findById(data.sectionId).select('_id').lean();
+  if (!section) throw new AppError('Section not found', 404);
+  if (data.subjectOfferingId) {
+    const offering = await SubjectOffering.findById(data.subjectOfferingId).select('sectionId').lean();
+    if (!offering) throw new AppError('Subject offering not found', 404);
+    if (String(offering.sectionId) !== String(data.sectionId)) {
+      throw new AppError('That subject offering belongs to a different section', 400, [], 'OFFERING_NOT_IN_SECTION');
+    }
+  }
+  return TimetableSlot.findOneAndUpdate(
     { sectionId: data.sectionId, dayOfWeek: data.dayOfWeek, periodNo: data.periodNo },
     data,
     // runValidators is off by default on findOneAndUpdate, so the schema's own
@@ -104,3 +123,4 @@ export const upsertSlot = (data) =>
     // path — a slot with dayOfWeek 8 was accepted and written.
     { upsert: true, new: true, runValidators: true }
   );
+}

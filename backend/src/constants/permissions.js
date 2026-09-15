@@ -116,6 +116,10 @@ export const PERMISSION_CATALOG = [
   // Library
   { key: 'library.read', group: 'library', description: 'View book catalog and lending records' },
   { key: 'library.manage', group: 'library', description: 'Add books and manage lending (issue/return)' },
+  // A student asks for a copy; a librarian holding library.manage decides.
+  // Deliberately separate from library.read: browsing the catalogue and asking
+  // for a book off it are different acts, and only the second creates a record.
+  { key: 'library.request', group: 'library', description: 'Request a book to be issued' },
 
   // Hostel
   { key: 'hostel.read', group: 'hostel', description: 'View hostel rooms, allocations, and student directory' },
@@ -124,6 +128,10 @@ export const PERMISSION_CATALOG = [
   // Transport
   { key: 'transport.read', group: 'transport', description: 'View transport routes, stops, and bus enrollments' },
   { key: 'transport.manage', group: 'transport', description: 'Manage transport routes, stops, and bus enrollments' },
+  // A student asks for a seat on a route; a transport.manage holder decides.
+  // transport.read stays staff-only: browsing routes to choose one is a
+  // self-service read of name, stops and fare, not the operational view.
+  { key: 'transport.request', group: 'transport', description: 'Request a place on a transport route' },
 
   // AI & analytics (stand-in integrations — see ARCHITECTURE.md)
   { key: 'ai.copilot.use', group: 'ai', description: 'Use the AI copilot/chat assistant' },
@@ -142,6 +150,30 @@ const grants = (pairs) => pairs.map(([key, scope]) => ({ key, scope }));
  */
 export const SUPER_ADMIN_ONLY = ['schools.read', 'schools.manage'];
 
+/**
+ * The assistant permission, withheld from SUPER_ADMIN.
+ *
+ * `ai.copilot.use` is the single gate on every way into the assistant — the
+ * web agent, its confirmation and capability endpoints, the tutor, AI credits,
+ * and both WhatsApp entry points all require it, and the MCP catalogue is
+ * built only for an actor holding it. Withholding it here is therefore the
+ * whole exclusion, enforced by the authorization layer every other role goes
+ * through rather than by a SUPER_ADMIN branch in the AI code.
+ *
+ * Why exclude it at all: SUPER_ADMIN is a platform role that can act across
+ * schools. Requests it makes without naming a school run outside any tenant,
+ * where the tenant filter that confines every other caller is simply absent —
+ * so an assistant answer could span schools. Writes are already refused in
+ * that state (assertSchoolContext in agent/orchestrator.js), but the honest
+ * position is that the assistant is a school-level tool and a platform
+ * administrator has the console for platform work.
+ *
+ * Nothing else about SUPER_ADMIN changes: it keeps every other permission in
+ * the catalog, including ai.insights.read, which drives the risk and analytics
+ * screens rather than the assistant.
+ */
+export const AI_ASSISTANT_PERMISSION = 'ai.copilot.use';
+
 const ALL_EXCEPT = (...excluded) =>
   PERMISSION_CATALOG.filter((p) => !excluded.includes(p.key)).map((p) => ({ key: p.key, scope: 'ALL' }));
 
@@ -150,7 +182,7 @@ export const SYSTEM_ROLES = [
     key: 'SUPER_ADMIN',
     name: 'Super Admin',
     description: 'Platform administrator — manages schools and their School Admin accounts',
-    grants: PERMISSION_CATALOG.map((p) => ({ key: p.key, scope: 'ALL' })),
+    grants: ALL_EXCEPT(AI_ASSISTANT_PERMISSION),
   },
   {
     key: 'ADMIN',
@@ -283,6 +315,8 @@ export const SYSTEM_ROLES = [
       // issued-books list", which listIssues() enforces server-side by
       // overriding any studentId a non-ALL-scope caller sends.
       ['library.read', 'OWN'],
+      ['library.request', 'OWN'],
+      ['transport.request', 'OWN'],
       ['assignments.read', 'OWN'],
       ['submissions.submit', 'OWN'],
       ['marks.read', 'OWN'],

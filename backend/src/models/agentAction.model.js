@@ -27,7 +27,12 @@ const agentActionSchema = new Schema(
     source: { type: String, enum: ['WEB', 'WHATSAPP'], default: 'WEB' },
     status: {
       type: String,
-      enum: ['PENDING', 'EXECUTED', 'REJECTED', 'EXPIRED', 'FAILED'],
+      // EXECUTING is the claimed state between a confirmation being accepted
+      // and the write finishing. It exists so the claim can be one atomic
+      // PENDING → EXECUTING update: two concurrent "yes" requests for the same
+      // proposal race on that update and exactly one wins, instead of both
+      // reading PENDING and both performing the write.
+      enum: ['PENDING', 'EXECUTING', 'EXECUTED', 'REJECTED', 'EXPIRED', 'FAILED'],
       default: 'PENDING',
     },
     tokenHash: { type: String, required: true, index: true },

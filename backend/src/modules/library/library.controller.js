@@ -69,3 +69,36 @@ export const returnBook = asyncHandler(async (req, res) => {
   const issue = await service.returnBook(req.params.id);
   sendSuccess(res, issue, 'Book returned');
 });
+
+/* ── Book requests ────────────────────────────────────────── */
+
+export const requestBook = asyncHandler(async (req, res) => {
+  // The student is resolved from the session inside the service; a studentId
+  // in the body is neither read nor honoured.
+  const request = await service.requestBook(req.actor, req.body.bookId);
+  sendSuccess(res, request, 'Book request submitted for approval', 201);
+});
+
+export const listMyBookRequests = asyncHandler(async (req, res) => {
+  const requests = await service.listMyBookRequests(req.actor);
+  sendSuccess(res, requests, 'Your book requests fetched');
+});
+
+export const cancelBookRequest = asyncHandler(async (req, res) => {
+  const request = await service.cancelBookRequest(req.actor, req.params.id);
+  sendSuccess(res, request, 'Book request cancelled');
+});
+
+export const listBookRequestsForReview = asyncHandler(async (req, res) => {
+  const page = await service.listBookRequestsForReview(req.actor, req.scope, req.query);
+  sendSuccess(res, page, 'Book requests fetched');
+});
+
+export const decideBookRequest = asyncHandler(async (req, res) => {
+  const request = await service.decideBookRequest(req.actor, req.params.id, {
+    status: req.body.status,
+    note: req.body.note,
+    dueAt: req.body.dueAt,
+  });
+  sendSuccess(res, request, `Book request ${request.status.toLowerCase()}`);
+});

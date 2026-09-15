@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { env } from './env.js';
+import { env, assessDatabaseTarget, databaseGuardConfig } from './env.js';
 import { logger } from '../utils/logger.js';
 import dns from 'dns';
 
@@ -23,6 +23,14 @@ export async function connectDB() {
     `Connecting to MongoDB… (target=${redactCredentials(env.MONGO_URI)}, ` +
       `source=${env.MONGO_URI_SOURCE}, NODE_ENV=${env.NODE_ENV})`
   );
+  // Before anything connects — and so before bootstrap() writes a single role —
+  // a non-production process is refused a production or remote database it
+  // has not been explicitly allowed. See assessDatabaseTarget() in env.js.
+  const target = assessDatabaseTarget({ nodeEnv: env.NODE_ENV, uri: env.MONGO_URI, ...databaseGuardConfig() });
+  if (!target.ok) {
+    logger.error(`✘  Refusing to connect to MongoDB: ${target.reason}.`);
+    process.exit(1);
+  }
   if (env.MONGO_ATLAS_IGNORED) {
     logger.warn(
       'MONGO_URI_ATLAS is set but was IGNORED — Atlas is only used when NODE_ENV=production. ' +
@@ -37,6 +45,29 @@ export async function connectDB() {
   } catch (err) {
     logger.error(`✘  MongoDB connection failed: ${err.message}`);
     process.exit(1);
+  }
+}
+
+/**
+ * 'ok' when the database answers a ping within `timeoutMs`, else 'unavailable'.
+ *
+ * For the health endpoint, so a load balancer stops routing to an instance
+ * that has lost its database. Reports a single word and nothing about the
+ * target: no host, no name, no error text.
+ */
+export async function databaseHealth(timeoutMs = 1500) {
+  if (mongoose.connection.readyState !== 1 || !mongoose.connection.db) return 'unavailable';
+  let timer;
+  try {
+    const answered = await Promise.race([
+      mongoose.connection.db.admin().ping().then(() => true),
+      new Promise((resolve) => { timer = setTimeout(() => resolve(false), timeoutMs); }),
+    ]);
+    return answered ? 'ok' : 'unavailable';
+  } catch {
+    return 'unavailable';
+  } finally {
+    clearTimeout(timer);
   }
 }
 

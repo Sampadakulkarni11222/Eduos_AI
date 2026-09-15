@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
-import { Button, Card, EmptyState, SkeletonRows, Pill, useToast } from '@/components/ui';
+import { Button, Card, EmptyState, SkeletonRows, Pill, rupees, useToast } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api, ApiError } from '@/lib/api';
 import type { TransportRouteDto, TransportStopDto, StudentListItem } from '@/lib/types';
@@ -15,7 +15,11 @@ export default function AdminTransport() {
 
   // Modals / forms state
   const [showRouteModal, setShowRouteModal] = useState(false);
-  const [newRoute, setNewRoute] = useState({ name: '', operatorName: '', vehicleNo: '', driverName: '', driverPhone: '' });
+  // The fare is entered in RUPEES here and converted on submit: the API and
+  // the model both hold paise, and typing paise into a form is how a ₹12,000
+  // fare becomes ₹120.
+  const [newRoute, setNewRoute] = useState({ name: '', operatorName: '', vehicleNo: '', driverName: '', driverPhone: '', fareRupees: '' });
+  const [fareEdit, setFareEdit] = useState<{ route: TransportRouteDto; rupees: string } | null>(null);
 
   const [showStopModal, setShowStopModal] = useState(false);
   const [newStop, setNewStop] = useState({ name: '', sequenceNo: 1, etaMinutesFromStart: 10 });
@@ -58,13 +62,40 @@ export default function AdminTransport() {
     e.preventDefault();
     if (!newRoute.name) return;
     try {
-      await api.createRoute(newRoute);
+      const { fareRupees, ...route } = newRoute;
+      const fare = Number(fareRupees);
+      if (fareRupees !== '' && (!Number.isFinite(fare) || fare < 0)) {
+        toast('The fare must be a number of rupees, zero or more.', 'error');
+        return;
+      }
+      await api.createRoute({
+        ...route,
+        ...(fareRupees !== '' && { fareAmountPaise: Math.round(fare * 100) }),
+      });
       setShowRouteModal(false);
-      setNewRoute({ name: '', operatorName: '', vehicleNo: '', driverName: '', driverPhone: '' });
+      setNewRoute({ name: '', operatorName: '', vehicleNo: '', driverName: '', driverPhone: '', fareRupees: '' });
       toast('Route created.');
       loadData();
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'Could not create the route.', 'error');
+    }
+  };
+
+  const handleSaveFare = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!fareEdit) return;
+    const fare = Number(fareEdit.rupees);
+    if (!Number.isFinite(fare) || fare < 0) {
+      toast('The fare must be a number of rupees, zero or more.', 'error');
+      return;
+    }
+    try {
+      await api.updateRoute(fareEdit.route.id, { fareAmountPaise: Math.round(fare * 100) });
+      toast(`A place on ${fareEdit.route.name} now costs ${rupees(Math.round(fare * 100))} a year.`);
+      setFareEdit(null);
+      loadData();
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Could not update the fare.', 'error');
     }
   };
 
@@ -132,6 +163,7 @@ export default function AdminTransport() {
                   <th>Route Name</th>
                   <th>Vehicle No.</th>
                   <th>Driver Details</th>
+                  <th>Yearly Fare</th>
                   <th>Stops</th>
                   <th>Action</th>
                 </tr>
@@ -145,9 +177,21 @@ export default function AdminTransport() {
                       <div>{r.driverName ?? '—'}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{r.driverPhone ?? ''}</div>
                     </td>
+                    <td data-label="Yearly Fare">
+                      {r.fareAmountPaise
+                        ? rupees(r.fareAmountPaise)
+                        : <span style={{ color: 'var(--text-faint)' }}>no charge</span>}
+                    </td>
                     <td data-label="Stops">{r.stopCount} stops</td>
                     <td data-label="Action">
                       <Button variant="ghost" small onClick={() => setSelectedRoute(r)}>View Stops</Button>
+                      <Button
+                        variant="ghost"
+                        small
+                        onClick={() => setFareEdit({ route: r, rupees: String((r.fareAmountPaise ?? 0) / 100) })}
+                      >
+                        Set Fare
+                      </Button>
                     </td>
                   </tr>
                 ))}
@@ -219,6 +263,21 @@ export default function AdminTransport() {
               <div className="field-label">Driver Phone</div>
               <input className="field-input" value={newRoute.driverPhone} onChange={(e) => setNewRoute({ ...newRoute, driverPhone: e.target.value })} placeholder="Driver phone number" />
 
+              <div className="field-label">Yearly Fare (₹)</div>
+              <input
+                className="field-input"
+                type="number"
+                min="0"
+                step="1"
+                value={newRoute.fareRupees}
+                onChange={(e) => setNewRoute({ ...newRoute, fareRupees: e.target.value })}
+                placeholder="e.g. 12000 — leave blank for a route with no charge"
+              />
+              <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginBottom: 10 }}>
+                Charged once a student&apos;s request for this route is approved. Leave blank
+                and the route carries no charge.
+              </div>
+
               <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
                 <Button type="submit">Create Route</Button>
                 <Button variant="ghost" type="button" onClick={() => setShowRouteModal(false)}>Cancel</Button>
@@ -229,6 +288,38 @@ export default function AdminTransport() {
       )}
 
       {/* Create Stop Modal */}
+      {fareEdit && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <div className="modal-title">Yearly fare — {fareEdit.route.name}</div>
+              <button className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setFareEdit(null)}>×</button>
+            </div>
+            <form onSubmit={handleSaveFare}>
+              <div className="field-label">Yearly Fare (₹)</div>
+              <input
+                className="field-input"
+                type="number"
+                min="0"
+                step="1"
+                value={fareEdit.rupees}
+                onChange={(e) => setFareEdit({ ...fareEdit, rupees: e.target.value })}
+                placeholder="e.g. 12000"
+              />
+              <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginBottom: 10 }}>
+                This is what the next approved request for this route will be charged.
+                Families already travelling keep the fare they were granted at — changing
+                this does not re-bill anyone. Set 0 for a route with no charge.
+              </div>
+              <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                <Button type="submit">Save Fare</Button>
+                <Button variant="ghost" type="button" onClick={() => setFareEdit(null)}>Cancel</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showStopModal && (
         <div className="modal-overlay">
           <div className="modal">

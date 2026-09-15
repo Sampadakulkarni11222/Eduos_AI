@@ -4,6 +4,7 @@ import { AgentAction } from '../../models/agentAction.model.js';
 import { buildPermissionMap } from '../../utils/buildPermissionMap.js';
 import { logger } from '../../utils/logger.js';
 import { runAgentSafely, confirmAction } from '../ai/agent/orchestrator.js';
+import { latestPendingFor, reissueToken } from '../ai/mcp/confirm.js';
 import { detectLanguage, t } from '../../utils/language.js';
 import { runWithTenant, runAcrossSchools } from '../../tenancy/tenantContext.js';
 import { normalisePhone, buildHistory } from './whatsapp.session.js';
@@ -177,11 +178,9 @@ function refusalFor(reason, lang) {
 
 /** Most recent still-valid proposal for this actor, used to resolve "yes"/"no". */
 async function latestPending(actor) {
-  return AgentAction.findOne({
-    actorProfileId: actor.profileId,
-    status: 'PENDING',
-    expiresAt: { $gt: new Date() },
-  }).sort({ createdAt: -1 });
+  // The same lookup the confirmation store uses, so there is one definition of
+  // "this person's outstanding proposal" rather than two that could drift.
+  return latestPendingFor(actor);
 }
 
 /**
@@ -309,12 +308,10 @@ export async function confirmActionById({ actionId, actor, accept, lang = 'en' }
   }
 
   try {
-    // Re-issue a token for this single confirmation so the orchestrator stays
-    // the only place that executes anything.
-    const crypto = await import('crypto');
-    const token = crypto.randomBytes(24).toString('hex');
-    pending.tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    await pending.save();
+    // Re-issue a token for this single confirmation, so it is redeemed through
+    // exactly the path the website's /ai/agent/confirm uses: the orchestrator
+    // hands it to the MCP server, which claims it atomically and re-authorizes.
+    const token = await reissueToken(pending);
 
     const result = await confirmAction({ confirmToken: token, actor, accept, source: 'WHATSAPP', lang });
     return { reply: result.reply, executed: result.executed };

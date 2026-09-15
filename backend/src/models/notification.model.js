@@ -18,7 +18,10 @@ const notificationSchema = new Schema(
         'ANNOUNCEMENT', 'ASSIGNMENT', 'MARKS', 'ATTENDANCE',
         'FEES', 'LIBRARY', 'TICKET', 'LEAVE', 'REGISTRATION',
         // Student-raised requests decided by a class teacher.
-        'COCURRICULAR', 'PROFILE_EDIT', 'SYSTEM',
+        'COCURRICULAR', 'PROFILE_EDIT',
+        // A decision on a student's request for a place on a bus route.
+        'TRANSPORT',
+        'SYSTEM',
       ],
       default: 'SYSTEM',
     },

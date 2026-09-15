@@ -409,3 +409,93 @@ export const create = async (actor, scope, data) => {
   dispatch(doc, channels);
   return doc;
 };
+
+/**
+ * The announcements this actor posted themselves.
+ *
+ * Distinct from list(), which answers "what was addressed to me" — the right
+ * question for a reader and the wrong one for deciding what somebody may
+ * change. Editing is an author's act, so the target set is keyed on
+ * authorship. Tenant-scoped by the model plugin, so it cannot reach another
+ * school's notices.
+ */
+export const listMine = async (actor) => {
+  const items = await Announcement.find({ deletedAt: null, createdByProfileId: actor?.profileId ?? null })
+    .sort({ publishedAt: -1 })
+    .lean();
+  return Promise.all(
+    items.map(async (a) => ({
+      id: a._id.toString(),
+      title: a.title,
+      content: a.content,
+      publishedAt: a.publishedAt,
+      audience: a.audience,
+      audienceLabel: await labelAudience(a.audience),
+    }))
+  );
+};
+
+/**
+ * Changes an announcement that has already been published.
+ *
+ * The authorization rule is authorship: a school-wide publisher (admin,
+ * principal) runs school communications and may correct any notice, while
+ * anybody else may only change one they posted. Teaching the class a notice was
+ * addressed to is deliberately NOT enough — a colleague's message is theirs,
+ * and being able to read it is not a licence to rewrite it.
+ *
+ * Only the fields a person would actually correct can be touched, and an
+ * audience change is re-resolved through resolveAudience(), so re-targeting is
+ * checked exactly as it was when the notice was first published — a teacher
+ * still cannot widen one to the whole school. `publishedAt`,
+ * `createdByProfileId`, `deletedAt` and the school are the record's own
+ * history and are never writable here.
+ *
+ * Deliberately does NOT re-dispatch: correcting a typo is not a reason to send
+ * the notice to everybody a second time.
+ */
+export const update = async (actor, scope, id, data) => {
+  if (!currentTenantId()) {
+    throw new AppError('Choose a school before changing an announcement', 400, [], 'SCHOOL_REQUIRED');
+  }
+  const doc = await Announcement.findOne({ _id: id, deletedAt: null });
+  if (!doc) throw new AppError('Announcement not found', 404);
+
+  if (scope !== 'ALL' && String(doc.createdByProfileId ?? '') !== String(actor?.profileId ?? '')) {
+    throw new AppError('You can only change an announcement you posted', 403);
+  }
+
+  if (data.title !== undefined) {
+    const title = String(data.title).trim();
+    if (!title) throw new AppError('An announcement needs a title', 400);
+    doc.title = title;
+  }
+  if (data.content !== undefined) {
+    const content = String(data.content).trim();
+    if (!content) throw new AppError('An announcement needs a message', 400);
+    doc.content = content;
+  }
+  if (data.audience !== undefined) {
+    doc.audience = await resolveAudience(actor, scope, data.audience);
+  }
+  if (data.channels !== undefined) {
+    doc.channels = {
+      app: data.channels?.app ?? true,
+      email: !!data.channels?.email,
+      whatsapp: !!data.channels?.whatsapp,
+    };
+  }
+  if (data.attachments !== undefined) {
+    doc.attachments = normalizeAttachments(data.attachments);
+  }
+
+  await doc.save();
+  return {
+    id: doc._id.toString(),
+    title: doc.title,
+    content: doc.content,
+    audience: doc.audience,
+    audienceLabel: await labelAudience(doc.audience),
+    publishedAt: doc.publishedAt,
+  };
+};

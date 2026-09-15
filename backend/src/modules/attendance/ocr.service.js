@@ -1,9 +1,9 @@
-import crypto from 'crypto';
-import { AgentAction } from '../../models/agentAction.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { logger } from '../../utils/logger.js';
 import { generateFromImage, isLlmEnabled } from '../../providers/ai.provider.js';
 import { getRoster } from './attendance.service.js';
+import { withMcpSession, callTool as callMcpTool } from '../ai/mcp/client.js';
+import { errorToAppError } from '../ai/mcp/protocol.js';
 
 /**
  * Attendance from a photo of a paper register.
@@ -29,7 +29,6 @@ import { getRoster } from './attendance.service.js';
 
 const ALLOWED_MEDIA = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-const CONFIRM_TTL_MINUTES = 15;
 
 const STATUS_ALIASES = {
   P: 'PRESENT', PRESENT: 'PRESENT', '✓': 'PRESENT', 'Y': 'PRESENT',
@@ -267,37 +266,37 @@ async function buildDraft({ actor, section, sectionId, date, roster, committable
   // teacher confirms without reading, nothing uncertain can be written.
   let action = null;
   if (committable.length) {
-    await AgentAction.updateMany(
-      { actorProfileId: actor.profileId, status: 'PENDING' },
-      { $set: { status: 'EXPIRED' } }
-    );
-
-    const token = crypto.randomBytes(24).toString('hex');
-    const pending = await AgentAction.create({
-      actorProfileId: actor.profileId,
-      tool: 'mark_attendance',
-      args: {
-        sectionId,
-        date,
+    // Proposed through MCP, like every other action. This used to write an
+    // AgentAction row directly — a second way to create a proposal that the
+    // MCP server had never validated, and whose `note` field its schema then
+    // refused at confirmation, so a confirmed register photo failed to save.
+    // Now the MCP server validates the entries, authorizes the teacher, stores
+    // the proposal and later executes it, exactly as for a typed request.
+    const isoDay = String(date).slice(0, 10);
+    const result = await withMcpSession({ actor, channel: 'WEB' }, (mcpSession) =>
+      callMcpTool(mcpSession, 'mark_attendance', {
+        sectionId: String(sectionId),
+        date: isoDay,
         entries: committable.map((e) => ({
-          enrollmentId: e.enrollmentId,
-          status: e.status,
+          enrollmentId: String(e.enrollmentId),
+          status: String(e.status).toUpperCase(),
           note: 'Read from register photo',
         })),
-      },
-      summary,
-      source: 'WEB',
-      tokenHash: crypto.createHash('sha256').update(token).digest('hex'),
-      expiresAt: new Date(Date.now() + CONFIRM_TTL_MINUTES * 60 * 1000),
-    });
+      }));
+    if (!result?.success) throw errorToAppError(result);
+    if (result.action?.status !== 'confirmation_required') {
+      throw new AppError('The register draft could not be prepared for confirmation.', 500);
+    }
 
     action = {
-      id: pending._id,
-      confirmToken: token,
+      id: result.action.id,
+      confirmToken: result.action.confirmationToken,
+      // The draft's own wording: it names the rows held back for review, which
+      // the generic attendance summary has no way to know about.
       summary,
       tool: 'mark_attendance',
       affectsOthers: true,
-      expiresInMinutes: CONFIRM_TTL_MINUTES,
+      expiresInMinutes: result.action.expiresInMinutes,
     };
   }
 

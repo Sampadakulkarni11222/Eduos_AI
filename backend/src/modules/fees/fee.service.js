@@ -8,7 +8,7 @@ import { Student, Enrollment } from '../../models/student.model.js';
 // that recorded and verified them, and populate needs the model present even
 // when a caller has imported only the fee module.
 import '../../models/profile.model.js';
-import { AcademicYear, Section } from '../../models/academics.model.js';
+import { AcademicYear, Section, Grade } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { recordAudit } from '../../utils/auditTrail.js';
 import { getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
@@ -123,8 +123,10 @@ export function buildInstrument(mode, instrument = {}) {
   };
 }
 
-export const createFeeHead = (data) => FeeHead.create(data);
-export const createFeeStructure = (data) => FeeStructure.create(data);
+// The unguarded createFeeHead/createFeeStructure pass-throughs that used to
+// live here are gone: nothing called them once the controller moved onto the
+// actor-aware versions below, and an exported raw Model.create(data) is a way
+// back around the scope check, the field allow-list and the audit entry.
 
 export const listFeeHeads = () => FeeHead.find().sort({ name: 1 }).lean();
 
@@ -2007,4 +2009,171 @@ export async function getSummary(actor, scope, query = {}) {
     // gateway's identity or keys.
     onlinePaymentEnabled: isOnlinePaymentEnabled(),
   };
+}
+
+/* ── Fee configuration, as an actor ───────────────────────── */
+
+/**
+ * The fee heads and structures a school bills from, created safely.
+ *
+ * These replace raw `Model.create(data)` pass-throughs that took whatever
+ * object they were handed, with no actor, no scope, no check that the ids in
+ * it belonged to this school, no validation and no audit entry. Authorization
+ * for those existed only on the REST route, which is why they could not be
+ * exposed to any other caller; they have been removed rather than left as a
+ * way around what follows.
+ *
+ * These are the same writes with the boundary moved into the service, the way
+ * document.service.createForActor() does it — so the route, the assistant and
+ * any future caller all meet the same rules:
+ *
+ *   scope       fees.structure.manage is a school-wide configuration
+ *               permission. A caller without ALL scope is refused rather than
+ *               quietly given a narrower write, because there is no narrower
+ *               version of "what this school charges".
+ *   fields      an explicit allow-list, so nothing else in the payload reaches
+ *               the model — tenantId included, which comes from the request's
+ *               own tenant state and never from input.
+ *   references  every id is confirmed to resolve INSIDE this school before it
+ *               is stored. The tenant plugin scopes the lookups, so an id from
+ *               another school simply does not resolve and is refused.
+ *   audit       recorded with the acting profile, like every other write.
+ */
+
+const FEE_HEAD_FIELDS = ['name', 'category'];
+const FEE_STRUCTURE_FIELDS = ['feeHeadId', 'academicYearId', 'gradeId', 'name', 'amountPaise', 'dueOn'];
+
+/** Keeps only the declared fields, so an unknown key cannot reach the model. */
+const pick = (data, allowed) => Object.fromEntries(
+  Object.entries(data ?? {}).filter(([k]) => allowed.includes(k)),
+);
+
+function assertStructureScope(scope) {
+  if (scope !== 'ALL') {
+    throw new AppError(
+      'Fee configuration is school-wide, so it cannot be changed from your own records.',
+      403, [], 'FORBIDDEN_SCOPE',
+    );
+  }
+}
+
+const trimmed = (value, field, max) => {
+  const text = String(value ?? '').trim();
+  if (!text) throw new AppError(`${field} is required`, 400);
+  if (text.length > max) throw new AppError(`${field} must be ${max} characters or fewer`, 400);
+  return text;
+};
+
+/** Creates a fee head — the thing a charge is FOR, e.g. "Tuition". */
+export async function createFeeHeadForActor(actor, scope, data = {}) {
+  assertStructureScope(scope);
+  const input = pick(data, FEE_HEAD_FIELDS);
+
+  const name = trimmed(input.name, 'name', 120);
+  const category = input.category === undefined ? undefined : trimmed(input.category, 'category', 40);
+
+  try {
+    const head = await FeeHead.create({ name, ...(category !== undefined && { category }) });
+    await recordAudit({
+      actor,
+      action: 'fee_head.create',
+      entityType: 'FeeHead',
+      entityId: head._id,
+      after: { name: head.name, category: head.category },
+    });
+    return head;
+  } catch (err) {
+    // (tenantId, name) is unique per school, so a repeat is a conflict rather
+    // than a 500.
+    if (err?.code === 11000) {
+      throw new AppError(`A fee head named "${name}" already exists`, 409, [], 'FEE_HEAD_EXISTS');
+    }
+    throw err;
+  }
+}
+
+/**
+ * Creates a fee structure — what a fee head costs, for a year and optionally
+ * one grade. A structure with no grade applies to every grade.
+ */
+export async function createFeeStructureForActor(actor, scope, data = {}) {
+  const resolved = await resolveFeeStructureInput(scope, data);
+
+  const structure = await FeeStructure.create(resolved.write);
+
+  await recordAudit({
+    actor,
+    action: 'fee_structure.create',
+    entityType: 'FeeStructure',
+    entityId: structure._id,
+    after: {
+      name: structure.name,
+      feeHead: resolved.feeHeadName,
+      academicYear: resolved.academicYearName,
+      gradeId: structure.gradeId ? String(structure.gradeId) : null,
+      amountPaise: structure.amountPaise,
+      dueOn: structure.dueOn,
+    },
+  });
+
+  return structure;
+}
+
+/**
+ * Validates a fee structure and resolves its references, without writing.
+ *
+ * Separate so that a caller which asks a human to confirm first can refuse an
+ * impossible structure BEFORE the prompt: a year or grade from another school,
+ * a fractional amount, a date that is not one. Otherwise somebody would be
+ * asked to approve a charge that then fails, which is the flaw the document
+ * deletion tool avoids the same way.
+ */
+export async function resolveFeeStructureInput(scope, data = {}) {
+  assertStructureScope(scope);
+  const input = pick(data, FEE_STRUCTURE_FIELDS);
+
+  const name = trimmed(input.name, 'name', 120);
+
+  const amountPaise = Number(input.amountPaise);
+  if (!Number.isInteger(amountPaise) || amountPaise <= 0) {
+    throw new AppError('amountPaise must be a whole number of paise above zero', 400);
+  }
+
+  const dueOn = new Date(input.dueOn);
+  if (!input.dueOn || Number.isNaN(dueOn.getTime())) {
+    throw new AppError('dueOn must be a valid date', 400);
+  }
+
+  // Each reference is resolved under this request's tenant state, so an id
+  // belonging to another school does not resolve and is refused here rather
+  // than being stored and billed from later.
+  const head = await FeeHead.findById(input.feeHeadId).select('_id name');
+  if (!head) throw new AppError('That fee head does not belong to this school', 403, [], 'FEE_HEAD_NOT_IN_SCHOOL');
+
+  const year = await AcademicYear.findById(input.academicYearId).select('_id name');
+  if (!year) throw new AppError('That academic year does not belong to this school', 403, [], 'YEAR_NOT_IN_SCHOOL');
+
+  let gradeId = null;
+  if (input.gradeId) {
+    const grade = await Grade.findById(input.gradeId).select('_id name');
+    if (!grade) throw new AppError('That grade does not belong to this school', 403, [], 'GRADE_NOT_IN_SCHOOL');
+    gradeId = grade._id;
+  }
+
+  return {
+    write: { feeHeadId: head._id, academicYearId: year._id, gradeId, name, amountPaise, dueOn },
+    feeHeadName: head.name,
+    academicYearName: year.name,
+  };
+}
+
+/** Refuses a fee head name this school already uses, without writing. */
+export async function assertFeeHeadNameFree(scope, name) {
+  assertStructureScope(scope);
+  const wanted = trimmed(name, 'name', 120);
+  const existing = await FeeHead.findOne({ name: wanted }).select('_id');
+  if (existing) {
+    throw new AppError(`A fee head named "${wanted}" already exists`, 409, [], 'FEE_HEAD_EXISTS');
+  }
+  return wanted;
 }

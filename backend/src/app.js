@@ -240,6 +240,28 @@ async function bootstrap() {
     } else {
       logger.info('✔  Agent tool permissions validated against the catalog');
     }
+
+    // The same check for the MCP catalog, plus the invariants that cannot be
+    // made at import time: every wrapped agent tool exists, every write can
+    // describe itself for confirmation, and no tool names a permission the
+    // school does not have. A tool that fails any of these fails closed and
+    // looks identical to "you lack that permission" at the call site, so it is
+    // surfaced loudly here instead.
+    const { validateMcpRegistry, mcpPermissionsUsed, mcpCatalogStats } = await import('./modules/ai/mcp/registry.js');
+    const knownPermissions = new Set(PERMISSION_CATALOG.map((p) => p.key));
+    const badMcp = [
+      ...validateMcpRegistry(),
+      ...mcpPermissionsUsed().filter((p) => !knownPermissions.has(p)).map((p) => `unknown permission "${p}"`),
+    ];
+    if (badMcp.length) {
+      logger.error(`✘  MCP tool catalog is inconsistent: ${badMcp.join('; ')}`);
+    } else {
+      const stats = mcpCatalogStats();
+      logger.info(
+        `✔  MCP server ready  →  ${stats.total} ERP tools ` +
+          `(${Object.entries(stats.byOperation).map(([op, n]) => `${n} ${op}`).join(', ')})`
+      );
+    }
   } catch (syncErr) {
     logger.error(`✘  Failed to auto-sync roles/permissions: ${syncErr.message}`);
   }

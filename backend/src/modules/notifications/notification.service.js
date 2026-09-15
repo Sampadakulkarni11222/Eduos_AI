@@ -1,4 +1,6 @@
 import { Notification } from '../../models/notification.model.js';
+import { Profile } from '../../models/profile.model.js';
+import { currentTenantState } from '../../tenancy/tenantContext.js';
 import { AppError } from '../../utils/AppError.js';
 import { logger } from '../../utils/logger.js';
 
@@ -26,6 +28,28 @@ export async function notify({ recipientProfileIds = [], type = 'SYSTEM', title,
     logger.error(`Notification fan-out failed (${type}): ${err.message}`);
     return { created: 0, failed: true };
   }
+}
+
+/**
+ * The recipients, if every one is a person in the acting school — else a 404.
+ *
+ * notify() is a fan-out helper that trusts its caller; this is the check for
+ * callers that take recipient ids from someone else (the assistant's
+ * notify_users tool). Profiles carry their school on `tenantId`.
+ */
+export async function recipientsInSchool(profileIds = []) {
+  const unique = [...new Set(profileIds.filter(Boolean).map(String))];
+  const { tenantId } = currentTenantState() ?? {};
+  const found = await Profile.find({ _id: { $in: unique }, ...(tenantId ? { tenantId } : {}) })
+    .select('_id displayName')
+    .lean();
+  if (found.length !== unique.length) {
+    throw new AppError(
+      `${unique.length - found.length} of the ${unique.length} recipient(s) are not people in this school.`,
+      404, [], 'RECIPIENT_NOT_IN_SCHOOL',
+    );
+  }
+  return found;
 }
 
 /** Inbox for the caller. Always scoped to their own profile — never parameterised. */

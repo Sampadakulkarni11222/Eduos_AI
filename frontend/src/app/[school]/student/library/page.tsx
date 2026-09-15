@@ -3,10 +3,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import {
   Button, Card, DateRangeFilter, EmptyState, FilterBar, Pill, SearchInput, Select,
-  SkeletonRows, matchesSearch, rupees, withinDateRange,
+  SkeletonRows, matchesSearch, rupees, withinDateRange, useToast,
 } from '@/components/ui';
 import { api } from '@/lib/api';
-import type { BookDto, BookFacetsDto, BookIssueDto } from '@/lib/types';
+import type { BookDto, BookFacetsDto, BookIssueDto, BookRequestDto, RequestStatus } from '@/lib/types';
 
 type ResourceFilter = '' | 'PHYSICAL' | 'DIGITAL';
 
@@ -14,6 +14,13 @@ const RESOURCE_OPTIONS = [
   { value: 'PHYSICAL', label: 'Physical books' },
   { value: 'DIGITAL', label: 'Digital resources' },
 ];
+
+const REQUEST_TONE: Record<RequestStatus, 'amber' | 'green' | 'red' | 'gray'> = {
+  PENDING: 'amber',
+  APPROVED: 'green',
+  REJECTED: 'red',
+  CANCELLED: 'gray',
+};
 
 /** How far ahead "Due soon" looks. */
 const DUE_SOON_DAYS = 7;
@@ -52,10 +59,37 @@ function isDueSoon(issue: BookIssueDto): boolean {
  */
 export default function StudentLibrary() {
   const [issued, setIssued] = useState<BookIssueDto[] | null>(null);
+  const [requests, setRequests] = useState<BookRequestDto[]>([]);
+  const [requesting, setRequesting] = useState<string | null>(null);
+  const toast = useToast();
   const [books, setBooks] = useState<BookDto[] | null>(null);
   const [facets, setFacets] = useState<BookFacetsDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [booksLoading, setBooksLoading] = useState(false);
+
+  /**
+   * The live status of this student's own request for a book, if any.
+   *
+   * Newest first, so a fresh request after a rejection supersedes the old one
+   * — the same rule the server applies with its partial unique index.
+   */
+  function requestFor(bookId: string): BookRequestDto | null {
+    return requests.find((r) => r.bookId === bookId) ?? null;
+  }
+
+  async function askFor(book: BookDto) {
+    setRequesting(book.id);
+    try {
+      const created = await api.requestBook(book.id);
+      // Prepended, so requestFor() finds this one ahead of any older row.
+      setRequests((prev) => [created, ...prev]);
+      toast(`Your request for "${book.title}" has been sent to the librarian.`, 'success');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Could not send that request', 'error');
+    } finally {
+      setRequesting(null);
+    }
+  }
 
   // Catalogue filters — applied by the server.
   const [search, setSearch] = useState('');
@@ -73,9 +107,11 @@ export default function StudentLibrary() {
     Promise.allSettled([
       api.listIssued(),
       api.bookFacets(),
-    ]).then(([iss, fac]) => {
+      api.myBookRequests(),
+    ]).then(([iss, fac, reqs]) => {
       setIssued(iss.status === 'fulfilled' ? iss.value : []);
       setFacets(fac.status === 'fulfilled' ? fac.value : null);
+      setRequests(reqs.status === 'fulfilled' ? reqs.value : []);
       setLoading(false);
     });
   }, []);
@@ -207,6 +243,35 @@ export default function StudentLibrary() {
         )}
       </Card>
 
+      {/* What was asked for and what came back. Decided rows matter most:
+          an approval shows up in the loans table above, but a rejection and
+          its reason would otherwise be invisible. */}
+      {!loading && requests.length > 0 && (
+        <Card style={{ marginBottom: 16 }}>
+          <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>My requests</strong>
+          <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+            {requests.map((r) => (
+              <div
+                key={r.id}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  gap: 12, flexWrap: 'wrap',
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 13.5, color: 'var(--text-1)', fontWeight: 600 }}>{r.bookTitle}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 2 }}>
+                    Asked {new Date(r.requestedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                    {r.decisionNote && <> · {r.decisionNote}</>}
+                  </div>
+                </div>
+                <Pill tone={REQUEST_TONE[r.status]}>{r.status.toLowerCase()}</Pill>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <Card pad={false}>
         <div style={{ padding: '16px 20px 0' }}>
           <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Library catalogue</strong>
@@ -295,9 +360,29 @@ export default function StudentLibrary() {
                         ? <a href={b.resourceUrl} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', fontWeight: 600, fontSize: 12.5 }}>Open resource</a>
                         : <Pill tone="blue">Online</Pill>
                     ) : (
-                      <Pill tone={b.availableCopies > 0 ? 'green' : 'red'}>
-                        {b.availableCopies > 0 ? `${b.availableCopies} available` : 'All out'}
-                      </Pill>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <Pill tone={b.availableCopies > 0 ? 'green' : 'red'}>
+                          {b.availableCopies > 0 ? `${b.availableCopies} available` : 'All out'}
+                        </Pill>
+                        {(() => {
+                          const mine = requestFor(b.id);
+                          // A request already waiting or granted is shown as
+                          // it stands; asking twice for the same book is
+                          // refused by the server anyway.
+                          if (mine && (mine.status === 'PENDING' || mine.status === 'APPROVED')) {
+                            return <Pill tone={REQUEST_TONE[mine.status]}>{mine.status === 'PENDING' ? 'requested' : 'issued to you'}</Pill>;
+                          }
+                          return (
+                            <Button
+                              onClick={() => void askFor(b)}
+                              disabled={requesting === b.id || b.availableCopies < 1}
+                              title={b.availableCopies < 1 ? 'No copies are free at the moment' : undefined}
+                            >
+                              {requesting === b.id ? 'Asking…' : 'Request'}
+                            </Button>
+                          );
+                        })()}
+                      </div>
                     )}
                   </td>
                 </tr>
