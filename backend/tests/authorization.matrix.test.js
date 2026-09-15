@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { PERMISSION_CATALOG, SYSTEM_ROLES, SUPER_ADMIN_ONLY } from '../src/constants/permissions.js';
+import { PERMISSION_CATALOG, SYSTEM_ROLES, SUPER_ADMIN_ONLY, AI_ASSISTANT_PERMISSION } from '../src/constants/permissions.js';
 import { buildPermissionMap } from '../src/utils/buildPermissionMap.js';
 import { requirePermission, requireRole } from '../src/middleware/permission.js';
 
@@ -64,8 +64,17 @@ describe('the catalog is internally consistent', () => {
 });
 
 describe('platform vs school boundary', () => {
-  it('Super Admin holds every key in the catalog', () => {
-    for (const key of CATALOG_KEYS) expect(can('SUPER_ADMIN', key)).toBe(true);
+  it('Super Admin holds every key in the catalog except the assistant', () => {
+    // One deliberate exception: `ai.copilot.use`. It is the single gate on
+    // every route into the AI assistant and on the MCP catalogue, so
+    // withholding it is what excludes the platform role from a school-level
+    // tool that would otherwise answer across schools. See
+    // tests/ai.superAdminExcluded.test.js and the note in constants/permissions.js.
+    for (const key of CATALOG_KEYS) {
+      if (key === AI_ASSISTANT_PERMISSION) continue;
+      expect(can('SUPER_ADMIN', key), `SUPER_ADMIN must hold ${key}`).toBe(true);
+    }
+    expect(can('SUPER_ADMIN', AI_ASSISTANT_PERMISSION)).toBe(false);
   });
 
   it('no school-level role can reach the platform keys', () => {

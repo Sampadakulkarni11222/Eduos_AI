@@ -140,10 +140,16 @@ describe('the tool catalog is internally consistent', () => {
 /* ── Role-filtered discovery ──────────────────────────────── */
 
 describe('tool discovery follows permissions, not role names', () => {
-  it('gives each role a usable, bounded toolset', () => {
+  it('gives each role that can use the assistant a usable, bounded toolset', () => {
     for (const role of SYSTEM_ROLES.map((r) => r.key)) {
       const tools = mcpToolsFor(actorFor(role));
-      expect(tools.length, `${role} sees no tools at all`).toBeGreaterThan(0);
+      if (role === 'SUPER_ADMIN') {
+        // Excluded from the assistant by not holding ai.copilot.use, so it is
+        // described no catalogue at all. See tests/ai.superAdminExcluded.test.js.
+        expect(tools, 'SUPER_ADMIN was offered a catalogue').toEqual([]);
+      } else {
+        expect(tools.length, `${role} sees no tools at all`).toBeGreaterThan(0);
+      }
     }
   });
 
@@ -181,7 +187,9 @@ describe('tool discovery follows permissions, not role names', () => {
     const counsellor = {
       roleKey: 'COUNSELLOR',
       profileId: String(new mongoose.Types.ObjectId()),
-      permissions: { 'students.read': 'ALL', 'attendance.read': 'ALL' },
+      // ai.copilot.use is what admits any role to the assistant at all; the
+      // other two are what decide which of its tools they then see.
+      permissions: { 'ai.copilot.use': 'ALL', 'students.read': 'ALL', 'attendance.read': 'ALL' },
     };
     const names = mcpToolsFor(counsellor).map((t) => t.name);
     expect(names).toContain('search_students');
@@ -420,10 +428,16 @@ describe('the model cannot choose who it is or which school it is in', () => {
   });
 
   it('refuses a write when no school has been chosen', async () => {
-    // A platform-level Super Admin acts on no school in particular, and a write
-    // in that state is unbounded.
-    const superAdmin = actorFor('SUPER_ADMIN', { tenantId: null });
-    const sessionId = openSession({ actor: superAdmin, channel: 'WEB' });
+    // A request that arrives without a school runs outside any tenant, and a
+    // write in that state is unbounded: it names records by id and the tenant
+    // filter is not there to confine it.
+    //
+    // Tested with an administrator rather than the platform role it was
+    // written for: SUPER_ADMIN is now refused the assistant outright, one
+    // check earlier, so it can no longer reach this guard at all. The guard
+    // itself is unchanged and still the thing under test.
+    const admin = actorFor('ADMIN', { tenantId: null });
+    const sessionId = openSession({ actor: admin, channel: 'WEB' });
     try {
       const res = await executeToolCall({
         sessionId, name: 'create_student', args: { admissionNo: 'X-9', firstName: 'Nobody' },

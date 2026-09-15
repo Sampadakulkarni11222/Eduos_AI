@@ -17,7 +17,8 @@ import { PROFILE_FIELDS } from '../../agent/profileIntent.js';
  * where the existing ownership and scope rules apply.
  *
  * Gated on `ai.copilot.use`, which every role that can use the assistant
- * already holds: reading your own name needs no grant beyond being signed in,
+ * holds by definition — it is the permission that admits them to it: reading
+ * your own name needs no grant beyond being signed in,
  * and inventing a new permission for it would have been a broadening rather
  * than a check.
  *

@@ -29,7 +29,22 @@ import { validateArgs } from '../src/modules/ai/mcp/validate.js';
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'src');
 
-const ROLES = SYSTEM_ROLES.map((r) => r.key);
+/**
+ * Every role the authorization system defines, and the subset the assistant
+ * serves.
+ *
+ * SUPER_ADMIN is deliberately not one of them. It is a platform role that acts
+ * across schools, and a request it makes without naming one runs outside any
+ * tenant — where the filter confining every other caller is absent. It is
+ * excluded by withholding `ai.copilot.use`, the single permission every route
+ * into the assistant requires, so the exclusion is enforced by the same
+ * authorization layer as everything else rather than by a branch in the AI
+ * code. Coverage below is therefore asserted over ASSISTANT_ROLES; the
+ * exclusion itself is asserted separately.
+ */
+const ALL_ROLES = SYSTEM_ROLES.map((r) => r.key);
+const EXCLUDED_ROLES = ['SUPER_ADMIN'];
+const ROLES = ALL_ROLES.filter((key) => !EXCLUDED_ROLES.includes(key));
 const actorFor = (roleKey) => ({
   roleKey,
   profileId: '000000000000000000000001',
@@ -135,8 +150,39 @@ describe('every role the authorization system defines', () => {
     expect(ROLES).toContain('FINANCE');
     expect(ROLES).toContain('LIBRARIAN');
     expect(ROLES).toContain('WARDEN');
-    expect(ROLES).toContain('SUPER_ADMIN');
-    expect(ROLES.length).toBeGreaterThanOrEqual(9);
+    expect(ALL_ROLES).toContain('SUPER_ADMIN');
+    expect(ALL_ROLES.length).toBeGreaterThanOrEqual(9);
+  });
+
+  it('excludes SUPER_ADMIN from the assistant, by permission rather than by name', () => {
+    const superAdmin = actorFor('SUPER_ADMIN');
+    // The whole exclusion: it does not hold the assistant permission, which
+    // every route into the agent requires.
+    expect(superAdmin.permissions['ai.copilot.use']).toBeUndefined();
+    // And so it is described no catalogue at all.
+    expect(mcpToolsFor(superAdmin)).toEqual([]);
+    expect(capabilitiesFor(superAdmin)).toEqual([]);
+
+    // Nothing else about the role changed: it still holds every other
+    // permission in the catalog, the platform-only ones included.
+    const catalog = PERMISSION_CATALOG.map((p) => p.key);
+    const held = Object.keys(superAdmin.permissions);
+    expect(held.sort()).toEqual(catalog.filter((k) => k !== 'ai.copilot.use').sort());
+    expect(superAdmin.permissions['schools.manage']).toBe('ALL');
+    expect(superAdmin.permissions['ai.insights.read']).toBe('ALL');
+  });
+
+  it('gives the catalogue only to an actor holding the assistant permission', () => {
+    // Uniform, not role-specific: strip the permission from any role and the
+    // catalogue closes; nothing else about that actor changes.
+    for (const role of ROLES) {
+      const actor = actorFor(role);
+      expect(mcpToolsFor(actor).length).toBeGreaterThan(0);
+
+      const withoutIt = { ...actor, permissions: { ...actor.permissions } };
+      delete withoutIt.permissions['ai.copilot.use'];
+      expect(mcpToolsFor(withoutIt), `${role} keeps a catalogue without ai.copilot.use`).toEqual([]);
+    }
   });
 
   it('holds only permissions that exist in the catalog', () => {
@@ -187,12 +233,29 @@ describe('the authorized permission surface is covered by the capability surface
 
   it('carries no stale entry: each is still a real, still-uncovered permission', () => {
     const catalog = new Set(PERMISSION_CATALOG.map((p) => p.key));
-    const stillUncovered = new Set(ROLES.flatMap((role) => uncoveredFor(role)));
-    for (const key of Object.keys(UNCOVERED)) {
+    // Asked of the registry rather than of the roles: whether a capability
+    // declares this permission is a fact about the catalogue, and stays a
+    // useful check even for a permission only SUPER_ADMIN holds - which, being
+    // excluded from the assistant, reaches nothing by definition.
+    const declaredByATool = new Set(Object.values(MCP_TOOLS).map((t) => t.permission));
+
+    for (const [key, entry] of Object.entries(UNCOVERED)) {
       expect(catalog.has(key), `${key} is recorded as uncovered but is not in the catalog`).toBe(true);
-      // If a capability now declares this permission, the entry is obsolete:
-      // delete it rather than leave a false excuse behind.
-      expect(stillUncovered.has(key), `${key} now has a capability; remove its UNCOVERED entry`).toBe(true);
+
+      if (entry.scopes) {
+        // A scope-gated entry: a capability DOES declare the permission, and
+        // the entry explains who cannot reach it. Both halves must hold.
+        expect(declaredByATool.has(key), `${key} is recorded as scope-gated but no capability declares it`).toBe(true);
+        const blocked = ROLES.filter((role) => {
+          const held = actorFor(role).permissions[key];
+          return held && entry.scopes.includes(held) && uncoveredFor(role).includes(key);
+        });
+        expect(blocked.length, `${key} is recorded as blocked at ${entry.scopes} but no role is`).toBeGreaterThan(0);
+      } else {
+        // If a capability now declares this permission, the entry is obsolete:
+        // delete it rather than leave a false excuse behind.
+        expect(declaredByATool.has(key), `${key} now has a capability; remove its UNCOVERED entry`).toBe(false);
+      }
     }
   });
 
@@ -362,6 +425,8 @@ describe('every capability declares metadata the architecture can rely on', () =
   });
 
   it('is reachable by at least one role', () => {
+    // ROLES excludes SUPER_ADMIN, so this asks whether a capability is
+    // reachable by somebody who can actually use the assistant.
     const reachable = new Set(ROLES.flatMap((role) => mcpToolsFor(actorFor(role)).map((t) => t.name)));
     for (const name of Object.keys(MCP_TOOLS)) {
       // A capability no role can see is either mis-permissioned or mis-scoped.

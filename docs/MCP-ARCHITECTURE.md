@@ -113,23 +113,46 @@ What used to sit outside MCP, and where it went:
 ## Roles and capability coverage
 
 The authorization system defines **nine** roles, not the five the assistant was
-first built around. All nine reach the assistant through the same path: there
-is no role-specific server, intent file, question list or keyword table
-anywhere, and adding one would be a regression. What differs between a warden
-and a principal is only the permission map their session carries, from which
-the same registry yields a different capability set.
+first built around. Eight of them reach the assistant through the same path —
+SUPER_ADMIN is deliberately excluded, see below — and there is no
+role-specific server, intent file, question list or keyword table anywhere;
+adding one would be a regression. What differs between a warden and a principal
+is only the permission map their session carries, from which the same registry
+yields a different capability set. The exclusion works the same way: it is a
+permission SUPER_ADMIN does not hold, not a rule about its name.
 
 | Role | Granted permissions | Capabilities visible | Writes |
 |---|---|---|---|
-| `SUPER_ADMIN` | 71 | 145 | 71 |
-| `ADMIN` | 67 | 144 | 70 |
+| `SUPER_ADMIN` | 72 | **0 — excluded** | 0 |
+| `ADMIN` | 69 | 153 | 74 |
 | `PRINCIPAL` | 32 | 73 | 20 |
 | `TEACHER` | 28 | 58 | 17 |
-| `STUDENT` | 22 | 53 | 7 |
+| `STUDENT` | 24 | 58 | 9 |
 | `PARENT` | 18 | 44 | 3 |
 | `WARDEN` | 11 | 29 | 8 |
 | `FINANCE` | 12 | 28 | 7 |
-| `LIBRARIAN` | 9 | 26 | 6 |
+| `LIBRARIAN` | 9 | 28 | 7 |
+
+### SUPER_ADMIN is excluded from the assistant
+
+The platform role does not hold `ai.copilot.use`, and that single withheld
+permission is the whole exclusion. Every route into the assistant already
+requires it — the web agent, its confirm and capabilities endpoints, the tutor,
+AI credits, and both WhatsApp entry points — and `mcpToolsFor()` returns an
+empty catalogue without it, so the exclusion holds for any future caller too
+rather than depending on each route remembering a check. There is no
+SUPER_ADMIN branch anywhere in the AI code, and hiding the UI entry was never
+the mechanism.
+
+Why: SUPER_ADMIN acts across schools. A request it makes without naming one
+runs outside any tenant, where the filter that confines every other caller is
+absent, so an assistant answer could span schools. Writes in that state were
+already refused (`assertSchoolContext`), but the assistant is a school-level
+tool and a platform administrator has the console for platform work. Nothing
+else about the role changes: it keeps every other permission in the catalog,
+`ai.insights.read` included, which drives the risk and analytics screens rather
+than the assistant. Enforced end to end by
+`backend/tests/ai.superAdminExcluded.test.js`.
 
 `backend/tests/mcp.roleCoverage.test.js` compares the two surfaces for every
 role, reading the roles from `SYSTEM_ROLES` rather than from a list of its own,
@@ -168,6 +191,35 @@ appears without a reason and when a recorded reason stops being true.
   `CalendarEvent` has no section, so there is no event a section-scoped holder
   could safely create, and `calendar.service.create()` refuses a non-`ALL`
   actor for that reason. At `ALL` scope it is covered.
+
+### Taking a payment: a deliberate limitation
+
+A STUDENT or PARENT holds `fees.pay` at OWN scope and pays on the web through
+`fee.service.payOnline()`. The assistant deliberately will not, and this is the
+one operation available on the web that it does not offer.
+
+`payOnline()` cannot be exposed without breaking payment integrity. On a real
+gateway it returns an `orderId`, a `keyId` and a payment-intent id that only a
+browser checkout SDK can consume — unusable in a chat channel, and on WhatsApp
+it would write gateway session material into a logged, forwardable transcript.
+It also creates an `INITIATED` payment row as a side effect of merely asking,
+leaving a dangling intent nobody can complete for reconciliation to explain.
+And when the provider is the sandbox it takes its other branch and marks the
+invoice `PAID` outright with no gateway interaction at all — the assistant
+settling a bill on the strength of a sentence.
+
+Nothing is actually missing. `get_payment_link` exposes the same intent safely:
+it runs `listInvoices()` at the caller's own scope, refuses an invoice that is
+not theirs or not outstanding, and hands back the real checkout URL so the
+person pays on the gateway's own page. `record_payment` stays school-wide for
+finance — it is the counter-payment ledger write, not a family paying their own
+bill, and is not widened to make an operation count match. Pinned by
+`mcp.capabilityCoverage.test.js`.
+
+Note the shape of this gap, because the coverage test cannot see it: the ledger
+below matches permission *keys* to capabilities, and `fees.pay` is declared by
+`get_payment_link` and `record_payment`, so it counts as covered. Coverage at
+the permission level can mask a gap at the operation level.
 
 ### Permissions the backend never enforces
 

@@ -150,6 +150,30 @@ const grants = (pairs) => pairs.map(([key, scope]) => ({ key, scope }));
  */
 export const SUPER_ADMIN_ONLY = ['schools.read', 'schools.manage'];
 
+/**
+ * The assistant permission, withheld from SUPER_ADMIN.
+ *
+ * `ai.copilot.use` is the single gate on every way into the assistant — the
+ * web agent, its confirmation and capability endpoints, the tutor, AI credits,
+ * and both WhatsApp entry points all require it, and the MCP catalogue is
+ * built only for an actor holding it. Withholding it here is therefore the
+ * whole exclusion, enforced by the authorization layer every other role goes
+ * through rather than by a SUPER_ADMIN branch in the AI code.
+ *
+ * Why exclude it at all: SUPER_ADMIN is a platform role that can act across
+ * schools. Requests it makes without naming a school run outside any tenant,
+ * where the tenant filter that confines every other caller is simply absent —
+ * so an assistant answer could span schools. Writes are already refused in
+ * that state (assertSchoolContext in agent/orchestrator.js), but the honest
+ * position is that the assistant is a school-level tool and a platform
+ * administrator has the console for platform work.
+ *
+ * Nothing else about SUPER_ADMIN changes: it keeps every other permission in
+ * the catalog, including ai.insights.read, which drives the risk and analytics
+ * screens rather than the assistant.
+ */
+export const AI_ASSISTANT_PERMISSION = 'ai.copilot.use';
+
 const ALL_EXCEPT = (...excluded) =>
   PERMISSION_CATALOG.filter((p) => !excluded.includes(p.key)).map((p) => ({ key: p.key, scope: 'ALL' }));
 
@@ -158,7 +182,7 @@ export const SYSTEM_ROLES = [
     key: 'SUPER_ADMIN',
     name: 'Super Admin',
     description: 'Platform administrator — manages schools and their School Admin accounts',
-    grants: PERMISSION_CATALOG.map((p) => ({ key: p.key, scope: 'ALL' })),
+    grants: ALL_EXCEPT(AI_ASSISTANT_PERMISSION),
   },
   {
     key: 'ADMIN',

@@ -7,7 +7,7 @@ import { Student } from '../src/models/student.model.js';
 import { authenticate } from '../src/middleware/auth.js';
 import { signAccessToken } from '../src/utils/jwt.js';
 import { runWithTenant, currentTenantId } from '../src/tenancy/tenantContext.js';
-import { PERMISSION_CATALOG, SYSTEM_ROLES } from '../src/constants/permissions.js';
+import { PERMISSION_CATALOG, SYSTEM_ROLES, AI_ASSISTANT_PERMISSION } from '../src/constants/permissions.js';
 
 /**
  * What a platform administrator sees when they open one school.
@@ -110,9 +110,16 @@ describe('a platform administrator opening one school', () => {
     });
   });
 
-  it('holds every permission in the catalogue, at school-wide scope', async () => {
+  it('holds every permission in the catalogue at school-wide scope, bar the assistant', async () => {
     const { actor } = await actAs(superAdminToken, { 'x-school-id': 'oakridge' });
-    for (const p of PERMISSION_CATALOG) expect(actor.permissions[p.key]).toBe('ALL');
+    for (const p of PERMISSION_CATALOG) {
+      if (p.key === AI_ASSISTANT_PERMISSION) continue;
+      expect(actor.permissions[p.key], p.key).toBe('ALL');
+    }
+    // The one exception, and the whole of the platform role's exclusion from
+    // the AI assistant: opening a school gives it that school's data, not a
+    // school-level assistant. See tests/ai.superAdminExcluded.test.js.
+    expect(actor.permissions[AI_ASSISTANT_PERMISSION]).toBeUndefined();
   });
 });
 

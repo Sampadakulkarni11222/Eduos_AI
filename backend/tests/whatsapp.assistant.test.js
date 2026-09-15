@@ -82,7 +82,16 @@ describe('WhatsApp account identification', () => {
 
     for (const roleKey of ALL_ROLES) {
       const r = resolved[roleKey];
-      expect(r.reason, `${roleKey} should resolve`).toBeUndefined();
+      if (roleKey === 'SUPER_ADMIN') {
+        // The platform role is excluded from the assistant by not holding
+        // ai.copilot.use, and this path re-checks that same key — so the
+        // WhatsApp entry point closes in the same breath as the web one.
+        expect(r.reason).toBe('ASSISTANT_NOT_PERMITTED');
+      } else {
+        expect(r.reason, `${roleKey} should resolve`).toBeUndefined();
+      }
+      // Resolution still identifies them and reads their live permissions,
+      // whichever way that decision went.
       expect(r.actor.roleKey).toBe(roleKey);
       // The permission map is the role's own, read live -- not a WhatsApp copy.
       const grants = SYSTEM_ROLES.find((s) => s.key === roleKey).grants;
@@ -180,11 +189,17 @@ describe('school isolation on the webhook path', () => {
     expect(seen).toBe(RIVERSIDE);
   });
 
-  it('runs a platform Super Admin cross-school, as an unscoped web session does', async () => {
+  it('refuses a platform Super Admin outright rather than running it cross-school', async () => {
+    // It used to be resolved and run unscoped, which is exactly the shape the
+    // exclusion exists to prevent: an assistant turn reading every school on
+    // the platform at once. Now the assistant permission it does not hold
+    // stops it here, before any scope is entered.
     await seedUser({ roleKey: 'SUPER_ADMIN', phone: '+919999800002', tenantId: '' });
     const resolved = await resolveActorByPhone('+919999800002');
-    expect(resolved.isSuperAdmin).toBe(true);
-    expect(await runInActorScope(resolved, async () => currentTenantId())).toBeNull();
+    expect(resolved.reason).toBe('ASSISTANT_NOT_PERMITTED');
+    // Still recognised as the platform role, so the refusal is a decision
+    // about permission rather than a failure to identify them.
+    expect(resolved.actor.roleKey).toBe('SUPER_ADMIN');
   });
 
   it('refuses a school-level profile that has lost its school', async () => {

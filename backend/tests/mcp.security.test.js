@@ -63,7 +63,14 @@ describe('discovery and execution agree for every role', () => {
   it.each(SYSTEM_ROLES.map((r) => r.key))('%s: every visible tool is executable and every hidden one is refused', async (roleKey) => {
     const { visible, mismatches } = await matrix(actorForRole(roleKey));
     expect(mismatches).toEqual([]);
-    expect(visible).toBeGreaterThan(0);
+
+    // SUPER_ADMIN is excluded from the assistant: it does not hold
+    // ai.copilot.use, so it is described no catalogue AND refused every tool.
+    // The matrix above is what proves the second half — hiding a tool is not
+    // the same as refusing to run it, and this role still holds the permission
+    // each tool names.
+    if (roleKey === 'SUPER_ADMIN') expect(visible).toBe(0);
+    else expect(visible).toBeGreaterThan(0);
   }, 60_000);
 
   it('a custom role gets exactly the tools its grants imply, and is refused the rest', async () => {

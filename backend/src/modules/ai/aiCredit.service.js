@@ -28,8 +28,10 @@ import { numFromEnv } from '../../config/env.js';
  *
  * Only STUDENT and PARENT are metered. Staff are not: the school is paying for
  * their tools, and a teacher hitting a paywall mid-lesson is a support call, not
- * a revenue event. Note that every role holds `ai.copilot.use`, so metering has
- * to be decided by role explicitly — permissions cannot express it.
+ * a revenue event. Note that every role which can use the assistant holds
+ * `ai.copilot.use` (SUPER_ADMIN is the one role without it, and is excluded
+ * from the assistant entirely), so metering has to be decided by role
+ * explicitly — permissions cannot express it.
  */
 
 /** Roles whose AI usage draws down credits. */

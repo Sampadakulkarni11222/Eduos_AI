@@ -4,7 +4,7 @@ import { Role } from '../src/models/role.model.js';
 import { Account } from '../src/models/account.model.js';
 import { Profile } from '../src/models/profile.model.js';
 import { School } from '../src/models/school.model.js';
-import { PERMISSION_CATALOG, SYSTEM_ROLES, SUPER_ADMIN_ONLY } from '../src/constants/permissions.js';
+import { PERMISSION_CATALOG, SYSTEM_ROLES, SUPER_ADMIN_ONLY, AI_ASSISTANT_PERMISSION } from '../src/constants/permissions.js';
 import { buildPermissionMap } from '../src/utils/buildPermissionMap.js';
 import { requirePermission } from '../src/middleware/permission.js';
 import * as schools from '../src/modules/schools/school.service.js';
@@ -73,10 +73,15 @@ describe('who may reach the Super Admin surface', () => {
 
 describe('existing roles are unchanged', () => {
   it('keeps every non-platform permission each role had before', () => {
-    // SUPER_ADMIN is the only role holding the whole catalog now that the
-    // OWNER role has been retired.
+    // SUPER_ADMIN holds the whole catalog now that the OWNER role has been
+    // retired, with one deliberate exception: the AI assistant permission,
+    // which is what excludes the platform role from a school-level assistant.
     const superAdmin = buildPermissionMap(roleByKey.get('SUPER_ADMIN'));
-    for (const p of PERMISSION_CATALOG) expect(superAdmin[p.key]).toBe('ALL');
+    for (const p of PERMISSION_CATALOG) {
+      if (p.key === AI_ASSISTANT_PERMISSION) continue;
+      expect(superAdmin[p.key], p.key).toBe('ALL');
+    }
+    expect(superAdmin[AI_ASSISTANT_PERMISSION]).toBeUndefined();
     expect(SUPER_ADMIN_ONLY.every((k) => superAdmin[k] === 'ALL')).toBe(true);
 
     const admin = buildPermissionMap(roleByKey.get('ADMIN'));

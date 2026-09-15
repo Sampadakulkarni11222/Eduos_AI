@@ -10,6 +10,7 @@ import {
 import { runInTenantState } from '../../../tenancy/tenantContext.js';
 import { AuditLog } from '../../../models/auditLog.model.js';
 import { logger } from '../../../utils/logger.js';
+import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 
 /**
  * The EduOS MCP server.
@@ -250,6 +251,16 @@ async function snapshot(tool, ctx, args, prepared, phase) {
  * and the "yes" that redeems it, and that is exactly the moment data changes.
  */
 function authorize(actor, tool) {
+  // The assistant permission first, before the tool's own. It is what admits a
+  // caller to the assistant at all, so an actor without it is refused here
+  // rather than merely being left out of the catalogue: hiding a tool is not
+  // the same as refusing to run it, and every tool names a permission that
+  // some catalogue-less actor may still hold. Uniform for every role -- it is
+  // the permission that decides, not the name.
+  if (!actor?.permissions?.[AI_ASSISTANT_PERMISSION]) {
+    return { error: fail(MCP_ERROR.FORBIDDEN, 'You are not authorized to use the assistant.') };
+  }
+
   const scope = actor?.permissions?.[tool.permission];
   if (!scope) {
     return { error: fail(MCP_ERROR.FORBIDDEN, 'You are not authorized to access this information.') };

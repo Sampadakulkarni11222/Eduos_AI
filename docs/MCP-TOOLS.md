@@ -27,7 +27,7 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
-| `SUPER_ADMIN` | 154 | 79 | 24 | 14 | 31 | 6 | 28 | 69 |
+| `SUPER_ADMIN` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | `ADMIN` | 153 | 79 | 24 | 14 | 30 | 6 | 27 | 68 |
 | `PRINCIPAL` | 73 | 53 | 4 | 6 | 9 | 1 | 7 | 20 |
 | `TEACHER` | 58 | 41 | 3 | 2 | 11 | 1 | 7 | 17 |
@@ -42,7 +42,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 
 <details><summary>High-risk actions visible to each role</summary>
 
-- **SUPER_ADMIN** (28): `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `refund_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`
+- **SUPER_ADMIN** (0): _none_
 - **ADMIN** (27): `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`
 - **PRINCIPAL** (7): `transition_fee_plan`, `publish_marks`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_document`
 - **TEACHER** (7): `mark_attendance`, `bulk_mark_attendance`, `enter_marks`, `publish_marks`, `create_announcement`, `update_announcement`, `delete_document`

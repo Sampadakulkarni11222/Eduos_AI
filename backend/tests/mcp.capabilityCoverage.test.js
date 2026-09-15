@@ -187,6 +187,42 @@ describe('the capabilities left unexposed are still unexposed, for the recorded 
     expect(names()).not.toContain('mark_all_notifications_read');
   });
 
+  /**
+   * Taking a payment is the one operation a STUDENT or PARENT can perform on
+   * the web that the assistant deliberately will not.
+   *
+   * They hold fees.pay at OWN scope and pay through fee.service.payOnline(),
+   * which cannot be exposed here without breaking payment integrity:
+   *
+   *  1. On a real gateway it returns an orderId, a keyId and a payment-intent
+   *     id that only a browser checkout SDK can consume. In a chat channel
+   *     that is unusable — and on WhatsApp it writes gateway session material
+   *     into a logged, forwardable transcript.
+   *  2. It creates an INITIATED Payment row as a side effect of merely asking,
+   *     so a question that cannot be completed still leaves a dangling intent
+   *     in the ledger for reconciliation to explain.
+   *  3. When the provider is the sandbox it takes the other branch and marks
+   *     the invoice PAID outright, with no gateway interaction at all — the
+   *     assistant settling a bill on the strength of a sentence.
+   *
+   * Nothing is actually missing: get_payment_link exposes the same intent
+   * safely, running listInvoices() at the caller's own scope and handing back
+   * the real checkout URL, so the person pays on the gateway's own page. And
+   * record_payment stays ALL-scoped for finance — it is the counter-payment
+   * ledger write, not a family paying their own bill, and must not be widened
+   * to make an operation count match.
+   */
+  it('online payment has no tool: a chat channel cannot complete a gateway checkout', () => {
+    expect(names()).not.toContain('pay_online');
+    expect(names()).not.toContain('pay_invoice');
+    expect(names()).not.toContain('make_payment');
+    // The safe equivalent is present, and is a read.
+    expect(MCP_TOOLS.get_payment_link.operation).toBe('GET');
+    // And the finance ledger write stays school-wide, so a family cannot reach
+    // it even though they hold fees.pay.
+    expect(MCP_TOOLS.record_payment.minScope).toBe('ALL');
+  });
+
   it('calendar creation remains school-wide only: CalendarEvent has no section', () => {
     expect(MCP_TOOLS.create_calendar_event.minScope).toBe('ALL');
   });

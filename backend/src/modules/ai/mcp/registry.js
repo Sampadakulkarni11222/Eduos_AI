@@ -9,6 +9,7 @@ import { welfareTools } from './tools/welfare.js';
 import { requestTools } from './tools/requests.js';
 import { analyticsTools } from './tools/analytics.js';
 import { profileTools } from './tools/profile.js';
+import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 
 /**
  * The EduOS MCP tool catalog.
@@ -95,6 +96,14 @@ export function requiresConfirmation(tool, args) {
  * keeps the tool list small enough for the model to route accurately.
  */
 export function mcpToolsFor(actor, { includeMutations = true } = {}) {
+  // The assistant permission gates the assistant's catalogue, not just its
+  // endpoints. Every route into the agent already requires ai.copilot.use, so
+  // an actor without it has no business being described a catalogue at all —
+  // and this way the exclusion holds for any future caller of this function
+  // too, rather than depending on each one remembering the route check.
+  // Uniform for every role: it is the permission that decides, not the name.
+  if (!actor?.permissions?.[AI_ASSISTANT_PERMISSION]) return [];
+
   return Object.entries(MCP_TOOLS)
     .filter(([, tool]) => {
       if (!includeMutations && mutates(tool)) return false;
