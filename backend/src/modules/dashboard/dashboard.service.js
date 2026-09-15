@@ -56,6 +56,66 @@ async function recentAnnouncements(limit = 5) {
  */
 const actorHolds = (actor, permissionKey) => Boolean(actor?.permissions?.[permissionKey]);
 
+/* ── Who may read which dashboard ─────────────────────────── */
+
+/**
+ * The access rule for each dashboard, in one place.
+ *
+ * These are the REST routes' own requirements, written once so that anything
+ * else reaching these aggregations enforces the same boundary instead of a
+ * second copy of it. `dashboard.routes.js` states them as middleware
+ * (requireRole + requirePermission) and a test asserts the two agree, so the
+ * table cannot drift from the routes it describes.
+ *
+ * Both halves matter, and the permission alone is not enough:
+ *
+ *   roles       The school-wide dashboards aggregate the whole school, and the
+ *               roles listed are the ones whose job that is. SUPER_ADMIN
+ *               appears on them because it oversees every school through the
+ *               platform console — it holds no assistant access, so this only
+ *               ever applies to its REST session.
+ *
+ *   scope       `students.read` and `fees.read` are held at OWN by families
+ *               too. Without the ALL requirement, holding the permission at
+ *               all would have been enough to read the school's roll or its
+ *               fee collection, which is precisely what the route refuses.
+ *
+ * The per-person dashboards (teacher/student/parent) aggregate one signed-in
+ * profile's own classes, record or children from its profileId, so they need
+ * no scope: there is nothing school-wide in them to widen.
+ */
+export const DASHBOARD_ACCESS = {
+  admin: { roles: ['SUPER_ADMIN', 'ADMIN', 'PRINCIPAL'], permission: 'students.read', scope: 'ALL' },
+  finance: { roles: ['SUPER_ADMIN', 'ADMIN', 'PRINCIPAL', 'FINANCE'], permission: 'fees.read', scope: 'ALL' },
+  teacher: { roles: ['TEACHER'], permission: 'timetable.read', scope: null },
+  student: { roles: ['STUDENT'], permission: 'attendance.read', scope: null },
+  parent: { roles: ['PARENT'], permission: 'students.read', scope: null },
+  warden: { roles: ['SUPER_ADMIN', 'ADMIN', 'WARDEN'], permission: 'hostel.read', scope: null },
+  librarian: { roles: ['SUPER_ADMIN', 'ADMIN', 'LIBRARIAN'], permission: 'library.read', scope: null },
+};
+
+/** The dashboard this actor's own role owns, or null if their role has none. */
+export function dashboardViewForRole(roleKey) {
+  return Object.keys(DASHBOARD_ACCESS).find((view) => DASHBOARD_ACCESS[view].roles.includes(roleKey)) ?? null;
+}
+
+/**
+ * Whether this actor may read this dashboard — the same answer the REST route
+ * gives, from the same table.
+ *
+ * The role is read from the actor the session resolved, never from anything a
+ * caller sent; the scope is the one their live permission map carries.
+ */
+export function canReadDashboard(actor, view) {
+  const rule = DASHBOARD_ACCESS[view];
+  if (!rule) return false;
+  if (!rule.roles.includes(actor?.roleKey)) return false;
+  const held = actor?.permissions?.[rule.permission];
+  if (!held) return false;
+  if (rule.scope === 'ALL' && held !== 'ALL') return false;
+  return true;
+}
+
 export async function getAdminDashboard(actor) {
   // The admissions pipeline is CRM data, gated everywhere else in the app by
   // `admissions.read` — including the /admin/admissions route map. This

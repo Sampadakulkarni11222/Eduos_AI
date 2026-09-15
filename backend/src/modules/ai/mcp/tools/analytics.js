@@ -1,4 +1,5 @@
 import * as dashboard from '../../../dashboard/dashboard.service.js';
+import { canReadDashboard, dashboardViewForRole } from '../../../dashboard/dashboard.service.js';
 import * as risk from '../../../risk/risk.service.js';
 import * as growth from '../../../growth/growth.service.js';
 import * as users from '../../../users/user.service.js';
@@ -149,24 +150,27 @@ export const analyticsTools = {
     // finance dashboard by naming it.
     permission: 'students.read',
     service: 'dashboard.service.get*Dashboard()',
+    /**
+     * Authorization comes from dashboard.service's own access table — the same
+     * rules the REST routes state as middleware — rather than from a copy kept
+     * here.
+     *
+     * An earlier version checked only that the caller held the view's
+     * permission. That was materially weaker than the route, which also
+     * requires a role whose job the dashboard is AND, for the school-wide
+     * views, the permission at ALL scope. Because `students.read` and
+     * `fees.read` are held at OWN by families, holding the permission at all
+     * was enough: a student could ask for `view: 'finance'` and receive the
+     * school's whole fee position, or `view: 'admin'` and receive its roll.
+     * The role is taken from the session-resolved actor, never from an
+     * argument, and `view` decides nothing on its own.
+     */
     async run(ctx, args) {
-      const roleView = {
-        ADMIN: 'admin', SUPER_ADMIN: 'admin', PRINCIPAL: 'admin',
-        FINANCE: 'finance', TEACHER: 'teacher', STUDENT: 'student',
-        PARENT: 'parent', WARDEN: 'warden', LIBRARIAN: 'librarian',
-      }[ctx.actor?.roleKey] ?? 'admin';
-      const view = args.view ?? roleView;
-
-      // Each dashboard carries a different slice of the school, so each is
-      // gated on the permission its own REST route requires. Without this, the
-      // single `students.read` above would have been a way for anyone holding
-      // it to read the finance dashboard.
-      const required = {
-        admin: 'students.read', finance: 'fees.read', teacher: 'timetable.read',
-        student: 'attendance.read', parent: 'students.read', warden: 'hostel.read',
-        librarian: 'library.read',
-      }[view];
-      if (!ctx.actor?.permissions?.[required]) {
+      const view = args.view ?? dashboardViewForRole(ctx.actor?.roleKey);
+      if (!view) {
+        throw new AppError('There is no dashboard for your role.', 403);
+      }
+      if (!canReadDashboard(ctx.actor, view)) {
         throw new AppError(`You are not authorized to view the ${view} dashboard.`, 403);
       }
 
