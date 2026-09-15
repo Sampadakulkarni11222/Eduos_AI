@@ -424,6 +424,74 @@ export interface BookDto {
   uploadedBy?: string | null;
   uploadedAt?: string | null;
 }
+export type RequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+
+/** A student's request for a copy of a book, and what was decided on it. */
+export interface BookRequestDto {
+  id: string;
+  status: RequestStatus;
+  bookId: string | null;
+  bookTitle: string | null;
+  bookAuthor: string | null;
+  availableCopies: number | null;
+  studentId: string | null;
+  studentName: string | null;
+  admissionNo: string | null;
+  decisionNote: string | null;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  /** The lending record an approval created. */
+  issueId: string | null;
+  requestedAt: string;
+}
+
+/**
+ * A route a student may ask for. Deliberately without the driver's name and
+ * phone number: those come with the route you are actually on, from myBus().
+ */
+export interface AvailableRouteDto {
+  id: string;
+  name: string;
+  operatorName: string | null;
+  vehicleNo: string | null;
+  fareAmountPaise: number;
+  /**
+   * Not TransportStopDto: the picker is sent only what choosing needs, so
+   * these carry no routeId and the ETA may be absent.
+   */
+  stops: { id: string; name: string; sequenceNo: number; etaMinutesFromStart?: number }[];
+}
+
+export interface TransportRequestDto {
+  id: string;
+  status: RequestStatus;
+  routeId: string | null;
+  routeName: string | null;
+  vehicleNo: string | null;
+  stopId: string | null;
+  stopName: string | null;
+  direction: 'BOTH' | 'PICKUP' | 'DROP';
+  studentId: string | null;
+  studentName: string | null;
+  admissionNo: string | null;
+  fareAmountPaise: number;
+  /** The invoice an approval raised for the fare, if the route carries one. */
+  invoiceId: string | null;
+  busEnrollmentId: string | null;
+  decisionNote: string | null;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  requestedAt: string;
+}
+
+/** What the student's route picker needs in one call. */
+export interface AvailableRoutesDto {
+  routes: AvailableRouteDto[];
+  myRequest: TransportRequestDto | null;
+  myRouteId: string | null;
+  canRequest: boolean;
+}
+
 export interface BookIssueDto { id: string; bookId: string; bookTitle: string; bookAuthor?: string | null; category?: string | null; resourceType?: 'PHYSICAL' | 'DIGITAL'; resourceUrl?: string | null; studentId: string; studentName: string; issuedAt: string; dueAt: string; returnedAt: string | null; status: 'ACTIVE' | 'RETURNED' | 'OVERDUE'; finePaise: number }
 
 // ── Phase 8: Documents ──

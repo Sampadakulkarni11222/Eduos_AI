@@ -59,3 +59,47 @@ export const roster = asyncHandler(async (req, res) => {
   const rows = await service.listTransportRoster(req.actor, { sectionId: req.query.sectionId });
   sendSuccess(res, rows, 'Transport roster fetched');
 });
+
+/* ── Route requests ───────────────────────────────────────── */
+
+/**
+ * The routes a student may choose from. Self-service, like /my-bus: students
+ * hold no transport.* grant, and the service answers only for the student the
+ * session belongs to.
+ */
+export const routesForStudent = asyncHandler(async (req, res) => {
+  const data = await service.listRoutesForStudent(req.actor);
+  sendSuccess(res, data, 'Routes fetched');
+});
+
+export const requestRoute = asyncHandler(async (req, res) => {
+  const request = await service.requestRoute(req.actor, {
+    routeId: req.body.routeId,
+    stopId: req.body.stopId,
+    direction: req.body.direction,
+  });
+  sendSuccess(res, request, 'Transport request submitted for approval', 201);
+});
+
+export const listMyTransportRequests = asyncHandler(async (req, res) => {
+  const requests = await service.listMyTransportRequests(req.actor);
+  sendSuccess(res, requests, 'Your transport requests fetched');
+});
+
+export const cancelTransportRequest = asyncHandler(async (req, res) => {
+  const request = await service.cancelTransportRequest(req.actor, req.params.id);
+  sendSuccess(res, request, 'Transport request cancelled');
+});
+
+export const listTransportRequestsForReview = asyncHandler(async (req, res) => {
+  const page = await service.listTransportRequestsForReview(req.actor, req.scope, req.query);
+  sendSuccess(res, page, 'Transport requests fetched');
+});
+
+export const decideTransportRequest = asyncHandler(async (req, res) => {
+  const request = await service.decideTransportRequest(req.actor, req.params.id, {
+    status: req.body.status,
+    note: req.body.note,
+  });
+  sendSuccess(res, request, `Transport request ${request.status.toLowerCase()}`);
+});

@@ -1,17 +1,17 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 145,
+    "total": 154,
     "byOperation": {
-      "GET": 74,
-      "CREATE": 22,
+      "GET": 79,
+      "CREATE": 24,
       "UPDATE": 14,
       "DELETE": 6,
-      "ACTION": 29
+      "ACTION": 31
     },
     "byRisk": {
-      "LOW": 74,
-      "MEDIUM": 43,
+      "LOW": 81,
+      "MEDIUM": 45,
       "HIGH": 27,
       "CRITICAL": 1
     }
@@ -5597,6 +5597,300 @@
       "wrapsAgentTool": null
     },
     {
+      "name": "request_book",
+      "module": "Library",
+      "operation": "CREATE",
+      "description": "Ask the library to issue a book to the caller. The book must be a physical copy in this school's catalogue — an online resource is read where it lives and cannot be issued. The request goes to the librarian and changes nothing until it is approved, so it runs without confirmation. Use list_books to find the book id.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "bookId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From list_books"
+          }
+        },
+        "required": [
+          "bookId"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "library.request",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "library.service.requestBook()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_my_book_requests",
+      "module": "Library",
+      "operation": "GET",
+      "description": "The caller's own book requests and what was decided on each. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "library.request",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "library.service.listMyBookRequests()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_book_requests",
+      "module": "Library",
+      "operation": "GET",
+      "description": "Book requests waiting for the librarian to decide, with who asked and whether a copy is free. Defaults to the pending ones. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED",
+              "CANCELLED",
+              "ALL"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "library.manage",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "library.service.listBookRequestsForReview()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "decide_book_request",
+      "module": "Library",
+      "operation": "ACTION",
+      "description": "Approve or reject a book request. Approving issues the book to the student and takes a copy off the shelf; if no copy is free the approval is refused and the request stays waiting. Use get_book_requests to find the request id. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From get_book_requests"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "APPROVED",
+              "REJECTED"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Shown to the student with the decision"
+          },
+          "dueAt": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "When the book is due back; defaults to a fortnight from today"
+          }
+        },
+        "required": [
+          "requestId",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "library.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "library.service.decideBookRequest()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_transport_routes",
+      "module": "Transport",
+      "operation": "GET",
+      "description": "The bus routes the caller can ask for, with each route's stops and what a place on it costs for the year. Also says whether the caller already has a request or a place. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "transport.request",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "transport.service.listRoutesForStudent()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "request_transport_route",
+      "module": "Transport",
+      "operation": "CREATE",
+      "description": "Ask for a place on a bus route, from a particular stop. The stop must be one on that route. The request goes to the school office and changes nothing until it is approved — the fare is only charged once a place is granted, so it runs without confirmation. Use get_transport_routes to find the route and stop ids.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "routeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From get_transport_routes"
+          },
+          "stopId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "A stop on that route"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "BOTH",
+              "PICKUP",
+              "DROP"
+            ],
+            "description": "Both ways by default"
+          }
+        },
+        "required": [
+          "routeId",
+          "stopId"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "transport.request",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "transport.service.requestRoute()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_my_transport_requests",
+      "module": "Transport",
+      "operation": "GET",
+      "description": "The caller's own transport requests and what was decided on each. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "transport.request",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "transport.service.listMyTransportRequests()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_transport_requests",
+      "module": "Transport",
+      "operation": "GET",
+      "description": "Transport requests waiting for a decision, with who asked, which route and stop, and the fare. Defaults to the pending ones. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "REJECTED",
+              "CANCELLED",
+              "ALL"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "transport.manage",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "transport.service.listTransportRequestsForReview()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "decide_transport_request",
+      "module": "Transport",
+      "operation": "ACTION",
+      "description": "Approve or reject a request for a place on a bus route. Approving puts the student on the route and, when the route carries a fare, raises an invoice for it against their fees. Use get_transport_requests to find the request id. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From get_transport_requests"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "APPROVED",
+              "REJECTED"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Shown to the student with the decision"
+          }
+        },
+        "required": [
+          "requestId",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "transport.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "transport.service.decideTransportRequest()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
       "name": "get_at_risk_students",
       "module": "Analytics",
       "operation": "GET",
@@ -6099,11 +6393,11 @@
     {
       "role": "SUPER_ADMIN",
       "custom": false,
-      "total": 145,
-      "GET": 74,
-      "CREATE": 22,
+      "total": 154,
+      "GET": 79,
+      "CREATE": 24,
       "UPDATE": 14,
-      "ACTION": 29,
+      "ACTION": 31,
       "DELETE": 6,
       "highRiskActions": 28,
       "highRiskActionNames": [
@@ -6136,7 +6430,7 @@
         "remove_medical_record",
         "delete_document"
       ],
-      "confirmationRequired": 67,
+      "confirmationRequired": 69,
       "names": [
         "search_students",
         "get_student",
@@ -6272,6 +6566,15 @@
         "create_ticket",
         "reply_to_ticket",
         "update_ticket",
+        "request_book",
+        "get_my_book_requests",
+        "get_book_requests",
+        "decide_book_request",
+        "get_transport_routes",
+        "request_transport_route",
+        "get_my_transport_requests",
+        "get_transport_requests",
+        "decide_transport_request",
         "get_at_risk_students",
         "get_growth_score",
         "get_dashboard",
@@ -6288,11 +6591,11 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 144,
-      "GET": 74,
-      "CREATE": 22,
+      "total": 153,
+      "GET": 79,
+      "CREATE": 24,
       "UPDATE": 14,
-      "ACTION": 28,
+      "ACTION": 30,
       "DELETE": 6,
       "highRiskActions": 27,
       "highRiskActionNames": [
@@ -6324,7 +6627,7 @@
         "remove_medical_record",
         "delete_document"
       ],
-      "confirmationRequired": 66,
+      "confirmationRequired": 68,
       "names": [
         "search_students",
         "get_student",
@@ -6459,6 +6762,15 @@
         "create_ticket",
         "reply_to_ticket",
         "update_ticket",
+        "request_book",
+        "get_my_book_requests",
+        "get_book_requests",
+        "decide_book_request",
+        "get_transport_routes",
+        "request_transport_route",
+        "get_my_transport_requests",
+        "get_transport_requests",
+        "decide_transport_request",
         "get_at_risk_students",
         "get_growth_score",
         "get_dashboard",
@@ -6714,9 +7026,9 @@
     {
       "role": "STUDENT",
       "custom": false,
-      "total": 53,
-      "GET": 46,
-      "CREATE": 5,
+      "total": 58,
+      "GET": 49,
+      "CREATE": 7,
       "UPDATE": 0,
       "ACTION": 1,
       "DELETE": 1,
@@ -6773,6 +7085,11 @@
         "list_tickets",
         "get_ticket",
         "create_ticket",
+        "request_book",
+        "get_my_book_requests",
+        "get_transport_routes",
+        "request_transport_route",
+        "get_my_transport_requests",
         "get_dashboard",
         "list_notifications",
         "list_documents",
@@ -6833,17 +7150,17 @@
     {
       "role": "LIBRARIAN",
       "custom": false,
-      "total": 26,
-      "GET": 20,
+      "total": 28,
+      "GET": 21,
       "CREATE": 1,
       "UPDATE": 1,
-      "ACTION": 3,
+      "ACTION": 4,
       "DELETE": 1,
       "highRiskActions": 1,
       "highRiskActionNames": [
         "delete_book"
       ],
-      "confirmationRequired": 6,
+      "confirmationRequired": 7,
       "names": [
         "search_students",
         "get_student",
@@ -6868,6 +7185,8 @@
         "list_tickets",
         "get_ticket",
         "reply_to_ticket",
+        "get_book_requests",
+        "decide_book_request",
         "get_dashboard",
         "list_notifications",
         "get_my_profile"

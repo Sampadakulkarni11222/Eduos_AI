@@ -116,6 +116,10 @@ export const PERMISSION_CATALOG = [
   // Library
   { key: 'library.read', group: 'library', description: 'View book catalog and lending records' },
   { key: 'library.manage', group: 'library', description: 'Add books and manage lending (issue/return)' },
+  // A student asks for a copy; a librarian holding library.manage decides.
+  // Deliberately separate from library.read: browsing the catalogue and asking
+  // for a book off it are different acts, and only the second creates a record.
+  { key: 'library.request', group: 'library', description: 'Request a book to be issued' },
 
   // Hostel
   { key: 'hostel.read', group: 'hostel', description: 'View hostel rooms, allocations, and student directory' },
@@ -124,6 +128,10 @@ export const PERMISSION_CATALOG = [
   // Transport
   { key: 'transport.read', group: 'transport', description: 'View transport routes, stops, and bus enrollments' },
   { key: 'transport.manage', group: 'transport', description: 'Manage transport routes, stops, and bus enrollments' },
+  // A student asks for a seat on a route; a transport.manage holder decides.
+  // transport.read stays staff-only: browsing routes to choose one is a
+  // self-service read of name, stops and fare, not the operational view.
+  { key: 'transport.request', group: 'transport', description: 'Request a place on a transport route' },
 
   // AI & analytics (stand-in integrations — see ARCHITECTURE.md)
   { key: 'ai.copilot.use', group: 'ai', description: 'Use the AI copilot/chat assistant' },
@@ -283,6 +291,8 @@ export const SYSTEM_ROLES = [
       // issued-books list", which listIssues() enforces server-side by
       // overriding any studentId a non-ALL-scope caller sends.
       ['library.read', 'OWN'],
+      ['library.request', 'OWN'],
+      ['transport.request', 'OWN'],
       ['assignments.read', 'OWN'],
       ['submissions.submit', 'OWN'],
       ['marks.read', 'OWN'],

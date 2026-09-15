@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**145 tools** — 74 GET, 22 CREATE, 14 UPDATE, 6 DELETE, 29 ACTION.
+**154 tools** — 79 GET, 24 CREATE, 14 UPDATE, 6 DELETE, 31 ACTION.
 
-Risk mix: 74 LOW, 43 MEDIUM, 27 HIGH, 1 CRITICAL.
+Risk mix: 81 LOW, 45 MEDIUM, 27 HIGH, 1 CRITICAL.
 
-Status: 143 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 152 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -27,14 +27,14 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
-| `SUPER_ADMIN` | 145 | 74 | 22 | 14 | 29 | 6 | 28 | 67 |
-| `ADMIN` | 144 | 74 | 22 | 14 | 28 | 6 | 27 | 66 |
+| `SUPER_ADMIN` | 154 | 79 | 24 | 14 | 31 | 6 | 28 | 69 |
+| `ADMIN` | 153 | 79 | 24 | 14 | 30 | 6 | 27 | 68 |
 | `PRINCIPAL` | 73 | 53 | 4 | 6 | 9 | 1 | 7 | 20 |
 | `TEACHER` | 58 | 41 | 3 | 2 | 11 | 1 | 7 | 17 |
 | `PARENT` | 44 | 41 | 1 | 1 | 0 | 1 | 2 | 2 |
-| `STUDENT` | 53 | 46 | 5 | 0 | 1 | 1 | 0 | 4 |
+| `STUDENT` | 58 | 49 | 7 | 0 | 1 | 1 | 0 | 4 |
 | `FINANCE` | 28 | 21 | 2 | 1 | 4 | 0 | 7 | 7 |
-| `LIBRARIAN` | 26 | 20 | 1 | 1 | 3 | 1 | 1 | 6 |
+| `LIBRARIAN` | 28 | 21 | 1 | 1 | 4 | 1 | 1 | 7 |
 | `WARDEN` | 29 | 21 | 2 | 3 | 3 | 0 | 0 | 7 |
 | `COUNSELLOR (custom, example)` | 18 | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
 
@@ -83,10 +83,12 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `create_ticket` | Tickets | CREATE | `tickets.create` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
 | `create_transport_route` | Transport | CREATE | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_transport_stop` | Transport | CREATE | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `decide_book_request` | Library | ACTION | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `decide_cocurricular` | Student requests | ACTION | `cocurricular.review` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `decide_payment_change_request` | Fees | ACTION | `fees.payments.approve` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `decide_profile_edit` | Student requests | ACTION | `profile.edit.review` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `decide_registration` | Registrations | ACTION | `registrations.review` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `decide_transport_request` | Transport | ACTION | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `delete_book` | Library | DELETE | `library.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `delete_document` | Documents | DELETE | `materials.manage` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `enroll_in_transport` | Transport | ACTION | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -106,6 +108,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_attendance_statistics` | Attendance | GET | `attendance.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_attendance_trend` | Attendance | GET | `attendance.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_book` | Library | GET | `library.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_book_requests` | Library | GET | `library.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_calendar_events` | Communication | GET | `calendar.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_class_marks` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_dashboard` | Analytics | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -123,10 +126,12 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_library_summary` | Library | GET | `library.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_marks_grid` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_medical_record` | Medical | GET | `medical.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_my_book_requests` | Library | GET | `library.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_bus` | Transport | GET | `transport.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_classes` | Academics | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_electives` | Registrations | GET | `registrations.apply` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_profile` | Profile | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_my_transport_requests` | Transport | GET | `transport.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_overdue_books` | Library | GET | `library.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_payment_change_requests` | Fees | GET | `fees.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_payment_history` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -146,7 +151,9 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_submissions` | Assignments | GET | `submissions.grade` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_ticket` | Tickets | GET | `tickets.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_timetable` | Timetable | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_transport_requests` | Transport | GET | `transport.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_transport_roster` | Transport | GET | `transport.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_transport_routes` | Transport | GET | `transport.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `grade_submission` | Assignments | ACTION | `submissions.grade` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `issue_book` | Library | ACTION | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `list_academic_years` | Academics | GET | `academics.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -178,8 +185,10 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `reject_payment` | Fees | ACTION | `fees.payments.approve` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `remove_medical_record` | Medical | DELETE | `medical.manage` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `reply_to_ticket` | Tickets | ACTION | `tickets.respond` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `request_book` | Library | CREATE | `library.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `request_cocurricular` | Student requests | CREATE | `cocurricular.request` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
 | `request_profile_edit` | Student requests | CREATE | `profile.edit.request` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
+| `request_transport_route` | Transport | CREATE | `transport.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `return_book` | Library | ACTION | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `review_leave` | Leave | ACTION | `leave.review` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `search_students` | Students | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -2713,6 +2722,102 @@ Record the return of a lent item. Returning an item already returned is refused 
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+### `request_book`
+
+Ask the library to issue a book to the caller. The book must be a physical copy in this school's catalogue — an online resource is read where it lives and cannot be issued. The request goes to the librarian and changes nothing until it is approved, so it runs without confirmation. Use list_books to find the book id.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `library.request` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `library.service.requestBook()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.request_book` |
+
+**Input**
+
+`bookId`: string **(required)** — From list_books
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `get_my_book_requests`
+
+The caller's own book requests and what was decided on each. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `library.request` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `library.service.listMyBookRequests()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_my_book_requests` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `get_book_requests`
+
+Book requests waiting for the librarian to decide, with who asked and whether a copy is free. Defaults to the pending ones. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `library.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `library.service.listBookRequestsForReview()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_book_requests` |
+
+**Input**
+
+`status`: string — one of: PENDING, APPROVED, REJECTED, CANCELLED, ALL<br>`limit`: integer
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `decide_book_request`
+
+Approve or reject a book request. Approving issues the book to the student and takes a copy off the shelf; if no copy is free the approval is refused and the request stays waiting. Use get_book_requests to find the request id. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `library.manage` |
+| **Scope** | ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `library.service.decideBookRequest()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.decide_book_request` |
+
+**Input**
+
+`requestId`: string **(required)** — From get_book_requests<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string — Shown to the student with the decision<br>`dueAt`: string — When the book is due back; defaults to a fortnight from today
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Medical
 
 ### `get_medical_record`
@@ -3739,6 +3844,126 @@ Put a student on a bus route and stop for an academic year (the current one if n
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+### `get_transport_routes`
+
+The bus routes the caller can ask for, with each route's stops and what a place on it costs for the year. Also says whether the caller already has a request or a place. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `transport.request` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `transport.service.listRoutesForStudent()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_transport_routes` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `request_transport_route`
+
+Ask for a place on a bus route, from a particular stop. The stop must be one on that route. The request goes to the school office and changes nothing until it is approved — the fare is only charged once a place is granted, so it runs without confirmation. Use get_transport_routes to find the route and stop ids.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `transport.request` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `transport.service.requestRoute()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.request_transport_route` |
+
+**Input**
+
+`routeId`: string **(required)** — From get_transport_routes<br>`stopId`: string **(required)** — A stop on that route<br>`direction`: string — one of: BOTH, PICKUP, DROP — Both ways by default
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `get_my_transport_requests`
+
+The caller's own transport requests and what was decided on each. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `transport.request` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `transport.service.listMyTransportRequests()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_my_transport_requests` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `get_transport_requests`
+
+Transport requests waiting for a decision, with who asked, which route and stop, and the fare. Defaults to the pending ones. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `transport.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `transport.service.listTransportRequestsForReview()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_transport_requests` |
+
+**Input**
+
+`status`: string — one of: PENDING, APPROVED, REJECTED, CANCELLED, ALL<br>`limit`: integer
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `decide_transport_request`
+
+Approve or reject a request for a place on a bus route. Approving puts the student on the route and, when the route carries a fare, raises an invoice for it against their fees. Use get_transport_requests to find the request id. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `transport.manage` |
+| **Scope** | ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `transport.service.decideTransportRequest()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.decide_transport_request` |
+
+**Input**
+
+`requestId`: string **(required)** — From get_transport_requests<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string — Shown to the student with the decision
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Users
 
 ### `list_users`
@@ -3767,7 +3992,7 @@ Staff and user accounts, searchable by name, phone or email and filterable by ro
 
 ## Permission coverage
 
-58 of the 71 permissions in the catalog are reachable through MCP.
+60 of the 73 permissions in the catalog are reachable through MCP.
 
 Permissions **not** reachable through any tool:
 

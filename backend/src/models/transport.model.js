@@ -8,6 +8,16 @@ const transportRouteSchema = new Schema(
     vehicleNo: { type: String },
     driverName: { type: String },
     driverPhone: { type: String },
+    /**
+     * What a place on this route costs for the year, in paise.
+     *
+     * Zero — the default — means the route carries no charge of its own, which
+     * is what every route written before this field had, so their behaviour is
+     * unchanged. When a request for this route is approved, a fare above zero
+     * raises an invoice the student pays through the ordinary fees flow; a fare
+     * of zero raises nothing.
+     */
+    fareAmountPaise: { type: Number, default: 0, min: 0 },
     status: { type: String, enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED'], default: 'ACTIVE' },
   },
   { timestamps: true }

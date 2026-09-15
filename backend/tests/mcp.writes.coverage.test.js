@@ -26,6 +26,8 @@ import { MedicalRecord } from '../src/models/medicalRecord.model.js';
 import { Ticket, TicketMessage } from '../src/models/ticket.model.js';
 import { TimetableSlot } from '../src/models/timetableSlot.model.js';
 import { TransportRoute, TransportStop, BusEnrollment } from '../src/models/transport.model.js';
+import { BookRequest } from '../src/models/bookRequest.model.js';
+import { TransportRequest } from '../src/models/transportRequest.model.js';
 import { Document } from '../src/models/document.model.js';
 import * as library from '../src/modules/library/library.service.js';
 import * as registrations from '../src/modules/registrations/registration.service.js';
@@ -37,7 +39,7 @@ import * as transport from '../src/modules/transport/transport.service.js';
 import { seedSchool, seedPerson, mcp, inSchool, todayKey, OAK, RIVER } from './support/mcpSchool.js';
 
 /**
- * Every one of the 71 MCP write tools, executed through MCP.
+ * Every one of the 75 MCP write tools, executed through MCP.
  *
  * One case per tool — the role that should be able to do it (taken from the
  * real permission catalog), the records it needs, the arguments, and a
@@ -197,6 +199,22 @@ function world(s) {
       const route = await w.route();
       return oak(() => transport.createStop({ routeId: route._id, name: 'Market', sequenceNo: 1 }));
     }),
+    bookRequest: () => once('bookRequest', async () => {
+      const book = await w.book();
+      return oak(() => BookRequest.create({
+        bookId: idOf(book), studentId: s.priya.student._id,
+        requestedByProfileId: s.people.STUDENT.profile._id, status: 'PENDING',
+      }));
+    }),
+    transportRequest: () => once('transportRequest', async () => {
+      const route = await w.route();
+      const stop = await w.stop();
+      return oak(() => TransportRequest.create({
+        studentId: s.priya.student._id, routeId: idOf(route), stopId: idOf(stop),
+        academicYearId: s.year._id, requestedByProfileId: s.people.STUDENT.profile._id,
+        status: 'PENDING',
+      }));
+    }),
     document: () => once('document', () => oak(() => Document.create({
       title: 'Old circular', type: 'CUSTOM', fileUrl: '/uploads/old.pdf', authorProfileId: s.people.ADMIN.profile._id, visibleToRoles: ['PARENT'],
     }))),
@@ -218,7 +236,7 @@ const read = (fn) => oak(fn);
 const count = (Model, filter = {}) => read(() => Model.countDocuments(filter));
 const field = (Model, id, path) => read(() => Model.findById(id).lean()).then((d) => (d ? path.split('.').reduce((o, k) => o?.[k], d) : '(gone)'));
 
-/* ── The 71 write tools ───────────────────────────────────── */
+/* ── The 75 write tools ───────────────────────────────────── */
 
 /**
  * role         who performs it (holds the permission at the scope it needs)
@@ -480,6 +498,19 @@ const CASES = [
     footprint: async (_s, c) => `${await field(BookIssue, idOf(c.issue), 'status')}:${await field(Book, idOf(c.book), 'availableCopies')}`,
     changed: (b, a) => { expect([b, a]).toEqual(['ACTIVE:1', 'RETURNED:2']); } },
 
+  { tool: 'request_book', role: 'STUDENT',
+    setup: async (w) => ({ book: await w.book() }),
+    args: (_s, c) => ({ bookId: idOf(c.book) }),
+    footprint: (_s, c) => count(BookRequest, { bookId: idOf(c.book) }),
+    changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
+  { tool: 'decide_book_request', role: 'LIBRARIAN',
+    setup: async (w) => ({ request: await w.bookRequest(), book: await w.book() }),
+    args: (_s, c) => ({ requestId: idOf(c.request), status: 'APPROVED' }),
+    // Approving is what issues the book, so the footprint is both the decision
+    // and the copy leaving the shelf.
+    footprint: async (_s, c) => `${await field(BookRequest, idOf(c.request), 'status')}:${await field(Book, idOf(c.book), 'availableCopies')}`,
+    changed: (b, a) => { expect([b, a]).toEqual(['PENDING:2', 'APPROVED:1']); } },
+
   /* Hostel */
   { tool: 'create_hostel_room', role: 'WARDEN', tenant: false,
     args: () => ({ roomNo: 'B-201', capacity: 3 }),
@@ -525,6 +556,18 @@ const CASES = [
     args: (_s, c) => ({ admissionNo: 'OAK-1', routeId: idOf(c.route), stopId: idOf(c.stop) }),
     footprint: (s) => count(BusEnrollment, { studentId: s.rahul.student._id }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
+
+  { tool: 'request_transport_route', role: 'STUDENT',
+    setup: async (w) => ({ route: await w.route(), stop: await w.stop() }),
+    args: (_s, c) => ({ routeId: idOf(c.route), stopId: idOf(c.stop) }),
+    footprint: (s) => count(TransportRequest, { studentId: s.priya.student._id }),
+    changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
+  { tool: 'decide_transport_request', role: 'ADMIN',
+    setup: async (w) => ({ request: await w.transportRequest() }),
+    args: (_s, c) => ({ requestId: idOf(c.request), status: 'APPROVED' }),
+    // Approving grants the place as well as recording the decision.
+    footprint: async (_s, c) => `${await field(TransportRequest, idOf(c.request), 'status')}:${await count(BusEnrollment)}`,
+    changed: (b, a) => { expect([b, a]).toEqual(['PENDING:0', 'APPROVED:1']); } },
 
   /* Documents */
   { tool: 'delete_document', role: 'ADMIN',
@@ -660,9 +703,9 @@ async function attempt(tenant, actor, name, args) {
 /* ── Coverage is complete ─────────────────────────────────── */
 
 describe('the write-tool matrix', () => {
-  it('has a case for every one of the 71 write tools', () => {
+  it('has a case for every one of the 75 write tools', () => {
     const writeTools = Object.entries(MCP_TOOLS).filter(([, t]) => mutates(t)).map(([n]) => n).sort();
-    expect(writeTools).toHaveLength(71);
+    expect(writeTools).toHaveLength(75);
     expect([...new Set(CASES.map((c) => c.tool))].sort()).toEqual(writeTools);
   });
 });

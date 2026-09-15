@@ -6,6 +6,7 @@ import { academicTools } from './tools/academics.js';
 import { communicationTools } from './tools/communication.js';
 import { facilityTools } from './tools/facilities.js';
 import { welfareTools } from './tools/welfare.js';
+import { requestTools } from './tools/requests.js';
 import { analyticsTools } from './tools/analytics.js';
 import { profileTools } from './tools/profile.js';
 
@@ -50,6 +51,7 @@ export const MCP_TOOLS = {
   ...communicationTools,
   ...facilityTools,
   ...welfareTools,
+  ...requestTools,
   ...analyticsTools,
   ...profileTools,
 };
