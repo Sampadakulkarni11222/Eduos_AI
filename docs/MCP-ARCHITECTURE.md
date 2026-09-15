@@ -121,38 +121,49 @@ is only the permission map their session carries, from which the same registry
 yields a different capability set. The exclusion works the same way: it is a
 permission SUPER_ADMIN does not hold, not a rule about its name.
 
+The registry holds **161 capabilities, 81 of them writes**: GET 80, CREATE 26,
+UPDATE 14, DELETE 10, ACTION 31.
+
 | Role | Granted permissions | Capabilities visible | Writes |
 |---|---|---|---|
 | `SUPER_ADMIN` | 72 | **0 — excluded** | 0 |
-| `ADMIN` | 69 | 153 | 74 |
+| `ADMIN` | 69 | 160 | 80 |
 | `PRINCIPAL` | 32 | 73 | 20 |
+| `STUDENT` | 24 | 63 | 13 |
 | `TEACHER` | 28 | 58 | 17 |
-| `STUDENT` | 24 | 58 | 9 |
 | `PARENT` | 18 | 44 | 3 |
+| `FINANCE` | 12 | 30 | 9 |
 | `WARDEN` | 11 | 29 | 8 |
-| `FINANCE` | 12 | 28 | 7 |
 | `LIBRARIAN` | 9 | 28 | 7 |
 
-### SUPER_ADMIN is excluded from the assistant
+### The parity model
 
-The platform role does not hold `ai.copilot.use`, and that single withheld
-permission is the whole exclusion. Every route into the assistant already
-requires it — the web agent, its confirm and capabilities endpoints, the tutor,
-AI credits, and both WhatsApp entry points — and `mcpToolsFor()` returns an
-empty catalogue without it, so the exclusion holds for any future caller too
-rather than depending on each route remembering a check. There is no
-SUPER_ADMIN branch anywhere in the AI code, and hiding the UI entry was never
-the mechanism.
+What the assistant may do is defined by what the signed-in person may already
+do on the web, and by nothing else:
 
-Why: SUPER_ADMIN acts across schools. A request it makes without naming one
-runs outside any tenant, where the filter that confines every other caller is
-absent, so an assistant answer could span schools. Writes in that state were
-already refused (`assertSchoolContext`), but the assistant is a school-level
-tool and a platform administrator has the console for platform work. Nothing
-else about the role changes: it keeps every other permission in the catalog,
-`ai.insights.read` included, which drives the risk and analytics screens rather
-than the assistant. Enforced end to end by
-`backend/tests/ai.superAdminExcluded.test.js`.
+```
+   WEB OPERATION                    a real route, with its own gate
+        │                           requirePermission(key[, 'ALL']) (+ requireRole)
+        ▼
+   AUTHORIZED SERVICE               the same actor-aware service the route calls
+        │
+        ▼
+   MCP CAPABILITY                   declares that permission, and its minScope
+        │
+        ▼
+   SAME ACTOR / SCOPE / TENANT      identity from the session; scope from the
+                                    live permission map; tenant from the
+                                    request's own AsyncLocalStorage state
+```
+
+Two properties are asserted rather than asserted-to-be-true:
+
+- **MCP never exceeds the web.** No capability declares a permission that no
+  route uses, no role is offered a capability whose permission it does not
+  hold, and no role is offered an `ALL`-scoped capability at `OWN` scope.
+- **MCP covers what the web offers**, for every MCP-eligible operation. The
+  exclusions below are the operations that are *not* eligible, each for a
+  stated reason.
 
 `backend/tests/mcp.roleCoverage.test.js` compares the two surfaces for every
 role, reading the roles from `SYSTEM_ROLES` rather than from a list of its own,
@@ -160,10 +171,103 @@ so a role added later is covered the day it is added.
 `backend/tests/mcp.roles.askAi.test.js` then asks each role about its own work
 through both doors people use — `POST /ai/agent` and the WhatsApp webhook.
 
+A caution learned the hard way: **permission-level coverage can hide an
+operation-level gap.** A permission counts as covered when any capability
+declares it, so a key whose read is exposed and whose write is not looks
+complete. Both gaps found in the final parity audit were of that shape, which
+is why the audit is built from route declarations rather than from permission
+keys, and why the tests below call capabilities directly instead of only
+through natural language.
+
+### SUPER_ADMIN is excluded from the assistant
+
+The platform role does not hold `ai.copilot.use`, and that single withheld
+permission is the whole exclusion. Every route into the assistant already
+requires it — the web agent, its confirm and capabilities endpoints, the tutor,
+AI credits, and both WhatsApp entry points — so withholding it closes all of
+them at once. It is **permission-based, not a role-name check**, and it is
+enforced at three depths:
+
+| Layer | Effect |
+|---|---|
+| `mcpToolsFor()` | returns an empty catalogue, so nothing is described |
+| `authorize()` in `mcp/server.js` | refuses **before** the tool's own permission is consulted |
+| the `/ai/*` routes and WhatsApp resolution | 403, and `ASSISTANT_NOT_PERMITTED` |
+
+The middle layer is the one that matters most, and it was added because the
+first two are not sufficient on their own: SUPER_ADMIN still holds
+`students.read`, `attendance.read` and every other key a tool names, so an
+empty catalogue alone would have left execution-by-name open. Hiding a tool is
+not refusing to run it.
+
+Result: **0 capabilities, AI assistant denied, MCP execution denied** — no tool
+runs and no audit entry is written, and it cannot be bypassed by naming another
+role, tenant or user in a request, because identity is re-resolved from the
+session and those argument names are stripped before any tool sees them.
+
+Why exclude it at all: SUPER_ADMIN acts across schools. A request it makes
+without naming one runs outside any tenant, where the filter that confines every
+other caller is absent, so an assistant answer could span schools. Writes in
+that state were already refused (`assertSchoolContext`), but the assistant is a
+school-level tool and a platform administrator has the console for platform
+work. Nothing else about the role changes: it keeps the other 72 permissions,
+`ai.insights.read` included, which drives the risk and analytics screens rather
+than the assistant. Enforced end to end by
+`backend/tests/ai.superAdminExcluded.test.js`.
+
+### Dashboards are authorized by the route's own rules
+
+`get_dashboard` takes a `view`, and the rules deciding who may read which one
+live once, in `dashboard.service` as `DASHBOARD_ACCESS`. `canReadDashboard()`
+reads the role from the session-resolved actor and the scope from its live
+permission map; the capability calls that rather than keeping a second copy, and
+`mcp.dashboardAccess.test.js` reads `dashboard.routes.js` and asserts the table
+still states what the middleware states, so the two cannot drift.
+
+Both halves of each rule matter. An earlier version authorized a view on its
+permission alone, which was weaker than the route: that also requires a role
+whose job the dashboard is and, for the school-wide views, the permission at
+`ALL` scope. Because `students.read` and `fees.read` are held at `OWN` by
+families, holding the permission at all was enough — a student asking for
+`view: 'finance'` received the school's whole fee position, and `view: 'admin'`
+its roll. The test is a matrix of all nine roles against all seven views,
+invoked directly, asserted against what the web would answer.
+
+### Fee configuration
+
+`create_fee_head` and `create_fee_structure` expose what a school charges, to
+`ADMIN` and `FINANCE` — the roles holding `fees.structure.manage` on the web —
+school-wide only, both confirmed, and `create_fee_structure` at HIGH risk
+because invoices are generated from it.
+
+They were not exposed until the service behind them was safe to call as an
+actor. `createFeeHead` and `createFeeStructure` were raw `Model.create(data)`:
+they took whatever object they were handed, with no actor, no scope, no check
+that the ids in it belonged to this school, no validation and no audit entry,
+and authorization for them existed only on the route.
+`createFeeHeadForActor()` and `createFeeStructureForActor()` add, in the shape
+`document.service` established:
+
+- **scope** — `ALL` required; there is no narrower version of what a school charges
+- **a writable-field allow-list** — nothing else in the payload reaches the model, `tenantId` included, which comes from the request's own tenant state
+- **tenant validation** — every referenced fee head, academic year and grade must resolve *inside* this school, so an id from another school is refused rather than stored and billed from later
+- **input validation** — a whole number of paise above zero, a real date, a name within length
+- **audit** — recorded with the acting profile
+- **execution-time authorization** — the MCP server re-authorizes at confirmation, as for every write
+
+Validation is split from the write (`resolveFeeStructureInput`,
+`assertFeeHeadNameFree`) so the tools' `prepare()` can refuse an impossible
+structure *before* a person is asked to approve it — a year or grade from
+another school, a fractional amount, a name already in use. The controller now
+goes through the same functions, so the route and the assistant meet identical
+rules, and the unguarded pass-throughs were deleted rather than left as a way
+around them.
+
 ### Permissions with no capability of their own
 
-Thirteen granted permissions have no capability that declares them. None is a
-missing feature; each is recorded in the `UNCOVERED` ledger in
+Twelve granted permissions have no capability that declares them, plus
+`calendar.manage` at `OWN` scope, which is scope-conditional. None is a missing
+feature; each is recorded in the `UNCOVERED` ledger in
 `mcp.roleCoverage.test.js`, and the test fails both when a new permission
 appears without a reason and when a recorded reason stops being true.
 
@@ -174,29 +278,42 @@ appears without a reason and when a recorded reason stops being true.
   enforces the real key); `analytics.school.read`, `analytics.class.read` and
   `analytics.child.read` (the dashboard views, plus `get_at_risk_students` and
   `get_growth_score`).
-- **Blocked** — `fees.structure.manage`: `createFeeHead` and
-  `createFeeStructure` are raw `Model.create(data)` pass-throughs with no
-  actor, no scope, no tenant check, no validation and no audit, so exposing
-  them would make the assistant an arbitrary-field writer over a school's fee
-  configuration. They need the actor-aware service treatment documents and
-  calendar received first. `settings.manage` and `attendance.regularize` have
-  no module, route or service anywhere in `src/` — there is nothing to wrap.
+- **No implementation to wrap** — `settings.manage` and `attendance.regularize`
+  have no module, route or service anywhere in `src/`.
 - **Deliberately unavailable** — `users.manage`, `roles.manage` and
   `permissions.manage` administer the authorization system that constrains the
   assistant, so a capability there would let it widen its own reach (and bulk
   user import is a CSV upload, which MCP has no channel for). `schools.read`
   and `schools.manage` are cross-tenant and mint administrator credentials;
   every MCP call runs inside one tenant's `AsyncLocalStorage` state.
-  `calendar.manage` **at `OWN` scope** is a fourteenth case of the same kind: a
+  `calendar.manage` **at `OWN` scope** is the same kind of case: a
   `CalendarEvent` has no section, so there is no event a section-scoped holder
   could safely create, and `calendar.service.create()` refuses a non-`ALL`
   actor for that reason. At `ALL` scope it is covered.
 
+### Operations intentionally excluded from MCP
+
+An exclusion does **not** mean the role is incomplete. The requirement is that
+every MCP-**eligible** web operation is represented; these are the operations
+that are not eligible, and each is pinned by an assertion rather than by prose
+alone.
+
+| Excluded | Roles affected | Why |
+|---|---|---|
+| The assistant itself | `SUPER_ADMIN` | Cross-school platform role; see above |
+| Role and permission administration (`roles.manage`, `permissions.manage`) | `ADMIN` | Administers the authorization system that constrains the assistant |
+| User management that mints credentials (`users.manage`) | `ADMIN` | Creates accounts and credentials; bulk import is a file upload |
+| Student photo upload (`POST /students/:id/photo`) | all | File upload; MCP has no upload channel |
+| Bulk CSV imports (students, users, grades, books, routes, invoices) | `ADMIN` | File upload |
+| Gateway payment execution (`payOnline`, `verifyCheckout`) | `STUDENT`, `PARENT`, `ADMIN`, `FINANCE` | See below |
+| Teacher calendar creation | `TEACHER` | Holds `calendar.manage` at `OWN` only, and the service requires `ALL` because a `CalendarEvent` has no section |
+| Attendance register photo (OCR) | `TEACHER`, `ADMIN` | File upload |
+| Cross-school reads and writes (`schools.*`) | — | Held only by SUPER_ADMIN, which has no MCP at all |
+
 ### Taking a payment: a deliberate limitation
 
 A STUDENT or PARENT holds `fees.pay` at OWN scope and pays on the web through
-`fee.service.payOnline()`. The assistant deliberately will not, and this is the
-one operation available on the web that it does not offer.
+`fee.service.payOnline()`. The assistant deliberately will not.
 
 `payOnline()` cannot be exposed without breaking payment integrity. On a real
 gateway it returns an `orderId`, a `keyId` and a payment-intent id that only a
@@ -216,10 +333,30 @@ finance — it is the counter-payment ledger write, not a family paying their ow
 bill, and is not widened to make an operation count match. Pinned by
 `mcp.capabilityCoverage.test.js`.
 
-Note the shape of this gap, because the coverage test cannot see it: the ledger
-below matches permission *keys* to capabilities, and `fees.pay` is declared by
-`get_payment_link` and `record_payment`, so it counts as covered. Coverage at
-the permission level can mask a gap at the operation level.
+### The security model, per capability
+
+Every capability, read or write, is subject to all of the following. None is
+optional and none is per-tool.
+
+| Property | How |
+|---|---|
+| Actor from the authenticated session | Opaque per-turn session handles (`mcp/session.js`); the actor is the one the request authenticated as |
+| The LLM cannot supply identity | `STRIPPED_ARGS` removes identity-shaped argument names before validation, so they are neither honoured nor reported as unknown |
+| The LLM cannot override tenant or school | Tenancy is the request's own `AsyncLocalStorage` state; no capability takes a tenant argument |
+| The LLM cannot override role or scope | Both are read from the live permission map, never from arguments |
+| OWN cannot become ALL | `minScope: 'ALL'` gating in the registry, re-checked at execution |
+| Tenant isolation | The `tenantScoped` plugin on every school-owned model; a foreign id does not resolve |
+| Foreign records refused | Resolution runs at the caller's own scope, so somebody else's record is not found rather than refused |
+| Execution-time re-authorization | `authorize()` runs again when a confirmation is redeemed — permissions can be revoked between a proposal and the "yes" |
+| Confirmation for high-impact writes | Server-enforced, single-use, claimed atomically; replay, expiry, cross-tool and another-user's token all refused |
+| Audit | Every call audited with the acting profile; writes carry before/after state |
+| No arbitrary execution | No raw SQL, no arbitrary HTTP, no shell, no arbitrary model or field access — every write goes through a named service with an explicit field allow-list |
+
+Asserted by `mcp.security.test.js` (a discovery-vs-execution matrix for every
+role), `mcp.writes.coverage.test.js` (all 81 writes, each with an outsider,
+wrong-scope and wrong-school case, plus a confirmation-bypass battery for every
+high-risk tool), `mcp.dashboardAccess.test.js`, `mcp.parityGaps.test.js` and
+`ai.superAdminExcluded.test.js`.
 
 ### Permissions the backend never enforces
 
@@ -229,7 +366,9 @@ outside the catalog that declares them. They are granted to roles and checked
 by nothing. This is not an MCP gap; the permission list is ahead of the
 application. `mcp.roleCoverage.test.js` pins the set in both directions, so
 implementing one of these features fails the test until a capability is exposed
-alongside it.
+alongside it. (`fees.plan.review` is a near case worth distinguishing: it has no
+route of its own, but it *is* enforced inside `transitionFeePlan()`, per
+transition.)
 
 ## Behaviour added in the production-readiness pass
 
@@ -430,7 +569,7 @@ Startup logs two lines that matter:
 
 ```
 ✔  Agent tool permissions validated against the catalog
-✔  MCP server ready  →  137 ERP tools (69 GET, 21 CREATE, 12 UPDATE, 6 DELETE, 29 ACTION)
+✔  MCP server ready  →  161 ERP tools (80 GET, 26 CREATE, 14 UPDATE, 10 DELETE, 31 ACTION)
 ```
 
 If the catalog is inconsistent — a tool naming a permission that does not
