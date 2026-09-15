@@ -1,17 +1,17 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 161,
+    "total": 162,
     "byOperation": {
       "GET": 80,
       "CREATE": 26,
-      "UPDATE": 14,
+      "UPDATE": 15,
       "DELETE": 10,
       "ACTION": 31
     },
     "byRisk": {
       "LOW": 86,
-      "MEDIUM": 46,
+      "MEDIUM": 47,
       "HIGH": 28,
       "CRITICAL": 1
     }
@@ -4613,6 +4613,11 @@
           "driverPhone": {
             "type": "string",
             "maxLength": 20
+          },
+          "fareAmountPaise": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "What a place on this route costs for the year, in paise, so ₹12,000 is 1200000. Omit for a route that carries no charge."
           }
         },
         "required": [
@@ -4627,6 +4632,68 @@
       "affectsOthers": false,
       "readOnly": false,
       "service": "transport.service.createRoute()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "update_transport_route",
+      "module": "Transport",
+      "operation": "UPDATE",
+      "description": "Correct a bus route — its vehicle, its driver, whether it is running, or what a place on it costs for the year. Changing the fare does not re-bill anyone: each approved request was invoiced at the fare it was granted at, so this decides what the next approval costs. Use list_transport_routes to find the route id. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "routeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From list_transport_routes"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "operatorName": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "vehicleNo": {
+            "type": "string",
+            "maxLength": 30
+          },
+          "driverName": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "driverPhone": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "INACTIVE",
+              "SUSPENDED"
+            ]
+          },
+          "fareAmountPaise": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The yearly fare in paise, so ₹12,000 is 1200000. Zero means the route carries no charge."
+          }
+        },
+        "required": [
+          "routeId"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "transport.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "transport.service.updateRoute()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -6635,10 +6702,10 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 160,
+      "total": 161,
       "GET": 80,
       "CREATE": 26,
-      "UPDATE": 14,
+      "UPDATE": 15,
       "ACTION": 30,
       "DELETE": 10,
       "highRiskActions": 28,
@@ -6672,7 +6739,7 @@
         "remove_medical_record",
         "delete_document"
       ],
-      "confirmationRequired": 74,
+      "confirmationRequired": 75,
       "names": [
         "search_students",
         "get_student",
@@ -6784,6 +6851,7 @@
         "list_transport_routes",
         "list_transport_stops",
         "create_transport_route",
+        "update_transport_route",
         "create_transport_stop",
         "enroll_in_transport",
         "get_leave_requests",

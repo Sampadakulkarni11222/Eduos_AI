@@ -18,6 +18,40 @@ router.get('/routes', requirePermission('transport.read'), controller.listRoutes
 router.post('/routes', requirePermission('transport.manage'), controller.createRoute);
 router.post('/routes/bulk', requirePermission('transport.manage'), csvUploadSingle('file'), controller.bulkCreateRoutes);
 
+/**
+ * @swagger
+ * /transport/routes/{routeId}:
+ *   patch:
+ *     summary: Correct a route — vehicle, driver, status, or the yearly fare
+ *     description: >
+ *       The fare decides what a family is charged when a request for this
+ *       route is approved. Changing it does not re-bill anyone: each approved
+ *       request was invoiced at the fare it was granted at.
+ *     tags: [Transport]
+ *     parameters:
+ *       - in: path
+ *         name: routeId
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name: { type: string }
+ *               operatorName: { type: string }
+ *               vehicleNo: { type: string }
+ *               driverName: { type: string }
+ *               driverPhone: { type: string }
+ *               status: { type: string, enum: [ACTIVE, INACTIVE, SUSPENDED] }
+ *               fareAmountPaise: { type: integer, minimum: 0 }
+ *     responses:
+ *       200:
+ *         description: Route updated
+ */
+router.patch('/routes/:routeId', requirePermission('transport.manage'), controller.updateRoute);
+
 router.get('/routes/:routeId/stops', requirePermission('transport.read'), controller.listStops);
 router.post('/stops', requirePermission('transport.manage'), controller.createStop);
 router.post('/stops/bulk', requirePermission('transport.manage'), csvUploadSingle('file'), controller.bulkCreateStops);

@@ -834,8 +834,22 @@ export const api = {
    */
   transportRoster: (sectionId?: string) =>
     request<TransportRosterRow[]>(`/transport/roster${sectionId ? `?sectionId=${sectionId}` : ''}`),
-  createRoute: (body: { name: string; operatorName?: string; vehicleNo?: string; driverName?: string; driverPhone?: string }) =>
+  createRoute: (body: { name: string; operatorName?: string; vehicleNo?: string; driverName?: string; driverPhone?: string; fareAmountPaise?: number }) =>
     request<{ id: string }>('/transport/routes', { method: 'POST', body: JSON.stringify(body) }),
+  /**
+   * Corrects a route. The fare decides what a family is charged when a
+   * request for this route is approved; changing it does not re-bill anyone,
+   * because each approved request was invoiced at the fare it was granted at.
+   */
+  updateRoute: (routeId: string, body: {
+    name?: string; operatorName?: string; vehicleNo?: string;
+    driverName?: string; driverPhone?: string;
+    status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'; fareAmountPaise?: number;
+  }) =>
+    request<{ id: string; fareAmountPaise: number }>(`/transport/routes/${routeId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
   bulkCreateRoutes: (file: File) => uploadCsv('/transport/routes/bulk', file),
   createStop: (body: { routeId: string; name: string; sequenceNo: number; etaMinutesFromStart: number }) =>
     request<{ id: string }>('/transport/stops', { method: 'POST', body: JSON.stringify(body) }),

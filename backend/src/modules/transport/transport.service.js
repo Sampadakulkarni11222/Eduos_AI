@@ -32,6 +32,9 @@ export async function listRoutes() {
       vehicleNo: route.vehicleNo,
       driverName: route.driverName,
       driverPhone: route.driverPhone,
+      // Routes created before the field existed carry no value, and a place
+      // on them costs nothing until one is set.
+      fareAmountPaise: route.fareAmountPaise ?? 0,
       stopsCount,
       enrollmentsCount,
     };
@@ -66,6 +69,83 @@ export async function createRoute({ name, operatorName, vehicleNo, driverName, d
  * The tenant plugin on TransportRoute confines the lookup, so another school's
  * route id is "not found" here exactly as it is everywhere else.
  */
+/**
+ * Corrects a route: its vehicle, its driver, whether it is running, and what a
+ * place on it costs.
+ *
+ * The fare needed this. It could be set when a route was created and never
+ * afterwards, so a school that priced a route wrongly — or at all, for the
+ * routes that existed before the field did — had no way to fix it, and every
+ * approved request billed nothing.
+ *
+ * An explicit allow-list rather than a spread of `data`: this is the record
+ * that decides what families are charged, and `tenantId` is not something a
+ * caller gets to send. The route is looked up under the request's own tenant
+ * state, so one from another school does not resolve.
+ *
+ * Changing a fare does NOT re-bill anyone. Each approved request snapshotted
+ * the fare it was granted at, which is the figure that was invoiced; this only
+ * changes what the next approval costs.
+ */
+export async function updateRoute(actor, routeId, data = {}) {
+  const route = await TransportRoute.findById(routeId);
+  if (!route) throw new AppError('Route not found', 404);
+
+  const before = {
+    name: route.name,
+    vehicleNo: route.vehicleNo ?? null,
+    status: route.status,
+    fareAmountPaise: route.fareAmountPaise ?? 0,
+  };
+
+  if (data.name !== undefined) {
+    const name = String(data.name).trim();
+    if (!name) throw new AppError('Route name cannot be empty', 400);
+    if (name.length > 120) throw new AppError('Route name must be 120 characters or fewer', 400);
+    route.name = name;
+  }
+  for (const field of ['operatorName', 'vehicleNo', 'driverName', 'driverPhone']) {
+    if (data[field] !== undefined) {
+      const value = String(data[field] ?? '').trim();
+      if (value.length > 120) throw new AppError(`${field} must be 120 characters or fewer`, 400);
+      route[field] = value || null;
+    }
+  }
+  if (data.status !== undefined) {
+    if (!['ACTIVE', 'INACTIVE', 'SUSPENDED'].includes(data.status)) {
+      throw new AppError('status must be ACTIVE, INACTIVE or SUSPENDED', 400);
+    }
+    route.status = data.status;
+  }
+  if (data.fareAmountPaise !== undefined) {
+    const fare = Number(data.fareAmountPaise);
+    // A fare is money: a fraction of a paisa or a negative charge is a
+    // mistake, not a rounding question.
+    if (!Number.isInteger(fare) || fare < 0) {
+      throw new AppError('fareAmountPaise must be a whole number of paise, zero or more', 400);
+    }
+    route.fareAmountPaise = fare;
+  }
+
+  await route.save();
+
+  await recordAudit({
+    actor,
+    action: 'transport_route.update',
+    entityType: 'TransportRoute',
+    entityId: route._id,
+    before,
+    after: {
+      name: route.name,
+      vehicleNo: route.vehicleNo ?? null,
+      status: route.status,
+      fareAmountPaise: route.fareAmountPaise ?? 0,
+    },
+  });
+
+  return route;
+}
+
 export async function getRoute(routeId) {
   const route = await TransportRoute.findById(routeId).select('name vehicleNo status').lean();
   if (!route) throw new AppError('Route not found', 404);

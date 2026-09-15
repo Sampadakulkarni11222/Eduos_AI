@@ -5,7 +5,7 @@ import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
 import { applyFieldAllowList } from '../validate.js';
 import {
-  RISK, objectId, dateStr, summarise, shortDate, wrapAgentTool, resolveStudentId, studentIdentitySchema,
+  RISK, objectId, dateStr, rupees, summarise, shortDate, wrapAgentTool, resolveStudentId, studentIdentitySchema,
 } from './_shared.js';
 
 /**
@@ -659,6 +659,11 @@ export const facilityTools = {
         vehicleNo: { type: 'string', maxLength: 30 },
         driverName: { type: 'string', maxLength: 120 },
         driverPhone: { type: 'string', maxLength: 20 },
+        fareAmountPaise: {
+          type: 'integer',
+          minimum: 0,
+          description: 'What a place on this route costs for the year, in paise, so ₹12,000 is 1200000. Omit for a route that carries no charge.',
+        },
       },
       required: ['name'],
       additionalProperties: false,
@@ -666,10 +671,70 @@ export const facilityTools = {
     permission: 'transport.manage',
     minScope: 'ALL',
     service: 'transport.service.createRoute()',
-    summarise: (args) => `Create bus route "${args.name}"${args.vehicleNo ? ` (${args.vehicleNo})` : ''}`,
+    summarise: (args) =>
+      `Create bus route "${args.name}"${args.vehicleNo ? ` (${args.vehicleNo})` : ''}`
+      + `${args.fareAmountPaise ? ` at ${rupees(args.fareAmountPaise)} a year` : ''}`,
     async run(_ctx, args) {
       const route = await transport.createRoute(args);
       return action({ type: 'transport_route_created', id: route._id, data: { routeId: String(route._id), name: route.name }, speak: `Route "${route.name}" has been created.` });
+    },
+  },
+
+  update_transport_route: {
+    module: 'Transport',
+    operation: 'UPDATE',
+    risk: RISK.MEDIUM,
+    confirm: true,
+    description:
+      "Correct a bus route — its vehicle, its driver, whether it is running, or what a place on it costs for the year. Changing the fare does not re-bill anyone: each approved request was invoiced at the fare it was granted at, so this decides what the next approval costs. Use list_transport_routes to find the route id. Needs confirmation.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        routeId: objectId('From list_transport_routes'),
+        name: { type: 'string', maxLength: 120 },
+        operatorName: { type: 'string', maxLength: 120 },
+        vehicleNo: { type: 'string', maxLength: 30 },
+        driverName: { type: 'string', maxLength: 120 },
+        driverPhone: { type: 'string', maxLength: 20 },
+        status: { type: 'string', enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED'] },
+        fareAmountPaise: {
+          type: 'integer',
+          minimum: 0,
+          description: 'The yearly fare in paise, so ₹12,000 is 1200000. Zero means the route carries no charge.',
+        },
+      },
+      required: ['routeId'],
+      additionalProperties: false,
+    },
+    permission: 'transport.manage',
+    minScope: 'ALL',
+    affectsOthers: true,
+    service: 'transport.service.updateRoute()',
+    summarise: (args, _actor, prepared) => {
+      const what = [];
+      if (args.fareAmountPaise !== undefined) what.push(`the fare to ${rupees(args.fareAmountPaise)} a year`);
+      if (args.status !== undefined) what.push(`its status to ${args.status.toLowerCase()}`);
+      for (const field of ['name', 'operatorName', 'vehicleNo', 'driverName', 'driverPhone']) {
+        if (args[field] !== undefined) what.push(field === 'name' ? 'its name' : field.replace(/([A-Z])/g, ' $1').toLowerCase());
+      }
+      return `Change ${what.join(', ') || 'nothing'} on route "${prepared?.name ?? args.routeId}"`;
+    },
+    /** The route must exist in this school, and the prompt names it. */
+    async prepare(_ctx, args) {
+      const route = await transport.getRoute(args.routeId);
+      return { name: route.name, fareAmountPaise: route.fareAmountPaise ?? 0 };
+    },
+    async run(ctx, args) {
+      const { routeId, ...changes } = args;
+      const route = await transport.updateRoute(ctx.actor, routeId, changes);
+      return action({
+        type: 'transport_route_updated',
+        id: String(route._id),
+        data: { routeId: String(route._id), name: route.name, fareAmountPaise: route.fareAmountPaise ?? 0, status: route.status },
+        speak: args.fareAmountPaise !== undefined
+          ? `A place on ${route.name} now costs ${rupees(route.fareAmountPaise ?? 0)} a year.`
+          : `Route "${route.name}" has been updated.`,
+      });
     },
   },
 

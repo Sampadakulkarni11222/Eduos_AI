@@ -378,7 +378,7 @@ export type WhatsappAssistantLink =
   | { enabled: false; reason: string };
 
 // ── Phase 8: Transport ──
-export interface TransportRouteDto { id: string; name: string; operatorName: string | null; vehicleNo: string | null; driverName: string | null; driverPhone: string | null; status: string; stopCount: number }
+export interface TransportRouteDto { id: string; name: string; operatorName: string | null; vehicleNo: string | null; driverName: string | null; driverPhone: string | null; status: string; stopCount: number; /** Yearly fare in paise; 0 means the route carries no charge. */ fareAmountPaise?: number }
 export interface TransportStopDto { id: string; routeId: string; name: string; sequenceNo: number; etaMinutesFromStart: number }
 export interface MyBusDto { route: Omit<TransportRouteDto, 'stopCount'>; stop: TransportStopDto; direction: string; nextEta: string | null }
 

@@ -22,6 +22,11 @@ export const createRoute = asyncHandler(async (req, res) => {
   sendSuccess(res, { id: route._id }, 'Route created successfully', 201);
 });
 
+export const updateRoute = asyncHandler(async (req, res) => {
+  const route = await service.updateRoute(req.actor, req.params.routeId, req.body);
+  sendSuccess(res, { id: route._id, fareAmountPaise: route.fareAmountPaise ?? 0 }, 'Route updated');
+});
+
 export const bulkCreateRoutes = asyncHandler(async (req, res) => {
   const rows = parseCsvRows(req);
   const result = await service.bulkCreateRoutes(rows);

@@ -264,6 +264,48 @@ describe('a student asks for a place on a route and staff decide', () => {
     expect((await TransportRequest.findById(request.id)).fareAmountPaise).toBe(9900000);
   });
 
+  it('bills the fare a route was re-priced to, for the next approval', async () => {
+    // The gap this closes: a route's fare could be set at creation and never
+    // afterwards, so routes predating the field billed nothing for ever.
+    await transport.updateRoute(admin, route._id.toString(), { fareAmountPaise: 2500000 });
+    expect((await TransportRoute.findById(route._id)).fareAmountPaise).toBe(2500000);
+
+    const request = await transport.requestRoute(actorFor(student), {
+      routeId: route._id.toString(), stopId: stop._id.toString(),
+    });
+    const decided = await transport.decideTransportRequest(admin, request.id, { status: 'APPROVED' });
+    expect(decided.fareAmountPaise).toBe(2500000);
+    expect((await Invoice.findById(decided.invoiceId)).totalPaise).toBe(2500000);
+  });
+
+  it('refuses a fare that is negative or fractional', async () => {
+    for (const fareAmountPaise of [-1, 12.5]) {
+      await expect(transport.updateRoute(admin, route._id.toString(), { fareAmountPaise }))
+        .rejects.toMatchObject({ statusCode: 400 });
+    }
+    // Unchanged by the refusals.
+    expect((await TransportRoute.findById(route._id)).fareAmountPaise).toBe(1200000);
+  });
+
+  it('accepts zero as "no charge", and then raises no invoice', async () => {
+    await transport.updateRoute(admin, route._id.toString(), { fareAmountPaise: 0 });
+    const request = await transport.requestRoute(actorFor(student), {
+      routeId: route._id.toString(), stopId: stop._id.toString(),
+    });
+    const decided = await transport.decideTransportRequest(admin, request.id, { status: 'APPROVED' });
+    expect(decided.invoiceId).toBeNull();
+    expect(await Invoice.countDocuments({})).toBe(0);
+  });
+
+  it('reports the fare in the staff route listing, defaulting to nothing', async () => {
+    const [listed] = await transport.listRoutes();
+    expect(listed.fareAmountPaise).toBe(1200000);
+
+    const bare = await TransportRoute.create({ name: 'Legacy route', status: 'ACTIVE' });
+    const rows = await transport.listRoutes();
+    expect(rows.find((r) => String(r.id) === String(bare._id)).fareAmountPaise).toBe(0);
+  });
+
   it('raises no invoice for a route that carries no fare', async () => {
     await TransportRoute.findByIdAndUpdate(route._id, { fareAmountPaise: 0 });
     const request = await transport.requestRoute(actorFor(student), {

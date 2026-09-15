@@ -39,7 +39,7 @@ import * as transport from '../src/modules/transport/transport.service.js';
 import { seedSchool, seedPerson, mcp, inSchool, todayKey, OAK, RIVER } from './support/mcpSchool.js';
 
 /**
- * Every one of the 81 MCP write tools, executed through MCP.
+ * Every one of the 82 MCP write tools, executed through MCP.
  *
  * One case per tool — the role that should be able to do it (taken from the
  * real permission catalog), the records it needs, the arguments, and a
@@ -236,7 +236,7 @@ const read = (fn) => oak(fn);
 const count = (Model, filter = {}) => read(() => Model.countDocuments(filter));
 const field = (Model, id, path) => read(() => Model.findById(id).lean()).then((d) => (d ? path.split('.').reduce((o, k) => o?.[k], d) : '(gone)'));
 
-/* ── The 81 write tools ───────────────────────────────────── */
+/* ── The 82 write tools ───────────────────────────────────── */
 
 /**
  * role         who performs it (holds the permission at the scope it needs)
@@ -558,6 +558,12 @@ const CASES = [
     args: () => ({ name: 'Route 9', vehicleNo: 'MH12CD5678' }),
     footprint: () => count(TransportRoute, { name: 'Route 9' }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
+  { tool: 'update_transport_route', role: 'ADMIN',
+    setup: async (w) => ({ route: await w.route() }),
+    args: (_s, c) => ({ routeId: idOf(c.route), fareAmountPaise: 1500000 }),
+    footprint: (_s, c) => field(TransportRoute, idOf(c.route), 'fareAmountPaise').then((v) => v ?? 0),
+    // w.route() creates 'Route 7' with no fare, so it starts at the default.
+    changed: (b, a) => { expect([b, a]).toEqual([0, 1500000]); } },
   { tool: 'create_transport_stop', role: 'ADMIN',
     setup: async (w) => ({ route: await w.route() }),
     args: (_s, c) => ({ routeId: idOf(c.route), name: 'Temple', sequenceNo: 2 }),
@@ -736,9 +742,9 @@ async function attempt(tenant, actor, name, args) {
 /* ── Coverage is complete ─────────────────────────────────── */
 
 describe('the write-tool matrix', () => {
-  it('has a case for every one of the 81 write tools', () => {
+  it('has a case for every one of the 82 write tools', () => {
     const writeTools = Object.entries(MCP_TOOLS).filter(([, t]) => mutates(t)).map(([n]) => n).sort();
-    expect(writeTools).toHaveLength(81);
+    expect(writeTools).toHaveLength(82);
     expect([...new Set(CASES.map((c) => c.tool))].sort()).toEqual(writeTools);
   });
 });

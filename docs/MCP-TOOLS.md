@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**161 tools** — 80 GET, 26 CREATE, 14 UPDATE, 10 DELETE, 31 ACTION.
+**162 tools** — 80 GET, 26 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION.
 
-Risk mix: 86 LOW, 46 MEDIUM, 28 HIGH, 1 CRITICAL.
+Risk mix: 86 LOW, 47 MEDIUM, 28 HIGH, 1 CRITICAL.
 
-Status: 159 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 160 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -28,7 +28,7 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
 | `SUPER_ADMIN` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `ADMIN` | 160 | 80 | 26 | 14 | 30 | 10 | 28 | 74 |
+| `ADMIN` | 161 | 80 | 26 | 15 | 30 | 10 | 28 | 75 |
 | `PRINCIPAL` | 73 | 53 | 4 | 6 | 9 | 1 | 7 | 20 |
 | `TEACHER` | 58 | 41 | 3 | 2 | 11 | 1 | 7 | 17 |
 | `PARENT` | 44 | 41 | 1 | 1 | 0 | 1 | 2 | 2 |
@@ -215,6 +215,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `update_student` | Students | UPDATE | `students.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_subject_offering` | Academics | UPDATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_ticket` | Tickets | UPDATE | `tickets.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `update_transport_route` | Transport | UPDATE | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `upsert_medical_record` | Medical | UPDATE | `medical.manage` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `upsert_timetable_slot` | Timetable | UPDATE | `timetable.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `vacate_hostel_bed` | Hostel | ACTION | `hostel.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -3941,7 +3942,31 @@ Create a bus route with its vehicle and driver. Add stops afterwards with create
 
 **Input**
 
-`name`: string **(required)**<br>`operatorName`: string<br>`vehicleNo`: string<br>`driverName`: string<br>`driverPhone`: string
+`name`: string **(required)**<br>`operatorName`: string<br>`vehicleNo`: string<br>`driverName`: string<br>`driverPhone`: string<br>`fareAmountPaise`: integer — What a place on this route costs for the year, in paise, so ₹12,000 is 1200000. Omit for a route that carries no charge.
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `update_transport_route`
+
+Correct a bus route — its vehicle, its driver, whether it is running, or what a place on it costs for the year. Changing the fare does not re-bill anyone: each approved request was invoiced at the fare it was granted at, so this decides what the next approval costs. Use list_transport_routes to find the route id. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | UPDATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `transport.manage` |
+| **Scope** | ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `transport.service.updateRoute()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.update_transport_route` |
+
+**Input**
+
+`routeId`: string **(required)** — From list_transport_routes<br>`name`: string<br>`operatorName`: string<br>`vehicleNo`: string<br>`driverName`: string<br>`driverPhone`: string<br>`status`: string — one of: ACTIVE, INACTIVE, SUSPENDED<br>`fareAmountPaise`: integer — The yearly fare in paise, so ₹12,000 is 1200000. Zero means the route carries no charge.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
