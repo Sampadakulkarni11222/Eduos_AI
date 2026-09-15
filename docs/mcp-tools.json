@@ -1,18 +1,18 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 154,
+    "total": 161,
     "byOperation": {
-      "GET": 79,
-      "CREATE": 24,
+      "GET": 80,
+      "CREATE": 26,
       "UPDATE": 14,
-      "DELETE": 6,
+      "DELETE": 10,
       "ACTION": 31
     },
     "byRisk": {
-      "LOW": 81,
-      "MEDIUM": 45,
-      "HIGH": 27,
+      "LOW": 86,
+      "MEDIUM": 46,
+      "HIGH": 28,
       "CRITICAL": 1
     }
   },
@@ -2055,6 +2055,98 @@
       "affectsOthers": true,
       "readOnly": false,
       "service": "plan.service.publishFeePlan()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "create_fee_head",
+      "module": "Fees",
+      "operation": "CREATE",
+      "description": "Add a fee head — the thing a charge is for, such as \"Tuition\" or \"Transport\". A fee head is school-wide configuration and every future structure and invoice is billed against it, so it needs confirmation. The name must be one the school does not already use.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "e.g. \"Tuition\""
+          },
+          "category": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Optional grouping, e.g. \"TUITION\""
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "fees.structure.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "fee.service.createFeeHeadForActor()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "create_fee_structure",
+      "module": "Fees",
+      "operation": "CREATE",
+      "description": "Set what a fee head costs for an academic year, and optionally for one grade only — omit the grade and it applies to every grade. This is what invoices are generated from, so it decides what families are billed and always needs confirmation. Use get_fee_structures for the existing configuration and the fee head id.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "feeHeadId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From get_fee_structures"
+          },
+          "academicYearId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "The year this charge applies to"
+          },
+          "gradeId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "One grade only; omit for every grade"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "e.g. \"Tuition — Term 1\""
+          },
+          "amountPaise": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The amount in paise, so ₹4,000 is 400000"
+          },
+          "dueOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "When it falls due"
+          }
+        },
+        "required": [
+          "feeHeadId",
+          "academicYearId",
+          "name",
+          "amountPaise",
+          "dueOn"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "fees.structure.manage",
+      "scope": "ALL",
+      "risk": "HIGH",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "fee.service.createFeeStructureForActor()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -5891,6 +5983,142 @@
       "wrapsAgentTool": null
     },
     {
+      "name": "cancel_book_request",
+      "module": "Library",
+      "operation": "DELETE",
+      "description": "Withdraw the caller's own book request, while the librarian has not yet decided on it. A request already approved or rejected cannot be withdrawn. Use get_my_book_requests to find the request id. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From get_my_book_requests"
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "library.request",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "library.service.cancelBookRequest()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "cancel_transport_request",
+      "module": "Transport",
+      "operation": "DELETE",
+      "description": "Withdraw the caller's own request for a place on a bus route, while the school office has not yet decided on it. A request already granted or refused cannot be withdrawn. Use get_my_transport_requests to find the request id. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From get_my_transport_requests"
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "transport.request",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "transport.service.cancelTransportRequest()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "cancel_cocurricular_request",
+      "module": "Student requests",
+      "operation": "DELETE",
+      "description": "Withdraw the caller's own co-curricular request, while the class teacher has not yet decided on it. A request already approved or rejected cannot be withdrawn. Use list_cocurricular to find the request id. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From list_cocurricular"
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "cocurricular.request",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "cocurricular.service.withdraw()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "cancel_profile_edit_request",
+      "module": "Student requests",
+      "operation": "DELETE",
+      "description": "Withdraw the caller's own profile-correction request, while it has not yet been decided. A request already approved or rejected cannot be withdrawn. Use get_my_profile_edit_requests to find the request id. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From get_my_profile_edit_requests"
+          }
+        },
+        "required": [
+          "requestId"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "profile.edit.request",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "profileEdit.service.withdraw()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_my_profile_edit_requests",
+      "module": "Student requests",
+      "operation": "GET",
+      "description": "The caller's own profile-correction requests and what was decided on each. A parent sees their children's. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "profile.edit.request",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "profileEdit.service.listMine()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
       "name": "get_at_risk_students",
       "module": "Analytics",
       "operation": "GET",
@@ -6407,13 +6635,13 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 153,
-      "GET": 79,
-      "CREATE": 24,
+      "total": 160,
+      "GET": 80,
+      "CREATE": 26,
       "UPDATE": 14,
       "ACTION": 30,
-      "DELETE": 6,
-      "highRiskActions": 27,
+      "DELETE": 10,
+      "highRiskActions": 28,
       "highRiskActionNames": [
         "update_enrollment_status",
         "archive_student",
@@ -6431,6 +6659,7 @@
         "decide_payment_change_request",
         "transition_fee_plan",
         "publish_fee_plan",
+        "create_fee_structure",
         "enter_marks",
         "publish_marks",
         "update_admission_lead",
@@ -6443,7 +6672,7 @@
         "remove_medical_record",
         "delete_document"
       ],
-      "confirmationRequired": 68,
+      "confirmationRequired": 74,
       "names": [
         "search_students",
         "get_student",
@@ -6488,6 +6717,8 @@
         "decide_payment_change_request",
         "transition_fee_plan",
         "publish_fee_plan",
+        "create_fee_head",
+        "create_fee_structure",
         "list_classes",
         "list_subjects",
         "list_academic_years",
@@ -6587,6 +6818,11 @@
         "get_my_transport_requests",
         "get_transport_requests",
         "decide_transport_request",
+        "cancel_book_request",
+        "cancel_transport_request",
+        "cancel_cocurricular_request",
+        "cancel_profile_edit_request",
+        "get_my_profile_edit_requests",
         "get_at_risk_students",
         "get_growth_score",
         "get_dashboard",
@@ -6842,15 +7078,15 @@
     {
       "role": "STUDENT",
       "custom": false,
-      "total": 58,
-      "GET": 49,
+      "total": 63,
+      "GET": 50,
       "CREATE": 7,
       "UPDATE": 0,
       "ACTION": 1,
-      "DELETE": 1,
+      "DELETE": 5,
       "highRiskActions": 0,
       "highRiskActionNames": [],
-      "confirmationRequired": 4,
+      "confirmationRequired": 8,
       "names": [
         "search_students",
         "get_student",
@@ -6906,6 +7142,11 @@
         "get_transport_routes",
         "request_transport_route",
         "get_my_transport_requests",
+        "cancel_book_request",
+        "cancel_transport_request",
+        "cancel_cocurricular_request",
+        "cancel_profile_edit_request",
+        "get_my_profile_edit_requests",
         "get_dashboard",
         "list_notifications",
         "list_documents",
@@ -6915,13 +7156,13 @@
     {
       "role": "FINANCE",
       "custom": false,
-      "total": 28,
+      "total": 30,
       "GET": 21,
-      "CREATE": 2,
+      "CREATE": 4,
       "UPDATE": 1,
       "ACTION": 4,
       "DELETE": 0,
-      "highRiskActions": 7,
+      "highRiskActions": 8,
       "highRiskActionNames": [
         "create_invoice",
         "generate_invoices",
@@ -6929,9 +7170,10 @@
         "update_fee_plan",
         "record_payment",
         "refund_payment",
-        "transition_fee_plan"
+        "transition_fee_plan",
+        "create_fee_structure"
       ],
-      "confirmationRequired": 7,
+      "confirmationRequired": 9,
       "names": [
         "search_students",
         "get_student",
@@ -6954,6 +7196,8 @@
         "record_payment",
         "refund_payment",
         "transition_fee_plan",
+        "create_fee_head",
+        "create_fee_structure",
         "list_classes",
         "list_subjects",
         "list_academic_years",

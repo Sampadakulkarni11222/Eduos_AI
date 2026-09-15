@@ -1,5 +1,7 @@
 import * as library from '../../../library/library.service.js';
 import * as transport from '../../../transport/transport.service.js';
+import * as cocurricular from '../../../studentRequests/cocurricular.service.js';
+import * as profileEdit from '../../../studentRequests/profileEdit.service.js';
 import { ok, action } from '../protocol.js';
 import { RISK, objectId, dateStr, noArgs, summarise } from './_shared.js';
 
@@ -300,6 +302,157 @@ export const requestTools = {
           ? `${result.studentName ?? 'The student'} now has a place on ${result.routeName}.${billed}`
           : `The transport request for ${result.routeName} has been rejected.`,
       });
+    },
+  },
+
+  /* ── Withdrawing a request that has not been decided ─── */
+
+  /**
+   * The other half of every self-service request.
+   *
+   * Each of these fronts the same actor-aware service the web route calls, and
+   * each resolves the caller's own student record from the session inside that
+   * service — so the id names WHICH of the caller's own requests, never whose.
+   * A request belonging to somebody else is not found rather than refused,
+   * which is the same answer the web gives and discloses nothing about it.
+   *
+   * They are DELETE-shaped and confirmed: withdrawing is the caller's own
+   * decision about their own request, but it is not reversible, and the
+   * elective withdrawal that has always been exposed sets that precedent.
+   */
+
+  cancel_book_request: {
+    module: 'Library',
+    operation: 'DELETE',
+    risk: RISK.LOW,
+    confirm: true,
+    description:
+      "Withdraw the caller's own book request, while the librarian has not yet decided on it. A request already approved or rejected cannot be withdrawn. Use get_my_book_requests to find the request id. Needs confirmation.",
+    inputSchema: {
+      type: 'object',
+      properties: { requestId: objectId('From get_my_book_requests') },
+      required: ['requestId'],
+      additionalProperties: false,
+    },
+    permission: 'library.request',
+    service: 'library.service.cancelBookRequest()',
+    summarise: (args) => `Withdraw your book request ${args.requestId}`,
+    async run(ctx, args) {
+      const request = await library.cancelBookRequest(ctx.actor, args.requestId);
+      return action({
+        type: 'book_request_cancelled',
+        id: request.id,
+        data: request,
+        speak: `Your request for "${request.bookTitle}" has been withdrawn.`,
+      });
+    },
+  },
+
+  cancel_transport_request: {
+    module: 'Transport',
+    operation: 'DELETE',
+    risk: RISK.LOW,
+    confirm: true,
+    description:
+      "Withdraw the caller's own request for a place on a bus route, while the school office has not yet decided on it. A request already granted or refused cannot be withdrawn. Use get_my_transport_requests to find the request id. Needs confirmation.",
+    inputSchema: {
+      type: 'object',
+      properties: { requestId: objectId('From get_my_transport_requests') },
+      required: ['requestId'],
+      additionalProperties: false,
+    },
+    permission: 'transport.request',
+    service: 'transport.service.cancelTransportRequest()',
+    summarise: (args) => `Withdraw your transport request ${args.requestId}`,
+    async run(ctx, args) {
+      const request = await transport.cancelTransportRequest(ctx.actor, args.requestId);
+      return action({
+        type: 'transport_request_cancelled',
+        id: request.id,
+        data: request,
+        speak: `Your request for a place on ${request.routeName} has been withdrawn.`,
+      });
+    },
+  },
+
+  cancel_cocurricular_request: {
+    module: 'Student requests',
+    operation: 'DELETE',
+    risk: RISK.LOW,
+    confirm: true,
+    description:
+      "Withdraw the caller's own co-curricular request, while the class teacher has not yet decided on it. A request already approved or rejected cannot be withdrawn. Use list_cocurricular to find the request id. Needs confirmation.",
+    inputSchema: {
+      type: 'object',
+      properties: { requestId: objectId('From list_cocurricular') },
+      required: ['requestId'],
+      additionalProperties: false,
+    },
+    permission: 'cocurricular.request',
+    service: 'cocurricular.service.withdraw()',
+    summarise: (args) => `Withdraw your co-curricular request ${args.requestId}`,
+    async run(ctx, args) {
+      await cocurricular.withdraw(ctx.actor, args.requestId);
+      return action({
+        type: 'cocurricular_request_cancelled',
+        id: args.requestId,
+        data: { requestId: args.requestId },
+        speak: 'Your co-curricular request has been withdrawn.',
+      });
+    },
+  },
+
+  cancel_profile_edit_request: {
+    module: 'Student requests',
+    operation: 'DELETE',
+    risk: RISK.LOW,
+    confirm: true,
+    description:
+      "Withdraw the caller's own profile-correction request, while it has not yet been decided. A request already approved or rejected cannot be withdrawn. Use get_my_profile_edit_requests to find the request id. Needs confirmation.",
+    inputSchema: {
+      type: 'object',
+      properties: { requestId: objectId('From get_my_profile_edit_requests') },
+      required: ['requestId'],
+      additionalProperties: false,
+    },
+    permission: 'profile.edit.request',
+    service: 'profileEdit.service.withdraw()',
+    summarise: (args) => `Withdraw your profile-correction request ${args.requestId}`,
+    async run(ctx, args) {
+      await profileEdit.withdraw(ctx.actor, args.requestId);
+      return action({
+        type: 'profile_edit_request_cancelled',
+        id: args.requestId,
+        data: { requestId: args.requestId },
+        speak: 'Your profile-correction request has been withdrawn.',
+      });
+    },
+  },
+
+  get_my_profile_edit_requests: {
+    module: 'Student requests',
+    operation: 'GET',
+    risk: RISK.LOW,
+    description:
+      "The caller's own profile-correction requests and what was decided on each. A parent sees their children's. Read-only.",
+    inputSchema: noArgs,
+    permission: 'profile.edit.request',
+    service: 'profileEdit.service.listMine()',
+    resultShape: 'LIST',
+    async run(ctx) {
+      // The service resolves whose requests these are from the session — a
+      // student their own, a parent their children's — so no studentId is
+      // passed and none would be honoured.
+      const rows = await profileEdit.listMine(ctx.actor, ctx.scope, {});
+      const view = summarise(rows, (r) => `${r.field ?? 'a correction'} — ${String(r.status).toLowerCase()}`);
+      return ok(
+        { requests: rows, count: rows.length },
+        {
+          speak: rows.length
+            ? `${rows.length} profile-correction request(s): ${view.list}.`
+            : 'You have no profile-correction requests.',
+        },
+      );
     },
   },
 };

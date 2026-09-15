@@ -21,12 +21,12 @@ import { Lead, LeadInteraction } from '../src/models/lead.model.js';
 import { LeaveApplication } from '../src/models/leaveApplication.model.js';
 import { SubjectRegistration } from '../src/models/subjectRegistration.model.js';
 import { CoCurricularActivity } from '../src/models/coCurricular.model.js';
-import { ProfileEditRequest } from '../src/models/profileEditRequest.model.js';
 import { MedicalRecord } from '../src/models/medicalRecord.model.js';
 import { Ticket, TicketMessage } from '../src/models/ticket.model.js';
 import { TimetableSlot } from '../src/models/timetableSlot.model.js';
 import { TransportRoute, TransportStop, BusEnrollment } from '../src/models/transport.model.js';
 import { BookRequest } from '../src/models/bookRequest.model.js';
+import { ProfileEditRequest } from '../src/models/profileEditRequest.model.js';
 import { TransportRequest } from '../src/models/transportRequest.model.js';
 import { Document } from '../src/models/document.model.js';
 import * as library from '../src/modules/library/library.service.js';
@@ -39,7 +39,7 @@ import * as transport from '../src/modules/transport/transport.service.js';
 import { seedSchool, seedPerson, mcp, inSchool, todayKey, OAK, RIVER } from './support/mcpSchool.js';
 
 /**
- * Every one of the 75 MCP write tools, executed through MCP.
+ * Every one of the 81 MCP write tools, executed through MCP.
  *
  * One case per tool — the role that should be able to do it (taken from the
  * real permission catalog), the records it needs, the arguments, and a
@@ -236,7 +236,7 @@ const read = (fn) => oak(fn);
 const count = (Model, filter = {}) => read(() => Model.countDocuments(filter));
 const field = (Model, id, path) => read(() => Model.findById(id).lean()).then((d) => (d ? path.split('.').reduce((o, k) => o?.[k], d) : '(gone)'));
 
-/* ── The 75 write tools ───────────────────────────────────── */
+/* ── The 81 write tools ───────────────────────────────────── */
 
 /**
  * role         who performs it (holds the permission at the scope it needs)
@@ -293,6 +293,18 @@ const CASES = [
     args: (s) => ({ enrollmentId: idOf(s.aman.enrollment), invoiceNo: 'INV-2001', dueOn: ymd(days(40)), lines: [{ description: 'Lab fee', amountPaise: 150000 }] }),
     footprint: () => read(() => Invoice.findOne({ invoiceNo: 'INV-2001' }).lean()).then((i) => i?.totalPaise ?? null),
     changed: (b, a) => { expect([b, a]).toEqual([null, 150000]); } },
+  { tool: 'create_fee_head', role: 'FINANCE', tenant: false,
+    args: () => ({ name: 'Laboratory', category: 'TUITION' }),
+    footprint: () => count(FeeHead, { name: 'Laboratory' }),
+    changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
+  { tool: 'create_fee_structure', role: 'FINANCE',
+    setup: async (w) => ({ structure: await w.feeStructure() }),
+    args: (s, c) => ({
+      feeHeadId: String(c.structure.feeHeadId), academicYearId: idOf(s.year),
+      name: 'Laboratory — Term 1', amountPaise: 250000, dueOn: ymd(days(45)),
+    }),
+    footprint: () => count(FeeStructure, { name: 'Laboratory — Term 1' }),
+    changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
   { tool: 'generate_invoices', role: 'ADMIN', tenantEmptyOk: true,
     setup: (w) => w.feeStructure().then(() => ({})),
     args: (s) => ({ academicYearId: idOf(s.year) }),
@@ -557,6 +569,22 @@ const CASES = [
     footprint: (s) => count(BusEnrollment, { studentId: s.rahul.student._id }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
 
+  { tool: 'cancel_profile_edit_request', role: 'STUDENT',
+    setup: async (w) => ({ request: await w.profileEdit() }),
+    args: (_s, c) => ({ requestId: idOf(c.request) }),
+    footprint: (_s, c) => field(ProfileEditRequest, idOf(c.request), 'status').then((v) => v ?? '(gone)'),
+    // withdraw() deletes the row, so the footprint goes from PENDING to gone.
+    changed: (b, a) => { expect(b).toBe('PENDING'); expect(a).toBe('(gone)'); } },
+  { tool: 'cancel_book_request', role: 'STUDENT',
+    setup: async (w) => ({ request: await w.bookRequest() }),
+    args: (_s, c) => ({ requestId: idOf(c.request) }),
+    footprint: (_s, c) => field(BookRequest, idOf(c.request), 'status'),
+    changed: (b, a) => { expect([b, a]).toEqual(['PENDING', 'CANCELLED']); } },
+  { tool: 'cancel_transport_request', role: 'STUDENT',
+    setup: async (w) => ({ request: await w.transportRequest() }),
+    args: (_s, c) => ({ requestId: idOf(c.request) }),
+    footprint: (_s, c) => field(TransportRequest, idOf(c.request), 'status'),
+    changed: (b, a) => { expect([b, a]).toEqual(['PENDING', 'CANCELLED']); } },
   { tool: 'request_transport_route', role: 'STUDENT',
     setup: async (w) => ({ route: await w.route(), stop: await w.stop() }),
     args: (_s, c) => ({ routeId: idOf(c.route), stopId: idOf(c.stop) }),
@@ -634,6 +662,11 @@ const CASES = [
     args: () => ({ name: 'Inter-school quiz', activityDate: '2026-08-15', category: 'LITERARY' }),
     footprint: (s) => count(CoCurricularActivity, { studentId: s.priya.student._id }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
+  { tool: 'cancel_cocurricular_request', role: 'STUDENT',
+    setup: async (w) => ({ request: await w.cocurricular() }),
+    args: (_s, c) => ({ requestId: idOf(c.request) }),
+    footprint: (s) => count(CoCurricularActivity, { studentId: s.priya.student._id }),
+    changed: (b, a) => { expect([b, a]).toEqual([1, 0]); } },
   { tool: 'decide_cocurricular', role: 'TEACHER',
     setup: async (w) => ({ request: await w.cocurricular() }),
     args: (_s, c) => ({ requestId: idOf(c.request), status: 'APPROVED' }),
@@ -703,9 +736,9 @@ async function attempt(tenant, actor, name, args) {
 /* ── Coverage is complete ─────────────────────────────────── */
 
 describe('the write-tool matrix', () => {
-  it('has a case for every one of the 75 write tools', () => {
+  it('has a case for every one of the 81 write tools', () => {
     const writeTools = Object.entries(MCP_TOOLS).filter(([, t]) => mutates(t)).map(([n]) => n).sort();
-    expect(writeTools).toHaveLength(75);
+    expect(writeTools).toHaveLength(81);
     expect([...new Set(CASES.map((c) => c.tool))].sort()).toEqual(writeTools);
   });
 });

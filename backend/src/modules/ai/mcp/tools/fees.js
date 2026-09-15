@@ -859,6 +859,130 @@ export const feeTools = {
       });
     },
   },
+
+  /* ── Fee configuration ────────────────────────────────── */
+
+  /**
+   * What the school charges. Both write to fee configuration the whole school
+   * is billed from, so both are school-wide only and both are confirmed.
+   *
+   * They front the actor-aware service methods, not the raw model writes that
+   * used to sit behind the REST route: the scope check, the field allow-list,
+   * the confirmation that every referenced id belongs to THIS school, and the
+   * audit entry all live in fee.service, where the route meets them too.
+   */
+
+  create_fee_head: {
+    module: 'Fees',
+    operation: 'CREATE',
+    risk: RISK.MEDIUM,
+    confirm: true,
+    description:
+      'Add a fee head — the thing a charge is for, such as "Tuition" or "Transport". A fee head is school-wide configuration and every future structure and invoice is billed against it, so it needs confirmation. The name must be one the school does not already use.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', maxLength: 120, description: 'e.g. "Tuition"' },
+        category: { type: 'string', maxLength: 40, description: 'Optional grouping, e.g. "TUITION"' },
+      },
+      required: ['name'],
+      additionalProperties: false,
+    },
+    permission: 'fees.structure.manage',
+    minScope: 'ALL',
+    affectsOthers: true,
+    service: 'fee.service.createFeeHeadForActor()',
+    summarise: (args) => `Add the fee head "${args.name}" to this school's fee configuration`,
+    // Checked before anyone is asked to confirm, so a name the school already
+    // uses is refused rather than offered and then failed.
+    async prepare(ctx, args) {
+      return { name: await fees.assertFeeHeadNameFree(ctx.scope, args.name) };
+    },
+    async run(ctx, args) {
+      const head = await fees.createFeeHeadForActor(ctx.actor, ctx.scope, {
+        name: args.name,
+        ...(args.category !== undefined && { category: args.category }),
+      });
+      return action({
+        type: 'fee_head_created',
+        id: String(head._id),
+        data: { id: String(head._id), name: head.name, category: head.category },
+        speak: `The fee head "${head.name}" has been added.`,
+      });
+    },
+  },
+
+  create_fee_structure: {
+    module: 'Fees',
+    operation: 'CREATE',
+    risk: RISK.HIGH,
+    confirm: true,
+    description:
+      'Set what a fee head costs for an academic year, and optionally for one grade only — omit the grade and it applies to every grade. This is what invoices are generated from, so it decides what families are billed and always needs confirmation. Use get_fee_structures for the existing configuration and the fee head id.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        feeHeadId: objectId('From get_fee_structures'),
+        academicYearId: objectId('The year this charge applies to'),
+        gradeId: objectId('One grade only; omit for every grade'),
+        name: { type: 'string', maxLength: 120, description: 'e.g. "Tuition — Term 1"' },
+        amountPaise: {
+          type: 'integer',
+          minimum: 1,
+          description: 'The amount in paise, so ₹4,000 is 400000',
+        },
+        dueOn: dateStr('When it falls due'),
+      },
+      required: ['feeHeadId', 'academicYearId', 'name', 'amountPaise', 'dueOn'],
+      additionalProperties: false,
+    },
+    permission: 'fees.structure.manage',
+    minScope: 'ALL',
+    affectsOthers: true,
+    service: 'fee.service.createFeeStructureForActor()',
+    summarise: (args) =>
+      `Charge ${rupees(args.amountPaise)} for "${args.name}"`
+      + `${args.gradeId ? ' in one grade' : ' across every grade'}, due ${args.dueOn}`,
+    /**
+     * The same validation the write performs, run before the prompt: a year or
+     * grade belonging to another school, or an amount that is not a whole
+     * number of paise above zero, is refused here instead of being confirmed
+     * by a person and then failing.
+     */
+    async prepare(ctx, args) {
+      const resolved = await fees.resolveFeeStructureInput(ctx.scope, {
+        feeHeadId: args.feeHeadId,
+        academicYearId: args.academicYearId,
+        ...(args.gradeId && { gradeId: args.gradeId }),
+        name: args.name,
+        amountPaise: args.amountPaise,
+        dueOn: args.dueOn,
+      });
+      return { feeHead: resolved.feeHeadName, academicYear: resolved.academicYearName };
+    },
+    async run(ctx, args) {
+      const structure = await fees.createFeeStructureForActor(ctx.actor, ctx.scope, {
+        feeHeadId: args.feeHeadId,
+        academicYearId: args.academicYearId,
+        ...(args.gradeId && { gradeId: args.gradeId }),
+        name: args.name,
+        amountPaise: args.amountPaise,
+        dueOn: args.dueOn,
+      });
+      return action({
+        type: 'fee_structure_created',
+        id: String(structure._id),
+        data: {
+          id: String(structure._id),
+          name: structure.name,
+          amountPaise: structure.amountPaise,
+          gradeId: structure.gradeId ? String(structure.gradeId) : null,
+          dueOn: structure.dueOn,
+        },
+        speak: `"${structure.name}" has been set at ${rupees(structure.amountPaise)}.`,
+      });
+    },
+  },
 };
 
 /**

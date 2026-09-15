@@ -99,10 +99,6 @@ const UNCOVERED = {
   },
 
   /* ── C. blocked ────────────────────────────────────────── */
-  'fees.structure.manage': {
-    category: 'C',
-    why: 'fee.service.createFeeHead and createFeeStructure are raw Model.create(data) pass-throughs: no actor, no scope, no tenant check, no validation, no audit. Authorization exists only on the route. Exposing them would make the assistant an arbitrary-field writer over a school fee configuration. Needs the actor-aware service treatment that documents and calendar received before it can become a capability.',
-  },
   'settings.manage': {
     category: 'C',
     why: 'No settings module, route, controller or service exists anywhere in src. The permission is granted to roles but enforced nowhere, so there is nothing to wrap.',

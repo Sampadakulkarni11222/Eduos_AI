@@ -91,7 +91,7 @@ describe('the generated catalog matches the running registry', () => {
     const stats = mcpCatalogStats();
     // Moves when the catalog does; the assertions below are what keep the
     // generated docs and the running registry describing the same thing.
-    expect(stats.total).toBe(154);
+    expect(stats.total).toBe(161);
     expect(catalog.stats).toEqual(stats);
     expect(catalog.tools.map((t) => t.name).sort()).toEqual(Object.keys(MCP_TOOLS).sort());
     for (const t of catalog.tools) {
@@ -106,7 +106,7 @@ describe('the generated catalog matches the running registry', () => {
 
   it('reports statuses, aliases, deprecated and blocked entries as they are', () => {
     const byStatus = catalog.tools.reduce((acc, t) => ({ ...acc, [t.status]: (acc[t.status] ?? 0) + 1 }), {});
-    expect(byStatus).toEqual({ AVAILABLE: 152, PARTIAL: 2 });
+    expect(byStatus).toEqual({ AVAILABLE: 159, PARTIAL: 2 });
     expect(catalog.compatibilityAliases.map((a) => [a.legacyName, a.mcpTool])).toEqual(Object.entries(LEGACY_TOOL_ALIASES));
     expect(catalog.deprecated.map((d) => d.name)).toEqual(['record_fee_payment']);
     expect(catalog.deprecated.every((d) => !MCP_TOOLS[d.name])).toBe(true);

@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**154 tools** — 79 GET, 24 CREATE, 14 UPDATE, 6 DELETE, 31 ACTION.
+**161 tools** — 80 GET, 26 CREATE, 14 UPDATE, 10 DELETE, 31 ACTION.
 
-Risk mix: 81 LOW, 45 MEDIUM, 27 HIGH, 1 CRITICAL.
+Risk mix: 86 LOW, 46 MEDIUM, 28 HIGH, 1 CRITICAL.
 
-Status: 152 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 159 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -28,12 +28,12 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
 | `SUPER_ADMIN` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `ADMIN` | 153 | 79 | 24 | 14 | 30 | 6 | 27 | 68 |
+| `ADMIN` | 160 | 80 | 26 | 14 | 30 | 10 | 28 | 74 |
 | `PRINCIPAL` | 73 | 53 | 4 | 6 | 9 | 1 | 7 | 20 |
 | `TEACHER` | 58 | 41 | 3 | 2 | 11 | 1 | 7 | 17 |
 | `PARENT` | 44 | 41 | 1 | 1 | 0 | 1 | 2 | 2 |
-| `STUDENT` | 58 | 49 | 7 | 0 | 1 | 1 | 0 | 4 |
-| `FINANCE` | 28 | 21 | 2 | 1 | 4 | 0 | 7 | 7 |
+| `STUDENT` | 63 | 50 | 7 | 0 | 1 | 5 | 0 | 8 |
+| `FINANCE` | 30 | 21 | 4 | 1 | 4 | 0 | 8 | 9 |
 | `LIBRARIAN` | 28 | 21 | 1 | 1 | 4 | 1 | 1 | 7 |
 | `WARDEN` | 29 | 21 | 2 | 3 | 3 | 0 | 0 | 7 |
 | `COUNSELLOR (custom, example)` | 18 | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -43,12 +43,12 @@ Custom roles are database rows, created per school, so none can be listed here i
 <details><summary>High-risk actions visible to each role</summary>
 
 - **SUPER_ADMIN** (0): _none_
-- **ADMIN** (27): `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`
+- **ADMIN** (28): `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `create_fee_structure`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`
 - **PRINCIPAL** (7): `transition_fee_plan`, `publish_marks`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_document`
 - **TEACHER** (7): `mark_attendance`, `bulk_mark_attendance`, `enter_marks`, `publish_marks`, `create_announcement`, `update_announcement`, `delete_document`
 - **PARENT** (2): `upsert_medical_record`, `remove_medical_record`
 - **STUDENT** (0): _none_
-- **FINANCE** (7): `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `record_payment`, `refund_payment`, `transition_fee_plan`
+- **FINANCE** (8): `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `record_payment`, `refund_payment`, `transition_fee_plan`, `create_fee_structure`
 - **LIBRARIAN** (1): `delete_book`
 - **WARDEN** (0): _none_
 - **COUNSELLOR (custom, example)** (0): _none_
@@ -66,6 +66,10 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `archive_student` | Students | DELETE | `students.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `assign_teacher_to_subject` | Academics | ACTION | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `bulk_mark_attendance` | Attendance | ACTION | `attendance.mark` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
+| `cancel_book_request` | Library | DELETE | `library.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
+| `cancel_cocurricular_request` | Student requests | DELETE | `cocurricular.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
+| `cancel_profile_edit_request` | Student requests | DELETE | `profile.edit.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
+| `cancel_transport_request` | Transport | DELETE | `transport.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `create_admission_lead` | Admissions | CREATE | `admissions.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_announcement` | Communication | CREATE | `announcements.publish` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `create_assignment` | Assignments | CREATE | `assignments.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -74,7 +78,9 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `create_course_material` | Documents | CREATE | `materials.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_exam` | Exams | CREATE | `exams.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_exam_subject` | Exams | CREATE | `exams.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `create_fee_head` | Fees | CREATE | `fees.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_fee_plan` | Fees | CREATE | `fees.plan.request` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
+| `create_fee_structure` | Fees | CREATE | `fees.structure.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `create_hostel_inquiry` | Hostel | CREATE | `hostel.read` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
 | `create_hostel_room` | Hostel | CREATE | `hostel.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_invoice` | Fees | CREATE | `fees.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
@@ -131,6 +137,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_my_classes` | Academics | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_electives` | Registrations | GET | `registrations.apply` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_profile` | Profile | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_my_profile_edit_requests` | Student requests | GET | `profile.edit.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_transport_requests` | Transport | GET | `transport.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_overdue_books` | Library | GET | `library.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_payment_change_requests` | Fees | GET | `fees.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -2140,6 +2147,54 @@ Publish an approved fee plan, which raises one invoice per installment — the p
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+### `create_fee_head`
+
+Add a fee head — the thing a charge is for, such as "Tuition" or "Transport". A fee head is school-wide configuration and every future structure and invoice is billed against it, so it needs confirmation. The name must be one the school does not already use.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `fees.structure.manage` |
+| **Scope** | ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `fee.service.createFeeHeadForActor()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_fee_head` |
+
+**Input**
+
+`name`: string **(required)** — e.g. "Tuition"<br>`category`: string — Optional grouping, e.g. "TUITION"
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `create_fee_structure`
+
+Set what a fee head costs for an academic year, and optionally for one grade only — omit the grade and it applies to every grade. This is what invoices are generated from, so it decides what families are billed and always needs confirmation. Use get_fee_structures for the existing configuration and the fee head id.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | HIGH |
+| **Confirmation** | REQUIRED |
+| **Permission** | `fees.structure.manage` |
+| **Scope** | ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `fee.service.createFeeStructureForActor()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_fee_structure` |
+
+**Input**
+
+`feeHeadId`: string **(required)** — From get_fee_structures<br>`academicYearId`: string **(required)** — The year this charge applies to<br>`gradeId`: string — One grade only; omit for every grade<br>`name`: string **(required)** — e.g. "Tuition — Term 1"<br>`amountPaise`: integer **(required)** — The amount in paise, so ₹4,000 is 400000<br>`dueOn`: string **(required)** — When it falls due
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Hostel
 
 ### `get_hostel_summary`
@@ -2818,6 +2873,30 @@ Approve or reject a book request. Approving issues the book to the student and t
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+### `cancel_book_request`
+
+Withdraw the caller's own book request, while the librarian has not yet decided on it. A request already approved or rejected cannot be withdrawn. Use get_my_book_requests to find the request id. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | DELETE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `library.request` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `library.service.cancelBookRequest()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.cancel_book_request` |
+
+**Input**
+
+`requestId`: string **(required)** — From get_my_book_requests
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Medical
 
 ### `get_medical_record`
@@ -3235,6 +3314,78 @@ Approve or reject a profile-correction request. Approving writes the new values 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `cancel_cocurricular_request`
+
+Withdraw the caller's own co-curricular request, while the class teacher has not yet decided on it. A request already approved or rejected cannot be withdrawn. Use list_cocurricular to find the request id. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | DELETE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `cocurricular.request` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `cocurricular.service.withdraw()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.cancel_cocurricular_request` |
+
+**Input**
+
+`requestId`: string **(required)** — From list_cocurricular
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `cancel_profile_edit_request`
+
+Withdraw the caller's own profile-correction request, while it has not yet been decided. A request already approved or rejected cannot be withdrawn. Use get_my_profile_edit_requests to find the request id. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | DELETE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `profile.edit.request` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `profileEdit.service.withdraw()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.cancel_profile_edit_request` |
+
+**Input**
+
+`requestId`: string **(required)** — From get_my_profile_edit_requests
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `get_my_profile_edit_requests`
+
+The caller's own profile-correction requests and what was decided on each. A parent sees their children's. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `profile.edit.request` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `profileEdit.service.listMine()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_my_profile_edit_requests` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
 
 ## Students
 
@@ -3964,6 +4115,30 @@ Approve or reject a request for a place on a bus route. Approving puts the stude
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+### `cancel_transport_request`
+
+Withdraw the caller's own request for a place on a bus route, while the school office has not yet decided on it. A request already granted or refused cannot be withdrawn. Use get_my_transport_requests to find the request id. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | DELETE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `transport.request` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `transport.service.cancelTransportRequest()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.cancel_transport_request` |
+
+**Input**
+
+`requestId`: string **(required)** — From get_my_transport_requests
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Users
 
 ### `list_users`
@@ -3992,7 +4167,7 @@ Staff and user accounts, searchable by name, phone or email and filterable by ro
 
 ## Permission coverage
 
-60 of the 73 permissions in the catalog are reachable through MCP.
+61 of the 73 permissions in the catalog are reachable through MCP.
 
 Permissions **not** reachable through any tool:
 
@@ -4004,7 +4179,6 @@ Permissions **not** reachable through any tool:
 - `schools.manage` — Create schools and manage their School Admin accounts
 - `attendance.regularize` — Correct/regularize past attendance
 - `reportcards.read` — View report cards
-- `fees.structure.manage` — Manage fee heads and fee structures
 - `fees.plan.review` — Review a submitted installment plan and send it for admin approval
 - `analytics.school.read` — View school-wide analytics
 - `analytics.class.read` — View class-level analytics

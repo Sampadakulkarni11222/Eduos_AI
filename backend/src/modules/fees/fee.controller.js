@@ -8,12 +8,15 @@ import { renderReceiptPdf } from '../../utils/receiptPdf.js';
 import * as service from './fee.service.js';
 import * as planService from './plan.service.js';
 
+// Both go through the actor-aware service, so the route and the assistant meet
+// the same scope check, field allow-list, foreign-school reference check and
+// audit entry. The raw pass-throughs these used to call have been removed.
 export const createFeeHead = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.createFeeHead(req.body), 'Fee head created', 201);
+  sendSuccess(res, await service.createFeeHeadForActor(req.actor, req.scope, req.body), 'Fee head created', 201);
 });
 
 export const createFeeStructure = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.createFeeStructure(req.body), 'Fee structure created', 201);
+  sendSuccess(res, await service.createFeeStructureForActor(req.actor, req.scope, req.body), 'Fee structure created', 201);
 });
 
 export const listFeeHeads = asyncHandler(async (_req, res) => {
