@@ -26,3 +26,4 @@ export async function DELETE() {
     return NextResponse.json({ error: 'Failed to clear session' }, { status: 500 });
   }
 }
+
