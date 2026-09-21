@@ -64,7 +64,17 @@ export function summarise(items, render, { limit = 5 } = {}) {
  * produced by `fee.service.getSummary()`, through the same tool body that
  * produced it before MCP existed.
  */
-export function wrapAgentTool(name, { description, inputSchema = noArgs, module, operation = 'GET', risk = RISK.LOW, confirm = false, service, resultShape = null } = {}) {
+/**
+ * Fronts an agent tool, optionally resolving a class named in words first.
+ *
+ * `resolveClass` exists because the class resolver lives here, in the MCP
+ * layer, and `agent/tools.js` cannot import it -- this module already imports
+ * that one, and the cycle is real. So the wrapper resolves `className` to a
+ * `sectionId` at the caller's own scope and hands the agent tool the id it
+ * understands. The agent tool gains a class filter without learning anything
+ * about class names, and the resolution rules stay in one place.
+ */
+export function wrapAgentTool(name, { description, inputSchema = noArgs, module, operation = 'GET', risk = RISK.LOW, confirm = false, service, resultShape = null, resolveClass = false } = {}) {
   const agentTool = () => {
     const tool = agentTools.TOOLS?.[name];
     if (!tool) throw new Error(`MCP registry references a non-existent agent tool: ${name}`);
@@ -108,7 +118,13 @@ export function wrapAgentTool(name, { description, inputSchema = noArgs, module,
       return tool.snapshot ? tool.snapshot(ctx.actor, ctx.scope, args ?? {}, prepared ?? null) : null;
     },
     async run(ctx, args, prepared) {
-      const result = await agentTool().execute(ctx.actor, ctx.scope, args ?? {}, prepared ?? null);
+      const passed = { ...(args ?? {}) };
+      if (resolveClass && (passed.className || passed.sectionId)) {
+        const section = await resolveSection(ctx, passed);
+        if (section) passed.sectionId = section.sectionId;
+        delete passed.className;
+      }
+      const result = await agentTool().execute(ctx.actor, ctx.scope, passed, prepared ?? null);
       return ok(result?.data ?? null, {
         speakKey: result?.speakKey ?? null,
         params: result?.params ?? null,
@@ -383,6 +399,102 @@ export async function resolveSection(ctx, { sectionId, className } = {}) {
 export async function resolveSectionId(ctx, args) {
   return (await resolveSection(ctx, args))?.sectionId ?? null;
 }
+
+/* ── Deciding a request somebody raised ───────────────────
+   Every review queue in EduOS has the same shape -- pending rows, each raised
+   by a student -- and every decision tool took only an opaque request id. No
+   staff member types one, so "approve Rahul's leave" reached no capability at
+   all and was answered with the queue instead of deciding anything.
+
+   The id is resolved from the queue the REVIEW SCREEN reads, at the caller's
+   own scope, so this can only ever reach a request they were already entitled
+   to decide. A name narrows it; more than one match is asked about rather than
+   guessed, because approving the wrong request is not something the person it
+   belonged to can undo. */
+
+/** Whoever raised a request, however the service's DTO spells it. */
+export function raisedBy(row) {
+  const student = row?.studentId ?? row?.student ?? null;
+  return (
+    row?.studentName
+    ?? row?.applicantName
+    ?? [student?.firstName, student?.lastName].filter(Boolean).join(' ')
+    ?? null
+  ) || (typeof student === 'object' ? student?.admissionNo ?? null : null);
+}
+
+/**
+ * The one pending request a decision is about.
+ *
+ * @param rows    the review queue, already scoped by its own service
+ * @param options `studentName` to narrow by, `label` for the messages, and
+ *                `describe` to render a candidate when asking which
+ */
+export function thePendingRequest(rows, { studentName = null, label = 'request', describe = raisedBy } = {}) {
+  const list = (Array.isArray(rows) ? rows : (rows?.items ?? []))
+    .filter((r) => String(r.status ?? 'PENDING').toUpperCase() === 'PENDING');
+
+  const term = studentName ? String(studentName).trim().toLowerCase() : null;
+  const named = term
+    ? list.filter((r) => String(raisedBy(r) ?? '').toLowerCase().includes(term))
+    : list;
+
+  if (!named.length) {
+    throw new AppError(
+      term ? `No pending ${label} from "${studentName}".` : `There are no pending ${label}s.`,
+      404, [], 'NOTHING_TO_DECIDE',
+    );
+  }
+  if (named.length > 1) {
+    throw new AppError(
+      `More than one pending ${label} matches: ${named.slice(0, 5).map(describe).join(', ')}. Which one?`,
+      400, [], 'AGENT_NEEDS_INPUT',
+    );
+  }
+  return named[0];
+}
+
+/**
+ * The one record a caller meant, out of a list they were already entitled to.
+ *
+ * The same shape as thePendingRequest(), for records that are named rather
+ * than raised: a ticket by its subject, a bus route by its name, an elective
+ * by its subject, a document by its title. Every one of these was reachable
+ * only by an ObjectId, which nobody types -- so the capability existed and
+ * could not be asked for.
+ *
+ * An exact match wins outright; a unique partial match is accepted; anything
+ * else is asked about. The list comes from the service the screen reads, so
+ * nothing here decides what exists or who may see it.
+ */
+export function theNamed(rows, term, { label, nameOf, describe = nameOf } = {}) {
+  const list = Array.isArray(rows) ? rows : (rows?.items ?? []);
+  const wanted = String(term ?? '').trim().toLowerCase();
+  if (!wanted) throw new AppError(`Which ${label}? Name it.`, 400, [], 'AGENT_NEEDS_INPUT');
+
+  const named = (row) => String(nameOf(row) ?? '').trim().toLowerCase();
+  const exact = list.filter((r) => named(r) === wanted);
+  const matched = exact.length ? exact : list.filter((r) => named(r).includes(wanted));
+
+  if (!matched.length) throw new AppError(`I could not find a ${label} matching "${String(term).trim()}".`, 404, [], 'NOT_FOUND');
+  if (matched.length > 1) {
+    throw new AppError(
+      `More than one ${label} matches "${String(term).trim()}": ${matched.slice(0, 5).map(describe).join(', ')}. Which one?`,
+      400, [], 'AGENT_NEEDS_INPUT',
+    );
+  }
+  return matched[0];
+}
+
+/** The identification a decision tool accepts instead of an opaque id. */
+export const decidableSchema = (source) => ({
+  requestId: objectId(`From ${source}. Omit it and name the student instead.`),
+  studentName: {
+    type: 'string',
+    maxLength: 80,
+    description: 'Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.',
+  },
+});
 
 /** The class-identification argument every class-level tool accepts. */
 export const classIdentitySchema = {

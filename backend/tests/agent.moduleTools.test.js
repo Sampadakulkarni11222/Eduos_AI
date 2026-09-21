@@ -306,14 +306,19 @@ describe('the timetable capability', () => {
 
 describe('"how many students are absent today?"', () => {
   it('routes a school-wide reader to the absence summary, not to their own record', () => {
-    for (const role of ['ADMIN', 'PRINCIPAL', 'SUPER_ADMIN']) {
+    for (const role of ['ADMIN', 'PRINCIPAL']) {
       const intent = parseIntent('How many students are absent today?', actorFor(role));
-      expect(intent?.tool, role).toBe('who_is_absent_today');
+      expect(intent?.tool, role).toBe('get_absent_students');
     }
+    // SUPER_ADMIN is deliberately NOT in that list any more. It holds no
+    // assistant permission, so it must route to nothing at all rather than to
+    // the school-wide summary -- the exclusion is what the permission map
+    // says, and it is checked here as well as in ai.superAdminExcluded.
+    expect(parseIntent('How many students are absent today?', actorFor('SUPER_ADMIN'))).toBeNull();
     // Other phrasings of the same question.
-    expect(parseIntent('absent count', actorFor('ADMIN'))?.tool).toBe('who_is_absent_today');
-    expect(parseIntent('give me the absence report', actorFor('ADMIN'))?.tool).toBe('who_is_absent_today');
-    expect(parseIntent('who is absent today', actorFor('ADMIN'))?.tool).toBe('who_is_absent_today');
+    expect(parseIntent('absent count', actorFor('ADMIN'))?.tool).toBe('get_absent_students');
+    expect(parseIntent('give me the absence report', actorFor('ADMIN'))?.tool).toBe('get_absent_students');
+    expect(parseIntent('who is absent today', actorFor('ADMIN'))?.tool).toBe('get_absent_students');
   });
 
   it('still answers a student about themselves rather than refusing them', () => {

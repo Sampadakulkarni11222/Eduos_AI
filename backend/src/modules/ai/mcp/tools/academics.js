@@ -285,12 +285,20 @@ export const academicTools = {
   get_timetable: wrapAgentTool('get_timetable', {
     module: 'Timetable',
     description:
-      "The timetable for a day. A teacher sees the periods they teach, a student or parent their own section, and a school-wide reader the school. Accepts a weekday name or today/tomorrow/yesterday. Read-only.",
+      'The timetable for a day, with the subject and the teacher for each period. Name a class to see that class alone; without one, a teacher sees the periods they teach, a student or parent their own section, and a school-wide reader the school. Accepts a weekday name or today/tomorrow/yesterday. Read-only.',
     inputSchema: {
       type: 'object',
-      properties: { day: { type: 'string', maxLength: 24, description: 'Weekday name, or today/tomorrow/yesterday' } },
+      properties: {
+        day: { type: 'string', maxLength: 24, description: 'Weekday name, or today/tomorrow/yesterday' },
+        ...classIdentitySchema,
+        sectionId: objectId('The class section, when the id is already known'),
+      },
       additionalProperties: false,
     },
+    // The class is resolved to a section at the caller's own scope before the
+    // agent tool runs, so a class they do not teach is refused by name rather
+    // than quietly widened to everything they can see.
+    resolveClass: true,
     service: 'timetable.service.getTimetable()',
   }),
 

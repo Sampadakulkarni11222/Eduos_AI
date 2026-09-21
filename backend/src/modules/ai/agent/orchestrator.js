@@ -2,7 +2,7 @@ import { AuditLog } from '../../../models/auditLog.model.js';
 import { checkAgentRate, recordInjectionAttempt } from './throttle.js';
 import { AppError } from '../../../utils/AppError.js';
 import { logger } from '../../../utils/logger.js';
-import { parseIntentWithLlm, parseIntent, MAX_PLAN_STEPS } from './intent.js';
+import { parseIntentWithLlm, parseIntent, clarificationFor, MAX_PLAN_STEPS } from './intent.js';
 import { detectLanguage, t } from '../../../utils/language.js';
 import { currentTenantId } from '../../../tenancy/tenantContext.js';
 import { handleRagFallback } from './rag.js';
@@ -204,6 +204,35 @@ const TOPIC_LABELS = {
   Registrations: 'subject registrations',
   'Student requests': 'student requests',
 };
+
+/**
+ * An entity as a person would say it, for a clarifying question.
+ *
+ * The entity names are the resolver's vocabulary, not a person's: "studentRequest"
+ * is not a thing anybody says. A small map with a readable fallback, like
+ * TOPIC_LABELS above, and for the same reason.
+ */
+const ENTITY_TOPICS = {
+  studentRequest: 'a co-curricular request',
+  library: 'a library book',
+  transport: 'a bus route',
+  hostel: 'the hostel',
+  fee: 'fees',
+  marks: 'marks',
+  homework: 'homework',
+  attendance: 'attendance',
+  student: 'a student',
+  ticket: 'a support ticket',
+  leave: 'leave',
+  calendar: 'the calendar',
+  timetable: 'the timetable',
+  announcement: 'an announcement',
+  material: 'a document',
+  medical: 'a medical record',
+  profile: 'your profile',
+};
+
+const TOPIC_OF_ENTITY = (entity) => ENTITY_TOPICS[entity] ?? String(entity).toLowerCase();
 
 /**
  * What the assistant can help with — and NEVER the tool descriptions.
@@ -439,6 +468,19 @@ async function routeTurn({ mcpSession, message, actor, source, lang, history }) 
     const ragReply = await handleRagFallback(message, actor, lang);
     if (ragReply) {
       return { reply: ragReply, lang, action: null, knowledge: true, sources: ['RAG'] };
+    }
+
+    // Before shrugging: did the request fit two things equally well? That is a
+    // question, not a failure, and asking it is a far better answer than a
+    // list of every module the caller can reach.
+    const ambiguous = clarificationFor(message, actor);
+    if (ambiguous) {
+      return {
+        reply: t('agent.which', lang, { options: ambiguous.entities.map(TOPIC_OF_ENTITY).join(' or ') }),
+        lang,
+        action: null,
+        suggestions: ambiguous.tools,
+      };
     }
 
     const available = mcpTools;

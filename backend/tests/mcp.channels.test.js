@@ -211,7 +211,11 @@ describe('WhatsApp reaches the same MCP layer', () => {
     const turn = await runInActorScope(resolved, () =>
       converse({ actor: resolved.actor, text: 'who is absent today?' }));
 
-    expect(turn.tool).toBe('who_is_absent_today');
+    // get_absent_students, not who_is_absent_today: both front
+    // attendance.getDailyAbsenceSummary(), so the catalog derives that the
+    // wrapped legacy name is superseded by the native one, and routing now
+    // honours that. Same service, same figures, one canonical name.
+    expect(turn.tool).toBe('get_absent_students');
     expect(turn.reply).toMatch(/1 student\(s\) absent/i);
   });
 

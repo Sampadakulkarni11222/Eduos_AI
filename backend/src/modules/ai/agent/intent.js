@@ -7,6 +7,10 @@ import { monthFromText, looksLikeMonth } from '../../../utils/naturalDates.js';
 import { classFromText, refersToOwnClasses } from '../../../utils/classNames.js';
 import { detectSelfCategory } from './profileIntent.js';
 import { detectEntityIntent } from './entityIntent.js';
+import { resolveCapability, dimensionsOf, operationsAskedFor, OPERATION_FAMILY } from './capabilityResolver.js';
+import { capabilityIndex, capabilitiesFor, subjectEntityOf } from '../mcp/capabilities.js';
+import { getMcpTool } from '../mcp/registry.js';
+import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 import { orderToolsByRelevance } from '../mcp/capabilities.js';
 import { logger } from '../../../utils/logger.js';
 
@@ -784,8 +788,21 @@ function selfStep(message, actor) {
  * yields otherwise, so every phrasing the rules already handled still reaches
  * them. See agent/entityIntent.js.
  */
+/** The three entities the entity tier claims, as capabilities.js names them. */
+const ENTITY_TIER_CLAIMS = ['attendance', 'marks', 'homework'];
+
 function entityStep(message, actor) {
   if (!actor?.permissions?.['ai.copilot.use']) return null;
+
+  // Only when one of its three entities is what the request is ABOUT. The tier
+  // itself matches on any mention, so "show Rahul's growth SCORE" reached it
+  // through the marks vocabulary and came back with a report card. The subject
+  // is read exactly as the scorer reads it -- the leading entity that is not
+  // merely the population being asked over, so "which STUDENTS scored highest
+  // in Mathematics" is still a question about marks.
+  const subject = subjectEntityOf(message);
+  if (subject && !ENTITY_TIER_CLAIMS.includes(subject)) return null;
+
   const detected = detectEntityIntent(message, actor);
   return detected && getRuleTool(detected.tool) ? detected : null;
 }
@@ -793,15 +810,269 @@ function entityStep(message, actor) {
 /** True when a tool name is one this parser is allowed to name. */
 const getRuleTool = (name) => (typeof name === 'string' && name ? name : null);
 
+/**
+ * Every capability the caller holds, scored against the message.
+ *
+ * Runs after the two narrow deterministic steps and BEFORE the pattern rules,
+ * which is the whole point: the rules reach about twenty of the catalogue's 167
+ * capabilities, and where they matched at all they frequently matched a nearby
+ * general capability while discarding what made the request specific. This step
+ * chooses from registry metadata, so a capability is reachable because it
+ * exists rather than because somebody wrote a phrase for it.
+ *
+ * It yields — returns null — whenever it is not sure, including when two
+ * capabilities fit equally well. Then the rules run, exactly as before, so
+ * nothing that worked stops working.
+ *
+ * See agent/capabilityResolver.js.
+ */
+function capabilityStep(message, actor) {
+  if (!actor?.permissions?.['ai.copilot.use']) return null;
+  // "What is HIS attendance?" names its subject in an earlier turn, not in this
+  // sentence. Scoring it here would pick the capability that needs no subject —
+  // the caller's own record — and answer confidently about the wrong person. So
+  // a pronoun-led message is left to the steps that can see the transcript.
+  if (FOLLOW_UP_PRONOUN.test(String(message ?? ''))) return null;
+  const resolved = resolveCapability(message, actor);
+  if (!resolved || resolved.needsClarification) return null;
+  return { tool: resolved.tool, args: resolved.args, tentative: Boolean(resolved.tentative) };
+}
+
+/**
+ * The canonical name for a capability, when the catalogue has one.
+ *
+ * Two entries that front the same service are the same capability under two
+ * names, and capabilities.js derives which is canonical (see applySupersession).
+ * The scoring tier already skips the superseded name; the pattern rules predate
+ * the derivation and still carry the old one, so a multi-part question came
+ * back naming `who_is_absent_today` where a single-part question named
+ * `get_absent_students`. One answer, two names, depending on how the sentence
+ * was punctuated.
+ *
+ * Only ever substitutes a name the caller can actually reach, so this cannot
+ * widen anything.
+ */
+function canonicalFor(actor, tool) {
+  const capability = capabilityIndex().find((c) => c.name === tool);
+  if (!capability?.supersededBy) return tool;
+  const reachable = capabilitiesFor(actor).some((c) => c.name === capability.supersededBy);
+  return reachable ? capability.supersededBy : tool;
+}
+
+/**
+ * The arguments to call a capability with, when two tiers agree on which.
+ *
+ * The scorer reads arguments generically, from each one's declared shape. A
+ * pattern rule reads them with an extractor written for that one capability,
+ * and sometimes knows more as a result: it can tell that "change its message to
+ * 'Submit the books'" fills `content` rather than `title`, and that "the latest
+ * announcement" sets a boolean no generic reader could see, because a boolean
+ * is a phrase rather than a value (see UNEXTRACTABLE_KINDS).
+ *
+ * So where both tiers name the SAME capability, the rule's arguments win and
+ * the scorer's fill the gaps. Neither tier is authoritative over the other
+ * about WHICH capability -- that is settled before this is called. This only
+ * takes the fuller reading of the sentence over the thinner one.
+ */
+function withRuleArguments(step, message, actor) {
+  const [best] = scoreRules(message, actor);
+  if (!best || canonicalFor(actor, best.rule.tool) !== step.tool) return step;
+  const fromRule = best.rule.args ? best.rule.args(String(message)) : {};
+  if (!Object.keys(fromRule).length) return step;
+
+  const scored = step.args ?? {};
+
+  // Where the rule places a piece of text, the generic reader's guess at where
+  // it went is dropped rather than kept alongside. "Change its message to
+  // 'Submit the books'" is one phrase with one destination: the rule knows it
+  // is the CONTENT, and leaving the scorer's `title` in as well would rename
+  // the announcement at the same time as rewording it -- a second change
+  // nobody asked for, on the same confirmation.
+  const placedByRule = new Set(Object.values(fromRule).filter((v) => typeof v === 'string'));
+  const kept = Object.fromEntries(
+    Object.entries(scored).filter(
+      ([key, value]) => !(typeof value === 'string' && placedByRule.has(value) && fromRule[key] === undefined),
+    ),
+  );
+
+  // The rule FILLS GAPS; it does not overwrite. Neither reading is reliably
+  // the better one -- the rule knows destinations the scorer cannot infer, and
+  // the scorer reads some values more carefully than the rule does. "Create
+  // Mathematics homework for Class 5-A." is the case that settles it: the
+  // scorer reads the class as "Class 5-A" and the rule's own extractor stops
+  // at "Class 5", so letting the rule win lost the section.
+  const filled = { ...kept };
+  for (const [key, value] of Object.entries(fromRule)) {
+    if (filled[key] === undefined) filled[key] = value;
+  }
+  return { ...step, args: filled };
+}
+
+/** True when a capability changes data, from what the registry declares. */
+const isWrite = (tool) => getMcpTool(tool)?.operation !== 'GET';
+
+/** The step as the rest of the agent expects it: a tool and its arguments. */
+const asStep = ({ tool, args }) => ({ tool, args });
+
+/**
+ * The entities a message fits equally well, when it fits more than one.
+ *
+ * Returned only where the capability resolver found a real tie -- two
+ * capabilities about DIFFERENT things, scoring within a hair of each other.
+ * "I want to request Introduction to Algorithms" is the worked example: a book
+ * and a co-curricular activity are both things a student requests, and the
+ * sentence says which only if you already know the catalogue.
+ *
+ * The assistant asks in that case. It used to answer "I'm not sure what you
+ * need. I can help with: students, attendance, fees ..." -- a list of modules,
+ * offered to somebody who had just named one. Naming the two real candidates
+ * is a question a person can answer in one word.
+ */
+export function clarificationFor(message, actor) {
+  if (!mayBeRouted(actor)) return null;
+  if (FOLLOW_UP_PRONOUN.test(String(message ?? ''))) return null;
+  const resolved = resolveCapability(message, actor);
+  if (!resolved?.needsClarification) return null;
+
+  const entities = [...new Set(resolved.options.map((o) => o.entity))];
+  return entities.length > 1 ? { entities, tools: resolved.options.map((o) => o.tool) } : null;
+}
+
+/**
+ * Drops a rule match that would answer a narrower question more broadly.
+ *
+ * The measured failure: "show outstanding fees for Class 5A" matched the
+ * pending-fees rule on the word "outstanding", and that tool has no way to
+ * express a class — so the class was silently dropped and a school-wide figure
+ * was presented as the answer. The same shape produced hostel occupancy for a
+ * question about Room 101 and a whole year's register for a question about one
+ * month.
+ *
+ * Generic, and derived: it compares what the sentence NAMED against what the
+ * chosen tool's schema can accept. No tool, phrase or role is named here.
+ */
+function respectsSpecificity(step, message, actor) {
+  const capability = capabilityIndex().find((c) => c.name === step.tool);
+  if (!capability) return true;
+  const named = dimensionsOf(message);
+
+  // What was ASKED FOR, as opposed to what was matched. A sentence whose verb
+  // is one the catalogue uses for writing must not be answered by a capability
+  // that reads, and a request to cancel must not be answered by one that
+  // creates. The verbs come from the registry, so this knows every verb the
+  // catalogue can perform and no more.
+  if (actor) {
+    const asked = operationsAskedFor(message, actor);
+    if (asked.size) {
+      const family = new Set([...asked].flatMap((op) => OPERATION_FAMILY[op] ?? [op]));
+      if (!family.has(capability.operation)) return false;
+    }
+  }
+
+  // What the step CARRIES, not what its schema could have held. A capability
+  // with a `month` argument can express a range in principle; if the call
+  // being proposed does not actually carry one, the range the person asked
+  // for has been dropped, and an answer about the wrong period is the bug
+  // this guard exists to stop.
+  const args = step.args ?? {};
+  const carried = {
+    class: () => Boolean(args.className || args.sectionId || args.query || args.search),
+    numbered: () => Boolean(args.roomNo || args.roomNumber || args.routeId || args.routeName || args.bedNo),
+    range: () => Boolean((args.from && args.to) || args.month),
+  };
+  for (const [dimension, present] of Object.entries(carried)) {
+    if (named[dimension] && !present()) return false;
+  }
+  return true;
+}
+
+/**
+ * Whether this actor may be routed at all.
+ *
+ * The self and entity tiers already checked this; the pattern rules did not,
+ * and that was a real hole. A role with no assistant permission -- SUPER_ADMIN
+ * is the one that matters -- still had its message matched against the rule
+ * table, so "create a fee head" came back proposing a fee tool. The MCP server
+ * would have refused the call, but a proposal is already more than zero
+ * access, and zero is the requirement. Checked once, at the top, for every
+ * tier.
+ */
+const mayBeRouted = (actor) => Boolean(actor?.permissions?.[AI_ASSISTANT_PERMISSION]);
+
+/**
+ * Whether the tier that proposed a capability should be allowed to.
+ *
+ * The answer is almost always yes, and deliberately so. This layer CHOOSES and
+ * the tool layer AUTHORIZES -- that separation is the whole security model, and
+ * filtering proposals here quietly broke the half of it people see: a teacher
+ * asking to record a payment was told "I don't have anything on that" instead
+ * of being told plainly that they are not authorized, because the proposal the
+ * server would have refused legibly was never made.
+ *
+ * So a proposal stands whatever the caller holds, and the MCP server refuses it
+ * with a 403 and a sentence. The one thing checked here is the assistant
+ * permission itself, because a role that may not use the assistant at all
+ * should not have a proposal made in its name in the first place -- see
+ * mayBeRouted, which every tier goes through.
+ */
+function heldBy(actor, tool) {
+  // Kept as a named predicate rather than deleted: the self-category and entity
+  // tiers use it to prefer a tier that can actually run, which is a routing
+  // preference, not an authorization decision.
+  return Boolean(actor) && Boolean(tool);
+}
+
 /** Rule-based parse. Returns { tool, args } or null. */
 export function parseIntent(message, actor) {
-  const own = selfStep(message, actor);
-  if (own) return own;
+  if (!mayBeRouted(actor)) return null;
+
+  const capability = capabilityStep(message, actor);
+
+  // A confident WRITE outranks every other tier. The tiers below read a coarse
+  // verb-stem table that does not know the catalogue's own verbs -- "publish
+  // marks" and "grade submission" are not in it -- so they read those as
+  // questions and answered a request to publish with a list of marks. The
+  // capability resolver knows every verb the catalogue uses, because the
+  // catalogue is where it gets them.
+  if (capability && !capability.tentative && isWrite(capability.tool)
+    && respectsSpecificity(asStep(capability), String(message), actor)) {
+    return withRuleArguments(asStep(capability), message, actor);
+  }
+
+  // Attendance, marks and homework: that tier resolves operation x entity x
+  // scope for the three entities it claims, it yields whenever it cannot see
+  // all three, and it is what keeps "show attendance for July" a question
+  // about a month rather than about a class.
   const entity = entityStep(message, actor);
-  if (entity) return entity;
+  if (entity && heldBy(actor, entity.tool) && respectsSpecificity(entity, String(message), actor)) return entity;
+
+  const own = selfStep(message, actor);
+  // When both tiers name the SAME capability, the self-category tier's
+  // arguments are the richer ones: it decided which part of the caller's own
+  // profile was asked for, and the scorer only decided the tool. Taking the
+  // scorer's empty argument list there answered "what is my blood group" with
+  // a whole profile.
+  if (own && capability && own.tool === capability.tool && heldBy(actor, own.tool)) return own;
+
+  if (capability && !capability.tentative && respectsSpecificity(asStep(capability), String(message), actor)) {
+    return withRuleArguments(asStep(capability), message, actor);
+  }
+
+  if (own && heldBy(actor, own.tool) && respectsSpecificity(own, String(message), actor)) return own;
+
   const [best] = scoreRules(message, actor);
-  if (!best) return null;
-  return { tool: best.rule.tool, args: best.rule.args ? best.rule.args(String(message)) : {} };
+  if (best && heldBy(actor, best.rule.tool)) {
+    const step = {
+      tool: canonicalFor(actor, best.rule.tool),
+      args: best.rule.args ? best.rule.args(String(message)) : {},
+    };
+    if (respectsSpecificity(step, String(message), actor)) return step;
+  }
+  // Nothing else matched. A tentative capability is a better answer than none
+  // -- but not when it would drop what the request narrowed it to. A confident
+  // wrong answer about the whole school is worse than saying so.
+  if (capability && respectsSpecificity(asStep(capability), String(message), actor)) return asStep(capability);
+  return null;
 }
 
 /** Two clauses joined — the shape of a question that needs more than one tool. */
@@ -827,14 +1098,41 @@ export const MAX_PLAN_STEPS = 3;
  */
 export function parsePlan(message, actor) {
   const msg = String(message ?? '');
+  if (!mayBeRouted(actor)) return [];
+
+  const capability = capabilityStep(msg, actor);
+  // A capability match is ONE step. A message that joins two questions --
+  // "who is absent today and what is the fee collection?" -- needs both, and
+  // answering only the higher-scoring half is the near-miss this planner
+  // exists to avoid. So when the sentence joins clauses, the rules are given
+  // the chance to plan first, and their plan is used when it really covers
+  // more than one thing.
+  const joined = CONJUNCTION.test(msg);
+  if (capability && !joined && !capability.tentative && isWrite(capability.tool)
+    && respectsSpecificity(asStep(capability), msg, actor)) {
+    return [withRuleArguments(asStep(capability), msg, actor)];
+  }
+
+  const entity = entityStep(msg, actor);
+  if (entity && heldBy(actor, entity.tool) && respectsSpecificity(entity, msg, actor)) return [entity];
+
   // A question about the caller's own profile, classes, subjects or timetable
   // is one step and needs no planning.
   const own = selfStep(msg, actor);
-  if (own) return [own];
-  const entity = entityStep(msg, actor);
-  if (entity) return [entity];
+  if (own && capability && own.tool === capability.tool && heldBy(actor, own.tool)) return [own];
+
+  if (capability && !joined && !capability.tentative && respectsSpecificity(asStep(capability), msg, actor)) {
+    return [withRuleArguments(asStep(capability), msg, actor)];
+  }
+
+  if (own && heldBy(actor, own.tool) && respectsSpecificity(own, msg, actor)) return [own];
+
+  const tentative = capability && respectsSpecificity(asStep(capability), msg, actor)
+    ? [{ ...asStep(capability), tentative: true }]
+    : [];
+
   const matches = scoreRules(msg, actor);
-  if (!matches.length) return [];
+  if (!matches.length) return tentative;
 
   const steps = [matches[0]];
   if (CONJUNCTION.test(msg)) {
@@ -849,7 +1147,19 @@ export function parsePlan(message, actor) {
     }
   }
 
-  return steps.map(({ rule }) => ({ tool: rule.tool, args: rule.args ? rule.args(msg) : {} }));
+  const planned = steps
+    .map(({ rule }) => ({ tool: canonicalFor(actor, rule.tool), args: rule.args ? rule.args(msg) : {} }))
+    .filter((step) => respectsSpecificity(step, msg, actor));
+
+  // Two or more clauses answered is what the rules were given the first turn
+  // for. One is not: a single rule match is the weaker reading, and the
+  // capability match -- which read the whole request -- wins it back.
+  if (planned.length > 1) return planned;
+  if (capability && !capability.tentative && respectsSpecificity(asStep(capability), msg, actor)) {
+    return [asStep(capability)];
+  }
+  if (planned.length) return planned;
+  return tentative;
 }
 
 /**
@@ -942,7 +1252,17 @@ function carrySubjectForward(steps, message, actor, { history = [], tools = null
 }
 
 export async function parseIntentWithLlm(message, actor, { callModel, history = [], tools = null } = {}) {
-  const rulePlan = carrySubjectForward(parsePlan(message, actor), message, actor, { history, tools });
+  const rawPlan = parsePlan(message, actor);
+  // A plan the deterministic tiers are not sure of. It stands when no model is
+  // configured, and gives way to one when there is -- which is what a model is
+  // for: the sentences the rules and the registry cannot read confidently.
+  const tentative = rawPlan.length === 1 && rawPlan[0].tentative === true;
+  const rulePlan = carrySubjectForward(
+    rawPlan.map(({ tool, args }) => ({ tool, args })),
+    message,
+    actor,
+    { history, tools },
+  );
   const rules = rulePlan.length ? { ...rulePlan[0], steps: rulePlan } : null;
 
   // The rule parser is deliberately tried first: when it matches, it is
@@ -964,7 +1284,7 @@ export async function parseIntentWithLlm(message, actor, { callModel, history = 
   // which tools read.
   const misroutedDestructive = Boolean(rules && tools && DESTRUCTIVE_REQUEST.test(String(message ?? '')) &&
     rules.steps.every((step) => tools.find((t) => t.name === step.tool)?.annotations?.readOnlyHint !== false));
-  if (rules && !isBareFollowUp(message, history) && !misroutedDestructive) return rules;
+  if (rules && !tentative && !isBareFollowUp(message, history) && !misroutedDestructive) return rules;
 
   const call = callModel ?? defaultCallModel;
   // Falls back to the rule match rather than to null: a follow-up we could not

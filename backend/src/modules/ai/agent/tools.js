@@ -411,7 +411,10 @@ export const TOOLS = {
     description: 'Class timetable for a day',
     permission: 'timetable.read',
     mutates: false,
-    params: { day: 'day name, optional; defaults to today' },
+    params: {
+      day: 'day name, optional; defaults to today',
+      sectionId: 'one class, optional; defaults to whatever the caller may see',
+    },
     /**
      * Fronts timetable.getTimetable(), which already resolves whose timetable
      * this is: a teacher sees the periods they personally teach, a student or
@@ -421,7 +424,12 @@ export const TOOLS = {
      * day and renders the result.
      */
     async execute(actor, scope, args = {}) {
-      const slots = await timetable.getTimetable(actor, scope, null);
+      // The section is honoured rather than ignored. Without it "today's Class
+      // 5-A timetable" returned every period the caller could see, which for
+      // an administrator is the whole school -- a broader answer than the
+      // question, presented as the answer to it. The service still decides
+      // whether this caller may see that section.
+      const slots = await timetable.getTimetable(actor, scope, args.sectionId ?? null);
 
       const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
       // Relative words are resolved here rather than at parse time, because
@@ -451,10 +459,15 @@ export const TOOLS = {
       if (today.length === 0) return { speakKey: 'timetable.none', params: { day: dayName }, data: { slots: [] } };
 
       const shown = today.slice(0, 12);
+      // The teacher is named because "with teachers" is how the question is
+      // asked, and the offering is already populated with them -- leaving it
+      // out meant answering a question about who teaches with a list of
+      // subjects.
       const list = shown
         .map((s) => {
           const subject = s.subjectOfferingId?.subjectId?.name ?? 'Break';
-          return `P${s.periodNo} ${s.startTime}-${s.endTime} ${subject}`;
+          const teacher = s.subjectOfferingId?.teacherId?.displayName;
+          return `P${s.periodNo} ${s.startTime}-${s.endTime} ${subject}${teacher ? ` (${teacher})` : ''}`;
         })
         .join('; ');
 
