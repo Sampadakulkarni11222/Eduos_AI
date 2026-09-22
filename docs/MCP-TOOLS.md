@@ -698,7 +698,7 @@ The submissions for one assignment, with each student's status and marks where g
 
 ### `create_assignment`
 
-Set an assignment or homework for a class you teach. Every student in that section sees it, so it needs confirmation.
+Set an assignment or homework for a class. Identify the class and subject by name -- "Mathematics" for "Class 5-A" -- or by subjectOfferingId when you have one. Every student in that section sees it, so it needs confirmation.
 
 | | |
 |---|---|
@@ -708,13 +708,13 @@ Set an assignment or homework for a class you teach. Every student in that secti
 | **Permission** | `assignments.manage` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `assignment.service.create()` |
+| **EduOS service** | `homework.service.resolveOffering() + assignment.service.create()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.create_assignment` |
 
 **Input**
 
-`subjectOfferingId`: string **(required)** — The class and subject it is for<br>`title`: string **(required)**<br>`description`: string<br>`dueAt`: string **(required)**<br>`maxMarks`: integer<br>`type`: string — one of: HOMEWORK, PROJECT, WORKSHEET, LAB<br>`chapter`: string
+`subjectOfferingId`: string — The class and subject it is for, when known<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — The subject, as a person names it, e.g. "Mathematics"<br>`title`: string **(required)** — What the work is -- the task, or its topic<br>`description`: string<br>`dueAt`: string **(required)** — When it must be handed in<br>`maxMarks`: integer<br>`type`: string — one of: HOMEWORK, PROJECT, WORKSHEET, LAB<br>`chapter`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 

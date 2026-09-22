@@ -2993,18 +2993,29 @@
       "name": "create_assignment",
       "module": "Assignments",
       "operation": "CREATE",
-      "description": "Set an assignment or homework for a class you teach. Every student in that section sees it, so it needs confirmation.",
+      "description": "Set an assignment or homework for a class. Identify the class and subject by name -- \"Mathematics\" for \"Class 5-A\" -- or by subjectOfferingId when you have one. Every student in that section sees it, so it needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
           "subjectOfferingId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
-            "description": "The class and subject it is for"
+            "description": "The class and subject it is for, when known"
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The subject, as a person names it, e.g. \"Mathematics\""
           },
           "title": {
             "type": "string",
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "What the work is -- the task, or its topic"
           },
           "description": {
             "type": "string",
@@ -3012,7 +3023,8 @@
           },
           "dueAt": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "When it must be handed in"
           },
           "maxMarks": {
             "type": "integer",
@@ -3034,7 +3046,6 @@
           }
         },
         "required": [
-          "subjectOfferingId",
           "title",
           "dueAt"
         ],
@@ -3046,7 +3057,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": true,
       "readOnly": false,
-      "service": "assignment.service.create()",
+      "service": "homework.service.resolveOffering() + assignment.service.create()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
