@@ -63,15 +63,21 @@ export const studentTools = {
     operation: 'GET',
     risk: RISK.LOW,
     description:
-      'Find students by name, admission number or class. Use this first whenever the user names a student but you do not have their id. Returns each match with class, roll number, student id and enrolment id. Read-only.',
+      'The student directory: find students by name, admission number or class, or list the students the caller may see when no search is given. Use this first whenever the user names a student but you do not have their id. Returns each match with class, roll number, student id and enrolment id. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
-        query: { type: 'string', maxLength: 80, description: 'Name, admission number or class, e.g. "Rahul", "OAK-12", "Class 6 A"' },
+        query: { type: 'string', maxLength: 80, description: 'Name, admission number or class, e.g. "Rahul", "OAK-12", "Class 6 A". Omit to list everyone in scope.' },
         sectionId: objectId('Restrict to one section'),
         limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Default 20' },
       },
-      required: ['query'],
+      // `query` is NOT required. The Web students page lists the directory
+      // with no search term in the box, so demanding one here made a plain
+      // "show me the students in my school" impossible to answer -- the call
+      // was refused with "query is required", which is a REST validation
+      // message shown to somebody having a conversation. The scope of the
+      // listing is still the caller's own students.read scope, exactly as the
+      // page is.
       additionalProperties: false,
     },
     permission: 'students.read',
@@ -83,8 +89,9 @@ export const studentTools = {
       // "Class 5-A"*, which claimed the class was empty when in fact nothing
       // had resolved it. A class the caller does not teach is refused by name
       // inside resolveSection(), never answered with a count.
-      const ownClasses = refersToOwnClasses(args.query);
-      const named = ownClasses ? null : classFromText(args.query);
+      const asked = args.query ?? '';
+      const ownClasses = refersToOwnClasses(asked);
+      const named = ownClasses ? null : classFromText(asked);
       const section = args.sectionId || named
         ? await resolveSection(ctx, { sectionId: args.sectionId, className: named?.text })
         : null;
@@ -94,9 +101,11 @@ export const studentTools = {
         // searches the text. "my classes" needs neither — an OWN-scoped
         // teacher's list is already exactly their own students.
         ...(section && { sectionId: section.sectionId }),
-        ...(!section && !ownClasses && { search: args.query }),
+        ...(!section && !ownClasses && asked && { search: asked }),
         page: 1,
-        pageSize: Math.min(Number(args.limit) || (section || ownClasses ? 50 : 20), 50),
+        // An unfiltered listing is a browse rather than a lookup, so it gets
+        // the larger page the class views already use.
+        pageSize: Math.min(Number(args.limit) || (section || ownClasses || !asked ? 50 : 20), 50),
       });
       const items = page.items ?? [];
       // Minimised on purpose: a search result is a way to pick a student, not a
@@ -128,9 +137,15 @@ export const studentTools = {
       return ok(
         { students: rows, total, returned: rows.length, ...(section && { class: section.label }) },
         {
-          speak: classAnswer ?? ownAnswer ?? (rows.length
-            ? `Found ${total} student(s) matching "${args.query}": ${view.list}.`
-            : `No students match "${args.query}".`),
+          // An unfiltered listing is not a failed search, so it does not say
+          // "no students match" and does not quote a search term nobody gave.
+          speak: classAnswer ?? ownAnswer ?? (asked
+            ? (rows.length
+              ? `Found ${total} student(s) matching "${asked}": ${view.list}.`
+              : `No students match "${asked}".`)
+            : (total
+              ? `${total} student(s): ${view.list}${view.more ? ', and more' : ''}.`
+              : 'There are no students on the roll.')),
         },
       );
     },

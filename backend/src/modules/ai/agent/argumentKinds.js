@@ -118,9 +118,17 @@ export function extractEnum(message, schema = {}) {
   if (!values.length) return missing();
   const text = String(message ?? '');
 
+  // A person writes the verb, not the stored value: "approve this request"
+  // asks for the status APPROVED, and matching the value's own spelling alone
+  // found nothing -- so a decision tool could never be reached from the word
+  // that asks for it. The value's stem is tried as a prefix, which covers
+  // approve/approved/approving without a list of inflections anywhere.
+  const stemOf = (word) => String(word).toLowerCase().replace(/(ed|ing|s)$/, '');
   const hits = values.filter((value) => {
     const spelt = String(value).replace(/_/g, '[ _]');
-    return new RegExp(`\\b${spelt}\\b`, 'i').test(text);
+    if (new RegExp(`\\b${spelt}\\b`, 'i').test(text)) return true;
+    const root = stemOf(String(value).replace(/_/g, ' '));
+    return root.length >= 4 && new RegExp(`\\b${root}(?:e|ed|es|ing|s)?\\b`, 'i').test(text);
   });
   const unique = [...new Set(hits)];
   if (unique.length === 1) return found(unique[0]);

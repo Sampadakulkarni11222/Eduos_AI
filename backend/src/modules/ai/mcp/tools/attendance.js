@@ -399,6 +399,7 @@ export const attendanceTools = {
             additionalProperties: false,
           },
         },
+        ...classIdentitySchema,
         sectionId: objectId('The class section, when giving entries'),
         entries: {
           type: 'array',
@@ -472,10 +473,18 @@ export const attendanceTools = {
         };
       }
 
-      if (!args.sectionId || !args.entries?.length) {
+      // A class named in words is resolved at the caller's own scope, the same
+      // way every other class-level tool resolves one. Without it "mark
+      // attendance for Class 5-A" could not reach this capability at all: the
+      // class it named was inexpressible, so the request scored as being about
+      // something else entirely.
+      const section = await resolveSection(ctx, args);
+      const sectionId = section?.sectionId ?? args.sectionId ?? null;
+
+      if (!sectionId || !args.entries?.length) {
         throw new AppError('Which students should I mark, and as what?', 400, [], 'AGENT_NEEDS_INPUT');
       }
-      return { sectionId: args.sectionId, date, periodNo, entries: args.entries, names: null, className: null };
+      return { sectionId, date, periodNo, entries: args.entries, names: null, className: section?.label ?? null };
     },
     /**
      * Attendance is the tool most likely to be disputed later ("my child was

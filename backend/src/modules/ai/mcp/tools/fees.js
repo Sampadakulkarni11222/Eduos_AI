@@ -2,7 +2,7 @@ import * as fees from '../../../fees/fee.service.js';
 import * as plans from '../../../fees/plan.service.js';
 import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
-import { RISK, objectId, dateStr, rupees, paise, summarise, wrapAgentTool } from './_shared.js';
+import { RISK, objectId, dateStr, rupees, paise, summarise, wrapAgentTool, resolveSectionId, classIdentitySchema } from './_shared.js';
 
 /**
  * Fee and payment tools.
@@ -24,6 +24,9 @@ import { RISK, objectId, dateStr, rupees, paise, summarise, wrapAgentTool } from
 
 /** Manual payment modes: fee.service PAYMENT_MODES, less GATEWAY (online-only). */
 const MANUAL_MODES = ['CASH', 'CHEQUE', 'DD', 'BANK'];
+
+/** What a payment is taken as when nobody says. See record_payment's schema. */
+const DEFAULT_PAYMENT_MODE = 'CASH';
 
 /** The instrument details buildInstrument() requires for CHEQUE, DD and BANK. */
 const instrumentSchema = {
@@ -90,6 +93,7 @@ export const feeTools = {
       type: 'object',
       properties: {
         search: { type: 'string', maxLength: 80, description: 'One student by name or admission number, or an invoice number' },
+        ...classIdentitySchema,
         sectionId: objectId(),
         academicYearId: objectId(),
         limit: { type: 'integer', minimum: 1, maximum: 100, description: 'Invoices to return, default 25' },
@@ -106,11 +110,17 @@ export const feeTools = {
      * the invoices that matched; only an unfiltered read uses getSummary().
      */
     async run(ctx, args) {
-      const filtered = Boolean(args.search || args.sectionId);
+      // A class named in words is resolved to a section at the caller's own
+      // scope, by the same helper every class-level tool uses. Without it the
+      // class in "outstanding fees for Class 5A" was silently dropped and a
+      // school-wide total was presented as the answer to a question about one
+      // class -- a true number answering something nobody asked.
+      const sectionId = (await resolveSectionId(ctx, args)) ?? args.sectionId ?? null;
+      const filtered = Boolean(args.search || sectionId);
       const [invoicesRaw, totals] = await Promise.all([
         fees.listInvoices(ctx.actor, ctx.scope, {
           ...(args.search && { search: args.search }),
-          ...(args.sectionId && { sectionId: args.sectionId }),
+          ...(sectionId && { sectionId }),
           ...(args.academicYearId && { academicYearId: args.academicYearId }),
         }),
         filtered ? null : fees.getSummary(ctx.actor, ctx.scope, { ...(args.academicYearId && { academicYearId: args.academicYearId }) }),
@@ -180,6 +190,14 @@ export const feeTools = {
       additionalProperties: false,
     },
     permission: 'fees.read',
+    // The Web finance dashboard that shows billed/collected/collection-rate is
+    // behind a school-wide fees.read; a family's fee screen shows their own
+    // balance and nothing else. Without this the capability was offered to a
+    // student, and answering "what is the fee collection so far" from an
+    // OWN-scoped summary produced "0% collection rate" -- a school-shaped
+    // answer to a question they may not ask at all. get_fees is their
+    // capability, and it stays.
+    minScope: 'ALL',
     service: 'fee.service.getSummary()',
     async run(ctx, args) {
       const s = await fees.getSummary(ctx.actor, ctx.scope, { ...(args.academicYearId && { academicYearId: args.academicYearId }) });
@@ -602,13 +620,26 @@ export const feeTools = {
         invoiceId: objectId('Preferred when known'),
         invoiceNo: { type: 'string', maxLength: 40, description: 'Alternative to invoiceId' },
         amountPaise: { type: 'integer', minimum: 1, description: 'Whole paise. ₹500 is 50000.' },
-        mode: { type: 'string', enum: MANUAL_MODES },
+        mode: { type: 'string', enum: MANUAL_MODES, description: 'Cash unless another mode is named' },
         paidOn: dateStr(),
         receiptNo: { type: 'string', maxLength: 40 },
         notes: { type: 'string', maxLength: 500 },
         instrument: instrumentSchema,
       },
-      required: ['amountPaise', 'mode'],
+      // `mode` is NOT required, and defaults to CASH below.
+      //
+      // That default is not new -- it has always been applied, but in the
+      // pattern rule that parsed the sentence ("mode: MODES[mode] ?? 'CASH'"),
+      // which is business behaviour living in the language layer. Any other
+      // route to the same tool therefore behaved differently from that one
+      // phrasing, and "record a payment of Rs 500 against invoice INV-1042"
+      // came back asking for a detail the rules would have filled in.
+      //
+      // It is safe because nothing is recorded on it alone: the confirmation a
+      // person approves names the mode ("Record a Rs 500 CASH payment against
+      // invoice INV-1042"), so a default they did not mean is visible before
+      // it is accepted, not after.
+      required: ['amountPaise'],
       additionalProperties: false,
     },
     permission: 'fees.pay',
@@ -616,7 +647,8 @@ export const feeTools = {
     affectsOthers: true,
     service: 'fee.service.recordPayment()',
     summarise: (args, _actor, prepared) =>
-      `Record a ${rupees(args.amountPaise)} ${args.mode} payment against invoice ${prepared?.invoiceNo ?? args.invoiceNo ?? args.invoiceId}`,
+      `Record a ${rupees(args.amountPaise)} ${args.mode ?? DEFAULT_PAYMENT_MODE} payment `
+      + `against invoice ${prepared?.invoiceNo ?? args.invoiceNo ?? args.invoiceId}`,
     /** Resolves the invoice before the confirmation, so the summary names it and a wrong number fails first. */
     async prepare(ctx, args) {
       return resolveInvoice(ctx, args);
@@ -644,7 +676,11 @@ export const feeTools = {
       const { invoiceNo: _named, ...rest } = args;
       // recordPayment() returns { payment, receiptNo, recordStatus, ... } on
       // both the direct and the pending-approval path; the row is `.payment`.
-      const result = await fees.recordPayment(ctx.actor, ctx.scope, { ...rest, invoiceId: target.invoiceId });
+      const result = await fees.recordPayment(ctx.actor, ctx.scope, {
+        ...rest,
+        mode: args.mode ?? DEFAULT_PAYMENT_MODE,
+        invoiceId: target.invoiceId,
+      });
       const paymentId = String(result.payment._id);
       const pendingApproval = result.recordStatus === 'PENDING_ADMIN_APPROVAL';
       return action({

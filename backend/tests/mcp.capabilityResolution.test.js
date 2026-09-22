@@ -180,10 +180,29 @@ describe('4. required arguments', () => {
   });
 
   it('does choose a capability whose missing required arguments are answerable in words', () => {
-    // generate_homework requires topic and dueAt. Routing there and letting the
-    // tool ask is a better answer than refusing, because a person can say them.
+    // The PROPERTY, asserted rather than the name that happened to hold it:
+    // routing to a capability whose missing arguments a person can simply say,
+    // and letting the tool ask for them, is a better answer than refusing.
+    //
+    // It used to name generate_homework, which requires a topic and a due
+    // date. create_assignment -- which SETS the work rather than drafting it
+    // with AI -- now also identifies its class and subject by name, so it too
+    // is reachable from these words and wins on the verb the sentence used
+    // ("create"). Both satisfy the property, so the property is what is
+    // checked: every required argument still missing must be one a person
+    // could answer in a sentence, never an ObjectId.
     const resolved = detectEntityIntent('create Mathematics homework for Class 5-A', teacherActor());
-    expect(resolved?.tool).toBe('generate_homework');
+    expect(resolved?.tool).toBeTruthy();
+
+    const capability = capabilityOf(resolved.tool);
+    expect(capability.module).toBe('Assignments');
+    expect(capability.operation === 'CREATE' || capability.operation === 'ACTION').toBe(true);
+
+    const stillMissing = (capability.required ?? []).filter((name) => resolved.args[name] === undefined);
+    for (const name of stillMissing) {
+      expect(capability.ids, `${resolved.tool}.${name} cannot be said in words`).not.toContain(name);
+    }
+
     expect(resolved.args.subject).toBe('Mathematics');
     expect(resolved.args.className).toMatch(/5-?A/i);
   });

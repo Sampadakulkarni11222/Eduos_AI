@@ -171,8 +171,8 @@ describe('concurrent calls', () => {
 
   it('one request that needs two MCP calls makes both, and audits both', async () => {
     const res = await api.ask(school.people.ADMIN, 'who is absent today and what is the fee collection?');
-    expect(res.tools).toEqual(['who_is_absent_today', 'get_fee_statistics']);
-    expect(await auditWith('who_is_absent_today', 'READ')).not.toBeNull();
+    expect(res.tools).toEqual(['get_absent_students', 'get_fee_statistics']);
+    expect(await auditWith('get_absent_students', 'READ')).not.toBeNull();
     expect(await auditWith('get_fee_statistics', 'READ')).not.toBeNull();
   });
 });

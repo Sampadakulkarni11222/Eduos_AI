@@ -2,7 +2,8 @@ import { AuditLog } from '../../../models/auditLog.model.js';
 import { checkAgentRate, recordInjectionAttempt } from './throttle.js';
 import { AppError } from '../../../utils/AppError.js';
 import { logger } from '../../../utils/logger.js';
-import { parseIntentWithLlm, parseIntent, MAX_PLAN_STEPS } from './intent.js';
+import { parseIntentWithLlm, parseIntent, clarificationFor, MAX_PLAN_STEPS } from './intent.js';
+import { unmetNarrowing } from './capabilityResolver.js';
 import { detectLanguage, t } from '../../../utils/language.js';
 import { currentTenantId } from '../../../tenancy/tenantContext.js';
 import { handleRagFallback } from './rag.js';
@@ -204,6 +205,35 @@ const TOPIC_LABELS = {
   Registrations: 'subject registrations',
   'Student requests': 'student requests',
 };
+
+/**
+ * An entity as a person would say it, for a clarifying question.
+ *
+ * The entity names are the resolver's vocabulary, not a person's: "studentRequest"
+ * is not a thing anybody says. A small map with a readable fallback, like
+ * TOPIC_LABELS above, and for the same reason.
+ */
+const ENTITY_TOPICS = {
+  studentRequest: 'a co-curricular request',
+  library: 'a library book',
+  transport: 'a bus route',
+  hostel: 'the hostel',
+  fee: 'fees',
+  marks: 'marks',
+  homework: 'homework',
+  attendance: 'attendance',
+  student: 'a student',
+  ticket: 'a support ticket',
+  leave: 'leave',
+  calendar: 'the calendar',
+  timetable: 'the timetable',
+  announcement: 'an announcement',
+  material: 'a document',
+  medical: 'a medical record',
+  profile: 'your profile',
+};
+
+const TOPIC_OF_ENTITY = (entity) => ENTITY_TOPICS[entity] ?? String(entity).toLowerCase();
 
 /**
  * What the assistant can help with — and NEVER the tool descriptions.
@@ -439,6 +469,40 @@ async function routeTurn({ mcpSession, message, actor, source, lang, history }) 
     const ragReply = await handleRagFallback(message, actor, lang);
     if (ragReply) {
       return { reply: ragReply, lang, action: null, knowledge: true, sources: ['RAG'] };
+    }
+
+    // Before shrugging: did the request fit two things equally well? That is a
+    // question, not a failure, and asking it is a far better answer than a
+    // list of every module the caller can reach.
+    const ambiguous = clarificationFor(message, actor);
+    if (ambiguous) {
+      return {
+        reply: t('agent.which', lang, { options: ambiguous.entities.map(TOPIC_OF_ENTITY).join(' or ') }),
+        lang,
+        action: null,
+        suggestions: ambiguous.tools,
+      };
+    }
+
+    // Nothing fits, and sometimes there is a REASON worth saying. A request
+    // that named a class and a year of attendance is not a request nobody
+    // understood -- it is one this system cannot narrow that far, and the Web
+    // cannot either. Saying which part could not be honoured is a better
+    // answer than the list of topics, and it is the only answer that does not
+    // invite the person to rephrase something that will never work.
+    const unmet = unmetNarrowing(message, actor);
+    if (unmet) {
+      const asked = unmet.words.length > 1
+        ? `${unmet.words.slice(0, -1).join(', ')} and ${unmet.words.at(-1)}`
+        : unmet.words[0];
+      const offered = String(unmet.description ?? '').split(/(?<=\.)\s/)[0].trim();
+      return {
+        reply: `I can't narrow that by ${asked}.${offered ? ` What I can give you: ${offered}` : ''}`,
+        lang,
+        action: null,
+        refused: 'CANNOT_NARROW',
+        suggestions: [unmet.tool],
+      };
     }
 
     const available = mcpTools;
@@ -688,14 +752,43 @@ function needsInputReply(toolName, err, lang) {
   // arguments -- so a teacher whose question did not quite fit was shown the
   // internal catalog. What is actually missing is said instead, in the words a
   // person would use; a field nobody has a phrase for is simply left out.
-  const missing = missingParameters(err?.errors ?? err?.details?.errors)
-    .map((field) => FRIENDLY_FIELDS[field])
+  // `?? ` is the wrong test here: AppError carries `errors: []` by default, and
+  // an EMPTY array is not nullish, so the real list -- which the MCP server puts
+  // in details.errors -- was never read. Every missing-argument question in the
+  // system therefore came out as the bare "I need a bit more to do that",
+  // which is true, unhelpful, and impossible to act on.
+  const reported = err?.errors?.length ? err.errors : err?.details?.errors;
+  const missing = missingParameters(reported)
+    .map((field) => FRIENDLY_FIELDS[field] ?? describedField(tool, field))
     .filter(Boolean);
   const unique = [...new Set(missing)];
   const asked = unique.length
     ? ` Tell me ${unique.length > 1 ? `${unique.slice(0, -1).join(', ')} and ${unique.at(-1)}` : unique[0]}.`
     : '';
   return `${t('agent.needsDetail', lang, { description: '' }).trim() || 'I need a bit more to do that.'}${asked}`;
+}
+
+/**
+ * What to call an argument that has no everyday phrasing of its own.
+ *
+ * FRIENDLY_FIELDS below is the preferred wording, but it is a fixed list and a
+ * new tool's arguments are not in it: `topic` and `dueAt` were not, so "create
+ * Mathematics homework for Class 5-A" was answered with a bare "I need a bit
+ * more to do that" -- true, unhelpful, and impossible to act on. The schema
+ * already describes each argument in words a person wrote, for the model's
+ * benefit; the same sentence serves a person asking.
+ *
+ * Only the leading clause is used, because the rest of a description is
+ * addressed to the model ("Preferred when known, e.g. from search_students").
+ * An argument that describes itself in no words at all is still left out
+ * rather than shown raw.
+ */
+function describedField(toolName, field) {
+  const described = getMcpTool(toolName)?.inputSchema?.properties?.[field]?.description;
+  if (typeof described !== 'string') return null;
+  const clause = described.split(/[.,;(]|\s--\s/)[0].trim();
+  if (!clause || clause.length > 60) return null;
+  return clause.charAt(0).toLowerCase() + clause.slice(1);
 }
 
 /** The arguments a validation failure says were not supplied. */
