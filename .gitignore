@@ -11,7 +11,7 @@
 !**/.env.example
 credentials.md
 
-session
+/session
 
 # Personal Claude Code permission overrides (per-developer, not team-wide)
 .claude/settings.local.json
