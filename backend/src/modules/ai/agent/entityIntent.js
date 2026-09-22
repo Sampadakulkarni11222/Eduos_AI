@@ -166,6 +166,10 @@ const NOT_A_SUBJECT = new Set([
   // which was then sent to a tool as though somebody had named one.
   'highest', 'lowest', 'best', 'worst', 'top', 'bottom', 'better', 'worse', 'good', 'bad',
   'for', 'with', 'from', 'into', 'than', 'then', 'there', 'here', 'they', 'them', 'their',
+  // Prepositions that INTRODUCE what something is about. "homework about
+  // linear equations" yielded the subject "about", which is then offered to a
+  // tool as though somebody had named a school subject called About.
+  'about', 'regarding', 'concerning', 'on', 'in', 'of', 'to',
   'these', 'those', 'many', 'much', 'more', 'most', 'few', 'less', 'how', 'why', 'when', 'where', 'who',
 ]);
 

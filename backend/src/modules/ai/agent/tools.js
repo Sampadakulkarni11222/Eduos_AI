@@ -591,11 +591,11 @@ export const TOOLS = {
      * in full — not a promise to generate something unseen afterwards.
      */
     async prepare(actor, scope, args) {
-      return homework.draftHomework(actor, args);
+      return homework.draftHomework(actor, scope, args);
     },
     summarise: (args, _actor, prepared) => prepared?.summary ?? `Set homework "${args.topic}"`,
     async execute(actor, scope, args, prepared) {
-      const draft = prepared ?? (await homework.draftHomework(actor, args));
+      const draft = prepared ?? (await homework.draftHomework(actor, scope, args));
       const created = await homework.commitHomework(actor, scope, draft);
       return {
         speakKey: 'homework.created',

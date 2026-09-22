@@ -66,7 +66,7 @@ import { monthFromText } from '../../../utils/naturalDates.js';
 import { rangeFromText } from '../../../utils/dateRanges.js';
 import { nameFromText } from '../../../utils/peopleNames.js';
 import { extractArgument, kindOfProperty, FOUND } from './argumentKinds.js';
-import { dateFromText, detectOperation, subjectFromText } from './entityIntent.js';
+import { dateFromText, detectOperation, subjectFromText, topicFromText } from './entityIntent.js';
 
 /* ── Reading the sentence ─────────────────────────────────── */
 
@@ -320,6 +320,27 @@ const SEARCH_REQUEST = /\b(find|search|look\s*up|locate)\b/i;
 const CONTENT_REQUEST =
   /\b(?:say|said|says|saying|mention|mentioned|state|stated|wording|worded)\b|\bcontents?\s+of\b|\bfull\s+text\b/i;
 
+/**
+ * A request for one record IN FULL, as opposed to a list or a figure.
+ *
+ * "Show the details of Arnav Patel" names a person and asks for everything
+ * about them. Nothing in that sentence is an entity word -- no "student", no
+ * "record" -- so the capability that answers it scored on the person's name
+ * alone and finished below the floor, and the turn fell through to "I'm not
+ * sure what you need". This is the counterpart of LIST_REQUEST: it says which
+ * SHAPE of answer was asked for, and the scorer credits the capabilities whose
+ * resultShape is that shape.
+ *
+ * Deliberately narrow. "record" is left out because it is also a verb -- a
+ * request to RECORD a payment is not a request for a record -- and "about"
+ * only counts in "tell me about", where it introduces a subject rather than
+ * qualifying one. "profile" is left out because it is an ENTITY word: "show my
+ * profile edit requests" asks for a LIST of requests, and reading the word as
+ * a request for one record in full sent it to the profile itself.
+ */
+const DETAIL_REQUEST =
+  /\bdetails?\b|\binformation\b|\binfo\b|\bparticulars\b|\btell\s+me\s+(?:more\s+)?about\b/i;
+
 /** A question asking for the rows themselves. */
 const LIST_REQUEST = /\blist\b|\ball\b|\bevery\b|\bwhich\b|\bavailable\b|\bshow\s+(?:me\s+)?(?:the\s+|my\s+)?\w/i;
 
@@ -460,11 +481,22 @@ function personShaped(run) {
 function capitalisedInText(name, text) {
   if (!name) return null;
   const first = String(name).split(/\s+/)[0];
-  const capitalised = first.charAt(0).toUpperCase() + first.slice(1);
-  const escaped = capitalised.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escape = (word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // A capital ANYWHERE in the word, or a digit or underscore, is the writer
+  // typing something on purpose rather than falling into a name-shaped slot.
+  // "test_Stud" and "Aarav2" are names schools really hold; requiring an
+  // initial capital said they were not, and the register could not be marked
+  // for either. "bananas" -- the accident this test exists for -- has none of
+  // these marks and is still refused.
+  if (/\p{Lu}|[\d_]/u.test(first)) {
+    return new RegExp(`\\b${escape(first)}\\b`, 'u').test(String(text)) ? name : null;
+  }
+
   // Case-SENSITIVE on purpose: the question is whether the writer wrote it as
   // a name, and the capital is exactly what says so.
-  return new RegExp(`\\b${escaped}\\b`).test(String(text)) ? name : null;
+  const capitalised = first.charAt(0).toUpperCase() + first.slice(1);
+  return new RegExp(`\\b${escape(capitalised)}\\b`).test(String(text)) ? name : null;
 }
 
 /**
@@ -515,30 +547,57 @@ export function dimensionsOf(text, now = new Date()) {
   const unquoted = str.replace(/["“”']([^"“”']{2,500})["“”']/g, ' ');
   const range = rangeFromText(unquoted, now);
   const admissionNo = admissionNoFromText(str);
-  return {
+
+  // Identity is read FIRST, and the subject is read from what is left.
+  //
+  // A span can only be one thing. "Mark Rahul Sharma absent today" was read as
+  // naming a person AND a school subject called "Sharma", because the subject
+  // rule -- the word before the entity word -- fell on the surname. Every
+  // attendance capability was then penalised for not being able to express a
+  // subject nobody had named, which is how the sentence finished below the
+  // floor. Removing what the identity dimensions already claimed is the same
+  // rule the entity tier uses (see rank), applied one step earlier.
+  const identity = {
     class: classFromText(str)?.text ?? null,
+    admissionNo,
+    student: admissionNo ? null : capitalisedInText(nameFromText(withoutLeadingVerb(str)), str)
+      ?? personShaped(titleFromText(str)),
+    numbered: numberedThingFromText(str),
+  };
+
+  return {
+    class: identity.class,
     admissionNo,
     // A name and an admission number identify the same thing; carrying both
     // would score one request twice.
-    student: admissionNo ? null : capitalisedInText(nameFromText(withoutLeadingVerb(str)), str)
-      ?? personShaped(titleFromText(str)),
+    student: identity.student,
     // True when the only evidence of a person IS the capitalised run that is
     // also the title candidate. "Return the overdue Harry Potter book" then
     // does not become a request about a student called Harry Potter: a
     // capability that can hold a title takes it as one.
     personFromTitle: !admissionNo && !nameFromText(withoutLeadingVerb(str)) && Boolean(personShaped(titleFromText(str))),
-    numbered: numberedThingFromText(str),
+    numbered: identity.numbered,
     month: range ? null : monthFromText(unquoted, now),
     range,
     date: range ? null : dateFromText(unquoted, now),
     spokenDay: range ? null : spokenDayOf(unquoted),
-    title: titleFromText(str),
+    // Read past the opening verb, for the reason the entity and the subject
+    // are: "Generate Mathematics homework ..." puts the verb inside the
+    // capitalised run, and "Generate Mathematics" was then offered as the
+    // title of the homework -- and, being two capitalised words, as a person.
+    title: titleFromText(withoutLeadingVerb(str)),
     // The school subject a request is about. Read with the same grammar rule
     // the entity tier uses -- a subject sits just before the entity word, or
     // is introduced by "in"/"for" -- so both tiers understand "Mathematics
     // homework" identically, and a write resolved here does not lose what a
     // read resolved there would have kept.
-    subject: subjectOf(str),
+    subject: subjectOf(residualMessage(str, identity)),
+    // What the thing being created is about. Read from what the identity
+    // dimensions have NOT already claimed, for the reason the subject is:
+    // "show information about Rahul Sharma" says "about", and reading the
+    // person's name as a topic docked the student's own record six points for
+    // having no `topic` argument -- one span answering as two dimensions.
+    topic: topicFromText(residualMessage(str, identity)),
     // A threshold somebody stated. Unlike the others this is matched to an
     // argument by its KIND rather than its name (see argumentKinds.js), because
     // "below 75%" is a fact about the number, not about what any tool calls it.
@@ -558,6 +617,10 @@ export function dimensionsOf(text, now = new Date()) {
     list: LIST_REQUEST.test(str) && !admissionNo && !nameFromText(withoutLeadingVerb(str)),
     searching: SEARCH_REQUEST.test(str) && !admissionNo,
     quoting: CONTENT_REQUEST.test(str),
+    // Asked for one record in full. Not a list request at the same time: the
+    // two describe different answers, and LIST_REQUEST already stands aside
+    // for a sentence that names one record.
+    detail: DETAIL_REQUEST.test(str),
     requestMood: REQUEST_MOOD.some((re) => re.test(str)),
   };
 }
@@ -585,9 +648,36 @@ const ARG_NAMES = {
   range: ['from', 'to'],
   date: ['date', 'day', 'on', 'dueAt', 'activityDate'],
   title: ['title', 'query', 'search', 'name'],
+  // What something is ABOUT, which is not the same as what it is CALLED. Read
+  // with the grammar that introduces one -- "about X", "on X", a colon, a
+  // quotation -- rather than from the capitalised run a title comes from,
+  // because "Generate Mathematics homework about linear equations" has its
+  // capitalised run in the verb and its topic at the end.
+  //
+  // `title` is offered second because for much of the catalogue they are the
+  // same words: "create Mathematics homework for Class 5-A: solve the linear
+  // equations examples" gives the task, and the capability that simply SETS
+  // homework keeps it as the title while the one that DRAFTS it keeps it as
+  // the topic. Docking the first for having no `topic` sent a plain creation
+  // to the AI drafter.
+  topic: ['topic', 'title'],
   // Filled by kind, not by name — see percentageArgOf().
   percentage: [],
 };
+
+/**
+ * The entity one word denotes, or null.
+ *
+ * Reads the same vocabulary the sentence is read with, so "assignment" and
+ * "homework" answer alike without anything restating that they are the same
+ * thing. Memoised: the vocabulary is fixed once the registry is built, and
+ * this is asked once per tool-name noun per scored capability.
+ */
+const ENTITY_OF_WORD = new Map();
+function entityOfWord(word) {
+  if (!ENTITY_OF_WORD.has(word)) ENTITY_OF_WORD.set(word, entitiesInText(String(word))[0] ?? null);
+  return ENTITY_OF_WORD.get(word);
+}
 
 /** The argument a stated threshold belongs in, whatever the tool calls it. */
 function percentageArgOf(capability) {
@@ -768,7 +858,10 @@ export function operationsNamed(verbCandidates, verbs, { requestMood = false, me
  * Every term is derived from declared metadata. Nothing here knows the name of
  * a capability, a role or a phrase.
  */
-export function scoreCapability(capability, { verbCandidates, tokens, entities, subjects, named, wantedOperations }) {
+export function scoreCapability(
+  capability,
+  { verbCandidates, tokens, entities, subjects, implied = null, named, wantedOperations },
+) {
   const args = {};
   let score = 0;
   const why = [];
@@ -787,14 +880,69 @@ export function scoreCapability(capability, { verbCandidates, tokens, entities, 
      the subject -- the other is the target. Reading them alike made a fee
      question resolve to a capability about classes. */
   if (subjects.includes(capability.entity)) add(WEIGHT.ENTITY_MATCH, `entity:${capability.entity}`);
-  else if (entities.includes(capability.entity)) add(Math.round(WEIGHT.ENTITY_MATCH / 3), `entity:${capability.entity} mentioned`);
+  // Weaker than a word and stronger than a mention, because that is what it
+  // is: the sentence named a person, which says what the question is about
+  // only as long as it names nothing else. At FULL credit every capability
+  // about students drew level with the one the sentence really named -- "show
+  // Rahul's performance" ended a margin away from the student record and was
+  // answered with neither. At half, the reverse: "show the details of Arnav
+  // Patel" could not separate the student's record from the facets of it.
+  else if (implied === capability.entity) {
+    add(Math.round((WEIGHT.ENTITY_MATCH * 2) / 3), `entity:${capability.entity} implied by the name`);
+  } else if (entities.includes(capability.entity)) add(Math.round(WEIGHT.ENTITY_MATCH / 3), `entity:${capability.entity} mentioned`);
   else if (entities.length) add(WEIGHT.ENTITY_MISMATCH, `entity:${capability.entity} not named`);
 
   /* The tool's own words. */
   const { verb, nouns, self } = nameParts(capability.name);
+
+  // A SYNONYM IS NOT AN ABSENCE -- where the sentence asked for this act by name.
+  //
+  // "Create Mathematics homework for Class 5-A" says homework, and
+  // create_assignment says assignment: one thing under two words, which the
+  // entity vocabulary already treats as one (both read as `homework`). Docking
+  // the capability for the word the writer did not happen to choose left it a
+  // single point ahead of the AI DRAFTING tool -- inside the margin, so the
+  // request was answered as tentative.
+  //
+  // Narrow on purpose, and this is the important part. It applies only when
+  // the sentence used THIS capability's own verb and that verb is not a
+  // reading word: "CREATE homework" asks to create, and what it names is what
+  // create_assignment creates. Without that condition the rule reached every
+  // read capability whose entity anybody had mentioned -- "show seat summary"
+  // stopped docking get_dashboard for the word "dashboard" nobody said, which
+  // drew it level with the capability that had been asked for by name and
+  // turned a plain request into a request for clarification.
+  const askedByVerb = Boolean(verb && verbCandidates.has(verb) && !READ_VERBS.has(verb));
+  // A LONGER NAME IS NOT A WORSE FIT.
+  //
+  // The penalty is per noun, so a two-word name is docked twice for a sentence
+  // that used neither word. "What is scheduled for today?" is about the
+  // calendar and says so -- the entity is matched outright -- but
+  // get_calendar_events lost six points for saying neither "calendar" nor
+  // "event", which left it a point below the floor and the question
+  // unanswered. Where the sentence named what the capability is ABOUT, the
+  // most that absent words can say is that it used different ones, so the
+  // total is capped at a single absence. A capability whose entity was NOT
+  // named is unaffected: there the nouns are the only evidence there is.
+  const aboutThis = subjects.includes(capability.entity);
+  let absentNouns = 0;
+  let matchedANoun = false;
   for (const noun of nouns) {
-    if (tokens.has(noun)) add(WEIGHT.NOUN_MATCH, `noun:${noun}`);
-    else add(WEIGHT.NOUN_ABSENT, `noun:${noun} absent`);
+    if (tokens.has(noun)) {
+      add(WEIGHT.NOUN_MATCH, `noun:${noun}`);
+      matchedANoun = true;
+    } else if (askedByVerb && aboutThis && entityOfWord(noun) === capability.entity) {
+      add(0, `noun:${noun} said another way`);
+    } else absentNouns += WEIGHT.NOUN_ABSENT;
+  }
+  if (absentNouns) {
+    // Capped only when NONE of the tool's words was used. Then the absence
+    // says one thing -- the sentence called it something else -- however many
+    // words the name has. Where SOME word matched and others did not, the
+    // missing ones are what make this capability narrower than what was asked
+    // for: "show me the list of students" matches the noun in
+    // get_at_risk_students and not "risk", and "risk" is the whole difference.
+    add(aboutThis && !matchedANoun ? Math.max(absentNouns, WEIGHT.NOUN_ABSENT) : absentNouns, 'nouns absent');
   }
   if (verb && verbCandidates.has(verb) && !READ_VERBS.has(verb)) add(WEIGHT.VERB_MATCH, `verb:${verb}`);
   else if (READ_VERBS.has(verb) && !wantedOperations.size) add(WEIGHT.READ_VERB_DEFAULT, 'read verb');
@@ -862,6 +1010,17 @@ export function scoreCapability(capability, { verbCandidates, tokens, entities, 
     // can hold it as a title does.
     if (dimension === 'student' && dimensions.personFromTitle && properties.includes('title')) continue;
 
+    // ONE SPAN, ONE DIMENSION -- the converse of the line above.
+    //
+    // "Show the details of Arnav Patel" carries one capitalised run, and both
+    // the person reader and the title reader claim it. A capability that has
+    // already taken it as the STUDENT was then penalised a second time for
+    // having no `title` argument to put the same two words in. That is how the
+    // student-detail capability finished below a directory search, which has a
+    // free-text `query` and could hold both. A phrase accounted for once is
+    // accounted for.
+    if (dimension === 'title' && filled.has('student') && value === dimensions.student) continue;
+
     if (dimension === 'range') {
       // A range needs both ends, or it is not a range the tool can honour.
       if (properties.includes('from') && properties.includes('to')) {
@@ -885,7 +1044,32 @@ export function scoreCapability(capability, { verbCandidates, tokens, entities, 
       : ARG_NAMES[dimension].find(
         (n) => properties.includes(n) && !ids.has(n) && acceptsDimension(capability, n, dimension),
       );
+
+    // ONE DAY IS A RANGE OF ONE DAY.
+    //
+    // The counterpart of "range as month" above: some capabilities describe a
+    // period with `from` and `to` and have no single-date argument at all, and
+    // the school calendar is one of them. "What is scheduled for day after
+    // tomorrow?" therefore lost six points for naming a day the capability
+    // that answers it was said to be unable to express -- when expressing it
+    // is simply a matter of both ends being the same day.
+    if (!argName && dimension === 'date' && properties.includes('from') && properties.includes('to')) {
+      args.from = value;
+      args.to = value;
+      filled.add('date');
+      add(WEIGHT.FILTER_FILLED, 'date as a one-day range');
+      continue;
+    }
+
     if (!argName) {
+      // A person GUESSED from a capitalised run is not something to dock a
+      // capability for. `personFromTitle` says the only evidence of a person
+      // is a run that could equally be a title, and "Generate Mathematics
+      // homework ..." is exactly that: the run is "Generate Mathematics".
+      // Capabilities holding a title were already excused above; this excuses
+      // the ones holding neither, which were being penalised six points for
+      // failing to express somebody nobody had named.
+      if (dimension === 'student' && dimensions.personFromTitle) continue;
       add(WEIGHT.SPECIFICITY_PENALTY, `cannot express the ${dimension} asked for`);
       continue;
     }
@@ -895,6 +1079,11 @@ export function scoreCapability(capability, { verbCandidates, tokens, entities, 
       const shape = capability.schema?.properties?.[argName];
       if (kindOfProperty(argName, shape ?? {}) !== 'date') spoken = dimensions.spokenDay;
     }
+
+    // One span, one ARGUMENT. `topic` and `title` can both land in `title`,
+    // and whichever was read first is the one kept: overwriting it would let
+    // the weaker reading of the sentence replace the stronger.
+    if (args[argName] !== undefined) continue;
 
     args[argName] = spoken;
     filled.add(dimension);
@@ -939,6 +1128,10 @@ export function scoreCapability(capability, { verbCandidates, tokens, entities, 
       add(capability.resultShape === 'DETAIL' ? WEIGHT.SHAPE_MISMATCH : WEIGHT.SHAPE_MATCH, 'search asked');
     } else if (named.aggregate) {
       add(capability.resultShape === 'SUMMARY' ? WEIGHT.SHAPE_MATCH : WEIGHT.SHAPE_MISMATCH, 'aggregate asked');
+    } else if (named.detail) {
+      // One record, in full. A LIST capability can only answer by returning
+      // rows nobody asked for, and a SUMMARY by returning a figure.
+      add(capability.resultShape === 'DETAIL' ? WEIGHT.SHAPE_MATCH : WEIGHT.SHAPE_MISMATCH, 'detail asked');
     } else if (named.list && capability.resultShape !== 'SUMMARY') {
       add(capability.resultShape === 'LIST' ? WEIGHT.SHAPE_MATCH : WEIGHT.SHAPE_MISMATCH, 'list asked');
     }
@@ -1105,6 +1298,27 @@ function rank(message, actor, { now, candidates }) {
   const pool = authorized.filter((c) => !(c.supersededBy && offered.has(c.supersededBy)));
   if (!pool.length) return [];
 
+  const reading = readingOf(message, now);
+
+  return pool
+    .map((capability) => ({ capability, ...scoreCapability(capability, reading) }))
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        b.targetsFilled - a.targetsFilled ||
+        (a.capability.properties?.length ?? 0) - (b.capability.properties?.length ?? 0) ||
+        a.capability.name.localeCompare(b.capability.name),
+    );
+}
+
+/**
+ * Everything a sentence says, read once.
+ *
+ * Split out of rank() so that one capability can be scored on its own --
+ * argumentsFor() below does exactly that -- without a second, drifting copy of
+ * how a message is read.
+ */
+function readingOf(message, now) {
   const tokens = tokensOf(message);
   const verbCandidates = verbPositions(message);
   const entities = entitiesInText(message);
@@ -1117,24 +1331,71 @@ function rank(message, actor, { now, candidates }) {
   // read as a question about MARKS, because `mark` is both the verb and the
   // noun. The sentence's own verb is accounted for separately.
   const subject = subjectEntityOf(withoutLeadingVerb(residualMessage(message, named)));
+
+  // Naming a person IS naming the entity, when the sentence names no other.
+  //
+  // "Show the details of Arnav Patel" is a question about a student that never
+  // uses the word. The dimensions already read the person; this says what
+  // reading one MEANS, so the capabilities about students are credited for it
+  // exactly as if the word had been there. Where the sentence does name an
+  // entity -- "mark Rahul Sharma absent" is about attendance -- that entity
+  // stays the subject and this adds nothing.
+  //
+  // It makes a SUBJECT and never a mention, which is the difference between
+  // crediting the capabilities about students and penalising every capability
+  // that is about something else. "Show Rahul's performance" names a person
+  // and a topic that is in no vocabulary at all; counting the person as an
+  // entity MENTIONED docked the performance capability four points for not
+  // being about students, and the student record answered a question about
+  // marks.
+  // `personFromTitle` is the resolver's own statement that the only evidence
+  // of a person is a capitalised run that could equally be a title. "Update
+  // Clean Code to 5 copies" is the case: implying the student entity from it
+  // made a catalogue correction into a question about students, and the book
+  // capability -- which held the only thing anybody had named -- was scored
+  // down for it.
+  // `personFromTitle` says the only evidence of a person is a capitalised run
+  // that could equally be a title, and "Update Clean Code to 5 copies" is why
+  // that matters: implying a student there made a catalogue correction into a
+  // question about students. But it is also true of "Tell me about Diya
+  // Patel", where the run really is a person -- so a request for ONE RECORD IN
+  // FULL overrides it. Nobody asks for the details of a book by saying "tell
+  // me about" and then naming a person-shaped run they want edited.
+  const impliedByIdentity = ((named.student && (!named.personFromTitle || named.detail)) || named.admissionNo)
+    ? 'student'
+    : null;
   const subjects = subject ? [subject] : [];
   const wantedOperations = operationsNamed(verbCandidates, verbIndex(), {
     requestMood: named.requestMood,
     message,
   });
 
-  return pool
-    .map((capability) => ({
-      capability,
-      ...scoreCapability(capability, { verbCandidates, tokens, entities, subjects, named, wantedOperations }),
-    }))
-    .sort(
-      (a, b) =>
-        b.score - a.score ||
-        b.targetsFilled - a.targetsFilled ||
-        (a.capability.properties?.length ?? 0) - (b.capability.properties?.length ?? 0) ||
-        a.capability.name.localeCompare(b.capability.name),
-    );
+  return { verbCandidates, tokens, entities, subjects, implied: impliedByIdentity, named, wantedOperations };
+}
+
+/**
+ * The arguments one named capability would be called with, from the sentence.
+ *
+ * WHICH capability runs is decided elsewhere -- by the scorer, by a pattern
+ * rule, or by a model. This answers a narrower question: given that this one is
+ * going to run, what did the sentence say that its schema can hold?
+ *
+ * It exists because the tiers used to read the same sentence with different
+ * thoroughness. A pattern rule's extractor is written for its own tool and
+ * stops at what that rule cared about, so "Mark Diya Patel present in Class
+ * 5-A" reached the register with the student and the status but WITHOUT the
+ * class -- and a step that drops what the request named is refused, correctly,
+ * by respectsSpecificity. The request was answerable; the reading was thin.
+ *
+ * Nothing here decides or authorizes anything: the value must still be a
+ * dimension the sentence really named and an argument the schema really
+ * declares, and the MCP server validates and authorizes the call afterwards
+ * exactly as before.
+ */
+export function argumentsFor(capabilityName, message, actor, { now = new Date(), candidates = null } = {}) {
+  const capability = (candidates ?? capabilitiesFor(actor)).find((c) => c.name === capabilityName);
+  if (!capability) return {};
+  return scoreCapability(capability, readingOf(String(message ?? ''), now)).args ?? {};
 }
 
 /**
@@ -1233,6 +1494,62 @@ export function resolveCapability(message, actor, { now = new Date(), candidates
  * rule that APPLIES for leave, and a request to withdraw something was
  * answered by proposing to create it.
  */
+/**
+ * How a dimension is named when explaining that it cannot be honoured.
+ *
+ * A closed set, because the dimensions are: they are declared once in
+ * dimensionsOf() and this names the same ones.
+ */
+const UNMET_DIMENSION_WORDS = {
+  class: 'a class',
+  student: 'a student',
+  admissionNo: 'an admission number',
+  numbered: 'a room or route number',
+  range: 'a date range',
+  date: 'a date',
+  month: 'a month',
+  subject: 'a subject',
+  title: 'a title',
+  percentage: 'a percentage',
+};
+
+/**
+ * Why the nearest capability could not answer, when none could.
+ *
+ * "Show attendance statistics for Class 5-A for the last 1 year" reaches
+ * nothing, and it SHOULD: the attendance figures this system keeps are the
+ * school's for one day, or one pupil's for a month. Neither the Web nor the
+ * service behind it can break a year down by class, so inventing an aggregate
+ * here would be building something the Web cannot do -- and answering with the
+ * nearest capability would quietly return a different figure than the one
+ * asked for, which is worse than saying no.
+ *
+ * What was missing is nonetheless KNOWN: the scorer already records "cannot
+ * express the range asked for" against the capability that came closest. This
+ * reads that back so the turn can decline in terms of the request, rather than
+ * with a list of everything the assistant can do.
+ *
+ * Reports only; it decides nothing and reaches no service.
+ */
+export function unmetNarrowing(message, actor, { now = new Date(), candidates = null } = {}) {
+  const ranked = rank(String(message ?? ''), actor, { now, candidates }).filter((r) => r.score > 0);
+  const best = ranked[0];
+  if (!best) return null;
+
+  const missing = [...new Set((best.why ?? [])
+    .map((reason) => /^cannot express the (\w+) asked for/.exec(reason)?.[1])
+    .filter((dimension) => dimension && UNMET_DIMENSION_WORDS[dimension]))];
+  if (!missing.length) return null;
+
+  return {
+    tool: best.capability.name,
+    entity: best.capability.entity,
+    missing,
+    words: missing.map((dimension) => UNMET_DIMENSION_WORDS[dimension]),
+    description: best.capability.description ?? null,
+  };
+}
+
 export function operationsAskedFor(message, actor) {
   const pool = capabilitiesFor(actor);
   if (!pool.length) return new Set();

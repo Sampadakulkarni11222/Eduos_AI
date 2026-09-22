@@ -208,7 +208,18 @@ export async function resolveStudentId(ctx, { studentId, admissionNo, studentNam
   // An exact full name wins outright. Without this, "Aarav Mishra" and the
   // surname-only "Mishra" were treated alike, so a class with two Mishras made
   // an exact request ambiguous.
-  const exact = rows.filter((s) => String(s.name ?? '').trim().toLowerCase().replace(/\s+/g, ' ') === term);
+  //
+  // The same name typed WITHOUT its space counts as exact too -- "ArnavPatel"
+  // is how somebody types a name they are reading off a screen, and the
+  // directory search already finds it. Only whitespace is ignored: every
+  // letter still has to be the one the register holds, so this can no more
+  // reach a different child than the comparison above it can.
+  const squashed = (value) => String(value ?? '').toLowerCase().replace(/\s+/g, '');
+  const written = squashed(term);
+  const exact = rows.filter((s) => {
+    const name = String(s.name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+    return name === term || squashed(name) === written;
+  });
   if (exact.length === 1) return exact[0].id;
 
   const named = exact.length > 1 ? exact : rows.filter((s) => ` ${String(s.name ?? '').toLowerCase()} `.includes(` ${term} `));

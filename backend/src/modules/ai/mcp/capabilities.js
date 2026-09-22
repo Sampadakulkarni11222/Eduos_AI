@@ -305,7 +305,12 @@ export const ENTITY_VOCABULARY = [
   // score is an analytics figure that happens to share a word with marks, and
   // whichever entity is spoken first is the subject.
   ['analytics', /\bdashboard|\banalytics|\bsummary\b|\boverview\b|\bgrowth\b/i],
-  ['calendar', /\bcalendar|\bevent|\bholiday/i],
+  // "What is scheduled for Friday?" asks the calendar. The word was in no
+  // vocabulary at all, so a question that named a real day named no entity,
+  // scored below the floor on every capability and was answered with the list
+  // of things the assistant can help with. A timetable question says so --
+  // "timetable", "period", "lecture" -- and is matched by its own entry.
+  ['calendar', /\bcalendar|\bevent|\bholiday|\bschedul(?:e|es|ed|ing)\b|\bagenda\b/i],
   ['fee', /\bfees?\b|\binvoice|\bpayment|फीस/i],
   ['library', /\blibrar|\bbooks?\b/i],
   ['hostel', /\bhostel|\bdorm|\broom\b|\bbeds?\b|\bwarden\b/i],

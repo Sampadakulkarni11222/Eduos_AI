@@ -13,6 +13,7 @@ import { buildPermissionMap } from '../src/utils/buildPermissionMap.js';
 import { getTool, toolsAvailableTo } from '../src/modules/ai/agent/tools.js';
 import { checkAuthorization } from '../src/modules/ai/agent/orchestrator.js';
 import { parseIntent } from '../src/modules/ai/agent/intent.js';
+import { getMcpTool } from '../src/modules/ai/mcp/registry.js';
 import { runWithTenant } from '../src/tenancy/tenantContext.js';
 import { getDailyAbsenceSummary } from '../src/modules/attendance/attendance.service.js';
 
@@ -326,12 +327,48 @@ describe('"how many students are absent today?"', () => {
     // get_attendance stranded students on it entirely -- the rule that could
     // answer was excluded and the rule that claimed it was out of their reach,
     // so the message matched nothing.
+    //
+    // WHY THIS ASSERTS A CONTRACT AND NOT A NAME.
+    //
+    // `get_attendance` and `get_attendance_statistics` are the same authorized
+    // answer under two names, and the registry says so rather than this
+    // comment: identical permission (attendance.read), neither declaring a
+    // minScope, the same two arguments, and the same pair of services --
+    // getSummary() for a caller scoped to their own records and
+    // getDailyAbsenceSummary() for one who may see the school. Both branch on
+    // the scope the MCP server derives from the caller's permission map, which
+    // no argument can influence. For a STUDENT or a PARENT, both therefore
+    // answer about the caller and cannot answer about anybody else.
+    //
+    // Naming one of them froze a preference between two correct answers. What
+    // matters is what may be DISCLOSED, so that is what is checked here, and
+    // checked again against a real database in mcp.attendanceScope.test.js.
+    const OWN_SCOPED_ATTENDANCE = ['get_attendance', 'get_attendance_statistics'];
+
     for (const role of ['STUDENT', 'PARENT']) {
-      const intent = parseIntent('How many students are absent today?', actorFor(role));
-      expect(intent?.tool, role).toBe('get_attendance');
+      const actor = actorFor(role);
+      const intent = parseIntent('How many students are absent today?', actor);
+      expect(intent?.tool, role).toBeTruthy();
+      expect(OWN_SCOPED_ATTENDANCE, `${role} reached ${intent.tool}`).toContain(intent.tool);
+
+      const tool = getMcpTool(intent.tool);
+      // The capability is not one restricted to callers who may see the whole
+      // school, and this caller holds attendance.read at OWN only -- so the
+      // school-wide reading of the question is unreachable to them by
+      // construction, whichever of the two ran.
+      expect(tool.minScope ?? 'OWN', `${role}: ${intent.tool} is school-wide only`).not.toBe('ALL');
+      expect(actor.permissions['attendance.read'], role).toBe('OWN');
+      // And nothing in the call can say whose records, which school, or at
+      // what scope: those come from the authenticated actor.
+      for (const argument of Object.keys(tool.inputSchema?.properties ?? {})) {
+        expect(['userId', 'profileId', 'studentId', 'tenantId', 'schoolId', 'scope'], role).not.toContain(argument);
+      }
     }
-    expect(parseIntent('am I absent today?', actorFor('STUDENT'))?.tool).toBe('get_attendance');
-    expect(parseIntent('What is my attendance?', actorFor('STUDENT'))?.tool).toBe('get_attendance');
+
+    for (const message of ['am I absent today?', 'What is my attendance?']) {
+      const intent = parseIntent(message, actorFor('STUDENT'));
+      expect(OWN_SCOPED_ATTENDANCE, `"${message}" reached ${intent?.tool}`).toContain(intent?.tool);
+    }
     expect(parseIntent('my attendance for 2026-08', actorFor('STUDENT'))?.args).toEqual({ month: '2026-08' });
   });
 
