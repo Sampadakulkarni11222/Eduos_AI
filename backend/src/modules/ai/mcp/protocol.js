@@ -177,5 +177,11 @@ export function errorToAppError(envelope) {
         : `MCP_${code ?? 'INTERNAL'}`;
   const err = new AppError(message ?? 'That could not be completed.', STATUS_FOR[code] ?? 500, [], appCode);
   err.mcpCode = code ?? MCP_ERROR.INTERNAL;
+  // What the envelope said, carried rather than dropped. A validation refusal
+  // names the arguments that were missing, and the agent turns that list into
+  // a question a person can answer ("tell me a title and the date it is due").
+  // Without this the list stopped here, and every such turn came out as the
+  // bare "I need a bit more to do that".
+  if (envelope?.error?.details) err.details = envelope.error.details;
   return err;
 }

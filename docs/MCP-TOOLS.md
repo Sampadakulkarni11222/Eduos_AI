@@ -31,8 +31,8 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 | `ADMIN` | 161 | 80 | 26 | 15 | 30 | 10 | 28 | 75 |
 | `PRINCIPAL` | 73 | 53 | 4 | 6 | 9 | 1 | 7 | 20 |
 | `TEACHER` | 58 | 41 | 3 | 2 | 11 | 1 | 7 | 17 |
-| `PARENT` | 44 | 41 | 1 | 1 | 0 | 1 | 2 | 2 |
-| `STUDENT` | 63 | 50 | 7 | 0 | 1 | 5 | 0 | 8 |
+| `PARENT` | 43 | 40 | 1 | 1 | 0 | 1 | 2 | 2 |
+| `STUDENT` | 62 | 49 | 7 | 0 | 1 | 5 | 0 | 8 |
 | `FINANCE` | 30 | 21 | 4 | 1 | 4 | 0 | 8 | 9 |
 | `LIBRARIAN` | 28 | 21 | 1 | 1 | 4 | 1 | 1 | 7 |
 | `WARDEN` | 29 | 21 | 2 | 3 | 3 | 0 | 0 | 7 |
@@ -120,7 +120,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_dashboard` | Analytics | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_editable_fields` | Student requests | GET | `profile.edit.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_fee_plans` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
-| `get_fee_statistics` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_fee_statistics` | Fees | GET | `fees.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_fee_structures` | Fees | GET | `fees.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_fees` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_growth_score` | Analytics | GET | `ai.insights.read` | OWN or ALL | LOW | NOT_REQUIRED | PARTIAL |
@@ -698,7 +698,7 @@ The submissions for one assignment, with each student's status and marks where g
 
 ### `create_assignment`
 
-Set an assignment or homework for a class you teach. Every student in that section sees it, so it needs confirmation.
+Set an assignment or homework for a class. Identify the class and subject by name -- "Mathematics" for "Class 5-A" -- or by subjectOfferingId when you have one. Every student in that section sees it, so it needs confirmation.
 
 | | |
 |---|---|
@@ -708,13 +708,13 @@ Set an assignment or homework for a class you teach. Every student in that secti
 | **Permission** | `assignments.manage` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `assignment.service.create()` |
+| **EduOS service** | `homework.service.resolveOffering() + assignment.service.create()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.create_assignment` |
 
 **Input**
 
-`subjectOfferingId`: string **(required)** — The class and subject it is for<br>`title`: string **(required)**<br>`description`: string<br>`dueAt`: string **(required)**<br>`maxMarks`: integer<br>`type`: string — one of: HOMEWORK, PROJECT, WORKSHEET, LAB<br>`chapter`: string
+`subjectOfferingId`: string — The class and subject it is for, when known<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — The subject, as a person names it, e.g. "Mathematics"<br>`title`: string **(required)** — What the work is -- the task, or its topic<br>`description`: string<br>`dueAt`: string **(required)** — When it must be handed in<br>`maxMarks`: integer<br>`type`: string — one of: HOMEWORK, PROJECT, WORKSHEET, LAB<br>`chapter`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1052,7 +1052,7 @@ Record attendance on a date. Say who in one of two ways: `students` — name the
 
 **Input**
 
-`students`: array — Students named directly, each with the status to record<br>`sectionId`: string — The class section, when giving entries<br>`entries`: array — One entry per enrolment, when marking a register from get_attendance_roster<br>`date`: string — Defaults to today<br>`periodNo`: integer — Omit for day-level attendance
+`students`: array — Students named directly, each with the status to record<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section, when giving entries<br>`entries`: array — One entry per enrolment, when marking a register from get_attendance_roster<br>`date`: string — Defaults to today<br>`periodNo`: integer — Omit for day-level attendance
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1316,13 +1316,13 @@ Permanently delete a published document — a report card, certificate, letter o
 | **Permission** | `materials.manage` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `document.service.deleteForActor()` |
+| **EduOS service** | `document.service.listForActor() + deleteForActor()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.delete_document` |
 
 **Input**
 
-`documentId`: string **(required)** — From list_documents
+`documentId`: string — From list_documents<br>`title`: string — The document as a person names it. An ambiguous title is refused, never guessed.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1364,13 +1364,13 @@ Correct course material already published — its title, the uploaded file it po
 | **Permission** | `materials.manage` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `document.service.updateForActor()` |
+| **EduOS service** | `document.service.listForActor() + updateForActor()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.update_course_material` |
 
 **Input**
 
-`documentId`: string **(required)** — From list_documents<br>`title`: string<br>`fileUrl`: string — The path the upload endpoint returned<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string<br>`mimeType`: string<br>`visibleToRoles`: array
+`documentId`: string — From list_documents<br>`title`: string<br>`fileUrl`: string — The path the upload endpoint returned<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string<br>`mimeType`: string<br>`visibleToRoles`: array
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1662,7 +1662,7 @@ Unpaid and partly paid fee invoices with the amount still owed on each, and the 
 
 **Input**
 
-`search`: string — One student by name or admission number, or an invoice number<br>`sectionId`: string<br>`academicYearId`: string<br>`limit`: integer — Invoices to return, default 25
+`search`: string — One student by name or admission number, or an invoice number<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string<br>`academicYearId`: string<br>`limit`: integer — Invoices to return, default 25
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -1678,7 +1678,7 @@ Fee collection statistics: total billed, total collected, collection percentage,
 | **Risk** | LOW |
 | **Confirmation** | NOT_REQUIRED |
 | **Permission** | `fees.read` |
-| **Scope** | OWN or ALL |
+| **Scope** | ALL |
 | **Affects others** | No |
 | **EduOS service** | `fee.service.getSummary()` |
 | **Status** | AVAILABLE |
@@ -1998,7 +1998,7 @@ Record a fee payment received against an invoice. Name the invoice by its number
 
 **Input**
 
-`invoiceId`: string — Preferred when known<br>`invoiceNo`: string — Alternative to invoiceId<br>`amountPaise`: integer **(required)** — Whole paise. ₹500 is 50000.<br>`mode`: string **(required)** — one of: CASH, CHEQUE, DD, BANK<br>`paidOn`: string<br>`receiptNo`: string<br>`notes`: string<br>`instrument`: object — Required for CHEQUE, DD and BANK: number, bankName, instrumentDate and a proofUrl (image or PDF). Not used for CASH.
+`invoiceId`: string — Preferred when known<br>`invoiceNo`: string — Alternative to invoiceId<br>`amountPaise`: integer **(required)** — Whole paise. ₹500 is 50000.<br>`mode`: string — one of: CASH, CHEQUE, DD, BANK — Cash unless another mode is named<br>`paidOn`: string<br>`receiptNo`: string<br>`notes`: string<br>`instrument`: object — Required for CHEQUE, DD and BANK: number, bankName, instrumentDate and a proofUrl (image or PDF). Not used for CASH.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2264,7 +2264,7 @@ Hostel rooms with capacity, beds occupied and beds free — use it to find a roo
 
 **Input**
 
-`type`: string — one of: BOYS, GIRLS, STAFF, GENERAL<br>`status`: string — one of: ACTIVE, MAINTENANCE, CLOSED
+`roomNo`: string — The room as a person names it, e.g. "101"<br>`type`: string — one of: BOYS, GIRLS, STAFF, GENERAL<br>`status`: string — one of: ACTIVE, MAINTENANCE, CLOSED
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -2272,7 +2272,7 @@ Hostel rooms with capacity, beds occupied and beds free — use it to find a roo
 
 ### `list_hostel_allocations`
 
-Bed allocations — which student is in which room, active or vacated. Read-only.
+Bed allocations — which student is in which room, active or vacated. Narrow to one room by number, or to one student by name or admission number. Read-only.
 
 | | |
 |---|---|
@@ -2288,7 +2288,7 @@ Bed allocations — which student is in which room, active or vacated. Read-only
 
 **Input**
 
-`roomId`: string<br>`status`: string — one of: ACTIVE, VACATED — Default ACTIVE
+`roomId`: string<br>`roomNo`: string — The room as a person names it, e.g. "101"<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`status`: string — one of: ACTIVE, VACATED — Default ACTIVE
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -2354,13 +2354,13 @@ Change a hostel room's number, block, floor, capacity, type, status or amenities
 | **Permission** | `hostel.manage` |
 | **Scope** | ALL |
 | **Affects others** | No |
-| **EduOS service** | `hostel.service.updateRoom() — behind an MCP field allow-list` |
+| **EduOS service** | `hostel.service.listRooms() + updateRoom() — behind an MCP field allow-list` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.update_hostel_room` |
 
 **Input**
 
-`roomId`: string **(required)**<br>`roomNo`: string<br>`block`: string<br>`floor`: string<br>`capacity`: integer<br>`type`: string — one of: BOYS, GIRLS, STAFF, GENERAL<br>`status`: string — one of: ACTIVE, MAINTENANCE, CLOSED<br>`amenities`: array
+`roomId`: string<br>`roomNo`: string<br>`block`: string<br>`floor`: string<br>`capacity`: integer<br>`type`: string — one of: BOYS, GIRLS, STAFF, GENERAL<br>`status`: string — one of: ACTIVE, MAINTENANCE, CLOSED<br>`amenities`: array
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2432,7 +2432,7 @@ Allocate a bed in a hostel room to a student, named by name, admission number or
 
 **Input**
 
-`roomId`: string **(required)**<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`academicYearId`: string<br>`allottedAt`: string
+`roomId`: string<br>`roomNo`: string — The room as a person names it, e.g. "101"<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`academicYearId`: string<br>`allottedAt`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2456,7 +2456,7 @@ Vacate a hostel allocation, freeing the bed. An allocation already vacated is re
 
 **Input**
 
-`allocationId`: string **(required)**
+`allocationId`: string<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2524,13 +2524,13 @@ Approve or reject somebody's leave application, with optional remarks. Needs con
 | **Permission** | `leave.review` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `leave.service.review()` |
+| **EduOS service** | `leave.service.listForReview() + review()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.review_leave` |
 
 **Input**
 
-`leaveId`: string **(required)** — From get_leave_requests<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`remarks`: string
+`requestId`: string — From get_leave_requests. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`leaveId`: string — Alternative to requestId<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`remarks`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2604,7 +2604,7 @@ Search the library catalog by title, author, ISBN, category or publisher, with h
 
 **Input**
 
-`search`: string<br>`category`: string<br>`author`: string<br>`resourceKind`: string — one of: BOOK, NOTE, QUESTION_PAPER<br>`availableOnly`: boolean — Only items with a copy on the shelf<br>`limit`: integer
+`search`: string — Title, author, ISBN, category or publisher<br>`category`: string<br>`author`: string<br>`resourceKind`: string — one of: BOOK, NOTE, QUESTION_PAPER<br>`availableOnly`: boolean — Only items with a copy on the shelf<br>`limit`: integer
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -2612,7 +2612,7 @@ Search the library catalog by title, author, ISBN, category or publisher, with h
 
 ### `get_book`
 
-One catalog item in full, with total and available copies. Read-only.
+One catalog item in full, with total and available copies. Name it by title or by id. Use it for "how many copies of X are available". Read-only.
 
 | | |
 |---|---|
@@ -2622,13 +2622,13 @@ One catalog item in full, with total and available copies. Read-only.
 | **Permission** | `library.read` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `library.service.getBookById()` |
+| **EduOS service** | `library.service.listBooks() + getBookById()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.get_book` |
 
 **Input**
 
-`bookId`: string **(required)**
+`bookId`: string<br>`title`: string — The item as a person names it, e.g. "Clean Code". An ambiguous title is refused, never guessed.
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -2694,13 +2694,13 @@ Correct a catalog entry — title, author, ISBN, category, publisher, year or to
 | **Permission** | `library.manage` |
 | **Scope** | ALL |
 | **Affects others** | No |
-| **EduOS service** | `library.service.updateBook() — behind an MCP field allow-list` |
+| **EduOS service** | `library.service.listBooks() + updateBook() — behind an MCP field allow-list` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.update_book` |
 
 **Input**
 
-`bookId`: string **(required)**<br>`title`: string<br>`author`: string<br>`isbn`: string<br>`category`: string<br>`publisher`: string<br>`publishedYear`: integer<br>`totalCopies`: integer
+`bookId`: string<br>`title`: string<br>`author`: string<br>`isbn`: string<br>`category`: string<br>`publisher`: string<br>`publishedYear`: integer<br>`totalCopies`: integer
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2718,13 +2718,13 @@ Remove an item from the library catalog. It is hidden from the catalog, not eras
 | **Permission** | `library.manage` |
 | **Scope** | ALL |
 | **Affects others** | No |
-| **EduOS service** | `library.service.deleteBook()` |
+| **EduOS service** | `library.service.listBooks() + deleteBook()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.delete_book` |
 
 **Input**
 
-`bookId`: string **(required)**
+`bookId`: string<br>`title`: string — The item as a person names it, e.g. "Clean Code". An ambiguous title is refused, never guessed.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2748,7 +2748,7 @@ Lend a library item to a student until a due date. Name the student by name, adm
 
 **Input**
 
-`bookId`: string **(required)**<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`dueAt`: string **(required)** — When it must be returned
+`bookId`: string<br>`title`: string — The item as a person names it, e.g. "Clean Code". An ambiguous title is refused, never guessed.<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`dueAt`: string — When it must be returned
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2756,7 +2756,7 @@ Lend a library item to a student until a due date. Name the student by name, adm
 
 ### `return_book`
 
-Record the return of a lent item. Returning an item already returned is refused rather than counted twice. Needs confirmation.
+Record the return of a lent item. Name the item by title, and the borrower by name if more than one copy is out. Returning an item already returned is refused rather than counted twice. Needs confirmation.
 
 | | |
 |---|---|
@@ -2766,13 +2766,13 @@ Record the return of a lent item. Returning an item already returned is refused 
 | **Permission** | `library.manage` |
 | **Scope** | ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `library.service.returnBook()` |
+| **EduOS service** | `library.service.listIssues() + returnBook()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.return_book` |
 
 **Input**
 
-`issueId`: string **(required)** — From list_book_issues
+`issueId`: string — From list_book_issues<br>`title`: string — The item as a person names it, e.g. "Clean Code". An ambiguous title is refused, never guessed.<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2780,7 +2780,7 @@ Record the return of a lent item. Returning an item already returned is refused 
 
 ### `request_book`
 
-Ask the library to issue a book to the caller. The book must be a physical copy in this school's catalogue — an online resource is read where it lives and cannot be issued. The request goes to the librarian and changes nothing until it is approved, so it runs without confirmation. Use list_books to find the book id.
+Ask the library to issue a book to the caller. Name it by title or by id. The book must be a physical copy in this school's catalogue — an online resource is read where it lives and cannot be issued. The request goes to the librarian and changes nothing until it is approved, so it runs without confirmation.
 
 | | |
 |---|---|
@@ -2790,13 +2790,13 @@ Ask the library to issue a book to the caller. The book must be a physical copy 
 | **Permission** | `library.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `library.service.requestBook()` |
+| **EduOS service** | `library.service.listBooks() + requestBook()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.request_book` |
 
 **Input**
 
-`bookId`: string **(required)** — From list_books
+`bookId`: string — From list_books<br>`title`: string — The book as a person names it, e.g. "Introduction to Algorithms". An ambiguous title is refused, never guessed.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2852,7 +2852,7 @@ Book requests waiting for the librarian to decide, with who asked and whether a 
 
 ### `decide_book_request`
 
-Approve or reject a book request. Approving issues the book to the student and takes a copy off the shelf; if no copy is free the approval is refused and the request stays waiting. Use get_book_requests to find the request id. Needs confirmation.
+Approve or reject a book request. Name the request by the student who made it, by the book, or by id. Approving issues the book to the student and takes a copy off the shelf; if no copy is free the approval is refused and the request stays waiting. Needs confirmation.
 
 | | |
 |---|---|
@@ -2862,13 +2862,13 @@ Approve or reject a book request. Approving issues the book to the student and t
 | **Permission** | `library.manage` |
 | **Scope** | ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `library.service.decideBookRequest()` |
+| **EduOS service** | `library.service.listBookRequestsForReview() + decideBookRequest()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.decide_book_request` |
 
 **Input**
 
-`requestId`: string **(required)** — From get_book_requests<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string — Shown to the student with the decision<br>`dueAt`: string — When the book is due back; defaults to a fortnight from today
+`requestId`: string — From get_book_requests<br>`studentName`: string — The student who asked, e.g. "Rahul". More than one pending request matching is refused, never guessed.<br>`title`: string — The book that was asked for<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string — Shown to the student with the decision<br>`dueAt`: string — When the book is due back; defaults to a fortnight from today
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2876,7 +2876,7 @@ Approve or reject a book request. Approving issues the book to the student and t
 
 ### `cancel_book_request`
 
-Withdraw the caller's own book request, while the librarian has not yet decided on it. A request already approved or rejected cannot be withdrawn. Use get_my_book_requests to find the request id. Needs confirmation.
+Withdraw the caller's own book request, while the librarian has not yet decided on it. A request already approved or rejected cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.
 
 | | |
 |---|---|
@@ -2886,13 +2886,13 @@ Withdraw the caller's own book request, while the librarian has not yet decided 
 | **Permission** | `library.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `library.service.cancelBookRequest()` |
+| **EduOS service** | `library.service.listMyBookRequests() + cancelBookRequest()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.cancel_book_request` |
 
 **Input**
 
-`requestId`: string **(required)** — From get_my_book_requests
+`requestId`: string — From get_my_book_requests. Omit it when you have only one pending request.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3100,7 +3100,7 @@ Register the caller for an elective subject. It goes for review before it takes 
 
 ### `withdraw_elective_registration`
 
-Withdraw the caller's own elective registration. Needs confirmation.
+Withdraw the caller's own elective registration. Name the elective by its subject; with only one registration, no name is needed. Needs confirmation.
 
 | | |
 |---|---|
@@ -3110,13 +3110,13 @@ Withdraw the caller's own elective registration. Needs confirmation.
 | **Permission** | `registrations.apply` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `registration.service.withdraw()` |
+| **EduOS service** | `registration.service.listMine() + withdraw()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.withdraw_elective_registration` |
 
 **Input**
 
-`registrationId`: string **(required)**
+`registrationId`: string — From get_my_electives<br>`subject`: string — The elective as a person names it, e.g. "Music"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3134,13 +3134,13 @@ Approve or reject an elective subject registration. Needs confirmation.
 | **Permission** | `registrations.review` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `registration.service.decide()` |
+| **EduOS service** | `registration.service.listForReview() + decide()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.decide_registration` |
 
 **Input**
 
-`registrationId`: string **(required)**<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string
+`requestId`: string — From get_registration_reviews. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`registrationId`: string — Alternative to requestId<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3232,13 +3232,13 @@ Approve or reject a co-curricular request. Approving adds it to the student's pr
 | **Permission** | `cocurricular.review` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `cocurricular.service.decide()` |
+| **EduOS service** | `cocurricular.service.listForReview() + decide()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.decide_cocurricular` |
 
 **Input**
 
-`requestId`: string **(required)**<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`rejectionReason`: string
+`requestId`: string — From get_student_requests. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`rejectionReason`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3304,13 +3304,13 @@ Approve or reject a profile-correction request. Approving writes the new values 
 | **Permission** | `profile.edit.review` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `profileEdit.service.decide()` |
+| **EduOS service** | `profileEdit.service.listForReview() + decide()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.decide_profile_edit` |
 
 **Input**
 
-`requestId`: string **(required)**<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`rejectionReason`: string
+`requestId`: string — From get_student_requests. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`rejectionReason`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3318,7 +3318,7 @@ Approve or reject a profile-correction request. Approving writes the new values 
 
 ### `cancel_cocurricular_request`
 
-Withdraw the caller's own co-curricular request, while the class teacher has not yet decided on it. A request already approved or rejected cannot be withdrawn. Use list_cocurricular to find the request id. Needs confirmation.
+Withdraw the caller's own co-curricular request, while the class teacher has not yet decided on it. A request already approved or rejected cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.
 
 | | |
 |---|---|
@@ -3328,13 +3328,13 @@ Withdraw the caller's own co-curricular request, while the class teacher has not
 | **Permission** | `cocurricular.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `cocurricular.service.withdraw()` |
+| **EduOS service** | `cocurricular.service.listForStudent() + withdraw()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.cancel_cocurricular_request` |
 
 **Input**
 
-`requestId`: string **(required)** — From list_cocurricular
+`requestId`: string — From list_cocurricular. Omit it when you have only one pending request.<br>`name`: string — The activity, e.g. "football"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3342,7 +3342,7 @@ Withdraw the caller's own co-curricular request, while the class teacher has not
 
 ### `cancel_profile_edit_request`
 
-Withdraw the caller's own profile-correction request, while it has not yet been decided. A request already approved or rejected cannot be withdrawn. Use get_my_profile_edit_requests to find the request id. Needs confirmation.
+Withdraw the caller's own profile-correction request, while it has not yet been decided. A request already approved or rejected cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.
 
 | | |
 |---|---|
@@ -3352,13 +3352,13 @@ Withdraw the caller's own profile-correction request, while it has not yet been 
 | **Permission** | `profile.edit.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `profileEdit.service.withdraw()` |
+| **EduOS service** | `profileEdit.service.listMine() + withdraw()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.cancel_profile_edit_request` |
 
 **Input**
 
-`requestId`: string **(required)** — From get_my_profile_edit_requests
+`requestId`: string — From get_my_profile_edit_requests. Omit it when you have only one pending request.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3392,7 +3392,7 @@ _(no arguments)_
 
 ### `search_students`
 
-Find students by name, admission number or class. Use this first whenever the user names a student but you do not have their id. Returns each match with class, roll number, student id and enrolment id. Read-only.
+The student directory: find students by name, admission number or class, or list the students the caller may see when no search is given. Use this first whenever the user names a student but you do not have their id. Returns each match with class, roll number, student id and enrolment id. Read-only.
 
 | | |
 |---|---|
@@ -3408,7 +3408,7 @@ Find students by name, admission number or class. Use this first whenever the us
 
 **Input**
 
-`query`: string **(required)** — Name, admission number or class, e.g. "Rahul", "OAK-12", "Class 6 A"<br>`sectionId`: string — Restrict to one section<br>`limit`: integer — Default 20
+`query`: string — Name, admission number or class, e.g. "Rahul", "OAK-12", "Class 6 A". Omit to list everyone in scope.<br>`sectionId`: string — Restrict to one section<br>`limit`: integer — Default 20
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -3740,13 +3740,13 @@ Post a reply on a support ticket. The other party sees it, so it needs confirmat
 | **Permission** | `tickets.respond` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `ticket.service.reply()` |
+| **EduOS service** | `ticket.service.list() + reply()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.reply_to_ticket` |
 
 **Input**
 
-`ticketId`: string **(required)**<br>`body`: string **(required)**
+`ticketId`: string — From list_tickets<br>`subject`: string — The ticket as a person names it, e.g. "ID card". An ambiguous subject is refused, never guessed.<br>`body`: string **(required)**
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3764,13 +3764,13 @@ Change a ticket's status, priority or assignee. Only those three fields can be c
 | **Permission** | `tickets.manage` |
 | **Scope** | ALL |
 | **Affects others** | No |
-| **EduOS service** | `ticket.service.update() — behind an MCP field allow-list` |
+| **EduOS service** | `ticket.service.list() + update() — behind an MCP field allow-list` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.update_ticket` |
 
 **Input**
 
-`ticketId`: string **(required)**<br>`status`: string — one of: NEW, OPEN, WAITING, RESOLVED, CLOSED<br>`priority`: string<br>`assigneeProfileId`: string
+`ticketId`: string — From list_tickets<br>`subject`: string — The ticket as a person names it, e.g. "ID card". An ambiguous subject is refused, never guessed.<br>`status`: string — one of: NEW, OPEN, WAITING, RESOLVED, CLOSED<br>`priority`: string<br>`assigneeProfileId`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3780,7 +3780,7 @@ Change a ticket's status, priority or assignee. Only those three fields can be c
 
 ### `get_timetable`
 
-The timetable for a day. A teacher sees the periods they teach, a student or parent their own section, and a school-wide reader the school. Accepts a weekday name or today/tomorrow/yesterday. Read-only.
+The timetable for a day, with the subject and the teacher for each period. Name a class to see that class alone; without one, a teacher sees the periods they teach, a student or parent their own section, and a school-wide reader the school. Accepts a weekday name or today/tomorrow/yesterday. Read-only.
 
 | | |
 |---|---|
@@ -3796,7 +3796,7 @@ The timetable for a day. A teacher sees the periods they teach, a student or par
 
 **Input**
 
-`day`: string — Weekday name, or today/tomorrow/yesterday
+`day`: string — Weekday name, or today/tomorrow/yesterday<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section, when the id is already known
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -3966,7 +3966,7 @@ Correct a bus route — its vehicle, its driver, whether it is running, or what 
 
 **Input**
 
-`routeId`: string **(required)** — From list_transport_routes<br>`name`: string<br>`operatorName`: string<br>`vehicleNo`: string<br>`driverName`: string<br>`driverPhone`: string<br>`status`: string — one of: ACTIVE, INACTIVE, SUSPENDED<br>`fareAmountPaise`: integer — The yearly fare in paise, so ₹12,000 is 1200000. Zero means the route carries no charge.
+`routeId`: string — From list_transport_routes<br>`routeName`: string — The route as it is written, e.g. "Route 2". An ambiguous name is refused, never guessed.<br>`name`: string — A NEW name for the route<br>`operatorName`: string<br>`vehicleNo`: string<br>`driverName`: string<br>`driverPhone`: string<br>`status`: string — one of: ACTIVE, INACTIVE, SUSPENDED<br>`fareAmountPaise`: integer — The yearly fare in paise, so ₹12,000 is 1200000. Zero means the route carries no charge.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -4046,7 +4046,7 @@ _(no arguments)_
 
 ### `request_transport_route`
 
-Ask for a place on a bus route, from a particular stop. The stop must be one on that route. The request goes to the school office and changes nothing until it is approved — the fare is only charged once a place is granted, so it runs without confirmation. Use get_transport_routes to find the route and stop ids.
+Ask for a place on a bus route, from a particular stop. Name the route the way it is written ("Route 2") and, where the route has more than one stop, name the stop too. The stop must be one on that route. The request goes to the school office and changes nothing until it is approved — the fare is only charged once a place is granted, so it runs without confirmation.
 
 | | |
 |---|---|
@@ -4056,13 +4056,13 @@ Ask for a place on a bus route, from a particular stop. The stop must be one on 
 | **Permission** | `transport.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `transport.service.requestRoute()` |
+| **EduOS service** | `transport.service.listRoutesForStudent() + requestRoute()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.request_transport_route` |
 
 **Input**
 
-`routeId`: string **(required)** — From get_transport_routes<br>`stopId`: string **(required)** — A stop on that route<br>`direction`: string — one of: BOTH, PICKUP, DROP — Both ways by default
+`routeId`: string — From get_transport_routes<br>`routeName`: string — The route as it is written, e.g. "Route 2"<br>`stopId`: string — A stop on that route<br>`stopName`: string — The stop as it is written<br>`direction`: string — one of: BOTH, PICKUP, DROP — Both ways by default
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -4128,13 +4128,13 @@ Approve or reject a request for a place on a bus route. Approving puts the stude
 | **Permission** | `transport.manage` |
 | **Scope** | ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `transport.service.decideTransportRequest()` |
+| **EduOS service** | `transport.service.listTransportRequestsForReview() + decideTransportRequest()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.decide_transport_request` |
 
 **Input**
 
-`requestId`: string **(required)** — From get_transport_requests<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string — Shown to the student with the decision
+`requestId`: string — From get_transport_requests. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string — Shown to the student with the decision
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -4142,7 +4142,7 @@ Approve or reject a request for a place on a bus route. Approving puts the stude
 
 ### `cancel_transport_request`
 
-Withdraw the caller's own request for a place on a bus route, while the school office has not yet decided on it. A request already granted or refused cannot be withdrawn. Use get_my_transport_requests to find the request id. Needs confirmation.
+Withdraw the caller's own request for a place on a bus route, while the school office has not yet decided on it. A request already granted or refused cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.
 
 | | |
 |---|---|
@@ -4152,13 +4152,13 @@ Withdraw the caller's own request for a place on a bus route, while the school o
 | **Permission** | `transport.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `transport.service.cancelTransportRequest()` |
+| **EduOS service** | `transport.service.listMyTransportRequests() + cancelTransportRequest()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.cancel_transport_request` |
 
 **Input**
 
-`requestId`: string **(required)** — From get_my_transport_requests
+`requestId`: string — From get_my_transport_requests. Omit it when you have only one pending request.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 

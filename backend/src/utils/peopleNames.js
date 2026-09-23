@@ -90,11 +90,34 @@ function looksLikeDomainPhrase(phrase) {
     });
 }
 
-/** A capitalised-or-not word that could be part of a person's name. */
-const NAME_WORD = "[\\p{L}][\\p{L}'’.-]*";
+/**
+ * A capitalised-or-not word that could be part of a person's name.
+ *
+ * A name STARTS with a letter but may carry digits or an underscore after it.
+ * Requiring letters throughout was a statement about typography rather than
+ * about people: schools run accounts like "test_Stud" and "Aarav2", and a
+ * register that holds one still has to be markable by name. The first
+ * character stays a letter, so a bare number or a code is still not a name,
+ * and every other test a phrase must pass is unchanged.
+ */
+const NAME_WORD = "[\\p{L}][\\p{L}\\p{N}_'’.-]*";
 const NAME_PHRASE = `${NAME_WORD}(?:\\s+${NAME_WORD}){0,2}`;
 
 const clean = (s) => String(s ?? '').trim().replace(/\s+/g, ' ').replace(/[.,;:!?]+$/, '');
+
+/**
+ * The statuses a register can be marked with, mirroring AttendanceRecord.
+ *
+ * Here because they are GRAMMAR as well as data: "mark Rahul Sharma absent"
+ * names a person the same way "student Rahul Sharma" does, and the evidence is
+ * the status word that follows. Without it the name went unclaimed, and the
+ * word before the status -- a surname -- was then read as a school subject,
+ * which every attendance capability was then penalised for not being able to
+ * express. Kept as words rather than imported from the model because a utility
+ * that reads sentences should not open a database schema; a status missing
+ * here costs a little accuracy and nothing else.
+ */
+const MARKED_STATUS = 'absent|present|late|excused|half[\\s-]?day';
 
 /**
  * True when every word of a phrase is a real name candidate.
@@ -138,7 +161,7 @@ function isNameLike(phrase) {
   if (looksLikeMonth(clean(phrase))) return false;
   if (classFromText(clean(phrase))) return false;
   // A bare number or a single letter is not a name.
-  return words.every((w) => /^[\p{L}][\p{L}'’.-]*$/u.test(w) && w.length >= 2);
+  return words.every((w) => /^[\p{L}][\p{L}\p{N}_'’.-]*$/u.test(w) && w.length >= 2);
 }
 
 /**
@@ -164,6 +187,17 @@ export function nameFromText(text) {
 
   const prepositional = new RegExp(`\\b(?:of|for)\\s+(${NAME_PHRASE})`, 'iu').exec(str)?.[1];
   if (prepositional && isNameLike(prepositional)) return clean(prepositional);
+
+  // "mark Rahul Sharma absent", "Diya Patel present in Class 5-A". The status
+  // is the grammatical evidence, exactly as the word "student" is in the
+  // branch above: what sits immediately before it is who is being marked.
+  // Held to the same isNameLike test as every other branch, so "mark
+  // attendance present" still yields no person.
+  const marked = new RegExp(`\\b(${NAME_PHRASE})\\s+(?:as\\s+)?(?:${MARKED_STATUS})\\b`, 'iu').exec(str)?.[1];
+  if (marked) {
+    const trimmed = trimLeadingNonNames(marked);
+    if (trimmed && isNameLike(trimmed)) return clean(trimmed);
+  }
 
   // A message that is nothing but a name — "Arav Mishra" — which is how a
   // teacher looks somebody up after being shown a list.

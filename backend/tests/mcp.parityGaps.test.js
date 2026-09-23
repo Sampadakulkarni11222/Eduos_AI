@@ -166,12 +166,24 @@ describe('a withdrawal cannot reach anybody else\'s request', () => {
     expect((await inSchool(OAK, () => CoCurricularActivity.findById(made.id).lean())).status).toBe('APPROVED');
   }, 60000);
 
-  it('takes nothing but a request id, and is confirmed', () => {
+  it('names no person, accepts nothing undeclared, and is confirmed', () => {
+    // The property is that a withdrawal cannot be pointed at somebody else --
+    // not that its schema has exactly one key. It now also accepts a hint at
+    // WHICH of the caller's own pending requests is meant ("my football
+    // activity request"), because the request id is an ObjectId nobody types
+    // and requiring one made these unreachable from a sentence. That hint
+    // filters a list the service already scoped to the caller, so it cannot
+    // reach another person's request; an identity argument could, and there is
+    // none.
+    const IDENTITY = ['studentId', 'admissionNo', 'studentName', 'profileId', 'accountId', 'userId'];
     for (const name of [
       'cancel_book_request', 'cancel_transport_request',
       'cancel_cocurricular_request', 'cancel_profile_edit_request',
     ]) {
-      expect(Object.keys(MCP_TOOLS[name].inputSchema.properties), name).toEqual(['requestId']);
+      const properties = Object.keys(MCP_TOOLS[name].inputSchema.properties);
+      expect(properties, name).toContain('requestId');
+      expect(properties.filter((p) => IDENTITY.includes(p)), name).toEqual([]);
+      expect(MCP_TOOLS[name].inputSchema.required ?? [], `${name} must not demand an id nobody types`).toEqual([]);
       expect(MCP_TOOLS[name].inputSchema.additionalProperties, name).toBe(false);
       expect(Boolean(MCP_TOOLS[name].confirm), name).toBe(true);
     }

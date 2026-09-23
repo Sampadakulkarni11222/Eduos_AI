@@ -62,6 +62,12 @@ const ENTITY_OF_MODULE = {
  * takes its entity from the module.
  */
 const ENTITY_OF_TOOL = {
+  // The Communication module carries announcements AND the school calendar,
+  // and taking the entity from the module alone classified every calendar
+  // question as an announcement -- so "list the holidays in June" could not
+  // reach the capability that answers it.
+  get_calendar_events: 'calendar',
+  create_calendar_event: 'calendar',
   get_timetable: 'timetable',
   upsert_timetable_slot: 'timetable',
   get_subjects: 'subject',
@@ -69,6 +75,11 @@ const ENTITY_OF_TOOL = {
   get_my_classes: 'class',
   get_my_profile: 'profile',
   get_dashboard: 'analytics',
+  // Both live in the Analytics module, and neither is a question about
+  // analytics. "Which students are below 75% attendance?" is a question about
+  // students, and taking the entity from the module made it score as a request
+  // about something the sentence never mentions.
+  get_at_risk_students: 'student',
   list_notifications: 'notification',
 };
 
@@ -115,11 +126,40 @@ function identifierArgs(schema) {
     .map(([name]) => name);
 }
 
+/**
+ * What a capability RETURNS, when it has not said.
+ *
+ * Declared `resultShape` always wins; this fills the rest in from the one thing
+ * that already describes a capability's answer — its name. `list_books` returns
+ * rows, `get_student` returns one record, `get_hostel_summary` returns a figure.
+ * Derived rather than hand-labelled for the reason the rest of this file is:
+ * sixty-odd capabilities would otherwise each need a second statement of
+ * something their name already makes plain, and the sixty-first would be
+ * forgotten.
+ *
+ * It matters because the shape of the answer is part of the question. "How many
+ * beds are free" and "which beds are free" are different requests, and without
+ * a shape the resolver could not tell the capability that answers one from the
+ * capability that answers the other.
+ */
+function defaultResultShape(name) {
+  const segments = String(name ?? '').split('_');
+  const last = segments[segments.length - 1] ?? '';
+  if (/summary|statistic|stats|dashboard|overview|score|health|count/.test(name)) return 'SUMMARY';
+  if (segments[0] === 'list' || segments[0] === 'search') return 'LIST';
+  // A plural tail is a list of things; a singular tail is one thing.
+  if (/s$/.test(last) && !/ss$/.test(last)) return 'LIST';
+  return 'DETAIL';
+}
+
 /** One tool, as the resolver sees it. */
 function describe(name, tool) {
   const properties = Object.keys(tool.inputSchema?.properties ?? {});
   return {
     name,
+    // Carried so the resolver can read a capability's own words as a weak
+    // lexical signal. The words are the tool's, written once, next to it.
+    description: String(tool.description ?? ''),
     entity: ENTITY_OF_TOOL[name] ?? ENTITY_OF_MODULE[tool.module] ?? String(tool.module ?? 'other').toLowerCase(),
     module: tool.module,
     operation: tool.operation,
@@ -151,7 +191,7 @@ function describe(name, tool) {
     // themselves (LIST), or one record in full (DETAIL). Declared by the tool,
     // absent where the distinction does not arise. It describes the answer
     // shape, never the question that asks for it.
-    resultShape: tool.resultShape ?? null,
+    resultShape: tool.operation === 'GET' ? (tool.resultShape ?? defaultResultShape(name)) : (tool.resultShape ?? null),
     supersededBy: null,
   };
 }
@@ -242,14 +282,18 @@ export function entitiesFor(actor) {
  */
 export const ENTITY_VOCABULARY = [
   ['attendance', /\battendance\b|\babsent|\bpresent\b|\bregister\b|\broll\s*call\b|उपस्थिति/i],
-  ['marks', /\bmarks?\b|\bresults?\b|\bgrades?\b|\bscored?\b|\bscores?\b|\breport\s*card\b|\bgpa\b|\bexams?\b|\bexamination|अंक|परिणाम/i],
+  // One stem for the whole family: score, scores, scored, scorer, scorers,
+  // scoring. Listing the inflections one at a time is how "the highest
+  // Mathematics SCORERS in Class 5-A" fell out of the marks vocabulary
+  // altogether and was answered with a list of classes.
+  ['marks', /\bmarks?\b|\bresults?\b|\bgrades?\b|\bscor(?:e|es|ed|er|ers|ing)\b|\breport\s*card\b|\bgpa\b|\bexams?\b|\bexamination|अंक|परिणाम/i],
   ['homework', /\bhomework\b|\bassignments?\b|\bworksheets?\b|\bsubmissions?\b|गृहकार्य|होमवर्क/i],
   ['announcement', /\bannouncement|\bnotice|\bcircular|\bnews\b/i],
   ['material', /\bmaterial|\bcourse\s*material|\bnotes\b|\bhandout|\bdocument|\bresource/i],
   ['timetable', /\btime.?table\b|\bperiods?\b|\bschedule\b|\blesson/i],
   ['leave', /\bleave\b|\bday\s*off\b|\bchutti\b|छुट्टी/i],
   ['elective', /\belective|\bsubject\s*registration|\bregistration/i],
-  ['studentRequest', /\bco.?curricular|\bachievement|\bprofile\s*correction|\bprofile\s*edit|\bstudent\s*request/i],
+  ['studentRequest', /\bco.?curricular|\bachievement|\bactivit(y|ies)\b|\bprofile\s*correction|\bprofile\s*edit|\bstudent\s*request/i],
   ['medical', /\bmedical|\ballerg|\bblood\s*group|\bhealth/i],
   ['ticket', /\bticket|\bsupport|\bhelpdesk|\bcomplaint|\bquer(y|ies)\b/i],
   ['notification', /\bnotification|\balert|\bunread\b/i],
@@ -257,12 +301,24 @@ export const ENTITY_VOCABULARY = [
   ['student', /\bstudents?\b|\bpupils?\b|\bchild|\bclass\s*list\b|\benrol/i],
   ['class', /\bclass(es)?\b|\bsections?\b|\bdivisions?\b|\bgrades?\b/i],
   ['subject', /\bsubjects?\b|\bcourses?\b|विषय/i],
-  ['analytics', /\bdashboard|\banalytics|\bsummary\b|\boverview\b/i],
-  ['calendar', /\bcalendar|\bevent|\bholiday/i],
+  // "growth" before the marks vocabulary can claim "growth SCORE": a growth
+  // score is an analytics figure that happens to share a word with marks, and
+  // whichever entity is spoken first is the subject.
+  ['analytics', /\bdashboard|\banalytics|\bsummary\b|\boverview\b|\bgrowth\b/i],
+  // "What is scheduled for Friday?" asks the calendar. The word was in no
+  // vocabulary at all, so a question that named a real day named no entity,
+  // scored below the floor on every capability and was answered with the list
+  // of things the assistant can help with. A timetable question says so --
+  // "timetable", "period", "lecture" -- and is matched by its own entry.
+  ['calendar', /\bcalendar|\bevent|\bholiday|\bschedul(?:e|es|ed|ing)\b|\bagenda\b/i],
   ['fee', /\bfees?\b|\binvoice|\bpayment|फीस/i],
   ['library', /\blibrar|\bbooks?\b/i],
-  ['hostel', /\bhostel|\bdorm|\broom\b/i],
+  ['hostel', /\bhostel|\bdorm|\broom\b|\bbeds?\b|\bwarden\b/i],
   ['transport', /\btransport|\bbus\b|\broute\b/i],
+  // Admissions, but NOT the words "admission number" -- that is how a STUDENT
+  // is identified, and reading it as the admissions pipeline would answer a
+  // question about a pupil with a list of enquiries.
+  ['admission', /\badmissions?\b(?!\s*(?:number|no\b))|\benquir(y|ies)\b|\bapplicants?\b/i],
 ];
 
 /**
@@ -275,6 +331,57 @@ export const ENTITY_VOCABULARY = [
 export function entitiesInText(text) {
   const str = String(text ?? '');
   return ENTITY_VOCABULARY.filter(([, re]) => re.test(str)).map(([entity]) => entity);
+}
+
+/**
+ * The same entities, ordered by where each is first spoken.
+ *
+ * English puts the subject of a request before what narrows it: "show me the
+ * STUDENTS in my classes", "OUTSTANDING FEES for Class 5A". Declaration order
+ * cannot know that -- it is fixed -- so a request that named two entities was
+ * resolved by whichever happened to be listed first, and "the students in my
+ * classes" answered with a list of classes.
+ *
+ * Position is evidence, not proof, so the caller weights the first entity
+ * above the rest rather than discarding them.
+ */
+export function entitiesInTextByPosition(text) {
+  const str = String(text ?? '');
+  return ENTITY_VOCABULARY
+    .map(([entity, re]) => [entity, str.search(re)])
+    .filter(([, at]) => at >= 0)
+    .sort((a, b) => a[1] - b[1])
+    .map(([entity]) => entity);
+}
+
+/**
+ * Entities that say WHICH RECORDS, not WHAT ABOUT THEM.
+ *
+ * Students and classes are the population a question is asked over, and they
+ * are named first in ordinary English however unrelated they are to the
+ * subject: "which STUDENTS scored highest in Mathematics in Class 5-A" is a
+ * question about MARKS, over the population of students, narrowed to a class.
+ * Reading the leading word as the subject answered it from the student
+ * directory.
+ *
+ * Two entries, and a property of the entity rather than of any sentence: a
+ * population is a thing you can have records ABOUT, which is exactly what
+ * makes it the wrong answer to "about what?".
+ */
+const POPULATION_ENTITIES = new Set(['student', 'class']);
+
+/**
+ * What a request is ABOUT: the first entity spoken that is not merely the
+ * population it is asked over.
+ *
+ * Falls back to the leading entity when a request names nothing else -- "show
+ * me the students in my school" really is about students, and "my classes"
+ * really is about classes. So a population is the subject only when it is the
+ * only thing on offer.
+ */
+export function subjectEntityOf(text) {
+  const spoken = entitiesInTextByPosition(text);
+  return spoken.find((entity) => !POPULATION_ENTITIES.has(entity)) ?? spoken[0] ?? null;
 }
 
 /** Counts for the boot log and the coverage test. */
