@@ -84,6 +84,9 @@ export const PORTALS: Record<string, Portal> = {
         item('Access & Permissions', '🔐', '/admin/permissions', { ready: true }),
         item('Tenant Settings', '⚙', '/admin/settings', { ready: true }),
       ]},
+      { title: 'HELP & SUPPORT', items: [
+        item('User Guide', '📖', '/admin/guide', { ready: true }),
+      ]},
     ],
   },
   teacher: {
@@ -114,6 +117,9 @@ export const PORTALS: Record<string, Portal> = {
         // Route, stop and vehicle for the students they teach — read-only.
         // Managing routes stays behind the transport permission they do not hold.
         item('Transport', '⛒', '/teacher/transport', { ready: true }),
+      ]},
+      { title: 'HELP & SUPPORT', items: [
+        item('User Guide', '📖', '/teacher/guide', { ready: true }),
       ]},
     ],
   },
@@ -174,6 +180,7 @@ export const PORTALS: Record<string, Portal> = {
         item('AI Credits', '✦', '/student/ai-credits', { ready: true }),
         item('My Profile', '◉', '/student/profile', { ready: true }),
         item('Help & Support', '✉', '/student/tickets', { ready: true }),
+        item('User Guide', '📖', '/student/guide', { ready: true }),
       ]},
     ],
   },
