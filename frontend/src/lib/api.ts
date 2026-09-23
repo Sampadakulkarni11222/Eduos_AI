@@ -1021,7 +1021,7 @@ export const api = {
   // ── hostel ──
   hostelSummary: () => cachedRequest<HostelSummaryDto>('/hostel/summary'),
   hostelRooms: () => cachedRequest<HostelRoomDto[]>('/hostel/rooms'),
-  createHostelRoom: (body: { roomNo: string; block: string; floor?: number; type?: string; capacity: number }) =>
+  createHostelRoom: (body: { roomNo: string; block: string; floor?: number; type?: string; capacity: number; amenities?: string[] }) =>
     request<HostelRoomDto>('/hostel/rooms', { method: 'POST', body: JSON.stringify(body) }),
   bulkCreateHostelRooms: (file: File) => uploadCsv('/hostel/rooms/bulk', file),
   hostelAllocations: (roomId?: string) =>

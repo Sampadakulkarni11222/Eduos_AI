@@ -6,6 +6,7 @@ import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api, errorMessage } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
+import { normaliseLeadPhone } from '@/lib/phone';
 import type { LeadDetailDto } from '@/lib/types';
 
 const STAGE_LABEL: Record<string, string> = {
@@ -506,9 +507,15 @@ function NewLead({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const submit = async (e: FormEvent) => {
-    e.preventDefault(); setBusy(true); setErr(null);
-    try { await api.createLead(f); onDone(); }
-    catch { setErr('Failed to add lead. Please check the details and try again.'); }
+    e.preventDefault(); setErr(null);
+    const phoneE164 = normaliseLeadPhone(f.phoneE164);
+    if (!phoneE164) {
+      setErr('Enter a valid phone number, e.g. +919876543210 or a 10-digit local number.');
+      return;
+    }
+    setBusy(true);
+    try { await api.createLead({ ...f, phoneE164 }); onDone(); }
+    catch (x) { setErr(errorMessage(x, 'Failed to add lead. Please check the details and try again.')); }
     finally { setBusy(false); }
   };
   return (
@@ -517,7 +524,7 @@ function NewLead({ onDone }: { onDone: () => void }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 12 }}>
           <div><div className="field-label">Child name</div><input className="field-input" value={f.childName} onChange={(e) => setF({ ...f, childName: e.target.value })} required /></div>
           <div><div className="field-label">Guardian</div><input className="field-input" value={f.guardianName} onChange={(e) => setF({ ...f, guardianName: e.target.value })} required /></div>
-          <div><div className="field-label">Phone</div><input className="field-input" value={f.phoneE164} onChange={(e) => setF({ ...f, phoneE164: e.target.value })} required /></div>
+          <div><div className="field-label">Phone</div><input className="field-input" type="tel" aria-label="Phone" value={f.phoneE164} onChange={(e) => setF({ ...f, phoneE164: e.target.value })} required /></div>
           <div><div className="field-label">Grade</div><input className="field-input" value={f.gradeApplying} onChange={(e) => setF({ ...f, gradeApplying: e.target.value })} /></div>
           <div><div className="field-label">Source</div>
             <select className="field-input" value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })}>
