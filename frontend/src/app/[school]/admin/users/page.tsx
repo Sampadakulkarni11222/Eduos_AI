@@ -8,6 +8,22 @@ import { api, errorMessage } from '@/lib/api';
 import type { UserDto, SectionDto, RoleKey } from '@/lib/types';
 
 const ROLE_KEYS: RoleKey[] = ['ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT', 'FINANCE', 'LIBRARIAN', 'WARDEN'];
+
+/**
+ * Roles this form creates — all accepted by POST /users (user.service.js
+ * VALID_ROLE_KEYS). ADMIN is left out: school admins are provisioned by the
+ * Super Admin (schools module). PARENT is left out: a parent is only useful
+ * linked to a child, which this form cannot do.
+ */
+type CreatableRole = 'STUDENT' | 'TEACHER' | 'PRINCIPAL' | 'FINANCE' | 'LIBRARIAN' | 'WARDEN';
+const CREATABLE_ROLES: Array<{ key: CreatableRole; label: string }> = [
+  { key: 'STUDENT', label: 'Student' },
+  { key: 'TEACHER', label: 'Teacher' },
+  { key: 'PRINCIPAL', label: 'Principal' },
+  { key: 'FINANCE', label: 'Finance' },
+  { key: 'LIBRARIAN', label: 'Librarian' },
+  { key: 'WARDEN', label: 'Warden' },
+];
 const PAGE_SIZES = [10, 25, 50, 100];
 
 export default function UsersPage() {
@@ -33,7 +49,7 @@ export default function UsersPage() {
   // Create User Modal states
   const [showModal, setShowModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
-  const [roleKey, setRoleKey] = useState<'STUDENT' | 'TEACHER'>('STUDENT');
+  const [roleKey, setRoleKey] = useState<CreatableRole>('STUDENT');
   const [displayName, setDisplayName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -270,9 +286,8 @@ export default function UsersPage() {
             </div>
             <form onSubmit={handleCreate}>
               <div className="field-label">Select Role *</div>
-              <select className="field-input" value={roleKey} onChange={(e) => setRoleKey(e.target.value as any)}>
-                <option value="STUDENT">Student</option>
-                <option value="TEACHER">Teacher</option>
+              <select className="field-input" aria-label="Select Role" value={roleKey} onChange={(e) => setRoleKey(e.target.value as CreatableRole)}>
+                {CREATABLE_ROLES.map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
               </select>
 
               <div className="field-label">Full Name *</div>

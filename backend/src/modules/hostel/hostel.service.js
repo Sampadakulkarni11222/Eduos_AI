@@ -1,4 +1,6 @@
-import { HostelRoom, HostelAllocation, HostelInquiry } from '../../models/hostel.model.js';
+import {
+  HostelRoom, HostelAllocation, HostelInquiry, ROOM_TYPES, ROOM_CAPACITY_MIN, ROOM_CAPACITY_MAX,
+} from '../../models/hostel.model.js';
 import { Ticket } from '../../models/ticket.model.js';
 import { Student } from '../../models/student.model.js';
 import { MedicalRecord } from '../../models/medicalRecord.model.js';
@@ -69,27 +71,59 @@ export async function getRoomById(id) {
   return room;
 }
 
+/**
+ * A bed count as a whole number within the room limits, or null. Numeric
+ * strings are accepted because forms and CSV rows send them; anything else
+ * (booleans, "", "abc", "2.5") is not a capacity.
+ */
+function parseCapacity(value) {
+  let n = NaN;
+  if (typeof value === 'number') n = value;
+  else if (typeof value === 'string' && /^\s*\d+\s*$/.test(value)) n = Number(value);
+  return Number.isInteger(n) && n >= ROOM_CAPACITY_MIN && n <= ROOM_CAPACITY_MAX ? n : null;
+}
+
+const CAPACITY_RULE = `capacity must be a whole number of beds from ${ROOM_CAPACITY_MIN} to ${ROOM_CAPACITY_MAX}`;
+
+/**
+ * Checks the room fields a create or update carries. The model alone was the
+ * only check, and it had no bounds on capacity, so -1 or 2.5 beds were stored.
+ * On an update only the fields present are checked.
+ */
+function checkRoomFields(data, { partial }) {
+  const checked = {};
+  if (!partial || data.capacity !== undefined) {
+    const capacity = parseCapacity(data.capacity);
+    if (capacity === null) throw new AppError(CAPACITY_RULE, 400, [], 'INVALID_ROOM_CAPACITY');
+    checked.capacity = capacity;
+  }
+  if (data.type !== undefined && !ROOM_TYPES.includes(data.type)) {
+    throw new AppError(`type must be one of: ${ROOM_TYPES.join(', ')}`, 400, [], 'INVALID_ROOM_TYPE');
+  }
+  return checked;
+}
+
 export async function createRoom(data) {
-  return HostelRoom.create(data);
+  return HostelRoom.create({ ...data, ...checkRoomFields(data, { partial: false }) });
 }
 
 export async function bulkCreateRooms(rows) {
   const results = { imported: 0, failed: 0, errors: [] };
-  const VALID_TYPES = new Set(['BOYS', 'GIRLS', 'STAFF', 'GENERAL']);
+  const VALID_TYPES = new Set(ROOM_TYPES);
   const docs = [];
 
   for (let i = 0; i < rows.length; i++) {
     const rowNo = i + 2; // header is row 1
     const row = rows[i];
     const roomNo = row.roomno?.trim();
-    const capacity = Number(row.capacity);
-    if (!roomNo || !Number.isFinite(capacity) || capacity <= 0) {
+    const capacity = parseCapacity(row.capacity);
+    if (!roomNo || capacity === null) {
       results.failed++;
       results.errors.push(rowError(rowNo, {
-        field: !row.roomno ? 'roomNo' : 'capacity',
-        value: !row.roomno ? row.roomno : row.capacity,
-        problem: 'is required',
-        suggestion: 'capacity must be a whole number of beds, e.g. 4',
+        field: !roomNo ? 'roomNo' : 'capacity',
+        value: !roomNo ? row.roomno : row.capacity,
+        problem: !roomNo || !row.capacity?.trim() ? 'is required' : 'is not a valid number of beds',
+        suggestion: `${CAPACITY_RULE}, e.g. 4`,
       }));
       continue;
     }
@@ -198,7 +232,7 @@ export async function bulkAllocate(rows) {
 export async function updateRoom(id, updates) {
   const room = await HostelRoom.findById(id);
   if (!room) throw new AppError('Room not found', 404);
-  Object.assign(room, updates);
+  Object.assign(room, updates, checkRoomFields(updates, { partial: true }));
   await room.save();
   return room;
 }

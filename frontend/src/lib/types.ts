@@ -809,7 +809,7 @@ export interface PayOnlineResult {
 }
 
 // ── Hostel ──
-export interface HostelRoomDto { _id: string; roomNo: string; block: string; floor?: number | null; type: string; capacity: number; status: string; occupied: number; available: number }
+export interface HostelRoomDto { _id: string; roomNo: string; block: string; floor?: number | null; type: string; capacity: number; status: string; amenities?: string[]; occupied: number; available: number }
 export interface HostelAllocationDto {
   _id: string;
   status: string;
