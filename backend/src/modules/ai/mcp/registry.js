@@ -9,6 +9,9 @@ import { welfareTools } from './tools/welfare.js';
 import { requestTools } from './tools/requests.js';
 import { analyticsTools } from './tools/analytics.js';
 import { profileTools } from './tools/profile.js';
+import { seatTools } from './tools/seats.js';
+import { customizationTools } from './tools/customization.js';
+import { domainTools } from './tools/domains.js';
 import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 
 /**
@@ -55,6 +58,9 @@ export const MCP_TOOLS = {
   ...requestTools,
   ...analyticsTools,
   ...profileTools,
+  ...seatTools,
+  ...customizationTools,
+  ...domainTools,
 };
 
 export function getMcpTool(name) {

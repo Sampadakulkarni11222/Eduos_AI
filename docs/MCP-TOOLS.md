@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**162 tools** — 80 GET, 26 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION.
+**167 tools** — 84 GET, 27 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION.
 
-Risk mix: 86 LOW, 47 MEDIUM, 28 HIGH, 1 CRITICAL.
+Risk mix: 90 LOW, 47 MEDIUM, 29 HIGH, 1 CRITICAL.
 
-Status: 160 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 165 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -28,7 +28,7 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
 | `SUPER_ADMIN` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `ADMIN` | 161 | 80 | 26 | 15 | 30 | 10 | 28 | 75 |
+| `ADMIN` | 166 | 84 | 27 | 15 | 30 | 10 | 29 | 76 |
 | `PRINCIPAL` | 73 | 53 | 4 | 6 | 9 | 1 | 7 | 20 |
 | `TEACHER` | 58 | 41 | 3 | 2 | 11 | 1 | 7 | 17 |
 | `PARENT` | 43 | 40 | 1 | 1 | 0 | 1 | 2 | 2 |
@@ -43,7 +43,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 <details><summary>High-risk actions visible to each role</summary>
 
 - **SUPER_ADMIN** (0): _none_
-- **ADMIN** (28): `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `create_fee_structure`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`
+- **ADMIN** (29): `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `create_fee_structure`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`, `request_extra_seats`
 - **PRINCIPAL** (7): `transition_fee_plan`, `publish_marks`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_document`
 - **TEACHER** (7): `mark_attendance`, `bulk_mark_attendance`, `enter_marks`, `publish_marks`, `create_announcement`, `update_announcement`, `delete_document`
 - **PARENT** (2): `upsert_medical_record`, `remove_medical_record`
@@ -149,6 +149,10 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_registration_reviews` | Registrations | GET | `registrations.review` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_report_card` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_results` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_school_customization` | Customization | GET | `settings.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_school_domain` | Domains | GET | `domains.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_seat_requests` | Seats | GET | `seats.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_seat_summary` | Seats | GET | `seats.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_student` | Students | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_student_attendance` | Attendance | GET | `attendance.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_student_overview` | Students | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -194,6 +198,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `reply_to_ticket` | Tickets | ACTION | `tickets.respond` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `request_book` | Library | CREATE | `library.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `request_cocurricular` | Student requests | CREATE | `cocurricular.request` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
+| `request_extra_seats` | Seats | CREATE | `seats.request` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `request_profile_edit` | Student requests | CREATE | `profile.edit.request` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
 | `request_transport_route` | Transport | CREATE | `transport.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `return_book` | Library | ACTION | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -698,7 +703,7 @@ The submissions for one assignment, with each student's status and marks where g
 
 ### `create_assignment`
 
-Set an assignment or homework for a class. Identify the class and subject by name -- "Mathematics" for "Class 5-A" -- or by subjectOfferingId when you have one. Every student in that section sees it, so it needs confirmation.
+Set an assignment or homework for a class you teach. Every student in that section sees it, so it needs confirmation.
 
 | | |
 |---|---|
@@ -708,13 +713,13 @@ Set an assignment or homework for a class. Identify the class and subject by nam
 | **Permission** | `assignments.manage` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `homework.service.resolveOffering() + assignment.service.create()` |
+| **EduOS service** | `assignment.service.create()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.create_assignment` |
 
 **Input**
 
-`subjectOfferingId`: string — The class and subject it is for, when known<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — The subject, as a person names it, e.g. "Mathematics"<br>`title`: string **(required)** — What the work is -- the task, or its topic<br>`description`: string<br>`dueAt`: string **(required)** — When it must be handed in<br>`maxMarks`: integer<br>`type`: string — one of: HOMEWORK, PROJECT, WORKSHEET, LAB<br>`chapter`: string
+`subjectOfferingId`: string **(required)** — The class and subject it is for<br>`title`: string **(required)**<br>`description`: string<br>`dueAt`: string **(required)**<br>`maxMarks`: integer<br>`type`: string — one of: HOMEWORK, PROJECT, WORKSHEET, LAB<br>`chapter`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1278,6 +1283,32 @@ Send one WhatsApp message to one number through the school's WhatsApp account. T
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+## Customization
+
+### `get_school_customization`
+
+This school's own branding and the option lists its forms offer — houses, zones, and any other dropdown the platform has configured for it. Use it to answer what values a field accepts at this school. Read-only, and always about the caller's own school.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `settings.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `customization.service.getCustomization()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_school_customization` |
+
+**Input**
+
+`dropdownKey`: string — Narrow to one list, e.g. "house". Omit for all of them.
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
 ## Documents
 
 ### `list_documents`
@@ -1375,6 +1406,32 @@ Correct course material already published — its title, the uploaded file it po
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+## Domains
+
+### `get_school_domain`
+
+This school's portal address — a platform subdomain or its own custom domain — whether it is verified, whether its certificate works, whether it is live, the DNS records still required, and the domain from the website on the School Admin profile ("Not Provided" when there is none) with whether it has been applied. Read-only, and always about the caller's own school.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `domains.read` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `domain.service.getDomain()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_school_domain` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
 
 ## Exams
 
@@ -3146,6 +3203,80 @@ Approve or reject an elective subject registration. Needs confirmation.
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+## Seats
+
+### `get_seat_summary`
+
+How many seats this school has bought, how many the platform has approved for use, how many are in use and how many are free. Also reports the school's own per-seat price — what extra seats would cost it — and seats that are paid for but still waiting for platform approval, which cannot be used yet. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `seats.read` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `seat.service.getSeatSummary()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_seat_summary` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `get_seat_requests`
+
+This school's extra-seat requests and where each one has got to: awaiting payment, paid and waiting for the platform to decide, approved, or rejected. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `seats.read` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `seat.service.listSeatRequests()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_seat_requests` |
+
+**Input**
+
+`status`: string — one of: PENDING_PAYMENT, PAID, APPROVED, REJECTED — Narrow to one stage of the request lifecycle
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `request_extra_seats`
+
+Ask the platform for extra seats for this school. The price is calculated by the server from the seat count and this school's own per-seat rate — it cannot be set here. Raising the request allocates nothing: it has to be paid for on the seat page and then approved by the platform before the seats can be used.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | HIGH |
+| **Confirmation** | REQUIRED |
+| **Permission** | `seats.request` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `seat.service.createSeatRequest()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.request_extra_seats` |
+
+**Input**
+
+`seats`: integer **(required)** — How many extra seats to ask for<br>`reason`: string — Why the school needs them
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Student requests
 
 ### `get_student_requests`
@@ -4192,16 +4323,20 @@ Staff and user accounts, searchable by name, phone or email and filterable by ro
 
 ## Permission coverage
 
-61 of the 73 permissions in the catalog are reachable through MCP.
+65 of the 81 permissions in the catalog are reachable through MCP.
 
 Permissions **not** reachable through any tool:
 
 - `users.manage` — Create, update, deactivate users
 - `roles.manage` — Create roles and assign permissions to them
 - `permissions.manage` — Create or modify permission keys
-- `settings.manage` — Manage school-wide settings
 - `schools.read` — View the schools on the platform and their School Admins
 - `schools.manage` — Create schools and manage their School Admin accounts
+- `seats.manage` — Sell a school seats and correct its seat balance
+- `seats.approve` — Approve or reject a paid extra-seat request
+- `seats.pricing.manage` — Set a school's per-seat price and manage its pricing history
+- `customization.manage` — Configure a school's theme, branding and dropdown values
+- `domains.manage` — Configure, verify and activate a school's subdomain or custom domain
 - `attendance.regularize` — Correct/regularize past attendance
 - `reportcards.read` — View report cards
 - `fees.plan.review` — Review a submitted installment plan and send it for admin approval

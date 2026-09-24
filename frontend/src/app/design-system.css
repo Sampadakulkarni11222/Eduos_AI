@@ -234,6 +234,23 @@ body.role-warden{
 .plan-balance.is-balanced{background:rgba(46,107,79,.08);border-color:rgba(46,107,79,.3);color:var(--green)}
 .plan-balance.is-balanced strong{color:var(--green)}
 
+/* ===== Platform console layouts (seats, pricing, customization) =====
+   A list beside its detail on a wide screen, stacked on a narrow one. Kept as
+   classes rather than inline grids so the breakpoint can apply: an inline
+   grid-template-columns cannot be overridden by a media query. */
+.console-split{display:grid;grid-template-columns:1fr 1.4fr;gap:16px;align-items:start}
+.console-split.is-wide-detail{grid-template-columns:1fr 2fr}
+.console-split.is-pricing{grid-template-columns:1fr 1.6fr}
+.form-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media (max-width:900px){
+  .console-split,.console-split.is-wide-detail,.console-split.is-pricing{grid-template-columns:1fr}
+  .form-grid-3{grid-template-columns:1fr 1fr}
+}
+@media (max-width:560px){
+  .form-grid-2,.form-grid-3{grid-template-columns:1fr}
+}
+
 /* ===== Payment registration form ===== */
 .pay-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .pay-instrument{

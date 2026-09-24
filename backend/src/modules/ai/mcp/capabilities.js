@@ -52,6 +52,9 @@ const ENTITY_OF_MODULE = {
   Hostel: 'hostel',
   Transport: 'transport',
   Admissions: 'admission',
+  Seats: 'seat',
+  Customization: 'customization',
+  Domains: 'domain',
 };
 
 /**

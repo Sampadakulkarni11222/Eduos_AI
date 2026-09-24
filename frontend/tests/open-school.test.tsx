@@ -58,7 +58,22 @@ vi.mock('@/components/ask-eduos', () => ({ AskEduOS: () => null }));
 vi.mock('@/components/notification-bell', () => ({ NotificationBell: () => null }));
 vi.mock('@/components/modal-a11y-bridge', () => ({ ModalA11yBridge: () => null }));
 vi.mock('@/lib/api', () => ({
-  api: { publicSchool: vi.fn().mockImplementation((slug: string) => Promise.resolve({ slug, name: slug })) },
+  api: {
+    publicSchool: vi.fn().mockImplementation((slug: string) => Promise.resolve({ slug, name: slug })),
+    // The shell fetches the school's own theme to paint its portal. These
+    // suites are about navigation rather than branding, so it resolves to an
+    // unthemed school — which is what a school that has customised nothing
+    // returns. Inlined because vi.mock is hoisted above any const it could use.
+    schoolTheme: vi.fn().mockResolvedValue({
+      tenantId: '',
+      theme: { primaryColor: null, secondaryColor: null, accentColor: null },
+      branding: { displayName: null, tagline: null, logoUrl: null, faviconUrl: null },
+      header: { showSchoolName: true, showTagline: false },
+      sidebar: { showLogo: true, showPortalLabel: true, defaultCollapsed: false },
+      dropdowns: [],
+      cssVariables: {},
+    }),
+  },
   errorMessage: (_e: unknown, fallback: string) => fallback,
 }));
 

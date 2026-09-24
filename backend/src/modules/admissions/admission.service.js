@@ -9,6 +9,7 @@ import { runInTransaction } from '../../utils/transaction.js';
 import { nextSequence } from '../../utils/sequence.js';
 import { logger } from '../../utils/logger.js';
 import { rowError } from '../../utils/csvImport.js';
+import { isValidPhone } from '../../utils/validators.js';
 
 // Helper: map a raw Lead doc to the DTO the frontend expects
 function toLeadDto(lead) {
@@ -174,13 +175,30 @@ async function ensureStudentForEnrolledLead(lead, session = null) {
   }
 }
 
+const PHONE_RULE = 'phone must be a valid number, e.g. +919876543210 or a 10-digit local number';
+
+/**
+ * A lead's contact number in the form it is stored, or null when it is not a
+ * phone number. Presence alone used to be enough — the New Lead form pre-fills
+ * "+91", so an untouched field created a lead with no way to reach the family.
+ * The spaces, dashes, dots and brackets people type are dropped, then the
+ * app's one phone rule (utils/validators.js, also used at sign-in) applies.
+ */
+function leadPhone(raw) {
+  if (typeof raw !== 'string') return null;
+  const compact = raw.trim().replace(/[\s().-]/g, '');
+  return isValidPhone(compact) ? compact : null;
+}
+
 export async function createLead(data) {
   // Accept phoneE164 (frontend field name) or phone
-  const phone = data.phoneE164 ?? data.phone;
+  const rawPhone = data.phoneE164 ?? data.phone;
 
-  if (!data.childName || !data.guardianName || !phone) {
+  if (!data.childName || !data.guardianName || !rawPhone) {
     throw new AppError('childName, guardianName, and phone are required', 400);
   }
+  const phone = leadPhone(rawPhone);
+  if (!phone) throw new AppError(PHONE_RULE, 400, [], 'INVALID_PHONE');
 
   const lead = await Lead.create({
     childName: data.childName,
@@ -215,14 +233,24 @@ export async function bulkCreateLeads(rows) {
     const row = rows[i];
     const childName = row.childname?.trim();
     const guardianName = row.guardianname?.trim();
-    const phone = row.phone?.trim();
+    const phone = leadPhone(row.phone);
 
-    if (!childName || !guardianName || !phone) {
+    if (!childName || !guardianName || !row.phone?.trim()) {
       results.failed++;
       results.errors.push(rowError(rowNo, {
         field: !row.childname ? 'childName' : !row.guardianname ? 'guardianName' : 'phone',
         problem: 'is required',
         suggestion: 'every lead needs the child, the guardian and a contact number',
+      }));
+      continue;
+    }
+    if (!phone) {
+      results.failed++;
+      results.errors.push(rowError(rowNo, {
+        field: 'phone',
+        value: row.phone,
+        problem: 'is not a valid phone number',
+        suggestion: 'use +<country code><number>, e.g. +919876543210, or a 10-digit local number',
       }));
       continue;
     }

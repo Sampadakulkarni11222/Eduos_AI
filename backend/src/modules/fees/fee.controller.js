@@ -7,6 +7,7 @@ import { renderInvoicePdf } from '../../utils/invoicePdf.js';
 import { renderReceiptPdf } from '../../utils/receiptPdf.js';
 import * as service from './fee.service.js';
 import * as planService from './plan.service.js';
+import * as seats from '../seats/seat.service.js';
 
 // Both go through the actor-aware service, so the route and the assistant meet
 // the same scope check, field allow-list, foreign-school reference check and
@@ -207,12 +208,30 @@ export const razorpayWebhook = asyncHandler(async (req, res) => {
   const event = req.body?.event;
   const entity = req.body?.payload?.payment?.entity ?? {};
 
-  const result = await service.settleGatewayPayment({
+  const settlement = {
     event,
     orderId: entity.order_id,
     gatewayPaymentId: entity.id,
     amountPaise: entity.amount,
-  });
+  };
+
+  let result = await service.settleGatewayPayment(settlement);
+
+  // A gateway account has one webhook URL, and two kinds of order arrive on it:
+  // a family's fee payment and a school's seat purchase. The order is matched
+  // against the fee ledger first and, only when no fee intent claims it, against
+  // the seat requests — so an order belongs to exactly one of them and neither
+  // module has to know how the other identifies its intents.
+  if (!result.handled && result.reason === 'No matching payment intent') {
+    const seatResult = await seats.settleSeatPayment(settlement);
+    // Reported whenever the seat ledger RECOGNISED the order, settled or not.
+    // Only "no matching seat request" means it had nothing to say — and if the
+    // seat path refuses an order for, say, an amount mismatch, that is the
+    // answer worth returning. Reporting the fee ledger's "no matching payment
+    // intent" instead would tell an operator the order is unknown here when in
+    // fact it was found and refused.
+    if (seatResult.reason !== 'No matching seat request') result = seatResult;
+  }
 
   return sendSuccess(res, result, result.handled ? 'Webhook processed' : `Webhook acknowledged: ${result.reason}`);
 });

@@ -94,6 +94,19 @@ export const env = {
   // same cross-origin rules as production — a wildcard default hides CORS
   // mistakes until deploy, where the boot check then refuses to start on them.
   CORS_ORIGIN: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
+  // ── School domains ──
+  // The platform's own domain, under which a school may be given a subdomain
+  // (abc-public-school.<PLATFORM_DOMAIN>). No default: an unset value means
+  // subdomains cannot be configured, rather than being handed out under a
+  // domain this deployment does not own.
+  PLATFORM_DOMAIN: String(process.env.PLATFORM_DOMAIN ?? '').trim().toLowerCase().replace(/\.$/, ''),
+  // The hostname a school's custom domain must CNAME to so its traffic reaches
+  // this deployment (on Render, the frontend service's onrender.com host). Shown
+  // in the DNS instructions; unset means the instructions say to ask the
+  // platform team for it.
+  DOMAIN_CNAME_TARGET: String(process.env.DOMAIN_CNAME_TARGET ?? '').trim().toLowerCase().replace(/\.$/, ''),
+  // How long one DNS query or TLS handshake may take during verification.
+  DOMAIN_CHECK_TIMEOUT_MS: Number(process.env.DOMAIN_CHECK_TIMEOUT_MS) || 5000,
   // Defaults to true in development, false in production
   SWAGGER_ENABLED: process.env.SWAGGER_ENABLED !== undefined
     ? process.env.SWAGGER_ENABLED === 'true'

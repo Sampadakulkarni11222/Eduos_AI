@@ -90,6 +90,7 @@ import { rateLimiter } from './middleware/rateLimiter.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { sendError } from './utils/response.js';
 import apiRoutes from './routes/index.js';
+import { corsOrigin } from './modules/domains/domain.cors.js';
 
 const app = express();
 
@@ -102,7 +103,11 @@ app.set('trust proxy', 1);
 // Must be mounted BEFORE any static handler, or uploaded files and the status
 // page are served with no security headers at all.
 app.use(helmet());
-app.use(cors({ origin: env.CORS_ORIGIN }));
+// The configured frontend origin, plus https on any school's ACTIVE domain — a
+// portal served at www.abcschool.com calls this API cross-origin, and must be
+// allowed to exactly when, and only while, that domain is live. A pending or
+// deactivated domain is not in the list. See modules/domains/domain.service.js.
+app.use(cors({ origin: corsOrigin }));
 
 // ─── Status Page (public/) ────────────────────────────────
 app.use(express.static(join(__dirname, '..', 'public')));

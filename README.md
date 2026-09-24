@@ -206,6 +206,83 @@ The browser tab shows the EduOS AI mark on every page — the platform hosts man
 schools, so the favicon belongs to none of them — with the school's name as the
 tab title wherever a school is being shown.
 
+### Seats
+
+A school's size is a commercial arrangement, so it is two numbers rather than
+one. `purchasedSeats` is what the school has paid for; `approvedSeats` is what
+the platform has released for use, and it is the only one user creation reads.
+
+    purchase → approved → used → available
+      → School Admin requests extra seats  (Admin Console → Seats)
+      → the server prices them             (this school's rate + volume tiers)
+      → payment                            (the same gateway as fees)
+      → the request becomes PAID
+      → a Super Admin approves or rejects  (Super Admin → Seat Management)
+      → only an approval makes them usable
+
+Paying therefore buys seats it does not release: a paid-but-unapproved request
+leaves the school exactly as full as it was, and the seat page says so in those
+words. A request can only be decided once it is paid, only once, and never from
+inside the school that raised it — `seats.manage` and `seats.approve` are
+Super-Admin-only keys, and the service refuses a decision made from a school's
+own console even by a platform account.
+
+A school the platform has never sold seats to has no seat account, and no seat
+limit: deployments that do not sell seats behave exactly as they did before.
+
+**Per-seat pricing** is per school — School A at ₹100 a seat, School B at ₹120,
+School C at ₹90 — and is set on *Super Admin → Per-Seat Pricing*. A price is a
+*version*, never a field that is overwritten: raising a school's rate writes a
+new version and closes the old one, so the row that priced last month's payment
+is still there saying what it said. Requests snapshot the rate as well, so a
+charge is explained twice over.
+
+    additionalSeats × the school's rate in force  − platform volume discount
+
+is computed server-side, from the rate the server resolves; an amount in the
+request body is never read. A school with no price of its own resolves to the
+platform default (`SEAT_UNIT_PRICE_PAISE`). Prices carry a currency and may be
+dated forward to schedule a rise — resolution is a query against the clock, so
+no scheduler is involved. Zero and negative prices are refused: a zero-amount
+order cannot be raised with the gateway, and free seats already have a route
+(the platform grants them directly). Only `seats.pricing.manage`, another
+Super-Admin-only key, can change a price; a School Admin sees the rate it will
+be charged and nothing more.
+
+### School-wise theme and UI customisation
+
+Each school is configured separately on *Super Admin → School Customization*:
+its primary, secondary and accent colours, a logo and favicon, a display name
+and tagline, what the header and sidebar show, and the option lists its forms
+offer.
+
+It is not a second theme system. The colours are published as the CSS custom
+properties `design-system.css` already themes every portal with — `--accent`,
+`--accent-2` and the sidebar text set — so a school's brand colour flows through
+every component that already reads them. They are applied to the portal's own
+element rather than to `:root`, so one school's colours cannot outlive its
+subtree or tint the platform console. The foreground colours are *derived* from
+the brand colour's luminance server-side, because the shipped role themes pair
+each accent with hand-picked text colours and an arbitrary brand colour arrives
+with no such pairing.
+
+A school that has configured nothing has no document and publishes no variables:
+it renders exactly as EduOS ships, with its role-tinted portals intact. *Reset to
+default* deletes the document rather than writing the defaults into it, so
+"reset" and "never customised" are the same state.
+
+Dropdown values are per school and isolated by the same tenancy plugin that
+confines students and invoices — School A's houses (Red, Blue, Green) and School
+B's (Alpha, Beta, Gamma) live in different documents, and no query a school can
+express returns the other's. Colours must be hex literals and assets must be an
+uploaded `/uploads/…` path or an https URL; `javascript:`, `data:` and SVG are
+refused, SVG because it is active content served from our own origin.
+
+Changing any of it is `customization.manage`, a Super-Admin-only key — the rule
+the Settings screen has always stated. A School Admin reads its own
+configuration on `settings.manage`; the render-time theme carries no permission
+at all, because every role has to paint its own portal.
+
 ### Two kinds of door
 
 ```
@@ -315,12 +392,12 @@ Accounts can hold **multiple role profiles** (e.g. the same phone as Parent *and
 
 | Portal | Modules |
 |---|---|
-| **Admin** | Dashboard, Tickets, User Management, Student/Teacher Classes, Classroom Management (Subject Offerings & Elective Registrations), Admission CRM, Attendance, Calendar, Timetable Builder, Payments & Fees (+receipts), Announcements, Library, Transport, Documents (real uploads), Medical Records, WhatsApp Assistant, Audit Logs, Access & Permissions (live RBAC editor), Tenant Settings |
+| **Admin** | Dashboard, Tickets, User Management, Student/Teacher Classes, Classroom Management (Subject Offerings & Elective Registrations), Admission CRM, Attendance, Calendar, Timetable Builder, Payments & Fees (+receipts), Announcements, Library, Transport, Documents (real uploads), Medical Records, WhatsApp Assistant, Audit Logs, Access & Permissions (live RBAC editor), Seats (purchase, usage, per-seat rate and extra-seat requests), Tenant Settings |
 | **Teacher** | Dashboard, My Classes, Attendance (one-tap marking), Timetable, Assignments (create → submissions roster → grading), Exams & Performance, Course Material (uploads), Announcements, Calendar, Elective Registrations (review queue), Medical Records, Support Tickets |
 | **Parent** | Dashboard, Performance, Student View (growth score), Attendance, Assignments (submission status), Timetable, Calendar, Announcements, Medical Records, Library, Transport, Course Materials, **Payments with online Pay Now**, Documents, Study Help (AI tutor), AI Credits, Support Tickets |
 | **Student** | Dashboard, Timetable, **Assignments with submit/resubmit + attachments**, Performance, Attendance, Calendar, Announcements, Library, Transport, Documents, Course Materials, Subjects (elective registration), Study Help (AI tutor), AI Credits, Profile, Support Tickets |
 | **Principal** | School Intelligence, Performance & Risk Scan, Teacher Workload, Attendance Trends, Fee Health, Staff Directory, Announcements, Escalated Tickets, Audit Logs |
-| **Super Admin** | Dashboard (platform), Schools & Admins, School Dashboards (operations / finance / hostel / library), Audit Logs, Access & Permissions |
+| **Super Admin** | Dashboard (platform), Schools & Admins, Seat Management (sell seats, approve/reject paid extra-seat requests), Per-Seat Pricing (a rate per school, versioned), School Customization (theme, branding, dropdown values per school), School Dashboards (operations / finance / hostel / library), Audit Logs, Access & Permissions |
 | **Finance** | Dashboard, Payments & Fees, Reports |
 | **Librarian** | Dashboard, Catalog & Lending (issue/return + fines), Announcements, Tickets |
 | **Warden** | Dashboard (live occupancy), Room Management (allocate/vacate), Hostel Students, Medical Lookup, Announcements, Tickets |
@@ -379,6 +456,7 @@ Everything below works out of the box in **safe development modes**; going live 
 | `MEDICAL_ENCRYPTION_KEY` | change-me | at-rest encryption for medical data |
 | `SMS_PROVIDER` / `EMAIL_PROVIDER` | `console` | OTP delivery (see §8) |
 | `PAYMENT_PROVIDER` | `sandbox` | `sandbox` \| `none` \| future gateway |
+| `SEAT_UNIT_PRICE_PAISE` | `50000` (₹500) | **default** list price of one extra seat, for schools the Super Admin has not priced specifically. Per-school prices override it; nothing a client sends is ever read |
 | `GOOGLE_CLIENT_ID` | — | enables real Google sign-in verification |
 | `UPLOAD_DIR` / `UPLOAD_MAX_BYTES` | `uploads` / 15 MB | file uploads |
 | `WHATSAPP_VERIFY_TOKEN`, `WA_*` | — | WhatsApp webhook / live mode. Setting `WA_APP_SECRET` makes signature verification mandatory for **every** inbound request |
@@ -441,6 +519,10 @@ run downloads a MongoDB binary and is slow; later runs are not.
 | `exams.recordAccess` | Marks and report card access by role |
 | `platformView.scope` | Super Admin platform-wide view scoping |
 | `schoolAdmin.isolation` | School Admin cross-school isolation |
+| `seats.management` | Seat purchase, server-side pricing, payment, approval and isolation |
+| `seats.webhook` | Routing a gateway order to the fee ledger or the seat ledger |
+| `seats.pricing` | Per-school seat pricing: CRUD, calculation, snapshots, history, isolation, concurrency |
+| `customization.school` | School theme, branding, dropdown isolation, defaults, invalid values, RBAC, MCP |
 | `superAdmin.googleAccess` / `superAdmin.schools` | Super Admin provisioning and school management |
 | `tenancy.isolation` | Multi-school data isolation |
 | `transport.access` | Bus assignment scope enforcement |

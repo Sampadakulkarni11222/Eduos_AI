@@ -152,7 +152,17 @@ describe('school + School Admin management', () => {
 
   it('resolves a slug publicly, so /oakridge can name the school before sign-in', async () => {
     await seedSchool('oakridge', 'Oakridge Academy');
-    expect(await schools.getPublicSchool('oakridge')).toEqual({ slug: 'oakridge', name: 'Oakridge Academy' });
+    // Identity plus branding — a door has to look like the school as well as
+    // name it. An uncustomised school carries nulls and no CSS variables, so it
+    // renders exactly as it always did.
+    expect(await schools.getPublicSchool('oakridge')).toEqual({
+      slug: 'oakridge',
+      name: 'Oakridge Academy',
+      logoUrl: null,
+      faviconUrl: null,
+      tagline: null,
+      cssVariables: {},
+    });
     await expect(schools.getPublicSchool('nope')).rejects.toMatchObject({ statusCode: 404 });
   });
 

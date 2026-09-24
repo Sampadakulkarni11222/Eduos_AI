@@ -6,6 +6,17 @@ import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { api, ApiError } from '@/lib/api';
 import type { HostelAllocationDto, HostelRoomDto, StudentListItem } from '@/lib/types';
 
+// The backend's room types (hostel.model.js ROOM_TYPES). Air conditioning is
+// not one of them; it is stored as the 'AC' amenity.
+const ROOM_TYPES = [
+  { value: 'GENERAL', label: 'General' },
+  { value: 'BOYS', label: 'Boys' },
+  { value: 'GIRLS', label: 'Girls' },
+  { value: 'STAFF', label: 'Staff' },
+];
+const EMPTY_ROOM = { roomNo: '', block: 'Block A', capacity: 2, type: 'GENERAL', ac: false };
+const hasAc = (r: HostelRoomDto) => r.amenities?.includes('AC') ?? false;
+
 export default function WardenRooms() {
   const [rooms, setRooms] = useState<HostelRoomDto[] | null>(null);
   const [allocations, setAllocations] = useState<HostelAllocationDto[] | null>(null);
@@ -16,7 +27,7 @@ export default function WardenRooms() {
 
   // Modals state
   const [showRoomModal, setShowRoomModal] = useState(false);
-  const [newRoom, setNewRoom] = useState({ roomNo: '', block: 'Block A', capacity: 2, type: 'AC' });
+  const [newRoom, setNewRoom] = useState(EMPTY_ROOM);
   const [showAllocateModal, setShowAllocateModal] = useState(false);
   const [allocateForm, setAllocateForm] = useState({ studentId: '', roomId: '' });
   const [busy, setBusy] = useState(false);
@@ -42,10 +53,11 @@ export default function WardenRooms() {
     if (!newRoom.roomNo) return;
     setBusy(true);
     try {
-      await api.createHostelRoom(newRoom);
+      const { ac, ...room } = newRoom;
+      await api.createHostelRoom({ ...room, amenities: ac ? ['AC'] : [] });
       toast(`Room ${newRoom.roomNo} added.`);
       setShowRoomModal(false);
-      setNewRoom({ roomNo: '', block: 'Block A', capacity: 2, type: 'AC' });
+      setNewRoom(EMPTY_ROOM);
       load();
     } catch (x) {
       toast(x instanceof ApiError ? x.message : 'Could not create the room.', 'error');
@@ -114,7 +126,7 @@ export default function WardenRooms() {
             <thead>
               <tr>
                 <th>Room / Block</th>
-                <th>Bed Type</th>
+                <th>Room Type</th>
                 <th>Occupancy</th>
                 <th>Occupants</th>
                 <th>Action</th>
@@ -130,8 +142,9 @@ export default function WardenRooms() {
                       <span className="cell-primary">Room {r.roomNo}</span>
                       <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>{r.block}</div>
                     </td>
-                    <td data-label="Bed Type">
-                      <Pill tone={r.type === 'AC' ? 'blue' : 'gray'}>{r.type}</Pill>
+                    <td data-label="Room Type">
+                      <Pill tone="gray">{r.type}</Pill>
+                      {hasAc(r) && <> <Pill tone="blue">AC</Pill></>}
                     </td>
                     <td data-label="Occupancy">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -188,13 +201,17 @@ export default function WardenRooms() {
               </select>
 
               <div className="field-label">Capacity (Beds)</div>
-              <input className="field-input" type="number" required min={1} value={newRoom.capacity} onChange={(e) => setNewRoom({ ...newRoom, capacity: Number(e.target.value) })} />
+              <input className="field-input" type="number" required min={1} max={50} step={1} value={newRoom.capacity} onChange={(e) => setNewRoom({ ...newRoom, capacity: Number(e.target.value) })} />
 
-              <div className="field-label">Bed Type</div>
-              <select className="field-input" value={newRoom.type} onChange={(e) => setNewRoom({ ...newRoom, type: e.target.value })}>
-                <option value="AC">Air Conditioned (AC)</option>
-                <option value="NON_AC">Non-AC</option>
+              <div className="field-label">Room Type</div>
+              <select className="field-input" aria-label="Room Type" value={newRoom.type} onChange={(e) => setNewRoom({ ...newRoom, type: e.target.value })}>
+                {ROOM_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, fontSize: 13 }}>
+                <input type="checkbox" checked={newRoom.ac} onChange={(e) => setNewRoom({ ...newRoom, ac: e.target.checked })} />
+                Air conditioned (AC)
+              </label>
 
               <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
                 <Button type="submit" disabled={busy}>{busy ? 'Adding…' : 'Add Room'}</Button>

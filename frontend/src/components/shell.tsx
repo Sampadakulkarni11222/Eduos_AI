@@ -3,17 +3,18 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
-import { api } from '@/lib/api';
+import { api, fileHref } from '@/lib/api';
 import { Avatar } from '@/components/ui';
 import { portalForRole, PORTALS, ROLE_TO_SLUG, type Portal } from '@/lib/portals';
 import { clearActingSchool, platformViewAllowed, setActingSchool, useActingSchool } from '@/lib/acting-school';
-import type { RoleKey } from '@/lib/types';
+import type { RoleKey, SchoolBrandingDto, SchoolSidebarConfigDto } from '@/lib/types';
 import { Spinner, cx } from './ui';
 import { usePermissions, getRequiredPermission } from '@/lib/permissions';
 import { portalHome, stripSchool, useSchoolSegment, withSchool } from '@/lib/school-path';
 import { AskEduOS } from './ask-eduos';
 import { NotificationBell } from './notification-bell';
 import { ModalA11yBridge } from './modal-a11y-bridge';
+import { useSchoolTheme, useFavicon, themeStyle } from '@/lib/school-theme';
 
 const SIDEBAR_KEY = 'eduos.sidebar.collapsed';
 
@@ -87,18 +88,41 @@ export function PortalShell({
     if (expectedSlug === 'super-admin') clearActingSchool();
   }, [expectedSlug]);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  /**
+   * The school's own theme, branding and sidebar configuration.
+   *
+   * Fetched for school portals only. The platform console belongs to no school
+   * and must keep its own indigo whatever school was last opened, so it asks
+   * for nothing.
+   */
+  const { theme: schoolTheme } = useSchoolTheme(
+    expectedSlug !== 'super-admin' && !loading && Boolean(me?.profile?.id),
+    acting?.slug ?? school,
+  );
+  // Stored as "/uploads/…", which lives on the API's origin, not this one.
+  useFavicon(schoolTheme.branding.faviconUrl ? fileHref(schoolTheme.branding.faviconUrl) : null);
+
   // Rail preference is per-device, so it lives in localStorage rather than on
   // the profile. Read after mount to keep the server and client markup equal.
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    setCollapsed(localStorage.getItem(SIDEBAR_KEY) === '1');
-  }, []);
+    const stored = localStorage.getItem(SIDEBAR_KEY);
+    // The school's default applies only until this device expresses its own
+    // preference — a configuration should set the starting point, not overrule
+    // the person who has already collapsed the rail on their own laptop.
+    setCollapsed(stored === null ? schoolTheme.sidebar.defaultCollapsed : stored === '1');
+  }, [schoolTheme.sidebar.defaultCollapsed]);
 
   // The tab says which school you are looking at. These pages are client-side,
-  // so the server metadata in layout.tsx cannot know it — the favicon stays the
-  // platform's either way.
-  const tabSchool = isPlatformAdmin ? (platformView ? acting?.name ?? null : null) : me?.profile?.tenantName;
+  // so the server metadata in layout.tsx cannot know it; the school's own name
+  // and favicon are applied here instead, and only where it has configured
+  // them.
+  const tabSchool = schoolTheme.header.showSchoolName
+    ? schoolTheme.branding.displayName
+      ?? (isPlatformAdmin ? (platformView ? acting?.name ?? null : null) : me?.profile?.tenantName)
+    : null;
   useEffect(() => {
     document.title = tabSchool ? `${tabSchool} · EduOS AI` : 'EduOS AI';
   }, [tabSchool]);
@@ -167,16 +191,22 @@ export function PortalShell({
   // it must be theirs — this used to say "Oakridge Academy" on every school's
   // pages.
   const isPlatform = me.profile.role === 'SUPER_ADMIN';
-  const schoolLabel = platformView
-    ? acting?.name ?? 'EduOS AI'
-    : isPlatform ? 'EduOS AI' : me.profile.tenantName || 'EduOS AI';
+  const schoolLabel = schoolTheme.branding.displayName
+    ?? (platformView
+      ? acting?.name ?? 'EduOS AI'
+      : isPlatform ? 'EduOS AI' : me.profile.tenantName || 'EduOS AI');
 
   // Feature Access Check for direct URL navigation
   const reqPerm = getRequiredPermission(stripSchool(pathname, school));
   const permissionDenied = reqPerm ? !hasAccess(active.role, reqPerm) : false;
 
   return (
-    <div className={cx('app-shell', portal.themeClass, collapsed && 'sidebar-collapsed')}>
+    // The school's colours are scoped to this element rather than to :root, so
+    // one school's theme cannot outlive its portal or bleed into the console.
+    <div
+      className={cx('app-shell', portal.themeClass, collapsed && 'sidebar-collapsed')}
+      style={themeStyle(schoolTheme.cssVariables)}
+    >
       <ModalA11yBridge />
       {mobileOpen && (
         // Backdrop dismissal is a mouse convenience; ModalA11yBridge supplies
@@ -188,6 +218,8 @@ export function PortalShell({
         portal={portal}
         school={school}
         schoolName={schoolLabel}
+        branding={schoolTheme.branding}
+        config={schoolTheme.sidebar}
         mobileOpen={mobileOpen}
         setMobileOpen={setMobileOpen}
         collapsed={collapsed}
@@ -214,6 +246,10 @@ export function PortalShell({
                     previously started at h2 or lower with no h1 at all. */}
                 <h1 className="topbar-title">{topbar.title}</h1>
                 {topbar.desc && <div className="topbar-desc">{topbar.desc}</div>}
+                {/* The school's own line, shown only where it has asked for it. */}
+                {schoolTheme.header.showTagline && schoolTheme.branding.tagline && (
+                  <div className="topbar-desc" style={{ fontStyle: 'italic' }}>{schoolTheme.branding.tagline}</div>
+                )}
               </div>
             </div>
             <div className="topbar-ask" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -289,6 +325,8 @@ function Sidebar({
   portal,
   school,
   schoolName,
+  branding,
+  config,
   mobileOpen,
   setMobileOpen,
   collapsed,
@@ -297,6 +335,8 @@ function Sidebar({
   portal: Portal;
   school: string | null;
   schoolName: string;
+  branding: SchoolBrandingDto;
+  config: SchoolSidebarConfigDto;
   mobileOpen: boolean;
   setMobileOpen: (open: boolean) => void;
   collapsed: boolean;
@@ -311,10 +351,25 @@ function Sidebar({
   return (
     <aside className={cx('sidebar', mobileOpen && 'mobile-open')}>
       <div className="sidebar-brand">
-        <div className="sidebar-logo">{schoolName.trim().charAt(0).toUpperCase() || 'E'}</div>
+        {config.showLogo && (
+          branding.logoUrl ? (
+            // A school-configured URL — an upload path or an https URL —
+            // so it cannot be known at build time the way next/image
+            // requires, and there is no loader for an arbitrary school host.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              className="sidebar-logo"
+              src={fileHref(branding.logoUrl)}
+              alt=""
+              style={{ objectFit: 'contain', background: 'transparent' }}
+            />
+          ) : (
+            <div className="sidebar-logo">{schoolName.trim().charAt(0).toUpperCase() || 'E'}</div>
+          )
+        )}
         <div className="sidebar-school">
           <div className="sidebar-school-name">{schoolName}</div>
-          <div className="sidebar-school-sub">{portal.sublabel}</div>
+          {config.showPortalLabel && <div className="sidebar-school-sub">{portal.sublabel}</div>}
         </div>
         <button className="sidebar-close-btn" onClick={() => setMobileOpen(false)} aria-label="Close Menu">
           ✕

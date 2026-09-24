@@ -2,13 +2,28 @@ import { Schema, model } from 'mongoose';
 import { tenantScoped } from '../tenancy/tenantScope.js';
 
 // ─── HostelRoom ─────────────────────────────────────────────
+// `type` is who the room houses. Air conditioning is not a type; it is an
+// entry in `amenities` ('AC').
+export const ROOM_TYPES = ['BOYS', 'GIRLS', 'STAFF', 'GENERAL'];
+// Beds per room. The ceiling is applied where rooms are written (hostel.service,
+// the MCP tools) rather than here, so a room stored before it existed can still
+// be saved; the floor and whole-number rule hold for every document.
+export const ROOM_CAPACITY_MIN = 1;
+export const ROOM_CAPACITY_MAX = 50;
+
 const hostelRoomSchema = new Schema(
   {
     roomNo: { type: String, required: true, trim: true },
     block: { type: String, trim: true, default: 'Main' },
     floor: { type: String, trim: true, default: null },
-    capacity: { type: Number, required: true, default: 4 },
-    type: { type: String, enum: ['BOYS', 'GIRLS', 'STAFF', 'GENERAL'], default: 'GENERAL' },
+    capacity: {
+      type: Number,
+      required: true,
+      default: 4,
+      min: [ROOM_CAPACITY_MIN, 'capacity must be at least 1 bed'],
+      validate: { validator: Number.isInteger, message: 'capacity must be a whole number of beds' },
+    },
+    type: { type: String, enum: ROOM_TYPES, default: 'GENERAL' },
     status: { type: String, enum: ['ACTIVE', 'MAINTENANCE', 'CLOSED'], default: 'ACTIVE' },
     amenities: [{ type: String }],
   },

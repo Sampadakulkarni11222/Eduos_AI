@@ -45,6 +45,23 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
  */
 export const ROUTE_PERMISSIONS: Record<string, string> = {
   '/super-admin/schools': 'schools.read',
+  // Selling seats and deciding requests are platform acts; both keys are in
+  // SUPER_ADMIN_ONLY server-side, so no school-level role can reach this page.
+  '/super-admin/seats': 'seats.manage',
+  // Pricing is its own authority: `seats.pricing.manage` is in
+  // SUPER_ADMIN_ONLY, so no school-level role can reach this page, and the
+  // backend gates every pricing write on the same key.
+  '/super-admin/pricing': 'seats.pricing.manage',
+  // Changing how a school looks is platform-level: `customization.manage` is
+  // in SUPER_ADMIN_ONLY server-side. A School Admin reads its own configuration
+  // through the Settings screen and cannot reach this page.
+  '/super-admin/customization': 'customization.manage',
+  // Configuring, verifying and activating a school's address is platform-level:
+  // `domains.manage` is in SUPER_ADMIN_ONLY server-side.
+  '/super-admin/domains': 'domains.manage',
+  // A School Admin's own seat page. `seats.read` is granted to ADMIN and
+  // SUPER_ADMIN only, and the backend gates every seat route on the same key.
+  '/admin/seats': 'seats.read',
   '/super-admin/dashboards': 'analytics.school.read',
   '/super-admin/audit': 'audit.read',
   '/super-admin/permissions': 'roles.manage',

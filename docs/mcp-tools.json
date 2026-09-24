@@ -1,18 +1,18 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 162,
+    "total": 167,
     "byOperation": {
-      "GET": 80,
-      "CREATE": 26,
+      "GET": 84,
+      "CREATE": 27,
       "UPDATE": 15,
       "DELETE": 10,
       "ACTION": 31
     },
     "byRisk": {
-      "LOW": 86,
+      "LOW": 90,
       "MEDIUM": 47,
-      "HIGH": 28,
+      "HIGH": 29,
       "CRITICAL": 1
     }
   },
@@ -2993,29 +2993,18 @@
       "name": "create_assignment",
       "module": "Assignments",
       "operation": "CREATE",
-      "description": "Set an assignment or homework for a class. Identify the class and subject by name -- \"Mathematics\" for \"Class 5-A\" -- or by subjectOfferingId when you have one. Every student in that section sees it, so it needs confirmation.",
+      "description": "Set an assignment or homework for a class you teach. Every student in that section sees it, so it needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
           "subjectOfferingId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
-            "description": "The class and subject it is for, when known"
-          },
-          "className": {
-            "type": "string",
-            "maxLength": 60,
-            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
-          },
-          "subject": {
-            "type": "string",
-            "maxLength": 80,
-            "description": "The subject, as a person names it, e.g. \"Mathematics\""
+            "description": "The class and subject it is for"
           },
           "title": {
             "type": "string",
-            "maxLength": 200,
-            "description": "What the work is -- the task, or its topic"
+            "maxLength": 200
           },
           "description": {
             "type": "string",
@@ -3023,8 +3012,7 @@
           },
           "dueAt": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "description": "When it must be handed in"
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           },
           "maxMarks": {
             "type": "integer",
@@ -3046,6 +3034,7 @@
           }
         },
         "required": [
+          "subjectOfferingId",
           "title",
           "dueAt"
         ],
@@ -3057,7 +3046,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": true,
       "readOnly": false,
-      "service": "homework.service.resolveOffering() + assignment.service.create()",
+      "service": "assignment.service.create()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -6822,6 +6811,138 @@
       "service": "auth.service.me() + academics.service.getMySections()/getMyOfferings()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
+    },
+    {
+      "name": "get_seat_summary",
+      "module": "Seats",
+      "operation": "GET",
+      "description": "How many seats this school has bought, how many the platform has approved for use, how many are in use and how many are free. Also reports the school's own per-seat price — what extra seats would cost it — and seats that are paid for but still waiting for platform approval, which cannot be used yet. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "seats.read",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "seat.service.getSeatSummary()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_seat_requests",
+      "module": "Seats",
+      "operation": "GET",
+      "description": "This school's extra-seat requests and where each one has got to: awaiting payment, paid and waiting for the platform to decide, approved, or rejected. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING_PAYMENT",
+              "PAID",
+              "APPROVED",
+              "REJECTED"
+            ],
+            "description": "Narrow to one stage of the request lifecycle"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "seats.read",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "seat.service.listSeatRequests()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "request_extra_seats",
+      "module": "Seats",
+      "operation": "CREATE",
+      "description": "Ask the platform for extra seats for this school. The price is calculated by the server from the seat count and this school's own per-seat rate — it cannot be set here. Raising the request allocates nothing: it has to be paid for on the seat page and then approved by the platform before the seats can be used.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "seats": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5000,
+            "description": "How many extra seats to ask for"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Why the school needs them"
+          }
+        },
+        "required": [
+          "seats"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "seats.request",
+      "scope": "ALL",
+      "risk": "HIGH",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "seat.service.createSeatRequest()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_school_customization",
+      "module": "Customization",
+      "operation": "GET",
+      "description": "This school's own branding and the option lists its forms offer — houses, zones, and any other dropdown the platform has configured for it. Use it to answer what values a field accepts at this school. Read-only, and always about the caller's own school.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "dropdownKey": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Narrow to one list, e.g. \"house\". Omit for all of them."
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "settings.manage",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "customization.service.getCustomization()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_school_domain",
+      "module": "Domains",
+      "operation": "GET",
+      "description": "This school's portal address — a platform subdomain or its own custom domain — whether it is verified, whether its certificate works, whether it is live, the DNS records still required, and the domain from the website on the School Admin profile (\"Not Provided\" when there is none) with whether it has been applied. Read-only, and always about the caller's own school.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "domains.read",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "domain.service.getDomain()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
     }
   ],
   "roleMatrix": [
@@ -6842,13 +6963,13 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 161,
-      "GET": 80,
-      "CREATE": 26,
+      "total": 166,
+      "GET": 84,
+      "CREATE": 27,
       "UPDATE": 15,
       "ACTION": 30,
       "DELETE": 10,
-      "highRiskActions": 28,
+      "highRiskActions": 29,
       "highRiskActionNames": [
         "update_enrollment_status",
         "archive_student",
@@ -6877,9 +6998,10 @@
         "delete_book",
         "upsert_medical_record",
         "remove_medical_record",
-        "delete_document"
+        "delete_document",
+        "request_extra_seats"
       ],
-      "confirmationRequired": 75,
+      "confirmationRequired": 76,
       "names": [
         "search_students",
         "get_student",
@@ -7041,7 +7163,12 @@
         "delete_document",
         "create_course_material",
         "update_course_material",
-        "get_my_profile"
+        "get_my_profile",
+        "get_seat_summary",
+        "get_seat_requests",
+        "request_extra_seats",
+        "get_school_customization",
+        "get_school_domain"
       ]
     },
     {

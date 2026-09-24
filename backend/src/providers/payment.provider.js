@@ -84,7 +84,7 @@ async function razorpayRequest(path, { method = 'GET', body } = {}) {
  * — this function is the last place that would notice a tampered figure, and it
  * deliberately does not accept one from a request body.
  */
-export async function createGatewayOrder({ amountPaise, receipt, notes = {} }) {
+export async function createGatewayOrder({ amountPaise, receipt, notes = {}, currency }) {
   if (!Number.isInteger(amountPaise) || amountPaise <= 0) {
     throw Object.assign(new Error('amountPaise must be a positive integer'), { code: 'INVALID_AMOUNT' });
   }
@@ -93,7 +93,11 @@ export async function createGatewayOrder({ amountPaise, receipt, notes = {} }) {
     method: 'POST',
     body: {
       amount: amountPaise, // Razorpay counts in paise, same unit as the ledger
-      currency: env.RAZORPAY_CURRENCY,
+      // The caller's currency when it has one, and the deployment's otherwise.
+      // Seat pricing is per school and a school may be priced in its own
+      // currency; billing it in whatever the deployment defaults to would
+      // charge the right number in the wrong money.
+      currency: currency ?? env.RAZORPAY_CURRENCY,
       receipt: String(receipt ?? '').slice(0, 40),
       notes,
       payment_capture: 1,
@@ -226,7 +230,7 @@ export async function createPaymentLink({ invoiceId, invoiceNo, amountPaise, por
   }
 }
 
-export async function chargeOnline({ amountPaise, invoiceNo, payerProfileId }) {
+export async function chargeOnline({ amountPaise, invoiceNo, payerProfileId, currency }) {
   switch (env.PAYMENT_PROVIDER) {
     case 'sandbox': {
       return {
@@ -242,6 +246,7 @@ export async function chargeOnline({ amountPaise, invoiceNo, payerProfileId }) {
       try {
         const order = await createGatewayOrder({
           amountPaise,
+          currency,
           receipt: invoiceNo,
           notes: { invoiceNo: String(invoiceNo ?? ''), payerProfileId: String(payerProfileId ?? '') },
         });
