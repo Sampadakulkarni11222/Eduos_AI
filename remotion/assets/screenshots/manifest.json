@@ -1,0 +1,226 @@
+{
+  "capturedAt": "2026-09-22T17:57:34.420Z",
+  "viewport": "1920x1080@2x",
+  "school": "Oakridge Academy",
+  "shots": [
+    {
+      "file": "signin.png",
+      "url": "/oakridge",
+      "note": "Oakridge Academy sign-in door"
+    },
+    {
+      "file": "super-admin-dashboard.png",
+      "url": "/super-admin"
+    },
+    {
+      "file": "super-admin-schools.png",
+      "url": "/super-admin/schools"
+    },
+    {
+      "file": "school-customization.png",
+      "url": "/super-admin/customization"
+    },
+    {
+      "file": "seat-management.png",
+      "url": "/super-admin/seats"
+    },
+    {
+      "file": "super-admin-dashboards.png",
+      "url": "/super-admin/dashboards"
+    },
+    {
+      "file": "ask-agent-open-admin.png",
+      "url": "/oakridge/admin",
+      "note": "Ask Agent panel, suggestions for Admin"
+    },
+    {
+      "file": "ask-agent-write-question.png",
+      "url": "/oakridge/admin"
+    },
+    {
+      "file": "ask-agent-confirmation.png",
+      "url": "/oakridge/admin",
+      "note": "Server-composed summary awaiting Confirm"
+    },
+    {
+      "file": "ask-agent-confirmed.png",
+      "url": "/oakridge/admin",
+      "note": "Action executed after Confirm"
+    },
+    {
+      "file": "admin-audit.png",
+      "url": "/oakridge/admin/audit",
+      "note": "Audit log incl. the Agent-posted announcement"
+    },
+    {
+      "file": "admin-announcements.png",
+      "url": "/oakridge/admin/announcements"
+    },
+    {
+      "file": "admin-dashboard.png",
+      "url": "/oakridge/admin"
+    },
+    {
+      "file": "admin-timetable.png",
+      "url": "/oakridge/admin/timetable"
+    },
+    {
+      "file": "admin-admissions.png",
+      "url": "/oakridge/admin/admissions"
+    },
+    {
+      "file": "admin-payments.png",
+      "url": "/oakridge/admin/payments"
+    },
+    {
+      "file": "admin-permissions.png",
+      "url": "/oakridge/admin/permissions"
+    },
+    {
+      "file": "teacher-dashboard.png",
+      "url": "/oakridge/teacher"
+    },
+    {
+      "file": "teacher-attendance-empty.png",
+      "url": "/oakridge/teacher/attendance"
+    },
+    {
+      "file": "teacher-attendance.png",
+      "url": "/oakridge/teacher/attendance",
+      "note": "Register filled, before saving"
+    },
+    {
+      "file": "teacher-attendance-saved.png",
+      "url": "/oakridge/teacher/attendance",
+      "note": "Register saved"
+    },
+    {
+      "file": "teacher-assignments.png",
+      "url": "/oakridge/teacher/assignments"
+    },
+    {
+      "file": "teacher-submissions.png",
+      "url": "/oakridge/teacher/assignments",
+      "note": "Submissions roster"
+    },
+    {
+      "file": "teacher-grading.png",
+      "url": "/oakridge/teacher/assignments",
+      "note": "Grading an actual submission"
+    },
+    {
+      "file": "teacher-material.png",
+      "url": "/oakridge/teacher/material"
+    },
+    {
+      "file": "teacher-timetable.png",
+      "url": "/oakridge/teacher/timetable"
+    },
+    {
+      "file": "parent-dashboard.png",
+      "url": "/oakridge/parent"
+    },
+    {
+      "file": "parent-attendance.png",
+      "url": "/oakridge/parent/attendance"
+    },
+    {
+      "file": "parent-performance.png",
+      "url": "/oakridge/parent/performance"
+    },
+    {
+      "file": "ask-agent-parent-read.png",
+      "url": "/oakridge/parent",
+      "note": "Same question as the principal, parent scope"
+    },
+    {
+      "file": "parent-payments.png",
+      "url": "/oakridge/parent/payments"
+    },
+    {
+      "file": "parent-pay-modal.png",
+      "url": "/oakridge/parent/payments"
+    },
+    {
+      "file": "parent-pay-done.png",
+      "url": "/oakridge/parent/payments",
+      "note": "Sandbox payment captured on the real ledger"
+    },
+    {
+      "file": "parent-payments-paid.png",
+      "url": "/oakridge/parent/payments"
+    },
+    {
+      "file": "parent-study-help.png",
+      "url": "/oakridge/parent/study-help"
+    },
+    {
+      "file": "student-dashboard.png",
+      "url": "/oakridge/student"
+    },
+    {
+      "file": "student-assignments.png",
+      "url": "/oakridge/student/assignments"
+    },
+    {
+      "file": "student-assignment-submit.png",
+      "url": "/oakridge/student/assignments",
+      "note": "Submission dialog (not sent)"
+    },
+    {
+      "file": "student-timetable.png",
+      "url": "/oakridge/student/timetable"
+    },
+    {
+      "file": "principal-risk.png",
+      "url": "/oakridge/principal/risk"
+    },
+    {
+      "file": "principal-risk-drawer.png",
+      "url": "/oakridge/principal/risk"
+    },
+    {
+      "file": "principal-intelligence.png",
+      "url": "/oakridge/principal"
+    },
+    {
+      "file": "principal-fees.png",
+      "url": "/oakridge/principal/fees"
+    },
+    {
+      "file": "principal-attendance.png",
+      "url": "/oakridge/principal/attendance"
+    },
+    {
+      "file": "ask-agent-open.png",
+      "url": "/oakridge/principal",
+      "note": "Ask Agent panel, suggestions for Principal"
+    },
+    {
+      "file": "ask-agent-read-question.png",
+      "url": "/oakridge/principal"
+    },
+    {
+      "file": "ask-agent-read.png",
+      "url": "/oakridge/principal",
+      "note": "Answer from get_fee_statistics via MCP"
+    },
+    {
+      "file": "warden-dashboard.png",
+      "url": "/oakridge/warden"
+    },
+    {
+      "file": "warden-rooms.png",
+      "url": "/oakridge/warden/rooms"
+    },
+    {
+      "file": "librarian-dashboard.png",
+      "url": "/oakridge/librarian"
+    },
+    {
+      "file": "librarian-books.png",
+      "url": "/oakridge/librarian/books"
+    }
+  ],
+  "failures": []
+}

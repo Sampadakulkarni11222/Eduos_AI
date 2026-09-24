@@ -67,9 +67,15 @@ beforeEach(async () => {
 const ask = (actor, message) => inOak(() => runAgentSafely({ message, actor, source: 'WEB' }));
 
 describe('a turn completes without a model configured', () => {
+  // `get_absent_students` and `get_fee_statistics` rather than
+  // `who_is_absent_today` and `get_fees`: each pair fronts one service
+  // (attendance.getDailyAbsenceSummary, fee.getSummary), so capabilities.js
+  // derives the wrapped legacy name as superseded by the native one and
+  // routing now reaches the canonical capability. Same service, same answer,
+  // one name instead of two.
   it.each([
-    ["today's absentees", 'who_is_absent_today'],
-    ['fee summary', 'get_fees'],
+    ["today's absentees", 'get_absent_students'],
+    ['fee summary', 'get_fee_statistics'],
     ['library summary', 'get_library_summary'],
   ])('answers %s from school data, without a model', async (question, tool) => {
     const res = await ask(actorFor('ADMIN'), question);

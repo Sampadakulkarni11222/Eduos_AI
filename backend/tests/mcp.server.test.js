@@ -454,10 +454,25 @@ describe('the model cannot choose who it is or which school it is in', () => {
 
 describe('arguments are validated before anything runs', () => {
   it('refuses a missing required argument', async () => {
-    const res = await call(OAK, actorFor('ADMIN'), 'search_students', {});
+    // create_book rather than search_students: `query` is no longer required
+    // there, because the Web students page lists the directory with an empty
+    // search box and demanding one made "show me the students in my school"
+    // impossible to answer. The property under test is unchanged -- a schema
+    // that declares an argument required refuses the call without it, before
+    // anything runs -- so it is asserted against a tool that still declares
+    // one. Nothing is written: validation fails first.
+    const res = await call(OAK, actorFor('ADMIN'), 'create_book', {});
     expect(res.success).toBe(false);
     expect(res.error.code).toBe('INVALID_INPUT');
-    expect(res.error.message).toMatch(/query is required/);
+    expect(res.error.message).toMatch(/title is required/);
+  });
+
+  it('lists the student directory when no search term is given', async () => {
+    // The other half of that change, asserted rather than assumed: an absent
+    // `query` is a browse, not an error.
+    const res = await call(OAK, actorFor('ADMIN'), 'search_students', {});
+    expect(res.success, JSON.stringify(res.error ?? {})).toBe(true);
+    expect(Array.isArray(res.data.students)).toBe(true);
   });
 
   it('refuses an argument the tool does not have', async () => {

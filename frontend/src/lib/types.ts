@@ -714,9 +714,18 @@ export interface UserDto {
 }
 
 /** What `/oakridge` can learn about a school before anyone signs in. */
+/**
+ * A school's public identity — everything its sign-in door may show before
+ * anyone has signed in. Branding only: no option lists, no audit fields.
+ */
 export interface PublicSchoolDto {
   slug: string;
   name: string;
+  logoUrl?: string | null;
+  faviconUrl?: string | null;
+  tagline?: string | null;
+  /** Computed server-side, the same way a portal's are. */
+  cssVariables?: Record<string, string>;
 }
 
 // ── Schools (Super Admin) ──
@@ -745,7 +754,380 @@ export interface SchoolAdminDto {
   accountStatus: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | null;
   phone: string | null;
   email: string | null;
+  /** The school's website as entered on this profile; feeds domain management. */
+  website: string | null;
   createdAt: string;
+}
+
+// ── School domains ──
+
+export type DomainType = 'SUBDOMAIN' | 'CUSTOM';
+export type DomainSource = 'MANUAL' | 'PROFILE';
+/** What the School Admin profile's website gives. */
+export type ProfileDomainStatus = 'FOUND' | 'NOT_PROVIDED' | 'INVALID' | 'CONFLICT';
+/** The profile's domain compared with the school's configuration. */
+export type ProfileDomainSync = 'NOT_PROVIDED' | 'INVALID' | 'CONFLICT' | 'DUPLICATE' | 'NOT_CONFIGURED' | 'IN_SYNC' | 'CHANGED';
+export type PendingProfileChange = 'CHANGED' | 'REMOVED' | 'INVALID' | 'CONFLICT' | 'DUPLICATE';
+
+export interface PendingProfileDomainDto {
+  change: PendingProfileChange;
+  hostname: string | null;
+  website: string | null;
+  profileName: string | null;
+  detectedAt: string;
+}
+
+export interface ProfileDomainDto {
+  status: ProfileDomainStatus;
+  /** Null unless FOUND. Never guessed. */
+  hostname: string | null;
+  website?: string;
+  profileId?: string;
+  profileName?: string;
+  error?: string;
+  candidates?: Array<{ hostname: string; profileName: string }>;
+  takenByAnotherSchool: boolean;
+  sync: ProfileDomainSync;
+}
+export type DomainVerificationStatus = 'PENDING' | 'VERIFIED' | 'FAILED';
+export type DomainSslStatus = 'NOT_CHECKED' | 'ACTIVE' | 'FAILED';
+/** INCONCLUSIVE: the resolver or handshake could not be completed; nothing changed. */
+export type DomainCheckOutcome = 'VERIFIED' | 'FAILED' | 'ACTIVE' | 'INCONCLUSIVE';
+
+export interface DomainDnsRecordDto {
+  purpose: 'OWNERSHIP' | 'ROUTING';
+  type: 'TXT' | 'CNAME' | 'ALIAS';
+  name: string;
+  /** Null when the deployment has not configured the value (e.g. no CNAME target). */
+  value: string | null;
+  managedBy: 'SCHOOL' | 'PLATFORM';
+  note: string;
+}
+
+export interface DomainDnsInstructionsDto {
+  summary: string;
+  records: DomainDnsRecordDto[];
+  steps: string[];
+  warning?: string;
+}
+
+export interface SchoolDomainDto {
+  tenantId: string;
+  tenantName: string | null;
+  type: DomainType;
+  subdomain: string | null;
+  customDomain: string | null;
+  hostname: string;
+  platformDomain: string | null;
+  verificationStatus: DomainVerificationStatus;
+  verificationRecordName: string | null;
+  lastVerificationAt: string | null;
+  lastVerificationError: string | null;
+  verifiedAt: string | null;
+  sslStatus: DomainSslStatus;
+  sslCheckedAt: string | null;
+  sslError: string | null;
+  sslValidTo: string | null;
+  sslIssuer: string | null;
+  source: DomainSource;
+  sourceProfileId: string | null;
+  sourceProfileName: string | null;
+  sourceWebsite: string | null;
+  sourceFetchedAt: string | null;
+  pendingProfileDomain: PendingProfileDomainDto | null;
+  active: boolean;
+  activatedAt: string | null;
+  deactivatedAt: string | null;
+  deactivationReason: string | null;
+  configuredBy: string | null;
+  updatedBy: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  dnsInstructions: DomainDnsInstructionsDto | null;
+}
+
+export interface SchoolDomainSummaryDto {
+  tenantId: string;
+  tenantName: string;
+  schoolStatus: 'ACTIVE' | 'SUSPENDED';
+  configured: boolean;
+  type: DomainType | null;
+  hostname: string | null;
+  verificationStatus: DomainVerificationStatus | null;
+  sslStatus: DomainSslStatus | null;
+  active: boolean;
+  updatedAt: string | null;
+  profileDomain: string | null;
+  profileDomainStatus: ProfileDomainStatus;
+  profileDomainSync: ProfileDomainSync;
+  source: DomainSource | null;
+  pendingProfileChange: PendingProfileChange | null;
+}
+
+export interface DomainSettingsDto {
+  platformDomain: string | null;
+  subdomainsEnabled: boolean;
+  cnameTarget: string | null;
+  reservedSubdomains: string[];
+}
+
+export interface DomainListDto {
+  settings: DomainSettingsDto;
+  schools: SchoolDomainSummaryDto[];
+}
+
+export interface SchoolDomainDetailDto {
+  tenantId: string;
+  tenantName: string;
+  domain: SchoolDomainDto | null;
+  profileDomain: ProfileDomainDto;
+}
+
+export interface DomainChangeDto {
+  changed: boolean;
+  domain: SchoolDomainDto;
+}
+
+export interface DomainCheckDto {
+  outcome: DomainCheckOutcome;
+  error: string | null;
+  routing?: { expected: string | null; found: string[]; pointsAtPlatform: boolean | null; error?: string } | null;
+  domain: SchoolDomainDto;
+}
+
+// ── School customization ──
+/**
+ * What one school is allowed to differ on.
+ *
+ * Every colour is nullable and null means "not customised" — the role theme in
+ * design-system.css stands. There is no separate "is themed" flag to fall out
+ * of step with the values.
+ */
+export interface SchoolThemeColorsDto {
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  accentColor: string | null;
+}
+
+export interface SchoolBrandingDto {
+  displayName: string | null;
+  tagline: string | null;
+  logoUrl: string | null;
+  faviconUrl: string | null;
+}
+
+/** Each flag names exactly one thing on screen — see the model's own note. */
+export interface SchoolHeaderConfigDto {
+  /** The school's name in the browser tab. */
+  showSchoolName: boolean;
+  /** The tagline under the page title. */
+  showTagline: boolean;
+}
+
+export interface SchoolSidebarConfigDto {
+  /** The logo mark in the brand block; falls back to an initial. */
+  showLogo: boolean;
+  /** The portal's name under the school's, e.g. "Admin Console". */
+  showPortalLabel: boolean;
+  /** The rail's starting state, until this device says otherwise. */
+  defaultCollapsed: boolean;
+}
+
+export interface SchoolDropdownOptionDto {
+  /** What a record stores. */
+  value: string;
+  /** What a person reads. */
+  label: string;
+  order: number;
+}
+
+export interface SchoolDropdownDto {
+  key: string;
+  label: string;
+  options: SchoolDropdownOptionDto[];
+}
+
+/** What a portal needs to paint itself. Readable by any member of the school. */
+export interface SchoolThemeDto {
+  tenantId: string;
+  theme: SchoolThemeColorsDto;
+  branding: SchoolBrandingDto;
+  header: SchoolHeaderConfigDto;
+  sidebar: SchoolSidebarConfigDto;
+  dropdowns: SchoolDropdownDto[];
+  /** Computed server-side, so every client paints the same thing. */
+  cssVariables: Record<string, string>;
+}
+
+/** The full configuration, as the customisation screen edits it. */
+export interface SchoolCustomizationDto extends Omit<SchoolThemeDto, 'cssVariables'> {
+  customized: boolean;
+  updatedBy: string | null;
+  updatedAt: string | null;
+}
+
+/** One row of the platform's customisation console. */
+export interface SchoolCustomizationSummaryDto {
+  tenantId: string;
+  tenantName: string;
+  status: 'ACTIVE' | 'SUSPENDED';
+  customized: boolean;
+  theme: SchoolThemeColorsDto;
+  branding: SchoolBrandingDto;
+  dropdownCount: number;
+  updatedAt: string | null;
+}
+
+/** What the save would write, returned by the preview without writing it. */
+export interface SchoolCustomizationInput {
+  theme?: Partial<SchoolThemeColorsDto>;
+  branding?: Partial<SchoolBrandingDto>;
+  header?: Partial<SchoolHeaderConfigDto>;
+  sidebar?: Partial<SchoolSidebarConfigDto>;
+  dropdowns?: Array<{ key: string; label: string; options: Array<{ value: string; label: string; order?: number }> }>;
+}
+
+// ── Seats ──
+/**
+ * A school's seat position.
+ *
+ * `purchasedSeats` is what has been paid for; `approvedSeats` is what the
+ * platform has released for use. Only the second one buys anybody a login, so
+ * the gap between them — `awaitingApprovalSeats` — is a real state a screen has
+ * to show rather than a rounding artefact.
+ */
+export interface SeatSummaryDto {
+  tenantId: string;
+  tenantName?: string;
+  status?: 'ACTIVE' | 'SUSPENDED';
+  purchasedSeats: number;
+  approvedSeats: number;
+  usedSeats: number;
+  availableSeats: number;
+  awaitingApprovalSeats: number;
+  pendingRequestCount: number;
+  pendingRequestSeats: number;
+  provisioned: boolean;
+  updatedAt: string | null;
+  priceList?: SeatPriceListDto;
+  /** Present on the platform list: this school's rate, resolved server-side. */
+  unitPricePaise?: number;
+  currency?: string;
+  priceSource?: 'SCHOOL' | 'PLATFORM_DEFAULT';
+}
+
+/**
+ * The rate in force for a school, as a screen shows it.
+ *
+ * `source` is the difference between "priced specifically at this rate" and
+ * "not priced, so charged the platform default" — two states that look the same
+ * if only the number is shown.
+ */
+export interface SeatPriceListDto {
+  unitPricePaise: number;
+  currency: string;
+  source: 'SCHOOL' | 'PLATFORM_DEFAULT';
+  seatPriceId: string | null;
+  maxSeatsPerRequest: number;
+  tiers: Array<{ minSeats: number; discountPct: number }>;
+  version: string;
+}
+
+/** One version of a school's per-seat price. Prices are versioned, never edited. */
+export interface SeatPriceDto {
+  id: string;
+  tenantId: string;
+  unitPricePaise: number;
+  currency: string;
+  status: 'ACTIVE' | 'INACTIVE';
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  supersededByPriceId: string | null;
+  note: string | null;
+  setBy: string | null;
+  deactivatedBy: string | null;
+  deactivatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A school's current rate, as the platform pricing table lists it. */
+export interface SchoolSeatPriceDto {
+  tenantId: string;
+  tenantName: string;
+  status: 'ACTIVE' | 'SUSPENDED';
+  unitPricePaise: number;
+  currency: string;
+  source: 'SCHOOL' | 'PLATFORM_DEFAULT';
+  seatPriceId: string | null;
+  versionCount: number;
+}
+
+export type SeatRequestStatus = 'PENDING_PAYMENT' | 'PAID' | 'APPROVED' | 'REJECTED';
+export type SeatPaymentStatus = 'UNPAID' | 'INITIATED' | 'PAID' | 'FAILED';
+
+export interface SeatRequestDto {
+  id: string;
+  tenantId: string;
+  seats: number;
+  unitPricePaise: number;
+  discountPct: number;
+  amountPaise: number;
+  currency: string;
+  priceListVersion: string;
+  /** Which price version priced this request, and whether the school had one. */
+  seatPriceId: string | null;
+  priceSource: 'SCHOOL' | 'PLATFORM_DEFAULT';
+  pricedAt: string;
+  status: SeatRequestStatus;
+  paymentStatus: SeatPaymentStatus;
+  paymentProvider: string | null;
+  gatewayOrderRef: string | null;
+  gatewayRef: string | null;
+  receiptNo: string | null;
+  paidAt: string | null;
+  paymentFailureReason: string | null;
+  requestedBy: string | null;
+  requestedByProfileId: string | null;
+  reason: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SeatHistoryEntryDto {
+  id: string;
+  tenantId: string;
+  event: 'PURCHASE' | 'EXTRA_SEATS_PAID' | 'EXTRA_SEATS_APPROVED' | 'EXTRA_SEATS_REJECTED' | 'ADJUSTMENT';
+  purchasedDelta: number;
+  approvedDelta: number;
+  purchasedAfter: number;
+  approvedAfter: number;
+  amountPaise: number | null;
+  unitPricePaise: number | null;
+  currency: string | null;
+  requestId: string | null;
+  actor: string | null;
+  note: string | null;
+  at: string;
+}
+
+/** What POST /seats/requests/:id/pay hands back. */
+export interface SeatPaymentStartDto {
+  requiresClientAction: boolean;
+  requestId: string;
+  provider: string | null;
+  orderId?: string;
+  keyId?: string;
+  currency?: string;
+  amountPaise: number;
+  seats: number;
+  sandbox?: boolean;
+  receiptNo?: string;
+  status?: string;
+  reused?: boolean;
 }
 
 export interface CreateSchoolAdminDto {
@@ -753,6 +1135,7 @@ export interface CreateSchoolAdminDto {
   phone: string;
   email?: string;
   password?: string;
+  website?: string;
 }
 
 export interface CreateUserDto {

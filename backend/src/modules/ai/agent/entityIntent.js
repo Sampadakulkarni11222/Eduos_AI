@@ -161,7 +161,15 @@ const NOT_A_SUBJECT = new Set([
   // yielded the subject "are", which is the kind of value that would be sent
   // to a tool as though a person had named a subject.
   'are', 'is', 'was', 'were', 'be', 'been', 'being', 'has', 'had', 'not', 'and', 'or', 'but',
+  // Superlatives. A subject sits before the entity word -- "Mathematics marks"
+  // -- and so does a qualifier: "highest marks" yielded the subject "highest",
+  // which was then sent to a tool as though somebody had named one.
+  'highest', 'lowest', 'best', 'worst', 'top', 'bottom', 'better', 'worse', 'good', 'bad',
   'for', 'with', 'from', 'into', 'than', 'then', 'there', 'here', 'they', 'them', 'their',
+  // Prepositions that INTRODUCE what something is about. "homework about
+  // linear equations" yielded the subject "about", which is then offered to a
+  // tool as though somebody had named a school subject called About.
+  'about', 'regarding', 'concerning', 'on', 'in', 'of', 'to',
   'these', 'those', 'many', 'much', 'more', 'most', 'few', 'less', 'how', 'why', 'when', 'where', 'who',
 ]);
 
@@ -191,8 +199,11 @@ export function subjectFromText(text, entity) {
     if (found) return found;
   }
 
-  // "marks in Mathematics", "homework for Mathematics"
-  const after = new RegExp(`(?:${entitySource})\\s+(?:in|for|of)\\s+(${word})`, 'iu').exec(str);
+  // "marks in Mathematics", "homework for Mathematics", and with a qualifier
+  // between them -- "scored HIGHEST in Mathematics", "did BEST in Science".
+  // One optional word, because that is what a qualifier is; more than one and
+  // the preposition is likely introducing something else entirely.
+  const after = new RegExp(`(?:${entitySource})\\s+(?:\\w+\\s+)?(?:in|for|of)\\s+(${word})`, 'iu').exec(str);
   if (after) {
     const found = ok(after[1]);
     if (found) return found;

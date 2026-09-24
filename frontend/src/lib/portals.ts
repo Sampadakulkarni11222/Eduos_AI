@@ -82,6 +82,8 @@ export const PORTALS: Record<string, Portal> = {
       { title: 'SYSTEM', items: [
         item('Audit Logs', '▷', '/admin/audit', { ready: true }),
         item('Access & Permissions', '🔐', '/admin/permissions', { ready: true }),
+        // Seats the school has bought, and asking the platform for more.
+        item('Seats', '🪑', '/admin/seats', { ready: true }),
         item('Tenant Settings', '⚙', '/admin/settings', { ready: true }),
       ]},
     ],
@@ -207,6 +209,10 @@ export const PORTALS: Record<string, Portal> = {
       ]},
       { title: 'SCHOOLS', items: [
         item('Schools & Admins', '🏫', '/super-admin/schools', { ready: true }),
+        item('Seat Management', '🪑', '/super-admin/seats', { ready: true }),
+        item('Per-Seat Pricing', '₹', '/super-admin/pricing', { ready: true }),
+        item('School Customization', '◈', '/super-admin/customization', { ready: true }),
+        item('Domain Management', '🌐', '/super-admin/domains', { ready: true }),
         item('School Dashboards', '◪', '/super-admin/dashboards', { ready: true }),
       ]},
       { title: 'SYSTEM', items: [

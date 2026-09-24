@@ -94,6 +94,7 @@ export function detectLanguage(text) {
 const MESSAGES = {
   en: {
     'agent.unsure': "I'm not sure what you need. I can help with: {capabilities}.",
+    'agent.which': 'Did you mean {options}?',
     // Shown when a tool refuses with a message written for an HTTP client
     // rather than for a person. See humaniseToolError() in orchestrator.js.
     'agent.cannotAnswer': "That isn't something I can look up for your account. I can help with: {capabilities}.",
@@ -173,6 +174,7 @@ const MESSAGES = {
 
   hi: {
     'agent.unsure': 'मुझे ठीक से समझ नहीं आया। मैं इनमें मदद कर सकता हूँ: {capabilities}।',
+    'agent.which': 'आपका मतलब {options} से है?',
     'agent.cannotAnswer': 'यह मैं आपके खाते के लिए नहीं देख सकता। मैं इनमें मदद कर सकता हूँ: {capabilities}।',
     'agent.injection': 'मैं केवल वही कर सकता हूँ जिसकी अनुमति आपके खाते को है, और मैं ये नियम नहीं बदल सकता। आप मुझसे उपस्थिति, फीस, होमवर्क या परिणाम के बारे में पूछ सकते हैं।',
     'agent.confirm': '{summary}। क्या मैं आगे बढ़ूँ?',

@@ -164,7 +164,12 @@ describe('1. intent — a class question is a class question', () => {
   it('leaves school-wide questions alone', () => {
     // No class named, so the class rules must not claim these.
     expect(asTeacher('how many students are in the school?')?.tool).not.toBe('get_attendance_roster');
-    expect(parseIntent('who is absent today?', school.people.ADMIN.actor)?.tool).toBe('who_is_absent_today');
+    // get_absent_students, not who_is_absent_today: the catalog derives that
+    // the two front the same service (attendance.getDailyAbsenceSummary) and
+    // marks the wrapped legacy name as superseded by the native one. Routing
+    // now honours that, so the canonical capability is what a school-wide
+    // absence question reaches. Same service, same figures, one name.
+    expect(parseIntent('who is absent today?', school.people.ADMIN.actor)?.tool).toBe('get_absent_students');
   });
 
   it('canonicalises class names', () => {

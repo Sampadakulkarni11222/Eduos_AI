@@ -1,6 +1,7 @@
 import * as academics from '../../../academics/academics.service.js';
 import * as exams from '../../../exams/exam.service.js';
 import * as assignments from '../../../assignments/assignment.service.js';
+import { resolveOffering } from '../../../assignments/homework.service.js';
 import * as timetable from '../../../timetable/timetable.service.js';
 import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
@@ -285,12 +286,20 @@ export const academicTools = {
   get_timetable: wrapAgentTool('get_timetable', {
     module: 'Timetable',
     description:
-      "The timetable for a day. A teacher sees the periods they teach, a student or parent their own section, and a school-wide reader the school. Accepts a weekday name or today/tomorrow/yesterday. Read-only.",
+      'The timetable for a day, with the subject and the teacher for each period. Name a class to see that class alone; without one, a teacher sees the periods they teach, a student or parent their own section, and a school-wide reader the school. Accepts a weekday name or today/tomorrow/yesterday. Read-only.',
     inputSchema: {
       type: 'object',
-      properties: { day: { type: 'string', maxLength: 24, description: 'Weekday name, or today/tomorrow/yesterday' } },
+      properties: {
+        day: { type: 'string', maxLength: 24, description: 'Weekday name, or today/tomorrow/yesterday' },
+        ...classIdentitySchema,
+        sectionId: objectId('The class section, when the id is already known'),
+      },
       additionalProperties: false,
     },
+    // The class is resolved to a section at the caller's own scope before the
+    // agent tool runs, so a class they do not teach is refused by name rather
+    // than quietly widened to everything they can see.
+    resolveClass: true,
     service: 'timetable.service.getTimetable()',
   }),
 
@@ -805,28 +814,49 @@ export const academicTools = {
     risk: RISK.MEDIUM,
     confirm: true,
     description:
-      'Set an assignment or homework for a class you teach. Every student in that section sees it, so it needs confirmation.',
+      'Set an assignment or homework for a class. Identify the class and subject by name -- "Mathematics" for "Class 5-A" -- or by subjectOfferingId when you have one. Every student in that section sees it, so it needs confirmation.',
     inputSchema: {
       type: 'object',
       properties: {
-        subjectOfferingId: objectId('The class and subject it is for'),
-        title: { type: 'string', maxLength: 200 },
+        subjectOfferingId: objectId('The class and subject it is for, when known'),
+        ...classIdentitySchema,
+        subject: { type: 'string', maxLength: 80, description: 'The subject, as a person names it, e.g. "Mathematics"' },
+        title: { type: 'string', maxLength: 200, description: 'What the work is -- the task, or its topic' },
         description: { type: 'string', maxLength: 4000 },
-        dueAt: dateStr(),
+        dueAt: dateStr('When it must be handed in'),
         maxMarks: { type: 'integer', minimum: 1, maximum: 1000 },
         type: { type: 'string', enum: ['HOMEWORK', 'PROJECT', 'WORKSHEET', 'LAB'] },
         chapter: { type: 'string', maxLength: 120 },
       },
-      required: ['subjectOfferingId', 'title', 'dueAt'],
+      // subjectOfferingId is no longer required: nobody types an ObjectId, and
+      // requiring one made the capability unreachable from a sentence -- which
+      // is how "create Mathematics homework for Class 5-A" reached the AI
+      // DRAFTING tool instead of the one that simply sets the work. The class
+      // and subject are resolved below, at the caller's own scope, exactly as
+      // the Web's own offering picker is filtered.
+      required: ['title', 'dueAt'],
       additionalProperties: false,
     },
     permission: 'assignments.manage',
     affectsOthers: true,
-    service: 'assignment.service.create()',
-    summarise: (args) => `Set "${args.title}" for the class, due ${args.dueAt}`,
+    service: 'homework.service.resolveOffering() + assignment.service.create()',
+    summarise: (args) =>
+      `Set "${args.title}"${args.subject ? ` (${args.subject})` : ''}`
+      + `${args.className ? ` for ${args.className}` : ' for the class'}, due ${args.dueAt}`,
     async run(ctx, args) {
-      const created = await assignments.create(ctx.actor, ctx.scope, args);
-      return action({ type: 'assignment_created', id: created._id, data: created, speak: `"${created.title}" has been set for the class.` });
+      const { className, subject, subjectOfferingId, ...rest } = args;
+      // Resolved at ctx.scope: a teacher reaches only the classes they teach,
+      // an administrator holding assignments.manage school-wide reaches any
+      // offering in their school, and an ambiguous or unknown pair is asked
+      // about rather than guessed at.
+      const offering = await resolveOffering(ctx.actor, ctx.scope, { subjectOfferingId, subject, className });
+      const created = await assignments.create(ctx.actor, ctx.scope, { ...rest, subjectOfferingId: offering.id });
+      return action({
+        type: 'assignment_created',
+        id: created._id,
+        data: created,
+        speak: `"${created.title}" has been set for ${offering.className} ${offering.subject}.`,
+      });
     },
   },
 

@@ -5,6 +5,7 @@ import { SignIn } from '@/components/sign-in';
 import { Spinner } from '@/components/ui';
 import { api } from '@/lib/api';
 import { setActiveSchool } from '@/lib/school';
+import { themeStyle, useFavicon } from '@/lib/school-theme';
 import type { PublicSchoolDto } from '@/lib/types';
 
 /**
@@ -25,6 +26,8 @@ export default function SchoolEntryPage() {
 
   const [school, setSchool] = useState<PublicSchoolDto | null>(null);
   const [missing, setMissing] = useState(false);
+  // A school is recognised at its door before it is recognised anywhere else.
+  useFavicon(school?.faviconUrl ?? null);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,5 +83,12 @@ export default function SchoolEntryPage() {
   // The same sign-in screen every school uses. The school is passed down rather
   // than read from storage, so this door can never be confused with the
   // platform one at `/`.
-  return <SignIn school={school} />;
+  //
+  // Its colours are scoped to this wrapper, exactly as a portal scopes them, so
+  // one school's door cannot tint the platform sign-in at `/`.
+  return (
+    <div style={themeStyle(school.cssVariables ?? {})}>
+      <SignIn school={school} />
+    </div>
+  );
 }

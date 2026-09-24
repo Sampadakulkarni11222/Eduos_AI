@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="EduOS AI">
+  <!-- The platform mark, shown on every tab: this app now hosts many schools,
+       so the icon belongs to EduOS AI rather than to any one of them (it used
+       to be Oakridge's "O", which was wrong on every other school's pages).
+
+       Same cream-to-tan plate as .sidebar-logo in design-system.css, with an
+       "E" drawn as geometry rather than text — it renders identically without
+       the Newsreader webfont and stays legible at 16px, where a glyph smears. -->
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#F2E4CC"/>
+      <stop offset="1" stop-color="#D8B98A"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="url(#brand)"/>
+  <g fill="#591620">
+    <!-- Spine, then three arms. The middle arm is shorter and slightly
+         thinner, which is what keeps an E from reading as a solid block once
+         it is scaled down to the favicon size. -->
+    <rect x="10.4" y="8" width="3.6" height="16" rx="1"/>
+    <rect x="10.4" y="8" width="11.2" height="3.4" rx="1"/>
+    <rect x="10.4" y="14.4" width="8.6" height="3.1" rx="1"/>
+    <rect x="10.4" y="20.6" width="11.2" height="3.4" rx="1"/>
+  </g>
+</svg>

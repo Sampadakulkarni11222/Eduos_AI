@@ -12,6 +12,7 @@ import { detectOperation, detectEntity, subjectFromText, topicFromText } from '.
 import { nameFromText, nameSimilarity } from '../src/utils/peopleNames.js';
 import { startApi } from './support/mcpHttp.js';
 import { seedSchool, inSchool, mcp, todayKey, OAK, RIVER } from './support/mcpSchool.js';
+import { MCP_TOOLS } from '../src/modules/ai/mcp/registry.js';
 
 /**
  * Teacher Ask AI: operation × entity × scope, end to end.
@@ -417,22 +418,43 @@ describe('5. homework: a teacher sees what they set, filtered', () => {
 });
 
 describe('6. homework CREATE goes through the confirmation flow', () => {
-  it('routes create verbs, including "add", to the create tool', () => {
+  it('routes create verbs, including "add", to a capability that sets homework', () => {
+    // The capability, not the name. This used to require generate_homework,
+    // which DRAFTS the homework with AI before setting it -- at the time the
+    // only homework capability a sentence could reach, because
+    // create_assignment required a subjectOfferingId nobody can type.
+    //
+    // create_assignment now takes the class and the subject by name, which is
+    // what the Web's own form takes (a title, a class-and-subject picker and a
+    // due date, posted to /assignments). So a plain "create homework" reaches
+    // the plain creation, and asking for the work to be DRAFTED reaches the
+    // drafting -- asserted separately below. What matters here is unchanged:
+    // the create verbs reach a homework capability, and the class and subject
+    // survive the trip.
     for (const msg of [
       'Add Mathematics homework for Class 5-A: Solve the linear equations examples.',
       'Create Mathematics homework for Class 5-A.',
       'Assign Mathematics homework to Class 5-A: Solve the linear equations examples.',
     ]) {
       const intent = asTeacher(msg);
-      expect(intent?.tool, msg).toBe('generate_homework');
+      expect(['create_assignment', 'generate_homework'], msg).toContain(intent?.tool);
+      expect(MCP_TOOLS[intent.tool].module, msg).toBe('Assignments');
       expect(intent.args.subject, msg).toBe('Mathematics');
       expect(intent.args.className, msg).toMatch(/5-?A/i);
     }
   });
 
-  it('carries the topic through', () => {
+  it('still reaches the AI drafting capability when drafting is what was asked for', () => {
+    const intent = asTeacher('Generate Mathematics homework for Class 5-A about linear equations');
+    expect(intent?.tool).toBe('generate_homework');
+    expect(intent.args.className).toMatch(/5-?A/i);
+  });
+
+  it('carries the task itself through, into whichever argument holds it', () => {
     const intent = asTeacher('Add Mathematics homework for Class 5-A: Solve the linear equations examples.');
-    expect(intent.args.topic).toBe('Solve the linear equations examples');
+    // `topic` on the drafting capability, `title` on the plain creation: the
+    // same words, in the argument that capability keeps them in.
+    expect(intent.args.topic ?? intent.args.title).toBe('Solve the linear equations examples');
   });
 
   it('proposes before writing, and writes only after confirmation', async () => {

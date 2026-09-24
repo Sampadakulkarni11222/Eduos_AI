@@ -1,0 +1,42 @@
+{
+  "name": "@eduos/promo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EduOS AI promotional video \u2014 Remotion composition built on real captures of the app",
+  "type": "module",
+  "scripts": {
+    "stack": "node capture/stack.mjs",
+    "stack:fast": "node capture/stack.mjs --skip-build",
+    "capture": "node capture/capture.mjs",
+    "preview": "remotion studio src/index.ts",
+    "render:draft": "remotion render src/index.ts EduOSPromo out/eduos-promo-draft.mp4 --scale=0.5 --crf=28",
+    "render": "remotion render src/index.ts EduOSPromo out/eduos-promo-1080p.mp4 --codec=h264 --crf=16",
+    "render:final": "remotion render src/index.ts EduOSPromo out/eduos-promo-final.mp4 --codec=h264 --crf=16",
+    "render:vo": "remotion render src/index.ts EduOSPromo out/eduos-promo-final-with-voiceover.mp4 --codec=h264 --crf=16",
+    "render:text": "remotion render src/index.ts EduOSPromoText out/eduos-promo-text-focused.mp4 --codec=h264 --crf=16",
+    "render:studio": "remotion render src/index.ts EduOSPromoStudio out/eduos-promo-studio.mp4 --codec=h264 --crf=16",
+    "render:dynamic": "remotion render src/index.ts EduOSPromoDynamic out/eduos-promo-studio-dynamic.mp4 --codec=h264 --crf=16",
+    "render:dynamic:draft": "remotion render src/index.ts EduOSPromoDynamic out/eduos-promo-studio-dynamic-draft.mp4 --scale=0.5 --crf=28",
+    "stills": "node scripts/stills.mjs",
+    "voiceover": "node scripts/make-voiceover.mjs",
+    "voiceover:minimal": "node scripts/make-voiceover.mjs --minimal",
+    "voiceover:studio": "node scripts/make-voiceover.mjs --studio",
+    "voiceover:dynamic": "node scripts/make-voiceover.mjs --dynamic",
+    "music": "python scripts/make-music.py",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.527",
+    "@remotion/cli": "4.0.527",
+    "@remotion/renderer": "4.0.527",
+    "@remotion/transitions": "4.0.527",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.527"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.12",
+    "playwright": "1.61.0",
+    "typescript": "5.6.3"
+  }
+}

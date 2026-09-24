@@ -29,6 +29,7 @@ import { BookRequest } from '../src/models/bookRequest.model.js';
 import { ProfileEditRequest } from '../src/models/profileEditRequest.model.js';
 import { TransportRequest } from '../src/models/transportRequest.model.js';
 import { Document } from '../src/models/document.model.js';
+import { SeatRequest } from '../src/models/seat.model.js';
 import * as library from '../src/modules/library/library.service.js';
 import * as registrations from '../src/modules/registrations/registration.service.js';
 import * as cocurricular from '../src/modules/studentRequests/cocurricular.service.js';
@@ -39,7 +40,7 @@ import * as transport from '../src/modules/transport/transport.service.js';
 import { seedSchool, seedPerson, mcp, inSchool, todayKey, OAK, RIVER } from './support/mcpSchool.js';
 
 /**
- * Every one of the 82 MCP write tools, executed through MCP.
+ * Every one of the 83 MCP write tools, executed through MCP.
  *
  * One case per tool — the role that should be able to do it (taken from the
  * real permission catalog), the records it needs, the arguments, and a
@@ -236,7 +237,7 @@ const read = (fn) => oak(fn);
 const count = (Model, filter = {}) => read(() => Model.countDocuments(filter));
 const field = (Model, id, path) => read(() => Model.findById(id).lean()).then((d) => (d ? path.split('.').reduce((o, k) => o?.[k], d) : '(gone)'));
 
-/* ── The 82 write tools ───────────────────────────────────── */
+/* ── The 83 write tools ───────────────────────────────────── */
 
 /**
  * role         who performs it (holds the permission at the scope it needs)
@@ -719,6 +720,20 @@ const CASES = [
     args: (_s, c) => ({ ticketId: idOf(c.ticket), status: 'RESOLVED' }),
     footprint: (_s, c) => field(Ticket, c.ticket._id, 'status'),
     changed: (b, a) => { expect([b, a]).toEqual(['NEW', 'RESOLVED']); } },
+
+  /* Seats */
+  // `tenant: false` because the tool names no existing record: a Riverside
+  // administrator asking for seats is asking for Riverside's own, which is
+  // legitimate and leaves Oakridge's footprint untouched. The request is
+  // created PENDING_PAYMENT and allocates nothing — paying and approving are
+  // separate acts, and neither is reachable from here.
+  { tool: 'request_extra_seats', role: 'ADMIN', tenant: false,
+    args: () => ({ seats: 25, reason: 'Two new sections in Class 6' }),
+    footprint: () => read(() => SeatRequest.findOne({ seats: 25 }).lean())
+      .then((r) => (r ? `${r.status}:${r.amountPaise}` : null)),
+    // ₹500 a seat, and 25 seats earns no volume discount — the figure is the
+    // server's, which is the point of asserting it here rather than the count.
+    changed: (b, a) => { expect([b, a]).toEqual([null, 'PENDING_PAYMENT:1250000']); } },
 ];
 
 const labelOf = (c) => c.label ?? c.tool;
@@ -742,9 +757,9 @@ async function attempt(tenant, actor, name, args) {
 /* ── Coverage is complete ─────────────────────────────────── */
 
 describe('the write-tool matrix', () => {
-  it('has a case for every one of the 82 write tools', () => {
+  it('has a case for every one of the 83 write tools', () => {
     const writeTools = Object.entries(MCP_TOOLS).filter(([, t]) => mutates(t)).map(([n]) => n).sort();
-    expect(writeTools).toHaveLength(82);
+    expect(writeTools).toHaveLength(83);
     expect([...new Set(CASES.map((c) => c.tool))].sort()).toEqual(writeTools);
   });
 });

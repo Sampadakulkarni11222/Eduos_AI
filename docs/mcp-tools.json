@@ -1,18 +1,18 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 162,
+    "total": 167,
     "byOperation": {
-      "GET": 80,
-      "CREATE": 26,
+      "GET": 84,
+      "CREATE": 27,
       "UPDATE": 15,
       "DELETE": 10,
       "ACTION": 31
     },
     "byRisk": {
-      "LOW": 86,
+      "LOW": 90,
       "MEDIUM": 47,
-      "HIGH": 28,
+      "HIGH": 29,
       "CRITICAL": 1
     }
   },
@@ -21,14 +21,14 @@
       "name": "search_students",
       "module": "Students",
       "operation": "GET",
-      "description": "Find students by name, admission number or class. Use this first whenever the user names a student but you do not have their id. Returns each match with class, roll number, student id and enrolment id. Read-only.",
+      "description": "The student directory: find students by name, admission number or class, or list the students the caller may see when no search is given. Use this first whenever the user names a student but you do not have their id. Returns each match with class, roll number, student id and enrolment id. Read-only.",
       "input": {
         "type": "object",
         "properties": {
           "query": {
             "type": "string",
             "maxLength": 80,
-            "description": "Name, admission number or class, e.g. \"Rahul\", \"OAK-12\", \"Class 6 A\""
+            "description": "Name, admission number or class, e.g. \"Rahul\", \"OAK-12\", \"Class 6 A\". Omit to list everyone in scope."
           },
           "sectionId": {
             "type": "string",
@@ -42,9 +42,6 @@
             "description": "Default 20"
           }
         },
-        "required": [
-          "query"
-        ],
         "additionalProperties": false
       },
       "permission": "students.read",
@@ -960,6 +957,11 @@
               "additionalProperties": false
             }
           },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
           "sectionId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
@@ -1108,6 +1110,11 @@
             "maxLength": 80,
             "description": "One student by name or admission number, or an invoice number"
           },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
           "sectionId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
@@ -1151,7 +1158,7 @@
         "additionalProperties": false
       },
       "permission": "fees.read",
-      "scope": "OWN or ALL",
+      "scope": "ALL",
       "risk": "LOW",
       "confirmation": "NOT_REQUIRED",
       "affectsOthers": false,
@@ -1790,7 +1797,8 @@
               "CHEQUE",
               "DD",
               "BANK"
-            ]
+            ],
+            "description": "Cash unless another mode is named"
           },
           "paidOn": {
             "type": "string",
@@ -1840,8 +1848,7 @@
           }
         },
         "required": [
-          "amountPaise",
-          "mode"
+          "amountPaise"
         ],
         "additionalProperties": false
       },
@@ -2422,7 +2429,7 @@
       "name": "get_timetable",
       "module": "Timetable",
       "operation": "GET",
-      "description": "The timetable for a day. A teacher sees the periods they teach, a student or parent their own section, and a school-wide reader the school. Accepts a weekday name or today/tomorrow/yesterday. Read-only.",
+      "description": "The timetable for a day, with the subject and the teacher for each period. Name a class to see that class alone; without one, a teacher sees the periods they teach, a student or parent their own section, and a school-wide reader the school. Accepts a weekday name or today/tomorrow/yesterday. Read-only.",
       "input": {
         "type": "object",
         "properties": {
@@ -2430,6 +2437,16 @@
             "type": "string",
             "maxLength": 24,
             "description": "Weekday name, or today/tomorrow/yesterday"
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
+          "sectionId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "The class section, when the id is already known"
           }
         },
         "additionalProperties": false
@@ -3718,7 +3735,8 @@
         "properties": {
           "search": {
             "type": "string",
-            "maxLength": 120
+            "maxLength": 120,
+            "description": "Title, author, ISBN, category or publisher"
           },
           "category": {
             "type": "string",
@@ -3762,18 +3780,20 @@
       "name": "get_book",
       "module": "Library",
       "operation": "GET",
-      "description": "One catalog item in full, with total and available copies. Read-only.",
+      "description": "One catalog item in full, with total and available copies. Name it by title or by id. Use it for \"how many copies of X are available\". Read-only.",
       "input": {
         "type": "object",
         "properties": {
           "bookId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "The item as a person names it, e.g. \"Clean Code\". An ambiguous title is refused, never guessed."
           }
         },
-        "required": [
-          "bookId"
-        ],
         "additionalProperties": false
       },
       "permission": "library.read",
@@ -3782,7 +3802,7 @@
       "confirmation": "NOT_REQUIRED",
       "affectsOthers": false,
       "readOnly": true,
-      "service": "library.service.getBookById()",
+      "service": "library.service.listBooks() + getBookById()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -3943,9 +3963,6 @@
             "maximum": 1000
           }
         },
-        "required": [
-          "bookId"
-        ],
         "additionalProperties": false
       },
       "permission": "library.manage",
@@ -3954,7 +3971,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
-      "service": "library.service.updateBook() — behind an MCP field allow-list",
+      "service": "library.service.listBooks() + updateBook() — behind an MCP field allow-list",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -3969,11 +3986,13 @@
           "bookId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "The item as a person names it, e.g. \"Clean Code\". An ambiguous title is refused, never guessed."
           }
         },
-        "required": [
-          "bookId"
-        ],
         "additionalProperties": false
       },
       "permission": "library.manage",
@@ -3982,7 +4001,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
-      "service": "library.service.deleteBook()",
+      "service": "library.service.listBooks() + deleteBook()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -3997,6 +4016,11 @@
           "bookId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "The item as a person names it, e.g. \"Clean Code\". An ambiguous title is refused, never guessed."
           },
           "studentId": {
             "type": "string",
@@ -4019,10 +4043,6 @@
             "description": "When it must be returned"
           }
         },
-        "required": [
-          "bookId",
-          "dueAt"
-        ],
         "additionalProperties": false
       },
       "permission": "library.manage",
@@ -4039,7 +4059,7 @@
       "name": "return_book",
       "module": "Library",
       "operation": "ACTION",
-      "description": "Record the return of a lent item. Returning an item already returned is refused rather than counted twice. Needs confirmation.",
+      "description": "Record the return of a lent item. Name the item by title, and the borrower by name if more than one copy is out. Returning an item already returned is refused rather than counted twice. Needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
@@ -4047,11 +4067,28 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "From list_book_issues"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "The item as a person names it, e.g. \"Clean Code\". An ambiguous title is refused, never guessed."
+          },
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
           }
         },
-        "required": [
-          "issueId"
-        ],
         "additionalProperties": false
       },
       "permission": "library.manage",
@@ -4060,7 +4097,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": true,
       "readOnly": false,
-      "service": "library.service.returnBook()",
+      "service": "library.service.listIssues() + returnBook()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -4112,6 +4149,11 @@
       "input": {
         "type": "object",
         "properties": {
+          "roomNo": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "The room as a person names it, e.g. \"101\""
+          },
           "type": {
             "type": "string",
             "enum": [
@@ -4146,13 +4188,33 @@
       "name": "list_hostel_allocations",
       "module": "Hostel",
       "operation": "GET",
-      "description": "Bed allocations — which student is in which room, active or vacated. Read-only.",
+      "description": "Bed allocations — which student is in which room, active or vacated. Narrow to one room by number, or to one student by name or admission number. Read-only.",
       "input": {
         "type": "object",
         "properties": {
           "roomId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
+          },
+          "roomNo": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "The room as a person names it, e.g. \"101\""
+          },
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
           },
           "status": {
             "type": "string",
@@ -4320,9 +4382,6 @@
             }
           }
         },
-        "required": [
-          "roomId"
-        ],
         "additionalProperties": false
       },
       "permission": "hostel.manage",
@@ -4331,7 +4390,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
-      "service": "hostel.service.updateRoom() — behind an MCP field allow-list",
+      "service": "hostel.service.listRooms() + updateRoom() — behind an MCP field allow-list",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -4421,6 +4480,11 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "roomNo": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "The room as a person names it, e.g. \"101\""
+          },
           "studentId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
@@ -4445,9 +4509,6 @@
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           }
         },
-        "required": [
-          "roomId"
-        ],
         "additionalProperties": false
       },
       "permission": "hostel.manage",
@@ -4471,11 +4532,23 @@
           "allocationId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
+          },
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
           }
         },
-        "required": [
-          "allocationId"
-        ],
         "additionalProperties": false
       },
       "permission": "hostel.manage",
@@ -4648,9 +4721,15 @@
             "pattern": "^[a-f0-9]{24}$",
             "description": "From list_transport_routes"
           },
+          "routeName": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The route as it is written, e.g. \"Route 2\". An ambiguous name is refused, never guessed."
+          },
           "name": {
             "type": "string",
-            "maxLength": 120
+            "maxLength": 120,
+            "description": "A NEW name for the route"
           },
           "operatorName": {
             "type": "string",
@@ -4682,9 +4761,6 @@
             "description": "The yearly fare in paise, so ₹12,000 is 1200000. Zero means the route carries no charge."
           }
         },
-        "required": [
-          "routeId"
-        ],
         "additionalProperties": false
       },
       "permission": "transport.manage",
@@ -4888,10 +4964,20 @@
       "input": {
         "type": "object",
         "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From get_leave_requests. Omit it and name the student instead."
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Who raised it, e.g. \"Rahul\". More than one pending match is refused, never guessed."
+          },
           "leaveId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
-            "description": "From get_leave_requests"
+            "description": "Alternative to requestId"
           },
           "status": {
             "type": "string",
@@ -4906,7 +4992,6 @@
           }
         },
         "required": [
-          "leaveId",
           "status"
         ],
         "additionalProperties": false
@@ -4917,7 +5002,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": true,
       "readOnly": false,
-      "service": "leave.service.review()",
+      "service": "leave.service.listForReview() + review()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -5013,18 +5098,21 @@
       "name": "withdraw_elective_registration",
       "module": "Registrations",
       "operation": "DELETE",
-      "description": "Withdraw the caller's own elective registration. Needs confirmation.",
+      "description": "Withdraw the caller's own elective registration. Name the elective by its subject; with only one registration, no name is needed. Needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
           "registrationId": {
             "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From get_my_electives"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The elective as a person names it, e.g. \"Music\""
           }
         },
-        "required": [
-          "registrationId"
-        ],
         "additionalProperties": false
       },
       "permission": "registrations.apply",
@@ -5033,7 +5121,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
-      "service": "registration.service.withdraw()",
+      "service": "registration.service.listMine() + withdraw()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -5045,9 +5133,20 @@
       "input": {
         "type": "object",
         "properties": {
+          "requestId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From get_registration_reviews. Omit it and name the student instead."
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Who raised it, e.g. \"Rahul\". More than one pending match is refused, never guessed."
+          },
           "registrationId": {
             "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Alternative to requestId"
           },
           "status": {
             "type": "string",
@@ -5062,7 +5161,6 @@
           }
         },
         "required": [
-          "registrationId",
           "status"
         ],
         "additionalProperties": false
@@ -5073,7 +5171,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": true,
       "readOnly": false,
-      "service": "registration.service.decide()",
+      "service": "registration.service.listForReview() + decide()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -5243,7 +5341,13 @@
         "properties": {
           "requestId": {
             "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From get_student_requests. Omit it and name the student instead."
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Who raised it, e.g. \"Rahul\". More than one pending match is refused, never guessed."
           },
           "status": {
             "type": "string",
@@ -5258,7 +5362,6 @@
           }
         },
         "required": [
-          "requestId",
           "status"
         ],
         "additionalProperties": false
@@ -5269,7 +5372,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": true,
       "readOnly": false,
-      "service": "cocurricular.service.decide()",
+      "service": "cocurricular.service.listForReview() + decide()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -5359,7 +5462,13 @@
         "properties": {
           "requestId": {
             "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From get_student_requests. Omit it and name the student instead."
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Who raised it, e.g. \"Rahul\". More than one pending match is refused, never guessed."
           },
           "status": {
             "type": "string",
@@ -5374,7 +5483,6 @@
           }
         },
         "required": [
-          "requestId",
           "status"
         ],
         "additionalProperties": false
@@ -5385,7 +5493,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": true,
       "readOnly": false,
-      "service": "profileEdit.service.decide()",
+      "service": "profileEdit.service.listForReview() + decide()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -5685,7 +5793,13 @@
         "properties": {
           "ticketId": {
             "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From list_tickets"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The ticket as a person names it, e.g. \"ID card\". An ambiguous subject is refused, never guessed."
           },
           "body": {
             "type": "string",
@@ -5694,7 +5808,6 @@
           }
         },
         "required": [
-          "ticketId",
           "body"
         ],
         "additionalProperties": false
@@ -5705,7 +5818,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": true,
       "readOnly": false,
-      "service": "ticket.service.reply()",
+      "service": "ticket.service.list() + reply()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -5719,7 +5832,13 @@
         "properties": {
           "ticketId": {
             "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "From list_tickets"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The ticket as a person names it, e.g. \"ID card\". An ambiguous subject is refused, never guessed."
           },
           "status": {
             "type": "string",
@@ -5740,9 +5859,6 @@
             "pattern": "^[a-f0-9]{24}$"
           }
         },
-        "required": [
-          "ticketId"
-        ],
         "additionalProperties": false
       },
       "permission": "tickets.manage",
@@ -5751,7 +5867,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
-      "service": "ticket.service.update() — behind an MCP field allow-list",
+      "service": "ticket.service.list() + update() — behind an MCP field allow-list",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -5759,7 +5875,7 @@
       "name": "request_book",
       "module": "Library",
       "operation": "CREATE",
-      "description": "Ask the library to issue a book to the caller. The book must be a physical copy in this school's catalogue — an online resource is read where it lives and cannot be issued. The request goes to the librarian and changes nothing until it is approved, so it runs without confirmation. Use list_books to find the book id.",
+      "description": "Ask the library to issue a book to the caller. Name it by title or by id. The book must be a physical copy in this school's catalogue — an online resource is read where it lives and cannot be issued. The request goes to the librarian and changes nothing until it is approved, so it runs without confirmation.",
       "input": {
         "type": "object",
         "properties": {
@@ -5767,11 +5883,13 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "From list_books"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "The book as a person names it, e.g. \"Introduction to Algorithms\". An ambiguous title is refused, never guessed."
           }
         },
-        "required": [
-          "bookId"
-        ],
         "additionalProperties": false
       },
       "permission": "library.request",
@@ -5780,7 +5898,7 @@
       "confirmation": "NOT_REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
-      "service": "library.service.requestBook()",
+      "service": "library.service.listBooks() + requestBook()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -5844,7 +5962,7 @@
       "name": "decide_book_request",
       "module": "Library",
       "operation": "ACTION",
-      "description": "Approve or reject a book request. Approving issues the book to the student and takes a copy off the shelf; if no copy is free the approval is refused and the request stays waiting. Use get_book_requests to find the request id. Needs confirmation.",
+      "description": "Approve or reject a book request. Name the request by the student who made it, by the book, or by id. Approving issues the book to the student and takes a copy off the shelf; if no copy is free the approval is refused and the request stays waiting. Needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
@@ -5852,6 +5970,16 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "From get_book_requests"
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The student who asked, e.g. \"Rahul\". More than one pending request matching is refused, never guessed."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "The book that was asked for"
           },
           "status": {
             "type": "string",
@@ -5872,7 +6000,6 @@
           }
         },
         "required": [
-          "requestId",
           "status"
         ],
         "additionalProperties": false
@@ -5883,7 +6010,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": true,
       "readOnly": false,
-      "service": "library.service.decideBookRequest()",
+      "service": "library.service.listBookRequestsForReview() + decideBookRequest()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -5911,7 +6038,7 @@
       "name": "request_transport_route",
       "module": "Transport",
       "operation": "CREATE",
-      "description": "Ask for a place on a bus route, from a particular stop. The stop must be one on that route. The request goes to the school office and changes nothing until it is approved — the fare is only charged once a place is granted, so it runs without confirmation. Use get_transport_routes to find the route and stop ids.",
+      "description": "Ask for a place on a bus route, from a particular stop. Name the route the way it is written (\"Route 2\") and, where the route has more than one stop, name the stop too. The stop must be one on that route. The request goes to the school office and changes nothing until it is approved — the fare is only charged once a place is granted, so it runs without confirmation.",
       "input": {
         "type": "object",
         "properties": {
@@ -5920,10 +6047,20 @@
             "pattern": "^[a-f0-9]{24}$",
             "description": "From get_transport_routes"
           },
+          "routeName": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The route as it is written, e.g. \"Route 2\""
+          },
           "stopId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "A stop on that route"
+          },
+          "stopName": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The stop as it is written"
           },
           "direction": {
             "type": "string",
@@ -5935,10 +6072,6 @@
             "description": "Both ways by default"
           }
         },
-        "required": [
-          "routeId",
-          "stopId"
-        ],
         "additionalProperties": false
       },
       "permission": "transport.request",
@@ -5947,7 +6080,7 @@
       "confirmation": "NOT_REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
-      "service": "transport.service.requestRoute()",
+      "service": "transport.service.listRoutesForStudent() + requestRoute()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -6018,7 +6151,12 @@
           "requestId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
-            "description": "From get_transport_requests"
+            "description": "From get_transport_requests. Omit it and name the student instead."
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Who raised it, e.g. \"Rahul\". More than one pending match is refused, never guessed."
           },
           "status": {
             "type": "string",
@@ -6034,7 +6172,6 @@
           }
         },
         "required": [
-          "requestId",
           "status"
         ],
         "additionalProperties": false
@@ -6045,7 +6182,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": true,
       "readOnly": false,
-      "service": "transport.service.decideTransportRequest()",
+      "service": "transport.service.listTransportRequestsForReview() + decideTransportRequest()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -6053,19 +6190,16 @@
       "name": "cancel_book_request",
       "module": "Library",
       "operation": "DELETE",
-      "description": "Withdraw the caller's own book request, while the librarian has not yet decided on it. A request already approved or rejected cannot be withdrawn. Use get_my_book_requests to find the request id. Needs confirmation.",
+      "description": "Withdraw the caller's own book request, while the librarian has not yet decided on it. A request already approved or rejected cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
           "requestId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
-            "description": "From get_my_book_requests"
+            "description": "From get_my_book_requests. Omit it when you have only one pending request."
           }
         },
-        "required": [
-          "requestId"
-        ],
         "additionalProperties": false
       },
       "permission": "library.request",
@@ -6074,7 +6208,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
-      "service": "library.service.cancelBookRequest()",
+      "service": "library.service.listMyBookRequests() + cancelBookRequest()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -6082,19 +6216,16 @@
       "name": "cancel_transport_request",
       "module": "Transport",
       "operation": "DELETE",
-      "description": "Withdraw the caller's own request for a place on a bus route, while the school office has not yet decided on it. A request already granted or refused cannot be withdrawn. Use get_my_transport_requests to find the request id. Needs confirmation.",
+      "description": "Withdraw the caller's own request for a place on a bus route, while the school office has not yet decided on it. A request already granted or refused cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
           "requestId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
-            "description": "From get_my_transport_requests"
+            "description": "From get_my_transport_requests. Omit it when you have only one pending request."
           }
         },
-        "required": [
-          "requestId"
-        ],
         "additionalProperties": false
       },
       "permission": "transport.request",
@@ -6103,7 +6234,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
-      "service": "transport.service.cancelTransportRequest()",
+      "service": "transport.service.listMyTransportRequests() + cancelTransportRequest()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -6111,19 +6242,21 @@
       "name": "cancel_cocurricular_request",
       "module": "Student requests",
       "operation": "DELETE",
-      "description": "Withdraw the caller's own co-curricular request, while the class teacher has not yet decided on it. A request already approved or rejected cannot be withdrawn. Use list_cocurricular to find the request id. Needs confirmation.",
+      "description": "Withdraw the caller's own co-curricular request, while the class teacher has not yet decided on it. A request already approved or rejected cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
           "requestId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
-            "description": "From list_cocurricular"
+            "description": "From list_cocurricular. Omit it when you have only one pending request."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The activity, e.g. \"football\""
           }
         },
-        "required": [
-          "requestId"
-        ],
         "additionalProperties": false
       },
       "permission": "cocurricular.request",
@@ -6132,7 +6265,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
-      "service": "cocurricular.service.withdraw()",
+      "service": "cocurricular.service.listForStudent() + withdraw()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -6140,19 +6273,16 @@
       "name": "cancel_profile_edit_request",
       "module": "Student requests",
       "operation": "DELETE",
-      "description": "Withdraw the caller's own profile-correction request, while it has not yet been decided. A request already approved or rejected cannot be withdrawn. Use get_my_profile_edit_requests to find the request id. Needs confirmation.",
+      "description": "Withdraw the caller's own profile-correction request, while it has not yet been decided. A request already approved or rejected cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
           "requestId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
-            "description": "From get_my_profile_edit_requests"
+            "description": "From get_my_profile_edit_requests. Omit it when you have only one pending request."
           }
         },
-        "required": [
-          "requestId"
-        ],
         "additionalProperties": false
       },
       "permission": "profile.edit.request",
@@ -6161,7 +6291,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
-      "service": "profileEdit.service.withdraw()",
+      "service": "profileEdit.service.listMine() + withdraw()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -6509,11 +6639,13 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "From list_documents"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The document as a person names it. An ambiguous title is refused, never guessed."
           }
         },
-        "required": [
-          "documentId"
-        ],
         "additionalProperties": false
       },
       "permission": "materials.manage",
@@ -6522,7 +6654,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": true,
       "readOnly": false,
-      "service": "document.service.deleteForActor()",
+      "service": "document.service.listForActor() + deleteForActor()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -6628,9 +6760,6 @@
             }
           }
         },
-        "required": [
-          "documentId"
-        ],
         "additionalProperties": false
       },
       "permission": "materials.manage",
@@ -6639,7 +6768,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": true,
       "readOnly": false,
-      "service": "document.service.updateForActor()",
+      "service": "document.service.listForActor() + updateForActor()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -6682,6 +6811,138 @@
       "service": "auth.service.me() + academics.service.getMySections()/getMyOfferings()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
+    },
+    {
+      "name": "get_seat_summary",
+      "module": "Seats",
+      "operation": "GET",
+      "description": "How many seats this school has bought, how many the platform has approved for use, how many are in use and how many are free. Also reports the school's own per-seat price — what extra seats would cost it — and seats that are paid for but still waiting for platform approval, which cannot be used yet. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "seats.read",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "seat.service.getSeatSummary()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_seat_requests",
+      "module": "Seats",
+      "operation": "GET",
+      "description": "This school's extra-seat requests and where each one has got to: awaiting payment, paid and waiting for the platform to decide, approved, or rejected. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING_PAYMENT",
+              "PAID",
+              "APPROVED",
+              "REJECTED"
+            ],
+            "description": "Narrow to one stage of the request lifecycle"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "seats.read",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "seat.service.listSeatRequests()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "request_extra_seats",
+      "module": "Seats",
+      "operation": "CREATE",
+      "description": "Ask the platform for extra seats for this school. The price is calculated by the server from the seat count and this school's own per-seat rate — it cannot be set here. Raising the request allocates nothing: it has to be paid for on the seat page and then approved by the platform before the seats can be used.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "seats": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5000,
+            "description": "How many extra seats to ask for"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Why the school needs them"
+          }
+        },
+        "required": [
+          "seats"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "seats.request",
+      "scope": "ALL",
+      "risk": "HIGH",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "seat.service.createSeatRequest()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_school_customization",
+      "module": "Customization",
+      "operation": "GET",
+      "description": "This school's own branding and the option lists its forms offer — houses, zones, and any other dropdown the platform has configured for it. Use it to answer what values a field accepts at this school. Read-only, and always about the caller's own school.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "dropdownKey": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Narrow to one list, e.g. \"house\". Omit for all of them."
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "settings.manage",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "customization.service.getCustomization()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_school_domain",
+      "module": "Domains",
+      "operation": "GET",
+      "description": "This school's portal address — a platform subdomain or its own custom domain — whether it is verified, whether its certificate works, whether it is live, the DNS records still required, and the domain from the website on the School Admin profile (\"Not Provided\" when there is none) with whether it has been applied. Read-only, and always about the caller's own school.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "domains.read",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "domain.service.getDomain()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
     }
   ],
   "roleMatrix": [
@@ -6702,13 +6963,13 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 161,
-      "GET": 80,
-      "CREATE": 26,
+      "total": 166,
+      "GET": 84,
+      "CREATE": 27,
       "UPDATE": 15,
       "ACTION": 30,
       "DELETE": 10,
-      "highRiskActions": 28,
+      "highRiskActions": 29,
       "highRiskActionNames": [
         "update_enrollment_status",
         "archive_student",
@@ -6737,9 +6998,10 @@
         "delete_book",
         "upsert_medical_record",
         "remove_medical_record",
-        "delete_document"
+        "delete_document",
+        "request_extra_seats"
       ],
-      "confirmationRequired": 75,
+      "confirmationRequired": 76,
       "names": [
         "search_students",
         "get_student",
@@ -6901,7 +7163,12 @@
         "delete_document",
         "create_course_material",
         "update_course_material",
-        "get_my_profile"
+        "get_my_profile",
+        "get_seat_summary",
+        "get_seat_requests",
+        "request_extra_seats",
+        "get_school_customization",
+        "get_school_domain"
       ]
     },
     {
@@ -7084,8 +7351,8 @@
     {
       "role": "PARENT",
       "custom": false,
-      "total": 44,
-      "GET": 41,
+      "total": 43,
+      "GET": 40,
       "CREATE": 1,
       "UPDATE": 1,
       "ACTION": 0,
@@ -7111,7 +7378,6 @@
         "get_attendance_statistics",
         "get_attendance",
         "get_pending_fees",
-        "get_fee_statistics",
         "get_payment_history",
         "get_invoice",
         "get_fee_plans",
@@ -7146,8 +7412,8 @@
     {
       "role": "STUDENT",
       "custom": false,
-      "total": 63,
-      "GET": 50,
+      "total": 62,
+      "GET": 49,
       "CREATE": 7,
       "UPDATE": 0,
       "ACTION": 1,
@@ -7170,7 +7436,6 @@
         "get_attendance_statistics",
         "get_attendance",
         "get_pending_fees",
-        "get_fee_statistics",
         "get_payment_history",
         "get_invoice",
         "get_fee_plans",

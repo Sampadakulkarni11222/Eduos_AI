@@ -37,6 +37,9 @@ import dashboardRoutes from '../modules/dashboard/dashboard.routes.js';
 import documentRoutes from '../modules/documents/document.routes.js';
 import transportRoutes from '../modules/transport/transport.routes.js';
 import auditRoutes from '../modules/audit/audit.routes.js';
+import seatRoutes from '../modules/seats/seat.routes.js';
+import customizationRoutes from '../modules/customization/customization.routes.js';
+import domainRoutes from '../modules/domains/domain.routes.js';
 import uploadRoutes from '../modules/uploads/upload.routes.js';
 import { auditLogger } from '../middleware/auditLogger.js';
 
@@ -112,6 +115,9 @@ router.use('/dashboard', dashboardRoutes);
 router.use('/documents', documentRoutes);
 router.use('/transport', transportRoutes);
 router.use('/audit', auditRoutes);
+router.use('/seats', seatRoutes);
+router.use('/customization', customizationRoutes);
+router.use('/domains', domainRoutes);
 router.use('/uploads', uploadRoutes);
 
 // NOTE — a public GET /admin-seed endpoint used to live here, gated only by a

@@ -13,7 +13,7 @@ export const getById = asyncHandler(async (req, res) => {
 });
 
 export const create = asyncHandler(async (req, res) => {
-  const result = await service.createSchool(req.body);
+  const result = await service.createSchool(req.body, req.actor);
   sendSuccess(res, result, 'School created', 201);
 });
 
@@ -33,12 +33,12 @@ export const publicBySlug = asyncHandler(async (req, res) => {
 });
 
 export const createAdmin = asyncHandler(async (req, res) => {
-  const profileId = await service.createSchoolAdmin(req.params.tenantId, req.body);
+  const profileId = await service.createSchoolAdmin(req.params.tenantId, req.body, req.actor);
   const admins = await service.listSchoolAdmins(req.params.tenantId);
   sendSuccess(res, admins.find((a) => a.profileId === profileId), 'School Admin created', 201);
 });
 
 export const updateAdmin = asyncHandler(async (req, res) => {
-  const admin = await service.updateSchoolAdmin(req.params.tenantId, req.params.profileId, req.body);
+  const admin = await service.updateSchoolAdmin(req.params.tenantId, req.params.profileId, req.body, req.actor);
   sendSuccess(res, admin, 'School Admin updated');
 });

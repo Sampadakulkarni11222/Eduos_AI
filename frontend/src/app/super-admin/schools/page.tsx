@@ -26,6 +26,7 @@ export default function SuperAdminSchoolsPage() {
 
   const [showSchoolModal, setShowSchoolModal] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [editWebsite, setEditWebsite] = useState<SchoolAdminDto | null>(null);
 
   const loadSchools = useCallback(async () => {
     setSchools(null);
@@ -162,11 +163,17 @@ export default function SuperAdminSchoolsPage() {
                     <td data-label="Contact">
                       <div>{a.email ?? '—'}</div>
                       <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>{a.phone}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-faint)' }} data-testid={`website-${a.profileId}`}>
+                        Website: {a.website ?? 'Not Provided'}
+                      </div>
                     </td>
                     <td data-label="Status">
                       <Pill tone={a.status === 'ACTIVE' ? 'green' : a.status === 'SUSPENDED' ? 'red' : 'gray'}>{a.status}</Pill>
                     </td>
                     <td data-label="Actions">
+                      <Button variant="ghost" small disabled={busy} onClick={() => setEditWebsite(a)} style={{ marginRight: 6 }}>
+                        Edit website
+                      </Button>
                       {a.status === 'ACTIVE' ? (
                         <Button variant="ghost" small disabled={busy} onClick={() => void setAdminStatus(a, 'SUSPENDED')}>
                           Suspend
@@ -192,6 +199,18 @@ export default function SuperAdminSchoolsPage() {
             setShowSchoolModal(false);
             await loadSchools();
             setSelected(tenantId);
+          }}
+        />
+      )}
+
+      {editWebsite && (
+        <WebsiteModal
+          admin={editWebsite}
+          onClose={() => setEditWebsite(null)}
+          onSaved={async () => {
+            const tenantId = editWebsite.tenantId;
+            setEditWebsite(null);
+            await loadAdmins(tenantId);
           }}
         />
       )}
@@ -259,6 +278,8 @@ function NewSchoolModal({ onClose, onCreated }: { onClose: () => void; onCreated
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [website, setWebsite] = useState('');
+  const [seats, setSeats] = useState('');
   const [busy, setBusy] = useState(false);
   const toast = useToast();
 
@@ -269,10 +290,20 @@ function NewSchoolModal({ onClose, onCreated }: { onClose: () => void; onCreated
   const submit = async () => {
     setBusy(true);
     try {
+      const purchased = Number(seats.trim());
       await api.createSchool({
         tenantId: tenantId.trim().toLowerCase(),
         tenantName: tenantName.trim(),
-        admin: { displayName: displayName.trim(), phone: phone.trim(), email: email.trim() || undefined, password: password || undefined },
+        admin: {
+          displayName: displayName.trim(),
+          phone: phone.trim(),
+          email: email.trim() || undefined,
+          password: password || undefined,
+          website: website.trim() || undefined,
+        },
+        // Omitted when left blank, which leaves the school with no seat account
+        // — and therefore no seat limit, exactly as before seats existed.
+        ...(seats.trim() && Number.isInteger(purchased) && purchased > 0 ? { seats: purchased } : {}),
       });
       toast('School created.', 'success');
       onCreated(tenantId.trim().toLowerCase());
@@ -312,6 +343,12 @@ function NewSchoolModal({ onClose, onCreated }: { onClose: () => void; onCreated
       <Field label="School Name" required>
         <Input value={tenantName} onChange={(e) => setTenantName(e.target.value)} placeholder="Oakridge North Campus" />
       </Field>
+      <Field
+        label="Seats purchased"
+        hint="Optional. The seats this school has bought — sold and released together, since you are the person who would otherwise approve them. Leave blank for no seat limit."
+      >
+        <Input value={seats} onChange={(e) => setSeats(e.target.value)} inputMode="numeric" placeholder="200" />
+      </Field>
       <div style={{ margin: '14px 0 8px', fontSize: 12, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-2)' }}>
         FIRST SCHOOL ADMIN
       </div>
@@ -327,6 +364,7 @@ function NewSchoolModal({ onClose, onCreated }: { onClose: () => void; onCreated
       <Field label="Password" hint="Needed for email + password sign-in.">
         <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </Field>
+      <WebsiteField value={website} onChange={setWebsite} />
     </Modal>
   );
 }
@@ -336,6 +374,8 @@ function NewAdminModal({ school, onClose, onCreated }: { school: SchoolDto; onCl
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [website, setWebsite] = useState('');
+  const [seats, setSeats] = useState('');
   const [busy, setBusy] = useState(false);
   const toast = useToast();
 
@@ -347,6 +387,7 @@ function NewAdminModal({ school, onClose, onCreated }: { school: SchoolDto; onCl
         phone: phone.trim(),
         email: email.trim() || undefined,
         password: password || undefined,
+        website: website.trim() || undefined,
       });
       toast('School Admin created.', 'success');
       onCreated();
@@ -380,6 +421,63 @@ function NewAdminModal({ school, onClose, onCreated }: { school: SchoolDto; onCl
       <Field label="Password" hint="Needed for email + password sign-in.">
         <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </Field>
+      <WebsiteField value={website} onChange={setWebsite} />
+    </Modal>
+  );
+}
+
+/**
+ * The school's website on a School Admin profile.
+ *
+ * Domain management reads its domain from here, so the hint says what will
+ * happen to it: normalised to a bare domain, never made live without review.
+ */
+function WebsiteField({ value, onChange, error }: { value: string; onChange: (v: string) => void; error?: string }) {
+  return (
+    <Field
+      label="School website"
+      hint="Optional, e.g. https://www.abcschool.com/. Its domain is used for Domain Management, pending verification and review. No page paths."
+      error={error}
+    >
+      <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="https://www.abcschool.com/" autoComplete="off" />
+    </Field>
+  );
+}
+
+function WebsiteModal({ admin, onClose, onSaved }: { admin: SchoolAdminDto; onClose: () => void; onSaved: () => Promise<void> }) {
+  const [website, setWebsite] = useState(admin.website ?? '');
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const toast = useToast();
+
+  const save = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      // Empty clears it. The server validates and normalises, and records a
+      // pending change rather than replacing a live domain.
+      await api.updateSchoolAdmin(admin.tenantId, admin.profileId, { website: website.trim() || null });
+      toast('Website saved. Check Domain Management for its effect on the school domain.', 'success');
+      await onSaved();
+    } catch (e) {
+      setError(errorMessage(e, 'That is not a website this profile can hold.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={`Website — ${admin.displayName}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" small onClick={onClose}>Cancel</Button>
+          <Button small disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save website'}</Button>
+        </>
+      }
+    >
+      <WebsiteField value={website} onChange={setWebsite} error={error} />
     </Modal>
   );
 }

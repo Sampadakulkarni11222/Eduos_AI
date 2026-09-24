@@ -5,6 +5,40 @@ import { School } from '../../models/school.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { runWithTenant } from '../../tenancy/tenantContext.js';
 import { createUser } from '../users/user.service.js';
+import { grantSeats, getSeatSummary } from '../seats/seat.service.js';
+import { getTheme } from '../customization/customization.service.js';
+import { SeatAccount, SeatLedgerEntry } from '../../models/seat.model.js';
+import { detectProfileDomainChange } from '../domains/domain.service.js';
+import { normalizeWebsite } from '../domains/domain.hostname.js';
+import { env } from '../../config/env.js';
+import { logger } from '../../utils/logger.js';
+
+/**
+ * A School Admin's website as it will be stored: trimmed and as entered, or
+ * null. Validated here, on the way in, by the same normaliser domain
+ * management reads it with — so a profile can never hold a website the domain
+ * configuration would have to refuse later.
+ */
+function websiteInput(value) {
+  if (value === undefined) return undefined;
+  if (value === null || (typeof value === 'string' && !value.trim())) return null;
+  normalizeWebsite(value, { platformDomain: env.PLATFORM_DOMAIN });
+  return value.trim();
+}
+
+/**
+ * Lets domain management react to a website change. A failure here is logged
+ * rather than thrown: the profile itself has been saved correctly, and the
+ * domain screen recomputes the profile's domain on every read anyway.
+ */
+async function syncProfileDomain(actor, slug, previousWebsite) {
+  try {
+    return await detectProfileDomainChange(actor, slug, { previousWebsite });
+  } catch (err) {
+    logger.error(`Profile domain detection failed for ${slug}: ${err.message}`);
+    return null;
+  }
+}
 
 /**
  * Super Admin — schools and their School Admin accounts.
@@ -78,13 +112,29 @@ export async function getSchool(slug) {
  * The public identity of a school, for the portal URL.
  *
  * Unauthenticated: `/oakridge/login` has to name the school before anyone has
- * signed in. Deliberately only the slug, display name and status — nothing
- * about who is in it.
+ * signed in, and now has to look like it too. Deliberately identity and
+ * branding only — nothing about who is in the school, and nothing it has
+ * configured beyond what every visitor to that address is meant to see.
  */
 export async function getPublicSchool(slug) {
   const school = await findSchool(slug);
   if (school.status !== 'ACTIVE') throw new AppError('This school is not active', 403, [], 'SCHOOL_SUSPENDED');
-  return { slug: school.slug, name: school.name };
+
+  // The school's own branding, so its sign-in door looks like its portal does.
+  // Deliberately the colours and the logo only — a door is the one place a
+  // school is recognised before anyone has signed in, and none of this is
+  // private: it is what every visitor to that address is meant to see. The
+  // option lists and the audit fields stay behind authentication.
+  const { branding, cssVariables } = await runWithTenant(school.slug, () => getTheme(school.slug));
+
+  return {
+    slug: school.slug,
+    name: branding.displayName ?? school.name,
+    logoUrl: branding.logoUrl,
+    faviconUrl: branding.faviconUrl,
+    tagline: branding.tagline,
+    cssVariables,
+  };
 }
 
 export async function listSchoolAdmins(slug) {
@@ -113,6 +163,7 @@ export async function listSchoolAdmins(slug) {
       accountStatus: account?.status ?? null,
       phone: account?.phoneE164 ?? null,
       email: account?.email ?? null,
+      website: p.website ?? null,
       createdAt: p.createdAt,
     };
   });
@@ -127,8 +178,10 @@ export async function listSchoolAdmins(slug) {
  * way belongs to that school and not to whichever school the caller last
  * looked at.
  */
-export async function createSchoolAdmin(slug, { displayName, phone, email, password }) {
+export async function createSchoolAdmin(slug, { displayName, phone, email, password, website }, actor = null) {
   const school = await findSchool(slug);
+  // Refused before an account exists, so a bad website creates nobody.
+  const nextWebsite = websiteInput(website);
 
   const user = await runWithTenant(school.slug, () =>
     createUser({ roleKey: SCHOOL_ADMIN_ROLE_KEY, displayName, phone, email, password }),
@@ -140,13 +193,23 @@ export async function createSchoolAdmin(slug, { displayName, phone, email, passw
 
   profile.tenantId = school.slug;
   profile.tenantName = school.name;
+  if (nextWebsite) profile.website = nextWebsite;
   await profile.save();
+  if (nextWebsite) await syncProfileDomain(actor, school.slug, null);
 
   return profile._id.toString();
 }
 
-/** Registers a school and its first School Admin — who can then sign in to it. */
-export async function createSchool({ tenantId, slug, tenantName, name, admin }) {
+/**
+ * Registers a school and its first School Admin — who can then sign in to it.
+ *
+ * `seats` is the school's purchase: the base seats it has bought, sold and
+ * released in one movement because the Super Admin performing this *is* the
+ * person who would otherwise approve them. Extra seats bought later are not
+ * like this — they go through payment and a separate approval, which is the
+ * whole point of seats/seat.service.js.
+ */
+export async function createSchool({ tenantId, slug, tenantName, name, admin, seats }, actor = null) {
   const id = String(slug ?? tenantId ?? '').trim().toLowerCase();
   const displayName = String(name ?? tenantName ?? '').trim();
 
@@ -163,18 +226,42 @@ export async function createSchool({ tenantId, slug, tenantName, name, admin }) 
     throw new AppError('A first School Admin (displayName, phone) is required to create a school', 400);
   }
 
+  // The school's purchase, if one was made with it. Optional: a deployment that
+  // does not sell seats creates schools exactly as it did before, and a school
+  // with no seat account is never seat-limited.
+  const purchasedSeats = seats === undefined || seats === null || seats === '' ? null : Number(seats);
+  if (purchasedSeats !== null && (!Number.isInteger(purchasedSeats) || purchasedSeats < 1)) {
+    throw new AppError('seats must be a whole number greater than zero', 400, [], 'INVALID_SEAT_COUNT');
+  }
+
   await School.create({ slug: id, name: displayName });
 
   try {
-    await createSchoolAdmin(id, admin);
+    // Before the first admin, so that admin occupies one of the purchased
+    // seats rather than arriving before the school has any.
+    if (purchasedSeats !== null) {
+      await grantSeats(actor, id, { seats: purchasedSeats, note: 'Seats purchased with the school' });
+    }
+    await createSchoolAdmin(id, admin, actor);
   } catch (err) {
     // A school nobody can sign in to is worse than no school: undo it so the
     // operator can correct the details and try again.
     await School.deleteOne({ slug: id });
+    // Along with the seats sold to it a moment ago: a balance belonging to a
+    // school that no longer exists would be invisible and would come back to
+    // life under the next school registered at the same address.
+    await runWithTenant(id, async () => {
+      await SeatAccount.deleteMany({ tenantId: id });
+      await SeatLedgerEntry.deleteMany({ tenantId: id });
+    });
     throw err;
   }
 
-  return { school: await getSchool(id), admins: await listSchoolAdmins(id) };
+  return {
+    school: await getSchool(id),
+    admins: await listSchoolAdmins(id),
+    seats: await runWithTenant(id, () => getSeatSummary()),
+  };
 }
 
 export async function updateSchool(slug, { tenantName, name, status }) {
@@ -208,7 +295,7 @@ export async function updateSchool(slug, { tenantName, name, status }) {
 
 const PROFILE_STATUSES = ['ACTIVE', 'INACTIVE', 'SUSPENDED'];
 
-export async function updateSchoolAdmin(slug, profileId, { status, displayName }) {
+export async function updateSchoolAdmin(slug, profileId, { status, displayName, website }, actor = null) {
   const school = await findSchool(slug);
   const adminRole = await schoolAdminRole();
   const profile = await Profile.findOne({
@@ -229,7 +316,15 @@ export async function updateSchoolAdmin(slug, profileId, { status, displayName }
     }
     profile.displayName = trimmed;
   }
+  const nextWebsite = websiteInput(website);
+  const previousWebsite = profile.website ?? null;
+  const websiteChanged = nextWebsite !== undefined && nextWebsite !== previousWebsite;
+  if (websiteChanged) profile.website = nextWebsite;
+  // A status change moves the profile in or out of the set domain fetching
+  // reads (active School Admins only), so it can change the domain too.
+  const statusChanged = status !== undefined && profile.isModified('status');
   await profile.save();
+  if (websiteChanged || statusChanged) await syncProfileDomain(actor, school.slug, previousWebsite);
 
   const admins = await listSchoolAdmins(school.slug);
   return admins.find((a) => a.profileId === profile._id.toString());

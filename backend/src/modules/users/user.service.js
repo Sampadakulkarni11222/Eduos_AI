@@ -8,6 +8,8 @@ import { tenantFilter } from '../../tenancy/tenantContext.js';
 import { register } from '../auth/auth.service.js';
 import { enroll } from '../students/student.service.js';
 import { rowError } from '../../utils/csvImport.js';
+import { withSeatReserved } from '../seats/seat.service.js';
+import { inAmbientTransaction } from '../../utils/transaction.js';
 
 /**
  * List all accounts with their linked profiles.
@@ -305,44 +307,59 @@ export async function createUser(data) {
     throw new AppError('password must be at least 6 characters', 400);
   }
 
-  const { account, profile } = await register({
-    name: displayName,
-    phone,
-    email,
-    password,
-    roleKey: roleKey.toUpperCase(),
-  });
+  // A new profile occupies a seat, so this is where the seat balance bites.
+  // Checked against `approvedSeats` — seats a Super Admin has released — so a
+  // school that has merely *paid* for more cannot use them yet. Silent for a
+  // school that has never been sold seats; see seats/seat.service.js.
+  //
+  // The check and everything the new user consists of run as ONE transaction
+  // (withSeatReserved), so two creations racing for the last seat cannot both
+  // succeed, and a failure part-way through leaves no account or profile behind.
+  const { account } = await withSeatReserved(async () => {
+    const created = await register({
+      name: displayName,
+      phone,
+      email,
+      password,
+      roleKey: roleKey.toUpperCase(),
+    });
 
-  if (roleKey.toUpperCase() === 'STUDENT') {
-    const names = displayName.trim().split(/\s+/);
-    const firstName = names[0];
-    const lastName = names.slice(1).join(' ') || '';
-    const resolvedAdmissionNo = admissionNo || `ADM-${Date.now()}`;
+    if (roleKey.toUpperCase() === 'STUDENT') {
+      const names = displayName.trim().split(/\s+/);
+      const firstName = names[0];
+      const lastName = names.slice(1).join(' ') || '';
+      const resolvedAdmissionNo = admissionNo || `ADM-${Date.now()}`;
 
-    try {
-      const student = await Student.create({
-        admissionNo: resolvedAdmissionNo,
-        firstName,
-        lastName,
-        profileId: profile._id,
-      });
+      try {
+        const student = await Student.create({
+          admissionNo: resolvedAdmissionNo,
+          firstName,
+          lastName,
+          profileId: created.profile._id,
+        });
 
-      if (sectionId) {
-        const activeYear = await AcademicYear.findOne({ isCurrent: true });
-        if (activeYear) {
-          await enroll({
-            studentId: student._id.toString(),
-            sectionId,
-            academicYearId: activeYear._id.toString(),
-          });
+        if (sectionId) {
+          const activeYear = await AcademicYear.findOne({ isCurrent: true });
+          if (activeYear) {
+            await enroll({
+              studentId: student._id.toString(),
+              sectionId,
+              academicYearId: activeYear._id.toString(),
+            });
+          }
         }
+      } catch (studentErr) {
+        // Clean up the created profile if student creation fails (e.g. duplicate
+        // admissionNo). Inside the transaction the abort undoes the account and
+        // profile, and a write here would fail against the aborted transaction
+        // and send it round the retry loop — so only clean up by hand where
+        // transactions are unavailable.
+        if (!inAmbientTransaction()) await Profile.deleteOne({ _id: created.profile._id });
+        throw studentErr;
       }
-    } catch (studentErr) {
-      // Clean up the created profile if student creation fails (e.g. duplicate admissionNo)
-      await Profile.deleteOne({ _id: profile._id });
-      throw studentErr;
     }
-  }
+    return created;
+  }, { seats: 1 });
 
   return getUserById(account._id);
 }

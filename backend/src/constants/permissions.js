@@ -24,6 +24,45 @@ export const PERMISSION_CATALOG = [
   { key: 'schools.read', group: 'admin', description: 'View the schools on the platform and their School Admins' },
   { key: 'schools.manage', group: 'admin', description: 'Create schools and manage their School Admin accounts' },
 
+  // Seats — what a school has bought, and what it may actually use.
+  //
+  // The same split as the fee-plan keys above, for the same reason: `.read` and
+  // `.request` are what a school does about its own seats, and `.approve` is
+  // the platform's authority to release them. A School Admin holds the first
+  // two and must never hold the third — that is what stops a school allocating
+  // itself seats by paying for them, and it is enforced by the grants below
+  // rather than by anything in the UI. `.manage` is the platform's own act of
+  // selling a school its base seats.
+  { key: 'seats.read', group: 'admin', description: "View a school's seat purchase, allocation and history" },
+  { key: 'seats.request', group: 'admin', description: 'Request extra seats for a school and pay for them' },
+  { key: 'seats.manage', group: 'admin', description: 'Sell a school seats and correct its seat balance' },
+  { key: 'seats.approve', group: 'admin', description: 'Approve or reject a paid extra-seat request' },
+  // What a school pays per seat. Separate from `seats.manage` — selling a
+  // school seats at the agreed rate and deciding what that rate IS are
+  // different authorities, and only the second one changes what every future
+  // request costs. A School Admin holds neither, so a school cannot price its
+  // own seats; `seats.read` is what lets it see the rate it will be charged.
+  { key: 'seats.pricing.manage', group: 'admin', description: "Set a school's per-seat price and manage its pricing history" },
+
+  // How a school's portals look, and the option lists its forms offer.
+  //
+  // Reading is not here at all: the render-time theme endpoint carries no
+  // permission, because every role has to paint its own portal and the payload
+  // is the school's own branding. Reading the full configuration rides on the
+  // existing `settings.manage`. This key is the authority to CHANGE it, and it
+  // is platform-level for the reason the Settings screen has always given —
+  // branding is managed by the EduOS team, not by each school. Widening that is
+  // one edit: remove it from SUPER_ADMIN_ONLY below.
+  { key: 'customization.manage', group: 'admin', description: "Configure a school's theme, branding and dropdown values" },
+
+  // The address a school's portal is served at — a platform subdomain or the
+  // school's own domain. `.read` lets a School Admin see its own address and
+  // the DNS records it has to create; `.manage` is configuring, verifying and
+  // activating one, which is the platform's call: an address going live
+  // changes where a school's sign-in page is served from.
+  { key: 'domains.read', group: 'admin', description: "View a school's domain and the DNS records it requires" },
+  { key: 'domains.manage', group: 'admin', description: "Configure, verify and activate a school's subdomain or custom domain" },
+
   // students
   { key: 'students.read', group: 'students', description: 'View student records' },
   { key: 'students.manage', group: 'students', description: 'Create or update student records' },
@@ -148,7 +187,12 @@ const grants = (pairs) => pairs.map(([key, scope]) => ({ key, scope }));
  * the school-level roles below subtract them from their otherwise-full grant —
  * that keeps every pre-existing role's effective permissions unchanged.
  */
-export const SUPER_ADMIN_ONLY = ['schools.read', 'schools.manage'];
+export const SUPER_ADMIN_ONLY = [
+  'schools.read', 'schools.manage',
+  'seats.manage', 'seats.approve', 'seats.pricing.manage',
+  'customization.manage',
+  'domains.manage',
+];
 
 /**
  * The assistant permission, withheld from SUPER_ADMIN.

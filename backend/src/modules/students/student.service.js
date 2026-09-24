@@ -97,22 +97,57 @@ export async function list(actor, scope, query = {}) {
       : { $in: ids };
   }
   if (query.search) {
-    const rx = { $regex: escapeRegex(query.search), $options: 'i' };
-    const classMatchIds = await studentIdsMatchingClass(query.search);
+    // Leading, trailing and repeated spaces are typing, not meaning. Searching
+    // on the raw string made "  Diya   Patel " a different search from "Diya
+    // Patel", which is a difference nobody typing it intended.
+    const term = String(query.search).trim().replace(/\s+/g, ' ');
+    const rx = { $regex: escapeRegex(term), $options: 'i' };
+    const classMatchIds = await studentIdsMatchingClass(term);
     // A full name ("Rahul Sharma") spans two fields, so neither matches it on
     // its own: split it into first name + the rest as a surname.
-    const [first, ...others] = String(query.search).trim().split(/\s+/);
+    const [first, ...others] = term.split(' ');
     const fullName = others.length
       ? [{
           firstName: { $regex: escapeRegex(first), $options: 'i' },
           lastName: { $regex: escapeRegex(others.join(' ')), $options: 'i' },
         }]
       : [];
+
+    // The same name written without the space. "DiyaPatel" is how a person
+    // types a name they are reading off a screen, and it matched nothing at
+    // all: the term spans two fields, and with no space there is nothing to
+    // split it on. Matching against the joined-up full name costs one
+    // comparison and ignores WHITESPACE ONLY -- no letter is changed, dropped
+    // or guessed at, so this cannot turn one student's name into another's.
+    // Only for a term with no space in it. A term that HAS one is already
+    // handled by the two-field comparison above, and this branch cannot use an
+    // index -- $expr computes the joined name per document -- so running it on
+    // every search would make the directory pay for a case that cannot arise.
+    const joined = term.replace(/\s+/g, '');
+    const joinedName = !term.includes(' ') && joined.length >= 3
+      ? [{
+          $expr: {
+            $regexMatch: {
+              input: {
+                $replaceAll: {
+                  input: { $concat: [{ $ifNull: ['$firstName', ''] }, { $ifNull: ['$lastName', ''] }] },
+                  find: ' ',
+                  replacement: '',
+                },
+              },
+              regex: escapeRegex(joined),
+              options: 'i',
+            },
+          },
+        }]
+      : [];
+
     filter.$or = [
       { firstName: rx },
       { lastName: rx },
       { admissionNo: rx },
       ...fullName,
+      ...joinedName,
       ...(classMatchIds.length ? [{ _id: { $in: classMatchIds } }] : []),
     ];
   }

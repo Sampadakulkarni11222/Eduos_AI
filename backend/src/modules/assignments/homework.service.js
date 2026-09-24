@@ -21,21 +21,28 @@ import { classKey } from '../../utils/classNames.js';
 
 const MAX_TITLE = 140;
 
-/** Finds the one offering matching a free-text subject/class hint. */
 /**
- * Resolves the subject-and-class an action is for, among the offerings this
- * teacher actually holds. Class names are compared canonically — see
- * utils/classNames.js.
+ * Resolves the subject-and-class an action is for, at the CALLER'S OWN SCOPE.
+ *
+ * Class names are compared canonically — see utils/classNames.js.
+ *
+ * The scope is what decides which offerings are even visible, exactly as it
+ * does on the Web: a teacher (OWN) may only act on classes they teach, and an
+ * administrator holding the permission school-wide (ALL) may act on any
+ * offering in their school, which is what the assignments screen lets them do.
+ * Before this, every caller was filtered to `teacherId: actor.profileId`, so an
+ * administrator -- who teaches nothing -- was told they are "not assigned to
+ * any classes yet" for an operation the Web grants them outright.
+ *
+ * Nothing here authorizes: the permission and its scope were checked before
+ * this ran, and the service that writes checks the offering again.
  */
-export async function resolveOwnOffering(actor, { subjectOfferingId, subject, className }) {
-  const mine = await SubjectOffering.find({ teacherId: actor.profileId })
+export async function resolveOffering(actor, scope, { subjectOfferingId, subject, className }) {
+  const ownOnly = scope !== 'ALL';
+  const mine = await SubjectOffering.find(ownOnly ? { teacherId: actor.profileId } : {})
     .populate({ path: 'sectionId', populate: { path: 'gradeId' } })
     .populate('subjectId')
     .lean();
-
-  if (!mine.length) {
-    throw new AppError('You are not assigned to any classes yet.', 404, [], 'NO_OFFERINGS');
-  }
 
   const describe = (o) => ({
     id: String(o._id),
@@ -46,10 +53,27 @@ export async function resolveOwnOffering(actor, { subjectOfferingId, subject, cl
   });
   const options = mine.map(describe);
 
+  // Named an offering outright: whether it is THEIRS is the question, and it
+  // is answered the same way whether they hold none or hold others. Checked
+  // before the "you have no classes" guard below, because a teacher who holds
+  // none and names somebody else's is being refused that class -- 403 -- not
+  // told the class does not exist.
   if (subjectOfferingId) {
     const hit = options.find((o) => o.id === String(subjectOfferingId));
-    if (!hit) throw new AppError('You do not teach that class.', 403, [], 'NOT_YOUR_CLASS');
+    if (!hit) {
+      throw new AppError(
+        ownOnly ? 'You do not teach that class.' : 'I could not find that class and subject.',
+        ownOnly ? 403 : 404, [], ownOnly ? 'NOT_YOUR_CLASS' : 'OFFERING_NOT_FOUND',
+      );
+    }
     return hit;
+  }
+
+  if (!mine.length) {
+    throw new AppError(
+      ownOnly ? 'You are not assigned to any classes yet.' : 'No classes have subjects assigned yet.',
+      404, [], 'NO_OFFERINGS',
+    );
   }
 
   const norm = (s) => String(s ?? '').toLowerCase().trim();
@@ -87,14 +111,14 @@ export async function resolveOwnOffering(actor, { subjectOfferingId, subject, cl
  * Produces a draft. Writes nothing — the agent proposes it and the teacher
  * confirms before it becomes real homework for a class.
  */
-export async function draftHomework(actor, { subjectOfferingId, subject, className, topic, dueAt, type = 'HOMEWORK', maxMarks, lang }) {
+export async function draftHomework(actor, scope, { subjectOfferingId, subject, className, topic, dueAt, type = 'HOMEWORK', maxMarks, lang }) {
   if (!topic?.trim()) throw new AppError('What should the homework be about?', 400, [], 'TOPIC_REQUIRED');
   if (!dueAt) throw new AppError('When is the homework due?', 400, [], 'DUE_DATE_REQUIRED');
 
   const due = new Date(dueAt);
   if (Number.isNaN(due.getTime())) throw new AppError('I could not read that due date.', 400);
 
-  const offering = await resolveOwnOffering(actor, { subjectOfferingId, subject, className });
+  const offering = await resolveOffering(actor, scope, { subjectOfferingId, subject, className });
   const title = `${topic.trim()}`.slice(0, MAX_TITLE);
 
   let description = null;
