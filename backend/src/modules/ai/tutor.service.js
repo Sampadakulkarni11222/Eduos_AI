@@ -59,7 +59,7 @@ export async function getSyllabus(actor) {
 }
 
 /** Published results, used to target help at the subjects that need it. */
-async function getPerformanceContext(actor, enrollmentId) {
+export async function getPerformanceContext(actor, enrollmentId) {
   try {
     const card = await exams.getReportCard(actor, actor.permissions?.['marks.read'] ?? 'OWN', { enrollmentId });
     return {
@@ -76,7 +76,7 @@ async function getPerformanceContext(actor, enrollmentId) {
 }
 
 /** Rejects a subject the student does not actually study. */
-function assertSubjectInSyllabus(syllabus, subject) {
+export function assertSubjectInSyllabus(syllabus, subject) {
   if (!subject) return null;
   const match = syllabus.subjects.find(
     (s) => s.name.toLowerCase() === String(subject).trim().toLowerCase()
@@ -258,7 +258,7 @@ export async function tutor(actor, { subject, topic, mode = 'explain', lang: lan
  * the student's own data. Writing fake "explanations" here would be worse than
  * useless — a student cannot tell a plausible wrong answer from a right one.
  */
-function buildScaffold({ syllabus, resolvedSubject, topic, mode, performance }) {
+export function buildScaffold({ syllabus, resolvedSubject, topic, mode, performance }) {
   const subjectLine = resolvedSubject ? `${resolvedSubject} · ${syllabus.className}` : syllabus.className;
   const weak = performance?.weakest?.subject;
 

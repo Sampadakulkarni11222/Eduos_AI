@@ -1,0 +1,14 @@
+interface:
+  display_name: Student Learning Buddy
+  short_description: Friendly multilingual tutoring that adapts to each learner
+  default_prompt: Use $student-learning-buddy to explain this topic in my preferred
+    language, with a simple example and one small practice step.
+  icon_small: assets/icon.svg
+  icon_large: assets/icon.svg
+policy:
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
+  allow_implicit_invocation: true
