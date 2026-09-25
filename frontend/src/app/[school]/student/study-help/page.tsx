@@ -1,6 +1,6 @@
 'use client';
 import { PortalShell } from '@/components/shell';
-import { TutorPanel } from '@/components/tutor-panel';
+import { LearningBuddyPanel } from '@/components/study-help/learning-buddy-panel';
 
 export default function StudentStudyHelp() {
   return (
@@ -8,10 +8,10 @@ export default function StudentStudyHelp() {
       expectedSlug="student"
       topbar={{
         title: 'Study Help',
-        desc: 'Explanations, practice questions and revision aids for your own subjects.',
+        desc: 'Explanations, worked examples, practice, quizzes and revision aids for your own subjects.',
       }}
     >
-      <TutorPanel portalSlug="student" />
+      <LearningBuddyPanel />
     </PortalShell>
   );
 }

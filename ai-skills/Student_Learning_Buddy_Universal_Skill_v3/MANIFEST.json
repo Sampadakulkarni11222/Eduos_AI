@@ -1,0 +1,52 @@
+{
+  "name": "Student Learning Buddy",
+  "version": "3.0",
+  "updated": "2026-09-25",
+  "evaluation_scenarios": 48,
+  "files": {
+    "AUDIT_AND_VALIDATION.md": {
+      "bytes": 5387,
+      "sha256": "cd3bbee720ff3ee935513629dc86d17f20ac3e265fa8d5acec3f23c99fc0f5d2"
+    },
+    "EVALUATION_CASES.jsonl": {
+      "bytes": 8834,
+      "sha256": "2ec37bea6d0a3653d0e32f5cb54bf9d7098cc8fe455052e7959fdc58c3b1d8c2"
+    },
+    "START_HERE.md": {
+      "bytes": 5046,
+      "sha256": "c1f064ea007ee38845ab448707e01e02f82bec0106cb9e59de81f2b03c8f5338"
+    },
+    "UNIVERSAL_SYSTEM_PROMPT.txt": {
+      "bytes": 24956,
+      "sha256": "b1ed63fd9b816536d198647e60a7a3ba242e093900d0207a46782a8aeaacdfa8"
+    },
+    "student-learning-buddy/SKILL.md": {
+      "bytes": 25810,
+      "sha256": "5ea9fd8b19e8e8cc43b57a75c9c802518bc922a72a4702c1a2560b6415318a64"
+    },
+    "student-learning-buddy/agents/openai.yaml": {
+      "bytes": 433,
+      "sha256": "11f863c7db9941ddb83419de231aa7687e39db94731e7e16a646ceddd488e4b3"
+    },
+    "student-learning-buddy/assets/icon.svg": {
+      "bytes": 667,
+      "sha256": "9be88f8dd4c5e658961515c71389eafd45142ffa68bcae58e8dcff57d178ed91"
+    },
+    "student-learning-buddy/references/answer-contract.md": {
+      "bytes": 8717,
+      "sha256": "a910479a4705f54d5887e19d754a654f7c245980be135a0f71a49bd053576414"
+    },
+    "student-learning-buddy/references/platform-contract.md": {
+      "bytes": 15434,
+      "sha256": "47963fe0471bc0b23318e2e2b6c50fb4208fa1081d05792301bfd168ec005716"
+    },
+    "student-learning-buddy/references/research-basis.md": {
+      "bytes": 7524,
+      "sha256": "a5f6d7ae12e350afe70356fceba3f72545748961aa0771899ddec6e51e393ad8"
+    },
+    "student-learning-buddy/references/teaching-patterns.md": {
+      "bytes": 7771,
+      "sha256": "ac2c344f6b02434283b20f8b3c5ffd93bc2d77f2a3b7659b4963c89b5532e8f0"
+    }
+  }
+}

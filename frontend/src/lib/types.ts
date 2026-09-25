@@ -1295,6 +1295,54 @@ export interface TutorReplyDto {
   credits?: { charged: number; source: string; remaining: number };
 }
 
+/* ── Student Study Help (Student Learning Buddy) — /ai/tutor/learn ──
+   Student-only. The parent portal keeps using the Tutor* types above. */
+export type LearnModeKey = 'explain' | 'worked' | 'questions' | 'quiz' | 'flashcards' | 'notes' | 'mindmap' | 'exam';
+export interface LearnModeDto { key: LearnModeKey; label: string; description: string }
+export interface LearnStatusDto {
+  llmEnabled: boolean;
+  modes: LearnModeDto[];
+  skill: { name: string; version: string };
+}
+export interface MindMapNode { label: string; children: MindMapNode[] }
+export type RedirectKind = 'off_topic' | 'integrity' | 'unsafe' | 'safety' | 'needs_detail';
+/** A validated result. Every string is model text: render it as text, never as HTML. */
+export type LearnResult =
+  | { type: 'explain'; idea: string; example: string; steps: string[]; takeaway: string; checkQuestion: { prompt: string; answer: string } | null }
+  | { type: 'worked'; problem: string; method: string; steps: string[]; finalAnswer: string; verification: string | null }
+  | { type: 'questions'; questions: Array<{ prompt: string; hints: string[]; solution: string }> }
+  | { type: 'quiz'; questions: Array<{ prompt: string; options: string[]; correctIndex: number; explanation: string }> }
+  | { type: 'flashcards'; cards: Array<{ front: string; back: string }> }
+  | { type: 'notes'; sections: Array<{ heading: string; points: string[] }>; commonConfusion: string | null; recallPrompts: Array<{ prompt: string; answer: string }> }
+  | { type: 'mindmap'; root: MindMapNode }
+  | { type: 'exam'; questions: Array<{ prompt: string; marks: number | null; formalAnswer: string; plainExplanation: string }> }
+  | { type: 'redirect'; kind: RedirectKind; message: string };
+/**
+ * `generated: false` means no valid model answer is shown: `structured` is null,
+ * `reasonMessage` says why, and `scaffold` is a study plan from the student's
+ * own data. `generated: true` with a `redirect` result is a model reply that is
+ * not a lesson (off-topic, safety, a clarifying question) and is never charged.
+ */
+export interface LearnReplyDto {
+  mode: LearnModeKey; modeLabel: string;
+  subject: string; topic: string; className: string;
+  language: string; languageName: string;
+  skill: { name: string; version: string };
+  generated: boolean;
+  structured: LearnResult | null;
+  content: string | null;
+  reason?: string;
+  reasonMessage?: string;
+  scaffold?: string;
+  attempts: number;
+  groundedOn: {
+    subjects: string[];
+    performance: { overall: number | null; weakest: string | null } | null;
+    syllabus: { available: boolean; chapters: string[]; materialTitles: string[]; materialCount: number };
+  };
+  credits?: { charged: number; source: string; remaining: number };
+}
+
 export interface AiCreditPackDto { key: string; label: string; credits: number; amountPaise: number }
 /**
  * `metered: false` is returned for staff — the school covers their AI usage —

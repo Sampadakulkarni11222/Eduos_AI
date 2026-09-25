@@ -4,6 +4,7 @@ import { AppError } from '../../utils/AppError.js';
 import * as agentCore from './agent/orchestrator.js';
 import { mcpToolsFor } from './mcp/registry.js';
 import * as tutorService from './tutor.service.js';
+import * as studyBuddyService from './studyBuddy/studyBuddy.service.js';
 import * as creditService from './aiCredit.service.js';
 
 /* ── AI credits ─────────────────────────────────────────────
@@ -146,4 +147,16 @@ export const tutorSyllabus = asyncHandler(async (req, res) => {
 export const tutor = asyncHandler(async (req, res) => {
   const { subject, topic, mode, lang } = req.body;
   sendSuccess(res, await tutorService.tutor(req.actor, { subject, topic, mode, lang }), 'Tutor response');
+});
+
+/* ── Student Study Help (Student Learning Buddy) ───────────
+   Students only — the service refuses every other role with 403, so the
+   parent portal stays on /ai/tutor above. */
+export const learnStatus = asyncHandler(async (req, res) => {
+  sendSuccess(res, studyBuddyService.learnStatus(req.actor), 'Study help status');
+});
+
+export const learn = asyncHandler(async (req, res) => {
+  const { subject, topic, mode, lang } = req.body;
+  sendSuccess(res, await studyBuddyService.learn(req.actor, { subject, topic, mode, lang }), 'Study help response');
 });
