@@ -302,16 +302,24 @@ describe('6. WARDEN', () => {
     expect(step.args.status).toBe('OPEN');
   });
 
+  it('4 — students allocated to hostel beds resolves to residents roster, not summary', () => {
+    reaches('WARDEN', 'Students allocated to hostel beds', 'get_hostel_residents');
+  });
+
   it('8 — allocating a bed performs the allocation, and is not occupancy statistics', () => {
-    const step = reaches('WARDEN', 'Allocate a bed to Diya Sharma.', 'allocate_hostel_bed');
-    expect(step.args.studentName).toBe('Diya Sharma');
-    expect(getMcpTool('allocate_hostel_bed').operation).toBe('ACTION');
+    for (const msg of ['Allocate a bed to Diya Sharma.', 'Allocate bed to Diya Sharma']) {
+      const step = reaches('WARDEN', msg, 'allocate_hostel_bed');
+      expect(step.args.studentName).toBe('Diya Sharma');
+      expect(getMcpTool('allocate_hostel_bed').operation).toBe('ACTION');
+    }
   });
 
   it('10 — vacating names the student, not an allocation id', () => {
-    const step = reaches('WARDEN', "Vacate Diya Sharma's bed.", 'vacate_hostel_bed');
-    expect(step.args.studentName).toBe('Diya Sharma');
-    expect(step.args.allocationId).toBeUndefined();
+    for (const msg of ["Vacate Diya Sharma's bed.", 'Vacate Diya Sharma bed']) {
+      const step = reaches('WARDEN', msg, 'vacate_hostel_bed');
+      expect(step.args.studentName).toBe('Diya Sharma');
+      expect(step.args.allocationId).toBeUndefined();
+    }
   });
 });
 

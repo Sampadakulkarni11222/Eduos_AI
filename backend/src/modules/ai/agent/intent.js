@@ -346,6 +346,12 @@ const RULES = [
       /\bdorm(itory)?\b[^?]*\b(occupancy|beds?|free)\b/i,
       /छात्रावास[^?]*(क्षमता|बिस्तर)/,
     ],
+    // "Students allocated to hostel beds", "Allocate bed to Diya", "Vacate Diya's bed"
+    // must not be answered with occupancy statistics.
+    exclude: [
+      /\b(students?|residents?|boarders?|roster)\b/i,
+      /\b(allocat|vacat)\w*/i,
+    ],
     args: () => ({}),
   },
   {
@@ -353,6 +359,9 @@ const RULES = [
     patterns: [
       /\b(which|what|list|show|who)\b[^?]*\bstudents?\b[^?]*\bhostel\b/i,
       /\bhostel\b[^?]*\b(students?|residents?|roster|list|allocation)\b/i,
+      /\bstudents?\b[^?]*\b(?:allocated|assigned|in|to)\b[^?]*\b(?:hostel|dorm|beds?)\b/i,
+      /\bstudents?\b[^?]*\b(?:hostel|dorm)\b/i,
+      /\ballocated to hostel\b/i,
       /\b(residents?|boarders?)\b/i,
       /\bwho\b[^?]*\b(is|are)\b[^?]*\bin\b[^?]*\b(hostel|dorm)\b/i,
       /छात्रावास[^?]*(विद्यार्थी|छात्र)/,

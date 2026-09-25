@@ -585,7 +585,16 @@ export function dimensionsOf(text, now = new Date()) {
     // are: "Generate Mathematics homework ..." puts the verb inside the
     // capitalised run, and "Generate Mathematics" was then offered as the
     // title of the homework -- and, being two capitalised words, as a person.
-    title: titleFromText(withoutLeadingVerb(str)),
+    // When the span was already claimed by grammatical evidence as a person, it is not a title.
+    title: (() => {
+      const candidate = titleFromText(withoutLeadingVerb(str));
+      if (!candidate) return null;
+      const personFromGrammar = Boolean(admissionNo || nameFromText(withoutLeadingVerb(str)));
+      if (personFromGrammar && identity.student && candidate.toLowerCase() === identity.student.toLowerCase()) {
+        return null;
+      }
+      return candidate;
+    })(),
     // The school subject a request is about. Read with the same grammar rule
     // the entity tier uses -- a subject sits just before the entity word, or
     // is introduced by "in"/"for" -- so both tiers understand "Mathematics
