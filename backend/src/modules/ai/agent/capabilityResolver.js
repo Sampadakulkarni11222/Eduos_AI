@@ -408,7 +408,7 @@ export function titleFromText(text) {
   const quoted = /["“”']([^"“”']{2,120})["“”']/.exec(str)?.[1];
   if (quoted) return quoted.trim();
 
-  const runs = [...str.matchAll(/\b([A-Z][\w'-]*(?:(?:\s+(?:to|of|and|the|a|an|in|for|on|with|at|from)\b)+\s+[A-Z][\w'-]*|\s+[A-Z][\w'-]*)*)/g)]
+  const runs = [...str.matchAll(/\b([A-Z][\w'-]*(?:(?:\s+(?:to|of|and|the|a|an|in|for|on|with|at|from)\b)+\s+[A-Z][\w'-]*|:\s+[A-Z][\w'-]*|\s+[A-Z][\w'-]*)*)/g)]
     .map((m) => m[1].trim())
     // The sentence's own opening verb is capitalised too. Dropping it here is
     // what makes "Add Clean Code" yield "Clean Code" rather than the whole run.
