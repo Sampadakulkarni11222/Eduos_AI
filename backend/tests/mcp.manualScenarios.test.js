@@ -107,6 +107,16 @@ describe('1. ADMIN', () => {
       expect(canExpressAClass, `${step.tool} cannot express the class it was asked about`).toBe(true);
     }
   });
+
+  it('routes attendance threshold questions to get_at_risk_students', () => {
+    const step = reaches(
+      'ADMIN',
+      'According to the attendance policy, which students are below 75% attendance?',
+      'get_at_risk_students',
+      { attendanceBelowPct: 75 }
+    );
+    expect(step.tool).toBe('get_at_risk_students');
+  });
 });
 
 /* ── 2. STUDENT ───────────────────────────────────────────── */
