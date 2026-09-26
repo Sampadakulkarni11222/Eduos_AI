@@ -53,6 +53,11 @@ const NOT_A_NAME = new Set([
   // school-wide question was answered as a lookup for a pupil.
   'count', 'total', 'number', 'report', 'summary', 'snapshot', 'percentage', 'average', 'register', 'roster', 'list',
   'absent', 'absence', 'present', 'fees', 'fee', 'leave', 'library', 'hostel', 'transport', 'notice', 'circular',
+  'bed', 'beds', 'room', 'rooms',
+  'to', 'of', 'for', 'in', 'on', 'at', 'with', 'by', 'from', 'about', 'into', 'over', 'under', 'and', 'or',
+  'policy', 'policies', 'rule', 'rules', 'guideline', 'guidelines', 'handbook', 'threshold',
+  'criterion', 'criteria', 'requirement', 'requirements', 'standard', 'standards',
+  'regulation', 'regulations', 'procedure', 'procedures', 'protocol', 'protocols',
   'this', 'that', 'the', 'a', 'an', 'all', 'each', 'every', 'whose', 'who',
 ]);
 
@@ -69,9 +74,10 @@ const DOMAIN_STEMS = [
   'absent', 'absence', 'attend', 'present', 'register', 'roster',
   'mark', 'score', 'result', 'grade', 'exam', 'gpa', 'report',
   'homework', 'assign', 'worksheet', 'submission',
-  'notice', 'announce', 'circular', 'news',
+  'notice', 'announce', 'circular', 'news', 'policy', 'guideline', 'rule', 'regulation', 'threshold',
   'fee', 'invoice', 'payment', 'due', 'receipt',
   'leave', 'holiday', 'librar', 'book', 'hostel', 'transport', 'bus', 'route',
+  'bed', 'room',
   'timetable', 'period', 'schedul', 'lesson',
   'profile', 'detail', 'information', 'summar', 'count', 'total', 'percent', 'average', 'statistic',
   'student', 'pupil', 'teacher', 'staff', 'parent', 'guardian', 'child',

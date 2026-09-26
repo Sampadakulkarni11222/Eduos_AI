@@ -275,6 +275,19 @@ describe('5. LIBRARIAN', () => {
     // renewal. An intentional exclusion.
     expect(getMcpTool('renew_book')).toBeNull();
   });
+
+  it('book requests waiting for approval reaches get_book_requests', () => {
+    reaches('LIBRARIAN', 'Book requests waiting for approval', 'get_book_requests');
+  });
+
+  it('searching a title with prepositions reaches list_books', () => {
+    const step = reaches('LIBRARIAN', 'Search Introduction to Algorithms', 'list_books');
+    expect(step.args.search).toBe('Introduction to Algorithms');
+  });
+
+  it('all books in catalogue reaches list_books', () => {
+    reaches('LIBRARIAN', 'All books in Catalogue', 'list_books');
+  });
 });
 
 /* ── 6. WARDEN ────────────────────────────────────────────── */

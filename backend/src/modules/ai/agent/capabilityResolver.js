@@ -96,6 +96,7 @@ const STOPWORDS = new Set([
  */
 export function stem(word) {
   let w = String(word ?? '').toLowerCase().replace(/[^a-z]/g, '');
+  if (w === 'catalogue') return 'catalog';
   if (w.length <= 3) return w;
   if (w.endsWith('ies')) return `${w.slice(0, -3)}y`;
   if (w.endsWith('sses') || w.endsWith('shes') || w.endsWith('ches')) return w.slice(0, -2);
