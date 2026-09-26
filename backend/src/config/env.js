@@ -225,6 +225,14 @@ export const env = {
   GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? null,
   GEMINI_MODEL: process.env.GEMINI_MODEL ?? null,
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? null,
+  // OpenRouter: AI_PROVIDER=openrouter uses it directly; with AI_PROVIDER=gemini
+  // or anthropic, a key here makes it the fallback when that provider fails.
+  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? null,
+  OPENROUTER_MODEL: process.env.OPENROUTER_MODEL || 'openrouter/auto',
+  OPENROUTER_FALLBACK_MODELS: process.env.OPENROUTER_FALLBACK_MODELS ?? '',
+  OPENROUTER_MAX_TOKENS: Number(process.env.OPENROUTER_MAX_TOKENS) || 4096,
+  OPENROUTER_SITE_URL: process.env.OPENROUTER_SITE_URL ?? '',
+  OPENROUTER_APP_NAME: process.env.OPENROUTER_APP_NAME ?? 'EduOS',
   /**
    * How long any single model call may take before the assistant stops
    * waiting for it.
