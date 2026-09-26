@@ -408,7 +408,7 @@ export function titleFromText(text) {
   const quoted = /["“”']([^"“”']{2,120})["“”']/.exec(str)?.[1];
   if (quoted) return quoted.trim();
 
-  const runs = [...str.matchAll(/\b([A-Z][\w'-]*(?:\s+(?:to|of|and|the|a|in)\s+[A-Z][\w'-]*|\s+[A-Z][\w'-]*)*)/g)]
+  const runs = [...str.matchAll(/\b([A-Z][\w'-]*(?:(?:\s+(?:to|of|and|the|a|an|in|for|on|with|at|from)\b)+\s+[A-Z][\w'-]*|\s+[A-Z][\w'-]*)*)/g)]
     .map((m) => m[1].trim())
     // The sentence's own opening verb is capitalised too. Dropping it here is
     // what makes "Add Clean Code" yield "Clean Code" rather than the whole run.
@@ -576,7 +576,15 @@ export function dimensionsOf(text, now = new Date()) {
     // also the title candidate. "Return the overdue Harry Potter book" then
     // does not become a request about a student called Harry Potter: a
     // capability that can hold a title takes it as one.
-    personFromTitle: !admissionNo && !nameFromText(withoutLeadingVerb(str)) && Boolean(personShaped(titleFromText(str))),
+    personFromTitle: !admissionNo && (
+      (!nameFromText(withoutLeadingVerb(str)) && Boolean(personShaped(titleFromText(str))))
+      || Boolean(
+        titleFromText(withoutLeadingVerb(str)) &&
+        identity.student &&
+        titleFromText(withoutLeadingVerb(str)).toLowerCase() === identity.student.toLowerCase() &&
+        !/['’]s\b|\b(?:student|pupil|child|borrower|resident)\s+|\b(?:of|for|to)\s+|(?:\bas\s+)?\b(?:absent|present|late|excused)\b/i.test(str)
+      )
+    ),
     numbered: identity.numbered,
     month: range ? null : monthFromText(unquoted, now),
     range,
