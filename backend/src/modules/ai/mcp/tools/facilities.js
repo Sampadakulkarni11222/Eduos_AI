@@ -482,13 +482,27 @@ export const facilityTools = {
         .filter((i) => !studentId || String(i.borrowerProfileId ?? i.studentId ?? '') === String(studentId));
 
       if (!open.length) throw new AppError(`No copy of "${book.title}" is currently on loan.`, 404, [], 'NOTHING_TO_RETURN');
-      if (open.length > 1) {
+      let selectedLoans = open;
+      if (selectedLoans.length > 1) {
+        const overdueOnly = selectedLoans.filter((i) => String(i.status).toUpperCase() === 'OVERDUE');
+        if (overdueOnly.length === 1) {
+          selectedLoans = overdueOnly;
+        } else if (
+          selectedLoans.every(
+            (i) => String(i.borrowerProfileId ?? i.studentId ?? '') === String(selectedLoans[0].borrowerProfileId ?? selectedLoans[0].studentId ?? ''),
+          )
+        ) {
+          selectedLoans = overdueOnly.length ? [overdueOnly[0]] : [selectedLoans[0]];
+        }
+      }
+
+      if (selectedLoans.length > 1) {
         throw new AppError(
-          `${open.length} copies of "${book.title}" are on loan (${open.slice(0, 5).map((i) => i.borrowerName ?? 'a borrower').join(', ')}). Whose return is this?`,
+          `${selectedLoans.length} copies of "${book.title}" are on loan (${selectedLoans.slice(0, 5).map((i) => i.borrowerName ?? 'a borrower').join(', ')}). Whose return is this?`,
           400, [], 'AGENT_NEEDS_INPUT',
         );
       }
-      return { issueId: String(open[0].id ?? open[0]._id), title: book.title, borrower: open[0].borrowerName ?? null };
+      return { issueId: String(selectedLoans[0].id ?? selectedLoans[0]._id), title: book.title, borrower: selectedLoans[0].borrowerName ?? null };
     },
     async run(ctx, args, prepared) {
       const plan = prepared ?? (await this.prepare(ctx, args));

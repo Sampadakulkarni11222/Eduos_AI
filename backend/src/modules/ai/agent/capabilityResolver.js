@@ -408,19 +408,20 @@ export function titleFromText(text) {
   const quoted = /["“”']([^"“”']{2,120})["“”']/.exec(str)?.[1];
   if (quoted) return quoted.trim();
 
+  const TITLE_ARTICLES = new Set(['the', 'a', 'an']);
   const runs = [...str.matchAll(/\b([A-Z][\w'-]*(?:(?:\s+(?:to|of|and|the|a|an|in|for|on|with|at|from)\b)+\s+[A-Z][\w'-]*|:\s+[A-Z][\w'-]*|\s+[A-Z][\w'-]*)*)/g)]
     .map((m) => m[1].trim())
     // The sentence's own opening verb is capitalised too. Dropping it here is
     // what makes "Add Clean Code" yield "Clean Code" rather than the whole run.
     .map((run) => {
       const parts = run.split(/\s+/);
-      return TITLE_STOP.has(parts[0].toLowerCase()) ? parts.slice(1).join(' ') : run;
+      return (TITLE_STOP.has(parts[0].toLowerCase()) && !TITLE_ARTICLES.has(parts[0].toLowerCase())) ? parts.slice(1).join(' ') : run;
     })
     .filter((run) => {
       if (!run) return false;
       const parts = run.split(/\s+/);
       const first = parts[0].toLowerCase();
-      if (TITLE_STOP.has(first)) return false;
+      if (TITLE_STOP.has(first) && !TITLE_ARTICLES.has(first)) return false;
       // A title has at least one substantial word in it, and no bare initials.
       if (!parts.some((w) => w.length >= 3)) return false;
       if (parts.every((w) => TITLE_STOP.has(w.toLowerCase()))) return false;
