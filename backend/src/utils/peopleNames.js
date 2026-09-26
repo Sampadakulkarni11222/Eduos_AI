@@ -54,6 +54,9 @@ const NOT_A_NAME = new Set([
   'count', 'total', 'number', 'report', 'summary', 'snapshot', 'percentage', 'average', 'register', 'roster', 'list',
   'absent', 'absence', 'present', 'fees', 'fee', 'leave', 'library', 'hostel', 'transport', 'notice', 'circular',
   'bed', 'beds', 'room', 'rooms',
+  'policy', 'policies', 'rule', 'rules', 'guideline', 'guidelines', 'handbook', 'threshold',
+  'criterion', 'criteria', 'requirement', 'requirements', 'standard', 'standards',
+  'regulation', 'regulations', 'procedure', 'procedures', 'protocol', 'protocols',
   'this', 'that', 'the', 'a', 'an', 'all', 'each', 'every', 'whose', 'who',
 ]);
 
@@ -70,7 +73,7 @@ const DOMAIN_STEMS = [
   'absent', 'absence', 'attend', 'present', 'register', 'roster',
   'mark', 'score', 'result', 'grade', 'exam', 'gpa', 'report',
   'homework', 'assign', 'worksheet', 'submission',
-  'notice', 'announce', 'circular', 'news',
+  'notice', 'announce', 'circular', 'news', 'policy', 'guideline', 'rule', 'regulation', 'threshold',
   'fee', 'invoice', 'payment', 'due', 'receipt',
   'leave', 'holiday', 'librar', 'book', 'hostel', 'transport', 'bus', 'route',
   'bed', 'room',
@@ -190,7 +193,7 @@ export function nameFromText(text) {
     if (trimmed && isNameLike(trimmed)) return clean(trimmed);
   }
 
-  const prepositional = new RegExp(`\\b(?:of|for|to)\\s+(${NAME_PHRASE})`, 'iu').exec(str)?.[1];
+  const prepositional = new RegExp(`\\b(?:of|for|(?<!\\b(?:according|due|prior)\\s+)to)\\s+(${NAME_PHRASE})`, 'iu').exec(str)?.[1];
   if (prepositional) {
     const trimmed = trimLeadingNonNames(prepositional);
     if (trimmed && isNameLike(trimmed)) return clean(trimmed);

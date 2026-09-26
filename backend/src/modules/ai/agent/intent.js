@@ -226,6 +226,8 @@ const RULES = [
       /\bstudents?\b[^?]*\b(below|under)\b[^?]*\battendance\b/i,
       /\battendance\b[^?]*\b(below|under|less than)\b/i,
       /\bthreshold\b/i,
+      /\b(which|who)\b[^?]*\b(students?|learners?)\b[^?]*\b(below|under|less than|at.?risk)\b/i,
+      /\b(which|who)\b[^?]*\b(below|under|less than)\b[^?]*\d{1,3}\s?%/i,
     ],
     requires: { permission: 'ai.insights.read', scope: 'ALL' },
     weight: 3,
@@ -258,7 +260,11 @@ const RULES = [
       /\b[\p{L}][\p{L}'-]{2,}(?:'s)\s+attendance\b/iu,
       /\b(his|her|their)\b[^?]*\battendance\b/i,
     ],
-    exclude: [/\bmy\b/i, /\bwho\b/i, /\bhow many\b/i, /\bschool.?wide\b/i, /\b(mark|record|update|set)\b/i],
+    exclude: [
+      /\bmy\b/i, /\bwho\b/i, /\bhow many\b/i, /\bschool.?wide\b/i, /\b(mark|record|update|set)\b/i,
+      /\b(below|under|less than|at.?risk|threshold)\b/i,
+      /\b(which|who)\b[^?]*\bstudents?\b/i,
+    ],
     // Any attendance.read scope. A teacher (OWN) asking about a named pupil
     // used to fall through to get_attendance — their own summary — because
     // this required ALL. Scope is not decided here: the MCP tool resolves the
@@ -809,6 +815,12 @@ const ENTITY_TIER_CLAIMS = ['attendance', 'marks', 'homework'];
 
 function entityStep(message, actor) {
   if (!actor?.permissions?.['ai.copilot.use']) return null;
+
+  // Threshold or at-risk population queries are school-wide risk analytics, not individual records
+  if (/\b(below|under|less than|at.?risk|threshold)\b/i.test(String(message ?? ''))
+    && /\b\d{1,3}\s?%|\battendance\b/i.test(String(message ?? ''))) {
+    return null;
+  }
 
   // Only when one of its three entities is what the request is ABOUT. The tier
   // itself matches on any mention, so "show Rahul's growth SCORE" reached it
