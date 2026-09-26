@@ -60,10 +60,17 @@ export async function resolveBook(args = {}) {
   const exact = rows.filter((b) => String(b.title ?? '').trim().toLowerCase() === wanted.toLowerCase());
   const candidates = exact.length ? exact : rows;
   if (candidates.length > 1) {
-    throw new AppError(
-      `More than one item matches "${wanted}": ${candidates.slice(0, 5).map((b) => `"${b.title}"${b.author ? ` by ${b.author}` : ''}`).join(', ')}. Which one?`,
-      400, [], 'AGENT_NEEDS_INPUT',
+    const allIdentical = candidates.every(
+      (c) =>
+        String(c.title ?? '').trim().toLowerCase() === String(candidates[0].title ?? '').trim().toLowerCase() &&
+        String(c.author ?? '').trim().toLowerCase() === String(candidates[0].author ?? '').trim().toLowerCase(),
     );
+    if (!allIdentical) {
+      throw new AppError(
+        `More than one item matches "${wanted}": ${candidates.slice(0, 5).map((b) => `"${b.title}"${b.author ? ` by ${b.author}` : ''}`).join(', ')}. Which one?`,
+        400, [], 'AGENT_NEEDS_INPUT',
+      );
+    }
   }
   return candidates[0];
 }
@@ -445,7 +452,26 @@ export const facilityTools = {
       // -- a read where a write was asked for. The open loan is found through
       // the same listIssues() the lending screen reads, narrowed by the item
       // and, when given, the borrower.
-      const book = await resolveBook(args);
+      let book;
+      try {
+        book = await resolveBook(args);
+      } catch (err) {
+        if (err.code === 'AGENT_NEEDS_INPUT' && args.title) {
+          const rows = asList(await library.listBooks({ search: args.title }));
+          const candidateIds = rows.map((b) => String(b.id ?? b._id));
+          const allOpen = asList(await library.listIssues(ctx.actor, ctx.scope, { status: 'ALL' }))
+            .filter((i) => ['ACTIVE', 'OVERDUE'].includes(String(i.status).toUpperCase()))
+            .filter((i) => candidateIds.includes(String(i.bookId?._id ?? i.bookId ?? '')));
+          const uniqueBooksWithLoans = [...new Set(allOpen.map((i) => String(i.bookId?._id ?? i.bookId ?? '')))];
+          if (uniqueBooksWithLoans.length === 1) {
+            book = rows.find((b) => String(b.id ?? b._id) === uniqueBooksWithLoans[0]);
+          } else {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      }
       if (!book) throw new AppError('Which item is being returned? Give its title.', 400, [], 'AGENT_NEEDS_INPUT');
       const studentId = (args.studentId || args.admissionNo || args.studentName)
         ? await resolveStudentId(ctx, args)
