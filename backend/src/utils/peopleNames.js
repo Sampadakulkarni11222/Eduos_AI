@@ -53,6 +53,10 @@ const NOT_A_NAME = new Set([
   // school-wide question was answered as a lookup for a pupil.
   'count', 'total', 'number', 'report', 'summary', 'snapshot', 'percentage', 'average', 'register', 'roster', 'list',
   'absent', 'absence', 'present', 'fees', 'fee', 'leave', 'library', 'hostel', 'transport', 'notice', 'circular',
+  'bed', 'beds', 'room', 'rooms',
+  'policy', 'policies', 'rule', 'rules', 'guideline', 'guidelines', 'handbook', 'threshold',
+  'criterion', 'criteria', 'requirement', 'requirements', 'standard', 'standards',
+  'regulation', 'regulations', 'procedure', 'procedures', 'protocol', 'protocols',
   'this', 'that', 'the', 'a', 'an', 'all', 'each', 'every', 'whose', 'who',
 ]);
 
@@ -69,9 +73,10 @@ const DOMAIN_STEMS = [
   'absent', 'absence', 'attend', 'present', 'register', 'roster',
   'mark', 'score', 'result', 'grade', 'exam', 'gpa', 'report',
   'homework', 'assign', 'worksheet', 'submission',
-  'notice', 'announce', 'circular', 'news',
+  'notice', 'announce', 'circular', 'news', 'policy', 'guideline', 'rule', 'regulation', 'threshold',
   'fee', 'invoice', 'payment', 'due', 'receipt',
   'leave', 'holiday', 'librar', 'book', 'hostel', 'transport', 'bus', 'route',
+  'bed', 'room',
   'timetable', 'period', 'schedul', 'lesson',
   'profile', 'detail', 'information', 'summar', 'count', 'total', 'percent', 'average', 'statistic',
   'student', 'pupil', 'teacher', 'staff', 'parent', 'guardian', 'child',
@@ -183,10 +188,16 @@ export function nameFromText(text) {
   }
 
   const introduced = new RegExp(`\\b(?:student|pupil|child)\\s+(${NAME_PHRASE})`, 'iu').exec(str)?.[1];
-  if (introduced && isNameLike(introduced)) return clean(introduced);
+  if (introduced) {
+    const trimmed = trimLeadingNonNames(introduced);
+    if (trimmed && isNameLike(trimmed)) return clean(trimmed);
+  }
 
-  const prepositional = new RegExp(`\\b(?:of|for)\\s+(${NAME_PHRASE})`, 'iu').exec(str)?.[1];
-  if (prepositional && isNameLike(prepositional)) return clean(prepositional);
+  const prepositional = new RegExp(`\\b(?:of|for|(?<!\\b(?:according|due|prior)\\s+)to)\\s+(${NAME_PHRASE})`, 'iu').exec(str)?.[1];
+  if (prepositional) {
+    const trimmed = trimLeadingNonNames(prepositional);
+    if (trimmed && isNameLike(trimmed)) return clean(trimmed);
+  }
 
   // "mark Rahul Sharma absent", "Diya Patel present in Class 5-A". The status
   // is the grammatical evidence, exactly as the word "student" is in the
@@ -196,6 +207,14 @@ export function nameFromText(text) {
   const marked = new RegExp(`\\b(${NAME_PHRASE})\\s+(?:as\\s+)?(?:${MARKED_STATUS})\\b`, 'iu').exec(str)?.[1];
   if (marked) {
     const trimmed = trimLeadingNonNames(marked);
+    if (trimmed && isNameLike(trimmed)) return clean(trimmed);
+  }
+
+  // "Vacate Diya Sharma bed", "assign Rahul Verma room". The domain noun
+  // (bed, room) identifies the person preceding it.
+  const facilityPerson = new RegExp(`\\b(${NAME_PHRASE})\\s+(?:bed|room)s?\\b`, 'iu').exec(str)?.[1];
+  if (facilityPerson) {
+    const trimmed = trimLeadingNonNames(facilityPerson);
     if (trimmed && isNameLike(trimmed)) return clean(trimmed);
   }
 

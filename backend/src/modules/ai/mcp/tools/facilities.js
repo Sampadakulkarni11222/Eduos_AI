@@ -786,8 +786,19 @@ export const facilityTools = {
       `Allocate a bed in room ${prepared?.roomNo ?? args.roomNo ?? args.roomId} to ` +
       `${prepared?.studentLabel ?? args.studentName ?? args.admissionNo ?? args.studentId}`,
     async prepare(ctx, args) {
-      const room = await resolveRoom(args);
-      if (!room) throw new AppError('Which room? Give the room number.', 400, [], 'AGENT_NEEDS_INPUT');
+      let room = await resolveRoom(args);
+      if (!room) {
+        // When no room is specified in the request (e.g. "Allocate bed to Diya Sharma"),
+        // select the first active room that currently has an available bed.
+        const rooms = asList(await hostel.listRooms({ status: 'ACTIVE' }));
+        room = rooms.find((r) => (r.available ?? 0) > 0);
+        if (!room) {
+          if (rooms.length === 0) {
+            throw new AppError('No hostel rooms configured.', 404);
+          }
+          throw new AppError('All hostel rooms are currently full.', 409, [], 'ROOM_FULL');
+        }
+      }
       // The free-bed check the service makes is repeated here for one reason
       // only: the CONFIRMATION a person is shown must be about a room that can
       // actually take them. The service remains the one that decides.

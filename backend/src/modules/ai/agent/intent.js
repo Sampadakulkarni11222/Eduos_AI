@@ -226,6 +226,8 @@ const RULES = [
       /\bstudents?\b[^?]*\b(below|under)\b[^?]*\battendance\b/i,
       /\battendance\b[^?]*\b(below|under|less than)\b/i,
       /\bthreshold\b/i,
+      /\b(which|who)\b[^?]*\b(students?|learners?)\b[^?]*\b(below|under|less than|at.?risk)\b/i,
+      /\b(which|who)\b[^?]*\b(below|under|less than)\b[^?]*\d{1,3}\s?%/i,
     ],
     requires: { permission: 'ai.insights.read', scope: 'ALL' },
     weight: 3,
@@ -258,7 +260,11 @@ const RULES = [
       /\b[\p{L}][\p{L}'-]{2,}(?:'s)\s+attendance\b/iu,
       /\b(his|her|their)\b[^?]*\battendance\b/i,
     ],
-    exclude: [/\bmy\b/i, /\bwho\b/i, /\bhow many\b/i, /\bschool.?wide\b/i, /\b(mark|record|update|set)\b/i],
+    exclude: [
+      /\bmy\b/i, /\bwho\b/i, /\bhow many\b/i, /\bschool.?wide\b/i, /\b(mark|record|update|set)\b/i,
+      /\b(below|under|less than|at.?risk|threshold)\b/i,
+      /\b(which|who)\b[^?]*\bstudents?\b/i,
+    ],
     // Any attendance.read scope. A teacher (OWN) asking about a named pupil
     // used to fall through to get_attendance — their own summary — because
     // this required ALL. Scope is not decided here: the MCP tool resolves the
@@ -346,6 +352,12 @@ const RULES = [
       /\bdorm(itory)?\b[^?]*\b(occupancy|beds?|free)\b/i,
       /छात्रावास[^?]*(क्षमता|बिस्तर)/,
     ],
+    // "Students allocated to hostel beds", "Allocate bed to Diya", "Vacate Diya's bed"
+    // must not be answered with occupancy statistics.
+    exclude: [
+      /\b(students?|residents?|boarders?|roster)\b/i,
+      /\b(allocat|vacat)\w*/i,
+    ],
     args: () => ({}),
   },
   {
@@ -353,6 +365,9 @@ const RULES = [
     patterns: [
       /\b(which|what|list|show|who)\b[^?]*\bstudents?\b[^?]*\bhostel\b/i,
       /\bhostel\b[^?]*\b(students?|residents?|roster|list|allocation)\b/i,
+      /\bstudents?\b[^?]*\b(?:allocated|assigned|in|to)\b[^?]*\b(?:hostel|dorm|beds?)\b/i,
+      /\bstudents?\b[^?]*\b(?:hostel|dorm)\b/i,
+      /\ballocated to hostel\b/i,
       /\b(residents?|boarders?)\b/i,
       /\bwho\b[^?]*\b(is|are)\b[^?]*\bin\b[^?]*\b(hostel|dorm)\b/i,
       /छात्रावास[^?]*(विद्यार्थी|छात्र)/,
@@ -800,6 +815,12 @@ const ENTITY_TIER_CLAIMS = ['attendance', 'marks', 'homework'];
 
 function entityStep(message, actor) {
   if (!actor?.permissions?.['ai.copilot.use']) return null;
+
+  // Threshold or at-risk population queries are school-wide risk analytics, not individual records
+  if (/\b(below|under|less than|at.?risk|threshold)\b/i.test(String(message ?? ''))
+    && /\b\d{1,3}\s?%|\battendance\b/i.test(String(message ?? ''))) {
+    return null;
+  }
 
   // Only when one of its three entities is what the request is ABOUT. The tier
   // itself matches on any mention, so "show Rahul's growth SCORE" reached it
@@ -1543,6 +1564,10 @@ async function defaultCallModel(message, actor, history = [], mcpTools = null) {
     '  {"tools": []}',
     '',
     'Rules:',
+    'Routing precedence:',
+    '1. A query asking which/who students are below an attendance threshold or at risk must call get_at_risk_students (with attendanceBelowPct set to the percentage, e.g. 75).',
+    "2. A query about one specific named student's attendance must call get_student_attendance.",
+    '3. Preserve any threshold explicitly stated by the user, such as 75%.',
     '- Choose [] when no tool clearly fits. A wrong tool is worse than none.',
     `- Use more than one tool only when the message asks more than one thing. At most ${MAX_PLAN_STEPS}.`,
     '- Prefer a read. Only choose a tool marked WRITES DATA when the user has',
