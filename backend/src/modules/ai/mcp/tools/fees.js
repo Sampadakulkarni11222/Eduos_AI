@@ -367,9 +367,13 @@ export const feeTools = {
         fees.listFeeHeads(),
         fees.listFeeStructures({ academicYearId: args.academicYearId, gradeId: args.gradeId ?? null }),
       ]);
+      const headNames = heads.map((h) => h.name).filter(Boolean);
+      const headSummary = headNames.length > 0 ? ` (${headNames.slice(0, 5).join(', ')}${headNames.length > 5 ? '…' : ''})` : '';
+      const structureNames = structures.map((s) => s.name).filter(Boolean);
+      const structureSummary = structureNames.length > 0 ? ` (${structureNames.slice(0, 5).join(', ')}${structureNames.length > 5 ? '…' : ''})` : '';
       return ok(
         { feeHeads: heads, structures, headCount: heads.length, structureCount: structures.length },
-        { speak: `${heads.length} fee head(s) and ${structures.length} fee structure(s) configured.` },
+        { speak: `${heads.length} fee head(s)${headSummary} and ${structures.length} fee structure(s)${structureSummary} configured.` },
       );
     },
   },
