@@ -344,13 +344,11 @@ export function SignIn({ school: schoolProp }: { school?: PublicSchoolDto | null
   const brandInitial = (school?.name ?? 'EduOS AI').trim().charAt(0).toUpperCase() || 'E';
 
   // A demo-only Google popup is available when no real Google client id has
-  // been configured — in development, and in a production build that is still
-  // in the testing phase (NEXT_PUBLIC_ALLOW_DEV_OTP, which must be paired with
-  // ALLOW_DEV_OTP_IN_PRODUCTION on the backend: the popup signs in by reading
-  // the echoed devOtp, so without the backend flag it has nothing to read).
+  // been configured — in development only. It signs in by reading the code the
+  // backend echoes in development, so it is never offered in a production
+  // build (the exchange route refuses there too).
   const googleConfigured = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID);
-  const mockGoogleAvailable =
-    process.env.NODE_ENV !== 'production' || process.env.NEXT_PUBLIC_ALLOW_DEV_OTP === 'true';
+  const mockGoogleAvailable = process.env.NODE_ENV !== 'production';
 
   useEffect(() => {
     if (!loading && me?.profile?.role) {

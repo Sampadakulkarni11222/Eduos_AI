@@ -13,6 +13,40 @@ import {
 } from './_shared.js';
 
 /**
+ * The correction asked for, as the object profileEdit.service.request() takes.
+ *
+ * A field named in words is matched against the service's own
+ * EDITABLE_FIELD_LIST -- by key or by label, ignoring case and spacing -- so
+ * the list of what may be corrected is stated once, in the service. A field
+ * outside it is refused with that list, rather than filed and rejected later:
+ * a phone number is not corrected through this workflow on the Web either.
+ */
+function changesOf(args) {
+  if (args.changes && Object.keys(args.changes).length) return args.changes;
+  if (!args.field) {
+    throw new AppError(
+      `Which field should be corrected, and to what? You can request a correction to: ${profileEdit.EDITABLE_FIELD_LIST.map((f) => f.label.toLowerCase()).join(', ')}.`,
+      400, [], 'AGENT_NEEDS_INPUT',
+    );
+  }
+  const squash = (v) => String(v ?? '').toLowerCase().replace(/[^a-z]/g, '');
+  const wanted = squash(args.field);
+  const match = profileEdit.EDITABLE_FIELD_LIST.find((f) => squash(f.field) === wanted || squash(f.label) === wanted)
+    ?? (['dateofbirth', 'birthday', 'birthdate', 'dob'].includes(wanted) ? profileEdit.EDITABLE_FIELD_LIST.find((f) => f.field === 'dob') : null)
+    ?? (['surname', 'familyname'].includes(wanted) ? profileEdit.EDITABLE_FIELD_LIST.find((f) => f.field === 'lastName') : null);
+  if (!match) {
+    throw new AppError(
+      `Your ${String(args.field).trim()} can't be changed through a profile-correction request. You can request a correction to: ${profileEdit.EDITABLE_FIELD_LIST.map((f) => f.label.toLowerCase()).join(', ')}.`,
+      400, [], 'AGENT_NEEDS_INPUT',
+    );
+  }
+  if (!args.value) {
+    throw new AppError(`What should your ${match.label.toLowerCase()} be changed to?`, 400, [], 'AGENT_NEEDS_INPUT');
+  }
+  return { [match.field]: String(args.value).trim() };
+}
+
+/**
  * Leave, elective registrations, student requests, medical records and tickets.
  *
  * Everything here is a request-then-decide workflow, and the split is the
@@ -276,23 +310,46 @@ export const welfareTools = {
     operation: 'CREATE',
     risk: RISK.MEDIUM,
     confirm: true,
-    description: 'Register the caller for an elective subject. It goes for review before it takes effect. Needs confirmation.',
+    description: 'Register the caller for an elective subject open to their class, named as a person names it, e.g. "Music". It goes for review before it takes effect. Needs confirmation.',
     inputSchema: {
       type: 'object',
-      properties: { subjectOfferingId: objectId('From get_my_electives') },
-      required: ['subjectOfferingId'],
+      properties: {
+        subjectOfferingId: objectId('From get_my_electives. Omit it and name the subject instead.'),
+        subject: { type: 'string', maxLength: 120, description: 'The elective as a person names it, e.g. "Music"' },
+      },
+      // "Register me for Music" names a subject, never an offering id.
       additionalProperties: false,
     },
     permission: 'registrations.apply',
-    service: 'registration.service.register()',
-    summarise: (args) => `Register for elective ${args.subjectOfferingId}`,
-    async run(ctx, args) {
-      const result = await registrations.register(ctx.actor, args.subjectOfferingId);
+    service: 'registration.service.listAvailable() + register()',
+    summarise: (args, _actor, prepared) =>
+      `Register for the elective ${prepared?.subject ? `"${prepared.subject}"` : args.subject ?? args.subjectOfferingId ?? ''}`.trim(),
+    /**
+     * Which elective, from the ones OPEN TO THE CALLER -- listAvailable()
+     * resolves their class from the session, exactly as the Web catalogue does.
+     * A name that matches nothing, or several, is asked about.
+     */
+    async prepare(ctx, args) {
+      if (args.subjectOfferingId) return { subjectOfferingId: String(args.subjectOfferingId), subject: null };
+      const open = (await registrations.listAvailable(ctx.actor)) ?? [];
+      if (!args.subject) {
+        if (!open.length) throw new AppError('There are no electives open to your class.', 404, [], 'NOT_FOUND');
+        throw new AppError(
+          `Which elective? Open to your class: ${open.map((o) => o.subjectName).join(', ')}.`,
+          400, [], 'AGENT_NEEDS_INPUT',
+        );
+      }
+      const found = theNamed(open, args.subject, { label: 'elective', nameOf: (o) => o.subjectName });
+      return { subjectOfferingId: found.subjectOfferingId, subject: found.subjectName };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const result = await registrations.register(ctx.actor, plan.subjectOfferingId);
       return action({
         type: 'elective_registered',
         id: result?.id ?? result?._id,
         data: result,
-        speak: 'Your elective registration has been submitted for review.',
+        speak: `Your registration${plan.subject ? ` for ${plan.subject}` : ''} has been submitted for review.`,
       });
     },
   },
@@ -579,16 +636,22 @@ export const welfareTools = {
           },
           additionalProperties: false,
         },
+        // One field in words, as a person says it: "change my address to
+        // ...". `changes` stays for a caller that already has the object.
+        field: { type: 'string', maxLength: 60, description: 'The field to correct, as a person names it, e.g. "address" or "date of birth"' },
+        value: { type: 'string', maxLength: 500, description: 'The corrected value' },
         note: { type: 'string', maxLength: 1000, description: 'Why the correction is needed' },
       },
-      required: ['changes'],
+      // Not required: a sentence never carries an object, and requiring one
+      // made "request to change my address to ..." unreachable.
       additionalProperties: false,
     },
     permission: 'profile.edit.request',
     service: 'profileEdit.service.request()',
-    summarise: (args) => `Request a correction to your ${Object.keys(args.changes ?? {}).join(', ')}`,
+    summarise: (args) => `Request a correction to your ${Object.keys(changesOf(args)).join(', ') || args.field || 'profile'}`,
     async run(ctx, args) {
-      const created = await profileEdit.request(ctx.actor, { changes: args.changes, note: args.note });
+      const changes = changesOf(args);
+      const created = await profileEdit.request(ctx.actor, { changes, note: args.note });
       return action({ type: 'profile_edit_requested', id: created?.id, data: created, speak: 'Your correction request has been sent for review.' });
     },
   },

@@ -923,10 +923,18 @@ export const facilityTools = {
   get_my_bus: {
     module: 'Transport',
     operation: 'GET',
+    // One assignment: the caller's route and pickup stop.
+    resultShape: 'DETAIL',
     risk: RISK.LOW,
-    description: "The caller's own (or their child's) bus route, vehicle, driver and stop. Read-only.",
+    description: "The caller's own (or their child's) bus assignment: route, vehicle, driver and pickup stop. Use for \"which bus am I on\" and \"what is my pickup point\". Read-only.",
     inputSchema: { type: 'object', properties: { studentId: objectId() }, additionalProperties: false },
-    permission: 'transport.read',
+    // The Web's /transport/my-bus is self-service -- it asks only that the
+    // caller be signed in, and getOwnBus() confines the answer to their own
+    // (or their child's) assignment. Gating it on transport.read, which only
+    // an administrator holds, hid a student's own bus from them here while the
+    // Web showed it. transport.request is the grant a student travels with,
+    // and it adds nobody who could not already open the Web page.
+    permission: 'transport.request',
     service: 'transport.service.getOwnBus()',
     async run(ctx, args) {
       const bus = await transport.getOwnBus(ctx.actor, args.studentId);

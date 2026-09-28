@@ -30,7 +30,8 @@
     "registrations:plan": "node scripts/seed-registrations.js",
     "registrations:apply": "node scripts/seed-registrations.js --apply",
     "whatsapp:webhook": "node scripts/whatsapp-webhook-setup.js",
-    "whatsapp:webhook:check": "node scripts/whatsapp-webhook-setup.js --check"
+    "whatsapp:webhook:check": "node scripts/whatsapp-webhook-setup.js --check",
+    "lint": "eslint src scripts --ext .js"
   },
   "keywords": [
     "school",
@@ -69,6 +70,7 @@
     "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
+    "eslint": "^8.57.1",
     "javascript-obfuscator": "^5.4.3",
     "mongodb-memory-server": "^11.2.0",
     "nodemon": "^3.1.14",

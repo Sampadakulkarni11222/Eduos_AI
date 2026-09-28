@@ -29,6 +29,8 @@ export const listAdmins = asyncHandler(async (req, res) => {
 
 export const publicBySlug = asyncHandler(async (req, res) => {
   const school = await service.getPublicSchool(req.params.slug);
+  // No signed-in actor here: name the school so its own logo is signed.
+  res.locals.uploadTenantId = school.slug;
   sendSuccess(res, school, 'School fetched');
 });
 

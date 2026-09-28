@@ -2,7 +2,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, DateField, EmptyState, Pill, SkeletonRows, divisionLabel, useToast } from '@/components/ui';
-import { api, ApiError, fileHref } from '@/lib/api';
+import { api, ApiError, fileHref, fileNameOf } from '@/lib/api';
 import type { AssignmentDto, OfferingDto, SubmissionRoster, SubmissionRow } from '@/lib/types';
 
 const SUB_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'gray'> = {
@@ -328,7 +328,7 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
             <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12.5 }}>
               {attachments.map((a, i) => (
                 <li key={a} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {a.split('/').pop()}
+                  {fileNameOf(a)}
                   <button type="button" onClick={() => setAttachments((prev) => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', color: 'var(--red, #b52a2a)', cursor: 'pointer', fontSize: 12 }}>Remove</button>
                 </li>
               ))}

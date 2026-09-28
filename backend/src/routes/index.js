@@ -42,8 +42,15 @@ import customizationRoutes from '../modules/customization/customization.routes.j
 import domainRoutes from '../modules/domains/domain.routes.js';
 import uploadRoutes from '../modules/uploads/upload.routes.js';
 import { auditLogger } from '../middleware/auditLogger.js';
+import { signUploadUrlsInResponses, unsignUploadUrlsInBody } from '../modules/uploads/signedUrls.js';
 
 const router = Router();
+
+// File links: every /uploads path leaving in a response is signed and
+// expiring; signed links coming back in a request body are stored canonical.
+// See modules/uploads/signedUrls.js.
+router.use(unsignUploadUrlsInBody);
+router.use(signUploadUrlsInResponses);
 
 // Global audit logging for state-modifying requests
 router.use(auditLogger);

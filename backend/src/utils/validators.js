@@ -23,3 +23,22 @@ export function isValidPhone(phone) {
   if (trimmed.startsWith('+')) return /^\+\d{8,15}$/.test(trimmed);
   return /^\d{10}$/.test(trimmed);
 }
+
+/**
+ * A link the portal may render as `<a href>`: a path this server issued under
+ * /uploads, or an http(s) URL. Anything else — `javascript:`, `data:`,
+ * `file:` — is script or a local path wearing a link's clothes, and React 18
+ * renders a javascript: href as-is, so it would run in whoever clicks it.
+ */
+export function isSafeLinkUrl(url) {
+  if (typeof url !== 'string') return false;
+  const value = url.trim();
+  if (/^\/uploads\/[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(value)) return !value.includes('..');
+  if (!/^https?:\/\/\S+$/i.test(value)) return false;
+  try {
+    const { protocol } = new URL(value);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}

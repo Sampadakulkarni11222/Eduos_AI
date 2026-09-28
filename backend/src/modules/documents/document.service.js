@@ -1,5 +1,5 @@
 import { existsSync } from 'fs';
-import { join, resolve } from 'path';
+import { join, resolve, sep } from 'path';
 import { Document } from '../../models/document.model.js';
 import { Section } from '../../models/academics.model.js';
 import { Enrollment } from '../../models/student.model.js';
@@ -89,6 +89,35 @@ async function buildVisibilityFilter(actor, scope, studentId, categories = {}) {
  */
 const WRITABLE_FIELDS = ['title', 'fileUrl', 'mimeType', 'visibleToRoles', 'sectionId', 'subjectOfferingId'];
 
+// What POST /uploads hands back (`/uploads/<uuid>-<sanitised name>`), and
+// nothing that could climb out of the upload directory.
+const LOCAL_FILE_URL = /^\/uploads\/[A-Za-z0-9_-][A-Za-z0-9._-]*$/;
+
+/**
+ * A document's fileUrl is either a file this system stored or a web link.
+ *
+ * It used to be accepted as any string, and getFileForActor() joins a local
+ * one onto the upload directory and streams it back — so `/uploads/../.env`
+ * let anyone holding materials.manage (every teacher, for their own classes)
+ * download the server's secrets. External links are limited to http(s): the
+ * file route redirects to them, and a `javascript:` or `file:` target has no
+ * business being a course material.
+ */
+function assertValidFileUrl(fileUrl) {
+  const url = String(fileUrl ?? '').trim();
+  if (LOCAL_FILE_URL.test(url) && !url.includes('..')) return url;
+  if (/^https?:\/\/[^\s]+$/i.test(url)) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return url;
+    } catch { /* falls through to the refusal */ }
+  }
+  throw new AppError(
+    'fileUrl must be a file uploaded to this system (/uploads/...) or an http(s) link',
+    400, [], 'INVALID_FILE_URL',
+  );
+}
+
 /**
  * The class a document is filed under must belong to the acting school.
  *
@@ -139,6 +168,7 @@ export async function createForActor(actor, scope, data = {}) {
   if (!title || !fileUrl) {
     throw new AppError('Title and fileUrl are required', 400);
   }
+  const safeFileUrl = assertValidFileUrl(fileUrl);
 
   if (type === 'ID_CARD') {
     throw new AppError('ID cards are generated automatically and cannot be uploaded manually', 400);
@@ -160,7 +190,7 @@ export async function createForActor(actor, scope, data = {}) {
   return Document.create({
     title,
     type: type || 'CUSTOM',
-    fileUrl,
+    fileUrl: safeFileUrl,
     mimeType,
     visibleToRoles: visibleToRoles || [],
     studentId: studentId || null,
@@ -198,6 +228,7 @@ export async function updateForActor(actor, scope, id, data = {}) {
   // A move to another school's class is refused whoever is asking, for the same
   // reason it is on create.
   if (data.sectionId) await assertSectionInSchool(data.sectionId);
+  if (data.fileUrl !== undefined) data = { ...data, fileUrl: assertValidFileUrl(data.fileUrl) };
 
   // A move between classes is re-checked, so a teacher cannot hand their own
   // material to a section they do not teach.
@@ -290,13 +321,25 @@ export async function getFileForActor(actor, scope, id) {
   const visible = await Document.exists({ _id: id, ...query });
   if (!visible) throw new AppError('Document not found', 404);
 
+  const unavailable = () =>
+    new AppError('This document is no longer available. Please contact the school office.', 404, [], 'FILE_NOT_FOUND');
+
   if (!doc.fileUrl.startsWith('/uploads/')) {
     // Legacy/manually-pasted external link — nothing on our disk to serve.
-    logger.warn(`Document ${id} has a non-local fileUrl (${doc.fileUrl}); serving as external redirect`);
+    // Only ever redirect to the web; a stored javascript:/file: target is
+    // treated as missing rather than handed to the browser.
+    if (!/^https?:\/\//i.test(doc.fileUrl)) throw unavailable();
+    logger.warn(`Document ${id} has a non-local fileUrl; serving as external redirect`);
     return { external: doc.fileUrl };
   }
 
-  const absolutePath = join(uploadDir, doc.fileUrl.replace('/uploads/', ''));
+  // Contained to the upload directory whatever the row says, so a traversal
+  // stored before fileUrl was validated still cannot reach the rest of disk.
+  const absolutePath = resolve(join(uploadDir, doc.fileUrl.slice('/uploads/'.length)));
+  if (!absolutePath.startsWith(uploadDir + sep)) {
+    logger.warn(`Document ${id} has a fileUrl outside the upload directory; refused`);
+    throw unavailable();
+  }
   if (!existsSync(absolutePath)) {
     throw new AppError('This document is no longer available. Please contact the school office.', 404, [], 'FILE_NOT_FOUND');
   }

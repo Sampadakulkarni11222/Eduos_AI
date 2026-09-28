@@ -439,6 +439,26 @@ export const TOOLS = {
       const RELATIVE = { yesterday: -1, today: 0, tomorrow: 1, 'day after tomorrow': 2 };
       const asked = String(args.day ?? '').trim().toLowerCase();
 
+      // The whole week, as the timetable screen shows it. A timetable repeats
+      // weekly, so "this week" and "next week" are the same grid; answering
+      // either with one day presented a day as though it were the week.
+      if (asked === 'week') {
+        const byDay = new Map();
+        for (const s of [...slots].sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.periodNo - b.periodNo)) {
+          if (!byDay.has(s.dayOfWeek)) byDay.set(s.dayOfWeek, []);
+          byDay.get(s.dayOfWeek).push(s);
+        }
+        if (!byDay.size) return { speak: 'Nothing is scheduled in the weekly timetable.', data: { slots: [] } };
+        const lines = [...byDay].map(([dow, daySlots]) => {
+          const name = DAYS[dow % 7].replace(/^./, (c) => c.toUpperCase());
+          const periods = daySlots
+            .map((s) => `P${s.periodNo} ${s.startTime}-${s.endTime} ${s.subjectOfferingId?.subjectId?.name ?? 'Break'}`)
+            .join('; ');
+          return `${name}: ${periods}`;
+        });
+        return { speak: `Weekly timetable — ${lines.join('. ')}.`, data: { slots } };
+      }
+
       const now = new Date();
       let jsDay;
       if (asked in RELATIVE) {
@@ -578,6 +598,11 @@ export const TOOLS = {
   generate_homework: {
     description: 'Draft and set homework for a class you teach',
     permission: 'assignments.manage',
+    // Not offered at OWN scope. AI drafting has no counterpart on the Web,
+    // where a teacher sets homework by writing it (POST /assignments); the
+    // assistant offers a teacher that same act as create_assignment rather
+    // than a workflow the Web does not have.
+    minScope: 'ALL',
     mutates: true,
     affectsOthers: true,
     params: { subject: 'subject name', className: 'class, optional', topic: 'what it is about', dueAt: 'YYYY-MM-DD', maxMarks: 'optional' },

@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**167 tools** — 84 GET, 27 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION.
+**173 tools** — 84 GET, 33 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION.
 
-Risk mix: 90 LOW, 47 MEDIUM, 29 HIGH, 1 CRITICAL.
+Risk mix: 90 LOW, 30 HIGH, 52 MEDIUM, 1 CRITICAL.
 
-Status: 165 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 171 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -28,12 +28,12 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
 | `SUPER_ADMIN` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `ADMIN` | 166 | 84 | 27 | 15 | 30 | 10 | 29 | 76 |
-| `PRINCIPAL` | 73 | 53 | 4 | 6 | 9 | 1 | 7 | 20 |
-| `TEACHER` | 58 | 41 | 3 | 2 | 11 | 1 | 7 | 17 |
+| `ADMIN` | 172 | 84 | 33 | 15 | 30 | 10 | 30 | 82 |
+| `PRINCIPAL` | 77 | 53 | 8 | 6 | 9 | 1 | 7 | 24 |
+| `TEACHER` | 56 | 41 | 3 | 1 | 10 | 1 | 6 | 15 |
 | `PARENT` | 43 | 40 | 1 | 1 | 0 | 1 | 2 | 2 |
-| `STUDENT` | 62 | 49 | 7 | 0 | 1 | 5 | 0 | 8 |
-| `FINANCE` | 30 | 21 | 4 | 1 | 4 | 0 | 8 | 9 |
+| `STUDENT` | 63 | 50 | 7 | 0 | 1 | 5 | 0 | 8 |
+| `FINANCE` | 31 | 21 | 5 | 1 | 4 | 0 | 8 | 10 |
 | `LIBRARIAN` | 28 | 21 | 1 | 1 | 4 | 1 | 1 | 7 |
 | `WARDEN` | 29 | 21 | 2 | 3 | 3 | 0 | 0 | 7 |
 | `COUNSELLOR (custom, example)` | 18 | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -43,9 +43,9 @@ Custom roles are database rows, created per school, so none can be listed here i
 <details><summary>High-risk actions visible to each role</summary>
 
 - **SUPER_ADMIN** (0): _none_
-- **ADMIN** (29): `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `create_fee_structure`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`, `request_extra_seats`
+- **ADMIN** (30): `add_guardian`, `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `create_fee_structure`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`, `request_extra_seats`
 - **PRINCIPAL** (7): `transition_fee_plan`, `publish_marks`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_document`
-- **TEACHER** (7): `mark_attendance`, `bulk_mark_attendance`, `enter_marks`, `publish_marks`, `create_announcement`, `update_announcement`, `delete_document`
+- **TEACHER** (6): `mark_attendance`, `bulk_mark_attendance`, `enter_marks`, `publish_marks`, `create_announcement`, `delete_document`
 - **PARENT** (2): `upsert_medical_record`, `remove_medical_record`
 - **STUDENT** (0): _none_
 - **FINANCE** (8): `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `record_payment`, `refund_payment`, `transition_fee_plan`, `create_fee_structure`
@@ -59,6 +59,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 
 | Tool | Module | Operation | Permission | Scope | Risk | Confirm | Status |
 |---|---|---|---|---|---|---|---|
+| `add_guardian` | Students | CREATE | `students.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `allocate_hostel_bed` | Hostel | ACTION | `hostel.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `anonymise_student` | Students | DELETE | `students.manage` | ALL | CRITICAL | REQUIRED | AVAILABLE |
 | `apply_for_leave` | Leave | CREATE | `leave.apply` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -70,6 +71,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `cancel_cocurricular_request` | Student requests | DELETE | `cocurricular.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `cancel_profile_edit_request` | Student requests | DELETE | `profile.edit.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `cancel_transport_request` | Transport | DELETE | `transport.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
+| `create_academic_year` | Academics | CREATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_admission_lead` | Admissions | CREATE | `admissions.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_announcement` | Communication | CREATE | `announcements.publish` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `create_assignment` | Assignments | CREATE | `assignments.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -81,11 +83,14 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `create_fee_head` | Fees | CREATE | `fees.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_fee_plan` | Fees | CREATE | `fees.plan.request` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `create_fee_structure` | Fees | CREATE | `fees.structure.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
+| `create_grade` | Academics | CREATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_hostel_inquiry` | Hostel | CREATE | `hostel.read` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
 | `create_hostel_room` | Hostel | CREATE | `hostel.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_invoice` | Fees | CREATE | `fees.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `create_section` | Academics | CREATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_student` | Students | CREATE | `students.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `create_subject` | Academics | CREATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `create_term` | Academics | CREATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_ticket` | Tickets | CREATE | `tickets.create` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
 | `create_transport_route` | Transport | CREATE | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_transport_stop` | Transport | CREATE | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -100,7 +105,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `enroll_in_transport` | Transport | ACTION | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `enroll_student` | Students | CREATE | `enrollments.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `enter_marks` | Exams | ACTION | `marks.enter` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
-| `generate_homework` | Assignments | ACTION | `assignments.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `generate_homework` | Assignments | ACTION | `assignments.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `generate_invoices` | Fees | ACTION | `fees.manage` | ALL | HIGH | CONDITIONAL | AVAILABLE |
 | `get_absent_students` | Attendance | GET | `attendance.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_admission_lead` | Admissions | GET | `admissions.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -133,7 +138,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_marks_grid` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_medical_record` | Medical | GET | `medical.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_book_requests` | Library | GET | `library.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
-| `get_my_bus` | Transport | GET | `transport.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_my_bus` | Transport | GET | `transport.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_classes` | Academics | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_electives` | Registrations | GET | `registrations.apply` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_profile` | Profile | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -199,6 +204,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `request_book` | Library | CREATE | `library.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `request_cocurricular` | Student requests | CREATE | `cocurricular.request` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
 | `request_extra_seats` | Seats | CREATE | `seats.request` | ALL | HIGH | REQUIRED | AVAILABLE |
+| `request_payment_change` | Fees | CREATE | `fees.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `request_profile_edit` | Student requests | CREATE | `profile.edit.request` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
 | `request_transport_route` | Transport | CREATE | `transport.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `return_book` | Library | ACTION | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -208,7 +214,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `submit_assignment` | Assignments | ACTION | `submissions.submit` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `transition_fee_plan` | Fees | ACTION | `fees.read` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_admission_lead` | Admissions | ACTION | `admissions.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
-| `update_announcement` | Communication | UPDATE | `announcements.publish` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
+| `update_announcement` | Communication | UPDATE | `announcements.publish` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_book` | Library | UPDATE | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_course_material` | Documents | UPDATE | `materials.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_enrollment_status` | Students | UPDATE | `enrollments.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
@@ -378,6 +384,102 @@ Create a class section within a grade, optionally assigning a class teacher. Nee
 **Input**
 
 `gradeId`: string **(required)**<br>`name`: string **(required)** — e.g. "A"<br>`classTeacherId`: string — Teacher profile id
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `create_academic_year`
+
+Create an academic year, e.g. "2027-28", with its start and end dates. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `academics.structure.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `academics.service.createYear()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_academic_year` |
+
+**Input**
+
+`name`: string **(required)** — e.g. "2027-28"<br>`startsOn`: string **(required)**<br>`endsOn`: string **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `create_term`
+
+Create a term inside an academic year, e.g. "Term 1", with its start and end dates. Use list_academic_years for the year id. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `academics.structure.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `academics.service.createTerm()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_term` |
+
+**Input**
+
+`academicYearId`: string **(required)**<br>`name`: string **(required)** — e.g. "Term 1"<br>`startsOn`: string **(required)**<br>`endsOn`: string **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `create_grade`
+
+Create a grade (a class level such as "Class 5") with its level number, used to order grades. Sections are added to it with create_section. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `academics.structure.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `academics.service.createGrade()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_grade` |
+
+**Input**
+
+`name`: string **(required)** — e.g. "Class 5"<br>`level`: integer **(required)** — e.g. 5 for Class 5
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `create_subject`
+
+Add a subject to the school's subject list, e.g. "Physics", with an optional short code. Teaching it in a class is a separate step, assign_teacher_to_subject. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `academics.structure.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `academics.service.createSubject()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_subject` |
+
+**Input**
+
+`name`: string **(required)** — e.g. "Physics"<br>`code`: string — e.g. "PHY"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -581,7 +683,7 @@ Move an admission enquiry to a new stage, or change its notes, assignee or next 
 
 ### `get_at_risk_students`
 
-Students flagged at risk from the last 30 days of attendance, published marks and overdue fees. To answer "who is below 75% attendance", pass attendanceBelowPct: 75 — it returns each student whose day-level attendance over the last 30 days is below that figure, with the percentage. Students with no attendance marked in the last 30 days cannot be assessed and are not included. Read-only.
+Students flagged at risk from the last 30 days of attendance, published marks and overdue fees. Use for school-wide or class-wide queries asking which students are below an attendance percentage threshold, such as "which students are below 75% attendance" (pass attendanceBelowPct: 75) — it returns each student whose day-level attendance over the last 30 days is below that figure, with the percentage. Do not use for one named student. Students with no attendance marked in the last 30 days cannot be assessed and are not included. Read-only.
 
 | | |
 |---|---|
@@ -671,7 +773,7 @@ Homework and assignments. For a student or parent with no filters, the work stil
 
 **Input**
 
-`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — Narrow to one subject, e.g. "Mathematics"
+`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — Narrow to one subject, e.g. "Mathematics"<br>`status`: string — one of: PENDING, SUBMITTED, ALL — For a student or parent: their work still to submit (PENDING), already handed in (SUBMITTED), or both
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -703,7 +805,7 @@ The submissions for one assignment, with each student's status and marks where g
 
 ### `create_assignment`
 
-Set an assignment or homework for a class you teach. Every student in that section sees it, so it needs confirmation.
+Set an assignment or homework for a class. Identify the class and subject by name -- "Mathematics" for "Class 5-A" -- or by subjectOfferingId when you have one. Every student in that section sees it, so it needs confirmation.
 
 | | |
 |---|---|
@@ -713,13 +815,13 @@ Set an assignment or homework for a class you teach. Every student in that secti
 | **Permission** | `assignments.manage` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `assignment.service.create()` |
+| **EduOS service** | `homework.service.resolveOffering() + assignment.service.create()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.create_assignment` |
 
 **Input**
 
-`subjectOfferingId`: string **(required)** — The class and subject it is for<br>`title`: string **(required)**<br>`description`: string<br>`dueAt`: string **(required)**<br>`maxMarks`: integer<br>`type`: string — one of: HOMEWORK, PROJECT, WORKSHEET, LAB<br>`chapter`: string
+`subjectOfferingId`: string — The class and subject it is for, when known<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — The subject, as a person names it, e.g. "Mathematics"<br>`title`: string **(required)** — What the work is -- the task, or its topic<br>`description`: string<br>`dueAt`: string **(required)** — When it must be handed in<br>`maxMarks`: integer<br>`type`: string — one of: HOMEWORK, PROJECT, WORKSHEET, LAB<br>`chapter`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -735,7 +837,7 @@ Draft homework with AI for a class you teach and set it. The draft is written be
 | **Risk** | MEDIUM |
 | **Confirmation** | REQUIRED |
 | **Permission** | `assignments.manage` |
-| **Scope** | OWN or ALL |
+| **Scope** | ALL |
 | **Affects others** | Yes |
 | **EduOS service** | `homework.service.draftHomework() + commitHomework()` |
 | **Status** | AVAILABLE |
@@ -751,7 +853,7 @@ Draft homework with AI for a class you teach and set it. The draft is written be
 
 ### `grade_submission`
 
-Record a mark and feedback against one student's assignment submission. Needs confirmation.
+Grade one student's assignment submission: record a mark and optional feedback. Name the student, and the assignment by its title or subject when they have submitted more than one. Needs confirmation.
 
 | | |
 |---|---|
@@ -767,7 +869,7 @@ Record a mark and feedback against one student's assignment submission. Needs co
 
 **Input**
 
-`assignmentId`: string **(required)**<br>`enrollmentId`: string **(required)**<br>`marks`: number **(required)**<br>`feedback`: string
+`assignmentId`: string — The assignment, when the id is already known<br>`enrollmentId`: string — The student's enrolment, when the id is already known<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`title`: string — The assignment as a person names it, e.g. "Fractions worksheet"<br>`subject`: string — The subject of the assignment, e.g. "Mathematics"<br>`marks`: number **(required)**<br>`feedback`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -775,7 +877,7 @@ Record a mark and feedback against one student's assignment submission. Needs co
 
 ### `submit_assignment`
 
-Submit an assignment on the caller's own behalf. Needs confirmation, because a submission is a deadline-bearing act the student should mean to make.
+Submit one of the caller's own assignments. Name it by its subject or title, e.g. "my Mathematics assignment"; with only one still to submit, no name is needed. Needs confirmation, because a submission is a deadline-bearing act the student should mean to make.
 
 | | |
 |---|---|
@@ -785,13 +887,13 @@ Submit an assignment on the caller's own behalf. Needs confirmation, because a s
 | **Permission** | `submissions.submit` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `assignment.service.submit()` |
+| **EduOS service** | `assignment.service.list() + submit()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.submit_assignment` |
 
 **Input**
 
-`assignmentId`: string **(required)**<br>`enrollmentId`: string — Omit to use the caller's own enrolment<br>`attachments`: array
+`assignmentId`: string — Omit it and name the subject or title instead<br>`subject`: string — The subject, e.g. "Mathematics"<br>`title`: string — The assignment title, when the subject has several<br>`link`: string — A link to the work, e.g. a Google Drive link<br>`enrollmentId`: string — Omit to use the caller's own enrolment<br>`attachments`: array
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -801,7 +903,7 @@ Submit an assignment on the caller's own behalf. Needs confirmation, because a s
 
 ### `get_student_attendance`
 
-A student's attendance record: days present, working days and the percentage. Name a student to look up theirs; name nobody and it answers for the caller (or their child). Read-only.
+Use only when the user asks about the attendance of one specific named student: days present, working days and the percentage. Name a student to look up theirs; name nobody and it answers for the caller (or their child). Do not use for cohort queries, percentage-threshold queries, or "which students" questions (use get_at_risk_students instead). Read-only.
 
 | | |
 |---|---|
@@ -849,7 +951,7 @@ Today's absence snapshot for the whole school: how many students are absent, pre
 
 ### `get_attendance_roster`
 
-Attendance for one whole class on one date: every enrolled student with the status marked for them, if any, and who is absent. This is the class-level answer — use it for "show the attendance of Class 5-A" and "who is absent in Class 5-A today". Name the class with className; sectionId is for when an id is already known. Read-only.
+Attendance for one whole class, for one date or one calendar month: on a date, every enrolled student with the status marked for them and who is absent; for a month, the class summary. This is the class-level answer — use it for "show the attendance of Class 5-A" and "who is absent in Class 5-A today". There is no class figure over a longer range. Name the class with className; sectionId is for when an id is already known. Read-only.
 
 | | |
 |---|---|
@@ -1141,7 +1243,7 @@ _(no arguments)_
 
 ### `create_announcement`
 
-Publish an announcement. The audience is decided by the school's own rules from the publisher's permissions — a teacher reaches the classes they teach, a school-wide publisher the school. This is visible to many people at once, so it always needs confirmation and the summary names the real audience.
+Publish or send an announcement. Name a class to address that class alone; otherwise the audience is decided by the school's own rules from the publisher's permissions — a teacher reaches the classes they teach, a school-wide publisher the school. This is visible to many people at once, so it always needs confirmation and the summary names the real audience.
 
 | | |
 |---|---|
@@ -1157,7 +1259,7 @@ Publish an announcement. The audience is decided by the school's own rules from 
 
 **Input**
 
-`title`: string **(required)**<br>`content`: string<br>`audience`: object — Optional narrowing. Omit to let the school's rules decide what this publisher may address.
+`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`title`: string **(required)**<br>`content`: string<br>`audience`: object — Optional narrowing. Omit to let the school's rules decide what this publisher may address.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1173,7 +1275,7 @@ Correct an announcement the caller posted — its message, or its title. Identif
 | **Risk** | HIGH |
 | **Confirmation** | REQUIRED |
 | **Permission** | `announcements.publish` |
-| **Scope** | OWN or ALL |
+| **Scope** | ALL |
 | **Affects others** | Yes |
 | **EduOS service** | `announcement.service.update()` |
 | **Status** | AVAILABLE |
@@ -1477,7 +1579,7 @@ A student's report card: subject marks, percentage, grade and GPA for a publishe
 
 **Input**
 
-`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`enrollmentId`: string<br>`exam`: string
+`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`enrollmentId`: string<br>`exam`: string<br>`subject`: string — Narrow to one subject, e.g. "Mathematics"
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -1653,7 +1755,7 @@ Add a subject to an exam, with its maximum marks and exam date. Needs confirmati
 
 ### `enter_marks`
 
-Record marks for students in one exam subject. Marks stay unpublished until publish_marks, so students do not see them yet. Writes to other people's academic records, so it needs confirmation.
+Record, enter, submit or update marks for students in one exam paper. Name the paper by class, subject and exam, and each student by name or admission number with their marks; re-entering a student's marks updates them. Marks stay unpublished until publish_marks, so students do not see them yet, and marks already published cannot be changed. Writes to other people's academic records, so it needs confirmation.
 
 | | |
 |---|---|
@@ -1669,7 +1771,7 @@ Record marks for students in one exam subject. Marks stay unpublished until publ
 
 **Input**
 
-`examSubjectId`: string **(required)**<br>`entries`: array **(required)**
+`examSubjectId`: string — The exam paper, when the id is already known<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — The subject of the paper, e.g. "Mathematics"<br>`exam`: string — The exam, e.g. "Unit Test 2"<br>`students`: array — Students named directly, each with their marks<br>`entries`: array
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1693,7 +1795,7 @@ Publish the marks for one exam subject, making them visible to students and pare
 
 **Input**
 
-`examSubjectId`: string **(required)**
+`examSubjectId`: string — The exam paper, when the id is already known<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — The subject of the paper, e.g. "Mathematics"<br>`exam`: string — The exam, e.g. "Unit Test 2"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2128,6 +2230,30 @@ Refund a captured payment and deduct it from the invoice. Needs confirmation. Th
 **Input**
 
 `paymentId`: string **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `request_payment_change`
+
+Ask for a correction to a published (finalised) payment — one field, its new value and why. Nothing changes until someone with payment-approval rights approves it. Editable fields: amountPaise, mode, paidOn, receiptNo, notes and the instrument details. A payment still awaiting approval is corrected with update_payment instead. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `fees.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `fee.service.createPaymentChangeRequest()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.request_payment_change` |
+
+**Input**
+
+`paymentId`: string **(required)**<br>`field`: string **(required)** — one of: amountPaise, mode, paidOn, receiptNo, notes, instrument.number, instrument.referenceNo, instrument.bankName, instrument.instrumentDate<br>`requestedValue`: string **(required)** — The new value; paise for amountPaise, YYYY-MM-DD for dates<br>`reason`: string **(required)**
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2949,7 +3075,7 @@ Withdraw the caller's own book request, while the librarian has not yet decided 
 
 **Input**
 
-`requestId`: string — From get_my_book_requests. Omit it when you have only one pending request.
+`requestId`: string — From get_my_book_requests. Omit it when you have only one pending request.<br>`title`: string — The book the request is for, e.g. "Clean Code"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3133,7 +3259,7 @@ _(no arguments)_
 
 ### `register_for_elective`
 
-Register the caller for an elective subject. It goes for review before it takes effect. Needs confirmation.
+Register the caller for an elective subject open to their class, named as a person names it, e.g. "Music". It goes for review before it takes effect. Needs confirmation.
 
 | | |
 |---|---|
@@ -3143,13 +3269,13 @@ Register the caller for an elective subject. It goes for review before it takes 
 | **Permission** | `registrations.apply` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `registration.service.register()` |
+| **EduOS service** | `registration.service.listAvailable() + register()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.register_for_elective` |
 
 **Input**
 
-`subjectOfferingId`: string **(required)** — From get_my_electives
+`subjectOfferingId`: string — From get_my_electives. Omit it and name the subject instead.<br>`subject`: string — The elective as a person names it, e.g. "Music"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3417,7 +3543,7 @@ Ask for a correction to the caller's own profile. Only first name, last name, da
 
 **Input**
 
-`changes`: object **(required)** — The corrected values<br>`note`: string — Why the correction is needed
+`changes`: object — The corrected values<br>`field`: string — The field to correct, as a person names it, e.g. "address" or "date of birth"<br>`value`: string — The corrected value<br>`note`: string — Why the correction is needed
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3489,7 +3615,7 @@ Withdraw the caller's own profile-correction request, while it has not yet been 
 
 **Input**
 
-`requestId`: string — From get_my_profile_edit_requests. Omit it when you have only one pending request.
+`requestId`: string — From get_my_profile_edit_requests. Omit it when you have only one pending request.<br>`field`: string — The field the correction is to, e.g. "address"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3616,6 +3742,30 @@ The guardians linked to a student — name, relation and whether they are the pr
 **Output** — `{ success: true, data: { … } }`.
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `add_guardian`
+
+Link an existing parent profile to a student as their father, mother or guardian. Once linked, that parent can see the child's attendance, marks and fees, so this always needs confirmation. The guardian's profile id comes from list_users.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | HIGH |
+| **Confirmation** | REQUIRED |
+| **Permission** | `students.manage` |
+| **Scope** | ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `student.service.addGuardian()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.add_guardian` |
+
+**Input**
+
+`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`guardianProfileId`: string **(required)** — The parent's profile id, e.g. from list_users<br>`relation`: string **(required)** — one of: FATHER, MOTHER, GUARDIAN<br>`isPrimary`: boolean — Whether this is the primary contact<br>`pickupAuthorized`: boolean — Whether they may collect the child; defaults to yes
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
 ### `list_enrollments`
 
@@ -3911,7 +4061,7 @@ Change a ticket's status, priority or assignee. Only those three fields can be c
 
 ### `get_timetable`
 
-The timetable for a day, with the subject and the teacher for each period. Name a class to see that class alone; without one, a teacher sees the periods they teach, a student or parent their own section, and a school-wide reader the school. Accepts a weekday name or today/tomorrow/yesterday. Read-only.
+The timetable for a day or the whole week, with the subject and the teacher for each period. Name a class to see that class alone; without one, a teacher sees the periods they teach, a student or parent their own section, and a school-wide reader the school. Accepts a weekday name, today/tomorrow/yesterday, or "week" for the weekly timetable. Read-only.
 
 | | |
 |---|---|
@@ -3927,7 +4077,7 @@ The timetable for a day, with the subject and the teacher for each period. Name 
 
 **Input**
 
-`day`: string — Weekday name, or today/tomorrow/yesterday<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section, when the id is already known
+`day`: string — Weekday name, today/tomorrow/yesterday, or "week" for the whole week<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section, when the id is already known
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -3961,14 +4111,14 @@ Create or replace one timetable period for a section — its day, period number,
 
 ### `get_my_bus`
 
-The caller's own (or their child's) bus route, vehicle, driver and stop. Read-only.
+The caller's own (or their child's) bus assignment: route, vehicle, driver and pickup stop. Use for "which bus am I on" and "what is my pickup point". Read-only.
 
 | | |
 |---|---|
 | **Operation** | GET |
 | **Risk** | LOW |
 | **Confirmation** | NOT_REQUIRED |
-| **Permission** | `transport.read` |
+| **Permission** | `transport.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
 | **EduOS service** | `transport.service.getOwnBus()` |
@@ -4289,7 +4439,7 @@ Withdraw the caller's own request for a place on a bus route, while the school o
 
 **Input**
 
-`requestId`: string — From get_my_transport_requests. Omit it when you have only one pending request.
+`requestId`: string — From get_my_transport_requests. Omit it when you have only one pending request.<br>`routeName`: string — The route the request is for, e.g. "Route 2"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 

@@ -1,7 +1,7 @@
 import { AuditLog } from '../../models/auditLog.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { Role } from '../../models/role.model.js';
-import { redact } from '../../middleware/auditLogger.js';
+import { redact, isMedicalAuditEntry, MEDICAL_PAYLOAD_WITHHELD } from '../../middleware/auditLogger.js';
 import { AppError } from '../../utils/AppError.js';
 import { tenantFilter } from '../../tenancy/tenantContext.js';
 import { SYSTEM_ROLES } from '../../constants/permissions.js';
@@ -161,8 +161,10 @@ export async function listLogs(actor, query = {}) {
     // is the question an audit log exists to answer. Passed through the same
     // redactor the request logger uses, because these payloads can carry OTPs,
     // tokens and medical fields.
-    before: log.before ? redact(log.before) : null,
-    after: log.after ? redact(log.after) : null,
+    // Medical entries are withheld whole, including ones written before the
+    // trail stopped storing them.
+    before: log.before ? (isMedicalAuditEntry(log) ? MEDICAL_PAYLOAD_WITHHELD : redact(log.before)) : null,
+    after: log.after ? (isMedicalAuditEntry(log) ? MEDICAL_PAYLOAD_WITHHELD : redact(log.after)) : null,
     createdAt: log.createdAt.toISOString(),
   }));
 

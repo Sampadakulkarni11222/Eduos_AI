@@ -86,6 +86,30 @@ export function rangeFromText(text, now = new Date()) {
     }
   }
 
+  // "this month", "last month" -- a CALENDAR month, widened to its own bounds.
+  // Read before the rolling spans below, which would otherwise take "last
+  // month" as the thirty days to today: everywhere else in EduOS
+  // (toIsoMonth, monthFromText) "last month" is the previous calendar month,
+  // and a class's attendance for last month is that month's summary. "Past
+  // month" and "last 1 month" stay rolling -- they say a length, not a month.
+  const namedMonth = /\b(this|current|last|previous|next)\s+month\b/i.exec(str);
+  if (namedMonth) {
+    const bounds = monthBounds(toIsoMonth(`${namedMonth[1].toLowerCase()} month`, now));
+    if (bounds) return bounds;
+  }
+
+  // "this week", "next week" -- a calendar week, Monday to Sunday. Without it
+  // the phrase was read as nothing, the question fell back to TODAY, and
+  // "attendance for Class 6-A this week" was answered with one day presented
+  // as though it were the week.
+  const namedWeek = /\b(this|current|next|coming)\s+week\b/i.exec(str);
+  if (namedWeek) {
+    const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+    const monday = new Date(today.getTime() - ((today.getUTCDay() + 6) % 7) * 86_400_000);
+    const start = /next|coming/i.test(namedWeek[1]) ? new Date(monday.getTime() + 7 * 86_400_000) : monday;
+    return { from: iso(start), to: iso(new Date(start.getTime() + 6 * 86_400_000)) };
+  }
+
   // "the last 1 year", "last 6 months", "past 30 days", "previous two weeks"
   const relative = new RegExp(
     `\\b(?:last|past|previous|recent)\\s+(\\d{1,3}|${Object.keys(WORD_NUMBERS).join('|')})?\\s*(day|week|month|year)s?\\b`,
@@ -101,13 +125,6 @@ export function rangeFromText(text, now = new Date()) {
       const from = new Date(to.getTime() - (count * unit - 1) * 86_400_000);
       return { from: iso(from), to: iso(to) };
     }
-  }
-
-  // "this month", "last month" -- a month, widened to its own bounds.
-  const namedMonth = /\b(this|current|last|previous|next)\s+month\b/i.exec(str);
-  if (namedMonth) {
-    const bounds = monthBounds(toIsoMonth(`${namedMonth[1].toLowerCase()} month`, now));
-    if (bounds) return bounds;
   }
 
   // "August 2026", "in August" -- the whole month. Requires a year or a

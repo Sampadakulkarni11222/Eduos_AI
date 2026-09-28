@@ -102,14 +102,30 @@ async function theOnlyPendingRequest(rows, { label, describe }) {
   return pending[0];
 }
 
-/** The schema every withdraw tool shares: an id if you have one, nothing if you do not. */
-const cancellableSchema = (source) => ({
+/**
+ * The schema every withdraw tool shares: an id if you have one, nothing if you
+ * do not -- and, where the request has a name a person uses, that name.
+ *
+ * "Cancel my pending book request for Clean Code" names the request by what it
+ * is FOR. Without an argument to carry it the title was dropped, and with two
+ * pending requests the student was asked which one they had just named. The
+ * name only narrows the caller's OWN pending requests (see pendingNamed); it
+ * cannot reach anybody else's.
+ */
+const cancellableSchema = (source, naming = null) => ({
   type: 'object',
   properties: {
     requestId: objectId(`From ${source}. Omit it when you have only one pending request.`),
+    ...(naming && { [naming.arg]: { type: 'string', maxLength: 200, description: naming.description } }),
   },
   additionalProperties: false,
 });
+
+/** The caller's own requests narrowed to the one named, when one was. */
+const pendingNamed = (rows, term, nameOf) => {
+  const wanted = term ? String(term).trim().toLowerCase() : null;
+  return wanted ? asList(rows).filter((r) => String(nameOf(r) ?? '').toLowerCase().includes(wanted)) : asList(rows);
+};
 const asList = (rows) => (Array.isArray(rows) ? rows : (rows?.items ?? []));
 const rupees = (paise) => `₹${(Number(paise ?? 0) / 100).toLocaleString('en-IN')}`;
 
@@ -526,15 +542,16 @@ export const requestTools = {
     confirm: true,
     description:
       "Withdraw the caller's own book request, while the librarian has not yet decided on it. A request already approved or rejected cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.",
-    inputSchema: cancellableSchema('get_my_book_requests'),
+    inputSchema: cancellableSchema('get_my_book_requests', { arg: 'title', description: 'The book the request is for, e.g. "Clean Code"' }),
     permission: 'library.request',
     service: 'library.service.listMyBookRequests() + cancelBookRequest()',
     summarise: (args, _actor, prepared) =>
       `Withdraw your book request${prepared?.label ? ` for "${prepared.label}"` : ` ${args.requestId ?? ''}`.trimEnd()}`,
     async prepare(ctx, args) {
       if (args.requestId) return { requestId: String(args.requestId) };
-      const chosen = await theOnlyPendingRequest(await library.listMyBookRequests(ctx.actor), {
-        label: 'book request',
+      const mine = pendingNamed(await library.listMyBookRequests(ctx.actor), args.title, (r) => r.bookTitle);
+      const chosen = await theOnlyPendingRequest(mine, {
+        label: args.title ? `book request for "${args.title}"` : 'book request',
         describe: (r) => `"${r.bookTitle ?? 'a book'}"`,
       });
       return { requestId: String(chosen.id ?? chosen._id), label: chosen.bookTitle ?? null };
@@ -558,15 +575,16 @@ export const requestTools = {
     confirm: true,
     description:
       "Withdraw the caller's own request for a place on a bus route, while the school office has not yet decided on it. A request already granted or refused cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.",
-    inputSchema: cancellableSchema('get_my_transport_requests'),
+    inputSchema: cancellableSchema('get_my_transport_requests', { arg: 'routeName', description: 'The route the request is for, e.g. "Route 2"' }),
     permission: 'transport.request',
     service: 'transport.service.listMyTransportRequests() + cancelTransportRequest()',
     summarise: (args, _actor, prepared) =>
       `Withdraw your transport request${prepared?.label ? ` for ${prepared.label}` : ` ${args.requestId ?? ''}`.trimEnd()}`,
     async prepare(ctx, args) {
       if (args.requestId) return { requestId: String(args.requestId) };
-      const chosen = await theOnlyPendingRequest(await transport.listMyTransportRequests(ctx.actor), {
-        label: 'transport request',
+      const mine = pendingNamed(await transport.listMyTransportRequests(ctx.actor), args.routeName, (r) => r.routeName);
+      const chosen = await theOnlyPendingRequest(mine, {
+        label: args.routeName ? `transport request for ${args.routeName}` : 'transport request',
         describe: (r) => String(r.routeName ?? 'a route'),
       });
       return { requestId: String(chosen.id ?? chosen._id), label: chosen.routeName ?? null };
@@ -638,15 +656,16 @@ export const requestTools = {
     confirm: true,
     description:
       "Withdraw the caller's own profile-correction request, while it has not yet been decided. A request already approved or rejected cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.",
-    inputSchema: cancellableSchema('get_my_profile_edit_requests'),
+    inputSchema: cancellableSchema('get_my_profile_edit_requests', { arg: 'field', description: 'The field the correction is to, e.g. "address"' }),
     permission: 'profile.edit.request',
     service: 'profileEdit.service.listMine() + withdraw()',
     summarise: (args, _actor, prepared) =>
       `Withdraw your profile-correction request${prepared?.label ? ` to ${prepared.label}` : ` ${args.requestId ?? ''}`.trimEnd()}`,
     async prepare(ctx, args) {
       if (args.requestId) return { requestId: String(args.requestId) };
-      const chosen = await theOnlyPendingRequest(await profileEdit.listMine(ctx.actor, ctx.scope, {}), {
-        label: 'profile-correction request',
+      const mine = pendingNamed(await profileEdit.listMine(ctx.actor, ctx.scope, {}), args.field, (r) => r.field);
+      const chosen = await theOnlyPendingRequest(mine, {
+        label: args.field ? `profile-correction request for ${args.field}` : 'profile-correction request',
         describe: (r) => String(r.field ?? 'a correction'),
       });
       return { requestId: String(chosen.id ?? chosen._id), label: chosen.field ?? null };

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
-import { authRateLimiter } from '../../middleware/rateLimiter.js';
+import { authRateLimiter, refreshRateLimiter, refreshFailureRateLimiter } from '../../middleware/rateLimiter.js';
 import * as authController from './auth.controller.js';
 
 const router = Router();
@@ -242,7 +242,7 @@ router.post('/profile/select', authenticate, authController.selectProfile);
  *       200:
  *         description: Token refreshed
  */
-router.post('/refresh', authRateLimiter, authController.refresh);
+router.post('/refresh', refreshFailureRateLimiter, refreshRateLimiter, authController.refresh);
 
 /**
  * @swagger

@@ -87,6 +87,11 @@ jobs:
             await server.stop();
           "
 
+      # eslint:recommended over src/ and scripts/. Errors fail the build; the 20
+      # existing warnings are unused imports/variables, capped here so the count
+      # can only go down — lower the cap as they are cleaned up.
+      - run: npm run lint -- --max-warnings 20
+
       - run: npm test
 
       - run: npm run build

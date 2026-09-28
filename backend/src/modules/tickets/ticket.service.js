@@ -2,7 +2,7 @@ import { Ticket, TicketMessage } from '../../models/ticket.model.js';
 import { Enrollment } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { paginate, mapPage } from '../../utils/paginate.js';
-import { getGuardianStudentIds } from '../../utils/scope.js';
+import { getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 
 export async function list(actor, scope, query = {}) {
   const filter = {};
@@ -73,21 +73,36 @@ function normaliseAttachment(documentUrl, documentName) {
   return { documentUrl: url.slice(0, 600), documentName: name ? name.slice(0, 160) : null };
 }
 
-export async function create(actor, data) {
+export async function create(actor, data = {}) {
+  // Built field by field. It used to spread the whole request body, so a parent
+  // could name any assigneeProfileId — dropping a ticket straight into a
+  // chosen staff member's inbox past the routing below — and attach any
+  // student in the school outside the class-teacher route.
+  const studentId = data.studentId ? String(data.studentId) : null;
   const payload = {
-    ...data,
+    subject: data.subject,
+    ...(data.priority !== undefined && { priority: String(data.priority).slice(0, 20) }),
+    ...(data.routedToRoleKey !== undefined && { routedToRoleKey: data.routedToRoleKey }),
+    studentId,
     ...normaliseAttachment(data.documentUrl, data.documentName),
     raisedByProfileId: actor.profileId,
     status: 'NEW',
   };
 
-  if (data.routedToRoleKey === 'CLASS_TEACHER') {
-    if (!data.studentId) throw new AppError('Select the child this query is about', 400);
-    if (actor.roleKey === 'PARENT') {
-      const ownIds = await getGuardianStudentIds(actor.profileId);
-      if (!ownIds.includes(data.studentId)) throw new AppError('That student is not linked to your account', 403);
+  // A family may only raise a ticket about its own child, whatever the route.
+  if (studentId && actor.roleKey === 'PARENT') {
+    const ownIds = await getGuardianStudentIds(actor.profileId);
+    if (!ownIds.includes(studentId)) throw new AppError('That student is not linked to your account', 403);
+  }
+  if (studentId && actor.roleKey === 'STUDENT') {
+    if ((await getOwnStudentId(actor.profileId)) !== studentId) {
+      throw new AppError('You can only raise a ticket about yourself', 403);
     }
-    const enrollment = await Enrollment.findOne({ studentId: data.studentId, status: 'ACTIVE' }).populate({
+  }
+
+  if (data.routedToRoleKey === 'CLASS_TEACHER') {
+    if (!studentId) throw new AppError('Select the child this query is about', 400);
+    const enrollment = await Enrollment.findOne({ studentId, status: 'ACTIVE' }).populate({
       path: 'sectionId',
       select: 'classTeacherId',
     });
@@ -118,7 +133,17 @@ export async function reply(actor, scope, { ticketId, body }) {
   return message;
 }
 
-export async function update(id, updates) {
+/** What a ticket manager may change — the same list the assistant's update_ticket tool applies. */
+const TICKET_EDITABLE_FIELDS = ['status', 'priority', 'assigneeProfileId'];
+
+export async function update(id, updates = {}) {
+  const refused = Object.keys(updates ?? {}).filter((field) => !TICKET_EDITABLE_FIELDS.includes(field));
+  if (refused.length) {
+    throw new AppError(
+      `These fields cannot be changed on a ticket: ${refused.join(', ')}. Editable: ${TICKET_EDITABLE_FIELDS.join(', ')}.`,
+      400, refused, 'FIELD_NOT_EDITABLE',
+    );
+  }
   const ticket = await Ticket.findById(id);
   if (!ticket) throw new AppError('Ticket not found', 404);
   Object.assign(ticket, updates);

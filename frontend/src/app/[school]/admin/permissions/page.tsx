@@ -5,9 +5,9 @@ export default function AdminPermissionsPage() {
   return (
     <PortalShell
       expectedSlug="admin"
-      topbar={{ title: 'Access & Permissions', desc: 'Control what each role can see and do in your school.' }}
+      topbar={{ title: 'Access & Permissions', desc: 'What each role can see and do in your school.' }}
     >
-      <AccessPermissionsContent />
+      <AccessPermissionsContent readOnly />
     </PortalShell>
   );
 }

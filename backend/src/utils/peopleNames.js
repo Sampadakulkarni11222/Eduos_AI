@@ -47,6 +47,9 @@ const NOT_A_NAME = new Set([
   // 'child' was already among DOMAIN_STEMS, but those guard only the bare-name
   // branch, never the possessive one.
   'child', 'children', 'son', 'daughter', 'kid', 'kids', 'ward', 'wards',
+  // ...and the other way round: "Rahul's FATHER" refers to a parent, and read
+  // as a name it became a person called "Rahul's father saying".
+  'father', 'mother', 'parent', 'parents', 'guardian', 'guardians', 'dad', 'mom', 'mum',
   'homework', 'assignment', 'attendance', 'marks', 'results', 'exam', 'subject', 'timetable', 'profile', 'announcement',
   // Domain nouns that pair with those words in ordinary questions. Without
   // them "absent count" and "absence report" read as people's names, and a
@@ -54,11 +57,20 @@ const NOT_A_NAME = new Set([
   'count', 'total', 'number', 'report', 'summary', 'snapshot', 'percentage', 'average', 'register', 'roster', 'list',
   'absent', 'absence', 'present', 'fees', 'fee', 'leave', 'library', 'hostel', 'transport', 'notice', 'circular',
   'bed', 'beds', 'room', 'rooms',
+  // What a student registers for or requests: "for the Robotics ELECTIVE" names
+  // a course, and "the" being trimmed off left "Robotics elective" looking
+  // like a person.
+  'elective', 'activity', 'activities', 'registration',
   'to', 'of', 'for', 'in', 'on', 'at', 'with', 'by', 'from', 'about', 'into', 'over', 'under', 'and', 'or',
   'policy', 'policies', 'rule', 'rules', 'guideline', 'guidelines', 'handbook', 'threshold',
   'criterion', 'criteria', 'requirement', 'requirements', 'standard', 'standards',
   'regulation', 'regulations', 'procedure', 'procedures', 'protocol', 'protocols',
   'this', 'that', 'the', 'a', 'an', 'all', 'each', 'every', 'whose', 'who',
+  // Auxiliaries and determiners. The status branch takes the word before
+  // "absent" as the person marked, so "who WAS absent" looked up a pupil called
+  // "was", and "ANOTHER school's attendance" one called "another school".
+  'was', 'were', 'be', 'been', 'being', 'am', 'has', 'have', 'had', 'will', 'shall', 'should',
+  'another', 'other', 'others', 'any', 'some', 'there', 'here',
 ]);
 
 /**
@@ -82,6 +94,7 @@ const DOMAIN_STEMS = [
   'profile', 'detail', 'information', 'summar', 'count', 'total', 'percent', 'average', 'statistic',
   'student', 'pupil', 'teacher', 'staff', 'parent', 'guardian', 'child',
   'class', 'section', 'division', 'subject', 'ticket', 'medical',
+  'material', 'course', 'note', 'handout', 'document', 'resource', 'task',
   'today', 'tomorrow', 'yesterday', 'week', 'month', 'year', 'term', 'session',
 ];
 

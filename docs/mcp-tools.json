@@ -1,18 +1,18 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 167,
+    "total": 173,
     "byOperation": {
       "GET": 84,
-      "CREATE": 27,
+      "CREATE": 33,
       "UPDATE": 15,
       "DELETE": 10,
       "ACTION": 31
     },
     "byRisk": {
       "LOW": 90,
-      "MEDIUM": 47,
-      "HIGH": 29,
+      "HIGH": 30,
+      "MEDIUM": 52,
       "CRITICAL": 1
     }
   },
@@ -176,6 +176,67 @@
       "affectsOthers": false,
       "readOnly": true,
       "service": "student.service.listGuardians()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "add_guardian",
+      "module": "Students",
+      "operation": "CREATE",
+      "description": "Link an existing parent profile to a student as their father, mother or guardian. Once linked, that parent can see the child's attendance, marks and fees, so this always needs confirmation. The guardian's profile id comes from list_users.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
+          },
+          "guardianProfileId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "The parent's profile id, e.g. from list_users"
+          },
+          "relation": {
+            "type": "string",
+            "enum": [
+              "FATHER",
+              "MOTHER",
+              "GUARDIAN"
+            ]
+          },
+          "isPrimary": {
+            "type": "boolean",
+            "description": "Whether this is the primary contact"
+          },
+          "pickupAuthorized": {
+            "type": "boolean",
+            "description": "Whether they may collect the child; defaults to yes"
+          }
+        },
+        "required": [
+          "guardianProfileId",
+          "relation"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "students.manage",
+      "scope": "ALL",
+      "risk": "HIGH",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "student.service.addGuardian()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -516,7 +577,7 @@
       "name": "get_student_attendance",
       "module": "Attendance",
       "operation": "GET",
-      "description": "A student's attendance record: days present, working days and the percentage. Name a student to look up theirs; name nobody and it answers for the caller (or their child). Read-only.",
+      "description": "Use only when the user asks about the attendance of one specific named student: days present, working days and the percentage. Name a student to look up theirs; name nobody and it answers for the caller (or their child). Do not use for cohort queries, percentage-threshold queries, or \"which students\" questions (use get_at_risk_students instead). Read-only.",
       "input": {
         "type": "object",
         "properties": {
@@ -595,7 +656,7 @@
       "name": "get_attendance_roster",
       "module": "Attendance",
       "operation": "GET",
-      "description": "Attendance for one whole class on one date: every enrolled student with the status marked for them, if any, and who is absent. This is the class-level answer — use it for \"show the attendance of Class 5-A\" and \"who is absent in Class 5-A today\". Name the class with className; sectionId is for when an id is already known. Read-only.",
+      "description": "Attendance for one whole class, for one date or one calendar month: on a date, every enrolled student with the status marked for them and who is absent; for a month, the class summary. This is the class-level answer — use it for \"show the attendance of Class 5-A\" and \"who is absent in Class 5-A today\". There is no class figure over a longer range. Name the class with className; sectionId is for when an id is already known. Read-only.",
       "input": {
         "type": "object",
         "properties": {
@@ -1953,6 +2014,60 @@
       "wrapsAgentTool": null
     },
     {
+      "name": "request_payment_change",
+      "module": "Fees",
+      "operation": "CREATE",
+      "description": "Ask for a correction to a published (finalised) payment — one field, its new value and why. Nothing changes until someone with payment-approval rights approves it. Editable fields: amountPaise, mode, paidOn, receiptNo, notes and the instrument details. A payment still awaiting approval is corrected with update_payment instead. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "paymentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$"
+          },
+          "field": {
+            "type": "string",
+            "enum": [
+              "amountPaise",
+              "mode",
+              "paidOn",
+              "receiptNo",
+              "notes",
+              "instrument.number",
+              "instrument.referenceNo",
+              "instrument.bankName",
+              "instrument.instrumentDate"
+            ]
+          },
+          "requestedValue": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "The new value; paise for amountPaise, YYYY-MM-DD for dates"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "paymentId",
+          "field",
+          "requestedValue",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "fees.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "fee.service.createPaymentChangeRequest()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
       "name": "decide_payment_change_request",
       "module": "Fees",
       "operation": "ACTION",
@@ -2307,6 +2422,159 @@
       "wrapsAgentTool": null
     },
     {
+      "name": "create_academic_year",
+      "module": "Academics",
+      "operation": "CREATE",
+      "description": "Create an academic year, e.g. \"2027-28\", with its start and end dates. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "e.g. \"2027-28\""
+          },
+          "startsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "endsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        },
+        "required": [
+          "name",
+          "startsOn",
+          "endsOn"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "academics.structure.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "academics.service.createYear()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "create_term",
+      "module": "Academics",
+      "operation": "CREATE",
+      "description": "Create a term inside an academic year, e.g. \"Term 1\", with its start and end dates. Use list_academic_years for the year id. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "academicYearId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "e.g. \"Term 1\""
+          },
+          "startsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "endsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        },
+        "required": [
+          "academicYearId",
+          "name",
+          "startsOn",
+          "endsOn"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "academics.structure.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "academics.service.createTerm()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "create_grade",
+      "module": "Academics",
+      "operation": "CREATE",
+      "description": "Create a grade (a class level such as \"Class 5\") with its level number, used to order grades. Sections are added to it with create_section. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "e.g. \"Class 5\""
+          },
+          "level": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "e.g. 5 for Class 5"
+          }
+        },
+        "required": [
+          "name",
+          "level"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "academics.structure.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "academics.service.createGrade()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "create_subject",
+      "module": "Academics",
+      "operation": "CREATE",
+      "description": "Add a subject to the school's subject list, e.g. \"Physics\", with an optional short code. Teaching it in a class is a separate step, assign_teacher_to_subject. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "e.g. \"Physics\""
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 20,
+            "description": "e.g. \"PHY\""
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "academics.structure.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "academics.service.createSubject()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
       "name": "update_section",
       "module": "Academics",
       "operation": "UPDATE",
@@ -2429,14 +2697,14 @@
       "name": "get_timetable",
       "module": "Timetable",
       "operation": "GET",
-      "description": "The timetable for a day, with the subject and the teacher for each period. Name a class to see that class alone; without one, a teacher sees the periods they teach, a student or parent their own section, and a school-wide reader the school. Accepts a weekday name or today/tomorrow/yesterday. Read-only.",
+      "description": "The timetable for a day or the whole week, with the subject and the teacher for each period. Name a class to see that class alone; without one, a teacher sees the periods they teach, a student or parent their own section, and a school-wide reader the school. Accepts a weekday name, today/tomorrow/yesterday, or \"week\" for the weekly timetable. Read-only.",
       "input": {
         "type": "object",
         "properties": {
           "day": {
             "type": "string",
             "maxLength": 24,
-            "description": "Weekday name, or today/tomorrow/yesterday"
+            "description": "Weekday name, today/tomorrow/yesterday, or \"week\" for the whole week"
           },
           "className": {
             "type": "string",
@@ -2575,6 +2843,11 @@
           "exam": {
             "type": "string",
             "maxLength": 60
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Narrow to one subject, e.g. \"Mathematics\""
           }
         },
         "additionalProperties": false
@@ -2854,13 +3127,61 @@
       "name": "enter_marks",
       "module": "Exams",
       "operation": "ACTION",
-      "description": "Record marks for students in one exam subject. Marks stay unpublished until publish_marks, so students do not see them yet. Writes to other people's academic records, so it needs confirmation.",
+      "description": "Record, enter, submit or update marks for students in one exam paper. Name the paper by class, subject and exam, and each student by name or admission number with their marks; re-entering a student's marks updates them. Marks stay unpublished until publish_marks, so students do not see them yet, and marks already published cannot be changed. Writes to other people's academic records, so it needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
           "examSubjectId": {
             "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "The exam paper, when the id is already known"
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The subject of the paper, e.g. \"Mathematics\""
+          },
+          "exam": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The exam, e.g. \"Unit Test 2\""
+          },
+          "students": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 60,
+            "description": "Students named directly, each with their marks",
+            "items": {
+              "type": "object",
+              "properties": {
+                "studentId": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{24}$"
+                },
+                "admissionNo": {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                "studentName": {
+                  "type": "string",
+                  "maxLength": 80,
+                  "description": "An ambiguous name is refused, never guessed"
+                },
+                "marks": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "marks"
+              ],
+              "additionalProperties": false
+            }
           },
           "entries": {
             "type": "array",
@@ -2886,10 +3207,6 @@
             }
           }
         },
-        "required": [
-          "examSubjectId",
-          "entries"
-        ],
         "additionalProperties": false
       },
       "permission": "marks.enter",
@@ -2912,12 +3229,25 @@
         "properties": {
           "examSubjectId": {
             "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "The exam paper, when the id is already known"
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The subject of the paper, e.g. \"Mathematics\""
+          },
+          "exam": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The exam, e.g. \"Unit Test 2\""
           }
         },
-        "required": [
-          "examSubjectId"
-        ],
         "additionalProperties": false
       },
       "permission": "marks.publish",
@@ -2947,6 +3277,15 @@
             "type": "string",
             "maxLength": 80,
             "description": "Narrow to one subject, e.g. \"Mathematics\""
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "SUBMITTED",
+              "ALL"
+            ],
+            "description": "For a student or parent: their work still to submit (PENDING), already handed in (SUBMITTED), or both"
           }
         },
         "additionalProperties": false
@@ -2993,18 +3332,29 @@
       "name": "create_assignment",
       "module": "Assignments",
       "operation": "CREATE",
-      "description": "Set an assignment or homework for a class you teach. Every student in that section sees it, so it needs confirmation.",
+      "description": "Set an assignment or homework for a class. Identify the class and subject by name -- \"Mathematics\" for \"Class 5-A\" -- or by subjectOfferingId when you have one. Every student in that section sees it, so it needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
           "subjectOfferingId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
-            "description": "The class and subject it is for"
+            "description": "The class and subject it is for, when known"
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The subject, as a person names it, e.g. \"Mathematics\""
           },
           "title": {
             "type": "string",
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "What the work is -- the task, or its topic"
           },
           "description": {
             "type": "string",
@@ -3012,7 +3362,8 @@
           },
           "dueAt": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "When it must be handed in"
           },
           "maxMarks": {
             "type": "integer",
@@ -3034,7 +3385,6 @@
           }
         },
         "required": [
-          "subjectOfferingId",
           "title",
           "dueAt"
         ],
@@ -3046,7 +3396,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": true,
       "readOnly": false,
-      "service": "assignment.service.create()",
+      "service": "homework.service.resolveOffering() + assignment.service.create()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -3088,7 +3438,7 @@
         "additionalProperties": false
       },
       "permission": "assignments.manage",
-      "scope": "OWN or ALL",
+      "scope": "ALL",
       "risk": "MEDIUM",
       "confirmation": "REQUIRED",
       "affectsOthers": true,
@@ -3101,17 +3451,44 @@
       "name": "grade_submission",
       "module": "Assignments",
       "operation": "ACTION",
-      "description": "Record a mark and feedback against one student's assignment submission. Needs confirmation.",
+      "description": "Grade one student's assignment submission: record a mark and optional feedback. Name the student, and the assignment by its title or subject when they have submitted more than one. Needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
           "assignmentId": {
             "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "The assignment, when the id is already known"
           },
           "enrollmentId": {
             "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "The student's enrolment, when the id is already known"
+          },
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The assignment as a person names it, e.g. \"Fractions worksheet\""
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The subject of the assignment, e.g. \"Mathematics\""
           },
           "marks": {
             "type": "number",
@@ -3123,8 +3500,6 @@
           }
         },
         "required": [
-          "assignmentId",
-          "enrollmentId",
           "marks"
         ],
         "additionalProperties": false
@@ -3143,13 +3518,30 @@
       "name": "submit_assignment",
       "module": "Assignments",
       "operation": "ACTION",
-      "description": "Submit an assignment on the caller's own behalf. Needs confirmation, because a submission is a deadline-bearing act the student should mean to make.",
+      "description": "Submit one of the caller's own assignments. Name it by its subject or title, e.g. \"my Mathematics assignment\"; with only one still to submit, no name is needed. Needs confirmation, because a submission is a deadline-bearing act the student should mean to make.",
       "input": {
         "type": "object",
         "properties": {
           "assignmentId": {
             "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Omit it and name the subject or title instead"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The subject, e.g. \"Mathematics\""
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The assignment title, when the subject has several"
+          },
+          "link": {
+            "type": "string",
+            "maxLength": 500,
+            "pattern": "^https?://",
+            "description": "A link to the work, e.g. a Google Drive link"
           },
           "enrollmentId": {
             "type": "string",
@@ -3179,9 +3571,6 @@
             }
           }
         },
-        "required": [
-          "assignmentId"
-        ],
         "additionalProperties": false
       },
       "permission": "submissions.submit",
@@ -3190,7 +3579,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
-      "service": "assignment.service.submit()",
+      "service": "assignment.service.list() + submit()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -3415,10 +3804,15 @@
       "name": "create_announcement",
       "module": "Communication",
       "operation": "CREATE",
-      "description": "Publish an announcement. The audience is decided by the school's own rules from the publisher's permissions — a teacher reaches the classes they teach, a school-wide publisher the school. This is visible to many people at once, so it always needs confirmation and the summary names the real audience.",
+      "description": "Publish or send an announcement. Name a class to address that class alone; otherwise the audience is decided by the school's own rules from the publisher's permissions — a teacher reaches the classes they teach, a school-wide publisher the school. This is visible to many people at once, so it always needs confirmation and the summary names the real audience.",
       "input": {
         "type": "object",
         "properties": {
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
           "title": {
             "type": "string",
             "maxLength": 200
@@ -3513,7 +3907,7 @@
         "additionalProperties": false
       },
       "permission": "announcements.publish",
-      "scope": "OWN or ALL",
+      "scope": "ALL",
       "risk": "HIGH",
       "confirmation": "REQUIRED",
       "affectsOthers": true,
@@ -4565,7 +4959,7 @@
       "name": "get_my_bus",
       "module": "Transport",
       "operation": "GET",
-      "description": "The caller's own (or their child's) bus route, vehicle, driver and stop. Read-only.",
+      "description": "The caller's own (or their child's) bus assignment: route, vehicle, driver and pickup stop. Use for \"which bus am I on\" and \"what is my pickup point\". Read-only.",
       "input": {
         "type": "object",
         "properties": {
@@ -4576,7 +4970,7 @@
         },
         "additionalProperties": false
       },
-      "permission": "transport.read",
+      "permission": "transport.request",
       "scope": "OWN or ALL",
       "risk": "LOW",
       "confirmation": "NOT_REQUIRED",
@@ -5069,19 +5463,21 @@
       "name": "register_for_elective",
       "module": "Registrations",
       "operation": "CREATE",
-      "description": "Register the caller for an elective subject. It goes for review before it takes effect. Needs confirmation.",
+      "description": "Register the caller for an elective subject open to their class, named as a person names it, e.g. \"Music\". It goes for review before it takes effect. Needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
           "subjectOfferingId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
-            "description": "From get_my_electives"
+            "description": "From get_my_electives. Omit it and name the subject instead."
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The elective as a person names it, e.g. \"Music\""
           }
         },
-        "required": [
-          "subjectOfferingId"
-        ],
         "additionalProperties": false
       },
       "permission": "registrations.apply",
@@ -5090,7 +5486,7 @@
       "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
-      "service": "registration.service.register()",
+      "service": "registration.service.listAvailable() + register()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -5431,15 +5827,22 @@
             },
             "additionalProperties": false
           },
+          "field": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The field to correct, as a person names it, e.g. \"address\" or \"date of birth\""
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "The corrected value"
+          },
           "note": {
             "type": "string",
             "maxLength": 1000,
             "description": "Why the correction is needed"
           }
         },
-        "required": [
-          "changes"
-        ],
         "additionalProperties": false
       },
       "permission": "profile.edit.request",
@@ -6198,6 +6601,11 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "From get_my_book_requests. Omit it when you have only one pending request."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The book the request is for, e.g. \"Clean Code\""
           }
         },
         "additionalProperties": false
@@ -6224,6 +6632,11 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "From get_my_transport_requests. Omit it when you have only one pending request."
+          },
+          "routeName": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The route the request is for, e.g. \"Route 2\""
           }
         },
         "additionalProperties": false
@@ -6281,6 +6694,11 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "From get_my_profile_edit_requests. Omit it when you have only one pending request."
+          },
+          "field": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The field the correction is to, e.g. \"address\""
           }
         },
         "additionalProperties": false
@@ -6319,7 +6737,7 @@
       "name": "get_at_risk_students",
       "module": "Analytics",
       "operation": "GET",
-      "description": "Students flagged at risk from the last 30 days of attendance, published marks and overdue fees. To answer \"who is below 75% attendance\", pass attendanceBelowPct: 75 — it returns each student whose day-level attendance over the last 30 days is below that figure, with the percentage. Students with no attendance marked in the last 30 days cannot be assessed and are not included. Read-only.",
+      "description": "Students flagged at risk from the last 30 days of attendance, published marks and overdue fees. Use for school-wide or class-wide queries asking which students are below an attendance percentage threshold, such as \"which students are below 75% attendance\" (pass attendanceBelowPct: 75) — it returns each student whose day-level attendance over the last 30 days is below that figure, with the percentage. Do not use for one named student. Students with no attendance marked in the last 30 days cannot be assessed and are not included. Read-only.",
       "input": {
         "type": "object",
         "properties": {
@@ -6963,14 +7381,15 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 166,
+      "total": 172,
       "GET": 84,
-      "CREATE": 27,
+      "CREATE": 33,
       "UPDATE": 15,
       "ACTION": 30,
       "DELETE": 10,
-      "highRiskActions": 29,
+      "highRiskActions": 30,
       "highRiskActionNames": [
+        "add_guardian",
         "update_enrollment_status",
         "archive_student",
         "anonymise_student",
@@ -7001,12 +7420,13 @@
         "delete_document",
         "request_extra_seats"
       ],
-      "confirmationRequired": 76,
+      "confirmationRequired": 82,
       "names": [
         "search_students",
         "get_student",
         "get_student_overview",
         "list_guardians",
+        "add_guardian",
         "list_enrollments",
         "create_student",
         "enroll_student",
@@ -7043,6 +7463,7 @@
         "record_payment",
         "approve_payment",
         "reject_payment",
+        "request_payment_change",
         "decide_payment_change_request",
         "transition_fee_plan",
         "publish_fee_plan",
@@ -7053,6 +7474,10 @@
         "list_academic_years",
         "get_my_classes",
         "create_section",
+        "create_academic_year",
+        "create_term",
+        "create_grade",
+        "create_subject",
         "update_section",
         "assign_teacher_to_subject",
         "update_subject_offering",
@@ -7174,9 +7599,9 @@
     {
       "role": "PRINCIPAL",
       "custom": false,
-      "total": 73,
+      "total": 77,
       "GET": 53,
-      "CREATE": 4,
+      "CREATE": 8,
       "UPDATE": 6,
       "ACTION": 9,
       "DELETE": 1,
@@ -7190,7 +7615,7 @@
         "send_whatsapp_message",
         "delete_document"
       ],
-      "confirmationRequired": 20,
+      "confirmationRequired": 24,
       "names": [
         "search_students",
         "get_student",
@@ -7221,6 +7646,10 @@
         "list_academic_years",
         "get_my_classes",
         "create_section",
+        "create_academic_year",
+        "create_term",
+        "create_grade",
+        "create_subject",
         "update_section",
         "assign_teacher_to_subject",
         "update_subject_offering",
@@ -7270,23 +7699,22 @@
     {
       "role": "TEACHER",
       "custom": false,
-      "total": 58,
+      "total": 56,
       "GET": 41,
       "CREATE": 3,
-      "UPDATE": 2,
-      "ACTION": 11,
+      "UPDATE": 1,
+      "ACTION": 10,
       "DELETE": 1,
-      "highRiskActions": 7,
+      "highRiskActions": 6,
       "highRiskActionNames": [
         "mark_attendance",
         "bulk_mark_attendance",
         "enter_marks",
         "publish_marks",
         "create_announcement",
-        "update_announcement",
         "delete_document"
       ],
-      "confirmationRequired": 17,
+      "confirmationRequired": 15,
       "names": [
         "search_students",
         "get_student",
@@ -7320,12 +7748,10 @@
         "get_assignments",
         "get_submissions",
         "create_assignment",
-        "generate_homework",
         "grade_submission",
         "get_subjects",
         "get_announcements",
         "create_announcement",
-        "update_announcement",
         "get_calendar_events",
         "get_leave_requests",
         "review_leave",
@@ -7412,8 +7838,8 @@
     {
       "role": "STUDENT",
       "custom": false,
-      "total": 62,
-      "GET": 49,
+      "total": 63,
+      "GET": 50,
       "CREATE": 7,
       "UPDATE": 0,
       "ACTION": 1,
@@ -7458,6 +7884,7 @@
         "list_books",
         "get_book",
         "list_book_issues",
+        "get_my_bus",
         "get_leave_requests",
         "apply_for_leave",
         "get_my_electives",
@@ -7489,9 +7916,9 @@
     {
       "role": "FINANCE",
       "custom": false,
-      "total": 30,
+      "total": 31,
       "GET": 21,
-      "CREATE": 4,
+      "CREATE": 5,
       "UPDATE": 1,
       "ACTION": 4,
       "DELETE": 0,
@@ -7506,7 +7933,7 @@
         "transition_fee_plan",
         "create_fee_structure"
       ],
-      "confirmationRequired": 9,
+      "confirmationRequired": 10,
       "names": [
         "search_students",
         "get_student",
@@ -7528,6 +7955,7 @@
         "update_fee_plan",
         "record_payment",
         "refund_payment",
+        "request_payment_change",
         "transition_fee_plan",
         "create_fee_head",
         "create_fee_structure",

@@ -54,7 +54,7 @@ export const addGuardian = asyncHandler(async (req, res) => {
 });
 
 export const listGuardians = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.listGuardians(req.actor, req.params.id), 'Guardians fetched');
+  sendSuccess(res, await service.listGuardians(req.actor, req.params.id, req.scope), 'Guardians fetched');
 });
 
 export const enroll = asyncHandler(async (req, res) => {
@@ -73,8 +73,9 @@ export const listEnrollments = asyncHandler(async (req, res) => {
   const filter = {};
   if (sectionId) filter.sectionId = sectionId;
   if (academicYearId) filter.academicYearId = academicYearId;
-  if (studentId) filter.studentId = studentId;
-  sendSuccess(res, await service.listEnrollments(filter), 'Enrollments fetched');
+  if (studentId) filter.studentId = String(studentId);
+  const scoped = await service.scopeEnrollmentFilter(req.actor, req.scope, filter);
+  sendSuccess(res, await service.listEnrollments(scoped), 'Enrollments fetched');
 });
 
 export const getNextRollNo = asyncHandler(async (req, res) => {

@@ -379,10 +379,10 @@ script names any account left with none.
 On the login page:
 - **Staff** → *Continue via Email OTP* with the email above.
 - **Parent / Student** → *Continue with Phone Number*.
-- The 6-digit OTP is **shown directly in the login UI** — on both the email and the phone path — whenever the backend echoes `devOtp`: always in development, and in a production build that sets `ALLOW_DEV_OTP_IN_PRODUCTION=true`. **This project is in its testing phase, so that flag is on** (see the ⚠ note below). With it off, codes are only delivered through the configured SMS/email provider.
-- *Continue with Google (demo)* — picker of the demo emails; it signs in by reading that same echoed code, so it needs `ALLOW_DEV_OTP_IN_PRODUCTION` on the backend plus `NEXT_PUBLIC_ALLOW_DEV_OTP=true` on the frontend to appear in a production build. It becomes real Google OAuth once credentials are configured (see §8).
+- The 6-digit OTP is **shown directly in the login UI** — on both the email and the phone path — only in development/test (`NODE_ENV=development` or `test`), where the `console` provider echoes it as `devOtp`. Everywhere else codes are delivered only by a real provider (`EMAIL_PROVIDER=resend`, `SMS_PROVIDER=twilio`); with none configured, OTP sign-in answers 503 and password / Google sign-in still work.
+- *Continue with Google (demo)* — picker of the demo emails, development builds only; it signs in by reading that same echoed code. Production builds never offer it (the exchange route answers 501). Real Google OAuth works once credentials are configured (see §8).
 
-> ⚠ **Testing phase only.** While `ALLOW_DEV_OTP_IN_PRODUCTION` is on, anyone who knows an email address or phone number can request a code and read it straight out of the HTTP response — that is account takeover for every account, including Super Admin. Set it (and `NEXT_PUBLIC_ALLOW_DEV_OTP`) to `false` and configure real SMS/email providers before real users sign in.
+> ⚠ There is no switch that echoes codes in production. `ALLOW_DEV_OTP_IN_PRODUCTION` / `NEXT_PUBLIC_ALLOW_DEV_OTP` used to do so — any known email or phone number was a way into that account — and are now ignored (the backend logs a warning if the former is still set).
 
 Accounts can hold **multiple role profiles** (e.g. the same phone as Parent *and* Teacher) — after OTP verification you'll get a profile picker.
 
@@ -446,8 +446,8 @@ Everything below works out of the box in **safe development modes**; going live 
 |---|---|---|
 | `PORT` / `HOST` | `5000` / `localhost` | server bind |
 | `MONGO_URI` / `MONGO_URI_ATLAS` | `mongodb://localhost:27017/school_erp` | database. **`MONGO_URI_ATLAS` is production-only**: outside `NODE_ENV=production` it is ignored entirely (and the boot log says so), so development always uses `MONGO_URI`. In production Atlas wins when set. The boot line prints `target=…, source=MONGO_URI\|MONGO_URI_ATLAS\|default` — check it before trusting a seed or migration. Note the shipped `.env` may point `MONGO_URI` at a remote cluster; see §4.3 for a way to run against a throwaway database instead |
-| `NODE_ENV` | `development` | in production, `devOtp` is never returned (unless `ALLOW_DEV_OTP_IN_PRODUCTION=true`) and Swagger defaults off |
-| `ALLOW_DEV_OTP_IN_PRODUCTION` | `false` (`true` in this repo's testing-phase config) | echoes the OTP as `devOtp` on every login path even in production, and lets the server boot on the `console` SMS/email providers. **Testing phase only** — it makes any known email or phone number a way into that account. Pair it with `NEXT_PUBLIC_ALLOW_DEV_OTP` on the frontend to keep the demo Google popup |
+| `NODE_ENV` | `development` | `devOtp` is returned only in `development`/`test`; Swagger defaults off in production. **Set it explicitly on every deployment** — unset is treated as development |
+| `SMS_PROVIDER` / `EMAIL_PROVIDER` | `console` | `twilio` (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`) / `resend` (`RESEND_API_KEY`, `EMAIL_FROM`). `console` in production boots with a warning and OTP sign-in answers 503; a named provider missing its settings refuses to boot |
 | `JWT_SECRET` | change-me | **must change in production** |
 | `ACCESS_TOKEN_EXPIRES_IN` / `REFRESH_TOKEN_TTL_DAYS` | `15m` / `30` | session lifetimes |
 | `OTP_TTL_MINUTES` / `OTP_MAX_ATTEMPTS` | `5` / `5` | OTP policy |
@@ -683,8 +683,8 @@ Frontend: `npm run dev`, `build`, `start`, `test`, `lint`, `lint:fix`, `typechec
 ## 15. Production checklist
 
 1. Set strong `JWT_SECRET` and `MEDICAL_ENCRYPTION_KEY`; set `NODE_ENV=production` (disables `devOtp` echo and Swagger).
-2. **Remove `ALLOW_DEV_OTP_IN_PRODUCTION` and `NEXT_PUBLIC_ALLOW_DEV_OTP`** (both are set to `true` in `render.yaml` for the testing phase). Until they are gone, the OTP is handed to whoever asks for it.
-3. Configure real `SMS_PROVIDER` / `EMAIL_PROVIDER` — with `console` in production, OTP requests fail loudly instead of pretending to send.
+2. Remove any leftover `ALLOW_DEV_OTP_IN_PRODUCTION` / `NEXT_PUBLIC_ALLOW_DEV_OTP` from the Render dashboard. They no longer do anything (production never echoes codes), but the backend warns while one is set.
+3. Configure real `SMS_PROVIDER` / `EMAIL_PROVIDER` (`twilio` / `resend`) to enable OTP sign-in — with `console` in production, OTP requests answer 503 instead of pretending to send.
 4. Decide `PAYMENT_PROVIDER`: a real gateway, or `none` until then (sandbox is for demos only).
 5. Configure Google OAuth env on both apps, or leave unset (the button hides itself in production).
 6. Lock `CORS_ORIGIN` to your frontend origin.

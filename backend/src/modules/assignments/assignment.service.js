@@ -1,5 +1,6 @@
 import { Assignment, Submission } from '../../models/assignment.model.js';
 import { AppError } from '../../utils/AppError.js';
+import { isSafeLinkUrl } from '../../utils/validators.js';
 import { SubjectOffering } from '../../models/academics.model.js';
 import { getTeacherSectionIds, getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
 import { Enrollment } from '../../models/student.model.js';
@@ -120,7 +121,27 @@ export async function create(actor, scope, data) {
     throw new AppError('You do not teach this class', 403, [], 'NOT_YOUR_CLASS');
   }
 
+  if (data.attachments !== undefined) assertSafeAttachments(data.attachments);
   return Assignment.create({ ...data, createdByProfileId: actor.profileId });
+}
+
+/**
+ * Attachments are rendered as links in other people's portals — a student's
+ * work in the teacher's, a teacher's worksheet in every student's — so each
+ * must be one of our uploads or an http(s) link, never `javascript:` or the
+ * like, which would run as the person who clicks it.
+ */
+function assertSafeAttachments(attachments) {
+  const list = Array.isArray(attachments) ? attachments : [attachments];
+  const bad = list
+    .map((a) => (typeof a === 'string' ? a.trim() : a?.fileUrl?.trim?.() ?? ''))
+    .filter((a) => a && !isSafeLinkUrl(a));
+  if (bad.length) {
+    throw new AppError(
+      'Attachments must be files uploaded here (/uploads/...) or http(s) links',
+      400, [], 'INVALID_ATTACHMENT_URL',
+    );
+  }
 }
 
 export async function gradeSubmission(actor, scope, { assignmentId, enrollmentId, marks, feedback }) {
@@ -176,6 +197,7 @@ export async function submit(actor, scope, { assignmentId, enrollmentId, attachm
   const cleanAttachments = (Array.isArray(attachments) ? attachments : [])
     .map((a) => (typeof a === 'string' ? a.trim() : a?.fileUrl?.trim?.() ?? ''))
     .filter(Boolean);
+  assertSafeAttachments(cleanAttachments);
 
   if (cleanAttachments.length === 0) {
     throw new AppError(

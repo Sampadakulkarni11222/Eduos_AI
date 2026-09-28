@@ -82,11 +82,13 @@ export const attendanceTools = {
 
   get_attendance_roster: {
     module: 'Attendance',
+    // A class's register: nobody without a class of their own can be answered.
+    requiresClass: true,
     resultShape: 'LIST',
     operation: 'GET',
     risk: RISK.LOW,
     description:
-      'Attendance for one whole class on one date: every enrolled student with the status marked for them, if any, and who is absent. This is the class-level answer — use it for "show the attendance of Class 5-A" and "who is absent in Class 5-A today". Name the class with className; sectionId is for when an id is already known. Read-only.',
+      'Attendance for one whole class, for one date or one calendar month: on a date, every enrolled student with the status marked for them and who is absent; for a month, the class summary. This is the class-level answer — use it for "show the attendance of Class 5-A" and "who is absent in Class 5-A today". There is no class figure over a longer range. Name the class with className; sectionId is for when an id is already known. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -137,11 +139,10 @@ export const attendanceTools = {
         );
       }
 
-      const roster = await attendance.getRoster(
-        ctx.actor, ctx.scope, section.sectionId,
-        args.date ?? new Date().toISOString().slice(0, 10),
-        args.periodNo ?? null,
-      );
+      // The day is named in the answer: "attendance has not been marked yet"
+      // with no date said was read as an answer about some other period.
+      const day = args.date ?? new Date().toISOString().slice(0, 10);
+      const roster = await attendance.getRoster(ctx.actor, ctx.scope, section.sectionId, day, args.periodNo ?? null);
       // getRoster() returns its rows under `roster`, beside section and period details.
       const rows = Array.isArray(roster) ? roster : (roster?.roster ?? []);
       const marked = rows.filter((r) => r.status).length;
@@ -155,11 +156,11 @@ export const attendanceTools = {
       const absent = rows.filter((r) => r.status === 'ABSENT').map(nameOf);
       const view = summarise(absent, (n) => n, { limit: 10 });
       return ok(
-        { roster, count: rows.length, marked, absent, absentCount: absent.length, class: section.label },
+        { roster, count: rows.length, marked, absent, absentCount: absent.length, class: section.label, date: day },
         {
           speak: marked === 0
-            ? `${section.label} has ${rows.length} student(s); attendance has not been marked yet.`
-            : `${section.label}: ${rows.length} student(s), ${marked} marked. ` +
+            ? `${section.label} has ${rows.length} student(s); attendance for ${day} has not been marked yet.`
+            : `${section.label} on ${day}: ${rows.length} student(s), ${marked} marked. ` +
               (absent.length ? `${absent.length} absent — ${view.list}${view.more ? ', …' : ''}.` : 'Nobody is marked absent.'),
         },
       );

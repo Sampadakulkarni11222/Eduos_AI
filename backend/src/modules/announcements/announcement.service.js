@@ -382,7 +382,7 @@ async function countRecipients(audience) {
   // Students in those sections. Parents are reached through their children, so
   // counting enrolments is the honest floor for "people this reaches".
   return Enrollment.countDocuments({ sectionId: { $in: sectionIds }, status: 'ACTIVE' });
-};
+}
 
 export const create = async (actor, scope, data) => {
   // An announcement belongs to a school. A platform administrator acting on no

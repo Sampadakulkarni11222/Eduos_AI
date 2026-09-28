@@ -241,8 +241,8 @@ export async function requestOtp({ phone, schoolId }) {
 
   const code = await issueOtpForAccount(account);
   const { delivered, devOtp } = await sendOtpSms(phone, code);
-  if (!delivered && env.isProd) {
-    throw new AppError('SMS delivery is not configured. Contact your administrator.', 503, [], 'OTP_DELIVERY_UNAVAILABLE');
+  if (!delivered) {
+    throw new AppError('Sign-in codes cannot be sent by SMS right now. Sign in with your password or Google, or contact your administrator.', 503, [], 'OTP_DELIVERY_UNAVAILABLE');
   }
 
   return { message: 'OTP sent', devOtp };
@@ -344,8 +344,8 @@ export async function requestEmailOtp({ email, schoolId }) {
 
   const code = await issueOtpForAccount(account);
   const { delivered, devOtp } = await sendOtpEmail(normalized, code);
-  if (!delivered && env.isProd) {
-    throw new AppError('Email delivery is not configured. Contact your administrator.', 503, [], 'OTP_DELIVERY_UNAVAILABLE');
+  if (!delivered) {
+    throw new AppError('Sign-in codes cannot be sent by email right now. Sign in with your password or Google, or contact your administrator.', 503, [], 'OTP_DELIVERY_UNAVAILABLE');
   }
 
   return { message: 'OTP sent', devOtp };
@@ -584,6 +584,36 @@ export async function me(actor) {
 }
 
 /**
+ * May the acting school choose the sign-in password of an existing account?
+ *
+ * Accounts are shared across schools (one phone, profiles in several), and a
+ * password opens every door the account has a profile behind. So a school may
+ * set one only on an account that is entirely its own: letting school B pick a
+ * password for an OTP-only account school A also holds would let B sign in to
+ * A as that person. Platform work (no school context) is unaffected.
+ */
+async function assertMaySetPassword(account) {
+  const tenantId = currentTenantId();
+  if (!tenantId) return;
+  const superRole = await Role.findOne({ key: SUPER_ADMIN_ROLE_KEY }).select('_id').lean();
+  const others = await Profile.countDocuments({
+    accountId: account._id,
+    deletedAt: null,
+    $or: [
+      { tenantId: { $ne: tenantId } },
+      ...(superRole ? [{ roleId: superRole._id }] : []),
+    ],
+  });
+  if (others > 0) {
+    throw new AppError(
+      'This phone number already signs in to EduOS elsewhere, so its password cannot be set from this school. ' +
+        'Add the profile without a password; the person keeps signing in the way they already do.',
+      409, [], 'ACCOUNT_SHARED',
+    );
+  }
+}
+
+/**
  * Admin-driven onboarding: attach a new role-bound profile to an account
  * (creating the account if it doesn't exist yet). One phone number can hold
  * several profiles — e.g. call this twice with PARENT then TEACHER.
@@ -597,6 +627,7 @@ export async function register({ name, phone, email, password, roleKey }) {
     const passwordHash = password ? await bcrypt.hash(password, env.BCRYPT_SALT_ROUNDS) : null;
     account = await Account.create({ phoneE164: phone, email, passwordHash });
   } else if (password && !account.passwordHash) {
+    await assertMaySetPassword(account);
     account.passwordHash = await bcrypt.hash(password, env.BCRYPT_SALT_ROUNDS);
     await account.save();
   }

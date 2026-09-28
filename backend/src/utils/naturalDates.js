@@ -134,6 +134,52 @@ export function toIsoDate(value, now = new Date()) {
 }
 
 /**
+ * Every calendar date a sentence writes out in words, in order.
+ *
+ * toIsoDate() reads "5th August 2026" when that is the whole value; a sentence
+ * carries it among other words, and nothing looked for it there. So "show
+ * attendance for Class 5-A on 5th August 2026" was read for its MONTH alone --
+ * "August 2026" -- and answered with the whole of August: a day widened into a
+ * month, which is the specificity failure this codebase guards against
+ * everywhere else.
+ *
+ * Returned with the span each date occupies, so a caller can take the date out
+ * of the sentence before reading it for anything else. A day number is part of
+ * a date, not a period number or a limit, and the month inside a date is not a
+ * month being asked about.
+ *
+ * "may" needs a year, for the reason monthFromText() gives: "5 may be absent"
+ * is not the fifth of May.
+ */
+const DAY_FIRST = /\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?([a-z]{3,9})\.?(?:,?\s+(\d{4}))?\b/gi;
+const MONTH_FIRST = /\b([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/gi;
+
+export function writtenDatesIn(text, now = new Date()) {
+  const str = String(text ?? '');
+  const found = [];
+  const overlaps = (start, end) => found.some((f) => start < f.end && end > f.start);
+
+  for (const [re, dayAt, monthAt] of [[DAY_FIRST, 1, 2], [MONTH_FIRST, 2, 1]]) {
+    for (const m of str.matchAll(re)) {
+      const monthWord = m[monthAt].toLowerCase();
+      const idx = monthIndex(monthWord);
+      if (idx < 0) continue;
+      if (monthWord === 'may' && !m[3]) continue;
+      const day = Number(m[dayAt]);
+      const year = m[3] ? Number(m[3]) : yearForBareMonth(idx, now);
+      // A real day of that month: "31 June" is nobody's date.
+      const probe = new Date(year, idx, day);
+      if (day < 1 || probe.getMonth() !== idx) continue;
+      const start = m.index;
+      const end = start + m[0].length;
+      if (overlaps(start, end)) continue;
+      found.push({ text: m[0], iso: `${year}-${pad(idx + 1)}-${pad(day)}`, start, end, yearGiven: Boolean(m[3]) });
+    }
+  }
+  return found.sort((a, b) => a.start - b.start);
+}
+
+/**
  * The month a whole sentence is asking about, or null.
  *
  * Different job from toIsoMonth(): that reads one argument, this searches free
