@@ -54,6 +54,7 @@ const NOT_A_NAME = new Set([
   'count', 'total', 'number', 'report', 'summary', 'snapshot', 'percentage', 'average', 'register', 'roster', 'list',
   'absent', 'absence', 'present', 'fees', 'fee', 'leave', 'library', 'hostel', 'transport', 'notice', 'circular',
   'bed', 'beds', 'room', 'rooms',
+  'to', 'of', 'for', 'in', 'on', 'at', 'with', 'by', 'from', 'about', 'into', 'over', 'under', 'and', 'or',
   'policy', 'policies', 'rule', 'rules', 'guideline', 'guidelines', 'handbook', 'threshold',
   'criterion', 'criteria', 'requirement', 'requirements', 'standard', 'standards',
   'regulation', 'regulations', 'procedure', 'procedures', 'protocol', 'protocols',
@@ -193,7 +194,11 @@ export function nameFromText(text) {
     if (trimmed && isNameLike(trimmed)) return clean(trimmed);
   }
 
-  const prepositional = new RegExp(`\\b(?:of|for|(?<!\\b(?:according|due|prior)\\s+)to)\\s+(${NAME_PHRASE})`, 'iu').exec(str)?.[1];
+  const prepMatch = new RegExp(
+    `\\b(?:(?:of|for)\\s+(${NAME_PHRASE})|(?<!\\b(?:according|due|prior|introduction|guide|welcome|belong|refer)\\s+)to\\s+(${NAME_WORD}(?:\\s+${NAME_WORD}){1,2}))`,
+    'iu',
+  ).exec(str);
+  const prepositional = prepMatch?.[1] || prepMatch?.[2];
   if (prepositional) {
     const trimmed = trimLeadingNonNames(prepositional);
     if (trimmed && isNameLike(trimmed)) return clean(trimmed);
