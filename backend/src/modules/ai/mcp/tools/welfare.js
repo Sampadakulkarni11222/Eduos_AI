@@ -650,7 +650,15 @@ export const welfareTools = {
     async run(ctx, args) {
       const studentId = await resolveStudentId(ctx, args);
       if (!studentId) throw new AppError('Name a student — by id, admission number or name.', 400, [], 'AGENT_NEEDS_INPUT');
-      const record = await medical.getByStudentId(ctx.actor, ctx.scope, studentId, { via: 'mcp.get_medical_record' });
+      let record;
+      try {
+        record = await medical.getByStudentId(ctx.actor, ctx.scope, studentId, { via: 'mcp.get_medical_record' });
+      } catch (err) {
+        if (err.statusCode === 404) {
+          return ok(null, { speak: 'No medical record is on file for that student.' });
+        }
+        throw err;
+      }
       if (!record) return ok(null, { speak: 'No medical record is on file for that student.' });
       const allergies = Array.isArray(record.allergies) ? record.allergies.join(', ') : record.allergies;
       return ok(record, {
