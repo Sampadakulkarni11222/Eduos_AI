@@ -21,7 +21,7 @@ export const attendanceTools = {
     operation: 'GET',
     risk: RISK.LOW,
     description:
-      "A student's attendance record: days present, working days and the percentage. Name a student to look up theirs; name nobody and it answers for the caller (or their child). Read-only.",
+      'Use only when the user asks about the attendance of one specific named student: days present, working days and the percentage. Name a student to look up theirs; name nobody and it answers for the caller (or their child). Do not use for cohort queries, percentage-threshold queries, or "which students" questions (use get_at_risk_students instead). Read-only.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -52,7 +52,7 @@ export const analyticsTools = {
     operation: 'GET',
     risk: RISK.LOW,
     description:
-      'Students flagged at risk from the last 30 days of attendance, published marks and overdue fees. To answer "who is below 75% attendance", pass attendanceBelowPct: 75 — it returns each student whose day-level attendance over the last 30 days is below that figure, with the percentage. Students with no attendance marked in the last 30 days cannot be assessed and are not included. Read-only.',
+      'Students flagged at risk from the last 30 days of attendance, published marks and overdue fees. Use for school-wide or class-wide queries asking which students are below an attendance percentage threshold, such as "which students are below 75% attendance" (pass attendanceBelowPct: 75) — it returns each student whose day-level attendance over the last 30 days is below that figure, with the percentage. Do not use for one named student. Students with no attendance marked in the last 30 days cannot be assessed and are not included. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {

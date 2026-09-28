@@ -189,10 +189,20 @@ export function nameFromText(text) {
   }
 
   const introduced = new RegExp(`\\b(?:student|pupil|child)\\s+(${NAME_PHRASE})`, 'iu').exec(str)?.[1];
-  if (introduced && isNameLike(introduced)) return clean(introduced);
+  if (introduced) {
+    const trimmed = trimLeadingNonNames(introduced);
+    if (trimmed && isNameLike(trimmed)) return clean(trimmed);
+  }
 
-  const prepositional = new RegExp(`\\b(?:of|for)\\s+(${NAME_PHRASE})`, 'iu').exec(str)?.[1];
-  if (prepositional && isNameLike(prepositional)) return clean(prepositional);
+  const prepMatch = new RegExp(
+    `\\b(?:(?:of|for)\\s+(${NAME_PHRASE})|(?<!\\b(?:according|due|prior|introduction|guide|welcome|belong|refer)\\s+)to\\s+(${NAME_WORD}(?:\\s+${NAME_WORD}){1,2}))`,
+    'iu',
+  ).exec(str);
+  const prepositional = prepMatch?.[1] || prepMatch?.[2];
+  if (prepositional) {
+    const trimmed = trimLeadingNonNames(prepositional);
+    if (trimmed && isNameLike(trimmed)) return clean(trimmed);
+  }
 
   // "mark Rahul Sharma absent", "Diya Patel present in Class 5-A". The status
   // is the grammatical evidence, exactly as the word "student" is in the
@@ -202,6 +212,14 @@ export function nameFromText(text) {
   const marked = new RegExp(`\\b(${NAME_PHRASE})\\s+(?:as\\s+)?(?:${MARKED_STATUS})\\b`, 'iu').exec(str)?.[1];
   if (marked) {
     const trimmed = trimLeadingNonNames(marked);
+    if (trimmed && isNameLike(trimmed)) return clean(trimmed);
+  }
+
+  // "Vacate Diya Sharma bed", "assign Rahul Verma room". The domain noun
+  // (bed, room) identifies the person preceding it.
+  const facilityPerson = new RegExp(`\\b(${NAME_PHRASE})\\s+(?:bed|room)s?\\b`, 'iu').exec(str)?.[1];
+  if (facilityPerson) {
+    const trimmed = trimLeadingNonNames(facilityPerson);
     if (trimmed && isNameLike(trimmed)) return clean(trimmed);
   }
 
