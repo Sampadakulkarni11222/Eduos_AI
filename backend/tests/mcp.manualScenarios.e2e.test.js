@@ -5,6 +5,8 @@ import { AuditLog } from '../src/models/auditLog.model.js';
 import { Book, BookIssue } from '../src/models/library.model.js';
 import { BookRequest } from '../src/models/bookRequest.model.js';
 import { HostelRoom, HostelAllocation } from '../src/models/hostel.model.js';
+import { FeeHead } from '../src/models/fee.model.js';
+import { Ticket } from '../src/models/ticket.model.js';
 import { seedSchool, mcp, inSchool, OAK, RIVER } from './support/mcpSchool.js';
 
 /**
@@ -306,6 +308,64 @@ describe('STUDENT — "cancel my request" cancels the right one', () => {
     expect(result.success).toBe(false);
     expect(result.error.message).toMatch(/which one/i);
     expect(result.error.message).toMatch(/Panchatantra/);
+  }, 60000);
+});
+
+/* ── Parent ───────────────────────────────────────────────── */
+
+describe('PARENT — the parent capabilities the report found failing', () => {
+  it('Child exam schedule executes list_exams', async () => {
+    const { step, result } = await say('PARENT', 'Child exam schedule');
+    expect(step.tool).toBe('list_exams');
+    expect(result.success).toBe(true);
+  }, 60000);
+
+  it('Support tickets executes list_tickets', async () => {
+    const { step, result } = await say('PARENT', 'Support tickets');
+    expect(step.tool).toBe('list_tickets');
+    expect(result.success).toBe(true);
+  }, 60000);
+
+  it('Create support ticket creates a support ticket', async () => {
+    const { step, result } = await say('PARENT', 'Create support ticket');
+    expect(step.tool).toBe('create_ticket');
+    expect(result.success).toBe(true);
+    expect(result.action?.type).toBe('ticket_created');
+    const created = await inSchool(OAK, () => Ticket.findById(result.action.id).lean());
+    expect(created).toBeTruthy();
+    expect(created.raisedByProfileId.toString()).toBe(school.people.PARENT.profile._id.toString());
+  }, 60000);
+
+  it('Child medical records executes get_medical_record', async () => {
+    const { step, result } = await say('PARENT', 'Child medical records');
+    expect(step.tool).toBe('get_medical_record');
+    expect(result.success).toBe(true);
+  }, 60000);
+});
+
+/* ── Finance ──────────────────────────────────────────────── */
+
+describe('FINANCE — the finance capabilities the report found failing', () => {
+  it('Fee heads and fee structures executes get_fee_structures', async () => {
+    const { step, result } = await say('FINANCE', 'Fee heads and fee structures');
+    expect(step.tool).toBe('get_fee_structures');
+    expect(result.success).toBe(true);
+  }, 60000);
+
+  it('Fee collection statistics executes get_fee_statistics', async () => {
+    const { step, result } = await say('FINANCE', 'Fee collection statistics');
+    expect(step.tool).toBe('get_fee_statistics');
+    expect(result.success).toBe(true);
+    expect(result.data.pendingPaise).toBeGreaterThan(0);
+  }, 60000);
+
+  it('Create fee head Activity Fee ₹5,000 creates the fee head upon confirmation', async () => {
+    const { step, proposal, done } = await sayAndConfirm('FINANCE', 'Create fee head Activity Fee ₹5,000');
+    expect(step.tool).toBe('create_fee_head');
+    expect(proposal.action.summary).toMatch(/Activity Fee/);
+    expect(done.success, JSON.stringify(done.error ?? {})).toBe(true);
+    const created = await inSchool(OAK, () => FeeHead.findOne({ name: 'Activity Fee' }).lean());
+    expect(created).toBeTruthy();
   }, 60000);
 });
 

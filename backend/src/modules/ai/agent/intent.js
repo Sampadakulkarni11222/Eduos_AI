@@ -159,7 +159,10 @@ const RULES = [
       /बकाया[^?]*फीस/, /फीस[^?]*बकाया/,
       /\b[\p{L}][\p{L}'-]{2,}'s\s+fees?\b/iu,
     ],
-    exclude: [/\brecord\b/i, /\bmark\b[^?]*\bpaid\b/i, /\bpay(ment)? link\b/i, /\bhow (do|can) i pay\b/i],
+    exclude: [
+      /\brecord\b/i, /\bmark\b[^?]*\bpaid\b/i, /\bpay(ment)? link\b/i, /\bhow (do|can) i pay\b/i,
+      /\b(head|structure)s?\b/i, /\b(statistic|stats|collection)\b/i,
+    ],
     requires: { permission: 'fees.read', scope: 'ALL' },
     weight: 3,
     // "What are Rahul's fees?" is about Rahul, not the whole school's roster.
@@ -167,6 +170,37 @@ const RULES = [
       const name = msg.match(/\b([\p{L}][\p{L}'-]{2,})'s\s+fees?\b/iu)?.[1];
       if (!name || /^(my|his|her|their|child|son|daughter|student|school)$/i.test(name)) return {};
       return { search: name };
+    },
+  },
+  {
+    tool: 'get_fee_structures',
+    patterns: [
+      /\bfee\s+(heads?|structures?)\b/i,
+      /\bfee\s+heads?\s+(and|&)\s+(fee\s+)?structures?\b/i,
+      /\b(fee\s+)?structures?\s+(and|&)\s+(fee\s+)?heads?\b/i,
+      /\b(all\s+)?fee\s+heads\b/i,
+      /\b(all\s+)?fee\s+structures\b/i,
+      /\bfee\s+configuration\b/i,
+    ],
+    requires: { permission: 'fees.structure.manage' },
+    weight: 4,
+    args: () => ({}),
+  },
+  {
+    tool: 'create_fee_head',
+    patterns: [
+      /\b(create|add|new)\s+(a\s+)?fee\s+head\b/i,
+      /\bfee\s+head\s+(called|named)?\b/i,
+    ],
+    requires: { permission: 'fees.structure.manage' },
+    weight: 4,
+    args: (msg) => {
+      const cleaned = msg
+        .replace(/\b(create|add|new)\s+(a\s+)?fee\s+head\s+(called|named)?\s*/i, '')
+        .replace(/\bwith\s+amount\s+.*$/i, '')
+        .replace(/\s*[₹Rs.inr]*\s*\d[\d,]*(?:\.\d{1,2})?\s*$/i, '')
+        .trim();
+      return cleaned ? { name: cleaned } : {};
     },
   },
   {
@@ -509,6 +543,7 @@ const RULES = [
       // which is why that suggested question looked broken rather than
       // unimplemented.
       /\b(assignment|homework|submission|project|worksheet)s?\b/i, /होमवर्क/, /गृहकार्य/,
+      /\b(head|structure)s?\b/i, /\b(statistic|stats|collection)\b/i,
     ],
     args: () => ({}),
   },
@@ -547,9 +582,74 @@ const RULES = [
       /\bresult(s)?\b/i, /\bmarks\b/i, /\bgrade(s)?\b/i, /\breport card\b/i, /\bgpa\b/i,
       /\bexam\b.*\bscore\b/i, /परिणाम/, /अंक/,
     ],
+    exclude: [/\b(schedule|date(s)?|time.?table|calendar|datesheet)\b/i],
     args: (msg) => {
       const m = msg.match(/\b(unit test \d|midterm|final|term \d)\b/i);
       return m ? { exam: m[1] } : {};
+    },
+  },
+  {
+    tool: 'list_exams',
+    patterns: [
+      /\bexam(s)?\b[^?]*\b(schedule|date(s)?|time.?table|calendar|datesheet)\b/i,
+      /\b(schedule|date(s)?|time.?table|calendar|datesheet)\b[^?]*\bexam(s)?\b/i,
+      /\bexam\s+schedule\b/i,
+      /\bchild('s)?\s+exam\s+schedule\b/i,
+      /\blist\s+exams\b/i,
+      /\bupcoming\s+exams\b/i,
+      /परीक्षा[^?]*समय/, /परीक्षा[^?]*सारणी/,
+    ],
+    requires: { permission: 'marks.read' },
+    weight: 3,
+    args: () => ({}),
+  },
+  {
+    tool: 'get_medical_record',
+    patterns: [
+      /\bmedical\s*(record|history|detail|info|profile)s?\b/i,
+      /\bhealth\s*(record|detail|info)s?\b/i,
+      /\bchild('s)?\s+medical\s*records?\b/i,
+      /\ballerg(y|ies)\b/i,
+      /\bblood\s*group\b/i,
+      /स्वास्थ्य|मेडिकल/,
+    ],
+    requires: { permission: 'medical.read' },
+    weight: 3,
+    args: () => ({}),
+  },
+  {
+    tool: 'list_tickets',
+    patterns: [
+      /\b(support\s+)?ticket(s)?\b/i,
+      /\bhelpdesk\b/i,
+      /\bmy\s+tickets\b/i,
+    ],
+    exclude: [
+      /\b(create|raise|open\s+a\s+new|new|submit)\b.*\bticket\b/i,
+      /\bticket\b.*\b(create|raise|open|submit)\b/i,
+      /\breply\b/i,
+    ],
+    requires: { permission: 'tickets.read' },
+    weight: 3,
+    args: (msg) => {
+      const args = {};
+      const statusMatch = msg.match(/\b(open|closed|resolved|pending|in_progress)\b/i);
+      if (statusMatch) args.status = statusMatch[1].toUpperCase();
+      return args;
+    },
+  },
+  {
+    tool: 'create_ticket',
+    patterns: [
+      /\b(create|raise|open|new|submit)\b[^?]*\b(support\s+)?ticket\b/i,
+      /\b(support\s+)?ticket\b[^?]*\b(create|raise|open|submit)\b/i,
+    ],
+    requires: { permission: 'tickets.create' },
+    weight: 4,
+    args: (msg) => {
+      const match = msg.match(/\b(?:saying|about|regarding|with subject|subject:?)\s+(.+)$/i)
+        || msg.match(/\bticket\s*:\s*(.+)$/i);
+      return { subject: match ? match[1].trim() : 'Support Request' };
     },
   },
   {

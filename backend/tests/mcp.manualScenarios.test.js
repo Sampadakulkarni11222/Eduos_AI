@@ -184,6 +184,20 @@ describe('3. PARENT', () => {
     expect(step.args.subject).toMatch(/ID card/i);
   });
 
+  it('Child exam schedule reaches list_exams', () => {
+    reaches('PARENT', 'Child exam schedule', 'list_exams');
+  });
+
+  it('Support tickets and Create support ticket reach ticket capabilities', () => {
+    reaches('PARENT', 'Support tickets', 'list_tickets');
+    const step = reaches('PARENT', 'Create support ticket', 'create_ticket');
+    expect(step.args.subject).toBeTruthy();
+  });
+
+  it('Child medical records reaches get_medical_record', () => {
+    reaches('PARENT', 'Child medical records', 'get_medical_record');
+  });
+
   it('4 — a ticket filter is kept, not dropped', () => {
     const open = reaches('PARENT', 'Show my open tickets.', 'list_tickets');
     expect(open.args.status).toBe('OPEN');
@@ -218,16 +232,21 @@ describe('4. FINANCE', () => {
     // it returns both.
     reaches('FINANCE', 'Show all fee heads.', 'get_fee_structures');
     reaches('FINANCE', 'Show all fee structures.', 'get_fee_structures');
+    reaches('FINANCE', 'Fee heads and fee structures', 'get_fee_structures');
   });
 
   it('3 — collection statistics are the statistics, not the outstanding roster', () => {
     reaches('FINANCE', 'Show fee collection statistics.', 'get_fee_statistics');
+    reaches('FINANCE', 'Fee collection statistics', 'get_fee_statistics');
   });
 
   it('6 — a fee head is actually created, with the name that was given', () => {
     const step = reaches('FINANCE', 'Create a fee head called Activity Fee with amount 5000.', 'create_fee_head');
     expect(step.args.name).toBe('Activity Fee');
     expect(getMcpTool('create_fee_head').operation).toBe('CREATE');
+
+    const stepReport = reaches('FINANCE', 'Create fee head Activity Fee ₹5,000', 'create_fee_head');
+    expect(stepReport.args.name).toBe('Activity Fee');
   });
 
   it('7, 8, 10, 11 — fee head and structure edits are DENIED, because the Web has none', () => {

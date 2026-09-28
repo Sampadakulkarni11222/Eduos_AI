@@ -156,6 +156,7 @@ const BY_THE_CALLER = /\b(?:i|i'?ve)\s+(?:gave|given|give|set|assigned|posted)\b
 const NOT_A_SUBJECT = new Set([
   'my', 'the', 'a', 'an', 'this', 'that', 'all', 'any', 'some', 'todays', 'today', 'tomorrow', 'yesterday',
   'class', 'classes', 'section', 'grade', 'std', 'student', 'students', 'pending', 'new', 'latest', 'last', 'recent',
+  'child', 'children', 'kid', 'kids', 'son', 'daughter', 'ward', 'schedule', 'timetable',
   'show', 'list', 'give', 'given', 'add', 'create', 'assign', 'set', 'what', 'which', 'whose', 'have', 'did', 'do', 'does',
   // Function words. A subject is a noun; without these, "students are absent"
   // yielded the subject "are", which is the kind of value that would be sent
