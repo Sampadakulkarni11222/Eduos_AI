@@ -210,9 +210,29 @@ async function uploadCsv(path: string, file: File, fields: Record<string, string
 }
 
 /** Turn a stored fileUrl (which may be server-relative "/uploads/…") into an absolute link. */
+/**
+ * A file link without its signature. The API signs every /uploads link it
+ * returns (`/uploads/x?exp=…&sig=…`, valid for an hour or two); comparing two
+ * links for the same file, or naming it, must ignore that part.
+ */
+export function canonicalFileUrl(fileUrl: string): string {
+  return String(fileUrl ?? '').split(/[?#]/)[0];
+}
+
+/** The last path segment of a file link, for display. */
+export function fileNameOf(fileUrl: string): string {
+  return canonicalFileUrl(fileUrl).split('/').pop() || 'attachment';
+}
+
 export function fileHref(fileUrl: string): string {
   if (!fileUrl) return '#';
-  return fileUrl.startsWith('/') ? `${BACKEND_URL}${fileUrl}` : fileUrl;
+  const url = String(fileUrl).trim();
+  // Server paths (/uploads/...) are served from the API origin. Anything else
+  // must be an http(s) link: these values are typed by other users (a
+  // student's submitted work, a teacher's worksheet), and React 18 renders a
+  // `javascript:` href verbatim, so it would run as whoever clicks it.
+  if (url.startsWith('/') && !url.startsWith('//')) return `${BACKEND_URL}${url}`;
+  return /^https?:\/\//i.test(url) ? url : '#';
 }
 
 /**

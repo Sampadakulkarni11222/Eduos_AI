@@ -444,10 +444,27 @@ describe('6. homework CREATE goes through the confirmation flow', () => {
     }
   });
 
-  it('still reaches the AI drafting capability when drafting is what was asked for', () => {
+  // AI drafting (generate_homework) has no counterpart on the Teacher Web,
+  // where homework is set by writing it (POST /assignments). The Teacher
+  // Web-parity audit therefore took it off a teacher's catalogue: asking for
+  // homework to be "generated" reaches the same plain creation the Web offers,
+  // and the drafting capability itself is refused at the server.
+  it('asking for homework to be "generated" reaches the Web-equivalent creation, not AI drafting', () => {
     const intent = asTeacher('Generate Mathematics homework for Class 5-A about linear equations');
-    expect(intent?.tool).toBe('generate_homework');
+    expect(intent?.tool).toBe('create_assignment');
     expect(intent.args.className).toMatch(/5-?A/i);
+    expect(intent.args.subject).toBe('Mathematics');
+  });
+
+  it('refuses the AI drafting capability to a teacher at the server', async () => {
+    const before = await inSchool(OAK, () => Assignment.countDocuments());
+    const res = await mcp(OAK, teacher().actor, 'generate_homework', {
+      subject: 'Mathematics', className: 'Class 5-A', topic: 'Linear equations', dueAt: '2026-10-02',
+    });
+    expect(res.success).toBe(false);
+    // FORBIDDEN_SCOPE: the permission is held, at a scope the capability does not accept.
+    expect(res.error.code).toMatch(/^FORBIDDEN/);
+    expect(await inSchool(OAK, () => Assignment.countDocuments())).toBe(before);
   });
 
   it('carries the task itself through, into whichever argument holds it', () => {
@@ -459,25 +476,25 @@ describe('6. homework CREATE goes through the confirmation flow', () => {
 
   it('proposes before writing, and writes only after confirmation', async () => {
     const before = await inSchool(OAK, () => Assignment.countDocuments());
-    const proposal = await mcp(OAK, teacher().actor, 'generate_homework', {
-      subject: 'Mathematics', className: 'Class 5-A', topic: 'Solve the linear equations examples', dueAt: '2026-10-02',
+    const proposal = await mcp(OAK, teacher().actor, 'create_assignment', {
+      subject: 'Mathematics', className: 'Class 5-A', title: 'Solve the linear equations examples', dueAt: '2026-10-02',
     });
     expect(proposal.action?.status).toBe('confirmation_required');
     expect(await inSchool(OAK, () => Assignment.countDocuments())).toBe(before);
 
-    const done = await mcp(OAK, teacher().actor, 'generate_homework', {}, { confirmationToken: proposal.action.confirmationToken });
+    const done = await mcp(OAK, teacher().actor, 'create_assignment', {}, { confirmationToken: proposal.action.confirmationToken });
     expect(done.success).toBe(true);
     expect(await inSchool(OAK, () => Assignment.countDocuments())).toBe(before + 1);
 
-    const entry = await inSchool(OAK, () => AuditLog.findOne({ action: 'agent.generate_homework', 'after.status': 'EXECUTED' }).lean());
+    const entry = await inSchool(OAK, () => AuditLog.findOne({ action: 'agent.create_assignment', 'after.status': 'EXECUTED' }).lean());
     expect(entry).not.toBeNull();
     expect(entry.after.confirmed).toBe(true);
   });
 
   it('resolves the class canonically before finding the offering', async () => {
     for (const className of ['Class 5-A', 'class 5a', '5-A']) {
-      const res = await mcp(OAK, teacher().actor, 'generate_homework', {
-        subject: 'Mathematics', className, topic: 'Practice sums', dueAt: '2026-10-03',
+      const res = await mcp(OAK, teacher().actor, 'create_assignment', {
+        subject: 'Mathematics', className, title: 'Practice sums', dueAt: '2026-10-03',
       });
       expect(res.action?.status, className).toBe('confirmation_required');
     }
@@ -485,8 +502,8 @@ describe('6. homework CREATE goes through the confirmation flow', () => {
 
   it('refuses a class the teacher does not teach, and writes nothing', async () => {
     const before = await inSchool(OAK, () => Assignment.countDocuments());
-    const res = await mcp(OAK, teacher().actor, 'generate_homework', {
-      subject: 'Mathematics', className: 'Class 9-B', topic: 'Anything', dueAt: '2026-10-04',
+    const res = await mcp(OAK, teacher().actor, 'create_assignment', {
+      subject: 'Mathematics', className: 'Class 9-B', title: 'Anything', dueAt: '2026-10-04',
     });
     expect(res.success).toBe(false);
     expect(await inSchool(OAK, () => Assignment.countDocuments())).toBe(before);
@@ -534,7 +551,8 @@ describe('7. the six reported questions, over HTTP', () => {
     // Either a proposal, or a question about the due date — never a list of
     // existing homework.
     expect(res.reply).not.toMatch(/Plant cell|Fractions worksheet/);
-    expect((await lastCall()).tool).toBe('generate_homework');
+    // The Web-equivalent creation (see section 6 for why not AI drafting).
+    expect((await lastCall()).tool).toBe('create_assignment');
     expectNoCatalogLeak(res.reply);
   });
 

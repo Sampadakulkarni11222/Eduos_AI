@@ -34,7 +34,7 @@
  * validates and authorizes again.
  */
 
-import { monthFromText, toIsoDate } from '../../../utils/naturalDates.js';
+import { monthFromText, toIsoDate, writtenDatesIn } from '../../../utils/naturalDates.js';
 
 export const FOUND = 'found';
 export const MISSING = 'missing';
@@ -194,7 +194,12 @@ export function extractDateRange(message, { now = new Date() } = {}) {
 
 /** A month, in the form the schema asks for. */
 export function extractMonth(message, { now = new Date() } = {}) {
-  const month = monthFromText(String(message ?? ''), now);
+  // The month inside a written date belongs to that day: "on 5th August 2026"
+  // asks about one day, and a month argument filled from it widened the answer
+  // to the whole of August.
+  const text = writtenDatesIn(String(message ?? ''), now)
+    .reduce((rest, w) => rest.split(w.text).join(' '), String(message ?? ''));
+  const month = monthFromText(text, now);
   return month ? found(month) : missing();
 }
 
@@ -280,7 +285,12 @@ export function extractText(message, schema = {}) {
   const afterColon = /:\s*(.{2,500})$/.exec(text)?.[1];
   if (afterColon) return cap(afterColon);
 
-  const introduced = /\b(?:saying|says|that reads|about|on)\s+(.{2,500})$/i.exec(text)?.[1];
+  // "saying" introduces the words themselves; "about" and "on" only what they
+  // concern, and often name the RECORD instead: "reply to the ticket about bus
+  // timing saying we will check" is a reply that says "we will check".
+  const said = /\b(?:saying|says|that reads)\s+(.{2,500})$/i.exec(text)?.[1];
+  if (said) return cap(said);
+  const introduced = /\b(?:about|on)\s+(.{2,500})$/i.exec(text)?.[1];
   if (introduced) return cap(introduced);
 
   return missing();

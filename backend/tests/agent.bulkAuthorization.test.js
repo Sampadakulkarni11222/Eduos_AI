@@ -96,7 +96,11 @@ describe('7. unauthorized bulk actions are rejected, role by role', () => {
   const EXPECTED = {
     create_announcement: ['SUPER_ADMIN', 'ADMIN', 'PRINCIPAL', 'TEACHER'],
     mark_attendance: ['SUPER_ADMIN', 'ADMIN', 'TEACHER'],
-    generate_homework: ['SUPER_ADMIN', 'ADMIN', 'TEACHER'],
+    // School-wide scope only (minScope ALL). AI drafting has no Teacher Web
+    // counterpart, so a teacher (OWN scope) sets homework through
+    // create_assignment -- POST /assignments -- instead. See
+    // docs/TEACHER-MCP-AUDIT.md §3.
+    generate_homework: ['SUPER_ADMIN', 'ADMIN'],
     // FINANCE holds fees.pay as of the permission fix; recording a payment is
     // the role's day job.
     record_fee_payment: ['SUPER_ADMIN', 'ADMIN', 'FINANCE'],

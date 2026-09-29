@@ -133,7 +133,9 @@ export function failFromError(err) {
   const status = err?.statusCode ?? err?.status ?? null;
   if (err?.code === 'AGENT_NEEDS_INPUT') return fail(MCP_ERROR.NEEDS_INPUT, err.message);
   if (status === 401) return fail(MCP_ERROR.UNAUTHENTICATED, err.message);
-  if (status === 403) return fail(MCP_ERROR.FORBIDDEN, err.message);
+  // The reason is kept when the tool gave one: "you can only see your own
+  // records" is an answer to give, where a bare 403 is a refusal to relay.
+  if (status === 403) return fail(MCP_ERROR.FORBIDDEN, err.message, err?.code === 'STUDENT_OUT_OF_SCOPE' ? { reason: err.code } : undefined);
   if (status === 404) return fail(MCP_ERROR.NOT_FOUND, err.message);
   if (status === 409) return fail(MCP_ERROR.CONFLICT, err.message);
   if (status === 410) return fail(MCP_ERROR.CONFIRMATION_INVALID, err.message);

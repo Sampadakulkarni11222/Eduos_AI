@@ -149,9 +149,12 @@ describe('the same question from other roles keeps their own scope', () => {
     expect(res.data.enrollmentId).toBe(String(school.rahul.enrollment._id));
   });
 
-  it("a student asking about a classmate finds nobody", async () => {
+  it("a student asking about a classmate is told it is outside their scope", async () => {
     const res = await api.ask(school.people.STUDENT, "Show Rahul's attendance.");
-    expect(res.reply).toMatch(/^No student named "Rahul"\./);
+    // The scope is the answer. "No student named Rahul" was false: the school
+    // has a Rahul, the student may simply not see him.
+    expect(res.reply).toMatch(/only see your own records/i);
+    expect(res.refused).toBe('OUT_OF_SCOPE');
     expect((await lastCall('WEB')).tool).toBe('get_student_attendance');
   });
 

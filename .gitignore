@@ -11,6 +11,8 @@
 !**/.env.example
 credentials.md
 
+# Anchored to the repo root: a bare `session` also matched
+# frontend/src/app/api/session/, so the refresh-token routes were never committed.
 /session
 
 # Personal Claude Code permission overrides (per-developer, not team-wide)

@@ -75,6 +75,7 @@ const ENTITY_OF_TOOL = {
   upsert_timetable_slot: 'timetable',
   get_subjects: 'subject',
   list_subjects: 'subject',
+  create_subject: 'subject',
   get_my_classes: 'class',
   get_my_profile: 'profile',
   get_dashboard: 'analytics',
@@ -103,6 +104,24 @@ export const TARGET_ARGS = {
   route: ['routeId', 'stopId'],
   invoice: ['invoiceId', 'invoiceNo'],
 };
+
+/**
+ * Whether an argument NAMES a record -- a class, a student, an exam, a school
+ * subject -- as opposed to carrying content somebody is supplying.
+ *
+ * Names are read by the dimension readers, which know what a class or a person
+ * looks like; free text ("whatever follows a colon") is content, and filling a
+ * name from it sent "Rahul Sharma 41" as the name of an exam. `subject` names a
+ * school subject only on academic capabilities: a ticket's subject is its
+ * headline, which is exactly the content a person types after a colon.
+ */
+const ACADEMIC_ENTITIES = new Set(['marks', 'homework', 'attendance', 'timetable', 'class', 'subject']);
+
+export function namesARecord(capability, name, property = {}) {
+  if (property.type !== 'string' || property.pattern || Array.isArray(property.enum)) return false;
+  if (!Object.values(TARGET_ARGS).flat().includes(name)) return false;
+  return name !== 'subject' || ACADEMIC_ENTITIES.has(capability?.entity);
+}
 
 /** Argument names that NARROW a request without naming its subject. */
 export const FILTER_ARGS = {
@@ -195,6 +214,15 @@ function describe(name, tool) {
     // absent where the distinction does not arise. It describes the answer
     // shape, never the question that asks for it.
     resultShape: tool.operation === 'GET' ? (tool.resultShape ?? defaultResultShape(name)) : (tool.resultShape ?? null),
+    // A LIST that also reports the total of what it lists -- the student
+    // directory returns the rows AND the roll count. Such a capability answers
+    // "show all students" and "how many students" alike, and saying only one of
+    // those shapes left it a point from losing the other question to something
+    // narrower (the at-risk list) or to the model.
+    reportsTotal: Boolean(tool.reportsTotal),
+    // Answers only about a class the caller may act on, and asks "which
+    // class?" otherwise. See holdsClasses() in capabilityResolver.js.
+    requiresClass: Boolean(tool.requiresClass),
     supersededBy: null,
   };
 }
@@ -290,20 +318,27 @@ export const ENTITY_VOCABULARY = [
   // Mathematics SCORERS in Class 5-A" fell out of the marks vocabulary
   // altogether and was answered with a list of classes.
   ['marks', /\bmarks?\b|\bresults?\b|\bgrades?\b|\bscor(?:e|es|ed|er|ers|ing)\b|\breport\s*card\b|\bgpa\b|\bexams?\b|\bexamination|अंक|परिणाम/i],
-  ['homework', /\bhomework\b|\bassignments?\b|\bworksheets?\b|\bsubmissions?\b|गृहकार्य|होमवर्क/i],
+  // "Task", "pending work", "submitted work": what a teacher calls homework
+  // without the word. Bare "work" is not here -- "does the bus work today?" is
+  // no question about homework -- only work qualified by a state homework is in.
+  ['homework', /\bhomework\b|\bassignments?\b|\bworksheets?\b|\bsubmissions?\b|\btasks?\b|\bclasswork\b|\b(?:pending|submitted|unsubmitted|overdue|completed)\s+work\b|गृहकार्य|होमवर्क/i],
   ['announcement', /\bannouncement|\bnotice|\bcircular|\bnews\b/i],
   ['material', /\bmaterial|\bcourse\s*material|\bnotes\b|\bhandout|\bdocument|\bresource/i],
-  ['timetable', /\btime.?table\b|\bperiods?\b|\bschedule\b|\blesson/i],
+  // "What class do I have next?" asks for a period -- which is the timetable,
+  // not the caller's section.
+  ['timetable', /\btime.?table\b|\bperiods?\b|\bschedule\b|\blesson|\bnext\s+(?:class|lecture)\b|\bclass\b[^?.]*\b(?:next|right\s+now)\b/i],
   ['leave', /\bleave\b|\bday\s*off\b|\bchutti\b|छुट्टी/i],
   ['elective', /\belective|\bsubject\s*registration|\bregistration/i],
-  ['studentRequest', /\bco.?curricular|\bachievement|\bactivit(y|ies)\b|\bprofile\s*correction|\bprofile\s*edit|\bstudent\s*request/i],
+  ['studentRequest', /\bco.?curricular|\bachievement|\bactivit(y|ies)\b|\bprofile[\s-]*(?:correction|edit|change)|\bstudent\s*request|\beditable\b|\bfields?\b[^?.]*\bcan\s+i\s+(?:change|edit|correct)/i],
   ['medical', /\bmedical|\ballerg|\bblood\s*group|\bhealth/i],
   ['ticket', /\bticket|\bsupport|\bhelpdesk|\bcomplaint|\bquer(y|ies)\b/i],
   ['notification', /\bnotification|\balert|\bunread\b/i],
-  ['profile', /\bmy\s*profile\b|\bmy\s*details\b|\babout\s*me\b/i],
+  // Not "my profile-edit requests": those are requests, a different record.
+  ['profile', /\bmy\s*profile\b(?![\s-]*(?:correction|edit|change))|\bmy\s*details\b|\babout\s*me\b/i],
   ['student', /\bstudents?\b|\bpupils?\b|\bchild|\bclass\s*list\b|\benrol/i],
   ['class', /\bclass(es)?\b|\bsections?\b|\bdivisions?\b|\bgrades?\b/i],
-  ['subject', /\bsubjects?\b|\bcourses?\b|विषय/i],
+  // "Course material" is material, not a course.
+  ['subject', /\bsubjects?\b|\bcourses?\b(?!\s*materials?)|विषय/i],
   // "growth" before the marks vocabulary can claim "growth SCORE": a growth
   // score is an analytics figure that happens to share a word with marks, and
   // whichever entity is spoken first is the subject.
@@ -317,7 +352,7 @@ export const ENTITY_VOCABULARY = [
   ['fee', /\bfees?\b|\binvoice|\bpayment|फीस/i],
   ['library', /\blibrar|\bbooks?\b/i],
   ['hostel', /\bhostel|\bdorm|\broom\b|\bbeds?\b|\bwarden\b/i],
-  ['transport', /\btransport|\bbus\b|\broute\b/i],
+  ['transport', /\btransport|\bbus\b|\broute\b|\bpick[\s-]?up\b|\bdrop[\s-]?off\b|\bbus\s*stop/i],
   // Admissions, but NOT the words "admission number" -- that is how a STUDENT
   // is identified, and reading it as the admissions pipeline would answer a
   // question about a pupil with a list of enquiries.

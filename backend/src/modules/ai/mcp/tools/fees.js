@@ -2,7 +2,9 @@ import * as fees from '../../../fees/fee.service.js';
 import * as plans from '../../../fees/plan.service.js';
 import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
-import { RISK, objectId, dateStr, rupees, paise, summarise, wrapAgentTool, resolveSectionId, classIdentitySchema } from './_shared.js';
+import {
+  RISK, objectId, dateStr, rupees, paise, summarise, wrapAgentTool, resolveSection, classIdentitySchema, resolveStudentId,
+} from './_shared.js';
 
 /**
  * Fee and payment tools.
@@ -81,6 +83,13 @@ async function resolveInvoice(ctx, { invoiceId, invoiceNo }) {
   return { invoiceId: String(exact.id ?? exact._id), invoiceNo: exact.invoiceNo };
 }
 
+/** Which records a pending-fee total covers, as the reply's opening words. */
+function scopeLabel(section, search, scope) {
+  if (section) return `In ${section.label}, `;
+  if (search) return `For "${search}", `;
+  return scope === 'OWN' ? '' : 'Across the school, ';
+}
+
 export const feeTools = {
   get_pending_fees: {
     module: 'Fees',
@@ -115,7 +124,15 @@ export const feeTools = {
       // class in "outstanding fees for Class 5A" was silently dropped and a
       // school-wide total was presented as the answer to a question about one
       // class -- a true number answering something nobody asked.
-      const sectionId = (await resolveSectionId(ctx, args)) ?? args.sectionId ?? null;
+      // A student's search names a person, and a student's scope holds one:
+      // themselves. Searching for anybody else found nothing and answered
+      // "there are no outstanding fees" -- a false statement about somebody
+      // they may not ask about. An invoice number stays a search.
+      if (ctx.actor?.roleKey === 'STUDENT' && args.search && !/\d/.test(String(args.search))) {
+        await resolveStudentId(ctx, { studentName: args.search });
+      }
+      const section = await resolveSection(ctx, { sectionId: args.sectionId, className: args.className });
+      const sectionId = section?.sectionId ?? null;
       const filtered = Boolean(args.search || sectionId);
       const [invoicesRaw, totals] = await Promise.all([
         fees.listInvoices(ctx.actor, ctx.scope, {
@@ -160,17 +177,21 @@ export const feeTools = {
           totalOutstandingPaise: outstanding,
           overduePaise: overdue,
           totalsCover: filtered ? 'MATCHED_INVOICES' : (ctx.scope === 'OWN' ? 'OWN' : 'SCHOOL'),
+          ...(section && { class: section.label }),
           ...(!filtered && {
             totalBilledPaise: totals.totalBilledPaise,
             totalCollectedPaise: totals.totalCollectedPaise,
             overdueCount: totals.overdueCount,
           }),
         },
+        // The answer says WHAT it covers. A class figure and the school's figure
+        // are both "N students owe X", and a reply that did not say which was
+        // reported as a school-wide amount given for a question about Class 5-A.
         pending.length === 0
-          ? { speakKey: 'fees.clear' }
+          ? (section ? { speak: `${section.label} has no outstanding fees.` } : { speakKey: 'fees.clear' })
           : {
               speak:
-                `${withDues} student(s) have pending fees across ${pending.length} invoice(s), totalling ` +
+                `${scopeLabel(section, args.search, ctx.scope)}${withDues} student(s) have pending fees across ${pending.length} invoice(s), totalling ` +
                 `${rupees(outstanding)} (${rupees(overdue)} of it overdue).`,
             },
       );
@@ -212,6 +233,9 @@ export const feeTools = {
 
   get_payment_history: {
     module: 'Fees',
+    // The payments, as rows. Named "history", which the shape default reads as
+    // one record -- and docked for not naming an invoice.
+    resultShape: 'LIST',
     operation: 'GET',
     risk: RISK.LOW,
     description:
@@ -388,6 +412,9 @@ export const feeTools = {
 
   get_payment_link: wrapAgentTool('get_payment_link', {
     module: 'Fees',
+    // Links, one per open invoice -- a list, not one record, so asking for "the
+    // link to pay my fees" without naming an invoice is a complete question.
+    resultShape: 'LIST',
     description:
       'A link the caller can use to pay their own outstanding invoice online. Returns links only — it never moves money. Read-only.',
     inputSchema: { type: 'object', properties: { invoiceId: objectId() }, additionalProperties: false },
@@ -787,6 +814,47 @@ export const feeTools = {
         id: args.paymentId,
         data: { paymentId: args.paymentId, status: result.payment.status },
         speak: 'The payment has been refunded.',
+      });
+    },
+  },
+
+  // Finance's side of the pair above: a published payment is not edited, a
+  // change to it is requested and an approver decides.
+  request_payment_change: {
+    module: 'Fees',
+    operation: 'CREATE',
+    risk: RISK.MEDIUM,
+    confirm: true,
+    description:
+      'Ask for a correction to a published (finalised) payment — one field, its new value and why. Nothing changes until someone with payment-approval rights approves it. Editable fields: amountPaise, mode, paidOn, receiptNo, notes and the instrument details. A payment still awaiting approval is corrected with update_payment instead. Needs confirmation.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        paymentId: objectId(),
+        field: {
+          type: 'string',
+          enum: [
+            'amountPaise', 'mode', 'paidOn', 'receiptNo', 'notes',
+            'instrument.number', 'instrument.referenceNo', 'instrument.bankName', 'instrument.instrumentDate',
+          ],
+        },
+        requestedValue: { type: 'string', maxLength: 500, description: 'The new value; paise for amountPaise, YYYY-MM-DD for dates' },
+        reason: { type: 'string', maxLength: 500 },
+      },
+      required: ['paymentId', 'field', 'requestedValue', 'reason'],
+      additionalProperties: false,
+    },
+    permission: 'fees.manage',
+    minScope: 'ALL',
+    service: 'fee.service.createPaymentChangeRequest()',
+    summarise: (args) => `Request changing ${args.field} to "${args.requestedValue}" on payment ${args.paymentId} — "${args.reason}"`,
+    async run(ctx, args) {
+      const request = await fees.createPaymentChangeRequest(ctx.actor, args);
+      return action({
+        type: 'payment_change_requested',
+        id: request._id,
+        data: { requestId: String(request._id), paymentId: args.paymentId, field: args.field, status: request.status ?? 'PENDING' },
+        speak: 'The change request has been submitted for approval.',
       });
     },
   },

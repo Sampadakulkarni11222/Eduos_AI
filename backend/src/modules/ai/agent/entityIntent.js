@@ -33,9 +33,9 @@
  */
 
 import { classFromText } from '../../../utils/classNames.js';
-import { monthFromText, toIsoDate } from '../../../utils/naturalDates.js';
+import { monthFromText, toIsoDate, writtenDatesIn } from '../../../utils/naturalDates.js';
 import { nameFromText } from '../../../utils/peopleNames.js';
-import { capabilitiesFor, entitiesInText, ENTITY_VOCABULARY } from '../mcp/capabilities.js';
+import { capabilitiesFor, capabilityIndex, entitiesInText, ENTITY_VOCABULARY, namesARecord } from '../mcp/capabilities.js';
 import { extractArgument, FOUND } from './argumentKinds.js';
 
 /* ── Operation ────────────────────────────────────────────── */
@@ -47,8 +47,12 @@ import { extractArgument, FOUND } from './argumentKinds.js';
  */
 const OPERATION_VERBS = [
   ['DELETE', /\b(?:delet|remov|cancel|withdraw|clear)\w{0,4}\b/i],
-  ['UPDATE', /\b(?:updat|chang|edit|modif|amend|revis|correct|reword|rewrit|reschedul)\w{0,4}\b/i],
-  ['CREATE', /\b(?:add|creat|set|assign|giv|make|generat|draft|upload|post|schedul|new)\w{0,4}\b/i],
+  ['UPDATE', /\b(?:updat|chang|edit|modif|amend|revis|correct|reword|rewrit|renam|retitl|reschedul|clos|reopen)\w{0,4}\b/i],
+  // "assign(?!ment)": "show my Mathematics ASSIGNMENT" is a read about a
+  // noun, and reading the verb inside it made it a request to create one.
+  // "Share course material" publishes it.
+  // Whole word forms for "share", never a stem: "shar" also begins "Sharma".
+  ['CREATE', /\b(?:add|creat|set|assign(?!ments?\b)|giv|make|generat|draft|upload|post|schedul|new)\w{0,4}\b|\b(?:share[sd]?|sharing)\b/i],
 ];
 
 /**
@@ -157,6 +161,8 @@ const NOT_A_SUBJECT = new Set([
   'my', 'the', 'a', 'an', 'this', 'that', 'all', 'any', 'some', 'todays', 'today', 'tomorrow', 'yesterday',
   'class', 'classes', 'section', 'grade', 'std', 'student', 'students', 'pending', 'new', 'latest', 'last', 'recent',
   'child', 'children', 'kid', 'kids', 'son', 'daughter', 'ward', 'schedule', 'timetable',
+  // "COURSE material" qualifies the material; it is not a school subject.
+  'course', 'courses',
   'show', 'list', 'give', 'given', 'add', 'create', 'assign', 'set', 'what', 'which', 'whose', 'have', 'did', 'do', 'does',
   // Function words. A subject is a noun; without these, "students are absent"
   // yielded the subject "are", which is the kind of value that would be sent
@@ -166,13 +172,33 @@ const NOT_A_SUBJECT = new Set([
   // -- and so does a qualifier: "highest marks" yielded the subject "highest",
   // which was then sent to a tool as though somebody had named one.
   'highest', 'lowest', 'best', 'worst', 'top', 'bottom', 'better', 'worse', 'good', 'bad',
+  // States and times. "my UPCOMING exams" and "my SUBMITTED assignments" name
+  // when or in what state, not a school subject; read as one, every capability
+  // that could not filter by subject was penalised for it.
+  'upcoming', 'submitted', 'unsubmitted', 'due', 'overdue', 'completed', 'complete', 'published',
+  'next', 'previous', 'current', 'future', 'past', 'old', 'open', 'closed', 'borrowed', 'returned', 'available',
   'for', 'with', 'from', 'into', 'than', 'then', 'there', 'here', 'they', 'them', 'their',
   // Prepositions that INTRODUCE what something is about. "homework about
   // linear equations" yielded the subject "about", which is then offered to a
   // tool as though somebody had named a school subject called About.
   'about', 'regarding', 'concerning', 'on', 'in', 'of', 'to',
+  // Words that introduce a NAME. "an assignment for Class 6-A titled
+  // 'Chapter 3'" yielded the subject "titled".
+  'titled', 'entitled', 'called', 'named',
+  // "The WHOLE class" qualifies the class; read as a subject, it sent "mark the
+  // whole class present" to an exam-marks entry for a subject called "whole".
+  'whole', 'entire', 'everyone', 'everybody',
+  // Pronouns: "her Mathematics assignment" yielded the subject "her".
+  'her', 'his', 'its', 'our', 'your', 'him', 'she', 'he',
   'these', 'those', 'many', 'much', 'more', 'most', 'few', 'less', 'how', 'why', 'when', 'where', 'who',
 ]);
+
+/** The verb every capability name opens with -- record_, publish_, enter_ ... */
+let verbsOfCatalogue = null;
+function catalogueVerbs() {
+  verbsOfCatalogue ??= new Set(capabilityIndex().map((c) => String(c.name).split('_')[0]));
+  return verbsOfCatalogue;
+}
 
 export function subjectFromText(text, entity) {
   const str = String(text ?? '');
@@ -181,9 +207,16 @@ export function subjectFromText(text, entity) {
 
   const word = '[\\p{L}][\\p{L}&\'.-]*';
   const ok = (candidate) => {
-    const value = String(candidate ?? '').trim();
+    // A subject at the end of a sentence carries its full stop: "marks for
+    // Mathematics." was sent to the tool as "Mathematics.", which matched no
+    // offering and answered "No homework found for Mathematics..".
+    const value = String(candidate ?? '').trim().replace(/[.'-]+$/, '');
     if (!value || value.length < 3) return null;
     if (NOT_A_SUBJECT.has(value.toLowerCase())) return null;
+    // An act is not a subject: "RECORD marks", "PUBLISH marks", "UPDATE
+    // marks". The verbs are the ones the catalogue's own capabilities are
+    // named after, so a new act is recognised by existing.
+    if (catalogueVerbs().has(value.toLowerCase()) || detectOperation(value) !== 'GET') return null;
     if (monthFromText(value)) return null;
     if (classFromText(value)) return null;
     // A possessive is somebody's name, not a subject: "Aarav Mishra's marks"
@@ -218,6 +251,10 @@ export function dateFromText(text, now = new Date()) {
   const iso = /\b(\d{4}-\d{1,2}-\d{1,2})\b/.exec(str)?.[1];
   if (iso) return toIsoDate(iso, now);
 
+  // "5th August 2026", "August 5, 2026" -- a day written in words.
+  const written = writtenDatesIn(str, now)[0];
+  if (written) return written.iso;
+
   const relative = /\b(today|tomorrow|yesterday|day after tomorrow)\b/i.exec(str)?.[1];
   if (relative) return toIsoDate(relative.toLowerCase(), now);
 
@@ -248,7 +285,9 @@ export function topicFromText(text) {
   const quoted = /["“”']([^"“”']{3,300})["“”']/.exec(str)?.[1];
   if (quoted) return quoted.trim();
   const introduced = /\b(?:on|about)\s+(.{3,300})$/i.exec(str)?.[1];
-  if (introduced) return introduced.trim().replace(/[.?!]+$/, '');
+  // What follows "due"/"by" is WHEN, and it has its own argument: "on
+  // fractions due 2026-10-05" is the topic "fractions".
+  if (introduced) return introduced.replace(/\s+(?:due|by|before)\b.*$/i, '').trim().replace(/[.?!]+$/, '') || null;
   return null;
 }
 
@@ -305,11 +344,29 @@ const AGGREGATE_REQUEST = /\bhow\s+many\b|\bhow\s+much\b|\bcount\b|\bnumber\s+of
 
 /** Everything the sentence names, in the dimensions capabilities are declared in. */
 function dimensionsNamed(str, entity, operation, now) {
+  // Identity first, then the subject from what is left -- the order
+  // dimensionsOf() reads in. "Enter marks for Rahul Sharma" otherwise read
+  // "Rahul" as the school subject ("marks for <X>").
+  const named = nameFromText(str);
+  const everywhere = subjectFromText(str, entity);
+  const subject = named
+    ? subjectFromText(str.split(named).join(' , '), entity)
+      // The one exception, kept from before: the "name" IS the subject word
+      // itself ("marks for Mathematics"), and the subject reading wins.
+      ?? (everywhere && bare(everywhere) === bare(named) ? everywhere : null)
+    : everywhere;
+  const student = named;
   return {
     class: classFromText(str)?.text ?? null,
-    student: nameFromText(str),
-    subject: subjectFromText(str, entity),
-    month: monthFromText(str, now),
+    // One phrase fills one dimension. "Show marks for Mathematics" puts the
+    // subject where a name can also sit ("marks for <X>"), and reading it as
+    // both sent a lookup for a pupil called Mathematics. The subject reading
+    // is the specific one -- it sits beside the entity word -- so it keeps it.
+    student: student && subject && bare(student) === bare(subject) ? null : student,
+    subject,
+    // The month inside a written date is part of that day, not a month asked
+    // about: "on 5th August 2026" is one day, never the whole of August.
+    month: writtenDatesIn(str, now).length ? null : monthFromText(str, now),
     date: dateFromText(str, now),
     // A topic is what a piece of work is *about*, which only a write supplies.
     // Reading one from a question would turn "show homework on Friday" into a
@@ -378,12 +435,23 @@ function scoreCapability(capability, named) {
   // told it anything.
   if (capability.targets.length && !capability.targets.some((target) => filled.has(target))) score -= 2;
 
+  // ONE record, with nobody named to be it, is the weaker fit. A subject only
+  // narrows a record -- a report card is WHOSE before it is which subject -- so
+  // it is the identifying targets that decide. The capability resolver draws
+  // the same line (ABOUT_NOTHING_NAMED); here it breaks what was otherwise a
+  // tie decided by declaration order, which answered a teacher's "which
+  // students got the highest marks in Mathematics?" with one report card.
+  const identifying = capability.targets.filter((target) => target !== 'subject');
+  if (capability.resultShape === 'DETAIL' && identifying.length && !identifying.some((t) => filled.has(t))) score -= 1;
+
   // Answer shape. Only ever additive, and only when the request actually asks
   // for an aggregate: a capability that reports a figure about a group is the
   // right answer to how many, and the rows are the wrong one. A request that
   // asks for neither leaves this alone, so nothing is preferred by default.
+  // A listing that reports its own total answers "how many" as well: the
+  // figure is in the answer, alongside the rows (see `reportsTotal`).
   if (named.aggregate && capability.resultShape) {
-    score += capability.resultShape === 'SUMMARY' ? 3 : -2;
+    score += capability.resultShape === 'SUMMARY' || capability.reportsTotal ? 3 : -2;
   }
 
   const missing = (capability.required ?? []).filter((name) => args[name] === undefined);
@@ -422,13 +490,23 @@ function chooseCapability(candidates, named) {
  * anything else reads the sentence — which is generic: it is the same rule for
  * every dimension and every capability.
  */
-function residualMessage(str, named) {
+function residualMessage(str, named, now = new Date()) {
   let rest = String(str ?? '');
   for (const spoken of [named.class, named.student, named.subject]) {
     if (typeof spoken === 'string' && spoken.length) rest = rest.split(spoken).join(' ');
   }
-  return rest;
+  // A day written in words is accounted for by the date dimension, and its
+  // day-of-month is not a number anybody said: "attendance for Class 6-A on
+  // 5 August 2026" asked about period 5 of that day. Same rule, same reason,
+  // as the class above.
+  for (const written of writtenDatesIn(rest, now)) {
+    if (written.text) rest = rest.split(written.text).join(' ');
+  }
+  return rest.replace(/\b\d{4}-\d{1,2}-\d{1,2}\b/g, ' ');
 }
+
+/** Letters and digits only, so "Mathematics." and "mathematics" compare equal. */
+const bare = (text) => String(text ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 
 /**
  * Fills the arguments a capability declares that the dimensions did not answer.
@@ -450,6 +528,9 @@ function fillDeclaredArguments(capability, args, message, { now, write }) {
 
   for (const [name, propertySchema] of Object.entries(properties)) {
     if (filled[name] !== undefined) continue;
+    // A class, subject, exam or student is a name the dimensions read; free
+    // text after a colon is content, never one of those.
+    if (namesARecord(capability, name, propertySchema)) continue;
     const result = extractArgument(name, propertySchema, message, { now, write });
     if (result.status === FOUND) filled[name] = result.value;
   }
@@ -503,7 +584,12 @@ export function detectEntityIntent(text, actor, now = new Date()) {
   // from the registry and the caller's own permissions, never from a list of
   // sentences.
   const candidates = (OPERATION_FAMILY[operation] ?? [operation])
-    .flatMap((op) => capabilitiesFor(actor, { entity, operation: op }));
+    .flatMap((op) => capabilitiesFor(actor, { entity, operation: op }))
+    // A task that CREATES is no way to change what exists: "update the
+    // homework deadline" is not generate_homework (see performsAsked in
+    // capabilityResolver.js, which draws the same line).
+    .filter((c) => !(operation === 'UPDATE' && c.operation === 'ACTION'
+      && detectOperation(String(c.name).split('_')[0]) === 'CREATE'));
   const best = chooseCapability(candidates, named);
   if (!best) return null;
 
@@ -512,7 +598,7 @@ export function detectEntityIntent(text, actor, now = new Date()) {
   const args = fillDeclaredArguments(
     best.capability,
     best.args,
-    residualMessage(str, named),
+    residualMessage(str, named, now),
     { now, write: operation !== 'GET' },
   );
 

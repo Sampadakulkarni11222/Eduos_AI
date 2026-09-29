@@ -6,7 +6,23 @@ import { AuditLog } from '../models/auditLog.model.js';
 const SENSITIVE_FIELDS = new Set([
   'password', 'newPassword', 'currentPassword', 'confirmPassword',
   'code', 'otp', 'token', 'accessToken', 'refreshToken', 'idToken', 'secret',
+  // Medical record fields. They are encrypted at rest on the record itself;
+  // a verbatim copy in the audit trail undid that, and put them in front of
+  // anyone holding audit.read — a Principal has it without medical.read.
+  'bloodGroup', 'allergies', 'medications', 'history', 'emergencyContact',
 ]);
+
+/**
+ * True for an audit entry about a medical record, by either route: the REST
+ * trail (entityType MedicalRecord) or the assistant's (agent.*medical*).
+ * Their payloads are withheld whole — the attachment list carries file links
+ * too, and a field-by-field list is one new field away from a leak.
+ */
+export function isMedicalAuditEntry({ entityType, action } = {}) {
+  return entityType === 'MedicalRecord' || /medical/i.test(String(action ?? ''));
+}
+
+export const MEDICAL_PAYLOAD_WITHHELD = Object.freeze({ redacted: 'medical record contents are not kept in the audit trail' });
 
 export function redact(value, depth = 0) {
   if (!value || typeof value !== 'object' || depth > 4) return value;
@@ -188,7 +204,7 @@ export const auditLogger = (req, res, next) => {
           }
 
           const ip = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
-          const safeBody = redact(req.body);
+          const safeBody = isMedicalAuditEntry({ entityType, action }) ? MEDICAL_PAYLOAD_WITHHELD : redact(req.body);
 
           await AuditLog.create({
             actorProfileId,

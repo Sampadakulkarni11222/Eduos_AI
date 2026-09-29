@@ -59,7 +59,12 @@ function pick(obj, fields) {
 export const studentTools = {
   search_students: {
     module: 'Students',
-    resultShape: 'SUMMARY',
+    // The directory: the rows, with the roll total beside them -- the Web
+    // students page is a list with a count. Declared SUMMARY it answered "how
+    // many" and was docked for "show me the list", which left it tied with the
+    // at-risk list on "show all students".
+    resultShape: 'LIST',
+    reportsTotal: true,
     operation: 'GET',
     risk: RISK.LOW,
     description:
@@ -129,7 +134,16 @@ export const studentTools = {
           ? `${section.label} has ${total} student(s): ${view.list}${view.more ? ', …' : ''}.`
           : `${section.label} has no students enrolled.`
         : null;
-      const ownAnswer = ownClasses
+      // An unfiltered listing by a teacher is their classes, whatever the
+      // question said -- "show all students", "every student in the school".
+      // The answer says so, rather than presenting their classes as though
+      // they were the whole of what was asked for.
+      const scopedBrowse = !section && !asked && !ownClasses && ctx.scope !== 'ALL' && ctx.actor?.roleKey === 'TEACHER';
+      const ownAnswer = scopedBrowse
+        ? (total
+          ? `You can only see students in your own classes. You have ${total} student(s) across them: ${view.list}${view.more ? ', …' : ''}.`
+          : 'You can only see students in your own classes, and none are assigned to them.')
+        : ownClasses
         ? total
           ? `You have ${total} student(s) across your classes: ${view.list}${view.more ? ', …' : ''}.`
           : 'No students are assigned to your classes.'
@@ -324,6 +338,49 @@ export const studentTools = {
             : 'No guardians are linked to that student.',
         },
       );
+    },
+  },
+
+  add_guardian: {
+    module: 'Students',
+    operation: 'CREATE',
+    risk: RISK.HIGH,
+    confirm: true,
+    description:
+      "Link an existing parent profile to a student as their father, mother or guardian. Once linked, that parent can see the child's attendance, marks and fees, so this always needs confirmation. The guardian's profile id comes from list_users.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...studentIdentitySchema,
+        guardianProfileId: objectId('The parent\'s profile id, e.g. from list_users'),
+        relation: { type: 'string', enum: ['FATHER', 'MOTHER', 'GUARDIAN'] },
+        isPrimary: { type: 'boolean', description: 'Whether this is the primary contact' },
+        pickupAuthorized: { type: 'boolean', description: 'Whether they may collect the child; defaults to yes' },
+      },
+      required: ['guardianProfileId', 'relation'],
+      additionalProperties: false,
+    },
+    permission: 'students.manage',
+    minScope: 'ALL',
+    affectsOthers: true,
+    service: 'student.service.addGuardian()',
+    summarise: (args) =>
+      `Link profile ${args.guardianProfileId} as ${args.relation.toLowerCase()} of student ${args.studentName ?? args.admissionNo ?? args.studentId}`,
+    async prepare(ctx, args) {
+      const studentId = await resolveStudentId(ctx, args);
+      if (!studentId) throw new AppError('Name a student — by id, admission number or name.', 400);
+      return { studentId };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const { guardianProfileId, relation, isPrimary, pickupAuthorized } = args;
+      const link = await students.addGuardian(plan.studentId, { guardianProfileId, relation, isPrimary, pickupAuthorized });
+      return action({
+        type: 'guardian_linked',
+        id: link._id,
+        data: { studentId: plan.studentId, guardianProfileId: String(link.guardianProfileId), relation: link.relation },
+        speak: `Guardian linked as ${link.relation.toLowerCase()}.`,
+      });
     },
   },
 

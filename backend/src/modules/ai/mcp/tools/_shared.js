@@ -111,6 +111,13 @@ export function wrapAgentTool(name, { description, inputSchema = noArgs, module,
     validate: (args) => agentTool().validate?.(args ?? {}),
     prepare: (ctx, args) => {
       const tool = agentTool();
+      // The agent tool's own checks, run before anything is proposed. The
+      // server calls prepare() ahead of every proposal and every unconfirmed
+      // write, but never validate() -- so these checks were dead code, and a
+      // student saying "apply for leave" was asked to confirm "Apply for leave
+      // from undefined to undefined". A missing detail is a question to ask
+      // BEFORE the confirmation, never a summary nobody could approve.
+      tool.validate?.(args ?? {});
       return tool.prepare ? tool.prepare(ctx.actor, ctx.scope, args ?? {}) : null;
     },
     snapshot: (ctx, args, prepared) => {
@@ -176,11 +183,29 @@ export async function selfStudentId(ctx) {
  * An ambiguous name is refused, never guessed — picking one would be a guess
  * about whose record to disclose.
  */
+/**
+ * The refusal a STUDENT gets for naming somebody else.
+ *
+ * A student's students.read scope holds exactly one record, their own, so any
+ * other name "matches nobody" -- and saying `No student named "Diya Patel"`
+ * told them something false about the school, with near misses offered from a
+ * directory of one. The true answer is the scope, and it says so without
+ * confirming whether the other person exists. Parents keep the lookup as it
+ * was: their scope holds their children, and the not-found wording is right.
+ */
+const ONLY_OWN_RECORDS = "You can only see your own records — I can't look up another student's.";
+const isStudent = (ctx) => ctx?.actor?.roleKey === 'STUDENT';
+
 export async function resolveStudentId(ctx, { studentId, admissionNo, studentName }) {
   if (studentId) {
     // Confirms the caller may see this student at all; throws the same 404 the
     // students API gives them if not.
-    await students.getById(ctx.actor, studentScopeOf(ctx), String(studentId), { via: 'mcp.resolve', audit: false });
+    try {
+      await students.getById(ctx.actor, studentScopeOf(ctx), String(studentId), { via: 'mcp.resolve', audit: false });
+    } catch (err) {
+      if (isStudent(ctx) && err?.statusCode === 404) throw new AppError(ONLY_OWN_RECORDS, 403, [], 'STUDENT_OUT_OF_SCOPE');
+      throw err;
+    }
     return String(studentId);
   }
   // Nobody named. A student (or a single child's parent) is asking about
@@ -195,6 +220,7 @@ export async function resolveStudentId(ctx, { studentId, admissionNo, studentNam
 
   if (admissionNo) {
     const exact = rows.find((s) => s.admissionNo?.toLowerCase() === String(admissionNo).toLowerCase());
+    if (!exact && isStudent(ctx)) throw new AppError(ONLY_OWN_RECORDS, 403, [], 'STUDENT_OUT_OF_SCOPE');
     if (!exact) throw new AppError(`No student with admission number "${admissionNo}".`, 404);
     return exact.id;
   }
@@ -224,6 +250,7 @@ export async function resolveStudentId(ctx, { studentId, admissionNo, studentNam
 
   const named = exact.length > 1 ? exact : rows.filter((s) => ` ${String(s.name ?? '').toLowerCase()} `.includes(` ${term} `));
 
+  if (named.length === 0 && isStudent(ctx)) throw new AppError(ONLY_OWN_RECORDS, 403, [], 'STUDENT_OUT_OF_SCOPE');
   if (named.length === 0) {
     // A misspelling ("Arav Mishra") finds nothing by substring, so the name is
     // searched a token at a time and the results ranked by similarity. The

@@ -60,10 +60,10 @@
  * there is no branch, table or constant here naming a phrase, a role or a tool.
  */
 
-import { capabilitiesFor, capabilityIndex, entitiesInText, subjectEntityOf } from '../mcp/capabilities.js';
+import { capabilitiesFor, capabilityIndex, entitiesInText, subjectEntityOf, namesARecord } from '../mcp/capabilities.js';
 import { classFromText } from '../../../utils/classNames.js';
-import { monthFromText } from '../../../utils/naturalDates.js';
-import { rangeFromText } from '../../../utils/dateRanges.js';
+import { monthFromText, writtenDatesIn } from '../../../utils/naturalDates.js';
+import { rangeFromText, monthBounds } from '../../../utils/dateRanges.js';
 import { nameFromText } from '../../../utils/peopleNames.js';
 import { extractArgument, kindOfProperty, FOUND } from './argumentKinds.js';
 import { dateFromText, detectOperation, subjectFromText, topicFromText } from './entityIntent.js';
@@ -123,6 +123,53 @@ export function tokensOf(text) {
 }
 
 /* ── Reading the capability ───────────────────────────────── */
+
+/**
+ * Words that say the same thing, as stems.
+ *
+ * A fact about the language, like the stemmer above -- not a route to any
+ * capability. The catalogue names things with one word and people use several:
+ * `get_pending_fees` says "pending", a bursar says "outstanding" or "unpaid".
+ * Without this, "show outstanding fees for the school" docked the pending-fee
+ * read for a noun it did not use, and the fee STRUCTURES -- which nobody asked
+ * about -- answered instead.
+ *
+ * Kept deliberately small: only words that mean the same in every module.
+ * "due" is not here, because homework is due without being unpaid.
+ */
+const EQUIVALENT_WORDS = [
+  ['pending', 'outstanding', 'unpaid', 'owed', 'owing', 'unsettled'],
+  // A student's "marks" are their "results": get_results answers "show my
+  // marks", and without this the class marks sheet -- which a student cannot
+  // read -- was preferred for the one word it shares with the question.
+  ['mark', 'result'],
+  // A library "issue" is a loan. "Show my borrowed books" is a question about
+  // loans, and was answered with book REQUESTS for want of the word.
+  ['issue', 'borrow', 'borrowed', 'loan', 'lend', 'lent'],
+  ['payment', 'pay'],
+  // A teacher's "task" is the work they set: "show my tasks" asks for
+  // assignments, and scored below every threshold for want of the word.
+  ['assignment', 'task'],
+  // Where the bus collects a student is their pickup: "show my pickup point"
+  // asks for the caller's bus assignment.
+  ['bus', 'pickup'],
+  // Correcting a record is editing it: "what fields can I CHANGE" and "cancel
+  // my profile CHANGE request" name the profile-EDIT capabilities.
+  ['edit', 'editable', 'change', 'changeable', 'correction'],
+];
+
+const EQUIVALENTS = new Map();
+for (const group of EQUIVALENT_WORDS) {
+  // Singular and plural both: the stemmer takes "issues" to "issu" and leaves
+  // "issue" alone, and a tool NAME is usually plural.
+  const stems = [...new Set(group.flatMap((w) => [stem(w), stem(`${w}s`)]))];
+  for (const s of stems) EQUIVALENTS.set(s, stems);
+}
+
+/** True when the sentence used this word, or one that means the same. */
+function spoke(tokens, word) {
+  return tokens.has(word) || (EQUIVALENTS.get(word) ?? []).some((w) => tokens.has(w));
+}
 
 /**
  * The verb and the nouns a tool name states.
@@ -222,9 +269,18 @@ const VERB_CUES = new Set([
 export function verbPositions(text) {
   const words = wordsOf(text);
   const candidates = new Set();
-  if (words[0]) candidates.add(stem(words[0]));
+  // An instruction opens with the verb's base form -- "mark", "record" --
+  // never its third-person "-s" form. "Marks" at the head of a sentence is the
+  // noun, and reading it as the verb made a bare "marks" a request to WRITE
+  // marks: the resolver proposed publishing them.
+  const add = (word) => {
+    if (!word) return;
+    if (/[^s]s$/.test(word) && stem(word) !== word) return;
+    candidates.add(stem(word));
+  };
+  add(words[0]);
   for (let i = 0; i < words.length - 1; i += 1) {
-    if (VERB_CUES.has(words[i])) candidates.add(stem(words[i + 1]));
+    if (VERB_CUES.has(words[i])) add(words[i + 1]);
   }
   return candidates;
 }
@@ -238,6 +294,9 @@ export function verbPositions(text) {
  * football activity" asks for the same thing `request_cocurricular` does. The
  * negative lookahead keeps "I want to see my fees" a read.
  */
+/** A question opening with a question word asks what IS, whatever verb follows. */
+const WH_QUESTION = /^\s*(?:what|which|how|when|where|who|whom|whose|why)\b/i;
+
 const REQUEST_MOOD = [
   /\b(?:i\s+want\s+to|i'?d\s+like\s+to|i\s+need\s+to|can\s+i|let\s+me)\s+(?!see|view|show|know|check|look|find|get|read)\w+/i,
   // "apply for leave", "sign up for", "register for" -- each carries its own
@@ -277,7 +336,9 @@ const SELF_MARKER =
  * currently assigned to my hostel?" came back with the enquiry queue.
  */
 const POSSESSED_INSTITUTION =
-  /\bmy\s+(?:school|institution|college|campus|organisation|organization|hostel|library|office)\b/i;
+  // ...unless it only qualifies the noun that follows: "my library REQUESTS"
+  // are the caller's own requests, not the library they run.
+  /\bmy\s+(?:school|institution|college|campus|organisation|organization|hostel|library|office)\b(?!\s+(?!(?:in|at|of|for|is|are|was|were|and|or|with|to|from|on|now|today)\b)[a-z])/i;
 
 /**
  * "My students" is a set the caller is responsible for; "my attendance" is a
@@ -289,7 +350,12 @@ const POSSESSED_INSTITUTION =
  * penalised every class-level capability for an administrator asking to see
  * their students, and the question came back answered with guardians.
  */
-const POSSESSED_SET = /\bmy\s+[a-z]+(?:s|ren)\b/i;
+// A possessive over a POPULATION, not over any plural: "my marks" and "my
+// fees" are the caller's own records, and reading them as a set the caller
+// presides over excused the class-level capabilities from the self penalty --
+// so a student's "show my marks" reached the class marks sheet.
+const POSSESSED_SET =
+  /\bmy\s+(?:students|pupils|children|kids|classes|sections|divisions|teachers|staff|wards|residents|members|subordinates|team)\b/i;
 
 const asksAboutSelf = (str) => SELF_MARKER.test(String(str).replace(POSSESSED_INSTITUTION, ' '));
 
@@ -399,12 +465,17 @@ const TITLE_STOP = new Set([
   'add', 'create', 'new', 'update', 'edit', 'change', 'delete', 'remove', 'cancel',
   'issue', 'return', 'renew', 'approve', 'reject', 'request', 'allocate', 'assign',
   'vacate', 'apply', 'mark', 'record', 'enter', 'publish', 'send', 'notify', 'move',
-  'enrol', 'enroll', 'submit', 'withdraw', 'grade', 'decide', 'review', 'reply', 'close',
+  'enrol', 'enroll', 'submit', 'withdraw', 'grade', 'decide', 'review', 'reply', 'close', 'register', 'join',
   'how', 'when', 'what', 'why', 'who', 'which', 'where', 'i', 'my', 'we', 'please', 'the',
 ]);
 
 export function titleFromText(text) {
-  const str = String(text ?? '');
+  // A class reference is never part of a title. Taken out before the runs are
+  // read, so "for Class 6-A: Science fair" does not yield the title
+  // "A: Science" -- the section letter glued to what follows the colon.
+  const raw = String(text ?? '');
+  const spokenClass = classFromText(raw)?.text;
+  const str = spokenClass ? raw.split(spokenClass).join(' , ') : raw;
   const quoted = /["“”']([^"“”']{2,120})["“”']/.exec(str)?.[1];
   if (quoted) return quoted.trim();
 
@@ -445,10 +516,14 @@ export function titleFromText(text) {
  * already accounted for separately (verbPositions), so removing it here loses
  * nothing and stops it being read twice.
  */
-function withoutLeadingVerb(text) {
+export function withoutLeadingVerb(text) {
   const str = String(text ?? '').trim();
   const first = str.split(/\s+/)[0]?.toLowerCase().replace(/[^a-z]/g, '');
-  return first && TITLE_STOP.has(first) ? str.slice(str.indexOf(' ') + 1) : str;
+  // An opening word that reads as an act is the verb too: "SCHEDULE a
+  // calendar event" is about the calendar, and leaving the verb in made the
+  // timetable (whose vocabulary has "schedule") the thing being refused.
+  const isVerb = first && (TITLE_STOP.has(first) || detectOperation(first) !== 'GET');
+  return isVerb && str.includes(' ') ? str.slice(str.indexOf(' ') + 1) : str;
 }
 
 /**
@@ -467,6 +542,11 @@ function withoutLeadingVerb(text) {
 function personShaped(run) {
   if (!run) return null;
   const words = String(run).trim().split(/\s+/);
+  // A sentence opens with its verb, capitalised: "Generate Mathematics
+  // homework" is an instruction, not a pupil called Generate Mathematics.
+  // The verb is set aside and what follows judged on its own -- "Assign Diya
+  // Sharma to Room 101" still names Diya Sharma.
+  if (words.length && (detectOperation(words[0]) !== 'GET' || TITLE_STOP.has(words[0].toLowerCase()))) words.shift();
   if (words.length < 2 || words.length > 3) return null;
   return words.every((w) => /^[A-Z][a-z'-]+$/.test(w)) ? words.join(' ') : null;
 }
@@ -510,7 +590,9 @@ function capitalisedInText(name, text) {
  * express and was penalised for. A subject qualifies academic work, so it is
  * read only where academic work is what is being asked about.
  */
-const SUBJECT_QUALIFIES = new Set(['marks', 'homework', 'attendance', 'subject', 'timetable', 'class', 'material']);
+// An elective is a subject, and a co-curricular request names its activity the
+// same way: "the Basketball activity", "the Robotics elective".
+const SUBJECT_QUALIFIES = new Set(['marks', 'homework', 'attendance', 'subject', 'timetable', 'class', 'material', 'elective', 'studentRequest']);
 
 function subjectOf(str) {
   // Read past the opening verb, for the same reason the entity is: "MARK
@@ -518,8 +600,21 @@ function subjectOf(str) {
   // every capability that could not express a subject was then penalised for
   // one nobody named.
   const spoken = withoutLeadingVerb(str);
-  const entity = entitiesInText(spoken).find((e) => SUBJECT_QUALIFIES.has(e));
-  return entity ? subjectFromText(spoken, entity) : null;
+  // Each entity the subject could qualify, until one yields it: "register me
+  // for the Robotics elective" also reads as the attendance REGISTER, and
+  // stopping at that first entity lost the elective's name.
+  const qualifying = entitiesInText(spoken).filter((e) => SUBJECT_QUALIFIES.has(e));
+  for (const [index, entity] of qualifying.entries()) {
+    const found = subjectFromText(spoken, entity);
+    if (!found) continue;
+    // The first entity's reading stands as it always has. Reading on to a
+    // LATER entity is what finds "Robotics" for the elective -- and it must
+    // not take a word that names an entity of its own: in "child exam
+    // schedule" the word before the timetable's "schedule" is "exam", which
+    // is what the sentence is about, not a subject of it.
+    if (index === 0 || !entitiesInText(found).length) return found;
+  }
+  return null;
 }
 
 /**
@@ -539,6 +634,108 @@ const SPOKEN_DAY =
 
 const spokenDayOf = (text) => SPOKEN_DAY.exec(String(text ?? ''))?.[1]?.toLowerCase() ?? null;
 
+/**
+ * A request for records of a school other than the caller's own.
+ *
+ * "Show students from another school" is not a request any capability can
+ * express, and must never become one: the school is not an argument anywhere
+ * in the catalogue -- it comes from the session, and the MCP server discards an
+ * identity argument if one is sent. Left unread, the sentence scored as a plain
+ * directory listing and was answered with the caller's OWN students, presented
+ * as though they were the other school's.
+ *
+ * Grammar, not a list of schools: a preposition that says whose records
+ * ("from", "of", "at", "in", "across") before "another/other/different/all
+ * schools". "Transferred TO another school" is a statement about a student of
+ * this school, and is not matched.
+ */
+// Also the possessive -- "another school's attendance" says whose records just
+// as "attendance from another school" does, and was read as a pupil called
+// "school" -- and any request to move the session itself to another school by
+// naming its tenant: the tenant is never an argument, so there is no honest
+// answer to "change tenant_id to X and show..." other than this refusal.
+const OTHER_INSTITUTION =
+  /\b(?:from|of|at|in|across|belonging\s+to)\s+(?:(?:an|some|any|a)\s+)?(?:other|another|different|every|all(?:\s+the)?|both(?:\s+the)?)\s+(?:schools?|institutions?|colleges?|campus(?:es)?|branch(?:es)?|tenants?)\b|\b(?:an?other|other|different)\s+(?:schools?|institutions?|colleges?|campus(?:es)?|branch(?:es)?|tenants?)['’]s?(?:\s|$)|\btenant[\s_-]?id\b|\b(?:switch|change|set)\s+(?:the\s+|my\s+)?(?:school|tenant)\b|\b(?:the\s+)?(?:entire|whole|full)\s+platform\b|\bacross\s+(?:the\s+)?platform\b|\bplatform[\s-]?wide\b|\bevery\s+school\b/i;
+
+/**
+ * "Change my address to 12 Park Street": which of the caller's own fields, and
+ * to what. Grammar, not vocabulary -- the field is whatever the sentence names
+ * after "my", and the capability decides whether it can hold it.
+ */
+const CHANGE_OF_MINE =
+  /\b(?:change|update|correct|fix|edit|set)\s+my\s+([a-z][a-z' -]{1,40}?)\s+(?:to|as)\s+(.+?)[.?!]*\s*$/i;
+
+/**
+ * "Rename X to Y", "change the title of X to Y": the record's current name and
+ * its new one. Two names, two destinations -- read as one title, the current
+ * name was proposed as the "change" and the new one was lost.
+ */
+const RECORD_NOUN = String.raw`(?:course\s+material|study\s+material|material|document|handout|notes)`;
+const RENAME = new RegExp(
+  String.raw`\b(?:rename|retitle)\s+(?:the\s+)?(?:${RECORD_NOUN}\s+)?(.+?)\s+(?:to|as)\s+(.+?)[.!]?\s*$`, 'i',
+);
+const TITLE_CHANGE = new RegExp(
+  String.raw`\b(?:change|update|edit|correct|fix|set|modify)\s+the\s+(?:title|name)\s+of\s+(?:the\s+)?(?:${RECORD_NOUN}\s+)?(.+?)\s+to\s+(.+?)[.!]?\s*$`, 'i',
+);
+const unquote = (s) => String(s ?? '').trim().replace(/^["'‘“]+|["'’”]+$/g, '').trim();
+
+export function renameFromText(text) {
+  const m = RENAME.exec(String(text ?? '')) ?? TITLE_CHANGE.exec(String(text ?? ''));
+  if (!m) return null;
+  const from = unquote(m[1]);
+  const to = unquote(m[2]);
+  return from && to ? { from, to } : null;
+}
+
+/**
+ * A record named straight after its noun, in an instruction: "delete the course
+ * material Test notes", "update the document Fractions notes". The name need
+ * not be quoted or capitalised -- people type "Test notes" -- and it runs to
+ * the end of the sentence or to the preposition that starts what follows ("for
+ * Class 6-A"). Only for an instruction: "show course material for Class 6-A"
+ * names no record.
+ */
+const NAMED_AFTER_NOUN = new RegExp(
+  String.raw`\b${RECORD_NOUN}\s+(?!(?:for|to|in|on|of|from|with|about|that|which)\b)([\p{L}\p{N}][\p{L}\p{N}'’\- ]{1,80}?)(?=\s+(?:for|to|in|from)\b|[.!?]?\s*$)`, 'iu',
+);
+
+/**
+ * A ticket is named by its headline, around its noun: "the Bus timing
+ * ticket", "the ticket about bus timing". Whatever the sentence then SAYS --
+ * after "saying" or a colon -- is the message, not the name.
+ */
+const THREAD_NOUN = String.raw`(?:ticket|query|complaint)`;
+const NAMED_BEFORE_THREAD = new RegExp(String.raw`\bthe\s+([\p{L}\p{N}][\p{L}\p{N}'’\- ]{1,40}?)\s+${THREAD_NOUN}\b`, 'iu');
+const THREAD_ABOUT = new RegExp(
+  String.raw`\b${THREAD_NOUN}\s+(?:about|regarding|on)\s+(.+?)(?=\s+(?:saying|that\s+says)\b|\s*:|[.!?]?\s*$)`, 'iu',
+);
+
+function recordNamedAfterNoun(text) {
+  const str = String(text ?? '').trim();
+  const first = str.split(/\s+/)[0]?.toLowerCase().replace(/[^a-z]/g, '');
+  if (!first) return null;
+  // An instruction, by the coarse verb table or by a verb the catalogue names
+  // a write after ("reply", "approve").
+  const acts = detectOperation(first) !== 'GET'
+    || [...(verbIndex().get(stem(first)) ?? [])].some((op) => op !== 'GET');
+  if (!acts) return null;
+  const head = str.split(':')[0];
+  const name = (NAMED_AFTER_NOUN.exec(head) ?? THREAD_ABOUT.exec(head) ?? NAMED_BEFORE_THREAD.exec(head))?.[1]?.trim();
+  return name && !/^(?:the|this|that|my|a|an|your|his|her)$/i.test(name) ? name : null;
+}
+
+export function changeFromText(text) {
+  const m = CHANGE_OF_MINE.exec(String(text ?? ''));
+  return m ? { what: m[1].trim(), to: m[2].trim().replace(/^["'“”]|["'“”]$/g, '') } : null;
+}
+
+/** A string as a literal inside a regular expression. */
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export function asksBeyondOwnSchool(text) {
+  return OTHER_INSTITUTION.test(String(text ?? ''));
+}
+
 /** Everything the sentence names, in the dimensions capabilities are declared in. */
 export function dimensionsOf(text, now = new Date()) {
   const str = String(text ?? '');
@@ -547,7 +744,32 @@ export function dimensionsOf(text, now = new Date()) {
   // about tomorrow -- and reading a filter out of it penalised every
   // capability that could not express a date nobody was asking to filter by.
   const unquoted = str.replace(/["“”']([^"“”']{2,500})["“”']/g, ' ');
-  const range = rangeFromText(unquoted, now);
+  // A day written in words is read FIRST, and its span taken out before
+  // anything reads the sentence for a month or a range. "On 5th August 2026"
+  // names one day; the "August 2026" inside it is part of that day, and
+  // reading it as a month answered with the whole of August. Two written dates
+  // are the two ends of a range.
+  const written = writtenDatesIn(unquoted, now);
+  const undated = written.reduce((rest, w) => rest.split(w.text).join(' '), unquoted);
+  // The new value in "change my address to 12 Park Street" is data. Read for
+  // names and titles it became a book called "Park Street", and every
+  // capability that could not hold a title was penalised for it.
+  const change = changeFromText(str);
+  const rename = renameFromText(str);
+  // A pasted link is data too -- and its "https:" reads as a colon that
+  // introduces a topic, which made the tail of a URL an assignment's title.
+  const link = /\bhttps?:\/\/[^\s"'<>]+/i.exec(str)?.[0]?.replace(/[.,;)]+$/, '') ?? null;
+  const named = [change?.to, rename?.to, link].filter(Boolean).reduce((rest, span) => rest.split(span).join(' '), str);
+
+  const range = written.length >= 2
+    ? {
+      from: written[0].iso,
+      to: written[written.length - 1].iso,
+      // No year written: the dates were placed in the most recent past, which
+      // is right for a question and wrong for an instruction -- see the scorer.
+      ...(!written.some((w) => w.yearGiven) && { yearless: true }),
+    }
+    : rangeFromText(undated, now);
   const admissionNo = admissionNoFromText(str);
 
   // Identity is read FIRST, and the subject is read from what is left.
@@ -562,9 +784,14 @@ export function dimensionsOf(text, now = new Date()) {
   const identity = {
     class: classFromText(str)?.text ?? null,
     admissionNo,
-    student: admissionNo ? null : capitalisedInText(nameFromText(withoutLeadingVerb(str)), str)
-      ?? personShaped(titleFromText(str)),
+    student: admissionNo ? null : capitalisedInText(nameFromText(withoutLeadingVerb(named)), named)
+      ?? personShaped(titleFromText(named)),
     numbered: numberedThingFromText(str),
+    // Spans that are dates, so nothing reads them a second time as a subject,
+    // a topic or a number ("5th" is not period five).
+    writtenDates: written.map((w) => w.text),
+    range,
+    link,
   };
 
   return {
@@ -577,34 +804,53 @@ export function dimensionsOf(text, now = new Date()) {
     // also the title candidate. "Return the overdue Harry Potter book" then
     // does not become a request about a student called Harry Potter: a
     // capability that can hold a title takes it as one.
+    // Main's reading (a book title that is also the name read out of the
+    // sentence is a person), over `named` -- the sentence with a requested
+    // new value and any link taken out, so neither is read as a name.
     personFromTitle: !admissionNo && (
-      (!nameFromText(withoutLeadingVerb(str)) && Boolean(personShaped(titleFromText(str))))
+      (!nameFromText(withoutLeadingVerb(named)) && Boolean(personShaped(titleFromText(named))))
       || Boolean(
-        titleFromText(withoutLeadingVerb(str)) &&
+        titleFromText(withoutLeadingVerb(named)) &&
         identity.student &&
-        titleFromText(withoutLeadingVerb(str)).toLowerCase() === identity.student.toLowerCase() &&
-        !/['’]s\b|\b(?:student|pupil|child|borrower|resident)\s+|\b(?:of|for|to)\s+|(?:\bas\s+)?\b(?:absent|present|late|excused)\b/i.test(str)
+        titleFromText(withoutLeadingVerb(named)).toLowerCase() === identity.student.toLowerCase() &&
+        // Grammar that says the run is a PERSON, not a book: a possessive, an
+        // introducing noun, a preposition, a register status -- or a number
+        // of marks given to them ("Give Rahul Sharma 8 marks"), the same
+        // evidence peopleNames.nameFromText() reads a person from.
+        !/['’]s\b|\b(?:student|pupil|child|borrower|resident)\s+|\b(?:of|for|to)\s+|(?:\bas\s+)?\b(?:absent|present|late|excused)\b|\b\d{1,3}(?:\.\d{1,2})?\s*(?:marks?|points?)\b/i.test(str)
       )
     ),
     numbered: identity.numbered,
-    month: range ? null : monthFromText(unquoted, now),
+    month: range || written.length ? null : monthFromText(undated, now),
     range,
+    writtenDates: identity.writtenDates,
     date: range ? null : dateFromText(unquoted, now),
     spokenDay: range ? null : spokenDayOf(unquoted),
     // Read past the opening verb, for the reason the entity and the subject
     // are: "Generate Mathematics homework ..." puts the verb inside the
     // capitalised run, and "Generate Mathematics" was then offered as the
     // title of the homework -- and, being two capitalised words, as a person.
-    // When the span was already claimed by grammatical evidence as a person, it is not a title.
-    title: (() => {
-      const candidate = titleFromText(withoutLeadingVerb(str));
-      if (!candidate) return null;
-      const personFromGrammar = Boolean(admissionNo || nameFromText(withoutLeadingVerb(str)));
+    //
+    // A person named with a possessive owns the thing; they are not part of
+    // its title. "Grade Priya Verma's Mathematics submission" proposed a
+    // submission titled "Priya Verma's Mathematics".
+    //
+    // When the span was already claimed by grammatical evidence as a person,
+    // it is not a title. With no capitalised title at all, a record named
+    // straight after its noun ("the course material Test notes") is one.
+    title: rename?.from ?? (() => {
+      const candidate = titleFromText(withoutLeadingVerb(
+        identity.student ? named.split(new RegExp(`${escapeRe(identity.student)}['’]s\\b`, 'g')).join(' ') : named,
+      ));
+      if (!candidate) return recordNamedAfterNoun(named);
+      const personFromGrammar = Boolean(admissionNo || nameFromText(withoutLeadingVerb(named)));
       if (personFromGrammar && identity.student && candidate.toLowerCase() === identity.student.toLowerCase()) {
         return null;
       }
       return candidate;
     })(),
+    // A record's current name and its new one; see the scorer.
+    rename,
     // The school subject a request is about. Read with the same grammar rule
     // the entity tier uses -- a subject sits just before the entity word, or
     // is introduced by "in"/"for" -- so both tiers understand "Mathematics
@@ -640,7 +886,14 @@ export function dimensionsOf(text, now = new Date()) {
     // two describe different answers, and LIST_REQUEST already stands aside
     // for a sentence that names one record.
     detail: DETAIL_REQUEST.test(str),
-    requestMood: REQUEST_MOOD.some((re) => re.test(str)),
+    // "What profile fields CAN I CHANGE?" asks which fields may be changed --
+    // a read. Reading "can I change" as a request to change something ruled
+    // out the capability that answers it.
+    requestMood: !WH_QUESTION.test(str) && REQUEST_MOOD.some((re) => re.test(str)),
+    otherInstitution: asksBeyondOwnSchool(str),
+    change,
+    // A link somebody pasted: the work being submitted, a reference.
+    link,
   };
 }
 
@@ -662,11 +915,14 @@ const ARG_NAMES = {
   admissionNo: ['admissionNo', 'invoiceNo', 'receiptNo', 'code'],
   student: ['studentName', 'query', 'search'],
   numbered: ['roomNo', 'roomNumber', 'bedNo', 'routeName', 'number', 'code'],
-  subject: ['subject'],
+  // `name` second: a co-curricular activity is named, not given a subject.
+  subject: ['subject', 'name'],
   month: ['month', 'period'],
   range: ['from', 'to'],
   date: ['date', 'day', 'on', 'dueAt', 'activityDate'],
-  title: ['title', 'query', 'search', 'name'],
+  // `subject` last, and only where it is a headline (a ticket's) rather than a
+  // school subject -- see acceptsDimension().
+  title: ['title', 'query', 'search', 'name', 'stopName', 'subject'],
   // What something is ABOUT, which is not the same as what it is CALLED. Read
   // with the grammar that introduces one -- "about X", "on X", a colon, a
   // quotation -- rather than from the capitalised run a title comes from,
@@ -682,6 +938,10 @@ const ARG_NAMES = {
   topic: ['topic', 'title'],
   // Filled by kind, not by name — see percentageArgOf().
   percentage: [],
+  // A field and its new value; written as a pair, see the scorer.
+  change: [],
+  rename: [],
+  link: [],
 };
 
 /**
@@ -696,6 +956,32 @@ const ENTITY_OF_WORD = new Map();
 function entityOfWord(word) {
   if (!ENTITY_OF_WORD.has(word)) ENTITY_OF_WORD.set(word, entitiesInText(String(word))[0] ?? null);
   return ENTITY_OF_WORD.get(word);
+}
+
+const isoToday = (now) => `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+const nextYear = (iso) => `${Number(iso.slice(0, 4)) + 1}${iso.slice(4)}`;
+
+/** The two ends of a period, under the names tools actually use. */
+export const RANGE_PAIRS = [['from', 'to'], ['fromDate', 'toDate'], ['startDate', 'endDate'], ['startsOn', 'endsOn']];
+
+/**
+ * True when a range is exactly one calendar month. Only then can a capability
+ * that takes a `month` answer it: "this week" falls inside September, and
+ * answering it with the whole of September is a wider answer than was asked.
+ */
+export function isWholeWeek(range) {
+  const from = new Date(`${range?.from}T00:00:00Z`);
+  const to = new Date(`${range?.to}T00:00:00Z`);
+  return from.getUTCDay() === 1 && (to - from) / 86_400_000 === 6;
+}
+
+export function isWholeMonth(range) {
+  const bounds = monthBounds(String(range?.from ?? '').slice(0, 7));
+  return Boolean(bounds && bounds.from === range.from && bounds.to === range.to);
+}
+
+export function rangeArgsOf(properties) {
+  return RANGE_PAIRS.find(([a, b]) => properties.includes(a) && properties.includes(b)) ?? null;
 }
 
 /** The argument a stated threshold belongs in, whatever the tool calls it. */
@@ -745,6 +1031,11 @@ function splitRecipient(title) {
 }
 
 function acceptsDimension(capability, argName, dimension) {
+  // A record's name is a ticket's headline, never a school subject: "Unit
+  // Test 2" must not become the subject of a marks question.
+  if (argName === 'subject' && dimension === 'title') {
+    return !namesARecord(capability, 'subject', { type: 'string' });
+  }
   if (!GENERAL_PURPOSE_ARGS.has(argName)) return true;
   const described = capability.schema?.properties?.[argName]?.description ?? '';
   const words = DIMENSION_WORDS[dimension];
@@ -833,6 +1124,28 @@ export const OPERATION_FAMILY = {
 };
 
 /**
+ * Whether a capability performs one of the operations asked for.
+ *
+ * The family above, with the one exception it cannot express: an ACTION is a
+ * task, and which tasks can stand in for a change or a removal depends on what
+ * the task IS. Taking every ACTION as a possible DELETE answered "delete the
+ * test homework" with generate_homework -- a request to remove work, proposed
+ * as a request to write more -- and, because a homework ACTION existed, the
+ * true answer ("deleting homework is not offered") was never given. So an
+ * ACTION stands in for a DELETE only when its own verb removes something, and
+ * for an UPDATE only when its verb does not create something new.
+ */
+export function performsAsked(capability, asked) {
+  const operations = asked instanceof Set ? [...asked] : [].concat(asked ?? []);
+  return operations.some((op) => {
+    if (!(OPERATION_FAMILY[op] ?? [op]).includes(capability?.operation)) return false;
+    if (capability.operation !== 'ACTION' || op === 'ACTION' || op === 'CREATE') return true;
+    const verbReads = detectOperation(nameParts(capability.name).verb ?? '');
+    return op === 'DELETE' ? verbReads === 'DELETE' : verbReads !== 'CREATE';
+  });
+}
+
+/**
  * What the sentence asks to be DONE, from the verbs the catalogue itself uses.
  *
  * A verb is meaningful here only because some capability is named after it, so
@@ -845,7 +1158,15 @@ export function operationsNamed(verbCandidates, verbs, { requestMood = false, me
   const operations = new Set();
   for (const [verb, ops] of verbs) {
     if (!verbCandidates.has(verb) || READ_VERBS.has(verb)) continue;
-    for (const op of ops) operations.add(op);
+    // A GENERIC verb means its own operation, whatever the catalogue happens to
+    // declare under that name: "update" is an UPDATE even though one update_
+    // tool is an ACTION, and letting that ACTION through made "update the
+    // homework deadline" a request any task could answer -- generate_homework
+    // did. The catalogue's declarations decide only for the SPECIFIC verbs
+    // ("mark", "publish", "approve"), which have no generic meaning to read.
+    const coarse = detectOperation(verb);
+    if (coarse !== 'GET') operations.add(coarse);
+    else for (const op of ops) operations.add(op);
   }
   if (operations.size) return operations;
 
@@ -879,7 +1200,7 @@ export function operationsNamed(verbCandidates, verbs, { requestMood = false, me
  */
 export function scoreCapability(
   capability,
-  { verbCandidates, tokens, entities, subjects, implied = null, named, wantedOperations },
+  { verbCandidates, tokens, entities, subjects, implied = null, named, wantedOperations, now = new Date() },
 ) {
   const args = {};
   let score = 0;
@@ -947,7 +1268,7 @@ export function scoreCapability(
   let absentNouns = 0;
   let matchedANoun = false;
   for (const noun of nouns) {
-    if (tokens.has(noun)) {
+    if (spoke(tokens, noun)) {
       add(WEIGHT.NOUN_MATCH, `noun:${noun}`);
       matchedANoun = true;
     } else if (askedByVerb && aboutThis && entityOfWord(noun) === capability.entity) {
@@ -1006,8 +1327,7 @@ export function scoreCapability(
 
   /* Operation. */
   const asked = wantedOperations.size ? [...wantedOperations] : ['GET'];
-  const family = new Set(asked.flatMap((op) => OPERATION_FAMILY[op] ?? [op]));
-  if (family.has(capability.operation)) add(WEIGHT.OPERATION_MATCH, `operation:${capability.operation}`);
+  if (performsAsked(capability, asked)) add(WEIGHT.OPERATION_MATCH, `operation:${capability.operation}`);
   else add(WEIGHT.OPERATION_MISMATCH, `operation:${capability.operation} not asked`);
 
   /* Dimensions the sentence named. */
@@ -1040,14 +1360,72 @@ export function scoreCapability(
     // accounted for.
     if (dimension === 'title' && filled.has('student') && value === dimensions.student) continue;
 
+    // A link goes where a capability declares one, and is never a penalty
+    // elsewhere: a URL in a sentence says nothing about which act was meant.
+    if (dimension === 'link') {
+      const into = ['link', 'url'].find((n) => properties.includes(n));
+      if (into) {
+        args[into] = value;
+        filled.add('link');
+        add(WEIGHT.FILTER_FILLED, `link -> ${into}`);
+      }
+      continue;
+    }
+
+    // A field and its new value go into a capability that holds both, and
+    // nowhere else. Never a penalty: "change my pickup point to Gandhi Nagar"
+    // is said to the transport request, which holds a stop, not a field.
+    if (dimension === 'change') {
+      if (properties.includes('field') && properties.includes('value')) {
+        args.field = value.what;
+        args.value = value.to;
+        filled.add('change');
+        targetsFilled += 1;
+        add(WEIGHT.TARGET_FILLED, 'change -> field, value');
+      }
+      continue;
+    }
+
+    // A record's current name and its new one go into a capability that takes
+    // a new name beside the identifying one, and are never a penalty
+    // elsewhere. The current name is also the `title` dimension, which fills
+    // the identifying argument on its own.
+    if (dimension === 'rename') {
+      if (properties.includes('newTitle') && properties.includes('title')) {
+        args.title ??= value.from;
+        args.newTitle = value.to;
+        filled.add('rename');
+        add(WEIGHT.FILTER_FILLED, 'rename -> title, newTitle');
+      }
+      continue;
+    }
+
     if (dimension === 'range') {
-      // A range needs both ends, or it is not a range the tool can honour.
-      if (properties.includes('from') && properties.includes('to')) {
-        args.from = value.from;
-        args.to = value.to;
+      // A range needs both ends, or it is not a range the tool can honour --
+      // under whichever pair of names the tool gives them. Leave is
+      // `fromDate`/`toDate`, and "apply for leave from 5 to 7 October" was
+      // declined as a range no capability could express.
+      const pair = rangeArgsOf(properties);
+      if (pair) {
+        // "Apply for leave from 5 October to 7 October", said in September,
+        // means the coming October. A yearless date defaults to the most
+        // recent past -- right for "attendance on 5 October", wrong for an
+        // instruction, which is about a date still to come.
+        const ahead = capability.operation !== 'GET' && value.yearless && value.from < isoToday(now)
+          ? nextYear
+          : (d) => d;
+        args[pair[0]] = ahead(value.from);
+        args[pair[1]] = ahead(value.to);
         filled.add('range');
         add(WEIGHT.FILTER_FILLED, 'range');
-      } else if (properties.includes('month') && value.from.slice(0, 7) === value.to.slice(0, 7)) {
+      } else if (properties.includes('day') && isWholeWeek(value)
+        && /\bweek\b/i.test(String(capability.schema?.properties?.day?.description ?? ''))) {
+        // A capability whose `day` says it takes the week (the timetable) is
+        // asked for the week, rather than refused for not taking a range.
+        args.day = 'week';
+        filled.add('range');
+        add(WEIGHT.FILTER_FILLED, 'range as week');
+      } else if (properties.includes('month') && isWholeMonth(value)) {
         args.month = value.from.slice(0, 7);
         filled.add('range');
         add(WEIGHT.FILTER_FILLED, 'range as month');
@@ -1124,7 +1502,11 @@ export function scoreCapability(
      nobody is almost never for it. A capability that answers with a LIST is
      perfectly well formed without one -- "show all students" is a real
      question -- so the same penalty there would rule out the right answer. */
-  if ((capability.targets ?? []).length && !(capability.targets ?? []).some((t) => filled.has(t))) {
+  // A capability NAMED for the caller (`get_my_bus`) has its target already:
+  // the caller. Docking it for naming nobody penalised exactly the reads a
+  // student asks with "my" -- "which bus am I on" lost to the request list.
+  if ((capability.targets ?? []).length && !(capability.targets ?? []).some((t) => filled.has(t))
+    && !(nameParts(capability.name).self && named.self)) {
     // Weighted by what it RETURNS, not by what it does. An UPDATE is not
     // automatically in the same position as a DETAIL read: several of these
     // capabilities identify their record by NAME rather than by id -- a book
@@ -1146,7 +1528,9 @@ export function scoreCapability(
       // what a search is asking not to do.
       add(capability.resultShape === 'DETAIL' ? WEIGHT.SHAPE_MISMATCH : WEIGHT.SHAPE_MATCH, 'search asked');
     } else if (named.aggregate) {
-      add(capability.resultShape === 'SUMMARY' ? WEIGHT.SHAPE_MATCH : WEIGHT.SHAPE_MISMATCH, 'aggregate asked');
+      // A listing that reports its own total carries the figure too.
+      const figure = capability.resultShape === 'SUMMARY' || capability.reportsTotal;
+      add(figure ? WEIGHT.SHAPE_MATCH : WEIGHT.SHAPE_MISMATCH, 'aggregate asked');
     } else if (named.detail) {
       // One record, in full. A LIST capability can only answer by returning
       // rows nobody asked for, and a SUMMARY by returning a figure.
@@ -1166,7 +1550,13 @@ export function scoreCapability(
   const namesSomebody = Boolean(named.class || named.student || named.admissionNo);
   const aboutAGroup = GROUP_ARGS.some((arg) => properties.includes(arg));
 
-  if (self) add(named.self ? WEIGHT.SELF_MATCH : WEIGHT.SELF_MISMATCH, 'self-scoped');
+  // A tool named for the caller's OWN something answers only when that
+  // something is what is asked about. "Upcoming exams for my classes" and
+  // "announcements relevant to my classes" say "my classes" to narrow a
+  // question about exams and announcements, and scoring get_my_classes as
+  // self-matched answered both with the teacher's list of sections.
+  const selfIsTheSubject = aboutThis || !subjects.length;
+  if (self) add(named.self && selfIsTheSubject ? WEIGHT.SELF_MATCH : WEIGHT.SELF_MISMATCH, 'self-scoped');
   else if (named.self && capability.minScope === 'ALL') add(WEIGHT.SELF_MISMATCH, 'school-wide, asked about self');
 
   if (named.self && !named.possessedSet && !namesSomebody && aboutAGroup) {
@@ -1191,7 +1581,7 @@ export function scoreCapability(
   const missingId = (capability.required ?? []).some((n) => ids.has(n) && args[n] === undefined);
   if (missingId) {
     const askedForByName = (verb && verbCandidates.has(verb) && !READ_VERBS.has(verb))
-      || (nouns.length > 0 && nouns.every((noun) => tokens.has(noun)));
+      || (nouns.length > 0 && nouns.every((noun) => spoke(tokens, noun)));
     return {
       score: 0,
       // What it WOULD have scored, so the resolver can tell how well the
@@ -1225,6 +1615,17 @@ export function scoreCapability(
  * otherwise get the same sentence in both -- which is what put "my child's ID
  * card is missing" into a ticket's priority as well as its subject.
  */
+
+/**
+ * The message with its quoted spans blanked out. Single quotes count only as a
+ * pair around words, never as an apostrophe: "Priya's" is not a quotation.
+ */
+function withoutQuotedText(text) {
+  return String(text ?? '')
+    .replace(/["“”][^"“”]{1,500}["“”]/g, ' ')
+    .replace(/(^|\s)['‘][^'‘’]{1,500}['’](?=[\s.,;:!?]|$)/g, '$1 ');
+}
+
 function fillDeclaredArguments(capability, args, message, { now, write, verbatim = message }) {
   const properties = capability.schema?.properties ?? {};
   const required = new Set(capability.required ?? []);
@@ -1239,12 +1640,17 @@ function fillDeclaredArguments(capability, args, message, { now, write, verbatim
 
   for (const [name, propertySchema] of order) {
     if (filled[name] !== undefined) continue;
+    if (namesARecord(capability, name, propertySchema)) continue;
     // Free text is read from the sentence as the person wrote it, never from
     // the residual. The residual has had names, classes and possessives cut
     // out of it, which is right for reading a number out of it and wrong for
     // quoting somebody: a ticket subject came back as "my   ID card is
     // missing" because "child's" had been removed as a possessive.
-    const source = kindOfProperty(name, propertySchema) === 'text' ? verbatim : message;
+    //
+    // Every other kind is read from OUTSIDE quotation marks. Quoted text is
+    // somebody's words -- the "3" in an assignment titled "Chapter 3" is part
+    // of its title, and was being proposed as its maximum marks.
+    const source = kindOfProperty(name, propertySchema) === 'text' ? verbatim : withoutQuotedText(message);
     const result = extractArgument(name, propertySchema, source, { now, write });
     if (result.status !== FOUND) continue;
     if (kindOfProperty(name, propertySchema) === 'text') {
@@ -1291,9 +1697,29 @@ function residualMessage(text, named) {
   // A span already accounted for. "the last 1 year" left a 1 behind, which a
   // bounded-integer argument then picked up as a period number.
   if (named.range) {
-    rest = rest.replace(/\b(?:last|past|previous|recent|next|this)\s+\d{0,3}\s*(?:day|week|month|year)s?\b/gi, ' ');
+    // With the preposition that introduces it: "during the previous year" left
+    // "during" behind, and the subject reader took it for a school subject.
+    rest = rest.replace(
+      /\b(?:(?:for|in|during|over|within|from)\s+)?(?:the\s+)?(?:last|past|previous|recent|next|this)\s+\d{0,3}\s*(?:day|week|month|year)s?\b/gi,
+      ' ',
+    );
   }
+  // A day written in words, likewise: its digits are a date, and "on 5th
+  // August 2026" left behind as text was read as a topic and a period number.
+  for (const span of named.writtenDates ?? []) rest = rest.split(span).join(' ');
+  if (named.link) rest = rest.split(named.link).join(' ');
   return rest;
+}
+
+/**
+ * Whether the caller holds any class a class-level capability could answer
+ * about. The same rule allowedSectionIds() applies in the tool layer: a
+ * school-wide reader holds every class, a teacher their own, and any other
+ * OWN-scoped caller -- a student, a parent -- none at all.
+ */
+function holdsClasses(actor, capability) {
+  const scope = actor?.permissions?.[capability.permission];
+  return scope === 'ALL' || actor?.roleKey === 'TEACHER';
 }
 
 /* ── The resolver ─────────────────────────────────────────── */
@@ -1314,7 +1740,13 @@ function rank(message, actor, { now, candidates }) {
   // fees?" was left with no fee capability at all.
   const authorized = candidates ?? capabilitiesFor(actor);
   const offered = new Set(authorized.map((c) => c.name));
-  const pool = authorized.filter((c) => !(c.supersededBy && offered.has(c.supersededBy)));
+  const pool = authorized
+    .filter((c) => !(c.supersededBy && offered.has(c.supersededBy)))
+    // A class-level capability cannot answer a caller who holds no class, and
+    // proposing it only produced "Class 6 A is not one of your classes" to a
+    // student asking for their own marks. Routing preference, not
+    // authorization: the tool still refuses on its own if reached.
+    .filter((c) => !c.requiresClass || holdsClasses(actor, c));
   if (!pool.length) return [];
 
   const reading = readingOf(message, now);
@@ -1389,7 +1821,7 @@ function readingOf(message, now) {
     message,
   });
 
-  return { verbCandidates, tokens, entities, subjects, implied: impliedByIdentity, named, wantedOperations };
+  return { verbCandidates, tokens, entities, subjects, implied: impliedByIdentity, named, wantedOperations, now };
 }
 
 /**
@@ -1434,6 +1866,15 @@ export function resolveCapability(message, actor, { now = new Date(), candidates
   // both modules speak of things being overdue, and the librarian holds only
   // one of them, so the wrong one won by default.
   const named = dimensionsOf(str, now);
+
+  // Another school's records: no capability can express that, by design, so
+  // none is chosen. Scoring it would pick the nearest capability and answer
+  // about the caller's own school as though it were the other one.
+  if (named.otherInstitution) return null;
+
+  // An act the caller cannot perform is not answered with one they can.
+  if (unavailableAction(str, actor)) return null;
+
   const spoken = entitiesInText(residualMessage(str, named));
   if (spoken.length) {
     const reachable = new Set((candidates ?? capabilitiesFor(actor)).map((c) => c.entity));
@@ -1567,6 +2008,176 @@ export function unmetNarrowing(message, actor, { now = new Date(), candidates = 
     words: missing.map((dimension) => UNMET_DIMENSION_WORDS[dimension]),
     description: best.capability.description ?? null,
   };
+}
+
+/** The verbs of a decision on somebody's request, as stems. */
+const DECISION_VERBS = new Set(['approve', 'reject', 'decide', 'review', 'grant', 'refuse', 'deny', 'accept', 'decline'].map(stem));
+
+/**
+ * The verbs a capability's own description opens with: "Record attendance on a
+ * date" performs RECORDING, "Publish or send an announcement" both publishing
+ * and sending. Only the opening of the first sentence counts -- that is where a
+ * description states its act; the rest describes consequences ("changes
+ * nothing until approved") and is not an act the caller performs.
+ */
+function openingVerbs(description) {
+  const first = String(description ?? '').split(/(?<=\.)\s/)[0] ?? '';
+  const lead = /^\s*([a-z]+(?:(?:\s*,\s*|\s+or\s+|\s+and\s+)[a-z]+)*)/i.exec(first)?.[1] ?? '';
+  return lead.split(/\s*,\s*|\s+or\s+|\s+and\s+/i).map((word) => stem(word.toLowerCase())).filter(Boolean);
+}
+
+/**
+ * True when the caller holds a write on the thing named that states, in its
+ * own words, that it performs this act. "Record attendance" is mark_attendance
+ * and "record marks" is enter_marks: neither is NAMED record_, so judging by
+ * tool names alone told a teacher they could not do the two things a teacher
+ * does most. Judged on the subject entity, so a verb one capability opens with
+ * never vouches for an act on a different thing.
+ */
+function actsBy(pool, subject, verb) {
+  if (!subject) return false;
+  return pool.some((c) => c.writes && c.entity === subject && openingVerbs(c.description).includes(verb));
+}
+
+/**
+ * An act the sentence asks for that this caller cannot perform -- said plainly,
+ * rather than answered with the nearest thing they CAN do.
+ *
+ * The failure it exists for: a student asking to "approve my own co-curricular
+ * request" was resolved to the capability that FILES a co-curricular request,
+ * because that was the nearest act they hold -- and it runs without
+ * confirmation. "Close my support ticket" listed closed tickets; "reply to my
+ * ticket" raised a new one. Each is a different act from the one asked for.
+ *
+ * Two findings, both derived from the catalogue and the caller's own grants:
+ *
+ *   NOT_PERMITTED  the verb is one the catalogue uses for an act ("approve",
+ *                  "reply", "mark") and the caller holds no capability named
+ *                  after it.
+ *   NOT_OFFERED    the caller works with the thing named (leave, a transport
+ *                  request) but none of their capabilities for it performs the
+ *                  kind of act asked for -- there is no cancelling a leave
+ *                  application, or editing a transport request, on the Web.
+ *
+ * A question is never an act: "what fields can I change?" asks what is
+ * possible. Nothing here grants, refuses or runs anything; it explains.
+ */
+/**
+ * A verb as it is said in "You can't ___": its base form. "Deleting or
+ * updating homework" was answered "You can't deleting homework". The base form
+ * is the catalogue's own verb, or a common one, that stems the same way.
+ */
+const COMMON_VERBS = ['delete', 'update', 'change', 'create', 'remove', 'edit', 'add', 'modify', 'cancel', 'make',
+  'generate', 'publish', 'mark', 'record', 'set', 'send', 'post', 'upload', 'schedule', 'rename', 'approve', 'reject'];
+function baseVerb(word) {
+  const w = String(word ?? '').toLowerCase();
+  if (!/(?:ing|ed|es|s)$/.test(w)) return w;
+  // The stemmer keeps a base form's final "e" ("delete") and drops it from an
+  // inflection ("deleting" -> "delet"), so both spellings of the root count.
+  const root = stem(w);
+  const found = [...verbIndex().keys(), ...COMMON_VERBS]
+    .find((v) => v !== w && (v === root || v === `${root}e` || stem(v) === root));
+  return found ?? w;
+}
+
+/** Catalogue capability names written out in a message -- "generate_homework". */
+const TOOL_NAME_IN_TEXT = /\b[a-z]+(?:_[a-z]+)+\b/g;
+
+export function unavailableAction(message, actor) {
+  // Quoted text is the person's own content -- "change its message to 'Submit
+  // the books'" -- and a verb inside it is not the act being asked for.
+  const str = String(message ?? '').replace(/["“”']([^"“”']{2,500})["“”']/g, ' ');
+  if (!str.trim() || WH_QUESTION.test(str)) return null;
+  const pool = capabilitiesFor(actor);
+  if (!pool.length) return null;
+
+  // A capability asked for BY ITS CATALOGUE NAME that this caller is not
+  // offered. "Generate AI homework using generate_homework" from a teacher
+  // names an act the Web does not give a teacher; it used to reach the MCP
+  // server, which refused it with a sentence about school-wide scope that
+  // answered nothing that was asked.
+  const offered = new Set(pool.map((c) => c.name));
+  const catalogue = new Map(capabilityIndex().map((c) => [c.name, c]));
+  for (const [written] of str.toLowerCase().matchAll(TOOL_NAME_IN_TEXT)) {
+    const capability = catalogue.get(written);
+    if (capability && !offered.has(written)) {
+      return { reason: 'NOT_OFFERED', verb: nameParts(written).verb ?? 'use', entity: capability.entity };
+    }
+  }
+
+  const words = wordsOf(str);
+  const surface = (stemmed) => words.find((w) => stem(w) === stemmed) ?? stemmed;
+  const verbs = verbIndex();
+  const candidates = verbPositions(str);
+  // Approving and rejecting are DECIDING: a librarian holds decide_book_request,
+  // not an approve_ tool, and "approve Rahul's book request" is theirs to do.
+  // One act under several words, like the equivalences above.
+  const held = new Set(pool.map((c) => nameParts(c.name).verb));
+  if ([...held].some((v) => DECISION_VERBS.has(v))) for (const v of DECISION_VERBS) held.add(v);
+  const named = dimensionsOf(str);
+  const subject = subjectEntityOf(withoutLeadingVerb(residualMessage(str, named)));
+
+  for (const verb of candidates) {
+    if (READ_VERBS.has(verb) || !verbs.has(verb)) continue;
+    if ([...verbs.get(verb)].every((op) => op === 'GET')) continue;
+    // A GENERIC act -- add, create, update, cancel -- is judged by the check
+    // below, on the thing it is done to: "add the Basketball activity" is a
+    // co-curricular request the student can make, whoever else's tool happens
+    // to be named add_. Only a SPECIFIC act (approve, reply, mark, issue) is
+    // refused for its verb alone.
+    if (detectOperation(surface(verb)) !== 'GET') continue;
+    if (!held.has(verb) && !actsBy(pool, subject, verb)) return { reason: 'NOT_PERMITTED', verb: baseVerb(surface(verb)), entity: subject };
+  }
+
+  // What the opening verb itself means, when it is a generic one: "update"
+  // is an UPDATE, whatever else the catalogue's update_* tools are declared
+  // as. Taking the catalogue's view counted a transport REQUEST as a way to
+  // update a transport request.
+  const opening = /^\s*(?:please\s+)?([a-z]+)/i.exec(str)?.[1]?.toLowerCase();
+  // "Give me the link" governs the speaker, which makes it a read -- the same
+  // rule operationsNamed() applies.
+  const toTheSpeaker = /^\s*(?:please\s+)?[a-z]+\s+(?:me|us)\b/i.test(str);
+  const coarse = opening && !toTheSpeaker ? detectOperation(opening) : 'GET';
+  const wanted = coarse !== 'GET'
+    ? new Set([coarse])
+    : operationsNamed(candidates, verbs, { requestMood: named.requestMood, message: str });
+  if (!wanted.size || !subject) return null;
+  const ofSubject = pool.filter((c) => c.entity === subject);
+  if (!ofSubject.length) return null;
+  // The opening verb is the act, not a noun naming a capability: "EDIT my
+  // announcement" matched the noun of decide_profile_edit ("profile edit"),
+  // and so a teacher was never told announcements cannot be edited -- the
+  // request went on to a capability they do not hold.
+  const tokens = new Set([...tokensOf(str)].filter((token) => !opening || token !== stem(opening)));
+  // A task standing in for a change must be a task on the thing named: grading
+  // a SUBMISSION is no way to "update the homework deadline", and counting it
+  // hid that changing homework is not offered at all.
+  const standsIn = (c) => c.operation === 'ACTION' && !wanted.has('ACTION') && !wanted.has('CREATE');
+  // Its own noun, exactly: the equivalence table counts "assignment" as
+  // "submission", which is right for reading and wrong for deciding that
+  // grading a submission is a way to change an assignment.
+  if (ofSubject.some((c) => performsAsked(c, wanted) && (!standsIn(c) || nameParts(c.name).nouns.some((n) => tokens.has(n))))) return null;
+  // Nor when the sentence names a capability of that kind by its own words --
+  // "create subject" is create_subject, whatever entity the registry filed it
+  // under. The finding is only ever that NOTHING offers the act.
+  if (pool.some((c) => performsAsked(c, wanted)
+    && nameParts(c.name).nouns.some((n) => (standsIn(c) ? tokens.has(n) : spoke(tokens, n))))) return null;
+  return { reason: 'NOT_OFFERED', verb: baseVerb(opening ?? [...wanted][0].toLowerCase()), entity: subject };
+}
+
+/**
+ * A question about OTHER people's records: "who is absent today?", "show all
+ * students", "which students failed?".
+ *
+ * Read as grammar. Asked by somebody who can only see their own records, it
+ * cannot be answered -- and answering it with their own record, which is what
+ * the nearest capability does, misrepresents what was asked.
+ */
+const ABOUT_OTHERS =
+  /\bwho\s+(?:is|are|was|were)\s+(?:absent|present|late|on\s+leave|failing|top|topping|first)\b|\b(?:all|every|other)\s+(?:the\s+)?(?:students|pupils|classmates)\b|\bclassmates\b|\bwhich\s+(?:students|pupils)\b|\bhow\s+many\s+(?:students|pupils)\b|\beveryone(?:'s)?\b|\b(?:students|pupils)\s+(?:in|of)\s+(?:my|the|this|our)\s+(?:class|school|section)\b/i;
+
+export function asksAboutOthers(message) {
+  return ABOUT_OTHERS.test(String(message ?? ''));
 }
 
 export function operationsAskedFor(message, actor) {

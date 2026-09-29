@@ -27,6 +27,18 @@ import { classFromText } from './classNames.js';
  * possessive slot, and treating them as students is how a self-question became
  * a lookup for a pupil called "Today".
  */
+/**
+ * Words that bind a name into the sentence around it -- "as", "to", "for",
+ * "today". They can sit at either END of a captured run but never inside a
+ * name, and they are the only words trimmed from the END of a capture:
+ * trimming a domain noun there would turn "my Science class" into a pupil
+ * called Science.
+ */
+const BINDING_WORDS = [
+  'as', 'to', 'for', 'of', 'on', 'in', 'at', 'and', 'with', 'from', 'by', 'into',
+  'today', 'tomorrow', 'yesterday', 'now',
+];
+
 const NOT_A_NAME = new Set([
   // Imperatives and interrogatives. A sentence opens with one of these, and
   // the possessive capture takes the LONGEST run of name-shaped words before
@@ -47,6 +59,9 @@ const NOT_A_NAME = new Set([
   // 'child' was already among DOMAIN_STEMS, but those guard only the bare-name
   // branch, never the possessive one.
   'child', 'children', 'son', 'daughter', 'kid', 'kids', 'ward', 'wards',
+  // ...and the other way round: "Rahul's FATHER" refers to a parent, and read
+  // as a name it became a person called "Rahul's father saying".
+  'father', 'mother', 'parent', 'parents', 'guardian', 'guardians', 'dad', 'mom', 'mum',
   'homework', 'assignment', 'attendance', 'marks', 'results', 'exam', 'subject', 'timetable', 'profile', 'announcement',
   // Domain nouns that pair with those words in ordinary questions. Without
   // them "absent count" and "absence report" read as people's names, and a
@@ -54,11 +69,25 @@ const NOT_A_NAME = new Set([
   'count', 'total', 'number', 'report', 'summary', 'snapshot', 'percentage', 'average', 'register', 'roster', 'list',
   'absent', 'absence', 'present', 'fees', 'fee', 'leave', 'library', 'hostel', 'transport', 'notice', 'circular',
   'bed', 'beds', 'room', 'rooms',
+  // What a student registers for or requests: "for the Robotics ELECTIVE" names
+  // a course, and "the" being trimmed off left "Robotics elective" looking
+  // like a person.
+  'elective', 'activity', 'activities', 'registration',
   'to', 'of', 'for', 'in', 'on', 'at', 'with', 'by', 'from', 'about', 'into', 'over', 'under', 'and', 'or',
   'policy', 'policies', 'rule', 'rules', 'guideline', 'guidelines', 'handbook', 'threshold',
   'criterion', 'criteria', 'requirement', 'requirements', 'standard', 'standards',
   'regulation', 'regulations', 'procedure', 'procedures', 'protocol', 'protocols',
   'this', 'that', 'the', 'a', 'an', 'all', 'each', 'every', 'whose', 'who',
+  // Auxiliaries and determiners. The status branch takes the word before
+  // "absent" as the person marked, so "who WAS absent" looked up a pupil called
+  // "was", and "ANOTHER school's attendance" one called "another school".
+  'was', 'were', 'be', 'been', 'being', 'am', 'has', 'have', 'had', 'will', 'shall', 'should',
+  'another', 'other', 'others', 'any', 'some', 'there', 'here',
+  // A name never contains one of these, and the greedy captures below took the
+  // one next to it: "Record Rahul Sharma as present" read the person as
+  // "Rahul Sharma as", "attendance of Rahul Sharma as present" as "of Rahul
+  // Sharma".
+  ...BINDING_WORDS,
 ]);
 
 /**
@@ -82,6 +111,7 @@ const DOMAIN_STEMS = [
   'profile', 'detail', 'information', 'summar', 'count', 'total', 'percent', 'average', 'statistic',
   'student', 'pupil', 'teacher', 'staff', 'parent', 'guardian', 'child',
   'class', 'section', 'division', 'subject', 'ticket', 'medical',
+  'material', 'course', 'note', 'handout', 'document', 'resource', 'task',
   'today', 'tomorrow', 'yesterday', 'week', 'month', 'year', 'term', 'session',
 ];
 
@@ -160,6 +190,18 @@ function isNotAName(word) {
   return false;
 }
 
+/**
+ * Strips trailing binding words: "Rahul Sharma as" → "Rahul Sharma",
+ * "Rahul Sharma today" → "Rahul Sharma". The captures take up to three
+ * name-shaped words, and the word after a name is as often a preposition or a
+ * day as it is a surname.
+ */
+function trimTrailingBindings(phrase) {
+  const words = clean(phrase).split(' ').filter(Boolean);
+  while (words.length > 1 && BINDING_WORDS.includes(words.at(-1).toLowerCase())) words.pop();
+  return words.join(' ');
+}
+
 function isNameLike(phrase) {
   const words = clean(phrase).split(' ').filter(Boolean);
   if (!words.length || words.length > 3) return false;
@@ -188,7 +230,7 @@ export function nameFromText(text) {
     if (trimmed && isNameLike(trimmed)) return clean(trimmed);
   }
 
-  const introduced = new RegExp(`\\b(?:student|pupil|child)\\s+(${NAME_PHRASE})`, 'iu').exec(str)?.[1];
+  const introduced = trimTrailingBindings(new RegExp(`\\b(?:student|pupil|child)\\s+(${NAME_PHRASE})`, 'iu').exec(str)?.[1]);
   if (introduced) {
     const trimmed = trimLeadingNonNames(introduced);
     if (trimmed && isNameLike(trimmed)) return clean(trimmed);
@@ -198,7 +240,7 @@ export function nameFromText(text) {
     `\\b(?:(?:of|for)\\s+(${NAME_PHRASE})|(?<!\\b(?:according|due|prior|introduction|guide|welcome|belong|refer)\\s+)to\\s+(${NAME_WORD}(?:\\s+${NAME_WORD}){1,2}))`,
     'iu',
   ).exec(str);
-  const prepositional = prepMatch?.[1] || prepMatch?.[2];
+  const prepositional = trimTrailingBindings(prepMatch?.[1] || prepMatch?.[2]);
   if (prepositional) {
     const trimmed = trimLeadingNonNames(prepositional);
     if (trimmed && isNameLike(trimmed)) return clean(trimmed);
@@ -211,7 +253,7 @@ export function nameFromText(text) {
   // attendance present" still yields no person.
   const marked = new RegExp(`\\b(${NAME_PHRASE})\\s+(?:as\\s+)?(?:${MARKED_STATUS})\\b`, 'iu').exec(str)?.[1];
   if (marked) {
-    const trimmed = trimLeadingNonNames(marked);
+    const trimmed = trimTrailingBindings(trimLeadingNonNames(marked));
     if (trimmed && isNameLike(trimmed)) return clean(trimmed);
   }
 
@@ -222,6 +264,15 @@ export function nameFromText(text) {
     const trimmed = trimLeadingNonNames(facilityPerson);
     if (trimmed && isNameLike(trimmed)) return clean(trimmed);
   }
+
+  // "Give Priya 8 marks", "award Rahul Sharma 5 points": the person is the one
+  // given a number. The number is the evidence, as the status is above -- and
+  // it is evidence on its own when the verb has already been read off the
+  // front ("Priya 8 marks for her assignment").
+  const given = new RegExp(
+    `(?:\\b(?:give|award)\\s+|^\\s*)(${NAME_PHRASE})\\s+\\d{1,3}(?:\\.\\d{1,2})?\\s*(?:marks?|points?)\\b`, 'iu',
+  ).exec(str)?.[1];
+  if (given && isNameLike(given)) return clean(given);
 
   // A message that is nothing but a name — "Arav Mishra" — which is how a
   // teacher looks somebody up after being shown a list.

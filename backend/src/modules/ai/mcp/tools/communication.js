@@ -5,7 +5,42 @@ import * as notifications from '../../../notifications/notification.service.js';
 import * as whatsapp from '../../../whatsapp/whatsapp.service.js';
 import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
-import { RISK, objectId, dateStr, shortDate, summarise, wrapAgentTool, resolveSection } from './_shared.js';
+import { RISK, objectId, dateStr, shortDate, summarise, wrapAgentTool, resolveSection, classIdentitySchema } from './_shared.js';
+
+/**
+ * An announcement addressed to one class named in words.
+ *
+ * The Web composer lets a teacher pick one of their sections; the assistant
+ * could only take section ids, so "announcement for my Class 6-A" was answered
+ * with "I can't narrow that by a class". The class is resolved BEFORE the
+ * proposal, at the caller's own scope, so the confirmation names it and a class
+ * the caller does not teach is refused before anything is offered. The
+ * service's resolveAudience() re-checks the audience against the publisher's
+ * scope when it is written, whatever arrives.
+ */
+function toOneClass(base) {
+  // Descriptors, not a spread: the wrapper's permission and description are
+  // lazy getters (see wrapAgentTool), and a spread would evaluate them here,
+  // at import time, inside the import cycle they exist to avoid.
+  return Object.defineProperties(Object.defineProperties({}, Object.getOwnPropertyDescriptors(base)), Object.getOwnPropertyDescriptors({
+    async prepare(ctx, args) {
+      const own = await base.prepare(ctx, args);
+      if (!args?.className) return own;
+      if (args.audience) throw new AppError('Name a class or give an audience, not both.', 400);
+      const section = await resolveSection(ctx, { className: args.className });
+      return { ...(own ?? {}), audience: { all: false, sectionIds: [section.sectionId] }, classLabel: section.label };
+    },
+    summarise(args, actor, prepared) {
+      if (prepared?.classLabel) return `Post the announcement "${args.title}" to ${prepared.classLabel}`;
+      return base.summarise(args, actor, prepared);
+    },
+    async run(ctx, args, prepared) {
+      const { className, ...rest } = args ?? {};
+      if (className && !prepared?.audience) prepared = await this.prepare(ctx, args);
+      return base.run(ctx, prepared?.audience ? { ...rest, audience: prepared.audience } : rest, prepared);
+    },
+  }));
+}
 
 const LEAD_STAGES = ['NEW', 'CONTACTED', 'TOUR_SCHEDULED', 'APPLICATION', 'ENROLLED', 'LOST'];
 
@@ -185,16 +220,17 @@ export const communicationTools = {
     service: 'announcement.service.list()',
   }),
 
-  create_announcement: wrapAgentTool('create_announcement', {
+  create_announcement: toOneClass(wrapAgentTool('create_announcement', {
     module: 'Communication',
     operation: 'CREATE',
     risk: RISK.HIGH,
     confirm: true,
     description:
-      'Publish an announcement. The audience is decided by the school\'s own rules from the publisher\'s permissions — a teacher reaches the classes they teach, a school-wide publisher the school. This is visible to many people at once, so it always needs confirmation and the summary names the real audience.',
+      'Publish or send an announcement. Name a class to address that class alone; otherwise the audience is decided by the school\'s own rules from the publisher\'s permissions — a teacher reaches the classes they teach, a school-wide publisher the school. This is visible to many people at once, so it always needs confirmation and the summary names the real audience.',
     inputSchema: {
       type: 'object',
       properties: {
+        ...classIdentitySchema,
         title: { type: 'string', maxLength: 200 },
         content: { type: 'string', maxLength: 5000 },
         audience: {
@@ -213,7 +249,7 @@ export const communicationTools = {
       additionalProperties: false,
     },
     service: 'announcement.service.create()',
-  }),
+  })),
 
   update_announcement: {
     module: 'Communication',
@@ -234,6 +270,11 @@ export const communicationTools = {
       additionalProperties: false,
     },
     permission: 'announcements.publish',
+    // School-wide publishers only. The Web offers no way to edit a posted
+    // announcement -- there is no update route and no edit control -- and the
+    // assistant may not offer a teacher an act the Web does not. ALL-scope
+    // publishers keep it as before; this phase leaves their surface alone.
+    minScope: 'ALL',
     affectsOthers: true,
     service: 'announcement.service.update()',
     summarise: (args, _actor, prepared) =>

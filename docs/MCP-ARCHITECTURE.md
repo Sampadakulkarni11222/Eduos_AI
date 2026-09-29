@@ -121,20 +121,29 @@ is only the permission map their session carries, from which the same registry
 yields a different capability set. The exclusion works the same way: it is a
 permission SUPER_ADMIN does not hold, not a rule about its name.
 
-The registry holds **161 capabilities, 81 of them writes**: GET 80, CREATE 26,
-UPDATE 14, DELETE 10, ACTION 31.
+The registry holds **173 capabilities, 89 of them writes**: GET 84, CREATE 33,
+UPDATE 15, DELETE 10, ACTION 31.
 
 | Role | Granted permissions | Capabilities visible | Writes |
 |---|---|---|---|
-| `SUPER_ADMIN` | 72 | **0 — excluded** | 0 |
-| `ADMIN` | 69 | 160 | 80 |
-| `PRINCIPAL` | 32 | 73 | 20 |
-| `STUDENT` | 24 | 63 | 13 |
+| `SUPER_ADMIN` | 80 | **0 — excluded** | 0 |
+| `ADMIN` | 72 | 172 | 88 |
+| `PRINCIPAL` | 32 | 77 | 24 |
+| `STUDENT` | 24 | 62 | 13 |
 | `TEACHER` | 28 | 58 | 17 |
-| `PARENT` | 18 | 44 | 3 |
-| `FINANCE` | 12 | 30 | 9 |
+| `PARENT` | 18 | 43 | 3 |
+| `FINANCE` | 12 | 31 | 10 |
 | `WARDEN` | 11 | 29 | 8 |
 | `LIBRARIAN` | 9 | 28 | 7 |
+
+The route-by-route audit of 2026-09-24 found six single-row web operations with
+no capability, each hidden by a neighbour that already declared its permission:
+`create_academic_year`, `create_term`, `create_grade`, `create_subject`
+(ADMIN, PRINCIPAL), `add_guardian` (ADMIN) and `request_payment_change`
+(ADMIN, FINANCE). Adding them also tightened two services the web shares:
+`addGuardian()` now only links a profile from the acting school and writes only
+the link's own fields, and `createTerm()` refuses an academic year from another
+school. Pinned by `mcp.structureParity.test.js`.
 
 ### The parity model
 
