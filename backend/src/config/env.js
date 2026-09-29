@@ -182,7 +182,11 @@ export const env = {
   // Turns of transcript handed to the model to resolve a follow-up. Small on
   // purpose -- "what about last month?" refers a turn or two back, and sending
   // the whole thread grows every request without making the answer better.
-  WHATSAPP_HISTORY_TURNS: Number(process.env.WHATSAPP_HISTORY_TURNS) || 6,
+  // Ten, the same as the website keeps (ai.controller MAX_HISTORY_TURNS): a
+  // write answered over several turns -- title, then due date -- is
+  // recovered from this transcript, and a smaller window forgot the request
+  // on WhatsApp that the website still remembered.
+  WHATSAPP_HISTORY_TURNS: Number(process.env.WHATSAPP_HISTORY_TURNS) || 10,
   // ── Provider abstractions (all optional — safe fallbacks in dev) ──
   // Google Sign-In: when set, /auth/google verifies the ID token audience.
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? '',

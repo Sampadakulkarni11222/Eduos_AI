@@ -400,6 +400,22 @@ export const attendanceTools = {
             additionalProperties: false,
           },
         },
+        // The register screen's "Mark all present": every pupil on the class
+        // register gets one status, and the teacher then changes the few who
+        // differ. Those few are `students`, and they win.
+        //
+        // An object, not a bare status, on purpose: a status word is in almost
+        // every attendance sentence, and a generic reader filling a bare enum
+        // from "mark Diya present" would have marked the whole class. Nothing
+        // fills an object from a sentence except the grammar that says
+        // "everyone" / "all" / "the whole class".
+        everyone: {
+          type: 'object',
+          description: 'Mark every pupil on the named class register with this status; pupils named in `students` are the exceptions',
+          properties: { status: { type: 'string', enum: STATUSES } },
+          required: ['status'],
+          additionalProperties: false,
+        },
         ...classIdentitySchema,
         sectionId: objectId('The class section, when giving entries'),
         entries: {
@@ -451,6 +467,42 @@ export const attendanceTools = {
     async prepare(ctx, args) {
       const date = args.date ?? today();
       const periodNo = args.periodNo ?? null;
+
+      // "Mark all present in Class 6-A, except Rahul Sharma": the whole register
+      // from the same roster the Web screen loads (which also checks the caller
+      // may see that class), with the named pupils as exceptions. The attendance
+      // service still decides whether this caller may MARK it.
+      if (args.everyone) {
+        if (args.entries?.length) throw new AppError('Give either everyone or register entries, not both.', 400);
+        const section = await resolveSection(ctx, args);
+        const sectionId = section?.sectionId ?? args.sectionId ?? null;
+        if (!sectionId) throw new AppError('Which class? Name it, for example "Class 6-A".', 400, [], 'AGENT_NEEDS_INPUT');
+        const roster = await attendance.getRoster(ctx.actor, ctx.scope, sectionId, date, periodNo);
+        const exceptions = new Map();
+        const exceptionNames = [];
+        for (const { status, ...ident } of args.students ?? []) {
+          const found = await resolveStudentEnrollment(ctx, ident);
+          if (String(found.sectionId) !== String(sectionId)) {
+            throw new AppError(`${found.name} is not on the ${roster.section.name} register.`, 400);
+          }
+          exceptions.set(String(found.enrollmentId), status);
+          exceptionNames.push(`${found.name} → ${status}`);
+        }
+        if (!roster.roster.length) throw new AppError(`There is nobody on the ${roster.section.name} register.`, 400);
+        const entries = roster.roster.map((r) => ({
+          enrollmentId: r.enrollmentId,
+          status: exceptions.get(String(r.enrollmentId)) ?? args.everyone.status,
+        }));
+        const rest = entries.length - exceptions.size;
+        return {
+          sectionId,
+          date,
+          periodNo,
+          entries,
+          names: [...exceptionNames, `${exceptions.size ? 'everyone else' : 'everyone'} (${rest}) → ${args.everyone.status}`],
+          className: section?.label ?? roster.section.name,
+        };
+      }
 
       if (args.students?.length) {
         if (args.entries?.length) {

@@ -47,7 +47,7 @@ import { extractArgument, FOUND } from './argumentKinds.js';
  */
 const OPERATION_VERBS = [
   ['DELETE', /\b(?:delet|remov|cancel|withdraw|clear)\w{0,4}\b/i],
-  ['UPDATE', /\b(?:updat|chang|edit|modif|amend|revis|correct|reword|rewrit|reschedul|clos|reopen)\w{0,4}\b/i],
+  ['UPDATE', /\b(?:updat|chang|edit|modif|amend|revis|correct|reword|rewrit|renam|retitl|reschedul|clos|reopen)\w{0,4}\b/i],
   // "assign(?!ment)": "show my Mathematics ASSIGNMENT" is a read about a
   // noun, and reading the verb inside it made it a request to create one.
   // "Share course material" publishes it.
@@ -182,6 +182,14 @@ const NOT_A_SUBJECT = new Set([
   // linear equations" yielded the subject "about", which is then offered to a
   // tool as though somebody had named a school subject called About.
   'about', 'regarding', 'concerning', 'on', 'in', 'of', 'to',
+  // Words that introduce a NAME. "an assignment for Class 6-A titled
+  // 'Chapter 3'" yielded the subject "titled".
+  'titled', 'entitled', 'called', 'named',
+  // "The WHOLE class" qualifies the class; read as a subject, it sent "mark the
+  // whole class present" to an exam-marks entry for a subject called "whole".
+  'whole', 'entire', 'everyone', 'everybody',
+  // Pronouns: "her Mathematics assignment" yielded the subject "her".
+  'her', 'his', 'its', 'our', 'your', 'him', 'she', 'he',
   'these', 'those', 'many', 'much', 'more', 'most', 'few', 'less', 'how', 'why', 'when', 'where', 'who',
 ]);
 
@@ -336,8 +344,18 @@ const AGGREGATE_REQUEST = /\bhow\s+many\b|\bhow\s+much\b|\bcount\b|\bnumber\s+of
 
 /** Everything the sentence names, in the dimensions capabilities are declared in. */
 function dimensionsNamed(str, entity, operation, now) {
-  const subject = subjectFromText(str, entity);
-  const student = nameFromText(str);
+  // Identity first, then the subject from what is left -- the order
+  // dimensionsOf() reads in. "Enter marks for Rahul Sharma" otherwise read
+  // "Rahul" as the school subject ("marks for <X>").
+  const named = nameFromText(str);
+  const everywhere = subjectFromText(str, entity);
+  const subject = named
+    ? subjectFromText(str.split(named).join(' , '), entity)
+      // The one exception, kept from before: the "name" IS the subject word
+      // itself ("marks for Mathematics"), and the subject reading wins.
+      ?? (everywhere && bare(everywhere) === bare(named) ? everywhere : null)
+    : everywhere;
+  const student = named;
   return {
     class: classFromText(str)?.text ?? null,
     // One phrase fills one dimension. "Show marks for Mathematics" puts the

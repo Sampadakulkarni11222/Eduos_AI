@@ -1018,6 +1018,26 @@
               "additionalProperties": false
             }
           },
+          "everyone": {
+            "type": "object",
+            "description": "Mark every pupil on the named class register with this status; pupils named in `students` are the exceptions",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "PRESENT",
+                  "ABSENT",
+                  "LATE",
+                  "EXCUSED",
+                  "HALF_DAY"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "additionalProperties": false
+          },
           "className": {
             "type": "string",
             "maxLength": 60,
@@ -7149,6 +7169,11 @@
           "title": {
             "type": "string",
             "maxLength": 200
+          },
+          "newTitle": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The new title, when renaming material named by its current title"
           },
           "fileUrl": {
             "type": "string",

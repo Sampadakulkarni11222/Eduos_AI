@@ -6,15 +6,17 @@ import { toolsAvailableTo } from './tools.js';
 import { monthFromText, looksLikeMonth } from '../../../utils/naturalDates.js';
 import { classFromText, refersToOwnClasses } from '../../../utils/classNames.js';
 import { detectSelfCategory } from './profileIntent.js';
-import { detectEntityIntent, subjectFromText } from './entityIntent.js';
+import { detectEntityIntent, subjectFromText, detectOperation } from './entityIntent.js';
 import {
-  resolveCapability, argumentsFor, dimensionsOf, operationsAskedFor, RANGE_PAIRS, performsAsked, isWholeMonth, isWholeWeek } from './capabilityResolver.js';
-import { capabilityIndex, capabilitiesFor, subjectEntityOf, TARGET_ARGS } from '../mcp/capabilities.js';
+  resolveCapability, argumentsFor, dimensionsOf, operationsAskedFor, RANGE_PAIRS, performsAsked, isWholeMonth, isWholeWeek,
+  withoutLeadingVerb } from './capabilityResolver.js';
+import { capabilityIndex, capabilitiesFor, subjectEntityOf, TARGET_ARGS, namesARecord } from '../mcp/capabilities.js';
 import { getMcpTool } from '../mcp/registry.js';
 import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 import { orderToolsByRelevance } from '../mcp/capabilities.js';
 import { logger } from '../../../utils/logger.js';
-import { kindOfProperty } from './argumentKinds.js';
+import { kindOfProperty, extractEnum, extractNumber, FOUND } from './argumentKinds.js';
+import { nameFromText } from '../../../utils/peopleNames.js';
 
 /**
  * Intent parsing: natural language → { tool, args }.
@@ -46,20 +48,48 @@ import { kindOfProperty } from './argumentKinds.js';
 const PAPER_NOISE = /^(?:the|an?|this|that|my|in|for|of|marks?|results?|scores?|publish\w*|enter\w*|record\w*|submit\w*|update\w*)$/i;
 
 function examPaperFrom(msg) {
+  return readMarksHead(msg).paper;
+}
+
+/**
+ * The part of a marks request before any sheet: which paper, and -- when the
+ * request is about one pupil -- who, and how many marks.
+ *
+ * Identity is read FIRST and taken out, the order dimensionsOf() uses: "Enter
+ * marks for Rahul Sharma" read "Rahul" as the school subject, and "Give Rahul
+ * Sharma 8 marks in Mathematics" lost both the pupil and the mark.
+ */
+function readMarksHead(msg) {
   let head = String(msg ?? '').split(':')[0];
   const spokenClass = classFromText(head)?.text;
   if (spokenClass) head = head.split(spokenClass).join(' , ');
-  const out = {};
-  const subject = subjectFromText(head, 'marks');
-  if (subject) out.subject = subject;
-  const exam = /\b((?:[\p{L}][\p{L}-]*\s+){0,2}(?:test|exam|examination)(?:\s*\d{1,2})?)\b/iu.exec(head)?.[1]?.trim();
-  if (exam) {
-    const words = exam.split(/\s+/);
+  const paper = {};
+  const examSpan = /\b((?:[\p{L}][\p{L}-]*\s+){0,2}(?:test|exam|examination)(?:\s*\d{1,2})?)\b/iu.exec(head)?.[1]?.trim();
+  // The person, read from what is not the exam's name -- "Unit Test" is two
+  // capitalised words, and is not a pupil.
+  const withoutExam = examSpan ? head.split(examSpan).join(' , ') : head;
+  const named = nameFromText(withoutLeadingVerb(withoutExam)) ?? dimensionsOf(withoutExam).student;
+  // "Publish marks for Mathematics": the phrase a name could sit in holds the
+  // subject word itself, and the subject reading wins -- the rule the entity
+  // tier keeps (dimensionsNamed).
+  const flat = (s) => String(s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  const everywhere = subjectFromText(head, 'marks');
+  const student = named && everywhere && flat(named) === flat(everywhere) ? null : named;
+  const unclaimed = student ? head.split(student).join(' , ') : head;
+  const subject = subjectFromText(unclaimed, 'marks');
+  if (subject) paper.subject = subject;
+  if (examSpan) {
+    const words = examSpan.split(/\s+/);
     while (words.length > 1 && (PAPER_NOISE.test(words[0]) || words[0].toLowerCase() === String(subject ?? '').toLowerCase())) words.shift();
     const cleaned = words.join(' ');
-    if (!/^(?:test|exam|examination)$/i.test(cleaned)) out.exam = cleaned;
+    if (!/^(?:test|exam|examination)$/i.test(cleaned)) paper.exam = cleaned;
   }
-  return out;
+  // A mark is a number the sentence says IS marks: "8 marks", "scored 41".
+  // Never any number -- the "2" in "Unit Test 2" is the exam's.
+  const scoreText = examSpan ? withoutExam : head;
+  const m = /\b(\d{1,3}(?:\.\d{1,2})?)\s*(?:marks?|points?)\b|\b(?:scored|got|gets)\s+(\d{1,3}(?:\.\d{1,2})?)\b/i.exec(scoreText);
+  const marks = m ? Number(m[1] ?? m[2]) : undefined;
+  return { paper, student, marks };
 }
 
 const RULES = [
@@ -812,15 +842,25 @@ const RULES = [
   },
   {
     tool: 'create_announcement',
-    patterns: [/\b(post|create|send|make)\b.*\bannouncement\b/i, /\bnotice\b.*\b(post|send)\b/i],
+    // "Announce that ..." is the same act as "create an announcement that ...":
+    // the verb, not only the noun.
+    patterns: [/\b(post|create|send|make)\b.*\bannouncement\b/i, /\bnotice\b.*\b(post|send)\b/i, /^\s*(?:please\s+)?announce\b/i],
     args: (msg) => {
       const quoted = msg.match(/["“](.+?)["”]/)?.[1];
       // Only text the sentence INTRODUCES as the message -- after a colon, or
       // "saying"/"that". Without an introducer whatever followed the word was
       // taken, and "announcement for my Class 6-A" was proposed with the title
       // "for my Class 6-A.": a notice nobody wrote.
-      const after = msg.match(/announcement\b[^:]*?(?:\bthat\s+|\bsaying\s+|:\s*)(.{3,140})/i)?.[1]?.replace(/[.\s]+$/, '');
-      const title = (quoted ?? after ?? '').trim();
+      //
+      // The class it is addressed to is the audience, read separately; left at
+      // the end of the text ("... starts at 9 AM to Class 6-A") it became part
+      // of the notice itself.
+      const after = msg.match(/\bannounce(?:ment)?\b[^:]*?(?:\bthat\s+|\bsaying\s+|:\s*)(.{3,140})/i)?.[1]
+        ?.replace(/\s+(?:to|for)\s+(?:my\s+)?(?:class|grade|std)\s*\d{1,2}\s*[-–]?\s*[a-z]?\s*[.!]?\s*$/i, '')
+        ?.replace(/[.\s]+$/, '');
+      const text = (quoted ?? after ?? '').trim();
+      // "Announce that tomorrow's class ..." -- the notice starts a sentence.
+      const title = text.charAt(0).toUpperCase() + text.slice(1);
       return title ? { title, content: title } : {};
     },
   },
@@ -832,8 +872,16 @@ const RULES = [
   },
   {
     tool: 'enter_marks',
-    patterns: [/\b(?:record|enter|submit|update|add|put|upload)\w{0,3}\b.*\b(?:marks|scores)\b/i],
+    patterns: [
+      /\b(?:record|enter|submit|update|add|put|upload)\w{0,3}\b.*\b(?:marks|scores)\b/i,
+      // Giving somebody a NUMBER of marks is entering them; "give me the
+      // marks" is a question, and carries no number.
+      /\bgive\b.*\b\d{1,3}(?:\.\d{1,2})?\s*marks?\b/i,
+    ],
     weight: 3,
+    // Marks for an assignment are a GRADE on a submission, not an exam mark:
+    // "Give Priya 8 marks for her Mathematics assignment" is grade_submission.
+    exclude: [/\b(?:assignments?|homework|submissions?|worksheets?)\b/i],
     /**
      * The same two readings the attendance rule makes, for a marks sheet: WHO
      * got WHAT, and WHICH paper. Students are "Name 41" pairs after a colon,
@@ -842,11 +890,16 @@ const RULES = [
      * pairs, no students, and the tool asks.
      */
     args: (msg) => {
-      const out = { ...examPaperFrom(msg) };
+      const head = readMarksHead(msg);
+      const out = { ...head.paper };
       const sheet = /:\s*(.+)$/.exec(msg)?.[1];
       if (sheet) {
         const pairs = [...sheet.matchAll(/([\p{L}][\p{L}\p{N}_.'-]*(?:\s+[\p{L}][\p{L}\p{N}_.'-]*){0,2})\s*(?:[-–=:]|got|scored)?\s*(\d{1,4}(?:\.\d{1,2})?)\b/gu)];
         if (pairs.length) out.students = pairs.map((m) => ({ studentName: m[1].trim(), marks: Number(m[2]) }));
+      } else if (head.student) {
+        // One pupil named in the sentence: kept even without a mark, so the
+        // tool asks for the marks of THAT pupil rather than "whose marks?".
+        out.students = [{ studentName: head.student, ...(head.marks !== undefined && { marks: head.marks }) }];
       }
       return out;
     },
@@ -855,17 +908,24 @@ const RULES = [
     tool: 'mark_attendance',
     patterns: [
       /\bmark\b.*\battendance\b/i, /\battendance\b.*\bregister\b/i, /\ball present\b/i,
-      /\bmark\s+[\p{L}][\p{L}\p{N}_.'-]*(?:\s+[\p{L}][\p{L}\p{N}_.'-]*){0,3}\s+(?:as\s+)?(?:absent|present|late|excused)\b/iu,
+      // A register-writing verb and a status: "mark / record / set Rahul
+      // Sharma (as) present". Only "mark" was read, so "Record Rahul Sharma as
+      // present today" reached nothing at all.
+      /\b(?:mark|record|set|enter)\w{0,3}\b.*\b(?:absent|present|late|excused)\b/i,
       // Correcting a mark IS marking again -- the register keeps one entry per
-      // student and day, and re-marking updates it, on the Web as here.
-      /\b(?:update|change|correct|fix)\w{0,3}\b.*\battendance\b.*\b(?:as|to)\s+(?:absent|present|late|excused)\b/i,
+      // student and day, and re-marking updates it, on the Web as here. The
+      // status may be left for the tool to ask: "Correct Rahul Sharma's
+      // attendance for 5 August 2026" is still a correction of the register.
+      /\b(?:update|change|correct|fix|set)\w{0,3}\b.*\battendance\b/i,
     ],
     weight: 3,
     // "Mark him absent" names nobody. Left to this rule it would match with no
     // arguments and the tool would ask who — when the model, which is given
     // the conversation, can tell who "him" is. So a pronoun steps the rule
     // aside and the message routes to the model instead.
-    exclude: [/\bmark\s+(him|her|them|me|everyone|everybody|all)\b/i],
+    // "Everyone" and "all" are not pronouns: they are the whole register (see
+    // `everyone` below), the register screen's "Mark all present".
+    exclude: [/\bmark\s+(him|her|them|me)\b/i],
     /**
      * A named student and a status ("mark Rahul absent") become a `students`
      * entry, which the tool resolves to the right enrolment and class before
@@ -873,24 +933,36 @@ const RULES = [
      * sentence — it comes from the roster screen or the photo step — so a
      * message without a name yields no arguments and the tool asks who.
      */
+    //
+    // The person is read by the shared name reader, past the opening verb --
+    // the same reading every other capability gets. This rule used to carry
+    // its own regex, which took whatever sat between "mark" and the status:
+    // "Mark Diya Kumar's attendance as present" marked a pupil called "Diya
+    // Kumar's attendance", and "Mark attendance of Rahul Sharma as present" one
+    // called "attendance of Rahul Sharma".
     args: (msg) => {
-      const m = msg.match(
-        // A name may carry digits or an underscore after its first letter:
-        // "test_Stud" is an account a school really keeps, and a register
-        // holding one still has to be markable by name. Same character class as
-        // utils/peopleNames.js, for the same reason.
-        /\bmark\s+([\p{L}][\p{L}\p{N}_.'-]*(?:\s+[\p{L}][\p{L}\p{N}_.'-]*){0,3}?)\s+(?:as\s+)?(absent|present|late|excused)\b/iu
-      );
-      const corrected = m ? null : msg.match(
-        /\battendance\s+(?:for|of)\s+([\p{L}][\p{L}\p{N}_.'-]*(?:\s+[\p{L}][\p{L}\p{N}_.'-]*){0,3}?)\s+(?:as|to)\s+(absent|present|late|excused)\b/iu
-      );
-      const hit = m ?? corrected;
-      if (!hit) return {};
-      const name = hit[1].trim();
+      // The whole register, as the Web's "Mark all present" does it, with the
+      // pupils named after "except" as the exceptions. An exception with no
+      // status of its own is the other side of the day: absent from a day
+      // everyone else was present for, present otherwise.
+      const whole = WHOLE_REGISTER.exec(msg);
+      if (whole) {
+        const everyone = whole[1].toUpperCase();
+        const except = EXCEPT_CLAUSE.exec(msg);
+        const otherwise = except?.[2]?.toUpperCase() ?? (everyone === 'PRESENT' ? 'ABSENT' : 'PRESENT');
+        const names = except
+          ? except[1].split(/\s*(?:,|\band\b)\s*/i).map((n) => n.trim()).filter((n) => n && !/^(?:the|a|an)$/i.test(n))
+          : [];
+        return { everyone: { status: everyone }, ...(names.length && { students: names.map((studentName) => ({ studentName, status: otherwise })) }) };
+      }
+      const name = nameFromText(withoutLeadingVerb(msg));
       // Pronouns and group words are not names. The model resolves "him" from
       // the conversation; without one, the tool asks rather than guesses.
-      if (/^(him|her|them|me|everyone|everybody|all|the class|attendance)$/i.test(name)) return {};
-      return { students: [{ studentName: name, status: hit[2].toUpperCase() }] };
+      if (!name || /^(him|her|them|me|everyone|everybody|all|the class|attendance)$/i.test(name)) return {};
+      const status = /\b(absent|present|late|excused)\b/i.exec(msg)?.[1];
+      // A name without a status is kept: the tool asks "as what?" about the
+      // pupil already named, instead of asking who all over again.
+      return { students: [{ studentName: name, ...(status && { status: status.toUpperCase() }) }] };
     },
   },
 ];
@@ -983,6 +1055,15 @@ function selfStep(message, actor) {
 /** The three entities the entity tier claims, as capabilities.js names them. */
 const ENTITY_TIER_CLAIMS = ['attendance', 'marks', 'homework'];
 
+/** "Everyone / all (the students) / the whole class ... present". */
+const WHOLE_REGISTER =
+  /\b(?:everyone|everybody|all(?:\s+(?:the\s+)?(?:students|pupils|children))?|(?:the\s+)?(?:whole|entire)\s+class)\b(?:\s+(?:in|of)\s+(?:my\s+)?(?:class|grade|std)\s*\d{1,2}\s*[-–]?\s*[a-z]?)?\s+(?:as\s+)?(present|absent|late|excused)\b/i;
+/** "... except Rahul Sharma and Aman Gupta (who is absent)". */
+const EXCEPT_CLAUSE =
+  /\bexcept(?:\s+for)?\s+(.+?)(?:\s+(?:who\s+(?:is|was)\s+|as\s+)?(absent|present|late|excused))?(?:\s+(?:today|tomorrow|yesterday|on\s+.+))?\s*[.!]?\s*$/i;
+
+const QUANTITY_OF_MARKS =/\b\d{1,3}(?:\.\d{1,2})?\s*(?:marks?|points?)\b/i;
+
 function entityStep(message, actor) {
   if (!actor?.permissions?.['ai.copilot.use']) return null;
 
@@ -998,7 +1079,17 @@ function entityStep(message, actor) {
   // is read exactly as the scorer reads it -- the leading entity that is not
   // merely the population being asked over, so "which STUDENTS scored highest
   // in Mathematics" is still a question about marks.
-  const subject = subjectEntityOf(message);
+  //
+  // A NUMBER of marks being given is an act on one record -- a grade, or one
+  // pupil's exam mark -- which this tier's operation families cannot tell
+  // apart: "Give Priya 8 marks for her Mathematics assignment" became an
+  // exam-marks entry for a subject called "her", and with the number set aside
+  // it became a NEW assignment. The catalogue and the rules read it whole.
+  if (QUANTITY_OF_MARKS.test(String(message ?? ''))) return null;
+  // Read past the opening verb, as the catalogue resolver does: "MARK the
+  // whole class present" is about the register, and the verb read as the noun
+  // "marks" proposed an exam-marks entry for a subject called "whole".
+  const subject = subjectEntityOf(withoutLeadingVerb(message)) ?? subjectEntityOf(message);
   if (subject && !ENTITY_TIER_CLAIMS.includes(subject)) return null;
 
   const detected = detectEntityIntent(message, actor);
@@ -1029,8 +1120,10 @@ function capabilityStep(message, actor) {
   // "What is HIS attendance?" names its subject in an earlier turn, not in this
   // sentence. Scoring it here would pick the capability that needs no subject —
   // the caller's own record — and answer confidently about the wrong person. So
-  // a pronoun-led message is left to the steps that can see the transcript.
-  if (FOLLOW_UP_PRONOUN.test(String(message ?? ''))) return null;
+  // a pronoun-led message is left to the steps that can see the transcript --
+  // unless the pronoun points back at a person the SAME sentence names: "Give
+  // Priya 8 marks for her Mathematics assignment".
+  if (FOLLOW_UP_PRONOUN.test(String(message ?? '')) && !dimensionsOf(message).student) return null;
   const resolved = resolveCapability(message, actor);
   if (!resolved || resolved.needsClarification) return null;
 
@@ -1469,7 +1562,12 @@ function chooseStep(message, actor) {
   // all three, and it is what keeps "show attendance for July" a question
   // about a month rather than about a class.
   const entity = entityStep(message, actor);
-  if (entity && heldBy(actor, entity.tool) && respectsSpecificity(entity, String(message), actor)) return entity;
+  // The rule fills what the entity tier did not read, exactly as it does for
+  // the capability tier: "Update Rahul Sharma's Mathematics marks" was
+  // proposed with the paper and without the pupil.
+  if (entity && heldBy(actor, entity.tool) && respectsSpecificity(entity, String(message), actor)) {
+    return withRuleArguments(entity, message, actor);
+  }
 
   const own = selfStep(message, actor);
   // When both tiers name the SAME capability, the self-category tier's
@@ -1553,7 +1651,7 @@ function planSteps(message, actor) {
   }
 
   const entity = entityStep(msg, actor);
-  if (entity && heldBy(actor, entity.tool) && respectsSpecificity(entity, msg, actor)) return [entity];
+  if (entity && heldBy(actor, entity.tool) && respectsSpecificity(entity, msg, actor)) return [withRuleArguments(entity, msg, actor)];
 
   // A question about the caller's own profile, classes, subjects or timetable
   // is one step and needs no planning.
@@ -1698,7 +1796,150 @@ function carrySubjectForward(steps, message, actor, { history = [], tools = null
   return steps.map((s) => (takesStudent(s.tool) && !namesStudent(s.args) ? { ...s, args: { ...s.args, ...subject } } : s));
 }
 
+/**
+ * The answer to a question the assistant asked about an unfinished write.
+ *
+ * "Create Mathematics homework for Class 6-A." is answered "Tell me a title
+ * and the due date.", and the teacher replies "Fractions and decimals." With
+ * no model configured, that reply was read as a new request -- a search for a
+ * pupil called Fractions -- and the homework was never written. Both channels
+ * pass the conversation (the website since the transcript fix, WhatsApp
+ * always), so the unfinished request is recovered from it here, once, for
+ * both.
+ *
+ * Replayed from the caller's OWN earlier words, never the assistant's: an
+ * assistant turn is consulted only to see whether it asked something (a
+ * question that is not a proposal). The result is an ordinary plan step -- the
+ * MCP server still validates it, authorizes it at the caller's scope, asks for
+ * confirmation, and re-authorizes on "yes".
+ */
+const PROPOSAL_REPLY = /Shall I go ahead|Reply YES|क्या मैं आगे/i;
+// A question anywhere: "Whose marks, and how many? For example ..." ends
+// with its example, not with the question mark.
+const ASKED_REPLY = /\?|\bTell me\b|I need a bit more|थोड़ी और जानकारी/i;
+const NEW_REQUEST = /^\s*(?:please\s+)?(?:what|which|who|whom|whose|when|where|why|how|show|list|display|view|find|get|tell|give\s+me|can|could|would|is|are|do|does|yes|no|ok|okay|cancel|stop)\b/i;
+
+function standsAlone(message, actor) {
+  const str = String(message ?? '').trim();
+  if (!str || NEW_REQUEST.test(str)) return true;
+  const first = str.split(/\s+/)[0];
+  return detectOperation(first) !== 'GET' || operationsAskedFor(str, actor).size > 0;
+}
+
+/** A write step's arguments with what one more answer supplies. */
+function withAnswer(step, answer, actor) {
+  const schema = getMcpTool(step.tool)?.inputSchema ?? {};
+  const properties = schema.properties ?? {};
+  const args = structuredClone(step.args ?? {});
+  let supplied = false;
+  const capability = capabilityIndex().find((c) => c.name === step.tool);
+  const isFreeText = (name) => kindOfProperty(name, properties[name] ?? {}) === 'text'
+    && !namesARecord(capability, name, properties[name] ?? {});
+
+  // What the answer NAMES, read as the capability reads any sentence -- a
+  // class, a subject, a date, a number -- and as its pattern rule reads it.
+  // Free text is left out here: "Mathematics for Class 6-A" names a subject
+  // and a class, and is not also the title.
+  const read = withRuleArguments({ tool: step.tool, args: argumentsFor(step.tool, answer, actor) }, answer, actor).args;
+  for (const [name, value] of Object.entries(read)) {
+    if (args[name] === undefined && value !== undefined && !isFreeText(name)) { args[name] = value; supplied = true; }
+  }
+
+  // "Mathematics for Class 6-A", answering "which class and subject?": the
+  // subject is the name that introduces the class. Read only here, where the
+  // request is already known to be about academic work -- the same words as
+  // a first message could as easily be a pupil's name -- and the tool still
+  // checks the subject against the caller's own classes before proposing.
+  if (args.subject === undefined && properties.subject && namesARecord(capability, 'subject', properties.subject)) {
+    const introduced = /^\s*([A-Z][\p{L}&'.-]+(?:\s+[A-Z][\p{L}&'.-]+)?)\s+(?:for|in|of)\s+(?:[Cc]lass|[Gg]rade|[Ss]td|[Ss]ection)\b/u.exec(String(answer))?.[1];
+    if (introduced) { args.subject = introduced; supplied = true; }
+  }
+
+  // A list item missing a required value -- a pupil named without a status,
+  // or without a mark -- takes it from the answer by the value's own kind.
+  for (const [name, property] of Object.entries(properties)) {
+    if (property.type !== 'array' || !Array.isArray(args[name])) continue;
+    const item = property.items ?? {};
+    for (const entry of args[name]) {
+      for (const field of item.required ?? []) {
+        if (entry[field] !== undefined) continue;
+        const shape = item.properties?.[field] ?? {};
+        const found = Array.isArray(shape.enum) ? extractEnum(answer, shape)
+          : ['number', 'integer'].includes(shape.type) ? extractNumber(answer, shape) : null;
+        if (found?.status === FOUND) { entry[field] = found.value; supplied = true; }
+      }
+    }
+  }
+
+  // Nothing named: the request as it would have been written WITH its answer,
+  // after a colon -- where every reader already expects a notice's words, a
+  // marks sheet or a reply ("Record marks for Class 6-A Mathematics: Rahul
+  // Sharma 44"). Read again whole, by the same tiers as any sentence.
+  if (!supplied && step.text) {
+    const whole = `${step.text.replace(/[\s.!?]+$/, '')}: ${String(answer).trim()}`;
+    const [again] = parsePlan(whole, actor);
+    if (again?.tool === step.tool) {
+      for (const [name, value] of Object.entries(again.args ?? {})) {
+        if (args[name] === undefined && value !== undefined) { args[name] = value; supplied = true; }
+      }
+    }
+  }
+
+  // Still nothing: the answer IS the missing text -- the title, the message.
+  // Only a required free-text argument, never one that names a record.
+  if (!supplied) {
+    const text = String(answer).trim().replace(/^["'“‘]|["'”’]$/g, '').replace(/[\s.!]+$/, '').trim();
+    const missing = (schema.required ?? []).find((name) => args[name] === undefined && isFreeText(name));
+    if (missing && text) {
+      args[missing] = text;
+      // An announcement's words are both its headline and its body when only
+      // one was given -- what the announcement rule does with one sentence.
+      if (missing === 'title' && properties.content && args.content === undefined) args.content = text;
+      supplied = true;
+    }
+  }
+  return supplied ? { tool: step.tool, args, text: step.text } : null;
+}
+
+function continuedWrite(message, actor, conversation = []) {
+  // WhatsApp stores the inbound message before replying, so its transcript
+  // already ends with the message being answered now. It is this turn, not an
+  // earlier one.
+  const history = [...conversation];
+  while (history.length && history.at(-1)?.role === 'user'
+    && String(history.at(-1).text ?? '').trim() === String(message ?? '').trim()) history.pop();
+  if (!history.length || standsAlone(message, actor)) return null;
+  let open = null;
+  for (let i = 0; i < history.length; i += 1) {
+    const turn = history[i];
+    if (turn?.role !== 'user') continue;
+    const said = String(turn.text ?? '');
+    if (open && !standsAlone(said, actor)) {
+      open = withAnswer(open, said, actor) ?? open;
+    } else {
+      const plan = parsePlan(said, actor);
+      open = plan.length === 1 && isWrite(plan[0].tool) ? { tool: plan[0].tool, args: plan[0].args ?? {}, text: said } : null;
+    }
+    // Still open only if the assistant's reply to it ASKED for something. A
+    // proposal, an answer or a refusal closes it.
+    const reply = history.slice(i + 1).find((t) => t?.role === 'assistant')?.text ?? '';
+    const nextUser = history.slice(i + 1).findIndex((t) => t?.role === 'user');
+    const replied = nextUser === -1 || history.slice(i + 1, i + 1 + nextUser).some((t) => t?.role === 'assistant');
+    if (!replied || PROPOSAL_REPLY.test(reply) || !ASKED_REPLY.test(reply)) open = null;
+  }
+  return open ? withAnswer(open, message, actor) : null;
+}
+
 export async function parseIntentWithLlm(message, actor, { callModel, history = [], tools = null } = {}) {
+  // The answer to a question about an unfinished write comes first: read on
+  // its own it is usually a different request -- "Fractions and decimals." is
+  // a pupil search -- and the rules would claim it.
+  const found = continuedWrite(message, actor, history);
+  if (found) {
+    const continued = { tool: found.tool, args: found.args };
+    return { ...continued, steps: [continued] };
+  }
+
   const rawPlan = parsePlan(message, actor);
   // A plan the deterministic tiers are not sure of. It stands when no model is
   // configured, and gives way to one when there is -- which is what a model is

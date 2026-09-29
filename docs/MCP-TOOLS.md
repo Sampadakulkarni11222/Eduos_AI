@@ -1159,7 +1159,7 @@ Record attendance on a date. Say who in one of two ways: `students` — name the
 
 **Input**
 
-`students`: array — Students named directly, each with the status to record<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section, when giving entries<br>`entries`: array — One entry per enrolment, when marking a register from get_attendance_roster<br>`date`: string — Defaults to today<br>`periodNo`: integer — Omit for day-level attendance
+`students`: array — Students named directly, each with the status to record<br>`everyone`: object — Mark every pupil on the named class register with this status; pupils named in `students` are the exceptions<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section, when giving entries<br>`entries`: array — One entry per enrolment, when marking a register from get_attendance_roster<br>`date`: string — Defaults to today<br>`periodNo`: integer — Omit for day-level attendance
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1503,7 +1503,7 @@ Correct course material already published — its title, the uploaded file it po
 
 **Input**
 
-`documentId`: string — From list_documents<br>`title`: string<br>`fileUrl`: string — The path the upload endpoint returned<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string<br>`mimeType`: string<br>`visibleToRoles`: array
+`documentId`: string — From list_documents<br>`title`: string<br>`newTitle`: string — The new title, when renaming material named by its current title<br>`fileUrl`: string — The path the upload endpoint returned<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string<br>`mimeType`: string<br>`visibleToRoles`: array
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 

@@ -492,6 +492,7 @@ export const analyticsTools = {
       properties: {
         documentId: objectId('From list_documents'),
         title: { type: 'string', maxLength: 200 },
+        newTitle: { type: 'string', maxLength: 200, description: 'The new title, when renaming material named by its current title' },
         fileUrl: {
           type: 'string',
           maxLength: 600,
@@ -505,7 +506,10 @@ export const analyticsTools = {
       },
       // No required id: the title identifies the material when no id is given,
       // and renames it when one is. That is the same rule update_book keeps,
-      // for the same reason -- nobody types an ObjectId.
+      // for the same reason -- nobody types an ObjectId. A teacher renaming BY
+      // NAME says both names, so the new one has an argument of its own: the
+      // Web's edit form (PUT /documents/:id) renames, and without `newTitle`
+      // the assistant could only propose "Change nothing".
       additionalProperties: false,
     },
     permission: 'materials.manage',
@@ -513,11 +517,21 @@ export const analyticsTools = {
     service: 'document.service.listForActor() + updateForActor()',
     summarise: (args, _actor, prepared) => {
       const changed = ['fileUrl', 'mimeType', 'visibleToRoles'].filter((f) => args[f] !== undefined);
-      if (args.documentId && args.title !== undefined) changed.push('title');
+      if (args.newTitle !== undefined || (args.documentId && args.title !== undefined)) changed.push('title');
       if (args.sectionId || args.className) changed.push('class');
-      return `Change ${changed.join(', ') || 'nothing'} on course material ${args.title ? `"${args.title}"` : args.documentId}`;
+      const which = args.title && !args.documentId ? `"${args.title}"` : args.documentId;
+      if (args.newTitle !== undefined && changed.length === 1) return `Rename course material ${which} to "${args.newTitle}"`;
+      return `Change ${changed.join(', ')} on course material ${which}${args.newTitle !== undefined ? ` (new title "${args.newTitle}")` : ''}`;
     },
     async prepare(ctx, args) {
+      // A proposal that changes nothing is not a proposal. It used to be put
+      // to the teacher as "Change nothing on course material ..." -- confirmed,
+      // audited, and a no-op. What CAN change is asked instead.
+      const changes = ['newTitle', 'fileUrl', 'mimeType', 'visibleToRoles', 'sectionId', 'className']
+        .some((f) => args[f] !== undefined) || Boolean(args.documentId && args.title !== undefined);
+      if (!changes) {
+        throw new AppError('What should change: its title, its file or its class? For example "rename it to Fraction basics".', 400);
+      }
       return { documentId: await resolveDocumentId(ctx, args) };
     },
     async run(ctx, args, prepared) {
@@ -528,6 +542,7 @@ export const analyticsTools = {
         // A title given WITHOUT an id named the document; it is not also a
         // change to it.
         ...(args.documentId && args.title !== undefined && { title: args.title }),
+        ...(args.newTitle !== undefined && { title: args.newTitle }),
         ...(args.fileUrl !== undefined && { fileUrl: args.fileUrl }),
         ...(args.mimeType !== undefined && { mimeType: args.mimeType }),
         ...(args.visibleToRoles !== undefined && { visibleToRoles: args.visibleToRoles }),

@@ -859,7 +859,10 @@ function needsInputReply(toolName, err, lang) {
   // which is true, unhelpful, and impossible to act on.
   const reported = err?.errors?.length ? err.errors : err?.details?.errors;
   const missing = missingParameters(reported)
-    .map((field) => FRIENDLY_FIELDS[field] ?? describedField(tool, field))
+    // A field inside a list item ("students[0].status") is asked for by its
+    // own name: the person named the pupil, and is missing only the status.
+    .map((field) => FRIENDLY_FIELDS[field] ?? FRIENDLY_FIELDS[field.split(/[.[\]:\s]/).filter(Boolean).at(-1)]
+      ?? describedField(tool, field))
     .filter(Boolean);
   const unique = [...new Set(missing)];
   const asked = unique.length
@@ -894,7 +897,8 @@ function describedField(toolName, field) {
 /** The arguments a validation failure says were not supplied. */
 function missingParameters(errors) {
   if (!Array.isArray(errors)) return [];
-  return errors.map((e) => /^([\w.[\]]+) is required$/.exec(String(e))?.[1]).filter(Boolean);
+  // A list item reports as "students[0]: status is required".
+  return errors.map((e) => /^([\w.[\]]+(?::\s*[\w.]+)?) is required$/.exec(String(e))?.[1]).filter(Boolean);
 }
 
 /**
@@ -925,6 +929,14 @@ const FRIENDLY_FIELDS = {
   subject: 'a subject',
   status: 'the status',
   query: 'what to search for',
+  // Homework, grading and course material. Without these, "Create Mathematics
+  // homework for Class 6-A about fractions" and "Grade Priya's submission"
+  // were answered with a bare "I need a bit more to do that." -- nothing a
+  // teacher could act on.
+  dueAt: 'the due date',
+  marks: 'the marks',
+  fileUrl: 'the uploaded file',
+  students: 'which students',
 };
 
 /**

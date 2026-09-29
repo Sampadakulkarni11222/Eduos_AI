@@ -130,7 +130,11 @@ export /**
 async function resolveTicket(ctx, args) {
   if (args.ticketId) return { ticketId: String(args.ticketId), subject: null };
   const page = await tickets.list(ctx.actor, ctx.scope, {});
-  const found = theNamed(page, args.subject, {
+  // The service lists `{ ticket, messageCount }` rows, not tickets. Read as
+  // tickets, every row had no subject, so no ticket could be named at all --
+  // "reply to the Bus timing ticket" found nothing for anybody.
+  const rows = (Array.isArray(page) ? page : page?.items ?? []).map((row) => row?.ticket ?? row);
+  const found = theNamed(rows, args.subject, {
     label: 'ticket',
     nameOf: (t) => t.subject,
     describe: (t) => `"${t.subject}"`,
