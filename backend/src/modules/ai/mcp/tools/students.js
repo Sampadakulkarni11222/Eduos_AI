@@ -7,6 +7,7 @@ import {
   allowedSectionIds, classIdentitySchema,
 } from './_shared.js';
 import { classFromText, refersToOwnClasses } from '../../../../utils/classNames.js';
+import { resolveYear, resolveStaff } from './_names.js';
 
 /**
  * Student and enrolment tools.
@@ -353,28 +354,36 @@ export const studentTools = {
       properties: {
         ...studentIdentitySchema,
         guardianProfileId: objectId('The parent\'s profile id, e.g. from list_users'),
+        guardianName: { type: 'string', maxLength: 80, description: "The parent's name as a person writes it, e.g. \"Mr Sharma\". An existing parent profile; alternative to guardianProfileId." },
         relation: { type: 'string', enum: ['FATHER', 'MOTHER', 'GUARDIAN'] },
         isPrimary: { type: 'boolean', description: 'Whether this is the primary contact' },
         pickupAuthorized: { type: 'boolean', description: 'Whether they may collect the child; defaults to yes' },
       },
-      required: ['guardianProfileId', 'relation'],
+      // The parent is named or identified (see prepare); the relation is what
+      // the sentence says the parent IS to the child.
+      required: ['relation'],
       additionalProperties: false,
     },
     permission: 'students.manage',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'student.service.addGuardian()',
-    summarise: (args) =>
-      `Link profile ${args.guardianProfileId} as ${args.relation.toLowerCase()} of student ${args.studentName ?? args.admissionNo ?? args.studentId}`,
+    summarise: (args, _actor, prepared) =>
+      `Link ${prepared?.guardianName ?? `profile ${args.guardianProfileId}`} as ${args.relation.toLowerCase()} of student ${prepared?.studentLabel ?? args.studentName ?? args.admissionNo ?? args.studentId}`,
     async prepare(ctx, args) {
       const studentId = await resolveStudentId(ctx, args);
       if (!studentId) throw new AppError('Name a student — by id, admission number or name.', 400);
-      return { studentId };
+      // A parent profile of THIS school: a name is matched among them, never
+      // guessed. Anyone can be named "Mr Sharma"; the link is made only to a
+      // parent who already has an account here.
+      const guardian = await resolveStaff('PARENT', { profileId: args.guardianProfileId, name: args.guardianName }, 'parent');
+      if (!guardian) throw new AppError("Who is the guardian? Give the parent's name.", 400, [], 'AGENT_NEEDS_INPUT');
+      return { studentId, studentLabel: args.studentName ?? args.admissionNo ?? args.studentId, guardianProfileId: guardian.id, guardianName: guardian.name };
     },
     async run(ctx, args, prepared) {
       const plan = prepared ?? (await this.prepare(ctx, args));
-      const { guardianProfileId, relation, isPrimary, pickupAuthorized } = args;
-      const link = await students.addGuardian(plan.studentId, { guardianProfileId, relation, isPrimary, pickupAuthorized });
+      const { relation, isPrimary, pickupAuthorized } = args;
+      const link = await students.addGuardian(plan.studentId, { guardianProfileId: plan.guardianProfileId, relation, isPrimary, pickupAuthorized });
       return action({
         type: 'guardian_linked',
         id: link._id,
@@ -497,21 +506,41 @@ export const studentTools = {
     inputSchema: {
       type: 'object',
       properties: {
-        studentId: objectId('The student to enrol'),
+        ...studentIdentitySchema,
+        ...classIdentitySchema,
         sectionId: objectId('The class section'),
         academicYearId: objectId(),
+        academicYear: { type: 'string', maxLength: 40, description: 'The year as a person names it, e.g. "2026-27". Omit for the current year.' },
         rollNo: { type: 'integer', minimum: 1, maximum: 9999 },
       },
-      required: ['studentId', 'sectionId', 'academicYearId'],
+      // The student and the class are named in words; the year is the current
+      // one unless said (and the confirmation names it). See prepare().
       additionalProperties: false,
     },
     permission: 'enrollments.manage',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'student.service.enroll()',
-    summarise: (args) => `Enrol student ${args.studentId} into section ${args.sectionId}${args.rollNo ? ` as roll no ${args.rollNo}` : ''}`,
-    async run(_ctx, args) {
-      const enrollment = await students.enroll(args);
+    summarise: (args, _actor, prepared) =>
+      `Enrol ${prepared?.studentLabel ?? `student ${args.studentId}`} into ${prepared?.label ?? `section ${args.sectionId}`}`
+      + `${prepared?.yearName ? ` for ${prepared.yearName}` : ''}${args.rollNo ? ` as roll no ${args.rollNo}` : ''}`,
+    async prepare(ctx, args) {
+      const studentId = await resolveStudentId(ctx, args);
+      if (!studentId) throw new AppError('Which student? Give a name, admission number or id.', 400, [], 'AGENT_NEEDS_INPUT');
+      const section = await resolveSection(ctx, { sectionId: args.sectionId, className: args.className });
+      if (!section) throw new AppError('Which class? For example "Class 6-A".', 400, [], 'AGENT_NEEDS_INPUT');
+      const year = await resolveYear({ academicYearId: args.academicYearId, academicYear: args.academicYear });
+      return {
+        studentId, sectionId: section.sectionId, label: section.label, academicYearId: year.id, yearName: year.name,
+        studentLabel: args.studentName ?? args.admissionNo ?? `student ${studentId}`,
+      };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const enrollment = await students.enroll({
+        studentId: plan.studentId, sectionId: plan.sectionId, academicYearId: plan.academicYearId,
+        ...(args.rollNo !== undefined && { rollNo: args.rollNo }),
+      });
       return action({
         type: 'student_enrolled',
         id: enrollment._id ?? enrollment.id,
@@ -608,18 +637,30 @@ export const studentTools = {
       type: 'object',
       properties: {
         enrollmentId: objectId('From search_students or list_enrollments'),
+        ...studentIdentitySchema,
         status: { type: 'string', enum: ENROLLMENT_STATUSES },
       },
-      required: ['enrollmentId', 'status'],
+      // The enrolment is the named student's current one; see prepare().
+      required: ['status'],
       additionalProperties: false,
     },
     permission: 'enrollments.manage',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'student.service.updateEnrollmentStatus()',
-    summarise: (args) => `Set enrolment ${args.enrollmentId} to ${args.status}`,
-    async run(_ctx, args) {
-      const enrollment = await students.updateEnrollmentStatus(args.enrollmentId, args.status);
+    summarise: (args, _actor, prepared) =>
+      `Set ${prepared?.studentLabel ? `${prepared.studentLabel}'s enrolment${prepared.class ? ` in ${prepared.class}` : ''}` : `enrolment ${args.enrollmentId}`} to ${args.status}`,
+    async prepare(ctx, args) {
+      if (args.enrollmentId) return { enrollmentId: String(args.enrollmentId) };
+      const studentId = await resolveStudentId(ctx, args);
+      if (!studentId) throw new AppError('Whose enrolment? Give a name, admission number or id.', 400, [], 'AGENT_NEEDS_INPUT');
+      const [enrolment] = await students.listEnrollments({ studentId, status: 'ACTIVE' });
+      if (!enrolment) throw new AppError('That student has no active enrolment to change.', 404, [], 'NOT_FOUND');
+      return { enrollmentId: String(enrolment.id), studentLabel: enrolment.studentName, class: enrolment.class };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const enrollment = await students.updateEnrollmentStatus(plan.enrollmentId, args.status);
       return action({
         type: 'enrollment_status_changed',
         id: enrollment._id,

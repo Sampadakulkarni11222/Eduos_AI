@@ -47,12 +47,16 @@ import { extractArgument, FOUND } from './argumentKinds.js';
  */
 const OPERATION_VERBS = [
   ['DELETE', /\b(?:delet|remov|cancel|withdraw|clear)\w{0,4}\b/i],
-  ['UPDATE', /\b(?:updat|chang|edit|modif|amend|revis|correct|reword|rewrit|renam|retitl|reschedul|clos|reopen)\w{0,4}\b/i],
+  // "Move" carries something to a new state -- "move the admission lead to the tour
+  // stage" -- as "change" does. Spelled out: "mov" alone is the start of "movie".
+  ['UPDATE', /\b(?:updat|chang|edit|modif|amend|revis|correct|reword|rewrit|renam|retitl|reschedul|clos|reopen)\w{0,4}\b|\bmov(?:e|es|ed|ing)\b/i],
   // "assign(?!ment)": "show my Mathematics ASSIGNMENT" is a read about a
   // noun, and reading the verb inside it made it a request to create one.
   // "Share course material" publishes it.
   // Whole word forms for "share", never a stem: "shar" also begins "Sharma".
-  ['CREATE', /\b(?:add|creat|set|assign(?!ments?\b)|giv|make|generat|draft|upload|post|schedul|new)\w{0,4}\b|\b(?:share[sd]?|sharing)\b/i],
+  // "Raise a ticket", "raise an invoice": bringing one into being. The base form
+  // only -- "tickets RAISED by me" is a read about tickets that exist.
+  ['CREATE', /\b(?:add|creat|set|assign(?!ments?\b)|giv|make|generat|draft|upload|post|schedul|new)\w{0,4}\b|\b(?:share[sd]?|sharing)\b|\braise\b/i],
 ];
 
 /**
@@ -340,7 +344,7 @@ const ARG_NAMES = {
  * capability declares: asking how many is structurally a different question
  * from asking which, and the catalog holds capabilities that answer each.
  */
-const AGGREGATE_REQUEST = /\bhow\s+many\b|\bhow\s+much\b|\bcount\b|\bnumber\s+of\b|\btotal\b|\bsummar(y|ies)\b|\bstatistics\b|\bstats\b|\bpercentage\b/i;
+const AGGREGATE_REQUEST = /\bhow\s+many\b|\bhow\s+much\b|\bcount\b|\bnumber\s+of\b|\btotal\b|\bsummar(y|ies)\b|\bstatistics\b|\bstats\b|\bpercentage\b|\boccupancy\b|\bvacanc(?:y|ies)\b/i;
 
 /** Everything the sentence names, in the dimensions capabilities are declared in. */
 function dimensionsNamed(str, entity, operation, now) {

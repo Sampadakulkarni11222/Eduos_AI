@@ -322,7 +322,8 @@ export const ENTITY_VOCABULARY = [
   // without the word. Bare "work" is not here -- "does the bus work today?" is
   // no question about homework -- only work qualified by a state homework is in.
   ['homework', /\bhomework\b|\bassignments?\b|\bworksheets?\b|\bsubmissions?\b|\btasks?\b|\bclasswork\b|\b(?:pending|submitted|unsubmitted|overdue|completed)\s+work\b|गृहकार्य|होमवर्क/i],
-  ['announcement', /\bannouncement|\bnotice|\bcircular|\bnews\b/i],
+  // "Notify" is announcing to named people: the verb is the entity's own word.
+  ['announcement', /\bannouncement|\bnotice|\bcircular|\bnews\b|\bnotify(?:ing)?\b/i],
   ['material', /\bmaterial|\bcourse\s*material|\bnotes\b|\bhandout|\bdocument|\bresource/i],
   // "What class do I have next?" asks for a period -- which is the timetable,
   // not the caller's section.
@@ -349,14 +350,16 @@ export const ENTITY_VOCABULARY = [
   // of things the assistant can help with. A timetable question says so --
   // "timetable", "period", "lecture" -- and is matched by its own entry.
   ['calendar', /\bcalendar|\bevent|\bholiday|\bschedul(?:e|es|ed|ing)\b|\bagenda\b/i],
-  ['fee', /\bfees?\b|\binvoice|\bpayment|फीस/i],
+  ['fee', /\bfees?\b|\binvoice|\bpayment|\breceipt|\binstallment|फीस/i],
+  // Seats a school buys, requested from the platform: "request 25 extra seats".
+  ['seat', /\bseats?\b/i],
   ['library', /\blibrar|\bbooks?\b/i],
   ['hostel', /\bhostel|\bdorm|\broom\b|\bbeds?\b|\bwarden\b/i],
   ['transport', /\btransport|\bbus\b|\broute\b|\bpick[\s-]?up\b|\bdrop[\s-]?off\b|\bbus\s*stop/i],
   // Admissions, but NOT the words "admission number" -- that is how a STUDENT
   // is identified, and reading it as the admissions pipeline would answer a
   // question about a pupil with a list of enquiries.
-  ['admission', /\badmissions?\b(?!\s*(?:number|no\b))|\benquir(y|ies)\b|\bapplicants?\b/i],
+  ['admission', /\badmissions?\b(?!\s*(?:number|no\b))|\benquir(y|ies)\b|\bapplicants?\b|\badmission\s+leads?\b/i],
 ];
 
 /**

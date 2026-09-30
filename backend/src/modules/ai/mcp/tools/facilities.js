@@ -8,6 +8,7 @@ import {
   RISK, objectId, dateStr, rupees, summarise, shortDate, wrapAgentTool, resolveStudentId, studentIdentitySchema,
   theNamed,
 } from './_shared.js';
+import { resolveRouteRef, resolveStopRef, resolveInquiry } from './_names.js';
 
 /**
  * Library, hostel and transport.
@@ -782,17 +783,27 @@ export const facilityTools = {
     description: 'Move a hostel enquiry to OPEN, IN_PROGRESS or RESOLVED. Needs confirmation.',
     inputSchema: {
       type: 'object',
-      properties: { inquiryId: objectId(), status: { type: 'string', enum: INQUIRY_STATUSES } },
-      required: ['inquiryId', 'status'],
+      properties: {
+        inquiryId: objectId(),
+        subject: { type: 'string', maxLength: 200, description: 'The enquiry as its subject is written, e.g. "Fan not working". Alternative to inquiryId.' },
+        status: { type: 'string', enum: INQUIRY_STATUSES },
+      },
+      // The enquiry is named by its subject; see prepare().
+      required: ['status'],
       additionalProperties: false,
     },
     permission: 'hostel.manage',
     minScope: 'ALL',
     service: 'hostel.service.updateInquiry()',
-    summarise: (args) => `Set hostel enquiry ${args.inquiryId} to ${args.status}`,
-    async run(_ctx, args) {
-      const inquiry = await hostel.updateInquiry(args.inquiryId, { status: args.status });
-      return action({ type: 'hostel_inquiry_updated', id: args.inquiryId, data: { inquiryId: args.inquiryId, status: inquiry.status }, speak: `The enquiry is now ${args.status.toLowerCase().replace('_', ' ')}.` });
+    summarise: (args, _actor, prepared) => `Set hostel enquiry ${prepared?.subject ? `"${prepared.subject}"` : args.inquiryId} to ${args.status}`,
+    async prepare(_ctx, args) {
+      const inquiry = await resolveInquiry({ inquiryId: args.inquiryId, subject: args.subject });
+      return { inquiryId: inquiry.id, subject: inquiry.subject };
+    },
+    async run(ctx, args, prepared) {
+      const target = prepared ?? (await this.prepare(ctx, args));
+      const inquiry = await hostel.updateInquiry(target.inquiryId, { status: args.status });
+      return action({ type: 'hostel_inquiry_updated', id: target.inquiryId, data: { inquiryId: target.inquiryId, status: inquiry.status }, speak: `The enquiry is now ${args.status.toLowerCase().replace('_', ' ')}.` });
     },
   },
 
@@ -1120,25 +1131,31 @@ export const facilityTools = {
       type: 'object',
       properties: {
         routeId: objectId(),
+        routeName: { type: 'string', maxLength: 120, description: 'The route as it is written, e.g. "Route 7". Alternative to routeId.' },
         name: { type: 'string', maxLength: 120 },
         sequenceNo: { type: 'integer', minimum: 1, maximum: 200, description: 'Position along the route, 1 = first' },
         etaMinutesFromStart: { type: 'integer', minimum: 0, maximum: 600 },
       },
-      required: ['routeId', 'name', 'sequenceNo'],
+      // The route is named ("Route 7") as it is in every sentence; see prepare().
+      required: ['name', 'sequenceNo'],
       additionalProperties: false,
     },
     permission: 'transport.manage',
     minScope: 'ALL',
     service: 'transport.service.createStop()',
     summarise: (args, _actor, prepared) =>
-      `Add stop "${args.name}" as stop ${args.sequenceNo} on route "${prepared?.name ?? args.routeId}"`,
+      `Add stop "${args.name}" as stop ${args.sequenceNo} on route "${prepared?.name ?? args.routeName ?? args.routeId}"`,
     /** The route must exist in this school — checked before anyone is asked to confirm, and named in the prompt. */
     async prepare(_ctx, args) {
-      const route = await transport.getRoute(args.routeId);
-      return { routeId: route.id, name: route.name };
+      const named = await resolveRouteRef({ routeId: args.routeId, route: args.routeName });
+      if (!named) throw new AppError('Which route? For example "Route 7".', 400, [], 'AGENT_NEEDS_INPUT');
+      const route = await transport.getRoute(named.id);
+      return { routeId: String(route.id ?? route._id), name: route.name };
     },
-    async run(_ctx, args) {
-      const stop = await transport.createStop(args);
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const { routeName: _named, ...rest } = args;
+      const stop = await transport.createStop({ ...rest, routeId: plan.routeId });
       return action({ type: 'transport_stop_created', id: stop._id, data: { stopId: String(stop._id), name: stop.name }, speak: `Stop "${stop.name}" has been added.` });
     },
   },
@@ -1155,11 +1172,13 @@ export const facilityTools = {
       properties: {
         ...studentIdentitySchema,
         routeId: objectId(),
+        routeName: { type: 'string', maxLength: 120, description: 'The route as it is written, e.g. "Route 7". Alternative to routeId.' },
         stopId: objectId('A stop on that route, from list_transport_stops'),
+        stopName: { type: 'string', maxLength: 120, description: 'The stop as it is written, e.g. "Market". Alternative to stopId.' },
         academicYearId: objectId(),
         direction: { type: 'string', enum: BUS_DIRECTIONS, description: 'Default BOTH' },
       },
-      required: ['routeId', 'stopId'],
+      // The route and stop are named in words; see prepare().
       additionalProperties: false,
     },
     permission: 'transport.manage',
@@ -1178,8 +1197,12 @@ export const facilityTools = {
      */
     async prepare(ctx, args) {
       const studentId = await studentFor(ctx, args);
+      const route = await resolveRouteRef({ routeId: args.routeId, route: args.routeName });
+      if (!route) throw new AppError('Which route? For example "Route 7".', 400, [], 'AGENT_NEEDS_INPUT');
+      const stop = await resolveStopRef({ stopId: args.stopId, stop: args.stopName }, route);
+      if (!stop) throw new AppError(`Which stop on ${route.name} does ${args.studentName ?? 'the student'} board at?`, 400, [], 'AGENT_NEEDS_INPUT');
       return transport.resolveEnrollment({
-        studentId, routeId: args.routeId, stopId: args.stopId, academicYearId: args.academicYearId,
+        studentId, routeId: route.id, stopId: stop.id, academicYearId: args.academicYearId,
       });
     },
     /** The student's bus before and after: enrolling again moves them, so the audit keeps where they were. */

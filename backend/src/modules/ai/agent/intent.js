@@ -965,6 +965,152 @@ const RULES = [
       return { students: [{ studentName: name, ...(status && { status: status.toUpperCase() }) }] };
     },
   },
+
+  /* ── Structure writes said as an ASSIGNMENT ─────────────────────
+     "Make X the class teacher of Class 6-B", "Assign X to teach Science in Class
+     6-A", "Make Art an elective in Class 6-A with 25 seats", "Add X as Y's
+     father", "Schedule Mathematics for Class 6-A on Monday period 2 from 10:00 to
+     10:45". These say WHO gets WHICH role, or WHAT a period holds; the words of
+     the tool names ("update section", "create exam subject") are absent from
+     them, so the catalogue scorer cannot reach the capability by its nouns. The
+     grammar of an assignment is what identifies each, and it is read here, with
+     the readers the rest of the parser uses for a class, a name and a date. */
+  {
+    tool: 'update_section',
+    grammar: true,
+    patterns: [/\b(?:make|set|appoint|assign)\b[^.?!]*\b(?:class|form)\s+teacher\b/i],
+    exclude: [/^\s*(?:what|which|who|whose|show|list|tell|is|are)\b/i],
+    weight: 3,
+    args: (msg) => {
+      const who = /\b(?:make|set|appoint|assign)\s+(?:the\s+)?(.+?)\s+(?:as\s+(?:the\s+)?|the\s+)(?:class|form)\s+teacher\b/i.exec(msg)?.[1];
+      const className = classFromText(msg)?.text;
+      return { ...(className && { className }), ...(who && { classTeacher: who.trim() }) };
+    },
+  },
+  {
+    tool: 'assign_teacher_to_subject',
+    grammar: true,
+    patterns: [
+      /\bassign\b[^.?!]*\bto\s+(?:teach|take|handle|cover)\b/i,
+      // "Assign a teacher to a subject": the act, before anyone is named for it.
+      /\bassign\s+(?:a\s+|the\s+)?teachers?\b/i,
+      /\b(?:make|appoint)\b[^.?!]*\bthe\s+[\w &'-]+\s+teacher\s+(?:of|for)\b/i,
+      /^\s*[\p{L}][\p{L} .'-]*\s+will\s+teach\b/iu,
+    ],
+    exclude: [/\b(?:class|form)\s+teacher\b/i, /^\s*(?:what|which|who|whose|show|list|tell|is|are)\b/i],
+    weight: 3,
+    args: (msg) => {
+      const assign = /\bassign\s+(?:the\s+)?(.+?)\s+to\s+(?:teach|take|handle|cover)\s+(.+?)\s+(?:in|for|of|to)\b/i.exec(msg);
+      const make = /\b(?:make|appoint)\s+(?:the\s+)?(.+?)\s+the\s+(.+?)\s+teacher\s+(?:of|for)\b/i.exec(msg);
+      const will = /^\s*(?:the\s+)?(.+?)\s+will\s+teach\s+(.+?)\s+(?:in|for|to)\b/i.exec(msg);
+      const [, teacherName, subject] = assign ?? make ?? will ?? [];
+      const className = classFromText(msg)?.text;
+      return {
+        ...(teacherName && { teacherName: teacherName.trim() }),
+        ...(subject && { subject: subject.trim() }),
+        ...(className && { className }),
+      };
+    },
+  },
+  {
+    tool: 'update_subject_offering',
+    grammar: true,
+    patterns: [/\bmake\b[^.?!]*\b(?:an?\s+)?elective\b/i, /\b(?:remove|take)\b[^.?!]*\b(?:from|off)\b[^.?!]*\belectives?\b/i],
+    exclude: [/^\s*(?:what|which|who|whose|show|list|tell|is|are)\b/i],
+    weight: 3,
+    args: (msg) => {
+      const subject = /\bmake\s+(?:the\s+)?([A-Za-z][A-Za-z &'-]*?)\s+(?:an?\s+elective|in\s+|for\s+|of\s+)/i.exec(msg)?.[1];
+      const className = classFromText(msg)?.text;
+      const capacity = /\b(\d{1,3})\s+seats?\b/i.exec(msg)?.[1] ?? /\bcapacity\s+(?:of\s+|to\s+)?(\d{1,3})\b/i.exec(msg)?.[1];
+      return {
+        ...(subject && { subject: subject.trim() }),
+        ...(className && { className }),
+        isElective: !/\b(?:not|no\s+longer|remove|take)\b/i.test(msg),
+        ...(capacity && { capacity: Number(capacity) }),
+      };
+    },
+  },
+  {
+    tool: 'upsert_timetable_slot',
+    grammar: true,
+    patterns: [/\b(?:schedule|timetable|put|set|add|fix)\b[^.?!]*\bperiod\s*(?:no\.?|number|#)?\s*\d/i],
+    exclude: [/^\s*(?:what|which|who|when|show|list|tell|is|are)\b/i, /\battendance\b/i],
+    weight: 3,
+    args: (msg) => {
+      const className = classFromText(msg)?.text;
+      const day = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.exec(msg)?.[1]?.toLowerCase();
+      const periodNo = /\bperiod\s*(?:no\.?|number|#)?\s*(\d{1,2})\b/i.exec(msg)?.[1];
+      const span = /\b(\d{1,2}[:.]\d{2})\s*(?:am|pm)?\s*(?:to|-|\u2013|until|till)\s*(\d{1,2}[:.]\d{2})\b/i.exec(msg);
+      const hhmm = (t) => t.replace('.', ':').replace(/^(\d):/, '0$1:');
+      const subject = /^\s*(?:schedule|put|set|add|fix|timetable)\s+(?:the\s+|a\s+)?([A-Za-z][A-Za-z &'-]*?)\s+(?:for|in|on|at|during|to)\b/i.exec(msg)?.[1];
+      return {
+        ...(className && { className }),
+        ...(day && { day }),
+        ...(periodNo && { periodNo: Number(periodNo) }),
+        ...(span && { startTime: hhmm(span[1]), endTime: hhmm(span[2]) }),
+        ...(subject && !/^(?:period|the)$/i.test(subject) && { subject: subject.trim() }),
+      };
+    },
+  },
+  {
+    tool: 'add_guardian',
+    grammar: true,
+    patterns: [
+      /\b(?:add|link|register)\b[^.?!]*\bas\b[^.?!]*['’]s\s+(?:father|mother|guardian|parent)\b/i,
+      /\b(?:add|link|register)\b[^.?!]*\bas\s+(?:the\s+)?(?:father|mother|guardian|parent)\s+of\b/i,
+    ],
+    weight: 3,
+    args: (msg) => {
+      const possessive = /\b(?:add|link|register)\s+(.+?)\s+as\s+(.+?)['’]s\s+(father|mother|guardian|parent)\b/i.exec(msg);
+      const of = /\b(?:add|link|register)\s+(.+?)\s+as\s+(?:the\s+)?(father|mother|guardian|parent)\s+of\s+(.+?)[.!?]*\s*$/i.exec(msg);
+      const guardianName = possessive?.[1] ?? of?.[1];
+      const studentName = possessive?.[2] ?? of?.[3];
+      const relation = (possessive?.[3] ?? of?.[2] ?? '').toUpperCase();
+      return {
+        ...(guardianName && { guardianName: guardianName.trim() }),
+        ...(studentName && { studentName: studentName.trim() }),
+        ...(relation && { relation: relation === 'PARENT' ? 'GUARDIAN' : relation }),
+      };
+    },
+  },
+  {
+    // "Notify the Other teacher that the staff meeting is at 3pm": WHO is told,
+    // and WHAT. The recipients and the message are separated by the word that
+    // introduces what is said.
+    tool: 'notify_users',
+    grammar: true,
+    patterns: [/^\s*(?:please\s+)?(?:notify|alert|ping|inform)\b/i],
+    weight: 3,
+    args: (msg) => {
+      const m = /^\s*(?:please\s+)?(?:notify|alert|ping|inform)\s+(.+?)\s+(?:that|about|saying|:)\s*(.+?)[.!]?\s*$/i.exec(msg);
+      if (!m) return {};
+      return { recipient: m[1].replace(/^(?:the)\s+/i, '').trim(), body: m[2].trim() };
+    },
+  },
+  {
+    // An exam PAPER is a subject of an exam. "Add a Mathematics paper for Class 6-A
+    // to Half Yearly with 80 marks" is the paper being CREATED -- not marks being
+    // entered, which the number of marks and the word "add" also say. The noun
+    // "paper" is what decides it, so it decides before the catalogue scorer does.
+    tool: 'create_exam_subject',
+    grammar: true,
+    decisive: true,
+    patterns: [/\b(?:add|create|include|set\s*up)\b[^.?!]*\bpapers?\b/i],
+    exclude: [/\b(?:enter|record|submit|publish)\b/i, /^\s*(?:what|which|who|show|list|view|tell|is|are)\b/i],
+    weight: 3,
+    args: (msg) => {
+      const className = classFromText(msg)?.text;
+      const subject = /\b(?:add|create|include|set\s*up)\s+(?:an?\s+|the\s+)?([A-Za-z][A-Za-z &'-]*?)\s+papers?\b/i.exec(msg)?.[1];
+      const exam = /\bto\s+(?:the\s+)?([A-Za-z0-9][\w &'-]*?)(?=\s+(?:with|worth|on|having)\b|[.,;!?]|\s*$)/i.exec(msg)?.[1];
+      const maxMarks = /\b(?:worth|of|with)\s+(\d{1,4})\s*marks?\b/i.exec(msg)?.[1] ?? /\b(\d{1,4})\s*marks?\b/i.exec(msg)?.[1];
+      return {
+        ...(className && { className }),
+        ...(subject && { subject: subject.trim() }),
+        ...(exam && { exam: exam.trim() }),
+        ...(maxMarks && { maxMarks: Number(maxMarks) }),
+      };
+    },
+  },
 ];
 
 /**
@@ -1358,7 +1504,7 @@ export function clarificationFor(message, actor) {
  * Generic, and derived: it compares what the sentence NAMED against what the
  * chosen tool's schema can accept. No tool, phrase or role is named here.
  */
-function respectsSpecificity(step, message, actor) {
+export function respectsSpecificity(step, message, actor) {
   const capability = capabilityIndex().find((c) => c.name === step.tool);
   if (!capability) return true;
   const named = dimensionsOf(message);
@@ -1425,7 +1571,7 @@ function keepsThePersonNamed(step, message, named = dimensionsOf(message)) {
   return carried.includes(bare(person));
 }
 
-function keepsWhatWasNamed(step, message, named = dimensionsOf(message)) {
+export function keepsWhatWasNamed(step, message, named = dimensionsOf(message)) {
   if (named.otherInstitution) return false;
 
   const args = step.args ?? {};
@@ -1433,9 +1579,14 @@ function keepsWhatWasNamed(step, message, named = dimensionsOf(message)) {
   const takesClass = (name) => /\bclass|\bgrade|\bsection/i.test(String(properties[name]?.description ?? ''));
 
   const carried = {
-    class: () => Boolean(args.className || args.sectionId || args.gradeId
+    // A class is carried by any argument the resolver places one in: the name of
+    // a section's grade (`grade`), or the NAME of the grade or section being
+    // created ("create grade Class 7" -- the class IS the new record's name).
+    class: () => Boolean(args.className || args.sectionId || args.gradeId || args.grade
+      || (args.name && capabilityIndex().find((c) => c.name === step.tool)?.entity === 'class')
       || (args.query && takesClass('query')) || (args.search && takesClass('search'))),
-    numbered: () => Boolean(args.roomNo || args.roomNumber || args.routeId || args.routeName || args.bedNo),
+    numbered: () => Boolean(args.roomNo || args.roomNumber || args.routeId || args.routeName || args.bedNo
+      || (args.name && /^(?:room|bed|route|bus|block|ward|floor)\b/i.test(String(args.name)))),
     // A month carries a range only when the range IS that month, and a week
     // only as the weekly timetable: "this week" answered with September, or
     // with today, is a different answer from the one asked for.
@@ -1444,6 +1595,7 @@ function keepsWhatWasNamed(step, message, named = dimensionsOf(message)) {
       || (args.day === 'week' && isWholeWeek(named.range))),
   };
   for (const [dimension, present] of Object.entries(carried)) {
+    if (dimension === 'class' && named.classInsideTitle) continue;
     if (named[dimension] && !present()) return false;
   }
   if (named.date && args.month && !args.date && !(args.from && args.to)) return false;
@@ -1541,8 +1693,42 @@ function toClassLevel(step, actor, message) {
   return { tool: classLevel.name, args };
 }
 
+/**
+ * The step a DECISIVE rule reads from the sentence, or null.
+ *
+ * A decisive rule names a distinctive grammar -- "add a Mathematics PAPER to Half
+ * Yearly with 80 marks" -- that the catalogue scorer would otherwise read through
+ * a louder word ("marks") as a different write. It is consulted first, and only
+ * for the writes that declare it; the step still has to respect what was named,
+ * and the MCP server still validates, authorizes and confirms it.
+ */
+function decisiveStep(message, actor) {
+  const best = scoreRules(message, actor).find((entry) => entry.rule.decisive && heldBy(actor, entry.rule.tool));
+  if (!best) return null;
+  const step = withScoredArguments({
+    tool: canonicalFor(actor, best.rule.tool),
+    args: best.rule.args ? best.rule.args(String(message)) : {},
+  }, message, actor);
+  return passesRule(best.rule, step, message, actor) ? step : null;
+}
+
+/**
+ * Whether a rule's reading may stand. A rule flagged `grammar` names the act by
+ * the grammar of an assignment ("make X the class teacher", "add X as Y's
+ * father"), so its verb is not the catalogue's -- "make" reads as CREATE and would
+ * reject the UPDATE it plainly asks for. It must still keep what was named.
+ */
+function passesRule(rule, step, message, actor) {
+  return rule.grammar
+    ? keepsWhatWasNamed(step, String(message))
+    : respectsSpecificity(step, String(message), actor);
+}
+
 function chooseStep(message, actor) {
   if (!mayBeRouted(actor)) return null;
+
+  const decisive = decisiveStep(message, actor);
+  if (decisive) return decisive;
 
   const capability = capabilityStep(message, actor);
 
@@ -1594,7 +1780,7 @@ function chooseStep(message, actor) {
       tool: canonicalFor(actor, best.rule.tool),
       args: best.rule.args ? best.rule.args(String(message)) : {},
     }, message, actor);
-    if (respectsSpecificity(step, String(message), actor)) return step;
+    if (passesRule(best.rule, step, message, actor)) return step;
   }
   // Nothing else matched. A tentative capability is a better answer than none
   // -- but not when it would drop what the request narrowed it to. A confident
@@ -1637,6 +1823,9 @@ function planSteps(message, actor) {
   const msg = String(message ?? '');
   if (!mayBeRouted(actor)) return [];
 
+  const decisive = decisiveStep(msg, actor);
+  if (decisive) return [decisive];
+
   const capability = capabilityStep(msg, actor);
   // A capability match is ONE step. A message that joins two questions --
   // "who is absent today and what is the fee collection?" -- needs both, and
@@ -1673,7 +1862,10 @@ function planSteps(message, actor) {
 
   // The first of the rules tied for the top score whose reading respects the
   // request (see chooseStep): a tie is settled by fit, not by declaration order.
-  const leader = topRules(matches).find(({ rule }) => respectsSpecificity(
+  // A grammar rule is judged by passesRule, exactly as chooseStep judges it:
+  // the plan and the single step must read a sentence the same way.
+  const leader = topRules(matches).find(({ rule }) => passesRule(
+    rule,
     withScoredArguments({ tool: canonicalFor(actor, rule.tool), args: rule.args ? rule.args(msg) : {} }, msg, actor),
     msg, actor,
   )) ?? matches[0];
@@ -1691,10 +1883,12 @@ function planSteps(message, actor) {
   }
 
   const planned = steps
-    .map(({ rule }) => withScoredArguments(
-      { tool: canonicalFor(actor, rule.tool), args: rule.args ? rule.args(msg) : {} }, msg, actor,
-    ))
-    .filter((step) => respectsSpecificity(step, msg, actor));
+    .map(({ rule }) => ({
+      rule,
+      step: withScoredArguments({ tool: canonicalFor(actor, rule.tool), args: rule.args ? rule.args(msg) : {} }, msg, actor),
+    }))
+    .filter(({ rule, step }) => passesRule(rule, step, msg, actor))
+    .map(({ step }) => step);
 
   // Two or more clauses answered is what the rules were given the first turn
   // for. One is not: a single rule match is the weaker reading, and the

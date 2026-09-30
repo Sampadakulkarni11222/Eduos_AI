@@ -10,6 +10,32 @@ import {
   studentIdentitySchema, resolveSection, classIdentitySchema, theNamed, resolveStudentId, resolveStudentEnrollment,
 } from './_shared.js';
 import { classKey } from '../../../../utils/classNames.js';
+import {
+  resolveGrade, resolveYear, resolveTerm, resolveSubject, resolveStaff, resolveOfferingRef, resolveExam,
+} from './_names.js';
+
+/**
+ * Structure writes take the record they change by NAME as well as by id.
+ *
+ * A year, grade, term, class, subject, teacher or exam is named in every
+ * sentence anybody types and by an ObjectId nowhere, so requiring one made the
+ * capability unreachable from a sentence (the resolver never offers a write whose
+ * required id nothing can supply). Each is resolved in prepare() -- before the
+ * confirmation -- from the same lists the Academics screen reads, so the person
+ * approves "Create term 'Term 2' in 2026-27", not a list of ids, and an unknown
+ * or ambiguous name is a question rather than a failed write.
+ */
+const teacherNameSchema = (description) => ({
+  type: 'string',
+  maxLength: 80,
+  description,
+});
+
+const WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const dayNumber = (day) => {
+  const i = WEEKDAYS.indexOf(String(day ?? '').trim().toLowerCase());
+  return i < 0 ? null : i + 1;
+};
 
 /** How many exam papers a single class-marks answer summarises. */
 const MAX_MARKS_PAPERS = 6;
@@ -226,18 +252,35 @@ export const academicTools = {
       type: 'object',
       properties: {
         gradeId: objectId(),
+        grade: { type: 'string', maxLength: 60, description: 'The grade as a person names it, e.g. "Class 7". Alternative to gradeId.' },
         name: { type: 'string', maxLength: 40, description: 'e.g. "A"' },
         classTeacherId: objectId('Teacher profile id'),
+        classTeacher: teacherNameSchema('The class teacher as a person names them. Alternative to classTeacherId.'),
       },
-      required: ['gradeId', 'name'],
+      // The grade is identified by id OR by name (see prepare); neither is
+      // required by the schema, because a grade named in words is as good as
+      // one named by id and the id cannot be typed.
+      required: ['name'],
       additionalProperties: false,
     },
     permission: 'academics.structure.manage',
     minScope: 'ALL',
     service: 'academics.service.createSection()',
-    summarise: (args) => `Create section "${args.name}" in grade ${args.gradeId}`,
-    async run(_ctx, args) {
-      const section = await academics.createSection(args);
+    summarise: (args, _actor, prepared) => `Create section "${prepared?.name ?? args.name}" in ${prepared?.gradeName ?? `grade ${args.gradeId}`}`
+      + `${prepared?.classTeacherName ? ` with ${prepared.classTeacherName} as class teacher` : ''}`,
+    async prepare(_ctx, args) {
+      const grade = await resolveGrade({ gradeId: args.gradeId, grade: args.grade });
+      if (!grade) throw new AppError('Which grade is the section in? For example "Class 7".', 400, [], 'AGENT_NEEDS_INPUT');
+      const teacher = await resolveStaff('TEACHER', { profileId: args.classTeacherId, name: args.classTeacher });
+      // "Section B" names section B: the noun is not part of the name.
+      const name = String(args.name).replace(/^(?:section|division|div)\s+/i, '').trim();
+      return { gradeId: grade.id, gradeName: grade.name, name, ...(teacher && { classTeacherId: teacher.id, classTeacherName: teacher.name }) };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const section = await academics.createSection({
+        gradeId: plan.gradeId, name: plan.name, ...(plan.classTeacherId && { classTeacherId: plan.classTeacherId }),
+      });
       return action({ type: 'section_created', id: section._id, data: section, speak: `Section ${section.name} created.` });
     },
   },
@@ -280,24 +323,33 @@ export const academicTools = {
     operation: 'CREATE',
     risk: RISK.MEDIUM,
     confirm: true,
-    description: 'Create a term inside an academic year, e.g. "Term 1", with its start and end dates. Use list_academic_years for the year id. Needs confirmation.',
+    description: 'Create a term inside an academic year, e.g. "Term 1", with its start and end dates. Name the year ("2026-27"), or leave it out for the current one. Needs confirmation.',
     inputSchema: {
       type: 'object',
       properties: {
         academicYearId: objectId(),
+        academicYear: { type: 'string', maxLength: 40, description: 'The year as a person names it, e.g. "2026-27". Omit for the current year.' },
         name: { type: 'string', maxLength: 120, description: 'e.g. "Term 1"' },
         startsOn: dateStr(),
         endsOn: dateStr(),
       },
-      required: ['academicYearId', 'name', 'startsOn', 'endsOn'],
+      required: ['name', 'startsOn', 'endsOn'],
       additionalProperties: false,
     },
     permission: 'academics.structure.manage',
     minScope: 'ALL',
     service: 'academics.service.createTerm()',
-    summarise: (args) => `Create term "${args.name}" (${args.startsOn} to ${args.endsOn}) in academic year ${args.academicYearId}`,
-    async run(_ctx, args) {
-      const term = await academics.createTerm(args);
+    summarise: (args, _actor, prepared) =>
+      `Create term "${args.name}" (${args.startsOn} to ${args.endsOn}) in academic year ${prepared?.yearName ?? args.academicYearId}`
+      + `${prepared?.assumed ? ' (the current year)' : ''}`,
+    async prepare(_ctx, args) {
+      const year = await resolveYear({ academicYearId: args.academicYearId, academicYear: args.academicYear });
+      return { academicYearId: year.id, yearName: year.name, assumed: Boolean(year.assumed) };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const { academicYear: _named, ...rest } = args;
+      const term = await academics.createTerm({ ...rest, academicYearId: plan.academicYearId });
       return action({
         type: 'term_created',
         id: term._id,
@@ -377,18 +429,41 @@ export const academicTools = {
       type: 'object',
       properties: {
         sectionId: objectId(),
-        name: { type: 'string', maxLength: 40 },
+        ...classIdentitySchema,
+        name: { type: 'string', maxLength: 40, description: 'A NEW name for the section' },
         classTeacherId: objectId(),
+        classTeacher: teacherNameSchema('The new class teacher as a person names them. Alternative to classTeacherId.'),
       },
-      required: ['sectionId'],
+      // The class is named ("Class 6-B") as it is in every sentence; the id is
+      // for a caller that already holds one.
       additionalProperties: false,
     },
     permission: 'academics.structure.manage',
     minScope: 'ALL',
     service: 'academics.service.updateSection()',
-    summarise: (args) => `Update section ${args.sectionId}`,
-    async run(_ctx, args) {
-      const { sectionId, ...updates } = args;
+    summarise: (args, _actor, prepared) => {
+      const what = [];
+      if (prepared?.updates?.classTeacherId) what.push(`its class teacher to ${prepared.classTeacherName}`);
+      if (prepared?.updates?.name) what.push(`its name to "${prepared.updates.name}"`);
+      return `Change ${what.join(' and ') || 'nothing'} on ${prepared?.label ?? `section ${args.sectionId}`}`;
+    },
+    async prepare(ctx, args) {
+      const section = await resolveSection(ctx, { sectionId: args.sectionId, className: args.className });
+      if (!section) throw new AppError('Which class? For example "Class 6-B".', 400, [], 'AGENT_NEEDS_INPUT');
+      const teacher = await resolveStaff('TEACHER', { profileId: args.classTeacherId, name: args.classTeacher });
+      const updates = {
+        ...(args.name !== undefined && { name: String(args.name).replace(/^(?:section|division|div)\s+/i, '').trim() }),
+        ...(teacher && { classTeacherId: teacher.id }),
+      };
+      if (!Object.keys(updates).length) {
+        throw new AppError('What should change on that class: its class teacher or its name?', 400, [], 'AGENT_NEEDS_INPUT');
+      }
+      return { sectionId: section.sectionId, label: section.label, updates, classTeacherName: teacher?.name };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const sectionId = plan.sectionId;
+      const updates = plan.updates;
       const section = await academics.updateSection(sectionId, updates);
       return action({ type: 'section_updated', id: sectionId, data: section, speak: 'The section has been updated.' });
     },
@@ -405,20 +480,43 @@ export const academicTools = {
       type: 'object',
       properties: {
         subjectId: objectId(),
+        subject: { type: 'string', maxLength: 80, description: 'The subject as a person names it, e.g. "Science". Alternative to subjectId.' },
         sectionId: objectId(),
+        ...classIdentitySchema,
         termId: objectId(),
+        term: { type: 'string', maxLength: 60, description: 'The term as a person names it, e.g. "Term 1". Omit for the running term.' },
         teacherId: objectId('Teacher profile id'),
+        teacherName: teacherNameSchema('The teacher as a person names them. Alternative to teacherId.'),
       },
-      required: ['subjectId', 'sectionId', 'termId'],
+      // Each of the three is named or identified: the subject, the class and
+      // (by default the running) term. See prepare().
       additionalProperties: false,
     },
     permission: 'academics.structure.manage',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'academics.service.createOffering()',
-    summarise: (args) => `Assign subject ${args.subjectId} to section ${args.sectionId}${args.teacherId ? ` with teacher ${args.teacherId}` : ''}`,
-    async run(_ctx, args) {
-      const offering = await academics.createOffering(args);
+    summarise: (args, _actor, prepared) =>
+      `Assign ${prepared?.subjectName ?? `subject ${args.subjectId}`} to ${prepared?.label ?? `section ${args.sectionId}`}`
+      + `${prepared?.termName ? ` for ${prepared.termName}` : ''}`
+      + `${prepared?.teacherName ? ` with ${prepared.teacherName} as the teacher` : ''}`,
+    async prepare(ctx, args) {
+      const subject = await resolveSubject({ subjectId: args.subjectId, subject: args.subject });
+      if (!subject) throw new AppError('Which subject? For example "Science".', 400, [], 'AGENT_NEEDS_INPUT');
+      const section = await resolveSection(ctx, { sectionId: args.sectionId, className: args.className });
+      if (!section) throw new AppError('Which class? For example "Class 6-A".', 400, [], 'AGENT_NEEDS_INPUT');
+      const term = await resolveTerm({ termId: args.termId, term: args.term });
+      const teacher = await resolveStaff('TEACHER', { profileId: args.teacherId, name: args.teacherName });
+      return {
+        subjectId: subject.id, subjectName: subject.name, sectionId: section.sectionId, label: section.label,
+        termId: term.id, termName: term.name, ...(teacher && { teacherId: teacher.id, teacherName: teacher.name }),
+      };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const offering = await academics.createOffering({
+        subjectId: plan.subjectId, sectionId: plan.sectionId, termId: plan.termId, ...(plan.teacherId && { teacherId: plan.teacherId }),
+      });
       return action({ type: 'offering_created', id: offering._id, data: offering, speak: 'The subject offering has been created.' });
     },
   },
@@ -433,20 +531,56 @@ export const academicTools = {
       type: 'object',
       properties: {
         offeringId: objectId(),
+        subject: { type: 'string', maxLength: 80, description: 'The subject of the offering as a person names it, e.g. "Art". Identifies the offering with className.' },
+        ...classIdentitySchema,
+        termId: objectId(),
+        term: { type: 'string', maxLength: 60, description: 'The term, when the class teaches the subject in more than one' },
         teacherId: objectId(),
+        teacherName: teacherNameSchema('The new teacher as a person names them. Alternative to teacherId.'),
         isElective: { type: 'boolean' },
         capacity: { type: 'integer', minimum: 1, maximum: 500 },
       },
-      required: ['offeringId'],
+      // The offering is named by its subject and class -- "Art in Class 6-A" --
+      // as nobody holds its id.
       additionalProperties: false,
     },
     permission: 'academics.structure.manage',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'academics.service.updateOffering()',
-    summarise: (args) => `Update subject offering ${args.offeringId}`,
-    async run(_ctx, args) {
-      const { offeringId, ...updates } = args;
+    summarise: (args, _actor, prepared) => {
+      const what = [];
+      if (prepared?.updates?.teacherId) what.push(`the teacher to ${prepared.teacherName}`);
+      if (prepared?.updates?.isElective !== undefined) what.push(prepared.updates.isElective ? 'it to an elective' : 'it to a regular subject');
+      if (prepared?.updates?.capacity !== undefined) what.push(`the capacity to ${prepared.updates.capacity}`);
+      return `Change ${what.join(', ') || 'nothing'} on ${prepared?.subjectName ?? 'the subject'}${prepared?.label ? ` in ${prepared.label}` : ''}`;
+    },
+    async prepare(ctx, args) {
+      let target;
+      if (args.offeringId) {
+        target = await resolveOfferingRef({ offeringId: args.offeringId });
+      } else {
+        const section = await resolveSection(ctx, { className: args.className });
+        if (!section) throw new AppError('Which class teaches it? For example "Class 6-A".', 400, [], 'AGENT_NEEDS_INPUT');
+        const term = args.termId || args.term ? await resolveTerm({ termId: args.termId, term: args.term }) : null;
+        target = await resolveOfferingRef({ subject: args.subject, sectionId: section.sectionId, termId: term?.id });
+        target.label = section.label;
+      }
+      const teacher = await resolveStaff('TEACHER', { profileId: args.teacherId, name: args.teacherName });
+      const updates = {
+        ...(teacher && { teacherId: teacher.id }),
+        ...(args.isElective !== undefined && { isElective: args.isElective }),
+        ...(args.capacity !== undefined && { capacity: args.capacity }),
+      };
+      if (!Object.keys(updates).length) {
+        throw new AppError('What should change: the teacher, whether it is an elective, or its capacity?', 400, [], 'AGENT_NEEDS_INPUT');
+      }
+      return { offeringId: target.id, subjectName: target.subject, label: target.label, updates, teacherName: teacher?.name };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const offeringId = plan.offeringId;
+      const updates = plan.updates;
       const offering = await academics.updateOffering(offeringId, updates);
       return action({ type: 'offering_updated', id: offeringId, data: offering, speak: 'The subject offering has been updated.' });
     },
@@ -484,23 +618,52 @@ export const academicTools = {
       type: 'object',
       properties: {
         sectionId: objectId(),
+        ...classIdentitySchema,
         dayOfWeek: { type: 'integer', minimum: 1, maximum: 7, description: '1 = Monday … 7 = Sunday' },
+        day: { type: 'string', maxLength: 12, description: 'The weekday by name, e.g. "Monday". Alternative to dayOfWeek.' },
         periodNo: { type: 'integer', minimum: 1, maximum: 12 },
         startTime: { type: 'string', maxLength: 8, description: 'HH:MM' },
         endTime: { type: 'string', maxLength: 8, description: 'HH:MM' },
         subjectOfferingId: objectId('Omit for a break'),
+        subject: { type: 'string', maxLength: 80, description: 'The subject taught in the period, e.g. "Mathematics". Omit for a break.' },
       },
-      required: ['sectionId', 'dayOfWeek', 'periodNo', 'startTime', 'endTime'],
+      // The class, the day and the subject are named in words; see prepare().
+      required: ['periodNo', 'startTime', 'endTime'],
       additionalProperties: false,
     },
     permission: 'timetable.manage',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'timetable.service.upsertSlot()',
-    summarise: (args) =>
-      `Set period ${args.periodNo} (${args.startTime}–${args.endTime}) on day ${args.dayOfWeek} for section ${args.sectionId}`,
-    async run(_ctx, args) {
-      const slot = await timetable.upsertSlot(args);
+    summarise: (args, _actor, prepared) =>
+      `Set ${prepared?.subjectName ?? 'a break'} in period ${args.periodNo} (${args.startTime}–${args.endTime}) on `
+      + `${WEEKDAYS[(prepared?.dayOfWeek ?? args.dayOfWeek) - 1] ?? `day ${args.dayOfWeek}`} for ${prepared?.label ?? `section ${args.sectionId}`}`,
+    async prepare(ctx, args) {
+      const section = await resolveSection(ctx, { sectionId: args.sectionId, className: args.className });
+      if (!section) throw new AppError('Which class? For example "Class 6-A".', 400, [], 'AGENT_NEEDS_INPUT');
+      const dayOfWeek = args.dayOfWeek ?? dayNumber(args.day);
+      if (!dayOfWeek) throw new AppError('Which day? For example "Monday".', 400, [], 'AGENT_NEEDS_INPUT');
+      let offering = null;
+      if (args.subjectOfferingId || args.subject) {
+        offering = await resolveOfferingRef({
+          offeringId: args.subjectOfferingId, subject: args.subject, sectionId: section.sectionId,
+        });
+      }
+      return {
+        sectionId: section.sectionId, label: section.label, dayOfWeek,
+        ...(offering && { subjectOfferingId: offering.id, subjectName: offering.subject }),
+      };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const slot = await timetable.upsertSlot({
+        sectionId: plan.sectionId,
+        dayOfWeek: plan.dayOfWeek,
+        periodNo: args.periodNo,
+        startTime: args.startTime,
+        endTime: args.endTime,
+        ...(plan.subjectOfferingId && { subjectOfferingId: plan.subjectOfferingId }),
+      });
       return action({ type: 'timetable_slot_set', id: slot?._id, data: slot, speak: 'The timetable period has been set.' });
     },
   },
@@ -781,18 +944,26 @@ export const academicTools = {
       properties: {
         name: { type: 'string', maxLength: 80 },
         termId: objectId(),
+        term: { type: 'string', maxLength: 60, description: 'The term as a person names it, e.g. "Term 1". Omit for the running term.' },
         startsOn: dateStr(),
         endsOn: dateStr(),
       },
-      required: ['name', 'termId', 'startsOn', 'endsOn'],
+      required: ['name', 'startsOn', 'endsOn'],
       additionalProperties: false,
     },
     permission: 'exams.manage',
     minScope: 'ALL',
     service: 'exam.service.createExam()',
-    summarise: (args) => `Create the exam "${args.name}"`,
-    async run(_ctx, args) {
-      const exam = await exams.createExam(args);
+    summarise: (args, _actor, prepared) =>
+      `Create the exam "${args.name}" in ${prepared?.termName ?? 'the term'} (${args.startsOn} to ${args.endsOn})`,
+    async prepare(_ctx, args) {
+      const term = await resolveTerm({ termId: args.termId, term: args.term });
+      return { termId: term.id, termName: term.name };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const { term: _named, ...rest } = args;
+      const exam = await exams.createExam({ ...rest, termId: plan.termId });
       return action({ type: 'exam_created', id: exam._id, data: exam, speak: `Exam "${exam.name}" created.` });
     },
   },
@@ -807,19 +978,46 @@ export const academicTools = {
       type: 'object',
       properties: {
         examId: objectId(),
+        exam: { type: 'string', maxLength: 80, description: 'The exam as a person names it, e.g. "Half Yearly". Alternative to examId.' },
         subjectOfferingId: objectId(),
+        subject: { type: 'string', maxLength: 80, description: 'The subject of the paper, e.g. "Mathematics". With className, alternative to subjectOfferingId.' },
+        ...classIdentitySchema,
         maxMarks: { type: 'integer', minimum: 1, maximum: 1000 },
         examDate: dateStr(),
       },
-      required: ['examId', 'subjectOfferingId', 'maxMarks'],
+      // The exam and the paper's subject-and-class are named; see prepare().
+      required: ['maxMarks'],
       additionalProperties: false,
     },
     permission: 'exams.manage',
     minScope: 'ALL',
     service: 'exam.service.createExamSubject()',
-    summarise: (args) => `Add a subject to exam ${args.examId} worth ${args.maxMarks} marks`,
-    async run(_ctx, args) {
-      const subject = await exams.createExamSubject(args);
+    summarise: (args, _actor, prepared) =>
+      `Add ${prepared?.subjectName ?? 'a subject'}${prepared?.label ? ` for ${prepared.label}` : ''} to the exam `
+      + `${prepared?.examName ? `"${prepared.examName}"` : args.examId} worth ${args.maxMarks} marks`,
+    async prepare(ctx, args) {
+      const exam = await resolveExam({ examId: args.examId, exam: args.exam });
+      if (!exam) throw new AppError('Which exam? For example "Half Yearly".', 400, [], 'AGENT_NEEDS_INPUT');
+      let offering;
+      let label = null;
+      if (args.subjectOfferingId) {
+        offering = await resolveOfferingRef({ offeringId: args.subjectOfferingId });
+      } else {
+        const section = await resolveSection(ctx, { className: args.className });
+        if (!section) throw new AppError('Which class is the paper for? For example "Class 6-A".', 400, [], 'AGENT_NEEDS_INPUT');
+        offering = await resolveOfferingRef({ subject: args.subject, sectionId: section.sectionId });
+        label = section.label;
+      }
+      return { examId: exam.id, examName: exam.name, subjectOfferingId: offering.id, subjectName: offering.subject, label };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const subject = await exams.createExamSubject({
+        examId: plan.examId,
+        subjectOfferingId: plan.subjectOfferingId,
+        maxMarks: args.maxMarks,
+        ...(args.examDate && { examDate: args.examDate }),
+      });
       return action({ type: 'exam_subject_created', id: subject._id, data: subject, speak: 'The exam subject has been added.' });
     },
   },

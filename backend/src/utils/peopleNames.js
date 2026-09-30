@@ -69,6 +69,13 @@ const NOT_A_NAME = new Set([
   'count', 'total', 'number', 'report', 'summary', 'snapshot', 'percentage', 'average', 'register', 'roster', 'list',
   'absent', 'absence', 'present', 'fees', 'fee', 'leave', 'library', 'hostel', 'transport', 'notice', 'circular',
   'bed', 'beds', 'room', 'rooms',
+  // The things staff create and correct -- "the driver of Route 7", "the receipt
+  // number of the payment", "5 copies", "the fee plan" -- are records, not people.
+  // Read after "of" or "for" they were pupils called "Route" and "Plan".
+  'route', 'routes', 'stop', 'stops', 'driver', 'fare', 'copies', 'copy', 'capacity', 'seat', 'seats',
+  'invoice', 'invoices', 'installment', 'installments', 'plan', 'plans', 'payment', 'payments', 'receipt',
+  'ticket', 'tickets', 'inquiry', 'enquiry', 'enquiries', 'term', 'terms', 'event', 'events', 'holiday',
+  'structure', 'structures', 'head', 'heads', 'paper', 'papers', 'period', 'periods', 'teach', 'teaching',
   // What a student registers for or requests: "for the Robotics ELECTIVE" names
   // a course, and "the" being trimmed off left "Robotics elective" looking
   // like a person.
@@ -240,7 +247,15 @@ export function nameFromText(text) {
     `\\b(?:(?:of|for)\\s+(${NAME_PHRASE})|(?<!\\b(?:according|due|prior|introduction|guide|welcome|belong|refer)\\s+)to\\s+(${NAME_WORD}(?:\\s+${NAME_WORD}){1,2}))`,
     'iu',
   ).exec(str);
-  const prepositional = trimTrailingBindings(prepMatch?.[1] || prepMatch?.[2]);
+  // "Wings of Fire": an "of" straight after a capitalised word inside a sentence
+  // is part of a title, not the preposition that introduces a person.
+  // The word before it must be capitalised and NOT a school noun: "Attendance of
+  // Rahul" is a request about a person, "Wings of Fire" is a book.
+  const beforeOf = prepMatch && /^of\b/i.test(prepMatch[0])
+    ? (str.slice(0, prepMatch.index).trimEnd().split(/\s+/).at(-1) ?? '')
+    : '';
+  const titleOf = Boolean(beforeOf) && /^\p{Lu}/u.test(beforeOf) && !isNotAName(beforeOf) && !looksLikeDomainPhrase(beforeOf);
+  const prepositional = titleOf ? null : trimTrailingBindings(prepMatch?.[1] || prepMatch?.[2]);
   if (prepositional) {
     const trimmed = trimLeadingNonNames(prepositional);
     if (trimmed && isNameLike(trimmed)) return clean(trimmed);

@@ -65,6 +65,7 @@ import { classFromText } from '../../../utils/classNames.js';
 import { monthFromText, writtenDatesIn } from '../../../utils/naturalDates.js';
 import { rangeFromText, monthBounds } from '../../../utils/dateRanges.js';
 import { nameFromText } from '../../../utils/peopleNames.js';
+import { fieldChangeFromText, propertyForField, coerceFieldValue } from '../../../utils/fieldChange.js';
 import { extractArgument, kindOfProperty, FOUND } from './argumentKinds.js';
 import { dateFromText, detectOperation, subjectFromText, topicFromText } from './entityIntent.js';
 
@@ -216,6 +217,11 @@ function lexiconOf(capability) {
  */
 const READ_VERBS = new Set(['get', 'list', 'search', 'who', 'find', 'show', 'view']);
 
+/** Verbs that say the same act, as stems: "add a stop" is "create a stop". */
+// An UPSERT is said as the update or the setting it performs: "update Rahul's
+// blood group", "set the period" -- nobody says "upsert".
+const VERB_SYNONYMS = { create: ['add', 'raise'], add: ['create'], upsert: ['update', 'set'] };
+
 /**
  * Every tool-name verb in the WHOLE catalogue, and which operations wear it.
  *
@@ -361,7 +367,34 @@ const asksAboutSelf = (str) => SELF_MARKER.test(String(str).replace(POSSESSED_IN
 
 /** A question about a figure rather than the records behind it. */
 const AGGREGATE_REQUEST =
-  /\bhow\s+many\b|\bhow\s+much\b|\bcount\b|\bnumber\s+of\b|\btotal\b|\bsummar(y|ies)\b|\bstatistic|\bstats\b|\bpercentage\b|\bhealth\b|\boverview\b|\bbreakdown\b/i;
+  /\bhow\s+many\b|\bhow\s+much\b|\bcount\b|\bnumber\s+of\b|\btotal\b|\bsummar(y|ies)\b|\bstatistic|\bstats\b|\bpercentage\b|\bhealth\b|\boverview\b|\bbreakdown\b|\boccupancy\b|\bvacanc(?:y|ies)\b/i;
+
+/**
+ * A request to delete or archive EVERYTHING of a kind: "delete all students",
+ * "remove every assignment". No capability does that -- removal here is one record
+ * at a time, each with its own confirmation -- and reading it as the one-record
+ * version ("which student?") would turn a mass deletion into a question about
+ * the first record. It is declined as what it is. Grammar only: a destructive
+ * verb, a quantifier that means "the lot", and a plural of something the school
+ * keeps.
+ */
+const DESTRUCTIVE_VERB = /\b(?:delete|remove|erase|wipe|purge|destroy|drop|clear|archive|deactivate|anonymi[sz]e)\b/i;
+const EVERYTHING = /\b(?:all|every|each|entire|whole)\b(?:\s+(?:of\s+)?the)?(?:\s+\w+){0,2}?\s+(?:students?|pupils?|teachers?|staff|parents?|guardians?|users?|accounts?|records?|assignments?|homework|announcements?|invoices?|payments?|fees?|books?|documents?|classes|sections|grades|subjects|marks|attendance|tickets?|leads?|enquiries|rooms?|routes?|routes|exams?|terms?|years?|data|everything)\b|\beverything\b/i;
+
+export function asksBulkDestruction(message) {
+  const str = String(message ?? '').replace(/["“”']([^"“”']{2,500})["“”']/g, ' ');
+  if (!DESTRUCTIVE_VERB.test(str)) return null;
+  const which = EVERYTHING.exec(str);
+  if (!which) return null;
+  // "Erase all personal data OF AMAN GUPTA" is about one pupil: "all" qualifies
+  // what is erased, not whose. A sentence that names a person, an admission
+  // number or a record by name is never a request for everything.
+  const named = dimensionsOf(str);
+  if (named.student || named.admissionNo || named.title) return null;
+  const verb = DESTRUCTIVE_VERB.exec(str)[0].toLowerCase();
+  const noun = /\b(students?|pupils?|teachers?|staff|parents?|guardians?|users?|accounts?|records?|assignments?|homework|announcements?|invoices?|payments?|fees?|books?|documents?|classes|sections|grades|subjects|marks|attendance|tickets?|leads?|enquiries|rooms?|routes?|exams?|terms?|years?|data)\b/i.exec(which[0])?.[1]?.toLowerCase() ?? 'records';
+  return { verb, noun };
+}
 
 /**
  * A request to FIND something, as opposed to read one known thing.
@@ -419,7 +452,7 @@ const LIST_REQUEST = /\blist\b|\ball\b|\bevery\b|\bwhich\b|\bavailable\b|\bshow\
  * what it does is stop "how many beds are free in Room 101" being answered with
  * the whole hostel's occupancy.
  */
-const NUMBERED_THING = /\b(room|bed|route|bus|block|ward|floor)\s*(?:no\.?|number|#)?\s*([a-z]?\d{1,4}[a-z]?)\b/i;
+const NUMBERED_THING = /\b(room|bed|route|bus|block|ward|floor)\s*(?:no\.?|number|#)?\s*([a-z]{1,2}[- ]?\d{1,4}[a-z]?|\d{1,4}[a-z]?)\b/i;
 
 export function numberedThingFromText(text) {
   const m = NUMBERED_THING.exec(String(text ?? ''));
@@ -704,7 +737,7 @@ const NAMED_AFTER_NOUN = new RegExp(
  * ticket", "the ticket about bus timing". Whatever the sentence then SAYS --
  * after "saying" or a colon -- is the message, not the name.
  */
-const THREAD_NOUN = String.raw`(?:ticket|query|complaint)`;
+const THREAD_NOUN = String.raw`(?:ticket|query|complaint|(?:hostel\s+)?(?:inquiry|enquiry))`;
 const NAMED_BEFORE_THREAD = new RegExp(String.raw`\bthe\s+([\p{L}\p{N}][\p{L}\p{N}'’\- ]{1,40}?)\s+${THREAD_NOUN}\b`, 'iu');
 const THREAD_ABOUT = new RegExp(
   String.raw`\b${THREAD_NOUN}\s+(?:about|regarding|on)\s+(.+?)(?=\s+(?:saying|that\s+says)\b|\s*:|[.!?]?\s*$)`, 'iu',
@@ -732,6 +765,36 @@ export function changeFromText(text) {
 /** A string as a literal inside a regular expression. */
 const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/** "at the Market stop", "stop Market" -- a bus stop by name. */
+const STOP_PHRASE = /\b(?:at|from|to)\s+(?:the\s+)?([A-Z][\w'’-]*(?:\s+[A-Z][\w'’-]*)?)\s+(?:bus\s+)?stop\b/;
+/** "Term 1", "term 2" -- a term by its number, the way schools name them. */
+const TERM_PHRASE = /\b((?:term|semester)\s*\d{1,2})\b/i;
+
+/**
+ * The sentence without the records it names by their own grammar -- a class, a
+ * numbered room or route, a stop, a term -- and the preposition before each.
+ * What is left is where a TITLE can be: "Half Yearly in Term 1" is the exam
+ * "Half Yearly", and "Market to Route 7" is the stop "Market".
+ */
+function withoutRecordPhrases(text, classText) {
+  let rest = withoutClassPhrase(text, classText);
+  rest = rest.replace(new RegExp(`\\s+(?:in|for|of|to|on|at|from)\\s+(?:the\\s+)?${NUMBERED_THING.source.slice(2)}`, 'i'), ' ');
+  rest = rest.replace(new RegExp(`\\s+(?:in|for|of|during)\\s+(?:the\\s+)?${TERM_PHRASE.source}`, 'i'), ' ');
+  rest = rest.replace(new RegExp(`\\s+${STOP_PHRASE.source}`), ' ');
+  return rest;
+}
+
+/** The sentence without a class reference and the preposition that introduces it. */
+function withoutClassPhrase(text, classText) {
+  if (!classText) return String(text ?? '');
+  return String(text ?? '').replace(new RegExp(`\\s+(?:in|for|of|to|at)\\s+(?:my\\s+)?${escapeRe(classText)}`, 'i'), ' ');
+}
+
+/** An Indian mobile number, with or without +91 -- never part of a date, an invoice or an id. */
+function phoneFromText(text) {
+  return /(?<![\d-])(\+?(?:91[\s-]?)?[6-9]\d{9})(?![\d-])/.exec(String(text ?? ''))?.[1]?.replace(/[\s-]/g, '') ?? null;
+}
+
 export function asksBeyondOwnSchool(text) {
   return OTHER_INSTITUTION.test(String(text ?? ''));
 }
@@ -756,10 +819,22 @@ export function dimensionsOf(text, now = new Date()) {
   // capability that could not hold a title was penalised for it.
   const change = changeFromText(str);
   const rename = renameFromText(str);
+  // "Change Rahul Sharma's address to 12 Park Street": a field, whose it is, and
+  // its new value. The value is data -- read for names it became a place called
+  // "Park Street" -- so it is taken out of what the identity readers see. A
+  // rename is its own dimension and takes precedence.
+  const fieldChange = rename ? null : fieldChangeFromText(str);
+  // An academic year as schools write it, "2026-27" -- and only that: the second
+  // number continues the first, so a date ("2026-10-05") or a month is never one.
+  const academicYear = academicYearFromText(str);
+  // A bus stop named with its noun ("at the Market stop") and a term by its number
+  // ("in Term 1"): records named by what they ARE, read as those records.
+  const stop = STOP_PHRASE.exec(str)?.[1] ?? null;
+  const term = TERM_PHRASE.exec(str)?.[1]?.replace(/\s+/g, ' ') ?? null;
   // A pasted link is data too -- and its "https:" reads as a colon that
   // introduces a topic, which made the tail of a URL an assignment's title.
   const link = /\bhttps?:\/\/[^\s"'<>]+/i.exec(str)?.[0]?.replace(/[.,;)]+$/, '') ?? null;
-  const named = [change?.to, rename?.to, link].filter(Boolean).reduce((rest, span) => rest.split(span).join(' '), str);
+  const named = [change?.to, rename?.to, fieldChange?.span, link].filter(Boolean).reduce((rest, span) => rest.split(span).join(' '), str);
 
   const range = written.length >= 2
     ? {
@@ -785,7 +860,7 @@ export function dimensionsOf(text, now = new Date()) {
     class: classFromText(str)?.text ?? null,
     admissionNo,
     student: admissionNo ? null : capitalisedInText(nameFromText(withoutLeadingVerb(named)), named)
-      ?? personShaped(titleFromText(named)),
+      ?? personShaped(titleFromText(withoutRecordPhrases(named, classFromText(str)?.text ?? null))),
     numbered: numberedThingFromText(str),
     // Spans that are dates, so nothing reads them a second time as a subject,
     // a topic or a number ("5th" is not period five).
@@ -808,7 +883,7 @@ export function dimensionsOf(text, now = new Date()) {
     // sentence is a person), over `named` -- the sentence with a requested
     // new value and any link taken out, so neither is read as a name.
     personFromTitle: !admissionNo && (
-      (!nameFromText(withoutLeadingVerb(named)) && Boolean(personShaped(titleFromText(named))))
+      (!nameFromText(withoutLeadingVerb(named)) && Boolean(personShaped(titleFromText(withoutRecordPhrases(named, classFromText(str)?.text ?? null)))))
       || Boolean(
         titleFromText(withoutLeadingVerb(named)) &&
         identity.student &&
@@ -839,10 +914,11 @@ export function dimensionsOf(text, now = new Date()) {
     // it is not a title. With no capitalised title at all, a record named
     // straight after its noun ("the course material Test notes") is one.
     title: rename?.from ?? (() => {
-      const candidate = titleFromText(withoutLeadingVerb(
+      const candidate = titleFromText(withoutLeadingVerb(withoutRecordPhrases(
         identity.student ? named.split(new RegExp(`${escapeRe(identity.student)}['’]s\\b`, 'g')).join(' ') : named,
-      ));
-      if (!candidate) return recordNamedAfterNoun(named);
+        identity.class,
+      )));
+      if (!candidate) return recordNamedAfterNoun(withoutRecordPhrases(named, identity.class));
       const personFromGrammar = Boolean(admissionNo || nameFromText(withoutLeadingVerb(named)));
       if (personFromGrammar && identity.student && candidate.toLowerCase() === identity.student.toLowerCase()) {
         return null;
@@ -851,6 +927,17 @@ export function dimensionsOf(text, now = new Date()) {
     })(),
     // A record's current name and its new one; see the scorer.
     rename,
+    // A field, whose it is and its new value; see the scorer.
+    fieldChange,
+    academicYear,
+    // "a ticket about the broken projector IN CLASS 6-A": the class is part of what
+    // the ticket is about, not a second filter on a record that has no class.
+    classInsideTitle: Boolean(identity.class && /\b(?:about|regarding|concerning|on)\b/i.test(named)
+      && new RegExp(`\\b(?:in|of|for|at)\\s+${escapeRe(identity.class)}\\s*[.!?]*\\s*$`, 'i').test(named)),
+    // A phone number is a value of its own: a capability holds it or cannot express it.
+    phone: phoneFromText(str),
+    stop,
+    term,
     // The school subject a request is about. Read with the same grammar rule
     // the entity tier uses -- a subject sits just before the entity word, or
     // is introduced by "in"/"for" -- so both tiers understand "Mathematics
@@ -911,18 +998,18 @@ export function dimensionsOf(text, now = new Date()) {
  * filter that matched nothing.
  */
 const ARG_NAMES = {
-  class: ['className', 'class', 'grade', 'query'],
+  class: ['className', 'class', 'grade', 'query', 'name'],
   admissionNo: ['admissionNo', 'invoiceNo', 'receiptNo', 'code'],
-  student: ['studentName', 'query', 'search'],
-  numbered: ['roomNo', 'roomNumber', 'bedNo', 'routeName', 'number', 'code'],
+  student: ['studentName', 'childName', 'query', 'search'],
+  numbered: ['roomNo', 'roomNumber', 'bedNo', 'routeName', 'number', 'code', 'name'],
   // `name` second: a co-curricular activity is named, not given a subject.
   subject: ['subject', 'name'],
   month: ['month', 'period'],
   range: ['from', 'to'],
-  date: ['date', 'day', 'on', 'dueAt', 'activityDate'],
+  date: ['date', 'day', 'on', 'dueAt', 'dueOn', 'activityDate'],
   // `subject` last, and only where it is a headline (a ticket's) rather than a
   // school subject -- see acceptsDimension().
-  title: ['title', 'query', 'search', 'name', 'stopName', 'subject'],
+  title: ['title', 'query', 'search', 'name', 'subject'],
   // What something is ABOUT, which is not the same as what it is CALLED. Read
   // with the grammar that introduces one -- "about X", "on X", a colon, a
   // quotation -- rather than from the capitalised run a title comes from,
@@ -935,12 +1022,17 @@ const ARG_NAMES = {
   // homework keeps it as the title while the one that DRAFTS it keeps it as
   // the topic. Docking the first for having no `topic` sent a plain creation
   // to the AI drafter.
-  topic: ['topic', 'title'],
+  topic: ['topic', 'title', 'subject'],
   // Filled by kind, not by name — see percentageArgOf().
   percentage: [],
   // A field and its new value; written as a pair, see the scorer.
   change: [],
   rename: [],
+  fieldChange: [],
+  academicYear: ['academicYear', 'name'],
+  phone: ['phone', 'driverPhone', 'phoneNumber', 'mobile', 'to'],
+  stop: ['stopName', 'name'],
+  term: ['term', 'name'],
   link: [],
 };
 
@@ -962,7 +1054,17 @@ const isoToday = (now) => `${now.getFullYear()}-${String(now.getMonth() + 1).pad
 const nextYear = (iso) => `${Number(iso.slice(0, 4)) + 1}${iso.slice(4)}`;
 
 /** The two ends of a period, under the names tools actually use. */
-export const RANGE_PAIRS = [['from', 'to'], ['fromDate', 'toDate'], ['startDate', 'endDate'], ['startsOn', 'endsOn']];
+export const RANGE_PAIRS = [['from', 'to'], ['fromDate', 'toDate'], ['startDate', 'endDate'], ['startsOn', 'endsOn'], ['startsAt', 'endsAt']];
+
+/** "2026-27" or "2026-2027" -- never a date, never a month. */
+function academicYearFromText(text) {
+  for (const m of String(text ?? '').matchAll(/\b(20\d{2})\s*[-\u2013/]\s*(\d{4}|\d{2})(?![-\d])/g)) {
+    const first = Number(m[1]);
+    const second = m[2].length === 2 ? Number(m[2]) : Number(m[2]) - 2000;
+    if ((first + 1) % 100 === second) return `${m[1]}-${String((first + 1) % 100).padStart(2, '0')}`;
+  }
+  return null;
+}
 
 /**
  * True when a range is exactly one calendar month. Only then can a capability
@@ -1030,10 +1132,55 @@ function splitRecipient(title) {
   return m ? { title: m[1], student: m[2] } : null;
 }
 
+/**
+ * A value from one of the capability's own enums that the sentence says, by its
+ * stem: "close" for CLOSED, "resolved" for RESOLVED. Only distinctive values --
+ * a word of four letters or more that is not an ordinary word of the sentence's
+ * grammar -- so "in" or "all" never count.
+ */
+const GENERIC_ENUM_ROOTS = new Set(['class', 'grade', 'section', 'other', 'general', 'school', 'staff']);
+
+function enumValueSaid(capability, tokens, nouns = []) {
+  const words = tokens;
+  for (const property of Object.values(capability.schema?.properties ?? {})) {
+    for (const value of Array.isArray(property?.enum) ? property.enum : []) {
+      const root = stem(String(value).toLowerCase().replace(/_/g, ' ').split(' ')[0]);
+      // "Class 6-A" is not the CLASS in CLASS_TEACHER; these are grammar of the school, not values.
+      if (GENERIC_ENUM_ROOTS.has(root)) continue;
+      // The word that names the capability's own noun already scored as that noun:
+      // "issue book" says BOOK, which is also create_book's resource kind. Counted
+      // twice it made the wrong capability draw level with the right one.
+      if (nouns.includes(root) || root === stem(capability.entity)) continue;
+      if (root.length >= 4 && [...words].some((w) => w === root || w.startsWith(root) || (root.length >= 5 && root.startsWith(w) && w.length >= 4))) return String(value);
+    }
+  }
+  return null;
+}
+
 function acceptsDimension(capability, argName, dimension) {
+  // A grade or a section is CREATED by name, and the class the sentence names IS
+  // its name: "create grade Class 7". Nothing else takes a class as its name.
+  if (argName === 'name' && dimension === 'class') return capability.entity === 'class' && capability.operation === 'CREATE';
+  // "Create academic year 2027-28": the year the sentence writes IS the name of the one created.
+  if (argName === 'name' && dimension === 'academicYear') {
+    return capability.operation === 'CREATE' && nameParts(capability.name).nouns.includes('year');
+  }
+  // A number to send to: `to` is a recipient only where it says it is a number.
+  if (argName === 'to' && dimension === 'phone') {
+    return /number|phone|whatsapp/i.test(capability.schema?.properties?.to?.description ?? '');
+  }
+  // "Create Term 2", "add a stop Market": the term or the stop IS the name of the
+  // one created -- and of nothing else.
+  if (argName === 'name' && (dimension === 'term' || dimension === 'stop')) {
+    return capability.operation === 'CREATE' && nameParts(capability.name).nouns.includes(dimension);
+  }
+  // A bus route is created as "Route 9": the numbered thing is its name.
+  if (argName === 'name' && dimension === 'numbered') {
+    return capability.operation === 'CREATE' && nameParts(capability.name).nouns.some((n) => n === 'route');
+  }
   // A record's name is a ticket's headline, never a school subject: "Unit
   // Test 2" must not become the subject of a marks question.
-  if (argName === 'subject' && dimension === 'title') {
+  if (argName === 'subject' && (dimension === 'title' || dimension === 'topic')) {
     return !namesARecord(capability, 'subject', { type: 'string' });
   }
   if (!GENERAL_PURPOSE_ARGS.has(argName)) return true;
@@ -1135,12 +1282,22 @@ export const OPERATION_FAMILY = {
  * ACTION stands in for a DELETE only when its own verb removes something, and
  * for an UPDATE only when its verb does not create something new.
  */
+const CREATING_ACTION_VERBS = new Set(['record', 'issue', 'generate', 'allocate', 'enrol', 'enroll', 'register', 'submit', 'request', 'apply', 'notify', 'send'].map(stem));
+
 export function performsAsked(capability, asked) {
   const operations = asked instanceof Set ? [...asked] : [].concat(asked ?? []);
   return operations.some((op) => {
+    // "Upsert" is create-or-replace: one act that answers both "schedule a
+    // period" and "change a period".
+    if (nameParts(capability?.name).verb === 'upsert' && ['CREATE', 'UPDATE'].includes(op)) return true;
     if (!(OPERATION_FAMILY[op] ?? [op]).includes(capability?.operation)) return false;
     if (capability.operation !== 'ACTION' || op === 'ACTION' || op === 'CREATE') return true;
-    const verbReads = detectOperation(nameParts(capability.name).verb ?? '');
+    const verb = nameParts(capability.name).verb ?? '';
+    // An ACTION whose verb writes a NEW record -- record a payment, issue a book,
+    // allocate a bed, generate invoices -- is not how a record is CORRECTED:
+    // "change the capacity of room A-101" is not an allocation, and "change the
+    // receipt number of the payment" is not recording another one.
+    const verbReads = CREATING_ACTION_VERBS.has(verb) ? 'CREATE' : detectOperation(verb);
     return op === 'DELETE' ? verbReads === 'DELETE' : verbReads !== 'CREATE';
   });
 }
@@ -1154,6 +1311,19 @@ export function performsAsked(capability, asked) {
  * a sentence with no verb in it is how an assistant does something nobody asked
  * for.
  */
+/**
+ * "Set Rahul's blood group to O+" corrects a field: an UPDATE, not the creation
+ * "set" means in "set homework". The grammar of the correction decides -- a field,
+ * whose it is and a new value -- so no verb is special-cased.
+ */
+function correctionIsUpdate(operations, message) {
+  if (!fieldChangeFromText(message) || renameFromText(message)) return operations;
+  const out = new Set(operations);
+  out.delete('CREATE');
+  out.add('UPDATE');
+  return out;
+}
+
 export function operationsNamed(verbCandidates, verbs, { requestMood = false, message = '' } = {}) {
   const operations = new Set();
   for (const [verb, ops] of verbs) {
@@ -1168,7 +1338,7 @@ export function operationsNamed(verbCandidates, verbs, { requestMood = false, me
     if (coarse !== 'GET') operations.add(coarse);
     else for (const op of ops) operations.add(op);
   }
-  if (operations.size) return operations;
+  if (operations.size) return correctionIsUpdate(operations, message);
 
   // No tool is named after "assign", but a school says "assign Diya Sharma to
   // Room 101" and means the same as "allocate". The coarse verb-stem
@@ -1189,7 +1359,7 @@ export function operationsNamed(verbCandidates, verbs, { requestMood = false, me
   const coarse = opensWithAVerb ? detectOperation(opensWithAVerb) : 'GET';
   if (coarse && coarse !== 'GET') operations.add(coarse);
   if (!operations.size && requestMood) operations.add('CREATE');
-  return operations;
+  return correctionIsUpdate(operations, message);
 }
 
 /**
@@ -1252,7 +1422,8 @@ export function scoreCapability(
   // stopped docking get_dashboard for the word "dashboard" nobody said, which
   // drew it level with the capability that had been asked for by name and
   // turned a plain request into a request for clarification.
-  const askedByVerb = Boolean(verb && verbCandidates.has(verb) && !READ_VERBS.has(verb));
+  const saidVerb = (v) => verbCandidates.has(v) || (VERB_SYNONYMS[v] ?? []).some((s) => verbCandidates.has(s));
+  const askedByVerb = Boolean(verb && saidVerb(verb) && !READ_VERBS.has(verb));
   // A LONGER NAME IS NOT A WORSE FIT.
   //
   // The penalty is per noun, so a two-word name is docked twice for a sentence
@@ -1284,7 +1455,7 @@ export function scoreCapability(
     // get_at_risk_students and not "risk", and "risk" is the whole difference.
     add(aboutThis && !matchedANoun ? Math.max(absentNouns, WEIGHT.NOUN_ABSENT) : absentNouns, 'nouns absent');
   }
-  if (verb && verbCandidates.has(verb) && !READ_VERBS.has(verb)) add(WEIGHT.VERB_MATCH, `verb:${verb}`);
+  if (verb && saidVerb(verb) && !READ_VERBS.has(verb)) add(WEIGHT.VERB_MATCH, `verb:${verb}`);
   else if (READ_VERBS.has(verb) && !wantedOperations.size) add(WEIGHT.READ_VERB_DEFAULT, 'read verb');
 
   /* The arguments it declares, as words.
@@ -1316,6 +1487,17 @@ export function scoreCapability(
     }
   }
   if (fromArguments) add(Math.min(fromArguments, WEIGHT.ARGUMENT_CAP), 'arguments named');
+
+  // A VALUE the sentence names that this capability's own schema lists: "close the
+  // Bus timing ticket" says CLOSED, which one property of one capability accepts.
+  // What a capability can be TOLD is evidence about what is being asked of it, the
+  // same as the words of its arguments -- and it separates the capability that
+  // changes a ticket's status from the one that replies to it. Writes only: a
+  // read that happens to share a word is unaffected.
+  if (capability.operation !== 'GET') {
+    const said = enumValueSaid(capability, tokens, nouns);
+    if (said) add(WEIGHT.FILTER_FILLED + 1, `value:${said}`);
+  }
 
   /* The capability's own description, as a weak tie-breaker. */
   const described = lexiconOf(capability);
@@ -1386,6 +1568,37 @@ export function scoreCapability(
       continue;
     }
 
+    // A FIELD CORRECTION: "change X's address to Y". The field is named in
+    // words and the capability says which of its own properties that is, so
+    // nothing here knows a field. It fills a top-level property or one inside a
+    // `fields` object, in the type the property wants; a capability with no
+    // such property is not penalised (the sentence's real subject is the record).
+    if (dimension === 'fieldChange') {
+      const hit = capability.operation === 'UPDATE' ? propertyForField(value.field, capability.schema) : null;
+      const bag = !hit && capability.operation === 'UPDATE' && capability.schema?.properties?.fields?.type === 'object';
+      if (bag && (dimensions.student || dimensions.admissionNo)) {
+        // Not one of the fields this capability corrects. Passed on under its own
+        // name, so the capability refuses it out loud with what it CAN change --
+        // never dropped, and never read as a different request.
+        const key = String(value.field).toLowerCase().replace(/\s+(?:number|no\.?)$/, '').replace(/\s+(\w)/g, (_, c) => c.toUpperCase());
+        args.fields = { ...(args.fields ?? {}), [key]: value.value };
+        filled.add('fieldChange');
+        targetsFilled += 1;
+        add(WEIGHT.TARGET_FILLED, `change -> fields.${key} (not correctable here)`);
+      }
+      if (hit) {
+        const coerced = coerceFieldValue(value.value, hit.schema, hit.name);
+        if (coerced !== null) {
+          if (hit.path.length === 1) args[hit.name] = coerced;
+          else args[hit.path[0]] = { ...(args[hit.path[0]] ?? {}), [hit.name]: coerced };
+          filled.add('fieldChange');
+          targetsFilled += 1;
+          add(WEIGHT.TARGET_FILLED, `change -> ${hit.path.join('.')}`);
+        }
+      }
+      continue;
+    }
+
     // A record's current name and its new one go into a capability that takes
     // a new name beside the identifying one, and are never a penalty
     // elsewhere. The current name is also the `title` dimension, which fills
@@ -1417,7 +1630,11 @@ export function scoreCapability(
         args[pair[0]] = ahead(value.from);
         args[pair[1]] = ahead(value.to);
         filled.add('range');
-        add(WEIGHT.FILTER_FILLED, 'range');
+        // Expressing the PERIOD asked for is worth more than a filter: it is what
+        // separates the capability that can answer "this month" from a sibling that
+        // can only answer for all time, which is docked for it (below) but cannot
+        // otherwise be told apart from one that answers with a noun of its own.
+        add(WEIGHT.FILTER_FILLED + 2, 'range');
       } else if (properties.includes('day') && isWholeWeek(value)
         && /\bweek\b/i.test(String(capability.schema?.properties?.day?.description ?? ''))) {
         // A capability whose `day` says it takes the week (the timetable) is
@@ -1436,6 +1653,9 @@ export function scoreCapability(
     }
 
     let spoken = dimension === 'numbered' ? value.value : value;
+    if (dimension === 'numbered' && ARG_NAMES.numbered.find((n) => properties.includes(n) && !ids.has(n) && acceptsDimension(capability, n, dimension)) === 'name') {
+      spoken = `${value.kind.charAt(0).toUpperCase()}${value.kind.slice(1)} ${value.value}`;
+    }
     const argName = dimension === 'percentage'
       ? percentageArgOf(capability)
       : ARG_NAMES[dimension].find(
@@ -1450,9 +1670,10 @@ export function scoreCapability(
     // tomorrow?" therefore lost six points for naming a day the capability
     // that answers it was said to be unable to express -- when expressing it
     // is simply a matter of both ends being the same day.
-    if (!argName && dimension === 'date' && properties.includes('from') && properties.includes('to')) {
-      args.from = value;
-      args.to = value;
+    const oneDay = !argName && dimension === 'date' ? rangeArgsOf(properties) : null;
+    if (oneDay) {
+      args[oneDay[0]] = value;
+      args[oneDay[1]] = value;
       filled.add('date');
       add(WEIGHT.FILTER_FILLED, 'date as a one-day range');
       continue;
@@ -1467,6 +1688,26 @@ export function scoreCapability(
       // the ones holding neither, which were being penalised six points for
       // failing to express somebody nobody had named.
       if (dimension === 'student' && dimensions.personFromTitle) continue;
+      // The name a capability is being asked to CREATE something called: "add a
+      // calendar event for Sports Day", "update Wings of Fire" -- one span, read
+      // as a person by the name reader and as a title by the title reader. Where
+      // the capability holds a title and no student, it is the title, and being
+      // unable to name a pupil is no fault of a capability that names an event.
+      if (dimension === 'student' && dimensions.title && String(dimensions.title).includes(String(value))
+        && ['title', 'name', 'subject'].some((n) => properties.includes(n))) continue;
+      if (dimension === 'class' && dimensions.classInsideTitle
+        && ['title', 'name', 'subject'].some((n) => properties.includes(n))) continue;
+      // What a creation is CALLED, read as a person because it is two capitalised
+      // words after "for": "add a holiday for Gandhi Jayanti". A capability that
+      // creates something that is not about pupils takes it as its name.
+      if (dimension === 'student' && capability.operation === 'CREATE' && !/\b(?:student|pupil|child)/i.test(capability.description ?? '')) {
+        const into = ['title', 'name'].find((n) => properties.includes(n) && args[n] === undefined && !ids.has(n));
+        if (into) {
+          args[into] = value;
+          add(WEIGHT.FILTER_FILLED, `name -> ${into}`);
+          continue;
+        }
+      }
       add(WEIGHT.SPECIFICITY_PENALTY, `cannot express the ${dimension} asked for`);
       continue;
     }
@@ -1641,6 +1882,11 @@ function fillDeclaredArguments(capability, args, message, { now, write, verbatim
   for (const [name, propertySchema] of order) {
     if (filled[name] !== undefined) continue;
     if (namesARecord(capability, name, propertySchema)) continue;
+    // A number that carries a UNIT in its name -- etaMinutesFromStart, heightCm,
+    // weightKg -- is read only where the sentence says that unit. "Add a stop at
+    // sequence 2" states no minutes, and its 2 is the sequence.
+    const unit = /(Minutes|Hours|Days|Cm|Kg)(?:FromStart)?$/.exec(name)?.[1];
+    if (unit && !new RegExp(`\\d\\s*(?:${unit.toLowerCase().replace(/s$/, '')}s?|${{ Cm: 'centimet', Kg: 'kilo' }[unit] ?? '~'})`, 'i').test(verbatim)) continue;
     // Free text is read from the sentence as the person wrote it, never from
     // the residual. The residual has had names, classes and possessives cut
     // out of it, which is right for reading a number out of it and wrong for
@@ -1662,7 +1908,83 @@ function fillDeclaredArguments(capability, args, message, { now, write, verbatim
     }
     filled[name] = result.value;
   }
+
+  // A DECISION the sentence states by its verb: approve / accept vs reject /
+  // decline. A boolean is otherwise a phrase no generic reader can see.
+  const decisionKey = ['approve', 'approved', 'accept'].find((k) => properties[k]?.type === 'boolean');
+  if (decisionKey && filled[decisionKey] === undefined) {
+    if (/\b(?:approv|accept|allow|grant)\w*\b/i.test(verbatim)) filled[decisionKey] = true;
+    else if (/\b(?:reject|declin|deny|denied|refus)\w*\b/i.test(verbatim)) filled[decisionKey] = false;
+  }
+
+  // The reason a sentence GIVES ("... because the cheque bounced") is the
+  // `reason` a capability asks for -- the words themselves, never read for
+  // anything else (see withoutReasonClause).
+  if (properties.reason?.type === 'string' && filled.reason === undefined) {
+    const because = /\bbecause\s+(.+?)[.!]?\s*$/i.exec(verbatim)?.[1];
+    if (because) filled.reason = because.trim();
+  }
+
+  // A person's name, when the record created IS the person: "add a new student
+  // Kabir Mehta" is firstName Kabir, lastName Mehta.
+  if (properties.firstName && filled.firstName === undefined && capability.operation === 'CREATE') {
+    const person = nameFromText(withoutLeadingVerb(verbatim)) ?? personShaped(titleFromText(verbatim));
+    if (person) {
+      const [first, ...rest] = String(person).trim().split(/\s+/);
+      filled.firstName = first;
+      if (rest.length && properties.lastName && filled.lastName === undefined) filled.lastName = rest.join(' ');
+    }
+  }
+
+  // "<role> <Name>": a string property named for a role's name -- guardianName,
+  // driverName, operatorName -- is the capitalised name the sentence writes after
+  // that role word. "Guardian Mr Kapoor", "driver Ramesh".
+  for (const [name, propertySchema] of Object.entries(properties)) {
+    const role = /^([a-z]+)Name$/.exec(name)?.[1];
+    if (!role || filled[name] !== undefined || propertySchema?.type !== 'string') continue;
+    // Records named by their own readers (a pupil, a route, a stop, a teacher).
+    if (['student', 'child', 'route', 'stop', 'teacher'].includes(role)) continue;
+    const said = new RegExp(`\\b${role}\\s+(?:is\\s+|named\\s+|called\\s+)?((?:mr|mrs|ms|dr)\\.?\\s+)?([A-Z][\\w'’.-]*(?:\\s+[A-Z][\\w'’.-]*){0,2})`).exec(verbatim);
+    if (said) filled[name] = `${said[1] ?? ''}${said[2]}`.trim().replace(/[.,;:!?]+$/, '');
+  }
+
+  // A creation names what it creates straight after its own noun: "create section
+  // B in Class 7", "create term 2". Only for the record's own `name`/`title`
+  // when the tool requires one and nothing above supplied it -- and never for a
+  // record that only names ANOTHER one.
+  if (capability.operation === 'CREATE') {
+    for (const key of ['name', 'title']) {
+      if (filled[key] !== undefined || !required.has(key) || properties[key]?.type !== 'string') continue;
+      const found = namedAfterOwnNoun(verbatim, nameParts(capability.name).nouns);
+      if (found) { filled[key] = found; break; }
+    }
+  }
   return filled;
+}
+
+/**
+ * What a sentence calls the thing it asks to create, when it says so right after
+ * the noun: "create section B in Class 7" -> "B", "add a stop Market to Route 7"
+ * -> "Market". A bare number or a single letter is a NUMBER of the noun, not its
+ * name -- "create term 2" means the term "Term 2" -- so a number keeps the noun.
+ */
+function namedAfterOwnNoun(text, nouns) {
+  const str = String(text ?? '');
+  for (const noun of nouns) {
+    if (noun.length < 3) continue;
+    const re = new RegExp(
+      `\\b${noun}\\w*\\s+(?:called\\s+|named\\s+|titled\\s+)?(?!(?:for|in|to|from|on|at|with|due|by|of|under|and|a|an|the)\\b)` +
+      `([A-Za-z0-9][\\w'’&.-]*(?:\\s+[A-Za-z0-9][\\w'’&.-]*){0,3}?)(?=\\s+(?:for|in|to|from|on|at|with|due|by|of|under|and)\\b|[,;:!?]|\\.?\\s*$)`,
+      'i',
+    );
+    const hit = re.exec(str)?.[1]?.trim();
+    if (!hit) continue;
+    // Another word of the capability's own name is not what is being CALLED
+    // something: "add course MATERIAL" does not name a material "material".
+    if (nouns.includes(stem(hit)) || tokensOf(hit).size === 0 || entitiesInText(hit).length) continue;
+    return /^\d+$/.test(hit) ? `${noun.charAt(0).toUpperCase()}${noun.slice(1)} ${hit}` : hit;
+  }
+  return null;
 }
 
 /**
@@ -1708,6 +2030,10 @@ function residualMessage(text, named) {
   // August 2026" left behind as text was read as a topic and a period number.
   for (const span of named.writtenDates ?? []) rest = rest.split(span).join(' ');
   if (named.link) rest = rest.split(named.link).join(' ');
+  // The new value of a correction, and an academic year, are data too.
+  if (named.fieldChange?.span) rest = rest.split(named.fieldChange.span).join(' ');
+  if (named.phone) rest = rest.split(named.phone).join(' ');
+  if (named.academicYear) rest = rest.replace(/\b20\d{2}\s*[-\u2013/]\s*(?:\d{4}|\d{2})(?![-\d])/g, ' ');
   return rest;
 }
 
@@ -1856,8 +2182,20 @@ export function argumentsFor(capabilityName, message, actor, { now = new Date(),
  *   | { tool: string, args: object, score: number, why: string[] }
  *   | { needsClarification: true, options: {tool,entity,operation}[] }}
  */
+/**
+ * The sentence without the reason it gives: "reject the payment because the
+ * cheque bounced" asks about a payment, and "because we opened two new
+ * SECTIONS" is not a request about sections. The reason is free text -- it is
+ * read whole where a tool wants one (see extractArgument) and read for nothing
+ * else.
+ */
+export function withoutReasonClause(text) {
+  return String(text ?? '').replace(/\s*\bbecause\b[\s\S]*$/i, '');
+}
+
 export function resolveCapability(message, actor, { now = new Date(), candidates = null } = {}) {
-  const str = String(message ?? '');
+  const original = String(message ?? '');
+  const str = withoutReasonClause(original);
   if (!str.trim()) return null;
 
   // A question about a module the caller holds nothing in is DECLINED, not
@@ -1940,7 +2278,7 @@ export function resolveCapability(message, actor, { now = new Date(), candidates
     best.capability,
     best.args,
     residualMessage(str, named),
-    { now, write, verbatim: str },
+    { now, write, verbatim: original },
   );
   return { tool: best.capability.name, args, score: best.score, tentative, why: best.why };
 }
@@ -2137,7 +2475,9 @@ export function unavailableAction(message, actor) {
   // "Give me the link" governs the speaker, which makes it a read -- the same
   // rule operationsNamed() applies.
   const toTheSpeaker = /^\s*(?:please\s+)?[a-z]+\s+(?:me|us)\b/i.test(str);
-  const coarse = opening && !toTheSpeaker ? detectOperation(opening) : 'GET';
+  const coarse = opening && !toTheSpeaker
+    ? (fieldChangeFromText(str) && !renameFromText(str) ? 'UPDATE' : detectOperation(opening))
+    : 'GET';
   const wanted = coarse !== 'GET'
     ? new Set([coarse])
     : operationsNamed(candidates, verbs, { requestMood: named.requestMood, message: str });

@@ -4,7 +4,30 @@ import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
 import {
   RISK, objectId, dateStr, rupees, paise, summarise, wrapAgentTool, resolveSection, classIdentitySchema, resolveStudentId,
+  studentIdentitySchema,
 } from './_shared.js';
+import {
+  resolveGrade, resolveYear, resolveFeeHead, resolvePayment, resolveChangeRequest, resolveFeePlanRef, activeEnrollmentOf,
+} from './_names.js';
+
+/**
+ * Fee writes take the record they act on by NAME as well as by id.
+ *
+ * A payment is "the pending payment for INV-1001", a fee plan is "Aman's fee
+ * plan", a fee head is "Lab Fee", a year is "2026-27" -- and none is ever an
+ * ObjectId in a sentence. Requiring one made every one of these unreachable:
+ * the resolver never offers a write whose required id nothing can supply, so
+ * "approve the pending payment" reached record_payment instead. Each name is
+ * resolved in prepare() -- before the confirmation -- from the same collections
+ * the fee screens read, so the confirmation names the payment, the plan and the
+ * amount, an unknown or ambiguous name is a question, and the recording,
+ * approving, rejecting, updating and requesting-a-change-to a payment stay the
+ * distinct operations, with their distinct permissions, that they are.
+ */
+const paymentIdentity = {
+  invoiceNo: { type: 'string', maxLength: 40, description: 'The invoice the payment is on, e.g. "INV-1042". Alternative to paymentId.' },
+};
+const paymentLabel = (p) => `${p.receiptNo ? `receipt ${p.receiptNo}` : 'the payment'} (${rupees(p.amountPaise)})`;
 
 /**
  * Fee and payment tools.
@@ -234,12 +257,15 @@ export const feeTools = {
   get_payment_history: {
     module: 'Fees',
     // The payments, as rows. Named "history", which the shape default reads as
-    // one record -- and docked for not naming an invoice.
+    // one record -- and docked for not naming an invoice. It reports what the
+    // settled payments in the period add up to, so "how much was collected
+    // this month" is answered by its figure as well as its rows.
     resultShape: 'LIST',
+    reportsTotal: true,
     operation: 'GET',
     risk: RISK.LOW,
     description:
-      'Fee payments that have been recorded — receipt number, invoice, student, amount, mode, date and verification status. Staff see the school; a family sees only their own settled payments. Read-only.',
+      'Fee payments that have been recorded — receipt number, invoice, student, amount, mode, date and verification status. Also the answer to fee collection over a period: how much was collected this month, today or between two dates. Staff see the school; a family sees only their own settled payments. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -260,9 +286,12 @@ export const feeTools = {
         ...(args.from && { from: args.from }),
         ...(args.to && { to: args.to }),
         page: 1,
-        pageSize: Math.min(Number(args.limit) || 20, 100),
+        // The whole period is read (up to the service's own cap) so the figure
+        // collected is the period's, not that of the few rows the answer lists.
+        pageSize: 200,
       });
-      const items = asList(page).map((p) => ({
+      const shownLimit = Math.min(Number(args.limit) || 20, 100);
+      const everyItem = asList(page).map((p) => ({
         paymentId: String(p.id),
         receiptNo: p.receiptNo,
         invoiceNo: p.invoiceNo,
@@ -275,13 +304,24 @@ export const feeTools = {
         verificationStatus: p.verificationStatus ?? null,
         paidOn: p.paidOn,
       }));
+      const items = everyItem.slice(0, shownLimit);
       const total = items.reduce((sum, p) => sum + p.amountPaise, 0);
+      // COLLECTED is money that is settled: a captured payment that is not still
+      // awaiting approval and was not rejected -- the same rule the family's own
+      // view applies. A payment keyed in but not yet approved is not collected yet.
+      const settled = everyItem.filter((p) => p.status === 'SUCCESS' && !['PENDING_ADMIN_APPROVAL', 'REJECTED'].includes(p.recordStatus));
+      const collectedPaise = settled.reduce((sum, p) => sum + p.amountPaise, 0);
       const view = summarise(items, (p) => `${p.studentName} ${rupees(p.amountPaise)} (${p.mode})`);
+      const count = page.total ?? everyItem.length;
       return ok(
-        { payments: items, returned: items.length, total: page.total ?? items.length, totalAmountPaise: total },
         {
-          speak: items.length
-            ? `${page.total ?? items.length} payment(s); the ${items.length} shown total ${rupees(total)}: ${view.list}.`
+          payments: items, returned: items.length, total: count, totalAmountPaise: total,
+          collectedPaise, settledCount: settled.length,
+        },
+        {
+          speak: everyItem.length
+            ? `${count} payment(s); ${rupees(collectedPaise)} collected across ${settled.length} settled payment(s)`
+              + `${count > everyItem.length ? ` (the first ${everyItem.length} of ${count})` : ''}. The ${items.length} shown: ${view.list}.`
             : 'No payments have been recorded for that.',
         },
       );
@@ -433,7 +473,8 @@ export const feeTools = {
       type: 'object',
       properties: {
         enrollmentId: objectId(),
-        invoiceNo: { type: 'string', maxLength: 40 },
+        ...studentIdentitySchema,
+        invoiceNo: { type: 'string', maxLength: 40, description: 'The new invoice number, unique in the school' },
         dueOn: dateStr(),
         lines: {
           type: 'array',
@@ -452,20 +493,31 @@ export const feeTools = {
           },
         },
       },
-      // Invoice.invoiceNo and Invoice.dueOn are both required by the model.
-      required: ['enrollmentId', 'invoiceNo', 'dueOn', 'lines'],
+      // Invoice.invoiceNo and Invoice.dueOn are both required by the model. The
+      // student is named (their active enrolment is the one billed); see prepare().
+      required: ['invoiceNo', 'dueOn', 'lines'],
       additionalProperties: false,
     },
     permission: 'fees.manage',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'fee.service.createInvoice()',
-    summarise: (args) => {
+    summarise: (args, _actor, prepared) => {
       const total = (args.lines ?? []).reduce((s, l) => s + Number(l.amountPaise ?? 0) - Number(l.concessionPaise ?? 0), 0);
-      return `Raise invoice ${args.invoiceNo} for ${rupees(total)} against enrolment ${args.enrollmentId}, due ${args.dueOn}`;
+      return `Raise invoice ${args.invoiceNo} for ${rupees(total)} against ${prepared?.label ?? `enrolment ${args.enrollmentId}`}, due ${args.dueOn}`;
     },
-    async run(_ctx, args) {
-      const invoice = await fees.createInvoice(args);
+    async prepare(ctx, args) {
+      if (args.enrollmentId) return { enrollmentId: String(args.enrollmentId) };
+      const studentId = await resolveStudentId(ctx, args);
+      if (!studentId) throw new AppError('Who is the invoice for? Give a name, admission number or id.', 400, [], 'AGENT_NEEDS_INPUT');
+      const enrolment = await activeEnrollmentOf(studentId);
+      const name = args.studentName ?? args.admissionNo ?? 'the student';
+      return { enrollmentId: String(enrolment._id), label: `${name}'s enrolment` };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const { studentId: _s, admissionNo: _a, studentName: _n, ...rest } = args;
+      const invoice = await fees.createInvoice({ ...rest, enrollmentId: plan.enrollmentId });
       return action({
         type: 'invoice_created',
         id: invoice._id ?? invoice.id,
@@ -486,11 +538,12 @@ export const feeTools = {
       type: 'object',
       properties: {
         academicYearId: objectId(),
+        academicYear: { type: 'string', maxLength: 40, description: 'The year as a person names it, e.g. "2026-27". Omit for the current year; the confirmation names it.' },
         gradeId: objectId('Restrict to one grade; omit to bill the whole year'),
+        grade: { type: 'string', maxLength: 60, description: 'Restrict to one grade by name, e.g. "Class 6"' },
         dueOn: dateStr(),
         dryRun: { type: 'boolean', description: 'Count and total without writing anything' },
       },
-      required: ['academicYearId'],
       additionalProperties: false,
     },
     permission: 'fees.manage',
@@ -500,14 +553,21 @@ export const feeTools = {
     // A dry run writes nothing, so it does not need approval — asking the user
     // to confirm a preview is how confirmation prompts start being ignored.
     confirmWhen: (args) => args.dryRun !== true,
-    summarise: (args) =>
-      `Generate fee invoices for every active enrolment in academic year ${args.academicYearId}` +
-      (args.gradeId ? `, grade ${args.gradeId}` : ' (the whole school)') +
+    summarise: (args, _actor, prepared) =>
+      `Generate fee invoices for every active enrolment in academic year ${prepared?.yearName ?? args.academicYearId}` +
+      (prepared?.assumed ? ' (the current year)' : '') +
+      (prepared?.gradeName ? `, ${prepared.gradeName}` : args.gradeId ? `, grade ${args.gradeId}` : ' (the whole school)') +
       (args.dueOn ? `, due ${args.dueOn}` : ''),
-    async run(_ctx, args) {
+    async prepare(_ctx, args) {
+      const year = await resolveYear({ academicYearId: args.academicYearId, academicYear: args.academicYear });
+      const grade = await resolveGrade({ gradeId: args.gradeId, grade: args.grade });
+      return { academicYearId: year.id, yearName: year.name, assumed: Boolean(year.assumed), ...(grade && { gradeId: grade.id, gradeName: grade.name }) };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
       const result = await fees.generateInvoices({
-        academicYearId: args.academicYearId,
-        gradeId: args.gradeId ?? null,
+        academicYearId: plan.academicYearId,
+        gradeId: plan.gradeId ?? null,
         dueOn: args.dueOn,
         dryRun: Boolean(args.dryRun),
       });
@@ -532,6 +592,7 @@ export const feeTools = {
       type: 'object',
       properties: {
         enrollmentId: objectId(),
+        ...studentIdentitySchema,
         mode: { type: 'string', enum: ['ONE_TIME', 'PARTIAL', 'INSTALLMENT'] },
         totalPaise: { type: 'integer', minimum: 1, description: 'Whole paise' },
         installments: installmentSchema,
@@ -539,16 +600,26 @@ export const feeTools = {
         feeHeadId: objectId('The fee head this plan settles, if one'),
         notes: { type: 'string', maxLength: 1000 },
       },
-      required: ['enrollmentId', 'mode', 'totalPaise', 'installments'],
+      // The student is named (their active enrolment is the one planned for).
+      required: ['mode', 'totalPaise', 'installments'],
       additionalProperties: false,
     },
     permission: 'fees.plan.request',
     service: 'plan.service.createFeePlan()',
-    summarise: (args) =>
-      `Draft a ${args.mode} fee plan of ${rupees(args.totalPaise)} for enrolment ${args.enrollmentId} ` +
+    summarise: (args, _actor, prepared) =>
+      `Draft a ${args.mode} fee plan of ${rupees(args.totalPaise)} for ${prepared?.label ?? `enrolment ${args.enrollmentId}`} ` +
       `in ${args.installments.length} installment(s)`,
-    async run(ctx, args) {
-      const plan = await plans.createFeePlan(ctx.actor, args);
+    async prepare(ctx, args) {
+      if (args.enrollmentId) return { enrollmentId: String(args.enrollmentId) };
+      const studentId = await resolveStudentId(ctx, args);
+      if (!studentId) throw new AppError('Who is the plan for? Give a name, admission number or id.', 400, [], 'AGENT_NEEDS_INPUT');
+      const enrolment = await activeEnrollmentOf(studentId);
+      return { enrollmentId: String(enrolment._id), label: `${args.studentName ?? args.admissionNo ?? 'the student'}'s enrolment` };
+    },
+    async run(ctx, args, prepared) {
+      const target = prepared ?? (await this.prepare(ctx, args));
+      const { studentId: _s, admissionNo: _a, studentName: _n, ...rest } = args;
+      const plan = await plans.createFeePlan(ctx.actor, { ...rest, enrollmentId: target.enrollmentId });
       return action({
         type: 'fee_plan_created',
         id: plan._id ?? plan.id,
@@ -570,6 +641,7 @@ export const feeTools = {
       type: 'object',
       properties: {
         planId: objectId(),
+        ...studentIdentitySchema,
         mode: { type: 'string', enum: ['ONE_TIME', 'PARTIAL', 'INSTALLMENT'] },
         totalPaise: { type: 'integer', minimum: 1 },
         installments: installmentSchema,
@@ -577,14 +649,26 @@ export const feeTools = {
         feeHeadId: objectId(),
         notes: { type: 'string', maxLength: 1000 },
       },
-      required: ['planId'],
+      // The plan is the named student's editable one (a draft or a rejected
+      // plan): "Aman's fee plan". See prepare().
       additionalProperties: false,
     },
     permission: 'fees.plan.request',
     service: 'plan.service.updateFeePlan()',
-    summarise: (args) => `Amend fee plan ${args.planId}`,
-    async run(ctx, args) {
-      const { planId, ...body } = args;
+    summarise: (args, _actor, prepared) => `Amend ${prepared?.name ? `fee plan "${prepared.name}"` : `fee plan ${args.planId}`}`,
+    async prepare(ctx, args) {
+      const studentId = args.planId ? null : await resolveStudentId(ctx, args);
+      const found = await resolveFeePlanRef({ planId: args.planId, status: ['DRAFT', 'REJECTED'] }, studentId);
+      const { planId: _id, studentId: _s, admissionNo: _a, studentName: _n, ...body } = args;
+      if (!Object.keys(body).length) {
+        throw new AppError('What should change on the plan: the total, the installments or its name?', 400, [], 'AGENT_NEEDS_INPUT');
+      }
+      return { planId: found.id, name: found.name, body };
+    },
+    async run(ctx, args, prepared) {
+      const target = prepared ?? (await this.prepare(ctx, args));
+      const planId = target.planId;
+      const body = target.body;
       const plan = await plans.updateFeePlan(ctx.actor, planId, body);
       return action({ type: 'fee_plan_updated', id: planId, data: { planId, status: plan?.status }, speak: 'The fee plan has been amended.' });
     },
@@ -601,27 +685,38 @@ export const feeTools = {
       type: 'object',
       properties: {
         paymentId: objectId(),
+        ...paymentIdentity,
         amountPaise: { type: 'integer', minimum: 1, description: 'Only on a REJECTED payment' },
         mode: { type: 'string', enum: MANUAL_MODES },
         paidOn: dateStr(),
-        receiptNo: { type: 'string', maxLength: 40 },
+        receiptNo: { type: 'string', maxLength: 40, description: 'The NEW receipt number' },
         notes: { type: 'string', maxLength: 500 },
         instrument: instrumentSchema,
         reason: { type: 'string', maxLength: 500, description: 'Why the record is being corrected — recorded with the change' },
       },
-      required: ['paymentId'],
+      // The payment is the one on the named invoice (or by id). See prepare().
       additionalProperties: false,
     },
     permission: 'fees.payments.approve',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'fee.service.updatePayment()',
-    summarise: (args) => {
-      const fields = Object.keys(args).filter((k) => !['paymentId', 'reason'].includes(k));
-      return `Change ${fields.join(', ')} on payment ${args.paymentId}${args.reason ? ` — "${args.reason}"` : ''}`;
+    summarise: (args, _actor, prepared) => {
+      const fields = Object.keys(args).filter((k) => !['paymentId', 'invoiceNo', 'reason'].includes(k));
+      return `Change ${fields.join(', ')} on ${prepared?.label ?? `payment ${args.paymentId}`}${args.reason ? ` — "${args.reason}"` : ''}`;
     },
-    async run(ctx, args) {
-      const { paymentId, instrument, ...rest } = args;
+    async prepare(_ctx, args) {
+      const payment = await resolvePayment({ paymentId: args.paymentId, invoiceNo: args.invoiceNo });
+      const changes = Object.keys(args).filter((k) => !['paymentId', 'invoiceNo', 'reason'].includes(k));
+      if (!changes.length) {
+        throw new AppError('What should change on the payment: its mode, date, receipt number, notes or amount?', 400, [], 'AGENT_NEEDS_INPUT');
+      }
+      return { paymentId: payment.id, label: `${paymentLabel(payment)}${args.invoiceNo ? ` on ${args.invoiceNo}` : ''}` };
+    },
+    async run(ctx, args, prepared) {
+      const target = prepared ?? (await this.prepare(ctx, args));
+      const { paymentId: _pid, invoiceNo: _inv, instrument, ...rest } = args;
+      const paymentId = target.paymentId;
       // The service edits one named field at a time and names instrument
       // fields with a dot ("instrument.number"), so nested input is flattened
       // to exactly the keys EDITABLE_PAYMENT_FIELDS accepts.
@@ -739,20 +834,35 @@ export const feeTools = {
     confirm: true,
     description:
       'Approve a payment that is pending admin approval, making it final and visible to the family. Requires the payment-approval permission, which Finance deliberately does not hold. Needs confirmation. A payment already approved cannot be approved again.',
-    inputSchema: { type: 'object', properties: { paymentId: objectId() }, required: ['paymentId'], additionalProperties: false },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        paymentId: objectId(),
+        ...paymentIdentity,
+        receiptNo: { type: 'string', maxLength: 40, description: 'The receipt number of the payment, when there is more than one on the invoice' },
+      },
+      // "The pending payment for INV-1001": the payment awaiting approval on
+      // that invoice. See prepare().
+      additionalProperties: false,
+    },
     permission: 'fees.payments.approve',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'fee.service.approvePayment()',
-    summarise: (args) => `Approve payment ${args.paymentId}, making it final`,
-    async run(ctx, args) {
+    summarise: (args, _actor, prepared) => `Approve ${prepared?.label ?? `payment ${args.paymentId}`}, making it final`,
+    async prepare(_ctx, args) {
+      const payment = await resolvePayment({ ...args }, { pending: !args.paymentId, label: 'pending payment' });
+      return { paymentId: payment.id, label: `${paymentLabel(payment)}${args.invoiceNo ? ` on ${args.invoiceNo}` : ''}` };
+    },
+    async run(ctx, args, prepared) {
+      const target = prepared ?? (await this.prepare(ctx, args));
       // approvePayment() returns { payment, invoice, status, paidPaise }.
-      const result = await fees.approvePayment(ctx.actor, args.paymentId);
+      const result = await fees.approvePayment(ctx.actor, target.paymentId);
       return action({
         type: 'payment_approved',
-        id: args.paymentId,
+        id: target.paymentId,
         data: {
-          paymentId: args.paymentId,
+          paymentId: target.paymentId,
           recordStatus: result.payment.recordStatus,
           invoiceStatus: result.status,
           invoicePaidPaise: result.paidPaise,
@@ -772,22 +882,29 @@ export const feeTools = {
       type: 'object',
       properties: {
         paymentId: objectId(),
+        ...paymentIdentity,
+        receiptNo: { type: 'string', maxLength: 40, description: 'The receipt number of the payment, when there is more than one on the invoice' },
         reason: { type: 'string', minLength: 3, maxLength: 500 },
       },
-      required: ['paymentId', 'reason'],
+      required: ['reason'],
       additionalProperties: false,
     },
     permission: 'fees.payments.approve',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'fee.service.rejectPayment()',
-    summarise: (args) => `Reject payment ${args.paymentId} — "${args.reason}"`,
-    async run(ctx, args) {
-      const payment = await fees.rejectPayment(ctx.actor, args.paymentId, args.reason);
+    summarise: (args, _actor, prepared) => `Reject ${prepared?.label ?? `payment ${args.paymentId}`} — "${args.reason}"`,
+    async prepare(_ctx, args) {
+      const payment = await resolvePayment({ paymentId: args.paymentId, invoiceNo: args.invoiceNo, receiptNo: args.receiptNo }, { pending: !args.paymentId, label: 'pending payment' });
+      return { paymentId: payment.id, label: `${paymentLabel(payment)}${args.invoiceNo ? ` on ${args.invoiceNo}` : ''}` };
+    },
+    async run(ctx, args, prepared) {
+      const target = prepared ?? (await this.prepare(ctx, args));
+      const payment = await fees.rejectPayment(ctx.actor, target.paymentId, args.reason);
       return action({
         type: 'payment_rejected',
-        id: args.paymentId,
-        data: { paymentId: args.paymentId, recordStatus: payment?.recordStatus ?? 'REJECTED' },
+        id: target.paymentId,
+        data: { paymentId: target.paymentId, recordStatus: payment?.recordStatus ?? 'REJECTED' },
         speak: 'The payment has been rejected.',
       });
     },
@@ -831,6 +948,7 @@ export const feeTools = {
       type: 'object',
       properties: {
         paymentId: objectId(),
+        ...paymentIdentity,
         field: {
           type: 'string',
           enum: [
@@ -841,19 +959,27 @@ export const feeTools = {
         requestedValue: { type: 'string', maxLength: 500, description: 'The new value; paise for amountPaise, YYYY-MM-DD for dates' },
         reason: { type: 'string', maxLength: 500 },
       },
-      required: ['paymentId', 'field', 'requestedValue', 'reason'],
+      // The payment is the one on the named invoice; see prepare().
+      required: ['field', 'requestedValue', 'reason'],
       additionalProperties: false,
     },
     permission: 'fees.manage',
     minScope: 'ALL',
     service: 'fee.service.createPaymentChangeRequest()',
-    summarise: (args) => `Request changing ${args.field} to "${args.requestedValue}" on payment ${args.paymentId} — "${args.reason}"`,
-    async run(ctx, args) {
-      const request = await fees.createPaymentChangeRequest(ctx.actor, args);
+    summarise: (args, _actor, prepared) =>
+      `Request changing ${args.field} to "${args.requestedValue}" on ${prepared?.label ?? `payment ${args.paymentId}`} — "${args.reason}"`,
+    async prepare(_ctx, args) {
+      const payment = await resolvePayment({ paymentId: args.paymentId, invoiceNo: args.invoiceNo }, { label: 'payment' });
+      return { paymentId: payment.id, label: `${paymentLabel(payment)}${args.invoiceNo ? ` on ${args.invoiceNo}` : ''}` };
+    },
+    async run(ctx, args, prepared) {
+      const target = prepared ?? (await this.prepare(ctx, args));
+      const { invoiceNo: _inv, ...rest } = args;
+      const request = await fees.createPaymentChangeRequest(ctx.actor, { ...rest, paymentId: target.paymentId });
       return action({
         type: 'payment_change_requested',
         id: request._id,
-        data: { requestId: String(request._id), paymentId: args.paymentId, field: args.field, status: request.status ?? 'PENDING' },
+        data: { requestId: String(request._id), paymentId: target.paymentId, field: args.field, status: request.status ?? 'PENDING' },
         speak: 'The change request has been submitted for approval.',
       });
     },
@@ -870,23 +996,32 @@ export const feeTools = {
       type: 'object',
       properties: {
         requestId: objectId(),
+        ...paymentIdentity,
         approve: { type: 'boolean' },
         reason: { type: 'string', maxLength: 500, description: 'Required when rejecting' },
       },
-      required: ['requestId', 'approve'],
+      // The request is the pending one -- for the named invoice's payment, or
+      // the only one open. See prepare().
+      required: ['approve'],
       additionalProperties: false,
     },
     permission: 'fees.payments.approve',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'fee.service.decidePaymentChangeRequest()',
-    summarise: (args) => `${args.approve ? 'Approve' : 'Reject'} payment change request ${args.requestId}`,
-    async run(ctx, args) {
-      const result = await fees.decidePaymentChangeRequest(ctx.actor, args.requestId, { approve: args.approve, reason: args.reason });
+    summarise: (args, _actor, prepared) =>
+      `${args.approve ? 'Approve' : 'Reject'} the ${prepared?.field ? `${prepared.field} ` : ''}payment change request${prepared?.invoiceNo ? ` on ${prepared.invoiceNo}` : ''}`,
+    async prepare(_ctx, args) {
+      const request = await resolveChangeRequest({ requestId: args.requestId, invoiceNo: args.invoiceNo });
+      return { requestId: request.id, field: request.field, invoiceNo: args.invoiceNo };
+    },
+    async run(ctx, args, prepared) {
+      const target = prepared ?? (await this.prepare(ctx, args));
+      const result = await fees.decidePaymentChangeRequest(ctx.actor, target.requestId, { approve: args.approve, reason: args.reason });
       return action({
         type: args.approve ? 'payment_change_approved' : 'payment_change_rejected',
-        id: args.requestId,
-        data: { requestId: args.requestId, status: result?.status ?? null },
+        id: target.requestId,
+        data: { requestId: target.requestId, status: result?.status ?? null },
         speak: args.approve ? 'The change has been approved and applied.' : 'The change request has been rejected.',
       });
     },
@@ -903,11 +1038,14 @@ export const feeTools = {
       type: 'object',
       properties: {
         planId: objectId(),
+        ...studentIdentitySchema,
         step: { type: 'string', enum: ['submit', 'review', 'requestApproval', 'approve', 'reject'] },
         reason: { type: 'string', maxLength: 500, description: 'Required for reject' },
         note: { type: 'string', maxLength: 500 },
       },
-      required: ['planId', 'step'],
+      // The plan is the named student's -- "Aman's fee plan" -- and is the one
+      // that step applies to (see prepare()).
+      required: ['step'],
       additionalProperties: false,
     },
     // The route gates this on fees.read and plan.service enforces the
@@ -930,15 +1068,21 @@ export const feeTools = {
      * approve instead of being asked to approve and then refused.
      */
     async prepare(ctx, args) {
-      const { plan, rule } = await plans.checkTransition(ctx.actor, args.planId, args.step, { reason: args.reason });
+      const studentId = args.planId ? null : await resolveStudentId(ctx, args);
+      // A student's plans are narrowed to the ones this step can act on -- "approve
+      // Aman's plan" means the plan waiting for approval, not their draft.
+      const waiting = { submit: ['DRAFT'], review: ['PENDING_FINANCE_REVIEW'], requestApproval: ['FINANCE_REVIEWED'], approve: ['PENDING_ADMIN_APPROVAL'], reject: ['PENDING_FINANCE_REVIEW', 'PENDING_ADMIN_APPROVAL', 'FINANCE_REVIEWED'] };
+      const found = await resolveFeePlanRef({ planId: args.planId, status: waiting[args.step] }, studentId);
+      const { plan, rule } = await plans.checkTransition(ctx.actor, found.id, args.step, { reason: args.reason });
       return { planId: String(plan._id), name: plan.name, from: plan.status, to: rule.to };
     },
-    async run(ctx, args) {
-      const plan = await plans.transitionFeePlan(ctx.actor, args.planId, args.step, { reason: args.reason, note: args.note });
+    async run(ctx, args, prepared) {
+      const target = prepared ?? (await this.prepare(ctx, args));
+      const plan = await plans.transitionFeePlan(ctx.actor, target.planId, args.step, { reason: args.reason, note: args.note });
       return action({
         type: `fee_plan_${args.step}`,
-        id: args.planId,
-        data: { planId: args.planId, status: plan?.status ?? null },
+        id: target.planId,
+        data: { planId: target.planId, status: plan?.status ?? null },
         speak: `The fee plan is now ${String(plan?.status ?? 'updated').toLowerCase().replace(/_/g, ' ')}.`,
       });
     },
@@ -951,18 +1095,30 @@ export const feeTools = {
     confirm: true,
     description:
       "Publish an approved fee plan, which raises one invoice per installment — the point at which the family sees it. Requires the plan-approval permission. Installments that already have an invoice are skipped, so publishing twice bills nobody twice. Needs confirmation.",
-    inputSchema: { type: 'object', properties: { planId: objectId() }, required: ['planId'], additionalProperties: false },
+    inputSchema: {
+      type: 'object',
+      properties: { planId: objectId(), ...studentIdentitySchema },
+      // "Publish Aman's fee plan": the approved plan of the named student.
+      additionalProperties: false,
+    },
     permission: 'fees.plan.approve',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'plan.service.publishFeePlan()',
-    summarise: (args) => `Publish fee plan ${args.planId}, raising an invoice for each installment`,
-    async run(ctx, args) {
-      const plan = await plans.publishFeePlan(ctx.actor, args.planId);
+    summarise: (args, _actor, prepared) =>
+      `Publish ${prepared?.name ? `fee plan "${prepared.name}"` : `fee plan ${args.planId}`}, raising an invoice for each installment`,
+    async prepare(ctx, args) {
+      const studentId = args.planId ? null : await resolveStudentId(ctx, args);
+      const found = await resolveFeePlanRef({ planId: args.planId, status: ['APPROVED'] }, studentId);
+      return { planId: found.id, name: found.name };
+    },
+    async run(ctx, args, prepared) {
+      const target = prepared ?? (await this.prepare(ctx, args));
+      const plan = await plans.publishFeePlan(ctx.actor, target.planId);
       return action({
         type: 'fee_plan_published',
-        id: args.planId,
-        data: { planId: args.planId, status: plan?.status ?? null },
+        id: target.planId,
+        data: { planId: target.planId, status: plan?.status ?? null },
         speak: 'The fee plan has been published and its invoices raised.',
       });
     },
@@ -1031,8 +1187,11 @@ export const feeTools = {
       type: 'object',
       properties: {
         feeHeadId: objectId('From get_fee_structures'),
+        feeHead: { type: 'string', maxLength: 120, description: 'The fee head by name, e.g. "Tuition". Omit when the structure name starts with an existing fee head. Alternative to feeHeadId.' },
         academicYearId: objectId('The year this charge applies to'),
+        academicYear: { type: 'string', maxLength: 40, description: 'The year as a person names it, e.g. "2026-27". Omit for the current year; the confirmation names it.' },
         gradeId: objectId('One grade only; omit for every grade'),
+        grade: { type: 'string', maxLength: 60, description: 'One grade by name, e.g. "Class 6". Omit for every grade.' },
         name: { type: 'string', maxLength: 120, description: 'e.g. "Tuition — Term 1"' },
         amountPaise: {
           type: 'integer',
@@ -1041,16 +1200,18 @@ export const feeTools = {
         },
         dueOn: dateStr('When it falls due'),
       },
-      required: ['feeHeadId', 'academicYearId', 'name', 'amountPaise', 'dueOn'],
+      // The fee head, the year and the grade are named in words; see prepare().
+      required: ['name', 'amountPaise', 'dueOn'],
       additionalProperties: false,
     },
     permission: 'fees.structure.manage',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'fee.service.createFeeStructureForActor()',
-    summarise: (args) =>
+    summarise: (args, _actor, prepared) =>
       `Charge ${rupees(args.amountPaise)} for "${args.name}"`
-      + `${args.gradeId ? ' in one grade' : ' across every grade'}, due ${args.dueOn}`,
+      + `${prepared?.gradeName ? ` in ${prepared.gradeName}` : args.gradeId ? ' in one grade' : ' across every grade'}, due ${args.dueOn}`
+      + `${prepared?.academicYear ? ` (${prepared.academicYear}${prepared.assumed ? ', the current year' : ''})` : ''}`,
     /**
      * The same validation the write performs, run before the prompt: a year or
      * grade belonging to another school, or an amount that is not a whole
@@ -1058,21 +1219,45 @@ export const feeTools = {
      * by a person and then failing.
      */
     async prepare(ctx, args) {
+      // The fee head: named, or the existing head the structure's own name
+      // starts with ("Lab Fee 2026-27" is a charge for the head "Lab Fee"). A
+      // name that fits none is a question -- never a head invented on the side.
+      let head = await resolveFeeHead({ feeHeadId: args.feeHeadId, feeHead: args.feeHead });
+      if (!head) {
+        const heads = await fees.listFeeHeads();
+        const wanted = String(args.name ?? '').toLowerCase();
+        const inName = heads.filter((h) => wanted.includes(String(h.name).toLowerCase()));
+        if (inName.length === 1) head = { id: String(inName[0]._id ?? inName[0].id), name: inName[0].name };
+        else if (inName.length > 1) {
+          throw new AppError(`Which fee head — ${inName.slice(0, 5).map((h) => h.name).join(', ')}?`, 400, [], 'AGENT_NEEDS_INPUT');
+        } else {
+          throw new AppError(
+            `Which fee head is this charge for? ${heads.length ? `The school has ${heads.slice(0, 6).map((h) => h.name).join(', ')}.` : 'There are none yet -- add one first.'}`,
+            400, [], 'AGENT_NEEDS_INPUT',
+          );
+        }
+      }
+      const year = await resolveYear({ academicYearId: args.academicYearId, academicYear: args.academicYear });
+      const grade = await resolveGrade({ gradeId: args.gradeId, grade: args.grade });
       const resolved = await fees.resolveFeeStructureInput(ctx.scope, {
-        feeHeadId: args.feeHeadId,
-        academicYearId: args.academicYearId,
-        ...(args.gradeId && { gradeId: args.gradeId }),
+        feeHeadId: head.id,
+        academicYearId: year.id,
+        ...(grade && { gradeId: grade.id }),
         name: args.name,
         amountPaise: args.amountPaise,
         dueOn: args.dueOn,
       });
-      return { feeHead: resolved.feeHeadName, academicYear: resolved.academicYearName };
+      return {
+        feeHeadId: head.id, academicYearId: year.id, ...(grade && { gradeId: grade.id }),
+        feeHead: resolved.feeHeadName, academicYear: resolved.academicYearName, assumed: Boolean(year.assumed), gradeName: grade?.name,
+      };
     },
-    async run(ctx, args) {
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
       const structure = await fees.createFeeStructureForActor(ctx.actor, ctx.scope, {
-        feeHeadId: args.feeHeadId,
-        academicYearId: args.academicYearId,
-        ...(args.gradeId && { gradeId: args.gradeId }),
+        feeHeadId: plan.feeHeadId,
+        academicYearId: plan.academicYearId,
+        ...(plan.gradeId && { gradeId: plan.gradeId }),
         name: args.name,
         amountPaise: args.amountPaise,
         dueOn: args.dueOn,
