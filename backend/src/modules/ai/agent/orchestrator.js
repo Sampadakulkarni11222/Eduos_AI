@@ -4,7 +4,7 @@ import { AppError } from '../../../utils/AppError.js';
 import { logger } from '../../../utils/logger.js';
 import { parseIntentWithLlm, parseIntent, clarificationFor, MAX_PLAN_STEPS } from './intent.js';
 import {
-  unmetNarrowing, asksBeyondOwnSchool, dimensionsOf, unavailableAction, asksAboutOthers,
+  unmetNarrowing, asksBeyondOwnSchool, dimensionsOf, unavailableAction, asksAboutOthers, asksBulkDestruction,
 } from './capabilityResolver.js';
 import { detectLanguage, t } from '../../../utils/language.js';
 import { currentTenantId } from '../../../tenancy/tenantContext.js';
@@ -502,6 +502,14 @@ async function routeTurn({ mcpSession, message, actor, source, lang, history }) 
   // see declineSwappedAct().
   const unavailable = unavailableAction(message, actor);
 
+  // Everything of a kind, deleted at once. Nothing here removes more than one
+  // record per confirmation, and the one-record reading of "delete all students"
+  // ("which student?") would turn a mass deletion into a question about the
+  // first record. Declined before anything chooses a capability -- after the
+  // check above, which already says so where the act is not offered at all.
+  const bulk = unavailable ? null : asksBulkDestruction(message);
+  if (bulk) return declineBulk(bulk, lang);
+
   const intent = await parseIntentWithLlm(message, actor, { history, tools: mcpTools });
 
   // The act asked for is not one the caller can perform, and the plan answers
@@ -593,6 +601,16 @@ async function routeTurn({ mcpSession, message, actor, source, lang, history }) 
 }
 
 /** "You can't approve a co-curricular request from your account." */
+function declineBulk({ verb, noun }, lang) {
+  return {
+    reply: `I can't ${verb} all ${noun} at once. Nothing here is removed in bulk: each one is handled on its own, `
+      + 'by name, and you confirm every one. Tell me which one you mean.',
+    lang,
+    action: null,
+    refused: 'BULK_NOT_OFFERED',
+  };
+}
+
 function declineUnavailable(unavailable, lang) {
   const topic = TOPIC_OF_ENTITY_OR_THAT(unavailable.entity);
   return {

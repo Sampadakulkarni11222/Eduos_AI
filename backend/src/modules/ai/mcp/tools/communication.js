@@ -6,6 +6,7 @@ import * as whatsapp from '../../../whatsapp/whatsapp.service.js';
 import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
 import { RISK, objectId, dateStr, shortDate, summarise, wrapAgentTool, resolveSection, classIdentitySchema } from './_shared.js';
+import { resolveLead, resolveProfilesByName } from './_names.js';
 
 /**
  * An announcement addressed to one class named in words.
@@ -180,32 +181,46 @@ export const communicationTools = {
       type: 'object',
       properties: {
         leadId: objectId(),
+        childName: { type: 'string', maxLength: 120, description: 'The applicant child as a person names them, e.g. "Kabir Kapoor". Alternative to leadId.' },
         stage: { type: 'string', enum: LEAD_STAGES, description: 'ENROLLED approves the admission; LOST rejects it' },
         notes: { type: 'string', maxLength: 1000 },
         assigneeProfileId: objectId(),
         nextActionAt: dateStr(),
       },
-      required: ['leadId'],
+      // The enquiry is the named child's; nobody holds an id. See prepare().
       additionalProperties: false,
     },
     permission: 'admissions.manage',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'admission.service.updateLead()',
-    summarise: (args) =>
-      args.stage
-        ? `Move admission enquiry ${args.leadId} to ${args.stage}` +
+    summarise: (args, _actor, prepared) => {
+      const which = prepared?.childName ? `${prepared.childName}'s admission enquiry` : `admission enquiry ${args.leadId}`;
+      return args.stage
+        ? `Move ${which} to ${args.stage}` +
           (args.stage === 'ENROLLED' ? ' (approving the admission)' : args.stage === 'LOST' ? ' (rejecting it)' : '')
-        : `Update admission enquiry ${args.leadId}`,
-    async snapshot(_ctx, args) {
-      const lead = await admissions.getLeadById(args.leadId);
-      return { leadId: String(args.leadId), stage: lead.stage, assigneeProfileId: lead.assigneeProfileId ?? null };
+        : `Update ${which}`;
     },
-    async run(ctx, args) {
-      const lead = await admissions.updateLead({ ...args, actorProfileId: ctx.actor.profileId });
+    async prepare(_ctx, args) {
+      const lead = await resolveLead({ leadId: args.leadId, childName: args.childName });
+      if (args.stage === undefined && args.notes === undefined && args.assigneeProfileId === undefined && args.nextActionAt === undefined) {
+        throw new AppError('What should change on the enquiry: its stage, notes, assignee or next action date?', 400, [], 'AGENT_NEEDS_INPUT');
+      }
+      return { leadId: lead.id, childName: lead.childName };
+    },
+    async snapshot(_ctx, args, prepared) {
+      const leadId = prepared?.leadId ?? args.leadId;
+      if (!leadId) return null;
+      const lead = await admissions.getLeadById(leadId);
+      return { leadId: String(leadId), stage: lead.stage, assigneeProfileId: lead.assigneeProfileId ?? null };
+    },
+    async run(ctx, args, prepared) {
+      const target = prepared ?? (await this.prepare(ctx, args));
+      const { childName: _named, ...rest } = args;
+      const lead = await admissions.updateLead({ ...rest, leadId: target.leadId, actorProfileId: ctx.actor.profileId });
       return action({
         type: 'admission_lead_updated',
-        id: args.leadId,
+        id: target.leadId,
         data: lead,
         speak: args.stage ? `The enquiry is now at stage ${args.stage}.` : 'The enquiry has been updated.',
       });
@@ -423,11 +438,14 @@ export const communicationTools = {
           items: objectId(),
           description: 'Profile ids, e.g. from list_users',
         },
-        title: { type: 'string', maxLength: 160 },
+        recipient: { type: 'string', maxLength: 300, description: 'Who to notify, by name -- one person, or several separated by "and" or commas. Alternative to recipientProfileIds.' },
+        title: { type: 'string', maxLength: 160, description: 'Defaults to the start of the message' },
         body: { type: 'string', maxLength: 1000 },
         link: { type: 'string', maxLength: 300, description: 'In-app path to open, e.g. /admin/payments' },
       },
-      required: ['recipientProfileIds', 'title', 'body'],
+      // The recipients are named or identified (see prepare) and the title
+      // defaults to the message's own opening words.
+      required: ['body'],
       additionalProperties: false,
     },
     permission: 'announcements.publish',
@@ -435,30 +453,46 @@ export const communicationTools = {
     affectsOthers: true,
     service: 'notification.service.notify()',
     summarise: (args, _actor, prepared) =>
-      `Send an in-app notification titled "${args.title}" to ${prepared?.recipientCount ?? args.recipientProfileIds.length} recipient(s)`,
+      `Send an in-app notification "${prepared?.title ?? args.title}" to `
+      + `${prepared?.names?.length ? prepared.names.join(', ') : `${prepared?.recipientCount ?? args.recipientProfileIds?.length ?? 0} recipient(s)`}`,
     /**
      * Every recipient must be a person in the caller's own school. notify()
      * writes whatever profile ids it is given, so without this a cross-school
      * id became a notification row nobody could ever see. Checked before the
      * confirmation prompt, so the count shown is the count that will receive it.
+     *
+     * A person named in words is matched among this school's profiles: exactly
+     * one match each, so the message reaches who was meant and nobody else.
      */
     async prepare(_ctx, args) {
-      const recipients = await notifications.recipientsInSchool(args.recipientProfileIds);
-      return { recipientCount: recipients.length };
+      let ids = args.recipientProfileIds ?? [];
+      let names = [];
+      if (!ids.length) {
+        const wanted = String(args.recipient ?? '').split(/\s*(?:,|\band\b)\s*/i).map((n) => n.trim()).filter(Boolean);
+        if (!wanted.length) throw new AppError('Who should be notified? Give a name.', 400, [], 'AGENT_NEEDS_INPUT');
+        const people = await resolveProfilesByName(wanted);
+        ids = people.map((p) => p.id);
+        names = people.map((p) => p.name);
+      }
+      const recipients = await notifications.recipientsInSchool(ids);
+      const body = String(args.body);
+      const title = args.title ?? (body.length > 60 ? `${body.slice(0, 57)}…` : body);
+      return { recipientCount: recipients.length, recipientProfileIds: ids, names, title };
     },
-    async run(_ctx, args) {
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
       const result = await notifications.notify({
-        recipientProfileIds: args.recipientProfileIds,
+        recipientProfileIds: plan.recipientProfileIds,
         type: 'SYSTEM',
-        title: args.title,
+        title: plan.title,
         body: args.body,
         link: args.link,
       });
-      const sent = result?.length ?? args.recipientProfileIds.length;
+      const sent = result?.length ?? plan.recipientProfileIds.length;
       return action({
         type: 'notification_sent',
-        data: { recipients: args.recipientProfileIds.length, created: sent },
-        speak: `Notification sent to ${args.recipientProfileIds.length} recipient(s).`,
+        data: { recipients: plan.recipientProfileIds.length, created: sent },
+        speak: `Notification sent to ${plan.names.length ? plan.names.join(', ') : `${plan.recipientProfileIds.length} recipient(s)`}.`,
       });
     },
   },
