@@ -11,15 +11,22 @@ import { paginate, mapPage } from '../../utils/paginate.js';
 
 const uploadDir = resolve(process.cwd(), env.UPLOAD_DIR);
 
-/** Resolve the section IDs a student/parent's own enrollments belong to. */
-async function getOwnSectionIds(actor) {
-  let studentIds = [];
+/**
+ * The students a student/parent actor speaks for: a student's own record, or
+ * a parent's linked children. Resolved from the signed-in profile only — never
+ * from anything the request carries.
+ */
+async function getOwnStudentIds(actor) {
   if (actor.roleKey === 'STUDENT') {
     const id = await getOwnStudentId(actor.profileId);
-    if (id) studentIds = [id];
-  } else if (actor.roleKey === 'PARENT') {
-    studentIds = await getGuardianStudentIds(actor.profileId);
+    return id ? [id] : [];
   }
+  if (actor.roleKey === 'PARENT') return getGuardianStudentIds(actor.profileId);
+  return [];
+}
+
+/** Resolve the section IDs a student/parent's own enrollments belong to. */
+async function getOwnSectionIds(studentIds) {
   if (studentIds.length === 0) return [];
   const enrollments = await Enrollment.find({ studentId: { $in: studentIds } }).select('sectionId');
   return [...new Set(enrollments.map((e) => e.sectionId.toString()))];
@@ -70,10 +77,18 @@ async function buildVisibilityFilter(actor, scope, studentId, categories = {}) {
   // not be visible to every student in that role school-wide. Materials
   // seeded before section-scoping existed (sectionId null) stay visible to
   // everyone in the granted role, for back-compat.
+  //
+  // A document filed for one student (a TC, a letter, a report card carrying a
+  // studentId) belongs to that student alone. Being published to the STUDENT
+  // or PARENT role makes it reachable by *its* student and their guardians —
+  // not by every student and parent in the school. Documents filed for no
+  // student keep the role/section rules above.
   if (scope === 'OWN' && (role === 'STUDENT' || role === 'PARENT')) {
-    const sectionIds = await getOwnSectionIds(actor);
+    const ownStudentIds = await getOwnStudentIds(actor);
+    const sectionIds = await getOwnSectionIds(ownStudentIds);
     query.$and = [
       { $or: [{ type: { $ne: 'CUSTOM' } }, { sectionId: null }, { sectionId: { $in: sectionIds } }] },
+      { $or: [{ studentId: null }, { studentId: { $in: ownStudentIds } }] },
     ];
   }
 
