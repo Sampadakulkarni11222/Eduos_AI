@@ -27,11 +27,11 @@ export default function AdminGuidePage() {
       content: (
         <>
           <p style={{ marginBottom: 16 }}>
-            The Dashboard gives you a complete overview of your school's daily operations.
+            The Dashboard gives you a complete overview of your school&apos;s daily operations.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ padding: '12px 16px', background: 'var(--panel-bg)', borderRadius: 8, border: '1px solid var(--hairline)' }}>
-              <strong>What you'll find here:</strong>
+              <strong>What you&apos;ll find here:</strong>
               <ul style={{ paddingLeft: 20, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <li><strong>Key Metrics:</strong> High-level statistics on student enrollment, active staff, and daily attendance.</li>
                 <li><strong>Recent Activity:</strong> A feed of the latest updates across the platform.</li>
@@ -291,6 +291,8 @@ export default function AdminGuidePage() {
                 }}
                 onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
                 onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+                onFocus={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
+                onBlur={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
               >
                 <span>{action.icon}</span> {action.label}
               </button>
@@ -394,7 +396,7 @@ export default function AdminGuidePage() {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Need advanced support?</h3>
-                  <p style={{ margin: 0, marginTop: 4, fontSize: 14.5, color: 'var(--text-2)' }}>Check the audit logs or update platform settings if you're stuck.</p>
+                  <p style={{ margin: 0, marginTop: 4, fontSize: 14.5, color: 'var(--text-2)' }}>Check the audit logs or update platform settings if you&apos;re stuck.</p>
                 </div>
                 <Button variant="soft" onClick={() => router.push(link('/admin/settings'))}>Open Settings</Button>
               </div>

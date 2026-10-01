@@ -33,9 +33,9 @@ export default function StudentGuidePage() {
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ padding: '12px 16px', background: 'var(--panel-bg)', borderRadius: 8, border: '1px solid var(--hairline)' }}>
-              <strong>What you'll find here:</strong>
+              <strong>What you&apos;ll find here:</strong>
               <ul style={{ paddingLeft: 20, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <li><strong>Today's Schedule:</strong> See the classes you have coming up today.</li>
+                <li><strong>Today&apos;s Schedule:</strong> See the classes you have coming up today.</li>
                 <li><strong>Quick Stats:</strong> Get a snapshot of your attendance, pending assignments, upcoming exams, and fees.</li>
                 <li><strong>Recent Announcements:</strong> Stay up to date with the latest updates from your school.</li>
                 <li><strong>Quick Links:</strong> Quickly access your assignments, performance, and other frequently used sections.</li>
@@ -62,7 +62,7 @@ export default function StudentGuidePage() {
             <div style={{ display: 'flex', gap: 12 }}><span style={{ minWidth: 24, height: 24, borderRadius: 12, background: 'var(--blue-dim)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12 }}>1</span> <span>Open Timetable from the sidebar.</span></div>
             <div style={{ display: 'flex', gap: 12 }}><span style={{ minWidth: 24, height: 24, borderRadius: 12, background: 'var(--blue-dim)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12 }}>2</span> <span>View your schedule day by day.</span></div>
             <div style={{ display: 'flex', gap: 12 }}><span style={{ minWidth: 24, height: 24, borderRadius: 12, background: 'var(--blue-dim)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12 }}>3</span> <span>See subject, teacher, time, and room details.</span></div>
-            <div style={{ display: 'flex', gap: 12 }}><span style={{ minWidth: 24, height: 24, borderRadius: 12, background: 'var(--blue-dim)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12 }}>4</span> <span>Click "Live" (if available) to join online classes.</span></div>
+            <div style={{ display: 'flex', gap: 12 }}><span style={{ minWidth: 24, height: 24, borderRadius: 12, background: 'var(--blue-dim)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12 }}>4</span> <span>Click &quot;Live&quot; (if available) to join online classes.</span></div>
           </div>
           <div style={{ marginTop: 20 }}>
             <Button variant="soft" onClick={() => router.push(link('/student/timetable'))}>Open Timetable</Button>
@@ -201,7 +201,7 @@ export default function StudentGuidePage() {
             <div style={{ padding: '12px 16px', background: 'var(--panel-bg)', borderRadius: 8, border: '1px solid var(--hairline)' }}>
               <strong>3. My Requests</strong>
               <p style={{ marginTop: 8, marginBottom: 0, fontSize: 14 }}>
-                Once you request a book, track the librarian's decision here (Pending, Approved, Rejected). Approved books will then show up in your checked-out list.
+                Once you request a book, track the librarian&apos;s decision here (Pending, Approved, Rejected). Approved books will then show up in your checked-out list.
               </p>
             </div>
           </div>
@@ -227,7 +227,7 @@ export default function StudentGuidePage() {
               <ul style={{ paddingLeft: 20, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 14 }}>
                 <li>View your assigned <strong>Bus Route</strong>, <strong>Vehicle Number</strong>, and <strong>Stop</strong>.</li>
                 <li>Check the <strong>Live ETA (A.M.)</strong> for your morning pickup.</li>
-                <li>Access contact information for your route's <strong>Driver</strong>.</li>
+                <li>Access contact information for your route&apos;s <strong>Driver</strong>.</li>
               </ul>
             </div>
             <div style={{ padding: '12px 16px', background: 'var(--panel-bg)', borderRadius: 8, border: '1px solid var(--hairline)' }}>
@@ -338,6 +338,8 @@ export default function StudentGuidePage() {
                 }}
                 onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
                 onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+                onFocus={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
+                onBlur={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
               >
                 <span>{action.icon}</span> {action.label}
               </button>

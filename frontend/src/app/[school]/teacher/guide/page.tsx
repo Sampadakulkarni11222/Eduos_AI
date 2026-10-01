@@ -31,9 +31,9 @@ export default function TeacherGuidePage() {
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ padding: '12px 16px', background: 'var(--panel-bg)', borderRadius: 8, border: '1px solid var(--hairline)' }}>
-              <strong>What you'll find here:</strong>
+              <strong>What you&apos;ll find here:</strong>
               <ul style={{ paddingLeft: 20, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <li><strong>Today's Classes:</strong> A quick view of your upcoming schedule.</li>
+                <li><strong>Today&apos;s Classes:</strong> A quick view of your upcoming schedule.</li>
                 <li><strong>Pending Tasks:</strong> Overview of assignments to grade or attendance to mark.</li>
                 <li><strong>Recent Announcements:</strong> Important updates from school administration.</li>
                 <li><strong>Quick Links:</strong> Fast access to classes, timetable, and more.</li>
@@ -109,7 +109,7 @@ export default function TeacherGuidePage() {
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', gap: 12 }}><span style={{ minWidth: 24, height: 24, borderRadius: 12, background: 'var(--blue-dim)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12 }}>1</span> <span>Open Timetable from the sidebar.</span></div>
-            <div style={{ display: 'flex', gap: 12 }}><span style={{ minWidth: 24, height: 24, borderRadius: 12, background: 'var(--blue-dim)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12 }}>2</span> <span>See today's classes and your weekly overview.</span></div>
+            <div style={{ display: 'flex', gap: 12 }}><span style={{ minWidth: 24, height: 24, borderRadius: 12, background: 'var(--blue-dim)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12 }}>2</span> <span>See today&apos;s classes and your weekly overview.</span></div>
             <div style={{ display: 'flex', gap: 12 }}><span style={{ minWidth: 24, height: 24, borderRadius: 12, background: 'var(--blue-dim)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: 12 }}>3</span> <span>Find details like subject, class section, time, and room location.</span></div>
           </div>
           <div style={{ marginTop: 20 }}>
@@ -303,6 +303,8 @@ export default function TeacherGuidePage() {
                 }}
                 onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
                 onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+                onFocus={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
+                onBlur={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
               >
                 <span>{action.icon}</span> {action.label}
               </button>

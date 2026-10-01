@@ -88,6 +88,8 @@ export function GuideLayout({ roleSlug, title, description, sections, quickActio
                 }}
                 onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
                 onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
+                onFocus={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
+                onBlur={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
               >
                 <span>{action.icon}</span> {action.label}
               </button>
