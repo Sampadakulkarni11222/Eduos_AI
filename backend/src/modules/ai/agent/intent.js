@@ -6,9 +6,17 @@ import { toolsAvailableTo } from './tools.js';
 import { monthFromText, looksLikeMonth } from '../../../utils/naturalDates.js';
 import { classFromText, refersToOwnClasses } from '../../../utils/classNames.js';
 import { detectSelfCategory } from './profileIntent.js';
-import { detectEntityIntent } from './entityIntent.js';
+import { detectEntityIntent, subjectFromText, detectOperation } from './entityIntent.js';
+import {
+  resolveCapability, argumentsFor, dimensionsOf, operationsAskedFor, RANGE_PAIRS, performsAsked, isWholeMonth, isWholeWeek,
+  withoutLeadingVerb } from './capabilityResolver.js';
+import { capabilityIndex, capabilitiesFor, subjectEntityOf, TARGET_ARGS, namesARecord } from '../mcp/capabilities.js';
+import { getMcpTool } from '../mcp/registry.js';
+import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 import { orderToolsByRelevance } from '../mcp/capabilities.js';
 import { logger } from '../../../utils/logger.js';
+import { kindOfProperty, extractEnum, extractNumber, FOUND } from './argumentKinds.js';
+import { nameFromText } from '../../../utils/peopleNames.js';
 
 /**
  * Intent parsing: natural language → { tool, args }.
@@ -29,6 +37,60 @@ import { logger } from '../../../utils/logger.js';
  * Devanagari text: the pattern looks correct and silently never fires. Adding
  * word boundaries "for consistency" would re-break Hindi intent matching.
  */
+
+/**
+ * Which exam paper a marks request names, beyond its class: the subject (read
+ * the way every marks question reads it) and the exam -- the phrase ending in
+ * "test" or "exam". The class is taken out first, so the section letter of
+ * "Class 6-A Unit Test 2" is not read as part of the exam's name. Only the part
+ * before a colon is read; after it comes the marks sheet itself.
+ */
+const PAPER_NOISE = /^(?:the|an?|this|that|my|in|for|of|marks?|results?|scores?|publish\w*|enter\w*|record\w*|submit\w*|update\w*)$/i;
+
+function examPaperFrom(msg) {
+  return readMarksHead(msg).paper;
+}
+
+/**
+ * The part of a marks request before any sheet: which paper, and -- when the
+ * request is about one pupil -- who, and how many marks.
+ *
+ * Identity is read FIRST and taken out, the order dimensionsOf() uses: "Enter
+ * marks for Rahul Sharma" read "Rahul" as the school subject, and "Give Rahul
+ * Sharma 8 marks in Mathematics" lost both the pupil and the mark.
+ */
+function readMarksHead(msg) {
+  let head = String(msg ?? '').split(':')[0];
+  const spokenClass = classFromText(head)?.text;
+  if (spokenClass) head = head.split(spokenClass).join(' , ');
+  const paper = {};
+  const examSpan = /\b((?:[\p{L}][\p{L}-]*\s+){0,2}(?:test|exam|examination)(?:\s*\d{1,2})?)\b/iu.exec(head)?.[1]?.trim();
+  // The person, read from what is not the exam's name -- "Unit Test" is two
+  // capitalised words, and is not a pupil.
+  const withoutExam = examSpan ? head.split(examSpan).join(' , ') : head;
+  const named = nameFromText(withoutLeadingVerb(withoutExam)) ?? dimensionsOf(withoutExam).student;
+  // "Publish marks for Mathematics": the phrase a name could sit in holds the
+  // subject word itself, and the subject reading wins -- the rule the entity
+  // tier keeps (dimensionsNamed).
+  const flat = (s) => String(s ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+  const everywhere = subjectFromText(head, 'marks');
+  const student = named && everywhere && flat(named) === flat(everywhere) ? null : named;
+  const unclaimed = student ? head.split(student).join(' , ') : head;
+  const subject = subjectFromText(unclaimed, 'marks');
+  if (subject) paper.subject = subject;
+  if (examSpan) {
+    const words = examSpan.split(/\s+/);
+    while (words.length > 1 && (PAPER_NOISE.test(words[0]) || words[0].toLowerCase() === String(subject ?? '').toLowerCase())) words.shift();
+    const cleaned = words.join(' ');
+    if (!/^(?:test|exam|examination)$/i.test(cleaned)) paper.exam = cleaned;
+  }
+  // A mark is a number the sentence says IS marks: "8 marks", "scored 41".
+  // Never any number -- the "2" in "Unit Test 2" is the exam's.
+  const scoreText = examSpan ? withoutExam : head;
+  const m = /\b(\d{1,3}(?:\.\d{1,2})?)\s*(?:marks?|points?)\b|\b(?:scored|got|gets)\s+(\d{1,3}(?:\.\d{1,2})?)\b/i.exec(scoreText);
+  const marks = m ? Number(m[1] ?? m[2]) : undefined;
+  return { paper, student, marks };
+}
 
 const RULES = [
   /* ── Live-ERP lookups added with MCP ─────────────────────
@@ -152,7 +214,10 @@ const RULES = [
       /बकाया[^?]*फीस/, /फीस[^?]*बकाया/,
       /\b[\p{L}][\p{L}'-]{2,}'s\s+fees?\b/iu,
     ],
-    exclude: [/\brecord\b/i, /\bmark\b[^?]*\bpaid\b/i, /\bpay(ment)? link\b/i, /\bhow (do|can) i pay\b/i],
+    exclude: [
+      /\brecord\b/i, /\bmark\b[^?]*\bpaid\b/i, /\bpay(ment)? link\b/i, /\bhow (do|can) i pay\b/i,
+      /\b(head|structure)s?\b/i, /\b(statistic|stats|collection)\b/i,
+    ],
     requires: { permission: 'fees.read', scope: 'ALL' },
     weight: 3,
     // "What are Rahul's fees?" is about Rahul, not the whole school's roster.
@@ -160,6 +225,37 @@ const RULES = [
       const name = msg.match(/\b([\p{L}][\p{L}'-]{2,})'s\s+fees?\b/iu)?.[1];
       if (!name || /^(my|his|her|their|child|son|daughter|student|school)$/i.test(name)) return {};
       return { search: name };
+    },
+  },
+  {
+    tool: 'get_fee_structures',
+    patterns: [
+      /\bfee\s+(heads?|structures?)\b/i,
+      /\bfee\s+heads?\s+(and|&)\s+(fee\s+)?structures?\b/i,
+      /\b(fee\s+)?structures?\s+(and|&)\s+(fee\s+)?heads?\b/i,
+      /\b(all\s+)?fee\s+heads\b/i,
+      /\b(all\s+)?fee\s+structures\b/i,
+      /\bfee\s+configuration\b/i,
+    ],
+    requires: { permission: 'fees.structure.manage' },
+    weight: 4,
+    args: () => ({}),
+  },
+  {
+    tool: 'create_fee_head',
+    patterns: [
+      /\b(create|add|new)\s+(a\s+)?fee\s+head\b/i,
+      /\bfee\s+head\s+(called|named)?\b/i,
+    ],
+    requires: { permission: 'fees.structure.manage' },
+    weight: 4,
+    args: (msg) => {
+      const cleaned = msg
+        .replace(/\b(create|add|new)\s+(a\s+)?fee\s+head\s+(called|named)?\s*/i, '')
+        .replace(/\bwith\s+amount\s+.*$/i, '')
+        .replace(/\s*[₹Rs.inr]*\s*\d[\d,]*(?:\.\d{1,2})?\s*$/i, '')
+        .trim();
+      return cleaned ? { name: cleaned } : {};
     },
   },
   {
@@ -219,6 +315,8 @@ const RULES = [
       /\bstudents?\b[^?]*\b(below|under)\b[^?]*\battendance\b/i,
       /\battendance\b[^?]*\b(below|under|less than)\b/i,
       /\bthreshold\b/i,
+      /\b(which|who)\b[^?]*\b(students?|learners?)\b[^?]*\b(below|under|less than|at.?risk)\b/i,
+      /\b(which|who)\b[^?]*\b(below|under|less than)\b[^?]*\d{1,3}\s?%/i,
     ],
     requires: { permission: 'ai.insights.read', scope: 'ALL' },
     weight: 3,
@@ -251,7 +349,11 @@ const RULES = [
       /\b[\p{L}][\p{L}'-]{2,}(?:'s)\s+attendance\b/iu,
       /\b(his|her|their)\b[^?]*\battendance\b/i,
     ],
-    exclude: [/\bmy\b/i, /\bwho\b/i, /\bhow many\b/i, /\bschool.?wide\b/i, /\b(mark|record|update|set)\b/i],
+    exclude: [
+      /\bmy\b/i, /\bwho\b/i, /\bhow many\b/i, /\bschool.?wide\b/i, /\b(mark|record|update|set)\b/i,
+      /\b(below|under|less than|at.?risk|threshold)\b/i,
+      /\b(which|who)\b[^?]*\bstudents?\b/i,
+    ],
     // Any attendance.read scope. A teacher (OWN) asking about a named pupil
     // used to fall through to get_attendance — their own summary — because
     // this required ALL. Scope is not decided here: the MCP tool resolves the
@@ -339,6 +441,12 @@ const RULES = [
       /\bdorm(itory)?\b[^?]*\b(occupancy|beds?|free)\b/i,
       /छात्रावास[^?]*(क्षमता|बिस्तर)/,
     ],
+    // "Students allocated to hostel beds", "Allocate bed to Diya", "Vacate Diya's bed"
+    // must not be answered with occupancy statistics.
+    exclude: [
+      /\b(students?|residents?|boarders?|roster)\b/i,
+      /\b(allocat|vacat)\w*/i,
+    ],
     args: () => ({}),
   },
   {
@@ -346,6 +454,9 @@ const RULES = [
     patterns: [
       /\b(which|what|list|show|who)\b[^?]*\bstudents?\b[^?]*\bhostel\b/i,
       /\bhostel\b[^?]*\b(students?|residents?|roster|list|allocation)\b/i,
+      /\bstudents?\b[^?]*\b(?:allocated|assigned|in|to)\b[^?]*\b(?:hostel|dorm|beds?)\b/i,
+      /\bstudents?\b[^?]*\b(?:hostel|dorm)\b/i,
+      /\ballocated to hostel\b/i,
       /\b(residents?|boarders?)\b/i,
       /\bwho\b[^?]*\b(is|are)\b[^?]*\bin\b[^?]*\b(hostel|dorm)\b/i,
       /छात्रावास[^?]*(विद्यार्थी|छात्र)/,
@@ -448,7 +559,7 @@ const RULES = [
     tool: 'get_timetable',
     patterns: [
       /\btime.?table\b/i, /\bschedule\b/i, /\bperiods?\b/i,
-      /\bwhat.{0,20}\bclasses\b[^?]*\b(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+      /\bwhat.{0,20}\bclasses\b[^?]*\b(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|week)\b/i,
       /\bclasses\b[^?]*\btoday\b/i,
       /समय.?सारणी/, /कक्षा[^?]*समय/,
     ],
@@ -466,6 +577,8 @@ const RULES = [
       // tomorrow. A wrong answer given confidently is worse than none.
       // "day after tomorrow" is listed before "tomorrow" so the longer phrase
       // wins the alternation.
+      // A week -- this one, next one, the whole one -- is the weekly grid.
+      if (/\b(?:this|next|coming|current|whole|full|entire)\s+week\b|\bweekly\b|\bfor\s+the\s+week\b/i.test(msg)) return { day: 'week' };
       const m = msg.match(
         /\b(day after tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|today|tomorrow|yesterday)\b/i
       );
@@ -487,6 +600,7 @@ const RULES = [
       // which is why that suggested question looked broken rather than
       // unimplemented.
       /\b(assignment|homework|submission|project|worksheet)s?\b/i, /होमवर्क/, /गृहकार्य/,
+      /\b(head|structure)s?\b/i, /\b(statistic|stats|collection)\b/i,
     ],
     args: () => ({}),
   },
@@ -511,7 +625,7 @@ const RULES = [
     // A question about classes belongs to get_my_classes; this tool answers
     // only about subjects, which stays a distinct question.
     patterns: [
-      /\bsubject(s)?\b/i, /\bcourse(s)?\b/i,
+      /\bsubject(s)?\b/i, /\bcourses?\b(?!\s*materials?)/i,
       /\bwhat do i study\b/i, /\bvishay\b/i, /विषय/,
     ],
     // "marks in each subject" is a results question; "subject teacher" is about
@@ -525,9 +639,74 @@ const RULES = [
       /\bresult(s)?\b/i, /\bmarks\b/i, /\bgrade(s)?\b/i, /\breport card\b/i, /\bgpa\b/i,
       /\bexam\b.*\bscore\b/i, /परिणाम/, /अंक/,
     ],
+    exclude: [/\b(schedule|date(s)?|time.?table|calendar|datesheet)\b/i],
     args: (msg) => {
       const m = msg.match(/\b(unit test \d|midterm|final|term \d)\b/i);
       return m ? { exam: m[1] } : {};
+    },
+  },
+  {
+    tool: 'list_exams',
+    patterns: [
+      /\bexam(s)?\b[^?]*\b(schedule|date(s)?|time.?table|calendar|datesheet)\b/i,
+      /\b(schedule|date(s)?|time.?table|calendar|datesheet)\b[^?]*\bexam(s)?\b/i,
+      /\bexam\s+schedule\b/i,
+      /\bchild('s)?\s+exam\s+schedule\b/i,
+      /\blist\s+exams\b/i,
+      /\bupcoming\s+exams\b/i,
+      /परीक्षा[^?]*समय/, /परीक्षा[^?]*सारणी/,
+    ],
+    requires: { permission: 'marks.read' },
+    weight: 3,
+    args: () => ({}),
+  },
+  {
+    tool: 'get_medical_record',
+    patterns: [
+      /\bmedical\s*(record|history|detail|info|profile)s?\b/i,
+      /\bhealth\s*(record|detail|info)s?\b/i,
+      /\bchild('s)?\s+medical\s*records?\b/i,
+      /\ballerg(y|ies)\b/i,
+      /\bblood\s*group\b/i,
+      /स्वास्थ्य|मेडिकल/,
+    ],
+    requires: { permission: 'medical.read' },
+    weight: 3,
+    args: () => ({}),
+  },
+  {
+    tool: 'list_tickets',
+    patterns: [
+      /\b(support\s+)?ticket(s)?\b/i,
+      /\bhelpdesk\b/i,
+      /\bmy\s+tickets\b/i,
+    ],
+    exclude: [
+      /\b(create|raise|open\s+a\s+new|new|submit)\b.*\bticket\b/i,
+      /\bticket\b.*\b(create|raise|open|submit)\b/i,
+      /\breply\b/i,
+    ],
+    requires: { permission: 'tickets.read' },
+    weight: 3,
+    args: (msg) => {
+      const args = {};
+      const statusMatch = msg.match(/\b(open|closed|resolved|pending|in_progress)\b/i);
+      if (statusMatch) args.status = statusMatch[1].toUpperCase();
+      return args;
+    },
+  },
+  {
+    tool: 'create_ticket',
+    patterns: [
+      /\b(create|raise|open|new|submit)\b[^?]*\b(support\s+)?ticket\b/i,
+      /\b(support\s+)?ticket\b[^?]*\b(create|raise|open|submit)\b/i,
+    ],
+    requires: { permission: 'tickets.create' },
+    weight: 4,
+    args: (msg) => {
+      const match = msg.match(/\b(?:saying|about|regarding|with subject|subject:?)\s+(.+)$/i)
+        || msg.match(/\bticket\s*:\s*(.+)$/i);
+      return { subject: match ? match[1].trim() : 'Support Request' };
     },
   },
   {
@@ -663,26 +842,90 @@ const RULES = [
   },
   {
     tool: 'create_announcement',
-    patterns: [/\b(post|create|send|make)\b.*\bannouncement\b/i, /\bnotice\b.*\b(post|send)\b/i],
+    // "Announce that ..." is the same act as "create an announcement that ...":
+    // the verb, not only the noun.
+    patterns: [/\b(post|create|send|make)\b.*\bannouncement\b/i, /\bnotice\b.*\b(post|send)\b/i, /^\s*(?:please\s+)?announce\b/i],
     args: (msg) => {
       const quoted = msg.match(/["“](.+?)["”]/)?.[1];
-      const after = msg.match(/announcement\s+(?:that\s+|saying\s+|:\s*)?(.{3,140})/i)?.[1];
-      const title = (quoted ?? after ?? '').trim();
+      // Only text the sentence INTRODUCES as the message -- after a colon, or
+      // "saying"/"that". Without an introducer whatever followed the word was
+      // taken, and "announcement for my Class 6-A" was proposed with the title
+      // "for my Class 6-A.": a notice nobody wrote.
+      //
+      // The class it is addressed to is the audience, read separately; left at
+      // the end of the text ("... starts at 9 AM to Class 6-A") it became part
+      // of the notice itself.
+      const after = msg.match(/\bannounce(?:ment)?\b[^:]*?(?:\bthat\s+|\bsaying\s+|:\s*)(.{3,140})/i)?.[1]
+        ?.replace(/\s+(?:to|for)\s+(?:my\s+)?(?:class|grade|std)\s*\d{1,2}\s*[-–]?\s*[a-z]?\s*[.!]?\s*$/i, '')
+        ?.replace(/[.\s]+$/, '');
+      const text = (quoted ?? after ?? '').trim();
+      // "Announce that tomorrow's class ..." -- the notice starts a sentence.
+      const title = text.charAt(0).toUpperCase() + text.slice(1);
       return title ? { title, content: title } : {};
+    },
+  },
+  {
+    tool: 'publish_marks',
+    patterns: [/\bpublish\w{0,3}\b.*\b(?:marks|results|scores)\b/i],
+    weight: 3,
+    args: (msg) => examPaperFrom(msg),
+  },
+  {
+    tool: 'enter_marks',
+    patterns: [
+      /\b(?:record|enter|submit|update|add|put|upload)\w{0,3}\b.*\b(?:marks|scores)\b/i,
+      // Giving somebody a NUMBER of marks is entering them; "give me the
+      // marks" is a question, and carries no number.
+      /\bgive\b.*\b\d{1,3}(?:\.\d{1,2})?\s*marks?\b/i,
+    ],
+    weight: 3,
+    // Marks for an assignment are a GRADE on a submission, not an exam mark:
+    // "Give Priya 8 marks for her Mathematics assignment" is grade_submission.
+    exclude: [/\b(?:assignments?|homework|submissions?|worksheets?)\b/i],
+    /**
+     * The same two readings the attendance rule makes, for a marks sheet: WHO
+     * got WHAT, and WHICH paper. Students are "Name 41" pairs after a colon,
+     * the only place a list of them is written unambiguously; the exam is the
+     * phrase that ends in "test" or "exam". Nothing else is guessed -- no
+     * pairs, no students, and the tool asks.
+     */
+    args: (msg) => {
+      const head = readMarksHead(msg);
+      const out = { ...head.paper };
+      const sheet = /:\s*(.+)$/.exec(msg)?.[1];
+      if (sheet) {
+        const pairs = [...sheet.matchAll(/([\p{L}][\p{L}\p{N}_.'-]*(?:\s+[\p{L}][\p{L}\p{N}_.'-]*){0,2})\s*(?:[-–=:]|got|scored)?\s*(\d{1,4}(?:\.\d{1,2})?)\b/gu)];
+        if (pairs.length) out.students = pairs.map((m) => ({ studentName: m[1].trim(), marks: Number(m[2]) }));
+      } else if (head.student) {
+        // One pupil named in the sentence: kept even without a mark, so the
+        // tool asks for the marks of THAT pupil rather than "whose marks?".
+        out.students = [{ studentName: head.student, ...(head.marks !== undefined && { marks: head.marks }) }];
+      }
+      return out;
     },
   },
   {
     tool: 'mark_attendance',
     patterns: [
       /\bmark\b.*\battendance\b/i, /\battendance\b.*\bregister\b/i, /\ball present\b/i,
-      /\bmark\s+[\p{L}][\p{L}.'-]*(?:\s+[\p{L}][\p{L}.'-]*){0,3}\s+(?:as\s+)?(?:absent|present|late|excused)\b/iu,
+      // A register-writing verb and a status: "mark / record / set Rahul
+      // Sharma (as) present". Only "mark" was read, so "Record Rahul Sharma as
+      // present today" reached nothing at all.
+      /\b(?:mark|record|set|enter)\w{0,3}\b.*\b(?:absent|present|late|excused)\b/i,
+      // Correcting a mark IS marking again -- the register keeps one entry per
+      // student and day, and re-marking updates it, on the Web as here. The
+      // status may be left for the tool to ask: "Correct Rahul Sharma's
+      // attendance for 5 August 2026" is still a correction of the register.
+      /\b(?:update|change|correct|fix|set)\w{0,3}\b.*\battendance\b/i,
     ],
     weight: 3,
     // "Mark him absent" names nobody. Left to this rule it would match with no
     // arguments and the tool would ask who — when the model, which is given
     // the conversation, can tell who "him" is. So a pronoun steps the rule
     // aside and the message routes to the model instead.
-    exclude: [/\bmark\s+(him|her|them|me|everyone|everybody|all)\b/i],
+    // "Everyone" and "all" are not pronouns: they are the whole register (see
+    // `everyone` below), the register screen's "Mark all present".
+    exclude: [/\bmark\s+(him|her|them|me)\b/i],
     /**
      * A named student and a status ("mark Rahul absent") become a `students`
      * entry, which the tool resolves to the right enrolment and class before
@@ -690,16 +933,182 @@ const RULES = [
      * sentence — it comes from the roster screen or the photo step — so a
      * message without a name yields no arguments and the tool asks who.
      */
+    //
+    // The person is read by the shared name reader, past the opening verb --
+    // the same reading every other capability gets. This rule used to carry
+    // its own regex, which took whatever sat between "mark" and the status:
+    // "Mark Diya Kumar's attendance as present" marked a pupil called "Diya
+    // Kumar's attendance", and "Mark attendance of Rahul Sharma as present" one
+    // called "attendance of Rahul Sharma".
     args: (msg) => {
-      const m = msg.match(
-        /\bmark\s+([\p{L}][\p{L}.'-]*(?:\s+[\p{L}][\p{L}.'-]*){0,3}?)\s+(?:as\s+)?(absent|present|late|excused)\b/iu
-      );
-      if (!m) return {};
-      const name = m[1].trim();
+      // The whole register, as the Web's "Mark all present" does it, with the
+      // pupils named after "except" as the exceptions. An exception with no
+      // status of its own is the other side of the day: absent from a day
+      // everyone else was present for, present otherwise.
+      const whole = WHOLE_REGISTER.exec(msg);
+      if (whole) {
+        const everyone = whole[1].toUpperCase();
+        const except = EXCEPT_CLAUSE.exec(msg);
+        const otherwise = except?.[2]?.toUpperCase() ?? (everyone === 'PRESENT' ? 'ABSENT' : 'PRESENT');
+        const names = except
+          ? except[1].split(/\s*(?:,|\band\b)\s*/i).map((n) => n.trim()).filter((n) => n && !/^(?:the|a|an)$/i.test(n))
+          : [];
+        return { everyone: { status: everyone }, ...(names.length && { students: names.map((studentName) => ({ studentName, status: otherwise })) }) };
+      }
+      const name = nameFromText(withoutLeadingVerb(msg));
       // Pronouns and group words are not names. The model resolves "him" from
       // the conversation; without one, the tool asks rather than guesses.
-      if (/^(him|her|them|me|everyone|everybody|all|the class|attendance)$/i.test(name)) return {};
-      return { students: [{ studentName: name, status: m[2].toUpperCase() }] };
+      if (!name || /^(him|her|them|me|everyone|everybody|all|the class|attendance)$/i.test(name)) return {};
+      const status = /\b(absent|present|late|excused)\b/i.exec(msg)?.[1];
+      // A name without a status is kept: the tool asks "as what?" about the
+      // pupil already named, instead of asking who all over again.
+      return { students: [{ studentName: name, ...(status && { status: status.toUpperCase() }) }] };
+    },
+  },
+
+  /* ── Structure writes said as an ASSIGNMENT ─────────────────────
+     "Make X the class teacher of Class 6-B", "Assign X to teach Science in Class
+     6-A", "Make Art an elective in Class 6-A with 25 seats", "Add X as Y's
+     father", "Schedule Mathematics for Class 6-A on Monday period 2 from 10:00 to
+     10:45". These say WHO gets WHICH role, or WHAT a period holds; the words of
+     the tool names ("update section", "create exam subject") are absent from
+     them, so the catalogue scorer cannot reach the capability by its nouns. The
+     grammar of an assignment is what identifies each, and it is read here, with
+     the readers the rest of the parser uses for a class, a name and a date. */
+  {
+    tool: 'update_section',
+    grammar: true,
+    patterns: [/\b(?:make|set|appoint|assign)\b[^.?!]*\b(?:class|form)\s+teacher\b/i],
+    exclude: [/^\s*(?:what|which|who|whose|show|list|tell|is|are)\b/i],
+    weight: 3,
+    args: (msg) => {
+      const who = /\b(?:make|set|appoint|assign)\s+(?:the\s+)?(.+?)\s+(?:as\s+(?:the\s+)?|the\s+)(?:class|form)\s+teacher\b/i.exec(msg)?.[1];
+      const className = classFromText(msg)?.text;
+      return { ...(className && { className }), ...(who && { classTeacher: who.trim() }) };
+    },
+  },
+  {
+    tool: 'assign_teacher_to_subject',
+    grammar: true,
+    patterns: [
+      /\bassign\b[^.?!]*\bto\s+(?:teach|take|handle|cover)\b/i,
+      // "Assign a teacher to a subject": the act, before anyone is named for it.
+      /\bassign\s+(?:a\s+|the\s+)?teachers?\b/i,
+      /\b(?:make|appoint)\b[^.?!]*\bthe\s+[\w &'-]+\s+teacher\s+(?:of|for)\b/i,
+      /^\s*[\p{L}][\p{L} .'-]*\s+will\s+teach\b/iu,
+    ],
+    exclude: [/\b(?:class|form)\s+teacher\b/i, /^\s*(?:what|which|who|whose|show|list|tell|is|are)\b/i],
+    weight: 3,
+    args: (msg) => {
+      const assign = /\bassign\s+(?:the\s+)?(.+?)\s+to\s+(?:teach|take|handle|cover)\s+(.+?)\s+(?:in|for|of|to)\b/i.exec(msg);
+      const make = /\b(?:make|appoint)\s+(?:the\s+)?(.+?)\s+the\s+(.+?)\s+teacher\s+(?:of|for)\b/i.exec(msg);
+      const will = /^\s*(?:the\s+)?(.+?)\s+will\s+teach\s+(.+?)\s+(?:in|for|to)\b/i.exec(msg);
+      const [, teacherName, subject] = assign ?? make ?? will ?? [];
+      const className = classFromText(msg)?.text;
+      return {
+        ...(teacherName && { teacherName: teacherName.trim() }),
+        ...(subject && { subject: subject.trim() }),
+        ...(className && { className }),
+      };
+    },
+  },
+  {
+    tool: 'update_subject_offering',
+    grammar: true,
+    patterns: [/\bmake\b[^.?!]*\b(?:an?\s+)?elective\b/i, /\b(?:remove|take)\b[^.?!]*\b(?:from|off)\b[^.?!]*\belectives?\b/i],
+    exclude: [/^\s*(?:what|which|who|whose|show|list|tell|is|are)\b/i],
+    weight: 3,
+    args: (msg) => {
+      const subject = /\bmake\s+(?:the\s+)?([A-Za-z][A-Za-z &'-]*?)\s+(?:an?\s+elective|in\s+|for\s+|of\s+)/i.exec(msg)?.[1];
+      const className = classFromText(msg)?.text;
+      const capacity = /\b(\d{1,3})\s+seats?\b/i.exec(msg)?.[1] ?? /\bcapacity\s+(?:of\s+|to\s+)?(\d{1,3})\b/i.exec(msg)?.[1];
+      return {
+        ...(subject && { subject: subject.trim() }),
+        ...(className && { className }),
+        isElective: !/\b(?:not|no\s+longer|remove|take)\b/i.test(msg),
+        ...(capacity && { capacity: Number(capacity) }),
+      };
+    },
+  },
+  {
+    tool: 'upsert_timetable_slot',
+    grammar: true,
+    patterns: [/\b(?:schedule|timetable|put|set|add|fix)\b[^.?!]*\bperiod\s*(?:no\.?|number|#)?\s*\d/i],
+    exclude: [/^\s*(?:what|which|who|when|show|list|tell|is|are)\b/i, /\battendance\b/i],
+    weight: 3,
+    args: (msg) => {
+      const className = classFromText(msg)?.text;
+      const day = /\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.exec(msg)?.[1]?.toLowerCase();
+      const periodNo = /\bperiod\s*(?:no\.?|number|#)?\s*(\d{1,2})\b/i.exec(msg)?.[1];
+      const span = /\b(\d{1,2}[:.]\d{2})\s*(?:am|pm)?\s*(?:to|-|\u2013|until|till)\s*(\d{1,2}[:.]\d{2})\b/i.exec(msg);
+      const hhmm = (t) => t.replace('.', ':').replace(/^(\d):/, '0$1:');
+      const subject = /^\s*(?:schedule|put|set|add|fix|timetable)\s+(?:the\s+|a\s+)?([A-Za-z][A-Za-z &'-]*?)\s+(?:for|in|on|at|during|to)\b/i.exec(msg)?.[1];
+      return {
+        ...(className && { className }),
+        ...(day && { day }),
+        ...(periodNo && { periodNo: Number(periodNo) }),
+        ...(span && { startTime: hhmm(span[1]), endTime: hhmm(span[2]) }),
+        ...(subject && !/^(?:period|the)$/i.test(subject) && { subject: subject.trim() }),
+      };
+    },
+  },
+  {
+    tool: 'add_guardian',
+    grammar: true,
+    patterns: [
+      /\b(?:add|link|register)\b[^.?!]*\bas\b[^.?!]*['’]s\s+(?:father|mother|guardian|parent)\b/i,
+      /\b(?:add|link|register)\b[^.?!]*\bas\s+(?:the\s+)?(?:father|mother|guardian|parent)\s+of\b/i,
+    ],
+    weight: 3,
+    args: (msg) => {
+      const possessive = /\b(?:add|link|register)\s+(.+?)\s+as\s+(.+?)['’]s\s+(father|mother|guardian|parent)\b/i.exec(msg);
+      const of = /\b(?:add|link|register)\s+(.+?)\s+as\s+(?:the\s+)?(father|mother|guardian|parent)\s+of\s+(.+?)[.!?]*\s*$/i.exec(msg);
+      const guardianName = possessive?.[1] ?? of?.[1];
+      const studentName = possessive?.[2] ?? of?.[3];
+      const relation = (possessive?.[3] ?? of?.[2] ?? '').toUpperCase();
+      return {
+        ...(guardianName && { guardianName: guardianName.trim() }),
+        ...(studentName && { studentName: studentName.trim() }),
+        ...(relation && { relation: relation === 'PARENT' ? 'GUARDIAN' : relation }),
+      };
+    },
+  },
+  {
+    // "Notify the Other teacher that the staff meeting is at 3pm": WHO is told,
+    // and WHAT. The recipients and the message are separated by the word that
+    // introduces what is said.
+    tool: 'notify_users',
+    grammar: true,
+    patterns: [/^\s*(?:please\s+)?(?:notify|alert|ping|inform)\b/i],
+    weight: 3,
+    args: (msg) => {
+      const m = /^\s*(?:please\s+)?(?:notify|alert|ping|inform)\s+(.+?)\s+(?:that|about|saying|:)\s*(.+?)[.!]?\s*$/i.exec(msg);
+      if (!m) return {};
+      return { recipient: m[1].replace(/^(?:the)\s+/i, '').trim(), body: m[2].trim() };
+    },
+  },
+  {
+    // An exam PAPER is a subject of an exam. "Add a Mathematics paper for Class 6-A
+    // to Half Yearly with 80 marks" is the paper being CREATED -- not marks being
+    // entered, which the number of marks and the word "add" also say. The noun
+    // "paper" is what decides it, so it decides before the catalogue scorer does.
+    tool: 'create_exam_subject',
+    grammar: true,
+    decisive: true,
+    patterns: [/\b(?:add|create|include|set\s*up)\b[^.?!]*\bpapers?\b/i],
+    exclude: [/\b(?:enter|record|submit|publish)\b/i, /^\s*(?:what|which|who|show|list|view|tell|is|are)\b/i],
+    weight: 3,
+    args: (msg) => {
+      const className = classFromText(msg)?.text;
+      const subject = /\b(?:add|create|include|set\s*up)\s+(?:an?\s+|the\s+)?([A-Za-z][A-Za-z &'-]*?)\s+papers?\b/i.exec(msg)?.[1];
+      const exam = /\bto\s+(?:the\s+)?([A-Za-z0-9][\w &'-]*?)(?=\s+(?:with|worth|on|having)\b|[.,;!?]|\s*$)/i.exec(msg)?.[1];
+      const maxMarks = /\b(?:worth|of|with)\s+(\d{1,4})\s*marks?\b/i.exec(msg)?.[1] ?? /\b(\d{1,4})\s*marks?\b/i.exec(msg)?.[1];
+      return {
+        ...(className && { className }),
+        ...(subject && { subject: subject.trim() }),
+        ...(exam && { exam: exam.trim() }),
+        ...(maxMarks && { maxMarks: Number(maxMarks) }),
+      };
     },
   },
 ];
@@ -725,6 +1134,11 @@ function satisfiesRequires(rule, actor) {
   if (!held) return false;
   if (rule.requires.scope === 'ALL' && held !== 'ALL') return false;
   return true;
+}
+
+/** The rules sharing the top score, in declaration order. */
+function topRules(matches) {
+  return matches.filter((entry) => entry.score === matches[0]?.score);
 }
 
 /** Every rule that matched, best first, with its score. */
@@ -784,8 +1198,46 @@ function selfStep(message, actor) {
  * yields otherwise, so every phrasing the rules already handled still reaches
  * them. See agent/entityIntent.js.
  */
+/** The three entities the entity tier claims, as capabilities.js names them. */
+const ENTITY_TIER_CLAIMS = ['attendance', 'marks', 'homework'];
+
+/** "Everyone / all (the students) / the whole class ... present". */
+const WHOLE_REGISTER =
+  /\b(?:everyone|everybody|all(?:\s+(?:the\s+)?(?:students|pupils|children))?|(?:the\s+)?(?:whole|entire)\s+class)\b(?:\s+(?:in|of)\s+(?:my\s+)?(?:class|grade|std)\s*\d{1,2}\s*[-–]?\s*[a-z]?)?\s+(?:as\s+)?(present|absent|late|excused)\b/i;
+/** "... except Rahul Sharma and Aman Gupta (who is absent)". */
+const EXCEPT_CLAUSE =
+  /\bexcept(?:\s+for)?\s+(.+?)(?:\s+(?:who\s+(?:is|was)\s+|as\s+)?(absent|present|late|excused))?(?:\s+(?:today|tomorrow|yesterday|on\s+.+))?\s*[.!]?\s*$/i;
+
+const QUANTITY_OF_MARKS =/\b\d{1,3}(?:\.\d{1,2})?\s*(?:marks?|points?)\b/i;
+
 function entityStep(message, actor) {
   if (!actor?.permissions?.['ai.copilot.use']) return null;
+
+  // Threshold or at-risk population queries are school-wide risk analytics, not individual records
+  if (/\b(below|under|less than|at.?risk|threshold)\b/i.test(String(message ?? ''))
+    && /\b\d{1,3}\s?%|\battendance\b/i.test(String(message ?? ''))) {
+    return null;
+  }
+
+  // Only when one of its three entities is what the request is ABOUT. The tier
+  // itself matches on any mention, so "show Rahul's growth SCORE" reached it
+  // through the marks vocabulary and came back with a report card. The subject
+  // is read exactly as the scorer reads it -- the leading entity that is not
+  // merely the population being asked over, so "which STUDENTS scored highest
+  // in Mathematics" is still a question about marks.
+  //
+  // A NUMBER of marks being given is an act on one record -- a grade, or one
+  // pupil's exam mark -- which this tier's operation families cannot tell
+  // apart: "Give Priya 8 marks for her Mathematics assignment" became an
+  // exam-marks entry for a subject called "her", and with the number set aside
+  // it became a NEW assignment. The catalogue and the rules read it whole.
+  if (QUANTITY_OF_MARKS.test(String(message ?? ''))) return null;
+  // Read past the opening verb, as the catalogue resolver does: "MARK the
+  // whole class present" is about the register, and the verb read as the noun
+  // "marks" proposed an exam-marks entry for a subject called "whole".
+  const subject = subjectEntityOf(withoutLeadingVerb(message)) ?? subjectEntityOf(message);
+  if (subject && !ENTITY_TIER_CLAIMS.includes(subject)) return null;
+
   const detected = detectEntityIntent(message, actor);
   return detected && getRuleTool(detected.tool) ? detected : null;
 }
@@ -793,15 +1245,548 @@ function entityStep(message, actor) {
 /** True when a tool name is one this parser is allowed to name. */
 const getRuleTool = (name) => (typeof name === 'string' && name ? name : null);
 
+/**
+ * Every capability the caller holds, scored against the message.
+ *
+ * Runs after the two narrow deterministic steps and BEFORE the pattern rules,
+ * which is the whole point: the rules reach about twenty of the catalogue's 167
+ * capabilities, and where they matched at all they frequently matched a nearby
+ * general capability while discarding what made the request specific. This step
+ * chooses from registry metadata, so a capability is reachable because it
+ * exists rather than because somebody wrote a phrase for it.
+ *
+ * It yields — returns null — whenever it is not sure, including when two
+ * capabilities fit equally well. Then the rules run, exactly as before, so
+ * nothing that worked stops working.
+ *
+ * See agent/capabilityResolver.js.
+ */
+function capabilityStep(message, actor) {
+  if (!actor?.permissions?.['ai.copilot.use']) return null;
+  // "What is HIS attendance?" names its subject in an earlier turn, not in this
+  // sentence. Scoring it here would pick the capability that needs no subject —
+  // the caller's own record — and answer confidently about the wrong person. So
+  // a pronoun-led message is left to the steps that can see the transcript --
+  // unless the pronoun points back at a person the SAME sentence names: "Give
+  // Priya 8 marks for her Mathematics assignment".
+  if (FOLLOW_UP_PRONOUN.test(String(message ?? '')) && !dimensionsOf(message).student) return null;
+  const resolved = resolveCapability(message, actor);
+  if (!resolved || resolved.needsClarification) return null;
+
+  // A WRITE missing a required argument NOBODY COULD SAY is a tentative
+  // reading.
+  //
+  // "Update Rahul's phone number to 9812345678" scores well on the capability
+  // that updates a student -- it names the verb, the person and a field -- but
+  // that capability requires `fields`, a structured object. No sentence
+  // carries one and no tool can usefully ask for one, so claiming the turn
+  // meant answering a clear instruction with "I need a bit more to do that"
+  // while a configured model, which can read the sentence INTO the object, was
+  // never asked. Tentative gives the model its turn, and this reading still
+  // stands where there is no model.
+  //
+  // A missing due date or title is the opposite case and stays confident: the
+  // tool asks for it in one short question and the person answers. That is the
+  // whole point of routing to a capability whose gaps are sayable, and it is
+  // why this is decided by the KIND of the missing argument (argumentKinds.js)
+  // rather than by whether anything is missing at all.
+  const step = { tool: resolved.tool, args: resolved.args, tentative: Boolean(resolved.tentative) };
+  return missingUnsayableArgument(step) ? { ...step, tentative: true } : step;
+}
+
+/**
+ * True when a write is missing a required argument that has no sayable shape --
+ * an object or an array, rather than a name, a date, a number or a choice.
+ */
+function missingUnsayableArgument(step) {
+  if (!isWrite(step.tool)) return false;
+  const schema = getMcpTool(step.tool)?.inputSchema;
+  return (schema?.required ?? []).some((name) => {
+    if (step.args?.[name] !== undefined) return false;
+    const property = schema.properties?.[name] ?? {};
+    return property.type === 'object' || property.type === 'array' || kindOfProperty(name, property) === null;
+  });
+}
+
+/**
+ * The canonical name for a capability, when the catalogue has one.
+ *
+ * Two entries that front the same service are the same capability under two
+ * names, and capabilities.js derives which is canonical (see applySupersession).
+ * The scoring tier already skips the superseded name; the pattern rules predate
+ * the derivation and still carry the old one, so a multi-part question came
+ * back naming `who_is_absent_today` where a single-part question named
+ * `get_absent_students`. One answer, two names, depending on how the sentence
+ * was punctuated.
+ *
+ * Only ever substitutes a name the caller can actually reach, so this cannot
+ * widen anything.
+ */
+function canonicalFor(actor, tool) {
+  const capability = capabilityIndex().find((c) => c.name === tool);
+  if (!capability?.supersededBy) return tool;
+  const reachable = capabilitiesFor(actor).some((c) => c.name === capability.supersededBy);
+  return reachable ? capability.supersededBy : tool;
+}
+
+/**
+ * The arguments to call a capability with, when two tiers agree on which.
+ *
+ * The scorer reads arguments generically, from each one's declared shape. A
+ * pattern rule reads them with an extractor written for that one capability,
+ * and sometimes knows more as a result: it can tell that "change its message to
+ * 'Submit the books'" fills `content` rather than `title`, and that "the latest
+ * announcement" sets a boolean no generic reader could see, because a boolean
+ * is a phrase rather than a value (see UNEXTRACTABLE_KINDS).
+ *
+ * So where both tiers name the SAME capability, the rule's arguments win and
+ * the scorer's fill the gaps. Neither tier is authoritative over the other
+ * about WHICH capability -- that is settled before this is called. This only
+ * takes the fuller reading of the sentence over the thinner one.
+ */
+function withRuleArguments(step, message, actor) {
+  const [best] = scoreRules(message, actor);
+  if (!best || canonicalFor(actor, best.rule.tool) !== step.tool) return step;
+  const fromRule = best.rule.args ? best.rule.args(String(message)) : {};
+  if (!Object.keys(fromRule).length) return step;
+
+  const scored = step.args ?? {};
+
+  // Where the rule places a piece of text, the generic reader's guess at where
+  // it went is dropped rather than kept alongside. "Change its message to
+  // 'Submit the books'" is one phrase with one destination: the rule knows it
+  // is the CONTENT, and leaving the scorer's `title` in as well would rename
+  // the announcement at the same time as rewording it -- a second change
+  // nobody asked for, on the same confirmation.
+  const placedByRule = new Set(Object.values(fromRule).filter((v) => typeof v === 'string'));
+  const kept = Object.fromEntries(
+    Object.entries(scored).filter(
+      ([key, value]) => !(typeof value === 'string' && placedByRule.has(value) && fromRule[key] === undefined),
+    ),
+  );
+
+  // The rule FILLS GAPS; it does not overwrite. Neither reading is reliably
+  // the better one -- the rule knows destinations the scorer cannot infer, and
+  // the scorer reads some values more carefully than the rule does. "Create
+  // Mathematics homework for Class 5-A." is the case that settles it: the
+  // scorer reads the class as "Class 5-A" and the rule's own extractor stops
+  // at "Class 5", so letting the rule win lost the section.
+  const filled = { ...kept };
+  for (const [key, value] of Object.entries(fromRule)) {
+    if (filled[key] === undefined) filled[key] = value;
+  }
+  return { ...step, args: filled };
+}
+
+/**
+ * Argument names that IDENTIFY an existing record, from the registry's own
+ * grouping. `studentName`, `admissionNo`, `className`, `invoiceNo`, a book's
+ * title: the values that decide WHOSE record an answer is about.
+ */
+// Built on first use, not at module load: capabilities.js and this file import
+// each other, and reading the table while that cycle is still resolving throws.
+let identityArgs = null;
+const isIdentityArg = (name) => {
+  if (!identityArgs) identityArgs = new Set(Object.values(TARGET_ARGS).flat());
+  return identityArgs.has(name);
+};
+
+/** Text reduced to what it says, so spacing, case and punctuation cannot differ. */
+const bare = (text) => String(text ?? '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+/**
+ * A model's proposal, with identities it invented removed.
+ *
+ * THE FAILURE THIS EXISTS FOR. Asked to "show the details of Arnav Patel", the
+ * assistant answered with Aarav Bhatt's admission number, class and roll
+ * number -- a different, real child. Nothing in the tool layer was broken:
+ * resolveStudentId() refuses an unknown or ambiguous name and offers near
+ * misses rather than taking one. The wrong name was in the CALL. A model that
+ * has seen a class list in the conversation, and a name it cannot match,
+ * produces the nearest name it knows -- and every layer below was then
+ * perfectly correct about the wrong person.
+ *
+ * So an argument that decides whose record is read or written must be
+ * TRACEABLE to what a person actually wrote -- this message, or a turn of the
+ * conversation the model was given. Compared on letters and digits only, so
+ * "class 5a" still matches "Class 5-A": the test is whether the writer said
+ * it, not whether the model echoed their spacing.
+ *
+ * What is dropped is dropped, not corrected: the capability still runs, its
+ * schema still validates, and the tool asks who was meant -- which is the
+ * right answer to a request naming somebody nobody can find.
+ *
+ * Opaque identifiers are exempt. An ObjectId legitimately comes from an
+ * earlier tool RESULT rather than from anything a person typed, and the tool
+ * layer authorizes every one of them at the caller's own scope anyway.
+ */
+function withoutInventedIdentities(step, message, history) {
+  const tool = getMcpTool(step.tool);
+  const properties = tool?.inputSchema?.properties ?? {};
+  const said = bare([String(message ?? ''), ...(history ?? []).map((turn) => turn?.content ?? '')].join(' '));
+
+  const args = {};
+  for (const [name, value] of Object.entries(step.args ?? {})) {
+    const identifies = isIdentityArg(name) && typeof value === 'string';
+    const opaque = kindOfProperty(name, properties[name] ?? {}) === 'identifier';
+    if (identifies && !opaque && bare(value) && !said.includes(bare(value))) {
+      logger.warn(`Dropped ${step.tool}.${name} proposed by the model: nobody said "${value}"`);
+      continue;
+    }
+    args[name] = value;
+  }
+  return { ...step, args };
+}
+
+/**
+ * A step with the dimensions the sentence named that its capability can hold.
+ *
+ * The mirror image of withRuleArguments(). There the scorer chose and the rule
+ * filled the gaps; here a rule chose and the scorer fills them. Same principle
+ * both ways round: whichever tier picked the capability, the call carries
+ * everything the sentence said that the schema can express.
+ *
+ * Gaps only -- an argument the rule placed is never overwritten, because the
+ * rule's extractor is written for that one capability and knows destinations a
+ * generic reader cannot infer.
+ */
+function withScoredArguments(step, message, actor) {
+  const fromScorer = argumentsFor(step.tool, String(message ?? ''), actor);
+  if (!Object.keys(fromScorer).length) return step;
+
+  const filled = { ...(step.args ?? {}) };
+  for (const [key, value] of Object.entries(fromScorer)) {
+    if (filled[key] === undefined) filled[key] = value;
+  }
+  return { ...step, args: filled };
+}
+
+/** True when a capability changes data, from what the registry declares. */
+const isWrite = (tool) => getMcpTool(tool)?.operation !== 'GET';
+
+/** The step as the rest of the agent expects it: a tool and its arguments. */
+const asStep = ({ tool, args }) => ({ tool, args });
+
+/**
+ * The entities a message fits equally well, when it fits more than one.
+ *
+ * Returned only where the capability resolver found a real tie -- two
+ * capabilities about DIFFERENT things, scoring within a hair of each other.
+ * "I want to request Introduction to Algorithms" is the worked example: a book
+ * and a co-curricular activity are both things a student requests, and the
+ * sentence says which only if you already know the catalogue.
+ *
+ * The assistant asks in that case. It used to answer "I'm not sure what you
+ * need. I can help with: students, attendance, fees ..." -- a list of modules,
+ * offered to somebody who had just named one. Naming the two real candidates
+ * is a question a person can answer in one word.
+ */
+export function clarificationFor(message, actor) {
+  if (!mayBeRouted(actor)) return null;
+  if (FOLLOW_UP_PRONOUN.test(String(message ?? ''))) return null;
+  const resolved = resolveCapability(message, actor);
+  if (!resolved?.needsClarification) return null;
+
+  const entities = [...new Set(resolved.options.map((o) => o.entity))];
+  return entities.length > 1 ? { entities, tools: resolved.options.map((o) => o.tool) } : null;
+}
+
+/**
+ * Drops a rule match that would answer a narrower question more broadly.
+ *
+ * The measured failure: "show outstanding fees for Class 5A" matched the
+ * pending-fees rule on the word "outstanding", and that tool has no way to
+ * express a class — so the class was silently dropped and a school-wide figure
+ * was presented as the answer. The same shape produced hostel occupancy for a
+ * question about Room 101 and a whole year's register for a question about one
+ * month.
+ *
+ * Generic, and derived: it compares what the sentence NAMED against what the
+ * chosen tool's schema can accept. No tool, phrase or role is named here.
+ */
+export function respectsSpecificity(step, message, actor) {
+  const capability = capabilityIndex().find((c) => c.name === step.tool);
+  if (!capability) return true;
+  const named = dimensionsOf(message);
+
+  // What was ASKED FOR, as opposed to what was matched. A sentence whose verb
+  // is one the catalogue uses for writing must not be answered by a capability
+  // that reads, and a request to cancel must not be answered by one that
+  // creates. The verbs come from the registry, so this knows every verb the
+  // catalogue can perform and no more.
+  if (actor) {
+    const asked = operationsAskedFor(message, actor);
+    if (asked.size) {
+      if (!performsAsked(capability, asked)) return false;
+    }
+  }
+
+  return keepsWhatWasNamed(step, message, named);
+}
+
+/**
+ * Whether a proposed call still carries everything the sentence narrowed it to.
+ *
+ * The dimension half of respectsSpecificity(), split out because it is the
+ * half that must hold for EVERY proposer -- the deterministic tiers and the
+ * model alike. It used to be applied to the first and not the second, and the
+ * manual report found exactly that gap: "attendance statistics for Class 5-A
+ * for the last 1 year" was declined by the resolver, the model was then asked,
+ * chose the one attendance capability that takes neither a class nor a range,
+ * and the admin was told today's register had not been marked.
+ *
+ * What the step CARRIES, not what its schema could have held:
+ *
+ *   class     a class argument -- or a free-text one whose own description
+ *             says it takes a class. A class written into the fee search, which
+ *             matches student names, finds nothing and reports "no outstanding
+ *             fees": a false answer shaped like a true one.
+ *   range     both ends, or a month -- and a month only when the range asked
+ *             for IS one month. A year carried as this month is not the year.
+ *   date      a specific day must not be widened to its month.
+ *   school    another school's records cannot be carried by anything.
+ */
+/**
+ * Whether a model's proposal still names the person the sentence named.
+ *
+ * "Show Rahul Sharma's attendance", asked by a student, was proposed as the
+ * caller's OWN attendance -- a tool that needs no student, answering about the
+ * wrong person with a true figure. withoutInventedIdentities() stops a name
+ * nobody said from getting in; this stops the name somebody DID say from
+ * falling out. Applied to model proposals, whose arguments are not read from
+ * the sentence the way the deterministic tiers' are.
+ */
+function keepsThePersonNamed(step, message, named = dimensionsOf(message)) {
+  if (!named.student || named.personFromTitle) return true;
+  // A name is its leading run of capitalised words: the reader can over-reach
+  // ("Clean Code available"), and a proposal carrying "Clean Code" has kept
+  // what was named.
+  const words = String(named.student).trim().split(/\s+/);
+  const firstLowercase = words.findIndex((w) => !/^[\p{Lu}\d_]/u.test(w));
+  const lead = firstLowercase > 0 ? words.slice(0, firstLowercase) : words;
+  // ...and it is the END of that run that is the person: the reader can also
+  // take in an opening verb it does not know ("Deactivate Aman Gupta").
+  const person = lead.slice(-2).join(' ');
+  const carried = bare(JSON.stringify(step.args ?? {}));
+  return carried.includes(bare(person));
+}
+
+export function keepsWhatWasNamed(step, message, named = dimensionsOf(message)) {
+  if (named.otherInstitution) return false;
+
+  const args = step.args ?? {};
+  const properties = getMcpTool(step.tool)?.inputSchema?.properties ?? {};
+  const takesClass = (name) => /\bclass|\bgrade|\bsection/i.test(String(properties[name]?.description ?? ''));
+
+  const carried = {
+    // A class is carried by any argument the resolver places one in: the name of
+    // a section's grade (`grade`), or the NAME of the grade or section being
+    // created ("create grade Class 7" -- the class IS the new record's name).
+    class: () => Boolean(args.className || args.sectionId || args.gradeId || args.grade
+      || (args.name && capabilityIndex().find((c) => c.name === step.tool)?.entity === 'class')
+      || (args.query && takesClass('query')) || (args.search && takesClass('search'))),
+    numbered: () => Boolean(args.roomNo || args.roomNumber || args.routeId || args.routeName || args.bedNo
+      || (args.name && /^(?:room|bed|route|bus|block|ward|floor)\b/i.test(String(args.name)))),
+    // A month carries a range only when the range IS that month, and a week
+    // only as the weekly timetable: "this week" answered with September, or
+    // with today, is a different answer from the one asked for.
+    range: () => Boolean(RANGE_PAIRS.some(([a, b]) => args[a] && args[b])
+      || (args.month && isWholeMonth(named.range))
+      || (args.day === 'week' && isWholeWeek(named.range))),
+  };
+  for (const [dimension, present] of Object.entries(carried)) {
+    if (dimension === 'class' && named.classInsideTitle) continue;
+    if (named[dimension] && !present()) return false;
+  }
+  if (named.date && args.month && !args.date && !(args.from && args.to)) return false;
+  return true;
+}
+
+/**
+ * Whether this actor may be routed at all.
+ *
+ * The self and entity tiers already checked this; the pattern rules did not,
+ * and that was a real hole. A role with no assistant permission -- SUPER_ADMIN
+ * is the one that matters -- still had its message matched against the rule
+ * table, so "create a fee head" came back proposing a fee tool. The MCP server
+ * would have refused the call, but a proposal is already more than zero
+ * access, and zero is the requirement. Checked once, at the top, for every
+ * tier.
+ */
+const mayBeRouted = (actor) => Boolean(actor?.permissions?.[AI_ASSISTANT_PERMISSION]);
+
+/**
+ * Whether the tier that proposed a capability should be allowed to.
+ *
+ * The answer is almost always yes, and deliberately so. This layer CHOOSES and
+ * the tool layer AUTHORIZES -- that separation is the whole security model, and
+ * filtering proposals here quietly broke the half of it people see: a teacher
+ * asking to record a payment was told "I don't have anything on that" instead
+ * of being told plainly that they are not authorized, because the proposal the
+ * server would have refused legibly was never made.
+ *
+ * So a proposal stands whatever the caller holds, and the MCP server refuses it
+ * with a 403 and a sentence. The one thing checked here is the assistant
+ * permission itself, because a role that may not use the assistant at all
+ * should not have a proposal made in its name in the first place -- see
+ * mayBeRouted, which every tier goes through.
+ */
+function heldBy(actor, tool) {
+  // Kept as a named predicate rather than deleted: the self-category and entity
+  // tiers use it to prefer a tier that can actually run, which is a routing
+  // preference, not an authorization decision.
+  return Boolean(actor) && Boolean(tool);
+}
+
 /** Rule-based parse. Returns { tool, args } or null. */
 export function parseIntent(message, actor) {
-  const own = selfStep(message, actor);
-  if (own) return own;
-  const entity = entityStep(message, actor);
-  if (entity) return entity;
-  const [best] = scoreRules(message, actor);
+  return toClassLevel(chooseStep(message, actor), actor, message);
+}
+
+/**
+ * A question about ONE record, from somebody who has no record of their own.
+ *
+ * "Absent students", "attendance for 5 August", "results": a teacher saying
+ * any of these was answered from the caller's own record ("your account has no
+ * student enrolment") or from an unnamed pupil's report card ("no results have
+ * been published for that student"). Neither is what was asked. The teacher's
+ * reading is their classes -- and the catalogue says so itself: the same
+ * entity has a class-level capability (`requiresClass`), which answers for a
+ * named class and asks WHICH class when none is named.
+ *
+ * Decided from metadata: the chosen capability returns one record (DETAIL),
+ * names nobody, and the caller holds a class-level capability of the same
+ * entity. The narrowing the sentence carried (a date, a month, a subject) moves
+ * with it wherever the class-level capability accepts it. A student or parent
+ * does have a record of their own, so their questions are left exactly as they
+ * were.
+ */
+function toClassLevel(step, actor, message) {
+  if (!step || step.steps || SELF_RECORD_ROLES.has(actor?.roleKey)) return step;
+  // "What is MY attendance?" is about the caller, and a teacher has no record
+  // of their own -- which get_attendance says plainly. Only a question about
+  // nobody in particular is re-read as a question about their classes.
+  if (dimensionsOf(message).self) return step;
+  // "What is HIS attendance?" names a person -- the one an earlier turn
+  // named, carried forward by carrySubjectForward(), or asked for when there
+  // is none. It is never a question about a whole class.
+  if (FOLLOW_UP_PRONOUN.test(String(message ?? ''))) return step;
+  const index = capabilityIndex();
+  const chosen = index.find((c) => c.name === step.tool);
+  if (!chosen || chosen.writes || chosen.requiresClass || chosen.resultShape !== 'DETAIL') return step;
+  // School-wide readers have a school-wide answer (get_attendance reads them
+  // the day's register), so only an OWN-scoped caller is re-read this way.
+  if (actor?.permissions?.[chosen.permission] !== 'OWN') return step;
+  // And only one who holds classes -- the same test the resolver applies to
+  // class-level capabilities (capabilityResolver.holdsClasses).
+  if (actor?.roleKey !== 'TEACHER') return step;
+  if (STUDENT_IDENTITY_KEYS.some((key) => step.args?.[key]) || step.args?.enrollmentId) return step;
+  const classLevel = capabilitiesFor(actor, { entity: chosen.entity, operation: 'GET' })
+    .find((c) => c.requiresClass && c.resultShape === 'LIST');
+  if (!classLevel) return step;
+  const args = Object.fromEntries(
+    Object.entries(step.args ?? {}).filter(([name]) => classLevel.properties.includes(name)),
+  );
+  // One named day is the register for that day; its month is not a second,
+  // wider question.
+  if (args.date && args.month) delete args.month;
+  return { tool: classLevel.name, args };
+}
+
+/**
+ * The step a DECISIVE rule reads from the sentence, or null.
+ *
+ * A decisive rule names a distinctive grammar -- "add a Mathematics PAPER to Half
+ * Yearly with 80 marks" -- that the catalogue scorer would otherwise read through
+ * a louder word ("marks") as a different write. It is consulted first, and only
+ * for the writes that declare it; the step still has to respect what was named,
+ * and the MCP server still validates, authorizes and confirms it.
+ */
+function decisiveStep(message, actor) {
+  const best = scoreRules(message, actor).find((entry) => entry.rule.decisive && heldBy(actor, entry.rule.tool));
   if (!best) return null;
-  return { tool: best.rule.tool, args: best.rule.args ? best.rule.args(String(message)) : {} };
+  const step = withScoredArguments({
+    tool: canonicalFor(actor, best.rule.tool),
+    args: best.rule.args ? best.rule.args(String(message)) : {},
+  }, message, actor);
+  return passesRule(best.rule, step, message, actor) ? step : null;
+}
+
+/**
+ * Whether a rule's reading may stand. A rule flagged `grammar` names the act by
+ * the grammar of an assignment ("make X the class teacher", "add X as Y's
+ * father"), so its verb is not the catalogue's -- "make" reads as CREATE and would
+ * reject the UPDATE it plainly asks for. It must still keep what was named.
+ */
+function passesRule(rule, step, message, actor) {
+  return rule.grammar
+    ? keepsWhatWasNamed(step, String(message))
+    : respectsSpecificity(step, String(message), actor);
+}
+
+function chooseStep(message, actor) {
+  if (!mayBeRouted(actor)) return null;
+
+  const decisive = decisiveStep(message, actor);
+  if (decisive) return decisive;
+
+  const capability = capabilityStep(message, actor);
+
+  // A confident WRITE outranks every other tier. The tiers below read a coarse
+  // verb-stem table that does not know the catalogue's own verbs -- "publish
+  // marks" and "grade submission" are not in it -- so they read those as
+  // questions and answered a request to publish with a list of marks. The
+  // capability resolver knows every verb the catalogue uses, because the
+  // catalogue is where it gets them.
+  if (capability && !capability.tentative && isWrite(capability.tool)
+    && respectsSpecificity(asStep(capability), String(message), actor)) {
+    return withRuleArguments(asStep(capability), message, actor);
+  }
+
+  // Attendance, marks and homework: that tier resolves operation x entity x
+  // scope for the three entities it claims, it yields whenever it cannot see
+  // all three, and it is what keeps "show attendance for July" a question
+  // about a month rather than about a class.
+  const entity = entityStep(message, actor);
+  // The rule fills what the entity tier did not read, exactly as it does for
+  // the capability tier: "Update Rahul Sharma's Mathematics marks" was
+  // proposed with the paper and without the pupil.
+  if (entity && heldBy(actor, entity.tool) && respectsSpecificity(entity, String(message), actor)) {
+    return withRuleArguments(entity, message, actor);
+  }
+
+  const own = selfStep(message, actor);
+  // When both tiers name the SAME capability, the self-category tier's
+  // arguments are the richer ones: it decided which part of the caller's own
+  // profile was asked for, and the scorer only decided the tool. Taking the
+  // scorer's empty argument list there answered "what is my blood group" with
+  // a whole profile.
+  if (own && capability && own.tool === capability.tool && heldBy(actor, own.tool)) return own;
+
+  if (capability && !capability.tentative && respectsSpecificity(asStep(capability), String(message), actor)) {
+    return withRuleArguments(asStep(capability), message, actor);
+  }
+
+  if (own && heldBy(actor, own.tool) && respectsSpecificity(own, String(message), actor)) return own;
+
+  // Among the rules tied for the top score, the first whose reading still
+  // respects what was asked. "Change attendance of Rahul Sharma to absent"
+  // matched a READ rule and the marking rule equally; the read sorted first,
+  // was rightly refused for answering a write with a read, and the request
+  // was then answered by nothing although the marking rule fitted it.
+  for (const best of topRules(scoreRules(message, actor))) {
+    if (!heldBy(actor, best.rule.tool)) continue;
+    const step = withScoredArguments({
+      tool: canonicalFor(actor, best.rule.tool),
+      args: best.rule.args ? best.rule.args(String(message)) : {},
+    }, message, actor);
+    if (passesRule(best.rule, step, message, actor)) return step;
+  }
+  // Nothing else matched. A tentative capability is a better answer than none
+  // -- but not when it would drop what the request narrowed it to. A confident
+  // wrong answer about the whole school is worse than saying so.
+  if (capability && respectsSpecificity(asStep(capability), String(message), actor)) return asStep(capability);
+  return null;
 }
 
 /** Two clauses joined — the shape of a question that needs more than one tool. */
@@ -826,17 +1811,65 @@ export const MAX_PLAN_STEPS = 3;
  * deployment with no model at all.
  */
 export function parsePlan(message, actor) {
+  // The same class-level reading parseIntent() applies, on every step -- this
+  // is the path the assistant actually runs, so a fix to one alone is no fix.
+  return planSteps(message, actor).map((step) => {
+    const read = toClassLevel(step, actor, message);
+    return read === step ? step : { ...read, ...(step.tentative ? { tentative: true } : {}) };
+  });
+}
+
+function planSteps(message, actor) {
   const msg = String(message ?? '');
+  if (!mayBeRouted(actor)) return [];
+
+  const decisive = decisiveStep(msg, actor);
+  if (decisive) return [decisive];
+
+  const capability = capabilityStep(msg, actor);
+  // A capability match is ONE step. A message that joins two questions --
+  // "who is absent today and what is the fee collection?" -- needs both, and
+  // answering only the higher-scoring half is the near-miss this planner
+  // exists to avoid. So when the sentence joins clauses, the rules are given
+  // the chance to plan first, and their plan is used when it really covers
+  // more than one thing.
+  const joined = CONJUNCTION.test(msg);
+  if (capability && !joined && !capability.tentative && isWrite(capability.tool)
+    && respectsSpecificity(asStep(capability), msg, actor)) {
+    return [withRuleArguments(asStep(capability), msg, actor)];
+  }
+
+  const entity = entityStep(msg, actor);
+  if (entity && heldBy(actor, entity.tool) && respectsSpecificity(entity, msg, actor)) return [withRuleArguments(entity, msg, actor)];
+
   // A question about the caller's own profile, classes, subjects or timetable
   // is one step and needs no planning.
   const own = selfStep(msg, actor);
-  if (own) return [own];
-  const entity = entityStep(msg, actor);
-  if (entity) return [entity];
-  const matches = scoreRules(msg, actor);
-  if (!matches.length) return [];
+  if (own && capability && own.tool === capability.tool && heldBy(actor, own.tool)) return [own];
 
-  const steps = [matches[0]];
+  if (capability && !joined && !capability.tentative && respectsSpecificity(asStep(capability), msg, actor)) {
+    return [withRuleArguments(asStep(capability), msg, actor)];
+  }
+
+  if (own && heldBy(actor, own.tool) && respectsSpecificity(own, msg, actor)) return [own];
+
+  const tentative = capability && respectsSpecificity(asStep(capability), msg, actor)
+    ? [{ ...asStep(capability), tentative: true }]
+    : [];
+
+  const matches = scoreRules(msg, actor);
+  if (!matches.length) return tentative;
+
+  // The first of the rules tied for the top score whose reading respects the
+  // request (see chooseStep): a tie is settled by fit, not by declaration order.
+  // A grammar rule is judged by passesRule, exactly as chooseStep judges it:
+  // the plan and the single step must read a sentence the same way.
+  const leader = topRules(matches).find(({ rule }) => passesRule(
+    rule,
+    withScoredArguments({ tool: canonicalFor(actor, rule.tool), args: rule.args ? rule.args(msg) : {} }, msg, actor),
+    msg, actor,
+  )) ?? matches[0];
+  const steps = [leader];
   if (CONJUNCTION.test(msg)) {
     for (const candidate of matches.slice(1)) {
       if (steps.length >= MAX_PLAN_STEPS) break;
@@ -849,7 +1882,23 @@ export function parsePlan(message, actor) {
     }
   }
 
-  return steps.map(({ rule }) => ({ tool: rule.tool, args: rule.args ? rule.args(msg) : {} }));
+  const planned = steps
+    .map(({ rule }) => ({
+      rule,
+      step: withScoredArguments({ tool: canonicalFor(actor, rule.tool), args: rule.args ? rule.args(msg) : {} }, msg, actor),
+    }))
+    .filter(({ rule, step }) => passesRule(rule, step, msg, actor))
+    .map(({ step }) => step);
+
+  // Two or more clauses answered is what the rules were given the first turn
+  // for. One is not: a single rule match is the weaker reading, and the
+  // capability match -- which read the whole request -- wins it back.
+  if (planned.length > 1) return planned;
+  if (capability && !capability.tentative && respectsSpecificity(asStep(capability), msg, actor)) {
+    return [asStep(capability)];
+  }
+  if (planned.length) return planned;
+  return tentative;
 }
 
 /**
@@ -941,8 +1990,161 @@ function carrySubjectForward(steps, message, actor, { history = [], tools = null
   return steps.map((s) => (takesStudent(s.tool) && !namesStudent(s.args) ? { ...s, args: { ...s.args, ...subject } } : s));
 }
 
+/**
+ * The answer to a question the assistant asked about an unfinished write.
+ *
+ * "Create Mathematics homework for Class 6-A." is answered "Tell me a title
+ * and the due date.", and the teacher replies "Fractions and decimals." With
+ * no model configured, that reply was read as a new request -- a search for a
+ * pupil called Fractions -- and the homework was never written. Both channels
+ * pass the conversation (the website since the transcript fix, WhatsApp
+ * always), so the unfinished request is recovered from it here, once, for
+ * both.
+ *
+ * Replayed from the caller's OWN earlier words, never the assistant's: an
+ * assistant turn is consulted only to see whether it asked something (a
+ * question that is not a proposal). The result is an ordinary plan step -- the
+ * MCP server still validates it, authorizes it at the caller's scope, asks for
+ * confirmation, and re-authorizes on "yes".
+ */
+const PROPOSAL_REPLY = /Shall I go ahead|Reply YES|क्या मैं आगे/i;
+// A question anywhere: "Whose marks, and how many? For example ..." ends
+// with its example, not with the question mark.
+const ASKED_REPLY = /\?|\bTell me\b|I need a bit more|थोड़ी और जानकारी/i;
+const NEW_REQUEST = /^\s*(?:please\s+)?(?:what|which|who|whom|whose|when|where|why|how|show|list|display|view|find|get|tell|give\s+me|can|could|would|is|are|do|does|yes|no|ok|okay|cancel|stop)\b/i;
+
+function standsAlone(message, actor) {
+  const str = String(message ?? '').trim();
+  if (!str || NEW_REQUEST.test(str)) return true;
+  const first = str.split(/\s+/)[0];
+  return detectOperation(first) !== 'GET' || operationsAskedFor(str, actor).size > 0;
+}
+
+/** A write step's arguments with what one more answer supplies. */
+function withAnswer(step, answer, actor) {
+  const schema = getMcpTool(step.tool)?.inputSchema ?? {};
+  const properties = schema.properties ?? {};
+  const args = structuredClone(step.args ?? {});
+  let supplied = false;
+  const capability = capabilityIndex().find((c) => c.name === step.tool);
+  const isFreeText = (name) => kindOfProperty(name, properties[name] ?? {}) === 'text'
+    && !namesARecord(capability, name, properties[name] ?? {});
+
+  // What the answer NAMES, read as the capability reads any sentence -- a
+  // class, a subject, a date, a number -- and as its pattern rule reads it.
+  // Free text is left out here: "Mathematics for Class 6-A" names a subject
+  // and a class, and is not also the title.
+  const read = withRuleArguments({ tool: step.tool, args: argumentsFor(step.tool, answer, actor) }, answer, actor).args;
+  for (const [name, value] of Object.entries(read)) {
+    if (args[name] === undefined && value !== undefined && !isFreeText(name)) { args[name] = value; supplied = true; }
+  }
+
+  // "Mathematics for Class 6-A", answering "which class and subject?": the
+  // subject is the name that introduces the class. Read only here, where the
+  // request is already known to be about academic work -- the same words as
+  // a first message could as easily be a pupil's name -- and the tool still
+  // checks the subject against the caller's own classes before proposing.
+  if (args.subject === undefined && properties.subject && namesARecord(capability, 'subject', properties.subject)) {
+    const introduced = /^\s*([A-Z][\p{L}&'.-]+(?:\s+[A-Z][\p{L}&'.-]+)?)\s+(?:for|in|of)\s+(?:[Cc]lass|[Gg]rade|[Ss]td|[Ss]ection)\b/u.exec(String(answer))?.[1];
+    if (introduced) { args.subject = introduced; supplied = true; }
+  }
+
+  // A list item missing a required value -- a pupil named without a status,
+  // or without a mark -- takes it from the answer by the value's own kind.
+  for (const [name, property] of Object.entries(properties)) {
+    if (property.type !== 'array' || !Array.isArray(args[name])) continue;
+    const item = property.items ?? {};
+    for (const entry of args[name]) {
+      for (const field of item.required ?? []) {
+        if (entry[field] !== undefined) continue;
+        const shape = item.properties?.[field] ?? {};
+        const found = Array.isArray(shape.enum) ? extractEnum(answer, shape)
+          : ['number', 'integer'].includes(shape.type) ? extractNumber(answer, shape) : null;
+        if (found?.status === FOUND) { entry[field] = found.value; supplied = true; }
+      }
+    }
+  }
+
+  // Nothing named: the request as it would have been written WITH its answer,
+  // after a colon -- where every reader already expects a notice's words, a
+  // marks sheet or a reply ("Record marks for Class 6-A Mathematics: Rahul
+  // Sharma 44"). Read again whole, by the same tiers as any sentence.
+  if (!supplied && step.text) {
+    const whole = `${step.text.replace(/[\s.!?]+$/, '')}: ${String(answer).trim()}`;
+    const [again] = parsePlan(whole, actor);
+    if (again?.tool === step.tool) {
+      for (const [name, value] of Object.entries(again.args ?? {})) {
+        if (args[name] === undefined && value !== undefined) { args[name] = value; supplied = true; }
+      }
+    }
+  }
+
+  // Still nothing: the answer IS the missing text -- the title, the message.
+  // Only a required free-text argument, never one that names a record.
+  if (!supplied) {
+    const text = String(answer).trim().replace(/^["'“‘]|["'”’]$/g, '').replace(/[\s.!]+$/, '').trim();
+    const missing = (schema.required ?? []).find((name) => args[name] === undefined && isFreeText(name));
+    if (missing && text) {
+      args[missing] = text;
+      // An announcement's words are both its headline and its body when only
+      // one was given -- what the announcement rule does with one sentence.
+      if (missing === 'title' && properties.content && args.content === undefined) args.content = text;
+      supplied = true;
+    }
+  }
+  return supplied ? { tool: step.tool, args, text: step.text } : null;
+}
+
+function continuedWrite(message, actor, conversation = []) {
+  // WhatsApp stores the inbound message before replying, so its transcript
+  // already ends with the message being answered now. It is this turn, not an
+  // earlier one.
+  const history = [...conversation];
+  while (history.length && history.at(-1)?.role === 'user'
+    && String(history.at(-1).text ?? '').trim() === String(message ?? '').trim()) history.pop();
+  if (!history.length || standsAlone(message, actor)) return null;
+  let open = null;
+  for (let i = 0; i < history.length; i += 1) {
+    const turn = history[i];
+    if (turn?.role !== 'user') continue;
+    const said = String(turn.text ?? '');
+    if (open && !standsAlone(said, actor)) {
+      open = withAnswer(open, said, actor) ?? open;
+    } else {
+      const plan = parsePlan(said, actor);
+      open = plan.length === 1 && isWrite(plan[0].tool) ? { tool: plan[0].tool, args: plan[0].args ?? {}, text: said } : null;
+    }
+    // Still open only if the assistant's reply to it ASKED for something. A
+    // proposal, an answer or a refusal closes it.
+    const reply = history.slice(i + 1).find((t) => t?.role === 'assistant')?.text ?? '';
+    const nextUser = history.slice(i + 1).findIndex((t) => t?.role === 'user');
+    const replied = nextUser === -1 || history.slice(i + 1, i + 1 + nextUser).some((t) => t?.role === 'assistant');
+    if (!replied || PROPOSAL_REPLY.test(reply) || !ASKED_REPLY.test(reply)) open = null;
+  }
+  return open ? withAnswer(open, message, actor) : null;
+}
+
 export async function parseIntentWithLlm(message, actor, { callModel, history = [], tools = null } = {}) {
-  const rulePlan = carrySubjectForward(parsePlan(message, actor), message, actor, { history, tools });
+  // The answer to a question about an unfinished write comes first: read on
+  // its own it is usually a different request -- "Fractions and decimals." is
+  // a pupil search -- and the rules would claim it.
+  const found = continuedWrite(message, actor, history);
+  if (found) {
+    const continued = { tool: found.tool, args: found.args };
+    return { ...continued, steps: [continued] };
+  }
+
+  const rawPlan = parsePlan(message, actor);
+  // A plan the deterministic tiers are not sure of. It stands when no model is
+  // configured, and gives way to one when there is -- which is what a model is
+  // for: the sentences the rules and the registry cannot read confidently.
+  const tentative = rawPlan.length === 1 && rawPlan[0].tentative === true;
+  const rulePlan = carrySubjectForward(
+    rawPlan.map(({ tool, args }) => ({ tool, args })),
+    message,
+    actor,
+    { history, tools },
+  );
   const rules = rulePlan.length ? { ...rulePlan[0], steps: rulePlan } : null;
 
   // The rule parser is deliberately tried first: when it matches, it is
@@ -964,7 +2166,7 @@ export async function parseIntentWithLlm(message, actor, { callModel, history = 
   // which tools read.
   const misroutedDestructive = Boolean(rules && tools && DESTRUCTIVE_REQUEST.test(String(message ?? '')) &&
     rules.steps.every((step) => tools.find((t) => t.name === step.tool)?.annotations?.readOnlyHint !== false));
-  if (rules && !isBareFollowUp(message, history) && !misroutedDestructive) return rules;
+  if (rules && !tentative && !isBareFollowUp(message, history) && !misroutedDestructive) return rules;
 
   const call = callModel ?? defaultCallModel;
   // Falls back to the rule match rather than to null: a follow-up we could not
@@ -972,11 +2174,24 @@ export async function parseIntentWithLlm(message, actor, { callModel, history = 
   // "I'm not sure what you need".
   if (!isLlmEnabled()) return misroutedDestructive ? null : (rules ?? null);
 
+  // What to answer with if the model has nothing. A tentative reading is a
+  // reading: it was set aside so a model could do better, and when no better
+  // one arrives it is still the best understanding of the sentence there is.
+  // Discarding it meant a deployment whose model was slow, misconfigured or
+  // simply out of quota answered "I'm not sure what you need" to sentences the
+  // resolver had already read correctly -- the failure mode with the worst
+  // ratio of cause to consequence in the whole path.
+  //
+  // `misroutedDestructive` is the one exception, and keeps its own answer: a
+  // deletion that matched only READ rules must not fall back to reading
+  // something out. Saying nothing is right there.
+  const fallback = misroutedDestructive ? null : (rules ?? null);
+
   try {
     const proposal = await call(message, actor, history, tools);
     const steps = (proposal?.steps ?? (proposal?.tool ? [{ tool: proposal.tool, args: proposal.args }] : []))
       .slice(0, MAX_PLAN_STEPS);
-    if (!steps.length) return null;
+    if (!steps.length) return fallback;
 
     // Only ever return tools this actor could actually use. A model that
     // hallucinates a tool name, or picks one the caller lacks, degrades to
@@ -992,15 +2207,29 @@ export async function parseIntentWithLlm(message, actor, { callModel, history = 
       logger.warn(`LLM proposed an unavailable tool "${step.tool}" for role ${actor?.roleKey}`);
       return false;
     });
-    if (!permitted.length) return null;
+    if (!permitted.length) return fallback;
 
-    const normalised = permitted.map((step) => ({ tool: step.tool, args: step.args ?? {} }));
-    return { ...normalised[0], steps: normalised };
+    const normalised = permitted.map((step) => withoutInventedIdentities(
+      { tool: step.tool, args: step.args ?? {} }, message, history,
+    ));
+
+    // The model is held to what the sentence named, exactly as the rules are.
+    // A proposal that drops the class, widens the period or reaches beyond the
+    // caller's school is not an answer to the question, however well it runs.
+    // With none left, the deterministic reading stands -- or, when there is
+    // none, the turn is declined and the orchestrator says why.
+    const faithful = normalised.filter((step) => {
+      if (keepsWhatWasNamed(step, message) && keepsThePersonNamed(step, message)) return true;
+      logger.warn(`Model proposal ${step.tool} ${JSON.stringify(step.args)} dropped what the request named; not run`);
+      return false;
+    });
+    if (!faithful.length) return fallback;
+    return { ...faithful[0], steps: faithful };
   } catch (err) {
-    // A model failure degrades to no-match rather than taking the assistant
-    // offline.
+    // A model failure degrades to the deterministic reading rather than taking
+    // the assistant offline.
     logger.warn(`LLM intent parsing failed: ${err.message}`);
-    return null;
+    return fallback;
   }
 }
 
@@ -1083,6 +2312,10 @@ async function defaultCallModel(message, actor, history = [], mcpTools = null) {
     '  {"tools": []}',
     '',
     'Rules:',
+    'Routing precedence:',
+    '1. A query asking which/who students are below an attendance threshold or at risk must call get_at_risk_students (with attendanceBelowPct set to the percentage, e.g. 75).',
+    "2. A query about one specific named student's attendance must call get_student_attendance.",
+    '3. Preserve any threshold explicitly stated by the user, such as 75%.',
     '- Choose [] when no tool clearly fits. A wrong tool is worse than none.',
     `- Use more than one tool only when the message asks more than one thing. At most ${MAX_PLAN_STEPS}.`,
     '- Prefer a read. Only choose a tool marked WRITES DATA when the user has',

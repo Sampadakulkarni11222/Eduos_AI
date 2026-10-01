@@ -1,6 +1,6 @@
 'use client';
 import { Button, Pill } from './ui';
-import { fileHref } from '@/lib/api';
+import { canonicalFileUrl, fileHref, fileNameOf } from '@/lib/api';
 import type { AnnouncementPreviewDto } from '@/lib/types';
 
 /**
@@ -24,7 +24,8 @@ export function AnnouncementPreview({
   onEdit: () => void;
   onPublish: () => void;
 }) {
-  const nameFor = (url: string) => attachmentNames.find((a) => a.url === url)?.name ?? url.split('/').pop() ?? 'attachment';
+  const nameFor = (url: string) =>
+    attachmentNames.find((a) => canonicalFileUrl(a.url) === canonicalFileUrl(url))?.name ?? fileNameOf(url);
 
   const files = preview.attachments.length > 0 && (
     <ul className="ann-preview-files">

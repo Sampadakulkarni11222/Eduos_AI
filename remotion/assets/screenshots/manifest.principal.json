@@ -1,0 +1,42 @@
+{
+  "capturedAt": "2026-09-22T18:00:19.513Z",
+  "viewport": "1920x1080@2x",
+  "school": "Oakridge Academy",
+  "shots": [
+    {
+      "file": "principal-risk.png",
+      "url": "/oakridge/principal/risk"
+    },
+    {
+      "file": "principal-risk-drawer.png",
+      "url": "/oakridge/principal/risk"
+    },
+    {
+      "file": "principal-intelligence.png",
+      "url": "/oakridge/principal"
+    },
+    {
+      "file": "principal-fees.png",
+      "url": "/oakridge/principal/fees"
+    },
+    {
+      "file": "principal-attendance.png",
+      "url": "/oakridge/principal/attendance"
+    },
+    {
+      "file": "ask-agent-open.png",
+      "url": "/oakridge/principal",
+      "note": "Ask Agent panel, suggestions for Principal"
+    },
+    {
+      "file": "ask-agent-read-question.png",
+      "url": "/oakridge/principal"
+    },
+    {
+      "file": "ask-agent-read.png",
+      "url": "/oakridge/principal",
+      "note": "Answer from get_fee_statistics via MCP"
+    }
+  ],
+  "failures": []
+}

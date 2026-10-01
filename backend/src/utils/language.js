@@ -94,9 +94,15 @@ export function detectLanguage(text) {
 const MESSAGES = {
   en: {
     'agent.unsure': "I'm not sure what you need. I can help with: {capabilities}.",
+    'agent.which': 'Did you mean {options}?',
     // Shown when a tool refuses with a message written for an HTTP client
     // rather than for a person. See humaniseToolError() in orchestrator.js.
     'agent.cannotAnswer': "That isn't something I can look up for your account. I can help with: {capabilities}.",
+    // A request for another school's records. Every capability answers about
+    // the caller's own school; see asksBeyondOwnSchool() in capabilityResolver.js.
+    'agent.otherSchool': 'I can only look up records for your own school. Records from other schools are not available to your account.',
+    // A student asking about other people's records. See asksAboutOthers().
+    'agent.ownRecordsOnly': "I can only show your own records — other students' information isn't available to your account.",
     'agent.injection': "I can only do the things your account is allowed to do, and I can't change those rules. Ask me about attendance, fees, homework or results.",
     'agent.confirm': '{summary}. Shall I go ahead?',
     'agent.confirm.whatsapp': '{summary}.\n\nReply YES to confirm or NO to cancel. (Expires in {minutes} minutes.)',
@@ -173,7 +179,10 @@ const MESSAGES = {
 
   hi: {
     'agent.unsure': 'मुझे ठीक से समझ नहीं आया। मैं इनमें मदद कर सकता हूँ: {capabilities}।',
+    'agent.which': 'आपका मतलब {options} से है?',
     'agent.cannotAnswer': 'यह मैं आपके खाते के लिए नहीं देख सकता। मैं इनमें मदद कर सकता हूँ: {capabilities}।',
+    'agent.otherSchool': 'मैं केवल आपके अपने स्कूल के रिकॉर्ड देख सकता हूँ। दूसरे स्कूलों के रिकॉर्ड आपके खाते के लिए उपलब्ध नहीं हैं।',
+    'agent.ownRecordsOnly': 'मैं केवल आपके अपने रिकॉर्ड दिखा सकता हूँ — दूसरे विद्यार्थियों की जानकारी आपके खाते के लिए उपलब्ध नहीं है।',
     'agent.injection': 'मैं केवल वही कर सकता हूँ जिसकी अनुमति आपके खाते को है, और मैं ये नियम नहीं बदल सकता। आप मुझसे उपस्थिति, फीस, होमवर्क या परिणाम के बारे में पूछ सकते हैं।',
     'agent.confirm': '{summary}। क्या मैं आगे बढ़ूँ?',
     'agent.confirm.whatsapp': '{summary}।\n\nपुष्टि के लिए YES और रद्द करने के लिए NO भेजें। ({minutes} मिनट में समाप्त।)',

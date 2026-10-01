@@ -37,10 +37,20 @@ import dashboardRoutes from '../modules/dashboard/dashboard.routes.js';
 import documentRoutes from '../modules/documents/document.routes.js';
 import transportRoutes from '../modules/transport/transport.routes.js';
 import auditRoutes from '../modules/audit/audit.routes.js';
+import seatRoutes from '../modules/seats/seat.routes.js';
+import customizationRoutes from '../modules/customization/customization.routes.js';
+import domainRoutes from '../modules/domains/domain.routes.js';
 import uploadRoutes from '../modules/uploads/upload.routes.js';
 import { auditLogger } from '../middleware/auditLogger.js';
+import { signUploadUrlsInResponses, unsignUploadUrlsInBody } from '../modules/uploads/signedUrls.js';
 
 const router = Router();
+
+// File links: every /uploads path leaving in a response is signed and
+// expiring; signed links coming back in a request body are stored canonical.
+// See modules/uploads/signedUrls.js.
+router.use(unsignUploadUrlsInBody);
+router.use(signUploadUrlsInResponses);
 
 // Global audit logging for state-modifying requests
 router.use(auditLogger);
@@ -112,6 +122,9 @@ router.use('/dashboard', dashboardRoutes);
 router.use('/documents', documentRoutes);
 router.use('/transport', transportRoutes);
 router.use('/audit', auditRoutes);
+router.use('/seats', seatRoutes);
+router.use('/customization', customizationRoutes);
+router.use('/domains', domainRoutes);
 router.use('/uploads', uploadRoutes);
 
 // NOTE — a public GET /admin-seed endpoint used to live here, gated only by a

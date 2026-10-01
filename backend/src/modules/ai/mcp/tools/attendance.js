@@ -21,7 +21,7 @@ export const attendanceTools = {
     operation: 'GET',
     risk: RISK.LOW,
     description:
-      "A student's attendance record: days present, working days and the percentage. Name a student to look up theirs; name nobody and it answers for the caller (or their child). Read-only.",
+      'Use only when the user asks about the attendance of one specific named student: days present, working days and the percentage. Name a student to look up theirs; name nobody and it answers for the caller (or their child). Do not use for cohort queries, percentage-threshold queries, or "which students" questions (use get_at_risk_students instead). Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -82,11 +82,13 @@ export const attendanceTools = {
 
   get_attendance_roster: {
     module: 'Attendance',
+    // A class's register: nobody without a class of their own can be answered.
+    requiresClass: true,
     resultShape: 'LIST',
     operation: 'GET',
     risk: RISK.LOW,
     description:
-      'Attendance for one whole class on one date: every enrolled student with the status marked for them, if any, and who is absent. This is the class-level answer — use it for "show the attendance of Class 5-A" and "who is absent in Class 5-A today". Name the class with className; sectionId is for when an id is already known. Read-only.',
+      'Attendance for one whole class, for one date or one calendar month: on a date, every enrolled student with the status marked for them and who is absent; for a month, the class summary. This is the class-level answer — use it for "show the attendance of Class 5-A" and "who is absent in Class 5-A today". There is no class figure over a longer range. Name the class with className; sectionId is for when an id is already known. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -137,11 +139,10 @@ export const attendanceTools = {
         );
       }
 
-      const roster = await attendance.getRoster(
-        ctx.actor, ctx.scope, section.sectionId,
-        args.date ?? new Date().toISOString().slice(0, 10),
-        args.periodNo ?? null,
-      );
+      // The day is named in the answer: "attendance has not been marked yet"
+      // with no date said was read as an answer about some other period.
+      const day = args.date ?? new Date().toISOString().slice(0, 10);
+      const roster = await attendance.getRoster(ctx.actor, ctx.scope, section.sectionId, day, args.periodNo ?? null);
       // getRoster() returns its rows under `roster`, beside section and period details.
       const rows = Array.isArray(roster) ? roster : (roster?.roster ?? []);
       const marked = rows.filter((r) => r.status).length;
@@ -155,11 +156,11 @@ export const attendanceTools = {
       const absent = rows.filter((r) => r.status === 'ABSENT').map(nameOf);
       const view = summarise(absent, (n) => n, { limit: 10 });
       return ok(
-        { roster, count: rows.length, marked, absent, absentCount: absent.length, class: section.label },
+        { roster, count: rows.length, marked, absent, absentCount: absent.length, class: section.label, date: day },
         {
           speak: marked === 0
-            ? `${section.label} has ${rows.length} student(s); attendance has not been marked yet.`
-            : `${section.label}: ${rows.length} student(s), ${marked} marked. ` +
+            ? `${section.label} has ${rows.length} student(s); attendance for ${day} has not been marked yet.`
+            : `${section.label} on ${day}: ${rows.length} student(s), ${marked} marked. ` +
               (absent.length ? `${absent.length} absent — ${view.list}${view.more ? ', …' : ''}.` : 'Nobody is marked absent.'),
         },
       );
@@ -399,6 +400,23 @@ export const attendanceTools = {
             additionalProperties: false,
           },
         },
+        // The register screen's "Mark all present": every pupil on the class
+        // register gets one status, and the teacher then changes the few who
+        // differ. Those few are `students`, and they win.
+        //
+        // An object, not a bare status, on purpose: a status word is in almost
+        // every attendance sentence, and a generic reader filling a bare enum
+        // from "mark Diya present" would have marked the whole class. Nothing
+        // fills an object from a sentence except the grammar that says
+        // "everyone" / "all" / "the whole class".
+        everyone: {
+          type: 'object',
+          description: 'Mark every pupil on the named class register with this status; pupils named in `students` are the exceptions',
+          properties: { status: { type: 'string', enum: STATUSES } },
+          required: ['status'],
+          additionalProperties: false,
+        },
+        ...classIdentitySchema,
         sectionId: objectId('The class section, when giving entries'),
         entries: {
           type: 'array',
@@ -450,6 +468,42 @@ export const attendanceTools = {
       const date = args.date ?? today();
       const periodNo = args.periodNo ?? null;
 
+      // "Mark all present in Class 6-A, except Rahul Sharma": the whole register
+      // from the same roster the Web screen loads (which also checks the caller
+      // may see that class), with the named pupils as exceptions. The attendance
+      // service still decides whether this caller may MARK it.
+      if (args.everyone) {
+        if (args.entries?.length) throw new AppError('Give either everyone or register entries, not both.', 400);
+        const section = await resolveSection(ctx, args);
+        const sectionId = section?.sectionId ?? args.sectionId ?? null;
+        if (!sectionId) throw new AppError('Which class? Name it, for example "Class 6-A".', 400, [], 'AGENT_NEEDS_INPUT');
+        const roster = await attendance.getRoster(ctx.actor, ctx.scope, sectionId, date, periodNo);
+        const exceptions = new Map();
+        const exceptionNames = [];
+        for (const { status, ...ident } of args.students ?? []) {
+          const found = await resolveStudentEnrollment(ctx, ident);
+          if (String(found.sectionId) !== String(sectionId)) {
+            throw new AppError(`${found.name} is not on the ${roster.section.name} register.`, 400);
+          }
+          exceptions.set(String(found.enrollmentId), status);
+          exceptionNames.push(`${found.name} → ${status}`);
+        }
+        if (!roster.roster.length) throw new AppError(`There is nobody on the ${roster.section.name} register.`, 400);
+        const entries = roster.roster.map((r) => ({
+          enrollmentId: r.enrollmentId,
+          status: exceptions.get(String(r.enrollmentId)) ?? args.everyone.status,
+        }));
+        const rest = entries.length - exceptions.size;
+        return {
+          sectionId,
+          date,
+          periodNo,
+          entries,
+          names: [...exceptionNames, `${exceptions.size ? 'everyone else' : 'everyone'} (${rest}) → ${args.everyone.status}`],
+          className: section?.label ?? roster.section.name,
+        };
+      }
+
       if (args.students?.length) {
         if (args.entries?.length) {
           throw new AppError('Give either named students or register entries, not both.', 400);
@@ -472,10 +526,18 @@ export const attendanceTools = {
         };
       }
 
-      if (!args.sectionId || !args.entries?.length) {
+      // A class named in words is resolved at the caller's own scope, the same
+      // way every other class-level tool resolves one. Without it "mark
+      // attendance for Class 5-A" could not reach this capability at all: the
+      // class it named was inexpressible, so the request scored as being about
+      // something else entirely.
+      const section = await resolveSection(ctx, args);
+      const sectionId = section?.sectionId ?? args.sectionId ?? null;
+
+      if (!sectionId || !args.entries?.length) {
         throw new AppError('Which students should I mark, and as what?', 400, [], 'AGENT_NEEDS_INPUT');
       }
-      return { sectionId: args.sectionId, date, periodNo, entries: args.entries, names: null, className: null };
+      return { sectionId, date, periodNo, entries: args.entries, names: null, className: section?.label ?? null };
     },
     /**
      * Attendance is the tool most likely to be disputed later ("my child was

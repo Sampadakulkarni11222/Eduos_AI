@@ -4,8 +4,8 @@ import crypto from 'crypto';
 import { MCP_TOOLS, mcpToolsFor, mutates, requiresConfirmation } from '../src/modules/ai/mcp/registry.js';
 import { resetMcpClient } from '../src/modules/ai/mcp/client.js';
 import { env } from '../src/config/env.js';
-import { Student, Enrollment } from '../src/models/student.model.js';
-import { Term, Subject, SubjectOffering, Section } from '../src/models/academics.model.js';
+import { Student, Enrollment, StudentGuardian } from '../src/models/student.model.js';
+import { AcademicYear, Term, Grade, Subject, SubjectOffering, Section } from '../src/models/academics.model.js';
 import { FeeHead, FeeStructure, Invoice, Payment, FeePlan, PaymentChangeRequest } from '../src/models/fee.model.js';
 import { Exam, ExamSubject, Mark } from '../src/models/exam.model.js';
 import { Assignment, Submission } from '../src/models/assignment.model.js';
@@ -29,6 +29,7 @@ import { BookRequest } from '../src/models/bookRequest.model.js';
 import { ProfileEditRequest } from '../src/models/profileEditRequest.model.js';
 import { TransportRequest } from '../src/models/transportRequest.model.js';
 import { Document } from '../src/models/document.model.js';
+import { SeatRequest } from '../src/models/seat.model.js';
 import * as library from '../src/modules/library/library.service.js';
 import * as registrations from '../src/modules/registrations/registration.service.js';
 import * as cocurricular from '../src/modules/studentRequests/cocurricular.service.js';
@@ -39,7 +40,7 @@ import * as transport from '../src/modules/transport/transport.service.js';
 import { seedSchool, seedPerson, mcp, inSchool, todayKey, OAK, RIVER } from './support/mcpSchool.js';
 
 /**
- * Every one of the 82 MCP write tools, executed through MCP.
+ * Every one of the 89 MCP write tools, executed through MCP.
  *
  * One case per tool — the role that should be able to do it (taken from the
  * real permission catalog), the records it needs, the arguments, and a
@@ -236,7 +237,7 @@ const read = (fn) => oak(fn);
 const count = (Model, filter = {}) => read(() => Model.countDocuments(filter));
 const field = (Model, id, path) => read(() => Model.findById(id).lean()).then((d) => (d ? path.split('.').reduce((o, k) => o?.[k], d) : '(gone)'));
 
-/* ── The 82 write tools ───────────────────────────────────── */
+/* ── The 89 write tools ───────────────────────────────────── */
 
 /**
  * role         who performs it (holds the permission at the scope it needs)
@@ -259,6 +260,10 @@ const CASES = [
     args: (s, c) => ({ studentId: idOf(c.student), sectionId: idOf(s.sectionB), academicYearId: idOf(s.year), rollNo: 7 }),
     footprint: (s, c) => read(() => Enrollment.findOne({ studentId: c.student._id }).lean()).then((e) => (e ? `${e.sectionId}:${e.rollNo}` : null)),
     changed: (b, a, s) => { expect(b).toBeNull(); expect(a).toBe(`${s.sectionB._id}:7`); } },
+  { tool: 'add_guardian', role: 'ADMIN',
+    args: (s) => ({ admissionNo: 'OAK-3', guardianProfileId: s.people.PARENT.actor.profileId, relation: 'MOTHER' }),
+    footprint: (s) => count(StudentGuardian, { studentId: s.aman.student._id }),
+    changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
   { tool: 'update_student', role: 'ADMIN',
     args: () => ({ admissionNo: 'OAK-3', fields: { address: '9 Park Street' } }),
     footprint: (s) => field(Student, s.aman.student._id, 'address'),
@@ -358,6 +363,11 @@ const CASES = [
     args: (_s, c) => ({ paymentId: idOf(c.payment), notes: 'Receipt reissued', reason: 'Typo on receipt' }),
     footprint: (_s, c) => field(Payment, c.payment._id, 'notes'),
     changed: (b, a) => { expect(b ?? null).toBeNull(); expect(a).toBe('Receipt reissued'); } },
+  { tool: 'request_payment_change', role: 'FINANCE',
+    setup: async (w) => ({ payment: await w.publishedPayment() }),
+    args: (_s, c) => ({ paymentId: idOf(c.payment), field: 'receiptNo', requestedValue: 'R-2044', reason: 'Wrong book used' }),
+    footprint: (_s, c) => count(PaymentChangeRequest, { paymentId: c.payment._id }),
+    changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
   { tool: 'decide_payment_change_request', role: 'ADMIN',
     setup: async (w) => ({ request: await w.changeRequest(), payment: await w.publishedPayment() }),
     args: (_s, c) => ({ requestId: idOf(c.request), approve: true }),
@@ -368,6 +378,22 @@ const CASES = [
   { tool: 'create_section', role: 'ADMIN',
     args: (s) => ({ gradeId: idOf(s.grade), name: 'C' }),
     footprint: () => count(Section, { name: 'C' }),
+    changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
+  { tool: 'create_academic_year', role: 'ADMIN', tenant: false,
+    args: () => ({ name: '2027-28', startsOn: '2027-04-01', endsOn: '2028-03-31' }),
+    footprint: () => count(AcademicYear, { name: '2027-28' }),
+    changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
+  { tool: 'create_term', role: 'ADMIN',
+    args: (s) => ({ academicYearId: idOf(s.year), name: 'Term 2', startsOn: '2026-10-01', endsOn: '2027-03-31' }),
+    footprint: (s) => count(Term, { academicYearId: s.year._id, name: 'Term 2' }),
+    changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
+  { tool: 'create_grade', role: 'ADMIN', tenant: false,
+    args: () => ({ name: 'Class 7', level: 7 }),
+    footprint: () => count(Grade, { name: 'Class 7' }),
+    changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
+  { tool: 'create_subject', role: 'ADMIN', tenant: false,
+    args: () => ({ name: 'Physics', code: 'PHY' }),
+    footprint: () => count(Subject, { name: 'Physics' }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
   { tool: 'update_section', role: 'ADMIN',
     args: (s) => ({ sectionId: idOf(s.sectionB), name: 'B2' }),
@@ -416,12 +442,15 @@ const CASES = [
     footprint: () => count(Assignment, { title: 'Algebra practice' }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); },
     wrongScope: { actor: async (_s, w) => (await w.secondTeacher()).actor, codes: ['FORBIDDEN'] } },
-  { tool: 'generate_homework', role: 'TEACHER',
+  // AI drafting is held at school-wide scope only: the Teacher Web has no
+  // drafting, so a teacher (OWN scope) is refused it by scope and sets homework
+  // through create_assignment instead. See tests/teacher.webParity.test.js.
+  { tool: 'generate_homework', role: 'ADMIN',
     setup: async (w) => ({ offering: await w.offering() }),
     args: () => ({ topic: 'Fractions', dueAt: ymd(days(10)), subject: 'Mathematics' }),
     footprint: () => count(Assignment, { title: 'Fractions' }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); },
-    wrongScope: { actor: async (_s, w) => (await w.secondTeacher()).actor, codes: ['INVALID_INPUT', 'FORBIDDEN', 'NOT_FOUND'] } },
+    wrongScope: { actor: (s) => s.people.TEACHER.actor, codes: ['FORBIDDEN_SCOPE'] } },
   { tool: 'grade_submission', role: 'TEACHER',
     setup: async (w) => ({ assignment: await w.assignment(), submission: await w.submission() }),
     args: (s, c) => ({ assignmentId: idOf(c.assignment), enrollmentId: idOf(s.priya.enrollment), marks: 8, feedback: 'Good work' }),
@@ -460,9 +489,10 @@ const CASES = [
     args: (_s, c) => ({ announcementId: idOf(c.announcement), content: 'Submit the books by Friday.' }),
     footprint: (_s, c) => field(Announcement, c.announcement._id, 'content'),
     changed: (b, a) => { expect([b, a]).toEqual(['Return the library books.', 'Submit the books by Friday.']); },
-    // Permission held, record not theirs: a teacher may publish to their own
-    // classes but may not rewrite the office's notice.
-    wrongScope: { actor: (s) => s.people.TEACHER.actor, codes: ['FORBIDDEN', 'NOT_FOUND'] } },
+    // Permission held at OWN scope: a teacher may publish to their own classes
+    // but is not offered editing at all -- the Web has no announcement edit --
+    // so the capability refuses them by scope before any record is looked at.
+    wrongScope: { actor: (s) => s.people.TEACHER.actor, codes: ['FORBIDDEN_SCOPE'] } },
   { tool: 'create_calendar_event', role: 'ADMIN', tenant: false,
     args: () => ({ title: 'Annual Day', startsAt: '2026-12-20', endsAt: '2026-12-20', type: 'EVENT' }),
     footprint: () => count(CalendarEvent, { title: 'Annual Day' }),
@@ -719,6 +749,20 @@ const CASES = [
     args: (_s, c) => ({ ticketId: idOf(c.ticket), status: 'RESOLVED' }),
     footprint: (_s, c) => field(Ticket, c.ticket._id, 'status'),
     changed: (b, a) => { expect([b, a]).toEqual(['NEW', 'RESOLVED']); } },
+
+  /* Seats */
+  // `tenant: false` because the tool names no existing record: a Riverside
+  // administrator asking for seats is asking for Riverside's own, which is
+  // legitimate and leaves Oakridge's footprint untouched. The request is
+  // created PENDING_PAYMENT and allocates nothing — paying and approving are
+  // separate acts, and neither is reachable from here.
+  { tool: 'request_extra_seats', role: 'ADMIN', tenant: false,
+    args: () => ({ seats: 25, reason: 'Two new sections in Class 6' }),
+    footprint: () => read(() => SeatRequest.findOne({ seats: 25 }).lean())
+      .then((r) => (r ? `${r.status}:${r.amountPaise}` : null)),
+    // ₹500 a seat, and 25 seats earns no volume discount — the figure is the
+    // server's, which is the point of asserting it here rather than the count.
+    changed: (b, a) => { expect([b, a]).toEqual([null, 'PENDING_PAYMENT:1250000']); } },
 ];
 
 const labelOf = (c) => c.label ?? c.tool;
@@ -742,9 +786,9 @@ async function attempt(tenant, actor, name, args) {
 /* ── Coverage is complete ─────────────────────────────────── */
 
 describe('the write-tool matrix', () => {
-  it('has a case for every one of the 82 write tools', () => {
+  it('has a case for every one of the 89 write tools', () => {
     const writeTools = Object.entries(MCP_TOOLS).filter(([, t]) => mutates(t)).map(([n]) => n).sort();
-    expect(writeTools).toHaveLength(82);
+    expect(writeTools).toHaveLength(89);
     expect([...new Set(CASES.map((c) => c.tool))].sort()).toEqual(writeTools);
   });
 });

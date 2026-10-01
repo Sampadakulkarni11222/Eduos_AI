@@ -64,7 +64,17 @@ export function summarise(items, render, { limit = 5 } = {}) {
  * produced by `fee.service.getSummary()`, through the same tool body that
  * produced it before MCP existed.
  */
-export function wrapAgentTool(name, { description, inputSchema = noArgs, module, operation = 'GET', risk = RISK.LOW, confirm = false, service, resultShape = null } = {}) {
+/**
+ * Fronts an agent tool, optionally resolving a class named in words first.
+ *
+ * `resolveClass` exists because the class resolver lives here, in the MCP
+ * layer, and `agent/tools.js` cannot import it -- this module already imports
+ * that one, and the cycle is real. So the wrapper resolves `className` to a
+ * `sectionId` at the caller's own scope and hands the agent tool the id it
+ * understands. The agent tool gains a class filter without learning anything
+ * about class names, and the resolution rules stay in one place.
+ */
+export function wrapAgentTool(name, { description, inputSchema = noArgs, module, operation = 'GET', risk = RISK.LOW, confirm = false, service, resultShape = null, resolveClass = false } = {}) {
   const agentTool = () => {
     const tool = agentTools.TOOLS?.[name];
     if (!tool) throw new Error(`MCP registry references a non-existent agent tool: ${name}`);
@@ -101,6 +111,13 @@ export function wrapAgentTool(name, { description, inputSchema = noArgs, module,
     validate: (args) => agentTool().validate?.(args ?? {}),
     prepare: (ctx, args) => {
       const tool = agentTool();
+      // The agent tool's own checks, run before anything is proposed. The
+      // server calls prepare() ahead of every proposal and every unconfirmed
+      // write, but never validate() -- so these checks were dead code, and a
+      // student saying "apply for leave" was asked to confirm "Apply for leave
+      // from undefined to undefined". A missing detail is a question to ask
+      // BEFORE the confirmation, never a summary nobody could approve.
+      tool.validate?.(args ?? {});
       return tool.prepare ? tool.prepare(ctx.actor, ctx.scope, args ?? {}) : null;
     },
     snapshot: (ctx, args, prepared) => {
@@ -108,7 +125,13 @@ export function wrapAgentTool(name, { description, inputSchema = noArgs, module,
       return tool.snapshot ? tool.snapshot(ctx.actor, ctx.scope, args ?? {}, prepared ?? null) : null;
     },
     async run(ctx, args, prepared) {
-      const result = await agentTool().execute(ctx.actor, ctx.scope, args ?? {}, prepared ?? null);
+      const passed = { ...(args ?? {}) };
+      if (resolveClass && (passed.className || passed.sectionId)) {
+        const section = await resolveSection(ctx, passed);
+        if (section) passed.sectionId = section.sectionId;
+        delete passed.className;
+      }
+      const result = await agentTool().execute(ctx.actor, ctx.scope, passed, prepared ?? null);
       return ok(result?.data ?? null, {
         speakKey: result?.speakKey ?? null,
         params: result?.params ?? null,
@@ -160,11 +183,29 @@ export async function selfStudentId(ctx) {
  * An ambiguous name is refused, never guessed — picking one would be a guess
  * about whose record to disclose.
  */
+/**
+ * The refusal a STUDENT gets for naming somebody else.
+ *
+ * A student's students.read scope holds exactly one record, their own, so any
+ * other name "matches nobody" -- and saying `No student named "Diya Patel"`
+ * told them something false about the school, with near misses offered from a
+ * directory of one. The true answer is the scope, and it says so without
+ * confirming whether the other person exists. Parents keep the lookup as it
+ * was: their scope holds their children, and the not-found wording is right.
+ */
+const ONLY_OWN_RECORDS = "You can only see your own records — I can't look up another student's.";
+const isStudent = (ctx) => ctx?.actor?.roleKey === 'STUDENT';
+
 export async function resolveStudentId(ctx, { studentId, admissionNo, studentName }) {
   if (studentId) {
     // Confirms the caller may see this student at all; throws the same 404 the
     // students API gives them if not.
-    await students.getById(ctx.actor, studentScopeOf(ctx), String(studentId), { via: 'mcp.resolve', audit: false });
+    try {
+      await students.getById(ctx.actor, studentScopeOf(ctx), String(studentId), { via: 'mcp.resolve', audit: false });
+    } catch (err) {
+      if (isStudent(ctx) && err?.statusCode === 404) throw new AppError(ONLY_OWN_RECORDS, 403, [], 'STUDENT_OUT_OF_SCOPE');
+      throw err;
+    }
     return String(studentId);
   }
   // Nobody named. A student (or a single child's parent) is asking about
@@ -179,6 +220,7 @@ export async function resolveStudentId(ctx, { studentId, admissionNo, studentNam
 
   if (admissionNo) {
     const exact = rows.find((s) => s.admissionNo?.toLowerCase() === String(admissionNo).toLowerCase());
+    if (!exact && isStudent(ctx)) throw new AppError(ONLY_OWN_RECORDS, 403, [], 'STUDENT_OUT_OF_SCOPE');
     if (!exact) throw new AppError(`No student with admission number "${admissionNo}".`, 404);
     return exact.id;
   }
@@ -192,11 +234,23 @@ export async function resolveStudentId(ctx, { studentId, admissionNo, studentNam
   // An exact full name wins outright. Without this, "Aarav Mishra" and the
   // surname-only "Mishra" were treated alike, so a class with two Mishras made
   // an exact request ambiguous.
-  const exact = rows.filter((s) => String(s.name ?? '').trim().toLowerCase().replace(/\s+/g, ' ') === term);
+  //
+  // The same name typed WITHOUT its space counts as exact too -- "ArnavPatel"
+  // is how somebody types a name they are reading off a screen, and the
+  // directory search already finds it. Only whitespace is ignored: every
+  // letter still has to be the one the register holds, so this can no more
+  // reach a different child than the comparison above it can.
+  const squashed = (value) => String(value ?? '').toLowerCase().replace(/\s+/g, '');
+  const written = squashed(term);
+  const exact = rows.filter((s) => {
+    const name = String(s.name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+    return name === term || squashed(name) === written;
+  });
   if (exact.length === 1) return exact[0].id;
 
   const named = exact.length > 1 ? exact : rows.filter((s) => ` ${String(s.name ?? '').toLowerCase()} `.includes(` ${term} `));
 
+  if (named.length === 0 && isStudent(ctx)) throw new AppError(ONLY_OWN_RECORDS, 403, [], 'STUDENT_OUT_OF_SCOPE');
   if (named.length === 0) {
     // A misspelling ("Arav Mishra") finds nothing by substring, so the name is
     // searched a token at a time and the results ranked by similarity. The
@@ -383,6 +437,102 @@ export async function resolveSection(ctx, { sectionId, className } = {}) {
 export async function resolveSectionId(ctx, args) {
   return (await resolveSection(ctx, args))?.sectionId ?? null;
 }
+
+/* ── Deciding a request somebody raised ───────────────────
+   Every review queue in EduOS has the same shape -- pending rows, each raised
+   by a student -- and every decision tool took only an opaque request id. No
+   staff member types one, so "approve Rahul's leave" reached no capability at
+   all and was answered with the queue instead of deciding anything.
+
+   The id is resolved from the queue the REVIEW SCREEN reads, at the caller's
+   own scope, so this can only ever reach a request they were already entitled
+   to decide. A name narrows it; more than one match is asked about rather than
+   guessed, because approving the wrong request is not something the person it
+   belonged to can undo. */
+
+/** Whoever raised a request, however the service's DTO spells it. */
+export function raisedBy(row) {
+  const student = row?.studentId ?? row?.student ?? null;
+  return (
+    row?.studentName
+    ?? row?.applicantName
+    ?? [student?.firstName, student?.lastName].filter(Boolean).join(' ')
+    ?? null
+  ) || (typeof student === 'object' ? student?.admissionNo ?? null : null);
+}
+
+/**
+ * The one pending request a decision is about.
+ *
+ * @param rows    the review queue, already scoped by its own service
+ * @param options `studentName` to narrow by, `label` for the messages, and
+ *                `describe` to render a candidate when asking which
+ */
+export function thePendingRequest(rows, { studentName = null, label = 'request', describe = raisedBy } = {}) {
+  const list = (Array.isArray(rows) ? rows : (rows?.items ?? []))
+    .filter((r) => String(r.status ?? 'PENDING').toUpperCase() === 'PENDING');
+
+  const term = studentName ? String(studentName).trim().toLowerCase() : null;
+  const named = term
+    ? list.filter((r) => String(raisedBy(r) ?? '').toLowerCase().includes(term))
+    : list;
+
+  if (!named.length) {
+    throw new AppError(
+      term ? `No pending ${label} from "${studentName}".` : `There are no pending ${label}s.`,
+      404, [], 'NOTHING_TO_DECIDE',
+    );
+  }
+  if (named.length > 1) {
+    throw new AppError(
+      `More than one pending ${label} matches: ${named.slice(0, 5).map(describe).join(', ')}. Which one?`,
+      400, [], 'AGENT_NEEDS_INPUT',
+    );
+  }
+  return named[0];
+}
+
+/**
+ * The one record a caller meant, out of a list they were already entitled to.
+ *
+ * The same shape as thePendingRequest(), for records that are named rather
+ * than raised: a ticket by its subject, a bus route by its name, an elective
+ * by its subject, a document by its title. Every one of these was reachable
+ * only by an ObjectId, which nobody types -- so the capability existed and
+ * could not be asked for.
+ *
+ * An exact match wins outright; a unique partial match is accepted; anything
+ * else is asked about. The list comes from the service the screen reads, so
+ * nothing here decides what exists or who may see it.
+ */
+export function theNamed(rows, term, { label, nameOf, describe = nameOf } = {}) {
+  const list = Array.isArray(rows) ? rows : (rows?.items ?? []);
+  const wanted = String(term ?? '').trim().toLowerCase();
+  if (!wanted) throw new AppError(`Which ${label}? Name it.`, 400, [], 'AGENT_NEEDS_INPUT');
+
+  const named = (row) => String(nameOf(row) ?? '').trim().toLowerCase();
+  const exact = list.filter((r) => named(r) === wanted);
+  const matched = exact.length ? exact : list.filter((r) => named(r).includes(wanted));
+
+  if (!matched.length) throw new AppError(`I could not find a ${label} matching "${String(term).trim()}".`, 404, [], 'NOT_FOUND');
+  if (matched.length > 1) {
+    throw new AppError(
+      `More than one ${label} matches "${String(term).trim()}": ${matched.slice(0, 5).map(describe).join(', ')}. Which one?`,
+      400, [], 'AGENT_NEEDS_INPUT',
+    );
+  }
+  return matched[0];
+}
+
+/** The identification a decision tool accepts instead of an opaque id. */
+export const decidableSchema = (source) => ({
+  requestId: objectId(`From ${source}. Omit it and name the student instead.`),
+  studentName: {
+    type: 'string',
+    maxLength: 80,
+    description: 'Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.',
+  },
+});
 
 /** The class-identification argument every class-level tool accepts. */
 export const classIdentitySchema = {

@@ -13,7 +13,7 @@
 import { cachedFetch, invalidateCache } from './cache';
 import { getActingSchool } from './acting-school';
 import { SESSION_MARKER } from './session-cookie';
-import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AgentTurn, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto, AnnouncementDraft, AnnouncementPreviewDto, TransportRosterRow, LibraryResourceKind, LeaveRequestDto, LeaveStatus, BookRequestDto, TransportRequestDto, AvailableRoutesDto, RequestStatus } from './types';
+import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, SchoolThemeDto, SchoolDropdownDto, SchoolCustomizationDto, SchoolCustomizationSummaryDto, SchoolCustomizationInput, DomainListDto, SchoolDomainDetailDto, DomainChangeDto, DomainCheckDto, SeatSummaryDto, SeatRequestDto, SeatHistoryEntryDto, SeatPaymentStartDto, SeatPriceListDto, SeatPriceDto, SchoolSeatPriceDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AgentTurn, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, LearnStatusDto, LearnReplyDto, LearnModeKey,AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto, AnnouncementDraft, AnnouncementPreviewDto, TransportRosterRow, LibraryResourceKind, LeaveRequestDto, LeaveStatus, BookRequestDto, TransportRequestDto, AvailableRoutesDto, RequestStatus } from './types';
 
 /**
  * A document exactly as the API returns it, before this layer normalises it.
@@ -210,9 +210,29 @@ async function uploadCsv(path: string, file: File, fields: Record<string, string
 }
 
 /** Turn a stored fileUrl (which may be server-relative "/uploads/…") into an absolute link. */
+/**
+ * A file link without its signature. The API signs every /uploads link it
+ * returns (`/uploads/x?exp=…&sig=…`, valid for an hour or two); comparing two
+ * links for the same file, or naming it, must ignore that part.
+ */
+export function canonicalFileUrl(fileUrl: string): string {
+  return String(fileUrl ?? '').split(/[?#]/)[0];
+}
+
+/** The last path segment of a file link, for display. */
+export function fileNameOf(fileUrl: string): string {
+  return canonicalFileUrl(fileUrl).split('/').pop() || 'attachment';
+}
+
 export function fileHref(fileUrl: string): string {
   if (!fileUrl) return '#';
-  return fileUrl.startsWith('/') ? `${BACKEND_URL}${fileUrl}` : fileUrl;
+  const url = String(fileUrl).trim();
+  // Server paths (/uploads/...) are served from the API origin. Anything else
+  // must be an http(s) link: these values are typed by other users (a
+  // student's submitted work, a teacher's worksheet), and React 18 renders a
+  // `javascript:` href verbatim, so it would run as whoever clicks it.
+  if (url.startsWith('/') && !url.startsWith('//')) return `${BACKEND_URL}${url}`;
+  return /^https?:\/\//i.test(url) ? url : '#';
 }
 
 /**
@@ -347,8 +367,8 @@ export const api = {
   /** Resolves a portal URL slug to its school. Unauthenticated by design. */
   publicSchool: (slug: string) => request<PublicSchoolDto>(`/schools/public/${encodeURIComponent(slug)}`),
   listSchools: () => request<SchoolDto[]>('/schools'),
-  createSchool: (body: { tenantId: string; tenantName: string; admin: CreateSchoolAdminDto }) =>
-    request<{ school: SchoolDto; admins: SchoolAdminDto[] }>('/schools', {
+  createSchool: (body: { tenantId: string; tenantName: string; admin: CreateSchoolAdminDto; seats?: number }) =>
+    request<{ school: SchoolDto; admins: SchoolAdminDto[]; seats: SeatSummaryDto }>('/schools', {
       method: 'POST',
       body: JSON.stringify(body),
     }),
@@ -367,13 +387,156 @@ export const api = {
   updateSchoolAdmin: (
     tenantId: string,
     profileId: string,
-    body: { status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'; displayName?: string },
+    // `website: null` (or '') clears it. Validated server-side and fed to domain management.
+    body: { status?: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED'; displayName?: string; website?: string | null },
   ) =>
     request<SchoolAdminDto>(`/schools/${encodeURIComponent(tenantId)}/admins/${profileId}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
 
+
+  // ── school customization ──
+  /**
+   * The acting school's theme. Carries no permission by design: every role has
+   * to paint its own portal, and the school is decided by the session, not by
+   * anything sent here.
+   */
+  schoolTheme: () => request<SchoolThemeDto>('/customization/theme'),
+  /** One of the acting school's option lists, e.g. `house`. */
+  schoolDropdown: (key: string) =>
+    request<SchoolDropdownDto & { tenantId: string }>(`/customization/dropdowns/${encodeURIComponent(key)}`),
+  /** The acting school's full configuration — settings.manage. */
+  myCustomization: () => request<SchoolCustomizationDto>('/customization'),
+
+  // Platform (Super Admin) — customization.manage.
+  listSchoolCustomizations: () => request<SchoolCustomizationSummaryDto[]>('/customization/schools'),
+  schoolCustomization: (tenantId: string) =>
+    request<SchoolCustomizationDto>(`/customization/schools/${encodeURIComponent(tenantId)}`),
+  saveSchoolCustomization: (tenantId: string, body: SchoolCustomizationInput) =>
+    request<SchoolCustomizationDto>(`/customization/schools/${encodeURIComponent(tenantId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  resetSchoolCustomization: (tenantId: string) =>
+    request<SchoolCustomizationDto>(`/customization/schools/${encodeURIComponent(tenantId)}`, { method: 'DELETE' }),
+  /** Validates a configuration and returns the variables it would produce. */
+  previewSchoolCustomization: (tenantId: string, body: SchoolCustomizationInput) =>
+    request<SchoolCustomizationInput & { cssVariables: Record<string, string> }>(
+      `/customization/schools/${encodeURIComponent(tenantId)}/preview`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  // ── school domains ──
+  // Every write is domains.manage (Super Admin only). None of them makes a
+  // domain live on its own: verify and ssl-check ask real DNS and TLS, and
+  // activate is refused until both have passed.
+  myDomain: () => request<SchoolDomainDetailDto>('/domains/mine'),
+  listSchoolDomains: () => request<DomainListDto>('/domains/schools'),
+  schoolDomain: (tenantId: string) =>
+    request<SchoolDomainDetailDto>(`/domains/schools/${encodeURIComponent(tenantId)}`),
+  suggestSubdomain: (tenantId: string) =>
+    request<{ tenantId: string; subdomain: string; hostname: string }>(
+      `/domains/schools/${encodeURIComponent(tenantId)}/subdomain/suggestion`,
+    ),
+  /** Omit `subdomain` to generate one from the school's name. */
+  configureSubdomain: (tenantId: string, subdomain?: string) =>
+    request<DomainChangeDto>(`/domains/schools/${encodeURIComponent(tenantId)}/subdomain`, {
+      method: 'PUT',
+      body: JSON.stringify(subdomain ? { subdomain } : {}),
+    }),
+  configureCustomDomain: (tenantId: string, domain: string) =>
+    request<DomainChangeDto>(`/domains/schools/${encodeURIComponent(tenantId)}/custom`, {
+      method: 'PUT',
+      body: JSON.stringify({ domain }),
+    }),
+  verifyDomain: (tenantId: string) =>
+    request<DomainCheckDto>(`/domains/schools/${encodeURIComponent(tenantId)}/verify`, { method: 'POST' }),
+  checkDomainSsl: (tenantId: string) =>
+    request<DomainCheckDto>(`/domains/schools/${encodeURIComponent(tenantId)}/ssl-check`, { method: 'POST' }),
+  activateDomain: (tenantId: string) =>
+    request<DomainChangeDto>(`/domains/schools/${encodeURIComponent(tenantId)}/activate`, { method: 'POST' }),
+  /** Applies the School Admin profile's domain. Replacing an active domain needs confirmReplace. */
+  importProfileDomain: (tenantId: string, confirmReplace = false) =>
+    request<DomainChangeDto>(`/domains/schools/${encodeURIComponent(tenantId)}/profile-domain/import`, {
+      method: 'POST',
+      body: JSON.stringify({ confirmReplace }),
+    }),
+  dismissProfileDomainChange: (tenantId: string) =>
+    request<DomainChangeDto>(`/domains/schools/${encodeURIComponent(tenantId)}/profile-domain/dismiss`, { method: 'POST' }),
+  deactivateDomain: (tenantId: string, reason?: string) =>
+    request<DomainChangeDto>(`/domains/schools/${encodeURIComponent(tenantId)}/deactivate`, {
+      method: 'POST',
+      body: JSON.stringify(reason ? { reason } : {}),
+    }),
+
+  // ── seats ──
+  // The school-level calls name no school: the backend reads the acting
+  // school from the session (and, for a platform admin who has opened one,
+  // from X-School-Id). The platform calls name one explicitly.
+  seatSummary: () => request<SeatSummaryDto>('/seats/summary'),
+  seatHistory: () => request<SeatHistoryEntryDto[]>('/seats/history'),
+  listSeatRequests: (params: { status?: string; tenantId?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (params.status) q.set('status', params.status);
+    if (params.tenantId) q.set('tenantId', params.tenantId);
+    const qs = q.toString();
+    return request<SeatRequestDto[]>(`/seats/requests${qs ? `?${qs}` : ''}`);
+  },
+  /**
+   * Asks for extra seats. Deliberately sends no price: the server calculates
+   * the amount, and a figure from here would be ignored anyway.
+   */
+  createSeatRequest: (body: { seats: number; reason?: string }) =>
+    request<SeatRequestDto>('/seats/requests', { method: 'POST', body: JSON.stringify(body) }),
+  paySeatRequest: (id: string) =>
+    request<SeatPaymentStartDto>(`/seats/requests/${encodeURIComponent(id)}/pay`, { method: 'POST' }),
+  verifySeatPayment: (body: { orderId: string; paymentId: string; signature: string }) =>
+    request<{ status: string; receiptNo?: string }>('/seats/payments/verify', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** The rate the acting school will be quoted. Read-only for a School Admin. */
+  seatPrice: () => request<SeatPriceListDto>('/seats/price'),
+  seatPriceHistory: () => request<SeatPriceDto[]>('/seats/price/history'),
+
+  // Platform (Super Admin) — seats.manage / seats.approve.
+  listSchoolSeats: () => request<SeatSummaryDto[]>('/seats/schools'),
+  schoolSeatHistory: (tenantId: string) =>
+    request<SeatHistoryEntryDto[]>(`/seats/schools/${encodeURIComponent(tenantId)}/history`),
+  grantSchoolSeats: (tenantId: string, body: { seats: number; note?: string; event?: 'PURCHASE' | 'ADJUSTMENT' }) =>
+    request<SeatSummaryDto>(`/seats/schools/${encodeURIComponent(tenantId)}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  decideSeatRequest: (id: string, body: { decision: 'APPROVED' | 'REJECTED'; note?: string }) =>
+    request<SeatRequestDto>(`/seats/requests/${encodeURIComponent(id)}/decision`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // Per-seat pricing (Super Admin) — seats.pricing.manage.
+  listSchoolSeatPrices: () => request<SchoolSeatPriceDto[]>('/seats/prices'),
+  schoolSeatPriceHistory: (tenantId: string) =>
+    request<SeatPriceDto[]>(`/seats/schools/${encodeURIComponent(tenantId)}/price/history`),
+  /**
+   * Sets a school's per-seat price. Writes a new version rather than editing the
+   * old one, so the price a paid request was quoted at survives the change.
+   */
+  setSchoolSeatPrice: (
+    tenantId: string,
+    body: { unitPricePaise: number; currency?: string; effectiveFrom?: string; note?: string },
+  ) =>
+    request<SeatPriceDto>(`/seats/schools/${encodeURIComponent(tenantId)}/price`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateSeatPrice: (priceId: string, body: { status?: 'ACTIVE' | 'INACTIVE'; note?: string }) =>
+    request<SeatPriceDto>(`/seats/prices/${encodeURIComponent(priceId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 
   // ── academics helpers ──
   mySections: () => cachedRequest<SectionDto[]>('/academics/sections/mine'),
@@ -1047,6 +1210,10 @@ export const api = {
   tutorSyllabus: () => request<TutorSyllabusDto>('/ai/tutor/syllabus'),
   tutor: (body: { topic: string; subject?: string; mode?: string; lang?: string }) =>
     request<TutorReplyDto>('/ai/tutor', { method: 'POST', body: JSON.stringify(body) }),
+  // ── Student Study Help (Student Learning Buddy) — students only ──
+  learnStatus: () => request<LearnStatusDto>('/ai/tutor/learn/status'),
+  learn: (body: { topic: string; subject: string; mode: LearnModeKey; lang?: string }) =>
+    request<LearnReplyDto>('/ai/tutor/learn', { method: 'POST', body: JSON.stringify(body) }),
 
   // ── AI credits (students & parents; staff are not metered) ──
   aiCredits: () => request<AiCreditStatusDto>('/ai/credits'),

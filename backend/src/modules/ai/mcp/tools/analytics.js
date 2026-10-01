@@ -11,6 +11,7 @@ import { ok, action } from '../protocol.js';
 import {
   RISK, objectId, dateStr, noArgs, summarise, shortDate, resolveEnrollmentId, studentIdentitySchema,
   resolveSection, classIdentitySchema,
+  theNamed,
 } from './_shared.js';
 
 /**
@@ -25,13 +26,33 @@ import {
 
 const DASHBOARDS = ['admin', 'finance', 'teacher', 'student', 'parent', 'warden', 'librarian'];
 
+/**
+ * A document as a person names it: by its title.
+ *
+ * Both document writes took only an ObjectId, so "delete the exam timetable
+ * document" reached nothing. The candidates come from
+ * document.service.listForActor() at the caller's own scope -- the documents
+ * their own screen lists -- so a title can only ever reach one they were
+ * already able to see, and the service re-checks who may change it.
+ */
+async function resolveDocumentId(ctx, args) {
+  if (args.documentId) return String(args.documentId);
+  const docs = await documents.listForActor(ctx.actor, ctx.scope, null, {});
+  const found = theNamed(docs, args.title, {
+    label: 'document',
+    nameOf: (d) => d.title,
+    describe: (d) => `"${d.title}"`,
+  });
+  return String(found.id ?? found._id);
+}
+
 export const analyticsTools = {
   get_at_risk_students: {
     module: 'Analytics',
     operation: 'GET',
     risk: RISK.LOW,
     description:
-      'Students flagged at risk from the last 30 days of attendance, published marks and overdue fees. To answer "who is below 75% attendance", pass attendanceBelowPct: 75 — it returns each student whose day-level attendance over the last 30 days is below that figure, with the percentage. Students with no attendance marked in the last 30 days cannot be assessed and are not included. Read-only.',
+      'Students flagged at risk from the last 30 days of attendance, published marks and overdue fees. Use for school-wide or class-wide queries asking which students are below an attendance percentage threshold, such as "which students are below 75% attendance" (pass attendanceBelowPct: 75) — it returns each student whose day-level attendance over the last 30 days is below that figure, with the percentage. Do not use for one named student. Students with no attendance marked in the last 30 days cannot be assessed and are not included. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -335,13 +356,15 @@ export const analyticsTools = {
       'Permanently delete a published document — a report card, certificate, letter or course material. A school-wide holder of the permission may delete any document; anyone else only documents they uploaded themselves. Always needs confirmation. Use list_documents to find the document id.',
     inputSchema: {
       type: 'object',
-      properties: { documentId: objectId('From list_documents') },
-      required: ['documentId'],
+      properties: {
+        documentId: objectId('From list_documents'),
+        title: { type: 'string', maxLength: 200, description: 'The document as a person names it. An ambiguous title is refused, never guessed.' },
+      },
       additionalProperties: false,
     },
     permission: 'materials.manage',
     affectsOthers: true,
-    service: 'document.service.deleteForActor()',
+    service: 'document.service.listForActor() + deleteForActor()',
     summarise: (args, _actor, prepared) =>
       `Permanently delete ${prepared?.type ? `the ${String(prepared.type).replace('_', ' ').toLowerCase()} ` : 'document '}` +
       `"${prepared?.title ?? args.documentId}" — this cannot be undone`,
@@ -352,13 +375,19 @@ export const analyticsTools = {
      * cannot happen is refused instead of offered.
      */
     async prepare(ctx, args) {
-      const doc = await documents.findDeletableForActor(ctx.actor, ctx.scope, args.documentId);
+      const documentId = await resolveDocumentId(ctx, args);
+      const doc = await documents.findDeletableForActor(ctx.actor, ctx.scope, documentId);
       return { documentId: String(doc._id), title: doc.title, type: doc.type };
     },
     /** What the document was, for the audit trail — a deletion leaves nothing else behind. */
-    async snapshot(ctx, args) {
+    async snapshot(ctx, args, prepared) {
       try {
-        const doc = await documents.findDeletableForActor(ctx.actor, ctx.scope, args.documentId);
+        // The id the PROPOSAL settled on, so the snapshot is of the document
+        // that is actually about to go, not of whatever a bare title would
+        // resolve to a second time.
+        const doc = await documents.findDeletableForActor(
+          ctx.actor, ctx.scope, prepared?.documentId ?? args.documentId,
+        );
         return {
           exists: true,
           title: doc.title,
@@ -374,8 +403,9 @@ export const analyticsTools = {
         throw err;
       }
     },
-    async run(ctx, args) {
-      const deleted = await documents.deleteForActor(ctx.actor, ctx.scope, args.documentId);
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const deleted = await documents.deleteForActor(ctx.actor, ctx.scope, plan.documentId);
       return action({
         type: 'document_deleted',
         id: deleted.id,
@@ -462,6 +492,7 @@ export const analyticsTools = {
       properties: {
         documentId: objectId('From list_documents'),
         title: { type: 'string', maxLength: 200 },
+        newTitle: { type: 'string', maxLength: 200, description: 'The new title, when renaming material named by its current title' },
         fileUrl: {
           type: 'string',
           maxLength: 600,
@@ -473,22 +504,45 @@ export const analyticsTools = {
         mimeType: { type: 'string', maxLength: 120 },
         visibleToRoles: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 40 } },
       },
-      required: ['documentId'],
+      // No required id: the title identifies the material when no id is given,
+      // and renames it when one is. That is the same rule update_book keeps,
+      // for the same reason -- nobody types an ObjectId. A teacher renaming BY
+      // NAME says both names, so the new one has an argument of its own: the
+      // Web's edit form (PUT /documents/:id) renames, and without `newTitle`
+      // the assistant could only propose "Change nothing".
       additionalProperties: false,
     },
     permission: 'materials.manage',
     affectsOthers: true,
-    service: 'document.service.updateForActor()',
-    summarise: (args) => {
-      const changed = ['title', 'fileUrl', 'mimeType', 'visibleToRoles'].filter((f) => args[f] !== undefined);
+    service: 'document.service.listForActor() + updateForActor()',
+    summarise: (args, _actor, prepared) => {
+      const changed = ['fileUrl', 'mimeType', 'visibleToRoles'].filter((f) => args[f] !== undefined);
+      if (args.newTitle !== undefined || (args.documentId && args.title !== undefined)) changed.push('title');
       if (args.sectionId || args.className) changed.push('class');
-      return `Change ${changed.join(', ') || 'nothing'} on course material ${args.title ? `"${args.title}"` : args.documentId}`;
+      const which = args.title && !args.documentId ? `"${args.title}"` : args.documentId;
+      if (args.newTitle !== undefined && changed.length === 1) return `Rename course material ${which} to "${args.newTitle}"`;
+      return `Change ${changed.join(', ')} on course material ${which}${args.newTitle !== undefined ? ` (new title "${args.newTitle}")` : ''}`;
     },
-    async run(ctx, args) {
+    async prepare(ctx, args) {
+      // A proposal that changes nothing is not a proposal. It used to be put
+      // to the teacher as "Change nothing on course material ..." -- confirmed,
+      // audited, and a no-op. What CAN change is asked instead.
+      const changes = ['newTitle', 'fileUrl', 'mimeType', 'visibleToRoles', 'sectionId', 'className']
+        .some((f) => args[f] !== undefined) || Boolean(args.documentId && args.title !== undefined);
+      if (!changes) {
+        throw new AppError('What should change: its title, its file or its class? For example "rename it to Fraction basics".', 400);
+      }
+      return { documentId: await resolveDocumentId(ctx, args) };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
       const sectionId = args.sectionId
         ?? (args.className ? (await resolveSection(ctx, { className: args.className }))?.sectionId : undefined);
-      const doc = await documents.updateForActor(ctx.actor, ctx.scope, args.documentId, {
-        ...(args.title !== undefined && { title: args.title }),
+      const doc = await documents.updateForActor(ctx.actor, ctx.scope, plan.documentId, {
+        // A title given WITHOUT an id named the document; it is not also a
+        // change to it.
+        ...(args.documentId && args.title !== undefined && { title: args.title }),
+        ...(args.newTitle !== undefined && { title: args.newTitle }),
         ...(args.fileUrl !== undefined && { fileUrl: args.fileUrl }),
         ...(args.mimeType !== undefined && { mimeType: args.mimeType }),
         ...(args.visibleToRoles !== undefined && { visibleToRoles: args.visibleToRoles }),

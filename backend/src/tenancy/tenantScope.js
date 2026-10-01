@@ -25,6 +25,32 @@ const QUERY_HOOKS = [
   'deleteOne', 'deleteMany', 'remove',
 ];
 
+const UPDATE_HOOKS = ['findOneAndUpdate', 'updateOne', 'updateMany', 'update'];
+const REPLACE_HOOKS = ['replaceOne', 'findOneAndReplace'];
+
+/**
+ * Removes every attempt to write `tenantId` from an update document.
+ *
+ * Inside a school context the filter already confines *which* documents an
+ * update reaches, but the update itself could still `$set: { tenantId }` and
+ * hand a document to another school — and plenty of services pass a request
+ * body through to an update. The school a document belongs to is not
+ * something a school-level request may change, so the key is dropped from
+ * every operator (and from the operator-less shorthand Mongoose accepts).
+ */
+function withoutTenantWrites(update) {
+  if (!update || typeof update !== 'object' || Array.isArray(update)) return update;
+  const out = { ...update };
+  delete out.tenantId;
+  for (const [op, value] of Object.entries(out)) {
+    if (op.startsWith('$') && value && typeof value === 'object' && !Array.isArray(value) && 'tenantId' in value) {
+      const { tenantId: _dropped, ...rest } = value;
+      out[op] = rest;
+    }
+  }
+  return out;
+}
+
 export function tenantScoped(schema) {
   schema.add({
     // Not `required`: documents that predate the migration, and rows written
@@ -42,11 +68,27 @@ export function tenantScoped(schema) {
     });
   }
 
-  // Upserts must not create a document in the wrong school.
-  schema.pre(['findOneAndUpdate', 'updateOne', 'updateMany'], function stampUpsert() {
+  // An update can neither move a document to another school nor, as an
+  // upsert, create one there: any tenantId the caller wrote is dropped and an
+  // upsert is stamped with the acting school.
+  schema.pre(UPDATE_HOOKS, function pinUpdateTenant() {
     const tenantId = currentTenantId();
     if (!tenantId) return;
-    if (this.getOptions()?.upsert) this.setUpdate({ ...this.getUpdate(), $setOnInsert: { ...(this.getUpdate()?.$setOnInsert ?? {}), tenantId } });
+    const update = withoutTenantWrites(this.getUpdate());
+    if (this.getOptions()?.upsert && update && !Array.isArray(update)) {
+      update.$setOnInsert = { ...(update.$setOnInsert ?? {}), tenantId };
+    }
+    this.setUpdate(update);
+  });
+
+  // A replacement document carries its own tenantId, so it is overwritten.
+  schema.pre(REPLACE_HOOKS, function pinReplacementTenant() {
+    const tenantId = currentTenantId();
+    if (!tenantId) return;
+    const replacement = this.getUpdate();
+    if (replacement && typeof replacement === 'object' && !Array.isArray(replacement)) {
+      this.setUpdate({ ...replacement, tenantId });
+    }
   });
 
   schema.pre('aggregate', function applyTenantMatch() {
@@ -55,9 +97,12 @@ export function tenantScoped(schema) {
     this.pipeline().unshift({ $match: { tenantId } });
   });
 
+  // Pinned, not defaulted: `Model.create(req.body)` would otherwise keep a
+  // client-supplied tenantId and file the document under another school, and
+  // a loaded document could be re-assigned by setting the field before save.
   schema.pre('save', function stampOnSave(next) {
     const tenantId = currentTenantId();
-    if (tenantId && !this.tenantId) this.tenantId = tenantId;
+    if (tenantId) this.tenantId = tenantId;
     next();
   });
 
@@ -85,19 +130,20 @@ export function tenantScoped(schema) {
         if (spec.filter?.tenantId === undefined) {
           spec.filter = { ...(spec.filter ?? {}), tenantId };
         }
-        // A pipeline update takes no $setOnInsert; the filter still confines it.
-        if (spec.upsert && spec.update && !Array.isArray(spec.update)) {
-          spec.update = {
-            ...spec.update,
-            $setOnInsert: { ...(spec.update.$setOnInsert ?? {}), tenantId },
-          };
+        // An op may not move a document to another school. A pipeline update
+        // takes no $setOnInsert; the filter still confines it.
+        if (spec.update && !Array.isArray(spec.update)) {
+          spec.update = withoutTenantWrites(spec.update);
+          if (spec.upsert) {
+            spec.update.$setOnInsert = { ...(spec.update.$setOnInsert ?? {}), tenantId };
+          }
         }
-        if (spec.upsert && spec.replacement?.tenantId === undefined) {
+        if (spec.replacement) {
           spec.replacement = { ...spec.replacement, tenantId };
         }
       }
 
-      if (op.insertOne?.document && op.insertOne.document.tenantId === undefined) {
+      if (op.insertOne?.document) {
         op.insertOne.document.tenantId = tenantId;
       }
     }
@@ -107,7 +153,7 @@ export function tenantScoped(schema) {
   schema.pre('insertMany', function stampOnInsertMany(next, docs) {
     const tenantId = currentTenantId();
     if (tenantId && Array.isArray(docs)) {
-      for (const doc of docs) if (doc && !doc.tenantId) doc.tenantId = tenantId;
+      for (const doc of docs) if (doc) doc.tenantId = tenantId;
     }
     next();
   });

@@ -129,7 +129,7 @@ Requirements:
 | `JWT_SECRET` | ≥ 32 characters in production (enforced). |
 | `ACCESS_TOKEN_EXPIRES_IN` / `REFRESH_TOKEN_TTL_DAYS` / `REFRESH_ROTATION_GRACE_SECONDS` | `15m` / 30 / 30. |
 | `OTP_TTL_MINUTES` / `OTP_MAX_ATTEMPTS` / `BCRYPT_SALT_ROUNDS` | 5 / 5 / 10. |
-| `SMS_PROVIDER` / `EMAIL_PROVIDER` | `console` refused in production unless `ALLOW_DEV_OTP_IN_PRODUCTION=true` (do not set that). |
+| `SMS_PROVIDER` / `EMAIL_PROVIDER` | `twilio` / `resend` to enable OTP sign-in; `console` in production boots with a warning and OTP answers 503. Codes are never echoed in production. |
 | `GOOGLE_CLIENT_ID` / `SUPER_ADMIN_EMAILS` | Optional Google sign-in and the Super Admin allow-list. |
 | `MULTI_PROFILE_ENABLED` | Default true. |
 | `MEDICAL_ENCRYPTION_KEY` | Encrypts medical records at rest. **Losing it makes every medical record unreadable** — store and back it up like a database credential. |
@@ -340,7 +340,7 @@ assertions in `tests/agent.bulkAuthorization.test.js` that still name it.
 - [ ] `MEDICAL_ENCRYPTION_KEY` is set, differs per environment, and is backed up.
 - [ ] `WHATSAPP_VERIFY_TOKEN` and `WA_APP_SECRET` are real values; the boot log says "inbound webhook signatures verified".
 - [ ] `CORS_ORIGIN` names the frontend; Swagger is disabled in production.
-- [ ] `SMS_PROVIDER` / `EMAIL_PROVIDER` are real providers; `ALLOW_DEV_OTP_IN_PRODUCTION` is unset.
+- [ ] `SMS_PROVIDER` / `EMAIL_PROVIDER` are real providers (or OTP sign-in is knowingly off); `ALLOW_DEV_OTP_IN_PRODUCTION` is unset (it is ignored, but warns).
 - [ ] `PAYMENT_PROVIDER` is not `sandbox` in production.
 - [ ] The production database user can reach only the production database; network access is restricted to the app's hosts; TLS is on.
 - [ ] No developer `.env` points at production (§2), and `PRODUCTION_DB_HOSTS` is set on every non-production machine.

@@ -152,7 +152,17 @@ describe('school + School Admin management', () => {
 
   it('resolves a slug publicly, so /oakridge can name the school before sign-in', async () => {
     await seedSchool('oakridge', 'Oakridge Academy');
-    expect(await schools.getPublicSchool('oakridge')).toEqual({ slug: 'oakridge', name: 'Oakridge Academy' });
+    // Identity plus branding — a door has to look like the school as well as
+    // name it. An uncustomised school carries nulls and no CSS variables, so it
+    // renders exactly as it always did.
+    expect(await schools.getPublicSchool('oakridge')).toEqual({
+      slug: 'oakridge',
+      name: 'Oakridge Academy',
+      logoUrl: null,
+      faviconUrl: null,
+      tagline: null,
+      cssVariables: {},
+    });
     await expect(schools.getPublicSchool('nope')).rejects.toMatchObject({ statusCode: 404 });
   });
 
@@ -257,11 +267,23 @@ describe('role hierarchy guard on the existing roles API', () => {
   });
 
   it('still lets an ordinary role grant an ordinary permission', async () => {
-    const principal = roleByKey.get('PRINCIPAL');
+    // A custom role, not a system one: system roles are shared by every school,
+    // so a school-level actor may no longer change them (next test).
+    const custom = await Role.create({ key: 'COUNSELLOR', name: 'Counsellor' });
     const updated = await roleService.assignPermission(
-      principal._id.toString(), { key: 'library.read', scope: 'ALL' }, { roleKey: 'PRINCIPAL' },
+      custom._id.toString(), { key: 'library.read', scope: 'ALL' }, { roleKey: 'ADMIN' },
     );
     expect(updated.permissions.some((p) => p.key === 'library.read')).toBe(true);
+  });
+
+  it('stops a school-level admin changing a system role every school shares', async () => {
+    const principal = roleByKey.get('PRINCIPAL');
+    await expect(
+      roleService.assignPermission(principal._id.toString(), { key: 'library.read', scope: 'ALL' }, { roleKey: 'ADMIN' }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    await expect(
+      roleService.revokePermission(principal._id.toString(), 'students.read', { roleKey: 'ADMIN' }),
+    ).rejects.toMatchObject({ statusCode: 403 });
   });
 
   it('lets a Super Admin do both', async () => {

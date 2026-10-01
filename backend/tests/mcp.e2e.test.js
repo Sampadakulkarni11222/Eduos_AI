@@ -166,9 +166,9 @@ describe('Website: POST /ai/agent → shared agent → MCP → EduOS', () => {
 
   it('READ — "Who is absent today?" answers from the register', async () => {
     const res = await ask(school.people.ADMIN, 'Who is absent today?');
-    expect(res.tool).toBe('who_is_absent_today');
+    expect(res.tool).toBe('get_absent_students');
     expect(res.reply).toMatch(/1 student\(s\) absent today/);
-    expect(await mcpAudit('who_is_absent_today', 'WEB', 'READ')).not.toBeNull();
+    expect(await mcpAudit('get_absent_students', 'WEB', 'READ')).not.toBeNull();
   });
 
   it('CREATE — an announcement is proposed, confirmed, then published', async () => {
@@ -278,10 +278,10 @@ describe('Website: POST /ai/agent → shared agent → MCP → EduOS', () => {
 
   it('MULTI-TOOL — two questions in one message run two MCP tools', async () => {
     const res = await ask(school.people.ADMIN, 'who is absent today and what is the fee collection?');
-    expect(res.tools).toEqual(['who_is_absent_today', 'get_fee_statistics']);
+    expect(res.tools).toEqual(['get_absent_students', 'get_fee_statistics']);
     expect(res.reply).toMatch(/1 student\(s\) absent today/);
     expect(res.reply).toMatch(/collection rate/);
-    expect(await mcpAudit('who_is_absent_today', 'WEB', 'READ')).not.toBeNull();
+    expect(await mcpAudit('get_absent_students', 'WEB', 'READ')).not.toBeNull();
     expect(await mcpAudit('get_fee_statistics', 'WEB', 'READ')).not.toBeNull();
   });
 
@@ -311,7 +311,7 @@ describe('WhatsApp: signed webhook → phone identity → shared agent → MCP �
     const res = await whatsapp(school.people.ADMIN, 'Who is absent today?');
     expect(res.status).toBe(200);
     expect(res.reply).toMatch(/1 student\(s\) absent today/);
-    const audit = await mcpAudit('who_is_absent_today', 'WHATSAPP', 'READ');
+    const audit = await mcpAudit('get_absent_students', 'WHATSAPP', 'READ');
     expect(String(audit.actorProfileId)).toBe(school.people.ADMIN.actor.profileId);
     expect(audit.after.tenantId).toBe(OAK);
   });

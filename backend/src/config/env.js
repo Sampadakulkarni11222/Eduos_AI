@@ -94,6 +94,19 @@ export const env = {
   // same cross-origin rules as production — a wildcard default hides CORS
   // mistakes until deploy, where the boot check then refuses to start on them.
   CORS_ORIGIN: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
+  // ── School domains ──
+  // The platform's own domain, under which a school may be given a subdomain
+  // (abc-public-school.<PLATFORM_DOMAIN>). No default: an unset value means
+  // subdomains cannot be configured, rather than being handed out under a
+  // domain this deployment does not own.
+  PLATFORM_DOMAIN: String(process.env.PLATFORM_DOMAIN ?? '').trim().toLowerCase().replace(/\.$/, ''),
+  // The hostname a school's custom domain must CNAME to so its traffic reaches
+  // this deployment (on Render, the frontend service's onrender.com host). Shown
+  // in the DNS instructions; unset means the instructions say to ask the
+  // platform team for it.
+  DOMAIN_CNAME_TARGET: String(process.env.DOMAIN_CNAME_TARGET ?? '').trim().toLowerCase().replace(/\.$/, ''),
+  // How long one DNS query or TLS handshake may take during verification.
+  DOMAIN_CHECK_TIMEOUT_MS: Number(process.env.DOMAIN_CHECK_TIMEOUT_MS) || 5000,
   // Defaults to true in development, false in production
   SWAGGER_ENABLED: process.env.SWAGGER_ENABLED !== undefined
     ? process.env.SWAGGER_ENABLED === 'true'
@@ -123,6 +136,10 @@ export const env = {
   BCRYPT_SALT_ROUNDS: Number(process.env.BCRYPT_SALT_ROUNDS) || 10,
   MEDICAL_ENCRYPTION_KEY: process.env.MEDICAL_ENCRYPTION_KEY ?? 'change-this-medical-key-in-production',
   WHATSAPP_VERIFY_TOKEN: process.env.WHATSAPP_VERIFY_TOKEN ?? 'change-this-verify-token',
+  // Read only so that a production deployment still carrying it can be told,
+  // loudly, that it is ignored. It used to make production echo every one-time
+  // code in the HTTP response, which is account takeover for any known phone
+  // or email address; production now never does that, whatever this says.
   ALLOW_DEV_OTP_IN_PRODUCTION: process.env.ALLOW_DEV_OTP_IN_PRODUCTION === 'true',
   // ── WhatsApp (Meta Cloud API) ──
   // Live mode is inferred from the phone number + access token; the app secret
@@ -165,7 +182,11 @@ export const env = {
   // Turns of transcript handed to the model to resolve a follow-up. Small on
   // purpose -- "what about last month?" refers a turn or two back, and sending
   // the whole thread grows every request without making the answer better.
-  WHATSAPP_HISTORY_TURNS: Number(process.env.WHATSAPP_HISTORY_TURNS) || 6,
+  // Ten, the same as the website keeps (ai.controller MAX_HISTORY_TURNS): a
+  // write answered over several turns -- title, then due date -- is
+  // recovered from this transcript, and a smaller window forgot the request
+  // on WhatsApp that the website still remembered.
+  WHATSAPP_HISTORY_TURNS: Number(process.env.WHATSAPP_HISTORY_TURNS) || 10,
   // ── Provider abstractions (all optional — safe fallbacks in dev) ──
   // Google Sign-In: when set, /auth/google verifies the ID token audience.
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? '',
@@ -183,8 +204,19 @@ export const env = {
   },
   // SMS/Email OTP delivery: 'console' logs the code and returns devOtp
   // outside production; a real provider module can be added per key.
-  SMS_PROVIDER: process.env.SMS_PROVIDER ?? 'console',
-  EMAIL_PROVIDER: process.env.EMAIL_PROVIDER ?? 'console',
+  // `||`, not `??`: a variable declared but left blank (Render's sync: false)
+  // arrives as '', which means "not configured", not an unknown provider.
+  SMS_PROVIDER: (process.env.SMS_PROVIDER || 'console').trim().toLowerCase(),
+  EMAIL_PROVIDER: (process.env.EMAIL_PROVIDER || 'console').trim().toLowerCase(),
+  // ── OTP delivery providers ──
+  // EMAIL_PROVIDER=resend sends through Resend's HTTP API; SMS_PROVIDER=twilio
+  // through Twilio's. Credentials come only from the environment (the Render
+  // dashboard in production), never from a committed file.
+  RESEND_API_KEY: process.env.RESEND_API_KEY ?? '',
+  EMAIL_FROM: process.env.EMAIL_FROM ?? '',
+  TWILIO_ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID ?? '',
+  TWILIO_AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN ?? '',
+  TWILIO_FROM_NUMBER: process.env.TWILIO_FROM_NUMBER ?? '',
   // Online payments: 'sandbox' completes payments against the real ledger
   // with a SANDBOX- reference (clearly labeled in the UI); 'none' disables
   // online payment; real gateways plug in via this same interface.
@@ -200,6 +232,14 @@ export const env = {
   // File uploads
   UPLOAD_DIR: process.env.UPLOAD_DIR ?? 'uploads',
   UPLOAD_MAX_BYTES: Number(process.env.UPLOAD_MAX_BYTES) || 15 * 1024 * 1024,
+  // Key for the signed, expiring /uploads links. Optional: derived from
+  // JWT_SECRET when unset. Rotating it (or JWT_SECRET) invalidates every
+  // outstanding file link, which the portal replaces on its next read.
+  FILE_URL_SECRET: process.env.FILE_URL_SECRET ?? '',
+  // Shared with the frontend server (its FRONTEND_PROXY_SECRET, server-side
+  // only). Lets its session-refresh proxy skip the per-IP failed-refresh limit,
+  // which it enforces per real client itself. Optional.
+  FRONTEND_PROXY_SECRET: process.env.FRONTEND_PROXY_SECRET ?? '',
   // Branding used on generated documents (e.g. ID cards)
   SCHOOL_NAME: process.env.SCHOOL_NAME ?? 'Oakridge Academy',
   // AI copilot: set ANTHROPIC_API_KEY (or compatible) to upgrade the
@@ -212,6 +252,14 @@ export const env = {
   GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? null,
   GEMINI_MODEL: process.env.GEMINI_MODEL ?? null,
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? null,
+  // OpenRouter: AI_PROVIDER=openrouter uses it directly; with AI_PROVIDER=gemini
+  // or anthropic, a key here makes it the fallback when that provider fails.
+  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? null,
+  OPENROUTER_MODEL: process.env.OPENROUTER_MODEL || 'openrouter/auto',
+  OPENROUTER_FALLBACK_MODELS: process.env.OPENROUTER_FALLBACK_MODELS ?? '',
+  OPENROUTER_MAX_TOKENS: Number(process.env.OPENROUTER_MAX_TOKENS) || 4096,
+  OPENROUTER_SITE_URL: process.env.OPENROUTER_SITE_URL ?? '',
+  OPENROUTER_APP_NAME: process.env.OPENROUTER_APP_NAME ?? 'EduOS',
   /**
    * How long any single model call may take before the assistant stops
    * waiting for it.
@@ -320,45 +368,81 @@ export function assessDatabaseTarget({ nodeEnv = 'development', uri = '', allowR
 }
 
 // ─── Production safety gate ───────────────────────────────
-// The development defaults above are deliberately weak so the app runs out of
-// the box. Booting production with any of them still set means anyone holding
-// a copy of this repo can forge sessions, decrypt medical records, or pass the
-// WhatsApp webhook handshake — so refuse to start instead.
-if (env.isProd) {
-  const insecure = [];
-  if (env.JWT_SECRET === 'change-this-secret-in-production') insecure.push('JWT_SECRET');
-  if (env.JWT_SECRET.length < 32) insecure.push('JWT_SECRET (must be ≥32 characters)');
-  if (env.MEDICAL_ENCRYPTION_KEY === 'change-this-medical-key-in-production') insecure.push('MEDICAL_ENCRYPTION_KEY');
-  if (env.WHATSAPP_VERIFY_TOKEN === 'change-this-verify-token') insecure.push('WHATSAPP_VERIFY_TOKEN');
+export const SMS_PROVIDERS = ['console', 'twilio'];
+export const EMAIL_PROVIDERS = ['console', 'resend'];
+
+/**
+ * What stops production from starting, and what it should only warn about.
+ *
+ * Pure over the settings object so it can be tested without booting a
+ * process. `fatal` entries are insecure or broken configuration; `warnings`
+ * are features that will be unavailable but leave the deployment safe.
+ */
+export function productionConfigProblems(e = env) {
+  const fatal = [];
+  const warnings = [];
+  // The development defaults above are deliberately weak so the app runs out of
+  // the box. Booting production with any of them still set means anyone holding
+  // a copy of this repo can forge sessions, decrypt medical records, or pass the
+  // WhatsApp webhook handshake.
+  if (e.JWT_SECRET === 'change-this-secret-in-production') fatal.push('JWT_SECRET');
+  if (String(e.JWT_SECRET ?? '').length < 32) fatal.push('JWT_SECRET (must be ≥32 characters)');
+  if (e.MEDICAL_ENCRYPTION_KEY === 'change-this-medical-key-in-production') fatal.push('MEDICAL_ENCRYPTION_KEY');
+  if (e.WHATSAPP_VERIFY_TOKEN === 'change-this-verify-token') fatal.push('WHATSAPP_VERIFY_TOKEN');
   // Only demanded once WhatsApp is actually live: a deployment that never
   // receives webhooks has nothing to authenticate. Once it is live, an
   // unverifiable webhook lets anyone who learns the URL post messages that
   // appear to come from any parent's number.
-  if (isWhatsappLive() && !isWhatsappSignatureConfigured()) {
-    insecure.push('WA_APP_SECRET (WhatsApp is live — inbound webhooks cannot be authenticated without it)');
+  if (e.WA_PHONE_NUMBER_ID && e.WA_ACCESS_TOKEN && isPlaceholderSecret(e.WA_APP_SECRET)) {
+    fatal.push('WA_APP_SECRET (WhatsApp is live — inbound webhooks cannot be authenticated without it)');
   }
-  if (env.CORS_ORIGIN === '*') insecure.push('CORS_ORIGIN (must name your frontend origin)');
-  // The console providers cannot actually deliver anything, so in production
-  // they mean OTP login is broken — and until this was fixed they also meant
-  // the code came back in the HTTP response, which is account takeover for any
-  // address. Refusing to boot is the only safe reading of this configuration.
-  if (env.SMS_PROVIDER === 'console' && !env.ALLOW_DEV_OTP_IN_PRODUCTION) insecure.push('SMS_PROVIDER=console (cannot deliver an OTP — configure a real SMS provider)');
-  if (env.EMAIL_PROVIDER === 'console' && !env.ALLOW_DEV_OTP_IN_PRODUCTION) insecure.push('EMAIL_PROVIDER=console (cannot deliver an OTP — configure a real email provider)');
-  // A sandbox gateway in production marks invoices Paid without money moving.
-  if (env.PAYMENT_PROVIDER === 'sandbox') insecure.push('PAYMENT_PROVIDER=sandbox (simulates payments — use a real gateway or "none")');
-  if (env.PAYMENT_PROVIDER === 'razorpay') {
-    if (!env.RAZORPAY_KEY_ID) insecure.push('RAZORPAY_KEY_ID');
-    if (!env.RAZORPAY_KEY_SECRET) insecure.push('RAZORPAY_KEY_SECRET');
-    // Without this, webhook signatures cannot be checked, and an unauthenticated
-    // POST could mark any invoice paid.
-    if (!env.RAZORPAY_WEBHOOK_SECRET) insecure.push('RAZORPAY_WEBHOOK_SECRET (required to authenticate payment webhooks)');
+  if (e.CORS_ORIGIN === '*') fatal.push('CORS_ORIGIN (must name your frontend origin)');
+
+  // ── One-time-code delivery ──
+  // A provider nobody implemented, or a real one missing its credentials, is a
+  // misconfiguration: fail loudly rather than silently lose every code.
+  if (!SMS_PROVIDERS.includes(e.SMS_PROVIDER)) fatal.push(`SMS_PROVIDER=${e.SMS_PROVIDER} (unknown — use one of ${SMS_PROVIDERS.join(', ')})`);
+  if (!EMAIL_PROVIDERS.includes(e.EMAIL_PROVIDER)) fatal.push(`EMAIL_PROVIDER=${e.EMAIL_PROVIDER} (unknown — use one of ${EMAIL_PROVIDERS.join(', ')})`);
+  if (e.SMS_PROVIDER === 'twilio') {
+    for (const k of ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM_NUMBER']) if (!e[k]) fatal.push(`${k} (required by SMS_PROVIDER=twilio)`);
+  }
+  if (e.EMAIL_PROVIDER === 'resend') {
+    for (const k of ['RESEND_API_KEY', 'EMAIL_FROM']) if (!e[k]) fatal.push(`${k} (required by EMAIL_PROVIDER=resend)`);
+  }
+  // The console providers cannot deliver anything. That used to be fatal —
+  // and the escape hatch that let a deployment boot anyway was to echo every
+  // code in the response. Neither is right: production now starts, OTP
+  // sign-in on that channel answers 503 OTP_DELIVERY_UNAVAILABLE, and password
+  // and Google sign-in keep working.
+  if (e.SMS_PROVIDER === 'console') warnings.push('SMS_PROVIDER=console — phone OTP sign-in is unavailable until a real SMS provider is configured');
+  if (e.EMAIL_PROVIDER === 'console') warnings.push('EMAIL_PROVIDER=console — email OTP sign-in is unavailable until a real email provider is configured');
+  if (e.ALLOW_DEV_OTP_IN_PRODUCTION) {
+    warnings.push('ALLOW_DEV_OTP_IN_PRODUCTION is set and IGNORED — production never returns one-time codes; remove it from the environment');
   }
 
-  if (insecure.length) {
+  // A sandbox gateway in production marks invoices Paid without money moving.
+  if (e.PAYMENT_PROVIDER === 'sandbox') fatal.push('PAYMENT_PROVIDER=sandbox (simulates payments — use a real gateway or "none")');
+  if (e.PAYMENT_PROVIDER === 'razorpay') {
+    if (!e.RAZORPAY_KEY_ID) fatal.push('RAZORPAY_KEY_ID');
+    if (!e.RAZORPAY_KEY_SECRET) fatal.push('RAZORPAY_KEY_SECRET');
+    // Without this, webhook signatures cannot be checked, and an unauthenticated
+    // POST could mark any invoice paid.
+    if (!e.RAZORPAY_WEBHOOK_SECRET) fatal.push('RAZORPAY_WEBHOOK_SECRET (required to authenticate payment webhooks)');
+  }
+  return { fatal, warnings };
+}
+
+if (env.isProd) {
+  const { fatal, warnings } = productionConfigProblems(env);
+  for (const w of warnings) {
+    // eslint-disable-next-line no-console
+    console.warn(`WARNING (production config): ${w}`);
+  }
+  if (fatal.length) {
     // eslint-disable-next-line no-console
     console.error(
-      `\nFATAL: refusing to start in production with insecure defaults:\n` +
-        insecure.map((k) => `  • ${k}`).join('\n') +
+      `\nFATAL: refusing to start in production with insecure or broken configuration:\n` +
+        fatal.map((k) => `  • ${k}`).join('\n') +
         `\nSet these to real values in the environment and restart.\n`
     );
     process.exit(1);

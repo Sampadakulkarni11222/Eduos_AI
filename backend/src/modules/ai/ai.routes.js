@@ -134,6 +134,54 @@ router.post('/tutor', requirePermission('ai.copilot.use'), controller.tutor);
 
 /**
  * @swagger
+ * /ai/tutor/learn/status:
+ *   get:
+ *     summary: Student Study Help — whether a model is configured, and the learning modes
+ *     description: >
+ *       Students only (403 STUDENT_ONLY for every other role). The parent portal
+ *       keeps using /ai/tutor/status.
+ *     tags: [AI]
+ *     responses:
+ *       200: { description: Study help status }
+ *       403: { description: Not a student }
+ */
+router.get('/tutor/learn/status', requirePermission('ai.copilot.use'), controller.learnStatus);
+
+/**
+ * @swagger
+ * /ai/tutor/learn:
+ *   post:
+ *     summary: Student Study Help powered by the Student Learning Buddy skill
+ *     description: >
+ *       Students only. Returns a validated, structured learning result for the
+ *       chosen mode, grounded in the student's class, subjects, results and the
+ *       assignment chapters and course-material titles on record. Invalid model
+ *       output is retried once, then replaced by a labelled study plan
+ *       (`generated: false`). One credit is charged only for a valid learning
+ *       result — never for a redirect, a refusal or the study plan.
+ *     tags: [AI]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [topic, subject, mode]
+ *             properties:
+ *               topic: { type: string, maxLength: 200 }
+ *               subject: { type: string, description: "Must be one of the student's own subjects" }
+ *               mode: { type: string, enum: [explain, worked, questions, quiz, flashcards, notes, mindmap, exam] }
+ *               lang: { type: string, description: 'Optional reply language; detected from the topic otherwise' }
+ *     responses:
+ *       200: { description: Study help response }
+ *       400: { description: Missing topic or subject, topic too long, unsupported mode, or off-syllabus subject }
+ *       402: { description: AI credits exhausted }
+ *       403: { description: Not a student }
+ */
+router.post('/tutor/learn', requirePermission('ai.copilot.use'), controller.learn);
+
+/**
+ * @swagger
  * /ai/credits:
  *   get:
  *     summary: AI credit balance for the caller (free allowance, purchased balance, reset date)

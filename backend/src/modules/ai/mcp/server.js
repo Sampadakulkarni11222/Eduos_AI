@@ -9,6 +9,7 @@ import {
 } from './confirm.js';
 import { runInTenantState } from '../../../tenancy/tenantContext.js';
 import { AuditLog } from '../../../models/auditLog.model.js';
+import { redact, isMedicalAuditEntry, MEDICAL_PAYLOAD_WITHHELD } from '../../../middleware/auditLogger.js';
 import { logger } from '../../../utils/logger.js';
 import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 
@@ -125,6 +126,12 @@ function sanitiseArgs(args) {
  * register said before and what it says now.
  */
 async function audit({ session, tool, args, status, code = null, durationMs = null, before = null, after = null, confirmed = null, actionId = null }) {
+  // The same redaction the REST trail applies: credentials never, and a
+  // medical tool's request and record state not at all (see auditLogger.js).
+  const medical = isMedicalAuditEntry({ action: tool });
+  args = medical ? MEDICAL_PAYLOAD_WITHHELD : redact(args);
+  before = before && (medical ? MEDICAL_PAYLOAD_WITHHELD : redact(before));
+  after = after && (medical ? MEDICAL_PAYLOAD_WITHHELD : redact(after));
   try {
     await AuditLog.create({
       actorProfileId: session?.actor?.profileId ?? null,

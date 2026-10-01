@@ -164,6 +164,13 @@ router.post('/:tenantId/admins', requirePermission('schools.manage', 'ALL'), con
  *             properties:
  *               status: { type: string, enum: [ACTIVE, INACTIVE, SUSPENDED] }
  *               displayName: { type: string }
+ *               website:
+ *                 type: string
+ *                 nullable: true
+ *                 description: >
+ *                   The school's website, e.g. https://www.abcschool.com/. Validated and
+ *                   normalised to a domain; feeds School Domain Configuration. Empty or
+ *                   null clears it.
  *     responses:
  *       200: { description: School Admin updated }
  */

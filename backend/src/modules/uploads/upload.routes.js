@@ -8,6 +8,8 @@ import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
 import { AppError } from '../../utils/AppError.js';
 import { env } from '../../config/env.js';
+import { Upload } from '../../models/upload.model.js';
+import { currentTenantId } from '../../tenancy/tenantContext.js';
 
 /**
  * File upload endpoint (documents, course material, assignment attachments).
@@ -49,7 +51,7 @@ router.use(uploadRateLimiter);
  *     tags: [Uploads]
  *     responses:
  *       201:
- *         description: File stored; returns its public fileUrl
+ *         description: File stored; returns a signed, expiring fileUrl
  */
 router.post(
   '/',
@@ -61,7 +63,15 @@ router.post(
       throw new AppError('Request body must contain the raw file bytes', 400);
     }
 
-    const filename = sanitizeFilename(decodeURIComponent(String(rawName)));
+    // A malformed escape (a lone `%`) made decodeURIComponent throw, which
+    // surfaced as a 500; it is a bad request.
+    let decodedName;
+    try {
+      decodedName = decodeURIComponent(String(rawName));
+    } catch {
+      throw new AppError('x-filename header is not a valid URI-encoded filename', 400, [], 'INVALID_FILENAME');
+    }
+    const filename = sanitizeFilename(decodedName);
     const ext = filename.includes('.') ? filename.split('.').pop().toLowerCase() : '';
     if (!ALLOWED_EXTENSIONS.has(ext)) {
       throw new AppError(`File type .${ext || '?'} is not allowed`, 415, [], 'UPLOAD_TYPE_NOT_ALLOWED');
@@ -70,6 +80,15 @@ router.post(
     await mkdir(uploadDir, { recursive: true });
     const stored = `${randomUUID()}-${filename}`;
     await writeFile(join(uploadDir, stored), req.body);
+    // Records the school the file belongs to, so it is only ever signed into
+    // that school's responses (see signedUrls.js).
+    await Upload.create({
+      storedName: stored,
+      tenantId: currentTenantId(),
+      uploaderProfileId: req.actor?.profileId ?? null,
+      originalName: filename,
+      size: req.body.length,
+    });
 
     sendSuccess(
       res,

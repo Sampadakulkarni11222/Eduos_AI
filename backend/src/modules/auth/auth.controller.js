@@ -3,6 +3,7 @@ import { sendSuccess } from '../../utils/response.js';
 import { AppError } from '../../utils/AppError.js';
 import { isValidEmail, isValidPhone } from '../../utils/validators.js';
 import * as authService from './auth.service.js';
+import { createUser } from '../users/user.service.js';
 
 const sessionOpts = (req) => ({ userAgent: req.headers['user-agent'], ip: req.ip });
 
@@ -19,11 +20,20 @@ const withDoor = (req, fields) => ({
   schoolId: req.body.schoolId ?? req.headers['x-school-id'] ?? null,
 });
 
+/**
+ * Goes through the same createUser() as POST /users rather than straight to
+ * authService.register(). Calling register() directly skipped every check the
+ * user form relies on — any role key (SUPER_ADMIN included) and any phone
+ * string were accepted, and no seat was reserved.
+ */
 export const register = asyncHandler(async (req, res) => {
-  const { account, profile } = await authService.register(req.body);
+  const { name, displayName, phone, email, password, roleKey } = req.body ?? {};
+  const user = await createUser({ displayName: displayName ?? name, phone, email, password, roleKey });
+  const wanted = String(roleKey).toUpperCase();
+  const profile = user.profiles.find((p) => p.roleKey === wanted) ?? user.profiles[0];
   sendSuccess(
     res,
-    { accountId: account._id, profileId: profile._id, displayName: profile.displayName },
+    { accountId: user.accountId, profileId: profile?.profileId ?? null, displayName: profile?.displayName ?? null },
     'Profile registered',
     201
   );

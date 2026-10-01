@@ -7,6 +7,7 @@ import {
   allowedSectionIds, classIdentitySchema,
 } from './_shared.js';
 import { classFromText, refersToOwnClasses } from '../../../../utils/classNames.js';
+import { resolveYear, resolveStaff } from './_names.js';
 
 /**
  * Student and enrolment tools.
@@ -59,19 +60,30 @@ function pick(obj, fields) {
 export const studentTools = {
   search_students: {
     module: 'Students',
-    resultShape: 'SUMMARY',
+    // The directory: the rows, with the roll total beside them -- the Web
+    // students page is a list with a count. Declared SUMMARY it answered "how
+    // many" and was docked for "show me the list", which left it tied with the
+    // at-risk list on "show all students".
+    resultShape: 'LIST',
+    reportsTotal: true,
     operation: 'GET',
     risk: RISK.LOW,
     description:
-      'Find students by name, admission number or class. Use this first whenever the user names a student but you do not have their id. Returns each match with class, roll number, student id and enrolment id. Read-only.',
+      'The student directory: find students by name, admission number or class, or list the students the caller may see when no search is given. Use this first whenever the user names a student but you do not have their id. Returns each match with class, roll number, student id and enrolment id. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
-        query: { type: 'string', maxLength: 80, description: 'Name, admission number or class, e.g. "Rahul", "OAK-12", "Class 6 A"' },
+        query: { type: 'string', maxLength: 80, description: 'Name, admission number or class, e.g. "Rahul", "OAK-12", "Class 6 A". Omit to list everyone in scope.' },
         sectionId: objectId('Restrict to one section'),
         limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Default 20' },
       },
-      required: ['query'],
+      // `query` is NOT required. The Web students page lists the directory
+      // with no search term in the box, so demanding one here made a plain
+      // "show me the students in my school" impossible to answer -- the call
+      // was refused with "query is required", which is a REST validation
+      // message shown to somebody having a conversation. The scope of the
+      // listing is still the caller's own students.read scope, exactly as the
+      // page is.
       additionalProperties: false,
     },
     permission: 'students.read',
@@ -83,8 +95,9 @@ export const studentTools = {
       // "Class 5-A"*, which claimed the class was empty when in fact nothing
       // had resolved it. A class the caller does not teach is refused by name
       // inside resolveSection(), never answered with a count.
-      const ownClasses = refersToOwnClasses(args.query);
-      const named = ownClasses ? null : classFromText(args.query);
+      const asked = args.query ?? '';
+      const ownClasses = refersToOwnClasses(asked);
+      const named = ownClasses ? null : classFromText(asked);
       const section = args.sectionId || named
         ? await resolveSection(ctx, { sectionId: args.sectionId, className: named?.text })
         : null;
@@ -94,9 +107,11 @@ export const studentTools = {
         // searches the text. "my classes" needs neither — an OWN-scoped
         // teacher's list is already exactly their own students.
         ...(section && { sectionId: section.sectionId }),
-        ...(!section && !ownClasses && { search: args.query }),
+        ...(!section && !ownClasses && asked && { search: asked }),
         page: 1,
-        pageSize: Math.min(Number(args.limit) || (section || ownClasses ? 50 : 20), 50),
+        // An unfiltered listing is a browse rather than a lookup, so it gets
+        // the larger page the class views already use.
+        pageSize: Math.min(Number(args.limit) || (section || ownClasses || !asked ? 50 : 20), 50),
       });
       const items = page.items ?? [];
       // Minimised on purpose: a search result is a way to pick a student, not a
@@ -120,7 +135,16 @@ export const studentTools = {
           ? `${section.label} has ${total} student(s): ${view.list}${view.more ? ', …' : ''}.`
           : `${section.label} has no students enrolled.`
         : null;
-      const ownAnswer = ownClasses
+      // An unfiltered listing by a teacher is their classes, whatever the
+      // question said -- "show all students", "every student in the school".
+      // The answer says so, rather than presenting their classes as though
+      // they were the whole of what was asked for.
+      const scopedBrowse = !section && !asked && !ownClasses && ctx.scope !== 'ALL' && ctx.actor?.roleKey === 'TEACHER';
+      const ownAnswer = scopedBrowse
+        ? (total
+          ? `You can only see students in your own classes. You have ${total} student(s) across them: ${view.list}${view.more ? ', …' : ''}.`
+          : 'You can only see students in your own classes, and none are assigned to them.')
+        : ownClasses
         ? total
           ? `You have ${total} student(s) across your classes: ${view.list}${view.more ? ', …' : ''}.`
           : 'No students are assigned to your classes.'
@@ -128,9 +152,15 @@ export const studentTools = {
       return ok(
         { students: rows, total, returned: rows.length, ...(section && { class: section.label }) },
         {
-          speak: classAnswer ?? ownAnswer ?? (rows.length
-            ? `Found ${total} student(s) matching "${args.query}": ${view.list}.`
-            : `No students match "${args.query}".`),
+          // An unfiltered listing is not a failed search, so it does not say
+          // "no students match" and does not quote a search term nobody gave.
+          speak: classAnswer ?? ownAnswer ?? (asked
+            ? (rows.length
+              ? `Found ${total} student(s) matching "${asked}": ${view.list}.`
+              : `No students match "${asked}".`)
+            : (total
+              ? `${total} student(s): ${view.list}${view.more ? ', and more' : ''}.`
+              : 'There are no students on the roll.')),
         },
       );
     },
@@ -312,6 +342,57 @@ export const studentTools = {
     },
   },
 
+  add_guardian: {
+    module: 'Students',
+    operation: 'CREATE',
+    risk: RISK.HIGH,
+    confirm: true,
+    description:
+      "Link an existing parent profile to a student as their father, mother or guardian. Once linked, that parent can see the child's attendance, marks and fees, so this always needs confirmation. The guardian's profile id comes from list_users.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...studentIdentitySchema,
+        guardianProfileId: objectId('The parent\'s profile id, e.g. from list_users'),
+        guardianName: { type: 'string', maxLength: 80, description: "The parent's name as a person writes it, e.g. \"Mr Sharma\". An existing parent profile; alternative to guardianProfileId." },
+        relation: { type: 'string', enum: ['FATHER', 'MOTHER', 'GUARDIAN'] },
+        isPrimary: { type: 'boolean', description: 'Whether this is the primary contact' },
+        pickupAuthorized: { type: 'boolean', description: 'Whether they may collect the child; defaults to yes' },
+      },
+      // The parent is named or identified (see prepare); the relation is what
+      // the sentence says the parent IS to the child.
+      required: ['relation'],
+      additionalProperties: false,
+    },
+    permission: 'students.manage',
+    minScope: 'ALL',
+    affectsOthers: true,
+    service: 'student.service.addGuardian()',
+    summarise: (args, _actor, prepared) =>
+      `Link ${prepared?.guardianName ?? `profile ${args.guardianProfileId}`} as ${args.relation.toLowerCase()} of student ${prepared?.studentLabel ?? args.studentName ?? args.admissionNo ?? args.studentId}`,
+    async prepare(ctx, args) {
+      const studentId = await resolveStudentId(ctx, args);
+      if (!studentId) throw new AppError('Name a student — by id, admission number or name.', 400);
+      // A parent profile of THIS school: a name is matched among them, never
+      // guessed. Anyone can be named "Mr Sharma"; the link is made only to a
+      // parent who already has an account here.
+      const guardian = await resolveStaff('PARENT', { profileId: args.guardianProfileId, name: args.guardianName }, 'parent');
+      if (!guardian) throw new AppError("Who is the guardian? Give the parent's name.", 400, [], 'AGENT_NEEDS_INPUT');
+      return { studentId, studentLabel: args.studentName ?? args.admissionNo ?? args.studentId, guardianProfileId: guardian.id, guardianName: guardian.name };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const { relation, isPrimary, pickupAuthorized } = args;
+      const link = await students.addGuardian(plan.studentId, { guardianProfileId: plan.guardianProfileId, relation, isPrimary, pickupAuthorized });
+      return action({
+        type: 'guardian_linked',
+        id: link._id,
+        data: { studentId: plan.studentId, guardianProfileId: String(link.guardianProfileId), relation: link.relation },
+        speak: `Guardian linked as ${link.relation.toLowerCase()}.`,
+      });
+    },
+  },
+
   list_enrollments: {
     module: 'Students',
     resultShape: 'LIST',
@@ -425,21 +506,41 @@ export const studentTools = {
     inputSchema: {
       type: 'object',
       properties: {
-        studentId: objectId('The student to enrol'),
+        ...studentIdentitySchema,
+        ...classIdentitySchema,
         sectionId: objectId('The class section'),
         academicYearId: objectId(),
+        academicYear: { type: 'string', maxLength: 40, description: 'The year as a person names it, e.g. "2026-27". Omit for the current year.' },
         rollNo: { type: 'integer', minimum: 1, maximum: 9999 },
       },
-      required: ['studentId', 'sectionId', 'academicYearId'],
+      // The student and the class are named in words; the year is the current
+      // one unless said (and the confirmation names it). See prepare().
       additionalProperties: false,
     },
     permission: 'enrollments.manage',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'student.service.enroll()',
-    summarise: (args) => `Enrol student ${args.studentId} into section ${args.sectionId}${args.rollNo ? ` as roll no ${args.rollNo}` : ''}`,
-    async run(_ctx, args) {
-      const enrollment = await students.enroll(args);
+    summarise: (args, _actor, prepared) =>
+      `Enrol ${prepared?.studentLabel ?? `student ${args.studentId}`} into ${prepared?.label ?? `section ${args.sectionId}`}`
+      + `${prepared?.yearName ? ` for ${prepared.yearName}` : ''}${args.rollNo ? ` as roll no ${args.rollNo}` : ''}`,
+    async prepare(ctx, args) {
+      const studentId = await resolveStudentId(ctx, args);
+      if (!studentId) throw new AppError('Which student? Give a name, admission number or id.', 400, [], 'AGENT_NEEDS_INPUT');
+      const section = await resolveSection(ctx, { sectionId: args.sectionId, className: args.className });
+      if (!section) throw new AppError('Which class? For example "Class 6-A".', 400, [], 'AGENT_NEEDS_INPUT');
+      const year = await resolveYear({ academicYearId: args.academicYearId, academicYear: args.academicYear });
+      return {
+        studentId, sectionId: section.sectionId, label: section.label, academicYearId: year.id, yearName: year.name,
+        studentLabel: args.studentName ?? args.admissionNo ?? `student ${studentId}`,
+      };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const enrollment = await students.enroll({
+        studentId: plan.studentId, sectionId: plan.sectionId, academicYearId: plan.academicYearId,
+        ...(args.rollNo !== undefined && { rollNo: args.rollNo }),
+      });
       return action({
         type: 'student_enrolled',
         id: enrollment._id ?? enrollment.id,
@@ -536,18 +637,30 @@ export const studentTools = {
       type: 'object',
       properties: {
         enrollmentId: objectId('From search_students or list_enrollments'),
+        ...studentIdentitySchema,
         status: { type: 'string', enum: ENROLLMENT_STATUSES },
       },
-      required: ['enrollmentId', 'status'],
+      // The enrolment is the named student's current one; see prepare().
+      required: ['status'],
       additionalProperties: false,
     },
     permission: 'enrollments.manage',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'student.service.updateEnrollmentStatus()',
-    summarise: (args) => `Set enrolment ${args.enrollmentId} to ${args.status}`,
-    async run(_ctx, args) {
-      const enrollment = await students.updateEnrollmentStatus(args.enrollmentId, args.status);
+    summarise: (args, _actor, prepared) =>
+      `Set ${prepared?.studentLabel ? `${prepared.studentLabel}'s enrolment${prepared.class ? ` in ${prepared.class}` : ''}` : `enrolment ${args.enrollmentId}`} to ${args.status}`,
+    async prepare(ctx, args) {
+      if (args.enrollmentId) return { enrollmentId: String(args.enrollmentId) };
+      const studentId = await resolveStudentId(ctx, args);
+      if (!studentId) throw new AppError('Whose enrolment? Give a name, admission number or id.', 400, [], 'AGENT_NEEDS_INPUT');
+      const [enrolment] = await students.listEnrollments({ studentId, status: 'ACTIVE' });
+      if (!enrolment) throw new AppError('That student has no active enrolment to change.', 404, [], 'NOT_FOUND');
+      return { enrollmentId: String(enrolment.id), studentLabel: enrolment.studentName, class: enrolment.class };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const enrollment = await students.updateEnrollmentStatus(plan.enrollmentId, args.status);
       return action({
         type: 'enrollment_status_changed',
         id: enrollment._id,

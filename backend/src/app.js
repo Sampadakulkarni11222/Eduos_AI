@@ -90,6 +90,8 @@ import { rateLimiter } from './middleware/rateLimiter.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { sendError } from './utils/response.js';
 import apiRoutes from './routes/index.js';
+import { corsOrigin } from './modules/domains/domain.cors.js';
+import { requireSignedUploadUrl } from './modules/uploads/signedUrls.js';
 
 const app = express();
 
@@ -102,7 +104,11 @@ app.set('trust proxy', 1);
 // Must be mounted BEFORE any static handler, or uploaded files and the status
 // page are served with no security headers at all.
 app.use(helmet());
-app.use(cors({ origin: env.CORS_ORIGIN }));
+// The configured frontend origin, plus https on any school's ACTIVE domain — a
+// portal served at www.abcschool.com calls this API cross-origin, and must be
+// allowed to exactly when, and only while, that domain is live. A pending or
+// deactivated domain is not in the list. See modules/domains/domain.service.js.
+app.use(cors({ origin: corsOrigin }));
 
 // ─── Status Page (public/) ────────────────────────────────
 app.use(express.static(join(__dirname, '..', 'public')));
@@ -124,6 +130,9 @@ app.use(express.static(join(__dirname, '..', 'public')));
 // cross-origin is exactly the hole the rules above exist to close.
 const INLINE_IMAGE_TYPES = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.avif', '.bmp', '.ico']);
 
+// Nothing under /uploads is served without a valid, unexpired signature — the
+// links the API hands out to callers entitled to the record they belong to.
+app.use('/uploads', requireSignedUploadUrl);
 app.use(
   '/uploads',
   (req, res, next) => {
@@ -134,11 +143,14 @@ app.use(
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
     if (isSafeImage) {
-      // Lets the portal render it. Note /uploads is unauthenticated already —
-      // access rests on the unguessable filename, so this widens embedding, not
-      // access.
+      // Lets the portal render it. Access is already decided by the signed
+      // link above, so this widens embedding, not access.
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     }
+    // A signed link is a bearer credential for its lifetime; keep it out of
+    // shared caches and out of the Referer of anything the file links to.
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('Referrer-Policy', 'no-referrer');
     next();
   },
   express.static(join(process.cwd(), env.UPLOAD_DIR))

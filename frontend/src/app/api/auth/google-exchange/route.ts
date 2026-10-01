@@ -4,11 +4,11 @@
  * Backs the demo "Continue with Google" popup that exists only while no real
  * GOOGLE_CLIENT_ID is configured. It signs the chosen demo account in through
  * the backend's email-OTP flow: request a code (the backend echoes devOtp
- * outside production) and immediately verify it server-side. There are no
- * hardcoded passwords, and the route can only work where the backend actually
- * echoes devOtp: development, or a testing-phase deployment that sets
- * ALLOW_DEV_OTP_IN_PRODUCTION on the backend and NEXT_PUBLIC_ALLOW_DEV_OTP
- * here. Anywhere else it degrades to 501.
+ * in development) and immediately verify it server-side. There are no
+ * hardcoded passwords, and the route only works where the backend actually
+ * echoes devOtp — development and test. In a production build it is always
+ * 501: given nothing but an email address it returns a session for that
+ * account, so no flag may switch it on (NEXT_PUBLIC_ALLOW_DEV_OTP once did).
  *
  * Real Google sign-in goes through NextAuth → POST /auth/google, where the
  * backend verifies the Google ID token signature and audience.
@@ -18,8 +18,7 @@ import { NextRequest, NextResponse } from 'next/server';
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
 
 export async function POST(req: NextRequest) {
-  const testingPhase = process.env.NEXT_PUBLIC_ALLOW_DEV_OTP === 'true';
-  if (process.env.NODE_ENV === 'production' && !testingPhase) {
+  if (process.env.NODE_ENV === 'production') {
     return NextResponse.json(
       { error: 'Demo Google sign-in is disabled in production. Configure GOOGLE_CLIENT_ID for real Google sign-in.', code: 'GOOGLE_NOT_CONFIGURED' },
       { status: 501 }

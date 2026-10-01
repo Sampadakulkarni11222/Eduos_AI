@@ -62,8 +62,10 @@ const THIRD_PARTY = [
  * this resolver existed.
  */
 const SELF_CATEGORIES = [
-  ['timetable', /\btime.?table\b|\bperiods?\b|\bschedule\b|\b(today|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i],
-  ['subjects', /\bsubject|\bcourse|\bvishay|विषय/i],
+  // "What class do I have next?" asks which PERIOD comes next -- the
+  // timetable -- not which section the caller belongs to.
+  ['timetable', /\btime.?table\b|\bperiods?\b|\bschedule\b|\b(today|tomorrow|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|\b(?:this|next|coming|whole)\s+week\b|\b(?:class|lesson|lecture)\b[^?]*\b(?:next|now)\b|\bnext\s+(?:class|lesson|lecture)\b/i],
+  ['subjects', /\bsubject|\bcourse(?!s?\s*materials?)|\bvishay|विषय/i],
   // Adjacency required, for the same reason as `school` below: a bare "class"
   // is usually incidental. "How many days was I in class in July?" is a
   // question about attendance days, and matching the word alone claimed it —
@@ -87,6 +89,13 @@ const OTHER_CATEGORIES = [
   /\blibrary|\bbook\b|\bhostel|\bbus\b|\btransport/i,
   /\bannouncement|\bnotice|\bcircular/i,
   /\bsalary|\bpayroll/i,
+  // Requests and threads the caller RAISED are records of their own, each
+  // with a capability. "Show my profile-edit requests" mentions the profile
+  // only to say which requests; answering it with the profile was the bug.
+  /\brequests?\b|\bticket|\bco.?curricular|\belective|\bregistration|\bnotification/i,
+  // Which fields MAY be changed is a question about the correction workflow,
+  // not about the values on the profile.
+  /\beditable\b|\bcan\s+i\s+(?:change|edit|correct|update)\b/i,
 ];
 
 /**

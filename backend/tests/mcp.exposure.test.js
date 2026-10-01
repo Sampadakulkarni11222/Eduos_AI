@@ -219,7 +219,7 @@ describe('no read tool exposes system data, credentials or secrets', () => {
 
   it.each(ROLES)('as %s', async (roleKey) => {
     const actor = school.people[roleKey].actor;
-    const secrets = [env.JWT_SECRET, env.MEDICAL_ENCRYPTION_KEY, env.WA_ACCESS_TOKEN, env.WA_APP_SECRET, env.GEMINI_API_KEY, env.ANTHROPIC_API_KEY]
+    const secrets = [env.JWT_SECRET, env.MEDICAL_ENCRYPTION_KEY, env.WA_ACCESS_TOKEN, env.WA_APP_SECRET, env.GEMINI_API_KEY, env.ANTHROPIC_API_KEY, env.OPENROUTER_API_KEY]
       .filter((s) => typeof s === 'string' && s.length >= 8);
     const problems = [];
 

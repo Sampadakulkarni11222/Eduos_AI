@@ -99,10 +99,6 @@ const UNCOVERED = {
   },
 
   /* ── C. blocked ────────────────────────────────────────── */
-  'settings.manage': {
-    category: 'C',
-    why: 'No settings module, route, controller or service exists anywhere in src. The permission is granted to roles but enforced nowhere, so there is nothing to wrap.',
-  },
   'attendance.regularize': {
     category: 'C',
     why: 'No regularization route, controller or service exists anywhere in src. The permission is granted to roles but enforced nowhere, so there is nothing to wrap.',
@@ -287,7 +283,7 @@ describe('permissions granted but enforced nowhere in the backend', () => {
    */
   const DEAD = [
     'analytics.child.read', 'analytics.class.read', 'analytics.school.read',
-    'attendance.regularize', 'reportcards.read', 'settings.manage',
+    'attendance.regularize', 'reportcards.read',
   ];
 
   const sources = (() => {

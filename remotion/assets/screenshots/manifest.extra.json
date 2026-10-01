@@ -1,0 +1,53 @@
+{
+  "capturedAt": "2026-09-23T19:32:14.384Z",
+  "viewport": "1920x1080@2x",
+  "school": "Oakridge Academy",
+  "shots": [
+    {
+      "file": "admin-users.png",
+      "url": "/oakridge/admin/users"
+    },
+    {
+      "file": "admin-calendar.png",
+      "url": "/oakridge/admin/calendar"
+    },
+    {
+      "file": "admin-documents.png",
+      "url": "/oakridge/admin/documents"
+    },
+    {
+      "file": "admin-library.png",
+      "url": "/oakridge/admin/library"
+    },
+    {
+      "file": "teacher-calendar.png",
+      "url": "/oakridge/teacher/calendar"
+    },
+    {
+      "file": "teacher-classes.png",
+      "url": "/oakridge/teacher/classes"
+    },
+    {
+      "file": "parent-calendar.png",
+      "url": "/oakridge/parent/calendar"
+    },
+    {
+      "file": "parent-assignments.png",
+      "url": "/oakridge/parent/assignments"
+    },
+    {
+      "file": "student-performance.png",
+      "url": "/oakridge/student/performance"
+    },
+    {
+      "file": "student-material.png",
+      "url": "/oakridge/student/material"
+    },
+    {
+      "file": "warden-students.png",
+      "url": "/oakridge/warden/students"
+    }
+  ],
+  "failures": [],
+  "note": "Supplementary captures for the dynamic cut, same production build as manifest.json, taken from a later stack run. Only screens with populated content were kept; empty states (tickets, parent queries, announcements lists, exams marks entry, book requests, warden medical, parent documents, admin attendance) were rejected."
+}

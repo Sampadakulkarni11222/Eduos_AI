@@ -411,7 +411,10 @@ export const TOOLS = {
     description: 'Class timetable for a day',
     permission: 'timetable.read',
     mutates: false,
-    params: { day: 'day name, optional; defaults to today' },
+    params: {
+      day: 'day name, optional; defaults to today',
+      sectionId: 'one class, optional; defaults to whatever the caller may see',
+    },
     /**
      * Fronts timetable.getTimetable(), which already resolves whose timetable
      * this is: a teacher sees the periods they personally teach, a student or
@@ -421,7 +424,12 @@ export const TOOLS = {
      * day and renders the result.
      */
     async execute(actor, scope, args = {}) {
-      const slots = await timetable.getTimetable(actor, scope, null);
+      // The section is honoured rather than ignored. Without it "today's Class
+      // 5-A timetable" returned every period the caller could see, which for
+      // an administrator is the whole school -- a broader answer than the
+      // question, presented as the answer to it. The service still decides
+      // whether this caller may see that section.
+      const slots = await timetable.getTimetable(actor, scope, args.sectionId ?? null);
 
       const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
       // Relative words are resolved here rather than at parse time, because
@@ -430,6 +438,26 @@ export const TOOLS = {
       // with today's periods.
       const RELATIVE = { yesterday: -1, today: 0, tomorrow: 1, 'day after tomorrow': 2 };
       const asked = String(args.day ?? '').trim().toLowerCase();
+
+      // The whole week, as the timetable screen shows it. A timetable repeats
+      // weekly, so "this week" and "next week" are the same grid; answering
+      // either with one day presented a day as though it were the week.
+      if (asked === 'week') {
+        const byDay = new Map();
+        for (const s of [...slots].sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.periodNo - b.periodNo)) {
+          if (!byDay.has(s.dayOfWeek)) byDay.set(s.dayOfWeek, []);
+          byDay.get(s.dayOfWeek).push(s);
+        }
+        if (!byDay.size) return { speak: 'Nothing is scheduled in the weekly timetable.', data: { slots: [] } };
+        const lines = [...byDay].map(([dow, daySlots]) => {
+          const name = DAYS[dow % 7].replace(/^./, (c) => c.toUpperCase());
+          const periods = daySlots
+            .map((s) => `P${s.periodNo} ${s.startTime}-${s.endTime} ${s.subjectOfferingId?.subjectId?.name ?? 'Break'}`)
+            .join('; ');
+          return `${name}: ${periods}`;
+        });
+        return { speak: `Weekly timetable — ${lines.join('. ')}.`, data: { slots } };
+      }
 
       const now = new Date();
       let jsDay;
@@ -451,10 +479,15 @@ export const TOOLS = {
       if (today.length === 0) return { speakKey: 'timetable.none', params: { day: dayName }, data: { slots: [] } };
 
       const shown = today.slice(0, 12);
+      // The teacher is named because "with teachers" is how the question is
+      // asked, and the offering is already populated with them -- leaving it
+      // out meant answering a question about who teaches with a list of
+      // subjects.
       const list = shown
         .map((s) => {
           const subject = s.subjectOfferingId?.subjectId?.name ?? 'Break';
-          return `P${s.periodNo} ${s.startTime}-${s.endTime} ${subject}`;
+          const teacher = s.subjectOfferingId?.teacherId?.displayName;
+          return `P${s.periodNo} ${s.startTime}-${s.endTime} ${subject}${teacher ? ` (${teacher})` : ''}`;
         })
         .join('; ');
 
@@ -565,6 +598,11 @@ export const TOOLS = {
   generate_homework: {
     description: 'Draft and set homework for a class you teach',
     permission: 'assignments.manage',
+    // Not offered at OWN scope. AI drafting has no counterpart on the Web,
+    // where a teacher sets homework by writing it (POST /assignments); the
+    // assistant offers a teacher that same act as create_assignment rather
+    // than a workflow the Web does not have.
+    minScope: 'ALL',
     mutates: true,
     affectsOthers: true,
     params: { subject: 'subject name', className: 'class, optional', topic: 'what it is about', dueAt: 'YYYY-MM-DD', maxMarks: 'optional' },
@@ -578,11 +616,11 @@ export const TOOLS = {
      * in full — not a promise to generate something unseen afterwards.
      */
     async prepare(actor, scope, args) {
-      return homework.draftHomework(actor, args);
+      return homework.draftHomework(actor, scope, args);
     },
     summarise: (args, _actor, prepared) => prepared?.summary ?? `Set homework "${args.topic}"`,
     async execute(actor, scope, args, prepared) {
-      const draft = prepared ?? (await homework.draftHomework(actor, args));
+      const draft = prepared ?? (await homework.draftHomework(actor, scope, args));
       const created = await homework.commitHomework(actor, scope, draft);
       return {
         speakKey: 'homework.created',

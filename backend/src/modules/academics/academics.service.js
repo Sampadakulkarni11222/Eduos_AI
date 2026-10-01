@@ -31,11 +31,14 @@ export const createYear = (data = {}) => AcademicYear.create({
 // ── Terms ──
 export const listTerms = (academicYearId) =>
   Term.find(academicYearId ? { academicYearId } : {}).sort({ startsOn: 1 });
-export const createTerm = (data = {}) => Term.create({
-  ...data,
-  name: requireText(data.name, 'Term name'),
-  ...assertDateRange(data.startsOn, data.endsOn, 'Term'),
-});
+export async function createTerm(data = {}) {
+  const name = requireText(data.name, 'Term name');
+  const range = assertDateRange(data.startsOn, data.endsOn, 'Term');
+  // AcademicYear is tenant-scoped, so a year from another school is not found.
+  const year = data.academicYearId ? await AcademicYear.findById(data.academicYearId).select('_id') : null;
+  if (!year) throw new AppError('Academic year not found', 404);
+  return Term.create({ academicYearId: year._id, name, ...range });
+}
 
 // ── Grades ──
 export const listGrades = () => Grade.find().sort({ level: 1 });

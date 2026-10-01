@@ -34,7 +34,7 @@
  * validates and authorizes again.
  */
 
-import { monthFromText, toIsoDate } from '../../../utils/naturalDates.js';
+import { monthFromText, toIsoDate, writtenDatesIn } from '../../../utils/naturalDates.js';
 
 export const FOUND = 'found';
 export const MISSING = 'missing';
@@ -118,9 +118,17 @@ export function extractEnum(message, schema = {}) {
   if (!values.length) return missing();
   const text = String(message ?? '');
 
+  // A person writes the verb, not the stored value: "approve this request"
+  // asks for the status APPROVED, and matching the value's own spelling alone
+  // found nothing -- so a decision tool could never be reached from the word
+  // that asks for it. The value's stem is tried as a prefix, which covers
+  // approve/approved/approving without a list of inflections anywhere.
+  const stemOf = (word) => String(word).toLowerCase().replace(/(ed|ing|s)$/, '');
   const hits = values.filter((value) => {
     const spelt = String(value).replace(/_/g, '[ _]');
-    return new RegExp(`\\b${spelt}\\b`, 'i').test(text);
+    if (new RegExp(`\\b${spelt}\\b`, 'i').test(text)) return true;
+    const root = stemOf(String(value).replace(/_/g, ' '));
+    return root.length >= 4 && new RegExp(`\\b${root}(?:e|ed|es|ing|s)?\\b`, 'i').test(text);
   });
   const unique = [...new Set(hits)];
   if (unique.length === 1) return found(unique[0]);
@@ -186,7 +194,12 @@ export function extractDateRange(message, { now = new Date() } = {}) {
 
 /** A month, in the form the schema asks for. */
 export function extractMonth(message, { now = new Date() } = {}) {
-  const month = monthFromText(String(message ?? ''), now);
+  // The month inside a written date belongs to that day: "on 5th August 2026"
+  // asks about one day, and a month argument filled from it widened the answer
+  // to the whole of August.
+  const text = writtenDatesIn(String(message ?? ''), now)
+    .reduce((rest, w) => rest.split(w.text).join(' '), String(message ?? ''));
+  const month = monthFromText(text, now);
   return month ? found(month) : missing();
 }
 
@@ -272,7 +285,12 @@ export function extractText(message, schema = {}) {
   const afterColon = /:\s*(.{2,500})$/.exec(text)?.[1];
   if (afterColon) return cap(afterColon);
 
-  const introduced = /\b(?:saying|says|that reads|about|on)\s+(.{2,500})$/i.exec(text)?.[1];
+  // "saying" introduces the words themselves; "about" and "on" only what they
+  // concern, and often name the RECORD instead: "reply to the ticket about bus
+  // timing saying we will check" is a reply that says "we will check".
+  const said = /\b(?:saying|says|that reads)\s+(.{2,500})$/i.exec(text)?.[1];
+  if (said) return cap(said);
+  const introduced = /\b(?:about|on)\s+(.{2,500})$/i.exec(text)?.[1];
   if (introduced) return cap(introduced);
 
   return missing();

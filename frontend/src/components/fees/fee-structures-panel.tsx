@@ -96,6 +96,24 @@ export function FeeStructuresPanel() {
           </div>
         </div>
 
+        {heads && heads.length > 0 && (
+          <div style={{
+            display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
+            padding: '10px 20px', background: 'var(--bg-card-subtle, #fafafa)', borderBottom: '1px solid var(--hairline)',
+            fontSize: 12, color: 'var(--text-2)',
+          }}>
+            <span style={{ fontWeight: 600, color: 'var(--text-1)' }}>Fee heads ({heads.length}):</span>
+            {heads.map((h) => (
+              <span key={h._id} style={{
+                background: 'var(--bg-chip, #f0f0f0)', padding: '2px 8px', borderRadius: 4,
+                border: '1px solid var(--hairline)', fontWeight: 500, color: 'var(--text-1)',
+              }}>
+                {h.name}
+              </span>
+            ))}
+          </div>
+        )}
+
         {preview && (
           <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--hairline)', background: '#FBF6EC' }}>
             <div style={{ fontSize: 13, color: 'var(--text-1)', fontWeight: 600, marginBottom: 4 }}>

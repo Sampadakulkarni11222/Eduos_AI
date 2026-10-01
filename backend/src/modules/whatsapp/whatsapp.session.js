@@ -40,7 +40,7 @@ export function normalisePhone(raw) {
 const IDLE_MINUTES = Number(env.WHATSAPP_SESSION_IDLE_MINUTES ?? 120);
 
 /** Turns of history handed to the model. See buildHistory() for why it is small. */
-const HISTORY_TURNS = Number(env.WHATSAPP_HISTORY_TURNS ?? 6);
+const HISTORY_TURNS = Number(env.WHATSAPP_HISTORY_TURNS ?? 10);
 
 const newSessionId = () => `wa-${crypto.randomBytes(8).toString('hex')}`;
 

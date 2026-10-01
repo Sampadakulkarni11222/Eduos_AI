@@ -34,16 +34,39 @@ services:
         sync: false
       - key: SWAGGER_ENABLED
         value: "false"
-      # ── TESTING PHASE ONLY ───────────────────────────────────────
-      # The project has no SMS/email provider yet, so the 6-digit code is
-      # echoed back to the client (`devOtp`) and shown on the sign-in screen
-      # for every login path. This also lets the service boot with the
-      # console providers instead of refusing to start.
-      # ⚠ REMOVE THIS (and set SMS_PROVIDER/EMAIL_PROVIDER to real vendors)
-      # before real users sign in — while it is on, anyone who knows an email
-      # or phone number can read that account's code out of the response.
-      - key: ALLOW_DEV_OTP_IN_PRODUCTION
-        value: "true"
+      # ── One-time sign-in codes (OTP) ─────────────────────────────
+      # Production never returns a code in an API response; codes are only
+      # delivered by a real provider. Without one, the service still starts,
+      # OTP sign-in answers 503, and password / Google sign-in keep working.
+      # To enable OTP, pick a provider here and enter its secrets in the
+      # Render dashboard (Environment tab) — never in this file.
+      #   Email: EMAIL_PROVIDER=resend + RESEND_API_KEY + EMAIL_FROM
+      #   SMS:   SMS_PROVIDER=twilio   + TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + TWILIO_FROM_NUMBER
+      # A provider named here but missing its secrets stops the service from
+      # starting, so a half-finished setup is caught at deploy time.
+      - key: EMAIL_PROVIDER
+        sync: false
+      - key: SMS_PROVIDER
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      # Real Google sign-in (verified server-side against this client id).
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      # Same random value on both services (e.g. `openssl rand -hex 32`). Lets
+      # the frontend's session-refresh proxy — which limits failed refreshes
+      # per real client — skip this service's per-address failure limit.
+      # Optional; without it the proxy is simply one more address.
+      - key: FRONTEND_PROXY_SECRET
+        sync: false
 
   - type: web
     name: school-erp-frontend
@@ -55,12 +78,20 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # ── TESTING PHASE ONLY — pair of ALLOW_DEV_OTP_IN_PRODUCTION above ──
-      # Keeps the demo "Continue with Google" popup available in this build.
-      # The OTP hint on the sign-in screen needs no flag here: it renders
-      # whenever the backend echoes a code. Remove both before launch.
-      - key: NEXT_PUBLIC_ALLOW_DEV_OTP
-        value: "true"
+      # Real Google sign-in. The demo Google popup and the on-screen OTP hint
+      # exist only in development builds; no flag enables them here.
+      - key: NEXT_PUBLIC_GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: NEXTAUTH_SECRET
+        sync: false
+      # Must equal the backend's FRONTEND_PROXY_SECRET. Server-side only —
+      # never prefix it NEXT_PUBLIC_.
+      - key: FRONTEND_PROXY_SECRET
+        sync: false
       - key: NEXT_PUBLIC_BACKEND_URL
         fromService:
           type: web

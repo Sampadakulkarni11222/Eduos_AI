@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**162 tools** — 80 GET, 26 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION.
+**173 tools** — 84 GET, 33 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION.
 
-Risk mix: 86 LOW, 47 MEDIUM, 28 HIGH, 1 CRITICAL.
+Risk mix: 90 LOW, 30 HIGH, 52 MEDIUM, 1 CRITICAL.
 
-Status: 160 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 171 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -28,12 +28,12 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
 | `SUPER_ADMIN` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `ADMIN` | 161 | 80 | 26 | 15 | 30 | 10 | 28 | 75 |
-| `PRINCIPAL` | 73 | 53 | 4 | 6 | 9 | 1 | 7 | 20 |
-| `TEACHER` | 58 | 41 | 3 | 2 | 11 | 1 | 7 | 17 |
-| `PARENT` | 44 | 41 | 1 | 1 | 0 | 1 | 2 | 2 |
+| `ADMIN` | 172 | 84 | 33 | 15 | 30 | 10 | 30 | 82 |
+| `PRINCIPAL` | 77 | 53 | 8 | 6 | 9 | 1 | 7 | 24 |
+| `TEACHER` | 56 | 41 | 3 | 1 | 10 | 1 | 6 | 15 |
+| `PARENT` | 43 | 40 | 1 | 1 | 0 | 1 | 2 | 2 |
 | `STUDENT` | 63 | 50 | 7 | 0 | 1 | 5 | 0 | 8 |
-| `FINANCE` | 30 | 21 | 4 | 1 | 4 | 0 | 8 | 9 |
+| `FINANCE` | 31 | 21 | 5 | 1 | 4 | 0 | 8 | 10 |
 | `LIBRARIAN` | 28 | 21 | 1 | 1 | 4 | 1 | 1 | 7 |
 | `WARDEN` | 29 | 21 | 2 | 3 | 3 | 0 | 0 | 7 |
 | `COUNSELLOR (custom, example)` | 18 | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
@@ -43,9 +43,9 @@ Custom roles are database rows, created per school, so none can be listed here i
 <details><summary>High-risk actions visible to each role</summary>
 
 - **SUPER_ADMIN** (0): _none_
-- **ADMIN** (28): `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `create_fee_structure`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`
+- **ADMIN** (30): `add_guardian`, `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `create_fee_structure`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`, `request_extra_seats`
 - **PRINCIPAL** (7): `transition_fee_plan`, `publish_marks`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_document`
-- **TEACHER** (7): `mark_attendance`, `bulk_mark_attendance`, `enter_marks`, `publish_marks`, `create_announcement`, `update_announcement`, `delete_document`
+- **TEACHER** (6): `mark_attendance`, `bulk_mark_attendance`, `enter_marks`, `publish_marks`, `create_announcement`, `delete_document`
 - **PARENT** (2): `upsert_medical_record`, `remove_medical_record`
 - **STUDENT** (0): _none_
 - **FINANCE** (8): `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `record_payment`, `refund_payment`, `transition_fee_plan`, `create_fee_structure`
@@ -59,6 +59,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 
 | Tool | Module | Operation | Permission | Scope | Risk | Confirm | Status |
 |---|---|---|---|---|---|---|---|
+| `add_guardian` | Students | CREATE | `students.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `allocate_hostel_bed` | Hostel | ACTION | `hostel.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `anonymise_student` | Students | DELETE | `students.manage` | ALL | CRITICAL | REQUIRED | AVAILABLE |
 | `apply_for_leave` | Leave | CREATE | `leave.apply` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -70,6 +71,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `cancel_cocurricular_request` | Student requests | DELETE | `cocurricular.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `cancel_profile_edit_request` | Student requests | DELETE | `profile.edit.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `cancel_transport_request` | Transport | DELETE | `transport.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
+| `create_academic_year` | Academics | CREATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_admission_lead` | Admissions | CREATE | `admissions.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_announcement` | Communication | CREATE | `announcements.publish` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `create_assignment` | Assignments | CREATE | `assignments.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -81,11 +83,14 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `create_fee_head` | Fees | CREATE | `fees.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_fee_plan` | Fees | CREATE | `fees.plan.request` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `create_fee_structure` | Fees | CREATE | `fees.structure.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
+| `create_grade` | Academics | CREATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_hostel_inquiry` | Hostel | CREATE | `hostel.read` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
 | `create_hostel_room` | Hostel | CREATE | `hostel.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_invoice` | Fees | CREATE | `fees.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `create_section` | Academics | CREATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_student` | Students | CREATE | `students.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `create_subject` | Academics | CREATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `create_term` | Academics | CREATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_ticket` | Tickets | CREATE | `tickets.create` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
 | `create_transport_route` | Transport | CREATE | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_transport_stop` | Transport | CREATE | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -100,7 +105,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `enroll_in_transport` | Transport | ACTION | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `enroll_student` | Students | CREATE | `enrollments.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `enter_marks` | Exams | ACTION | `marks.enter` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
-| `generate_homework` | Assignments | ACTION | `assignments.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `generate_homework` | Assignments | ACTION | `assignments.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `generate_invoices` | Fees | ACTION | `fees.manage` | ALL | HIGH | CONDITIONAL | AVAILABLE |
 | `get_absent_students` | Attendance | GET | `attendance.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_admission_lead` | Admissions | GET | `admissions.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -120,7 +125,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_dashboard` | Analytics | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_editable_fields` | Student requests | GET | `profile.edit.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_fee_plans` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
-| `get_fee_statistics` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_fee_statistics` | Fees | GET | `fees.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_fee_structures` | Fees | GET | `fees.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_fees` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_growth_score` | Analytics | GET | `ai.insights.read` | OWN or ALL | LOW | NOT_REQUIRED | PARTIAL |
@@ -133,7 +138,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_marks_grid` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_medical_record` | Medical | GET | `medical.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_book_requests` | Library | GET | `library.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
-| `get_my_bus` | Transport | GET | `transport.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_my_bus` | Transport | GET | `transport.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_classes` | Academics | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_electives` | Registrations | GET | `registrations.apply` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_profile` | Profile | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -149,6 +154,10 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_registration_reviews` | Registrations | GET | `registrations.review` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_report_card` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_results` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_school_customization` | Customization | GET | `settings.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_school_domain` | Domains | GET | `domains.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_seat_requests` | Seats | GET | `seats.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_seat_summary` | Seats | GET | `seats.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_student` | Students | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_student_attendance` | Attendance | GET | `attendance.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_student_overview` | Students | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -194,6 +203,8 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `reply_to_ticket` | Tickets | ACTION | `tickets.respond` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `request_book` | Library | CREATE | `library.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `request_cocurricular` | Student requests | CREATE | `cocurricular.request` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
+| `request_extra_seats` | Seats | CREATE | `seats.request` | ALL | HIGH | REQUIRED | AVAILABLE |
+| `request_payment_change` | Fees | CREATE | `fees.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `request_profile_edit` | Student requests | CREATE | `profile.edit.request` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
 | `request_transport_route` | Transport | CREATE | `transport.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `return_book` | Library | ACTION | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -203,7 +214,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `submit_assignment` | Assignments | ACTION | `submissions.submit` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `transition_fee_plan` | Fees | ACTION | `fees.read` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_admission_lead` | Admissions | ACTION | `admissions.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
-| `update_announcement` | Communication | UPDATE | `announcements.publish` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
+| `update_announcement` | Communication | UPDATE | `announcements.publish` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_book` | Library | UPDATE | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_course_material` | Documents | UPDATE | `materials.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_enrollment_status` | Students | UPDATE | `enrollments.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
@@ -373,6 +384,102 @@ Create a class section within a grade, optionally assigning a class teacher. Nee
 **Input**
 
 `gradeId`: string **(required)**<br>`name`: string **(required)** — e.g. "A"<br>`classTeacherId`: string — Teacher profile id
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `create_academic_year`
+
+Create an academic year, e.g. "2027-28", with its start and end dates. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `academics.structure.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `academics.service.createYear()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_academic_year` |
+
+**Input**
+
+`name`: string **(required)** — e.g. "2027-28"<br>`startsOn`: string **(required)**<br>`endsOn`: string **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `create_term`
+
+Create a term inside an academic year, e.g. "Term 1", with its start and end dates. Use list_academic_years for the year id. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `academics.structure.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `academics.service.createTerm()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_term` |
+
+**Input**
+
+`academicYearId`: string **(required)**<br>`name`: string **(required)** — e.g. "Term 1"<br>`startsOn`: string **(required)**<br>`endsOn`: string **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `create_grade`
+
+Create a grade (a class level such as "Class 5") with its level number, used to order grades. Sections are added to it with create_section. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `academics.structure.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `academics.service.createGrade()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_grade` |
+
+**Input**
+
+`name`: string **(required)** — e.g. "Class 5"<br>`level`: integer **(required)** — e.g. 5 for Class 5
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `create_subject`
+
+Add a subject to the school's subject list, e.g. "Physics", with an optional short code. Teaching it in a class is a separate step, assign_teacher_to_subject. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `academics.structure.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `academics.service.createSubject()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_subject` |
+
+**Input**
+
+`name`: string **(required)** — e.g. "Physics"<br>`code`: string — e.g. "PHY"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -576,7 +683,7 @@ Move an admission enquiry to a new stage, or change its notes, assignee or next 
 
 ### `get_at_risk_students`
 
-Students flagged at risk from the last 30 days of attendance, published marks and overdue fees. To answer "who is below 75% attendance", pass attendanceBelowPct: 75 — it returns each student whose day-level attendance over the last 30 days is below that figure, with the percentage. Students with no attendance marked in the last 30 days cannot be assessed and are not included. Read-only.
+Students flagged at risk from the last 30 days of attendance, published marks and overdue fees. Use for school-wide or class-wide queries asking which students are below an attendance percentage threshold, such as "which students are below 75% attendance" (pass attendanceBelowPct: 75) — it returns each student whose day-level attendance over the last 30 days is below that figure, with the percentage. Do not use for one named student. Students with no attendance marked in the last 30 days cannot be assessed and are not included. Read-only.
 
 | | |
 |---|---|
@@ -666,7 +773,7 @@ Homework and assignments. For a student or parent with no filters, the work stil
 
 **Input**
 
-`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — Narrow to one subject, e.g. "Mathematics"
+`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — Narrow to one subject, e.g. "Mathematics"<br>`status`: string — one of: PENDING, SUBMITTED, ALL — For a student or parent: their work still to submit (PENDING), already handed in (SUBMITTED), or both
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -698,7 +805,7 @@ The submissions for one assignment, with each student's status and marks where g
 
 ### `create_assignment`
 
-Set an assignment or homework for a class you teach. Every student in that section sees it, so it needs confirmation.
+Set an assignment or homework for a class. Identify the class and subject by name -- "Mathematics" for "Class 5-A" -- or by subjectOfferingId when you have one. Every student in that section sees it, so it needs confirmation.
 
 | | |
 |---|---|
@@ -708,13 +815,13 @@ Set an assignment or homework for a class you teach. Every student in that secti
 | **Permission** | `assignments.manage` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `assignment.service.create()` |
+| **EduOS service** | `homework.service.resolveOffering() + assignment.service.create()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.create_assignment` |
 
 **Input**
 
-`subjectOfferingId`: string **(required)** — The class and subject it is for<br>`title`: string **(required)**<br>`description`: string<br>`dueAt`: string **(required)**<br>`maxMarks`: integer<br>`type`: string — one of: HOMEWORK, PROJECT, WORKSHEET, LAB<br>`chapter`: string
+`subjectOfferingId`: string — The class and subject it is for, when known<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — The subject, as a person names it, e.g. "Mathematics"<br>`title`: string **(required)** — What the work is -- the task, or its topic<br>`description`: string<br>`dueAt`: string **(required)** — When it must be handed in<br>`maxMarks`: integer<br>`type`: string — one of: HOMEWORK, PROJECT, WORKSHEET, LAB<br>`chapter`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -730,7 +837,7 @@ Draft homework with AI for a class you teach and set it. The draft is written be
 | **Risk** | MEDIUM |
 | **Confirmation** | REQUIRED |
 | **Permission** | `assignments.manage` |
-| **Scope** | OWN or ALL |
+| **Scope** | ALL |
 | **Affects others** | Yes |
 | **EduOS service** | `homework.service.draftHomework() + commitHomework()` |
 | **Status** | AVAILABLE |
@@ -746,7 +853,7 @@ Draft homework with AI for a class you teach and set it. The draft is written be
 
 ### `grade_submission`
 
-Record a mark and feedback against one student's assignment submission. Needs confirmation.
+Grade one student's assignment submission: record a mark and optional feedback. Name the student, and the assignment by its title or subject when they have submitted more than one. Needs confirmation.
 
 | | |
 |---|---|
@@ -762,7 +869,7 @@ Record a mark and feedback against one student's assignment submission. Needs co
 
 **Input**
 
-`assignmentId`: string **(required)**<br>`enrollmentId`: string **(required)**<br>`marks`: number **(required)**<br>`feedback`: string
+`assignmentId`: string — The assignment, when the id is already known<br>`enrollmentId`: string — The student's enrolment, when the id is already known<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`title`: string — The assignment as a person names it, e.g. "Fractions worksheet"<br>`subject`: string — The subject of the assignment, e.g. "Mathematics"<br>`marks`: number **(required)**<br>`feedback`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -770,7 +877,7 @@ Record a mark and feedback against one student's assignment submission. Needs co
 
 ### `submit_assignment`
 
-Submit an assignment on the caller's own behalf. Needs confirmation, because a submission is a deadline-bearing act the student should mean to make.
+Submit one of the caller's own assignments. Name it by its subject or title, e.g. "my Mathematics assignment"; with only one still to submit, no name is needed. Needs confirmation, because a submission is a deadline-bearing act the student should mean to make.
 
 | | |
 |---|---|
@@ -780,13 +887,13 @@ Submit an assignment on the caller's own behalf. Needs confirmation, because a s
 | **Permission** | `submissions.submit` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `assignment.service.submit()` |
+| **EduOS service** | `assignment.service.list() + submit()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.submit_assignment` |
 
 **Input**
 
-`assignmentId`: string **(required)**<br>`enrollmentId`: string — Omit to use the caller's own enrolment<br>`attachments`: array
+`assignmentId`: string — Omit it and name the subject or title instead<br>`subject`: string — The subject, e.g. "Mathematics"<br>`title`: string — The assignment title, when the subject has several<br>`link`: string — A link to the work, e.g. a Google Drive link<br>`enrollmentId`: string — Omit to use the caller's own enrolment<br>`attachments`: array
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -796,7 +903,7 @@ Submit an assignment on the caller's own behalf. Needs confirmation, because a s
 
 ### `get_student_attendance`
 
-A student's attendance record: days present, working days and the percentage. Name a student to look up theirs; name nobody and it answers for the caller (or their child). Read-only.
+Use only when the user asks about the attendance of one specific named student: days present, working days and the percentage. Name a student to look up theirs; name nobody and it answers for the caller (or their child). Do not use for cohort queries, percentage-threshold queries, or "which students" questions (use get_at_risk_students instead). Read-only.
 
 | | |
 |---|---|
@@ -844,7 +951,7 @@ Today's absence snapshot for the whole school: how many students are absent, pre
 
 ### `get_attendance_roster`
 
-Attendance for one whole class on one date: every enrolled student with the status marked for them, if any, and who is absent. This is the class-level answer — use it for "show the attendance of Class 5-A" and "who is absent in Class 5-A today". Name the class with className; sectionId is for when an id is already known. Read-only.
+Attendance for one whole class, for one date or one calendar month: on a date, every enrolled student with the status marked for them and who is absent; for a month, the class summary. This is the class-level answer — use it for "show the attendance of Class 5-A" and "who is absent in Class 5-A today". There is no class figure over a longer range. Name the class with className; sectionId is for when an id is already known. Read-only.
 
 | | |
 |---|---|
@@ -1052,7 +1159,7 @@ Record attendance on a date. Say who in one of two ways: `students` — name the
 
 **Input**
 
-`students`: array — Students named directly, each with the status to record<br>`sectionId`: string — The class section, when giving entries<br>`entries`: array — One entry per enrolment, when marking a register from get_attendance_roster<br>`date`: string — Defaults to today<br>`periodNo`: integer — Omit for day-level attendance
+`students`: array — Students named directly, each with the status to record<br>`everyone`: object — Mark every pupil on the named class register with this status; pupils named in `students` are the exceptions<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section, when giving entries<br>`entries`: array — One entry per enrolment, when marking a register from get_attendance_roster<br>`date`: string — Defaults to today<br>`periodNo`: integer — Omit for day-level attendance
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1136,7 +1243,7 @@ _(no arguments)_
 
 ### `create_announcement`
 
-Publish an announcement. The audience is decided by the school's own rules from the publisher's permissions — a teacher reaches the classes they teach, a school-wide publisher the school. This is visible to many people at once, so it always needs confirmation and the summary names the real audience.
+Publish or send an announcement. Name a class to address that class alone; otherwise the audience is decided by the school's own rules from the publisher's permissions — a teacher reaches the classes they teach, a school-wide publisher the school. This is visible to many people at once, so it always needs confirmation and the summary names the real audience.
 
 | | |
 |---|---|
@@ -1152,7 +1259,7 @@ Publish an announcement. The audience is decided by the school's own rules from 
 
 **Input**
 
-`title`: string **(required)**<br>`content`: string<br>`audience`: object — Optional narrowing. Omit to let the school's rules decide what this publisher may address.
+`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`title`: string **(required)**<br>`content`: string<br>`audience`: object — Optional narrowing. Omit to let the school's rules decide what this publisher may address.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1168,7 +1275,7 @@ Correct an announcement the caller posted — its message, or its title. Identif
 | **Risk** | HIGH |
 | **Confirmation** | REQUIRED |
 | **Permission** | `announcements.publish` |
-| **Scope** | OWN or ALL |
+| **Scope** | ALL |
 | **Affects others** | Yes |
 | **EduOS service** | `announcement.service.update()` |
 | **Status** | AVAILABLE |
@@ -1278,6 +1385,32 @@ Send one WhatsApp message to one number through the school's WhatsApp account. T
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+## Customization
+
+### `get_school_customization`
+
+This school's own branding and the option lists its forms offer — houses, zones, and any other dropdown the platform has configured for it. Use it to answer what values a field accepts at this school. Read-only, and always about the caller's own school.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `settings.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `customization.service.getCustomization()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_school_customization` |
+
+**Input**
+
+`dropdownKey`: string — Narrow to one list, e.g. "house". Omit for all of them.
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
 ## Documents
 
 ### `list_documents`
@@ -1316,13 +1449,13 @@ Permanently delete a published document — a report card, certificate, letter o
 | **Permission** | `materials.manage` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `document.service.deleteForActor()` |
+| **EduOS service** | `document.service.listForActor() + deleteForActor()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.delete_document` |
 
 **Input**
 
-`documentId`: string **(required)** — From list_documents
+`documentId`: string — From list_documents<br>`title`: string — The document as a person names it. An ambiguous title is refused, never guessed.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1364,17 +1497,43 @@ Correct course material already published — its title, the uploaded file it po
 | **Permission** | `materials.manage` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `document.service.updateForActor()` |
+| **EduOS service** | `document.service.listForActor() + updateForActor()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.update_course_material` |
 
 **Input**
 
-`documentId`: string **(required)** — From list_documents<br>`title`: string<br>`fileUrl`: string — The path the upload endpoint returned<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string<br>`mimeType`: string<br>`visibleToRoles`: array
+`documentId`: string — From list_documents<br>`title`: string<br>`newTitle`: string — The new title, when renaming material named by its current title<br>`fileUrl`: string — The path the upload endpoint returned<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string<br>`mimeType`: string<br>`visibleToRoles`: array
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+## Domains
+
+### `get_school_domain`
+
+This school's portal address — a platform subdomain or its own custom domain — whether it is verified, whether its certificate works, whether it is live, the DNS records still required, and the domain from the website on the School Admin profile ("Not Provided" when there is none) with whether it has been applied. Read-only, and always about the caller's own school.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `domains.read` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `domain.service.getDomain()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_school_domain` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
 
 ## Exams
 
@@ -1420,7 +1579,7 @@ A student's report card: subject marks, percentage, grade and GPA for a publishe
 
 **Input**
 
-`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`enrollmentId`: string<br>`exam`: string
+`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`enrollmentId`: string<br>`exam`: string<br>`subject`: string — Narrow to one subject, e.g. "Mathematics"
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -1596,7 +1755,7 @@ Add a subject to an exam, with its maximum marks and exam date. Needs confirmati
 
 ### `enter_marks`
 
-Record marks for students in one exam subject. Marks stay unpublished until publish_marks, so students do not see them yet. Writes to other people's academic records, so it needs confirmation.
+Record, enter, submit or update marks for students in one exam paper. Name the paper by class, subject and exam, and each student by name or admission number with their marks; re-entering a student's marks updates them. Marks stay unpublished until publish_marks, so students do not see them yet, and marks already published cannot be changed. Writes to other people's academic records, so it needs confirmation.
 
 | | |
 |---|---|
@@ -1612,7 +1771,7 @@ Record marks for students in one exam subject. Marks stay unpublished until publ
 
 **Input**
 
-`examSubjectId`: string **(required)**<br>`entries`: array **(required)**
+`examSubjectId`: string — The exam paper, when the id is already known<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — The subject of the paper, e.g. "Mathematics"<br>`exam`: string — The exam, e.g. "Unit Test 2"<br>`students`: array — Students named directly, each with their marks<br>`entries`: array
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1636,7 +1795,7 @@ Publish the marks for one exam subject, making them visible to students and pare
 
 **Input**
 
-`examSubjectId`: string **(required)**
+`examSubjectId`: string — The exam paper, when the id is already known<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — The subject of the paper, e.g. "Mathematics"<br>`exam`: string — The exam, e.g. "Unit Test 2"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1662,7 +1821,7 @@ Unpaid and partly paid fee invoices with the amount still owed on each, and the 
 
 **Input**
 
-`search`: string — One student by name or admission number, or an invoice number<br>`sectionId`: string<br>`academicYearId`: string<br>`limit`: integer — Invoices to return, default 25
+`search`: string — One student by name or admission number, or an invoice number<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string<br>`academicYearId`: string<br>`limit`: integer — Invoices to return, default 25
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -1678,7 +1837,7 @@ Fee collection statistics: total billed, total collected, collection percentage,
 | **Risk** | LOW |
 | **Confirmation** | NOT_REQUIRED |
 | **Permission** | `fees.read` |
-| **Scope** | OWN or ALL |
+| **Scope** | ALL |
 | **Affects others** | No |
 | **EduOS service** | `fee.service.getSummary()` |
 | **Status** | AVAILABLE |
@@ -1998,7 +2157,7 @@ Record a fee payment received against an invoice. Name the invoice by its number
 
 **Input**
 
-`invoiceId`: string — Preferred when known<br>`invoiceNo`: string — Alternative to invoiceId<br>`amountPaise`: integer **(required)** — Whole paise. ₹500 is 50000.<br>`mode`: string **(required)** — one of: CASH, CHEQUE, DD, BANK<br>`paidOn`: string<br>`receiptNo`: string<br>`notes`: string<br>`instrument`: object — Required for CHEQUE, DD and BANK: number, bankName, instrumentDate and a proofUrl (image or PDF). Not used for CASH.
+`invoiceId`: string — Preferred when known<br>`invoiceNo`: string — Alternative to invoiceId<br>`amountPaise`: integer **(required)** — Whole paise. ₹500 is 50000.<br>`mode`: string — one of: CASH, CHEQUE, DD, BANK — Cash unless another mode is named<br>`paidOn`: string<br>`receiptNo`: string<br>`notes`: string<br>`instrument`: object — Required for CHEQUE, DD and BANK: number, bankName, instrumentDate and a proofUrl (image or PDF). Not used for CASH.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2071,6 +2230,30 @@ Refund a captured payment and deduct it from the invoice. Needs confirmation. Th
 **Input**
 
 `paymentId`: string **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `request_payment_change`
+
+Ask for a correction to a published (finalised) payment — one field, its new value and why. Nothing changes until someone with payment-approval rights approves it. Editable fields: amountPaise, mode, paidOn, receiptNo, notes and the instrument details. A payment still awaiting approval is corrected with update_payment instead. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `fees.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `fee.service.createPaymentChangeRequest()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.request_payment_change` |
+
+**Input**
+
+`paymentId`: string **(required)**<br>`field`: string **(required)** — one of: amountPaise, mode, paidOn, receiptNo, notes, instrument.number, instrument.referenceNo, instrument.bankName, instrument.instrumentDate<br>`requestedValue`: string **(required)** — The new value; paise for amountPaise, YYYY-MM-DD for dates<br>`reason`: string **(required)**
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2264,7 +2447,7 @@ Hostel rooms with capacity, beds occupied and beds free — use it to find a roo
 
 **Input**
 
-`type`: string — one of: BOYS, GIRLS, STAFF, GENERAL<br>`status`: string — one of: ACTIVE, MAINTENANCE, CLOSED
+`roomNo`: string — The room as a person names it, e.g. "101"<br>`type`: string — one of: BOYS, GIRLS, STAFF, GENERAL<br>`status`: string — one of: ACTIVE, MAINTENANCE, CLOSED
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -2272,7 +2455,7 @@ Hostel rooms with capacity, beds occupied and beds free — use it to find a roo
 
 ### `list_hostel_allocations`
 
-Bed allocations — which student is in which room, active or vacated. Read-only.
+Bed allocations — which student is in which room, active or vacated. Narrow to one room by number, or to one student by name or admission number. Read-only.
 
 | | |
 |---|---|
@@ -2288,7 +2471,7 @@ Bed allocations — which student is in which room, active or vacated. Read-only
 
 **Input**
 
-`roomId`: string<br>`status`: string — one of: ACTIVE, VACATED — Default ACTIVE
+`roomId`: string<br>`roomNo`: string — The room as a person names it, e.g. "101"<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`status`: string — one of: ACTIVE, VACATED — Default ACTIVE
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -2354,13 +2537,13 @@ Change a hostel room's number, block, floor, capacity, type, status or amenities
 | **Permission** | `hostel.manage` |
 | **Scope** | ALL |
 | **Affects others** | No |
-| **EduOS service** | `hostel.service.updateRoom() — behind an MCP field allow-list` |
+| **EduOS service** | `hostel.service.listRooms() + updateRoom() — behind an MCP field allow-list` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.update_hostel_room` |
 
 **Input**
 
-`roomId`: string **(required)**<br>`roomNo`: string<br>`block`: string<br>`floor`: string<br>`capacity`: integer<br>`type`: string — one of: BOYS, GIRLS, STAFF, GENERAL<br>`status`: string — one of: ACTIVE, MAINTENANCE, CLOSED<br>`amenities`: array
+`roomId`: string<br>`roomNo`: string<br>`block`: string<br>`floor`: string<br>`capacity`: integer<br>`type`: string — one of: BOYS, GIRLS, STAFF, GENERAL<br>`status`: string — one of: ACTIVE, MAINTENANCE, CLOSED<br>`amenities`: array
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2432,7 +2615,7 @@ Allocate a bed in a hostel room to a student, named by name, admission number or
 
 **Input**
 
-`roomId`: string **(required)**<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`academicYearId`: string<br>`allottedAt`: string
+`roomId`: string<br>`roomNo`: string — The room as a person names it, e.g. "101"<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`academicYearId`: string<br>`allottedAt`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2456,7 +2639,7 @@ Vacate a hostel allocation, freeing the bed. An allocation already vacated is re
 
 **Input**
 
-`allocationId`: string **(required)**
+`allocationId`: string<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2524,13 +2707,13 @@ Approve or reject somebody's leave application, with optional remarks. Needs con
 | **Permission** | `leave.review` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `leave.service.review()` |
+| **EduOS service** | `leave.service.listForReview() + review()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.review_leave` |
 
 **Input**
 
-`leaveId`: string **(required)** — From get_leave_requests<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`remarks`: string
+`requestId`: string — From get_leave_requests. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`leaveId`: string — Alternative to requestId<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`remarks`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2604,7 +2787,7 @@ Search the library catalog by title, author, ISBN, category or publisher, with h
 
 **Input**
 
-`search`: string<br>`category`: string<br>`author`: string<br>`resourceKind`: string — one of: BOOK, NOTE, QUESTION_PAPER<br>`availableOnly`: boolean — Only items with a copy on the shelf<br>`limit`: integer
+`search`: string — Title, author, ISBN, category or publisher<br>`category`: string<br>`author`: string<br>`resourceKind`: string — one of: BOOK, NOTE, QUESTION_PAPER<br>`availableOnly`: boolean — Only items with a copy on the shelf<br>`limit`: integer
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -2612,7 +2795,7 @@ Search the library catalog by title, author, ISBN, category or publisher, with h
 
 ### `get_book`
 
-One catalog item in full, with total and available copies. Read-only.
+One catalog item in full, with total and available copies. Name it by title or by id. Use it for "how many copies of X are available". Read-only.
 
 | | |
 |---|---|
@@ -2622,13 +2805,13 @@ One catalog item in full, with total and available copies. Read-only.
 | **Permission** | `library.read` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `library.service.getBookById()` |
+| **EduOS service** | `library.service.listBooks() + getBookById()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.get_book` |
 
 **Input**
 
-`bookId`: string **(required)**
+`bookId`: string<br>`title`: string — The item as a person names it, e.g. "Clean Code". An ambiguous title is refused, never guessed.
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -2694,13 +2877,13 @@ Correct a catalog entry — title, author, ISBN, category, publisher, year or to
 | **Permission** | `library.manage` |
 | **Scope** | ALL |
 | **Affects others** | No |
-| **EduOS service** | `library.service.updateBook() — behind an MCP field allow-list` |
+| **EduOS service** | `library.service.listBooks() + updateBook() — behind an MCP field allow-list` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.update_book` |
 
 **Input**
 
-`bookId`: string **(required)**<br>`title`: string<br>`author`: string<br>`isbn`: string<br>`category`: string<br>`publisher`: string<br>`publishedYear`: integer<br>`totalCopies`: integer
+`bookId`: string<br>`title`: string<br>`author`: string<br>`isbn`: string<br>`category`: string<br>`publisher`: string<br>`publishedYear`: integer<br>`totalCopies`: integer
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2718,13 +2901,13 @@ Remove an item from the library catalog. It is hidden from the catalog, not eras
 | **Permission** | `library.manage` |
 | **Scope** | ALL |
 | **Affects others** | No |
-| **EduOS service** | `library.service.deleteBook()` |
+| **EduOS service** | `library.service.listBooks() + deleteBook()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.delete_book` |
 
 **Input**
 
-`bookId`: string **(required)**
+`bookId`: string<br>`title`: string — The item as a person names it, e.g. "Clean Code". An ambiguous title is refused, never guessed.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2748,7 +2931,7 @@ Lend a library item to a student until a due date. Name the student by name, adm
 
 **Input**
 
-`bookId`: string **(required)**<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`dueAt`: string **(required)** — When it must be returned
+`bookId`: string<br>`title`: string — The item as a person names it, e.g. "Clean Code". An ambiguous title is refused, never guessed.<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`dueAt`: string — When it must be returned
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2756,7 +2939,7 @@ Lend a library item to a student until a due date. Name the student by name, adm
 
 ### `return_book`
 
-Record the return of a lent item. Returning an item already returned is refused rather than counted twice. Needs confirmation.
+Record the return of a lent item. Name the item by title, and the borrower by name if more than one copy is out. Returning an item already returned is refused rather than counted twice. Needs confirmation.
 
 | | |
 |---|---|
@@ -2766,13 +2949,13 @@ Record the return of a lent item. Returning an item already returned is refused 
 | **Permission** | `library.manage` |
 | **Scope** | ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `library.service.returnBook()` |
+| **EduOS service** | `library.service.listIssues() + returnBook()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.return_book` |
 
 **Input**
 
-`issueId`: string **(required)** — From list_book_issues
+`issueId`: string — From list_book_issues<br>`title`: string — The item as a person names it, e.g. "Clean Code". An ambiguous title is refused, never guessed.<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2780,7 +2963,7 @@ Record the return of a lent item. Returning an item already returned is refused 
 
 ### `request_book`
 
-Ask the library to issue a book to the caller. The book must be a physical copy in this school's catalogue — an online resource is read where it lives and cannot be issued. The request goes to the librarian and changes nothing until it is approved, so it runs without confirmation. Use list_books to find the book id.
+Ask the library to issue a book to the caller. Name it by title or by id. The book must be a physical copy in this school's catalogue — an online resource is read where it lives and cannot be issued. The request goes to the librarian and changes nothing until it is approved, so it runs without confirmation.
 
 | | |
 |---|---|
@@ -2790,13 +2973,13 @@ Ask the library to issue a book to the caller. The book must be a physical copy 
 | **Permission** | `library.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `library.service.requestBook()` |
+| **EduOS service** | `library.service.listBooks() + requestBook()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.request_book` |
 
 **Input**
 
-`bookId`: string **(required)** — From list_books
+`bookId`: string — From list_books<br>`title`: string — The book as a person names it, e.g. "Introduction to Algorithms". An ambiguous title is refused, never guessed.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2852,7 +3035,7 @@ Book requests waiting for the librarian to decide, with who asked and whether a 
 
 ### `decide_book_request`
 
-Approve or reject a book request. Approving issues the book to the student and takes a copy off the shelf; if no copy is free the approval is refused and the request stays waiting. Use get_book_requests to find the request id. Needs confirmation.
+Approve or reject a book request. Name the request by the student who made it, by the book, or by id. Approving issues the book to the student and takes a copy off the shelf; if no copy is free the approval is refused and the request stays waiting. Needs confirmation.
 
 | | |
 |---|---|
@@ -2862,13 +3045,13 @@ Approve or reject a book request. Approving issues the book to the student and t
 | **Permission** | `library.manage` |
 | **Scope** | ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `library.service.decideBookRequest()` |
+| **EduOS service** | `library.service.listBookRequestsForReview() + decideBookRequest()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.decide_book_request` |
 
 **Input**
 
-`requestId`: string **(required)** — From get_book_requests<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string — Shown to the student with the decision<br>`dueAt`: string — When the book is due back; defaults to a fortnight from today
+`requestId`: string — From get_book_requests<br>`studentName`: string — The student who asked, e.g. "Rahul". More than one pending request matching is refused, never guessed.<br>`title`: string — The book that was asked for<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string — Shown to the student with the decision<br>`dueAt`: string — When the book is due back; defaults to a fortnight from today
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2876,7 +3059,7 @@ Approve or reject a book request. Approving issues the book to the student and t
 
 ### `cancel_book_request`
 
-Withdraw the caller's own book request, while the librarian has not yet decided on it. A request already approved or rejected cannot be withdrawn. Use get_my_book_requests to find the request id. Needs confirmation.
+Withdraw the caller's own book request, while the librarian has not yet decided on it. A request already approved or rejected cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.
 
 | | |
 |---|---|
@@ -2886,13 +3069,13 @@ Withdraw the caller's own book request, while the librarian has not yet decided 
 | **Permission** | `library.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `library.service.cancelBookRequest()` |
+| **EduOS service** | `library.service.listMyBookRequests() + cancelBookRequest()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.cancel_book_request` |
 
 **Input**
 
-`requestId`: string **(required)** — From get_my_book_requests
+`requestId`: string — From get_my_book_requests. Omit it when you have only one pending request.<br>`title`: string — The book the request is for, e.g. "Clean Code"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3076,7 +3259,7 @@ _(no arguments)_
 
 ### `register_for_elective`
 
-Register the caller for an elective subject. It goes for review before it takes effect. Needs confirmation.
+Register the caller for an elective subject open to their class, named as a person names it, e.g. "Music". It goes for review before it takes effect. Needs confirmation.
 
 | | |
 |---|---|
@@ -3086,13 +3269,13 @@ Register the caller for an elective subject. It goes for review before it takes 
 | **Permission** | `registrations.apply` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `registration.service.register()` |
+| **EduOS service** | `registration.service.listAvailable() + register()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.register_for_elective` |
 
 **Input**
 
-`subjectOfferingId`: string **(required)** — From get_my_electives
+`subjectOfferingId`: string — From get_my_electives. Omit it and name the subject instead.<br>`subject`: string — The elective as a person names it, e.g. "Music"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3100,7 +3283,7 @@ Register the caller for an elective subject. It goes for review before it takes 
 
 ### `withdraw_elective_registration`
 
-Withdraw the caller's own elective registration. Needs confirmation.
+Withdraw the caller's own elective registration. Name the elective by its subject; with only one registration, no name is needed. Needs confirmation.
 
 | | |
 |---|---|
@@ -3110,13 +3293,13 @@ Withdraw the caller's own elective registration. Needs confirmation.
 | **Permission** | `registrations.apply` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `registration.service.withdraw()` |
+| **EduOS service** | `registration.service.listMine() + withdraw()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.withdraw_elective_registration` |
 
 **Input**
 
-`registrationId`: string **(required)**
+`registrationId`: string — From get_my_electives<br>`subject`: string — The elective as a person names it, e.g. "Music"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3134,13 +3317,87 @@ Approve or reject an elective subject registration. Needs confirmation.
 | **Permission** | `registrations.review` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `registration.service.decide()` |
+| **EduOS service** | `registration.service.listForReview() + decide()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.decide_registration` |
 
 **Input**
 
-`registrationId`: string **(required)**<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string
+`requestId`: string — From get_registration_reviews. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`registrationId`: string — Alternative to requestId<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+## Seats
+
+### `get_seat_summary`
+
+How many seats this school has bought, how many the platform has approved for use, how many are in use and how many are free. Also reports the school's own per-seat price — what extra seats would cost it — and seats that are paid for but still waiting for platform approval, which cannot be used yet. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `seats.read` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `seat.service.getSeatSummary()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_seat_summary` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `get_seat_requests`
+
+This school's extra-seat requests and where each one has got to: awaiting payment, paid and waiting for the platform to decide, approved, or rejected. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `seats.read` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `seat.service.listSeatRequests()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_seat_requests` |
+
+**Input**
+
+`status`: string — one of: PENDING_PAYMENT, PAID, APPROVED, REJECTED — Narrow to one stage of the request lifecycle
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `request_extra_seats`
+
+Ask the platform for extra seats for this school. The price is calculated by the server from the seat count and this school's own per-seat rate — it cannot be set here. Raising the request allocates nothing: it has to be paid for on the seat page and then approved by the platform before the seats can be used.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | HIGH |
+| **Confirmation** | REQUIRED |
+| **Permission** | `seats.request` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `seat.service.createSeatRequest()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.request_extra_seats` |
+
+**Input**
+
+`seats`: integer **(required)** — How many extra seats to ask for<br>`reason`: string — Why the school needs them
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3232,13 +3489,13 @@ Approve or reject a co-curricular request. Approving adds it to the student's pr
 | **Permission** | `cocurricular.review` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `cocurricular.service.decide()` |
+| **EduOS service** | `cocurricular.service.listForReview() + decide()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.decide_cocurricular` |
 
 **Input**
 
-`requestId`: string **(required)**<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`rejectionReason`: string
+`requestId`: string — From get_student_requests. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`rejectionReason`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3286,7 +3543,7 @@ Ask for a correction to the caller's own profile. Only first name, last name, da
 
 **Input**
 
-`changes`: object **(required)** — The corrected values<br>`note`: string — Why the correction is needed
+`changes`: object — The corrected values<br>`field`: string — The field to correct, as a person names it, e.g. "address" or "date of birth"<br>`value`: string — The corrected value<br>`note`: string — Why the correction is needed
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3304,13 +3561,13 @@ Approve or reject a profile-correction request. Approving writes the new values 
 | **Permission** | `profile.edit.review` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `profileEdit.service.decide()` |
+| **EduOS service** | `profileEdit.service.listForReview() + decide()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.decide_profile_edit` |
 
 **Input**
 
-`requestId`: string **(required)**<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`rejectionReason`: string
+`requestId`: string — From get_student_requests. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`rejectionReason`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3318,7 +3575,7 @@ Approve or reject a profile-correction request. Approving writes the new values 
 
 ### `cancel_cocurricular_request`
 
-Withdraw the caller's own co-curricular request, while the class teacher has not yet decided on it. A request already approved or rejected cannot be withdrawn. Use list_cocurricular to find the request id. Needs confirmation.
+Withdraw the caller's own co-curricular request, while the class teacher has not yet decided on it. A request already approved or rejected cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.
 
 | | |
 |---|---|
@@ -3328,13 +3585,13 @@ Withdraw the caller's own co-curricular request, while the class teacher has not
 | **Permission** | `cocurricular.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `cocurricular.service.withdraw()` |
+| **EduOS service** | `cocurricular.service.listForStudent() + withdraw()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.cancel_cocurricular_request` |
 
 **Input**
 
-`requestId`: string **(required)** — From list_cocurricular
+`requestId`: string — From list_cocurricular. Omit it when you have only one pending request.<br>`name`: string — The activity, e.g. "football"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3342,7 +3599,7 @@ Withdraw the caller's own co-curricular request, while the class teacher has not
 
 ### `cancel_profile_edit_request`
 
-Withdraw the caller's own profile-correction request, while it has not yet been decided. A request already approved or rejected cannot be withdrawn. Use get_my_profile_edit_requests to find the request id. Needs confirmation.
+Withdraw the caller's own profile-correction request, while it has not yet been decided. A request already approved or rejected cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.
 
 | | |
 |---|---|
@@ -3352,13 +3609,13 @@ Withdraw the caller's own profile-correction request, while it has not yet been 
 | **Permission** | `profile.edit.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `profileEdit.service.withdraw()` |
+| **EduOS service** | `profileEdit.service.listMine() + withdraw()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.cancel_profile_edit_request` |
 
 **Input**
 
-`requestId`: string **(required)** — From get_my_profile_edit_requests
+`requestId`: string — From get_my_profile_edit_requests. Omit it when you have only one pending request.<br>`field`: string — The field the correction is to, e.g. "address"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3392,7 +3649,7 @@ _(no arguments)_
 
 ### `search_students`
 
-Find students by name, admission number or class. Use this first whenever the user names a student but you do not have their id. Returns each match with class, roll number, student id and enrolment id. Read-only.
+The student directory: find students by name, admission number or class, or list the students the caller may see when no search is given. Use this first whenever the user names a student but you do not have their id. Returns each match with class, roll number, student id and enrolment id. Read-only.
 
 | | |
 |---|---|
@@ -3408,7 +3665,7 @@ Find students by name, admission number or class. Use this first whenever the us
 
 **Input**
 
-`query`: string **(required)** — Name, admission number or class, e.g. "Rahul", "OAK-12", "Class 6 A"<br>`sectionId`: string — Restrict to one section<br>`limit`: integer — Default 20
+`query`: string — Name, admission number or class, e.g. "Rahul", "OAK-12", "Class 6 A". Omit to list everyone in scope.<br>`sectionId`: string — Restrict to one section<br>`limit`: integer — Default 20
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -3485,6 +3742,30 @@ The guardians linked to a student — name, relation and whether they are the pr
 **Output** — `{ success: true, data: { … } }`.
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `add_guardian`
+
+Link an existing parent profile to a student as their father, mother or guardian. Once linked, that parent can see the child's attendance, marks and fees, so this always needs confirmation. The guardian's profile id comes from list_users.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | HIGH |
+| **Confirmation** | REQUIRED |
+| **Permission** | `students.manage` |
+| **Scope** | ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `student.service.addGuardian()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.add_guardian` |
+
+**Input**
+
+`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`guardianProfileId`: string **(required)** — The parent's profile id, e.g. from list_users<br>`relation`: string **(required)** — one of: FATHER, MOTHER, GUARDIAN<br>`isPrimary`: boolean — Whether this is the primary contact<br>`pickupAuthorized`: boolean — Whether they may collect the child; defaults to yes
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
 ### `list_enrollments`
 
@@ -3740,13 +4021,13 @@ Post a reply on a support ticket. The other party sees it, so it needs confirmat
 | **Permission** | `tickets.respond` |
 | **Scope** | OWN or ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `ticket.service.reply()` |
+| **EduOS service** | `ticket.service.list() + reply()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.reply_to_ticket` |
 
 **Input**
 
-`ticketId`: string **(required)**<br>`body`: string **(required)**
+`ticketId`: string — From list_tickets<br>`subject`: string — The ticket as a person names it, e.g. "ID card". An ambiguous subject is refused, never guessed.<br>`body`: string **(required)**
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3764,13 +4045,13 @@ Change a ticket's status, priority or assignee. Only those three fields can be c
 | **Permission** | `tickets.manage` |
 | **Scope** | ALL |
 | **Affects others** | No |
-| **EduOS service** | `ticket.service.update() — behind an MCP field allow-list` |
+| **EduOS service** | `ticket.service.list() + update() — behind an MCP field allow-list` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.update_ticket` |
 
 **Input**
 
-`ticketId`: string **(required)**<br>`status`: string — one of: NEW, OPEN, WAITING, RESOLVED, CLOSED<br>`priority`: string<br>`assigneeProfileId`: string
+`ticketId`: string — From list_tickets<br>`subject`: string — The ticket as a person names it, e.g. "ID card". An ambiguous subject is refused, never guessed.<br>`status`: string — one of: NEW, OPEN, WAITING, RESOLVED, CLOSED<br>`priority`: string<br>`assigneeProfileId`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3780,7 +4061,7 @@ Change a ticket's status, priority or assignee. Only those three fields can be c
 
 ### `get_timetable`
 
-The timetable for a day. A teacher sees the periods they teach, a student or parent their own section, and a school-wide reader the school. Accepts a weekday name or today/tomorrow/yesterday. Read-only.
+The timetable for a day or the whole week, with the subject and the teacher for each period. Name a class to see that class alone; without one, a teacher sees the periods they teach, a student or parent their own section, and a school-wide reader the school. Accepts a weekday name, today/tomorrow/yesterday, or "week" for the weekly timetable. Read-only.
 
 | | |
 |---|---|
@@ -3796,7 +4077,7 @@ The timetable for a day. A teacher sees the periods they teach, a student or par
 
 **Input**
 
-`day`: string — Weekday name, or today/tomorrow/yesterday
+`day`: string — Weekday name, today/tomorrow/yesterday, or "week" for the whole week<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section, when the id is already known
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -3830,14 +4111,14 @@ Create or replace one timetable period for a section — its day, period number,
 
 ### `get_my_bus`
 
-The caller's own (or their child's) bus route, vehicle, driver and stop. Read-only.
+The caller's own (or their child's) bus assignment: route, vehicle, driver and pickup stop. Use for "which bus am I on" and "what is my pickup point". Read-only.
 
 | | |
 |---|---|
 | **Operation** | GET |
 | **Risk** | LOW |
 | **Confirmation** | NOT_REQUIRED |
-| **Permission** | `transport.read` |
+| **Permission** | `transport.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
 | **EduOS service** | `transport.service.getOwnBus()` |
@@ -3966,7 +4247,7 @@ Correct a bus route — its vehicle, its driver, whether it is running, or what 
 
 **Input**
 
-`routeId`: string **(required)** — From list_transport_routes<br>`name`: string<br>`operatorName`: string<br>`vehicleNo`: string<br>`driverName`: string<br>`driverPhone`: string<br>`status`: string — one of: ACTIVE, INACTIVE, SUSPENDED<br>`fareAmountPaise`: integer — The yearly fare in paise, so ₹12,000 is 1200000. Zero means the route carries no charge.
+`routeId`: string — From list_transport_routes<br>`routeName`: string — The route as it is written, e.g. "Route 2". An ambiguous name is refused, never guessed.<br>`name`: string — A NEW name for the route<br>`operatorName`: string<br>`vehicleNo`: string<br>`driverName`: string<br>`driverPhone`: string<br>`status`: string — one of: ACTIVE, INACTIVE, SUSPENDED<br>`fareAmountPaise`: integer — The yearly fare in paise, so ₹12,000 is 1200000. Zero means the route carries no charge.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -4046,7 +4327,7 @@ _(no arguments)_
 
 ### `request_transport_route`
 
-Ask for a place on a bus route, from a particular stop. The stop must be one on that route. The request goes to the school office and changes nothing until it is approved — the fare is only charged once a place is granted, so it runs without confirmation. Use get_transport_routes to find the route and stop ids.
+Ask for a place on a bus route, from a particular stop. Name the route the way it is written ("Route 2") and, where the route has more than one stop, name the stop too. The stop must be one on that route. The request goes to the school office and changes nothing until it is approved — the fare is only charged once a place is granted, so it runs without confirmation.
 
 | | |
 |---|---|
@@ -4056,13 +4337,13 @@ Ask for a place on a bus route, from a particular stop. The stop must be one on 
 | **Permission** | `transport.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `transport.service.requestRoute()` |
+| **EduOS service** | `transport.service.listRoutesForStudent() + requestRoute()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.request_transport_route` |
 
 **Input**
 
-`routeId`: string **(required)** — From get_transport_routes<br>`stopId`: string **(required)** — A stop on that route<br>`direction`: string — one of: BOTH, PICKUP, DROP — Both ways by default
+`routeId`: string — From get_transport_routes<br>`routeName`: string — The route as it is written, e.g. "Route 2"<br>`stopId`: string — A stop on that route<br>`stopName`: string — The stop as it is written<br>`direction`: string — one of: BOTH, PICKUP, DROP — Both ways by default
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -4128,13 +4409,13 @@ Approve or reject a request for a place on a bus route. Approving puts the stude
 | **Permission** | `transport.manage` |
 | **Scope** | ALL |
 | **Affects others** | Yes |
-| **EduOS service** | `transport.service.decideTransportRequest()` |
+| **EduOS service** | `transport.service.listTransportRequestsForReview() + decideTransportRequest()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.decide_transport_request` |
 
 **Input**
 
-`requestId`: string **(required)** — From get_transport_requests<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string — Shown to the student with the decision
+`requestId`: string — From get_transport_requests. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string — Shown to the student with the decision
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -4142,7 +4423,7 @@ Approve or reject a request for a place on a bus route. Approving puts the stude
 
 ### `cancel_transport_request`
 
-Withdraw the caller's own request for a place on a bus route, while the school office has not yet decided on it. A request already granted or refused cannot be withdrawn. Use get_my_transport_requests to find the request id. Needs confirmation.
+Withdraw the caller's own request for a place on a bus route, while the school office has not yet decided on it. A request already granted or refused cannot be withdrawn. With no request id, the caller's single pending request is withdrawn; with several pending, the caller is asked which. Needs confirmation.
 
 | | |
 |---|---|
@@ -4152,13 +4433,13 @@ Withdraw the caller's own request for a place on a bus route, while the school o
 | **Permission** | `transport.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
-| **EduOS service** | `transport.service.cancelTransportRequest()` |
+| **EduOS service** | `transport.service.listMyTransportRequests() + cancelTransportRequest()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.cancel_transport_request` |
 
 **Input**
 
-`requestId`: string **(required)** — From get_my_transport_requests
+`requestId`: string — From get_my_transport_requests. Omit it when you have only one pending request.<br>`routeName`: string — The route the request is for, e.g. "Route 2"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -4192,16 +4473,20 @@ Staff and user accounts, searchable by name, phone or email and filterable by ro
 
 ## Permission coverage
 
-61 of the 73 permissions in the catalog are reachable through MCP.
+65 of the 81 permissions in the catalog are reachable through MCP.
 
 Permissions **not** reachable through any tool:
 
 - `users.manage` — Create, update, deactivate users
 - `roles.manage` — Create roles and assign permissions to them
 - `permissions.manage` — Create or modify permission keys
-- `settings.manage` — Manage school-wide settings
 - `schools.read` — View the schools on the platform and their School Admins
 - `schools.manage` — Create schools and manage their School Admin accounts
+- `seats.manage` — Sell a school seats and correct its seat balance
+- `seats.approve` — Approve or reject a paid extra-seat request
+- `seats.pricing.manage` — Set a school's per-seat price and manage its pricing history
+- `customization.manage` — Configure a school's theme, branding and dropdown values
+- `domains.manage` — Configure, verify and activate a school's subdomain or custom domain
 - `attendance.regularize` — Correct/regularize past attendance
 - `reportcards.read` — View report cards
 - `fees.plan.review` — Review a submitted installment plan and send it for admin approval

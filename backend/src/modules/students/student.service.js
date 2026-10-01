@@ -2,6 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { Student, StudentGuardian, Enrollment } from '../../models/student.model.js';
 import { MedicalRecord } from '../../models/medicalRecord.model.js';
+import { Profile } from '../../models/profile.model.js';
+import { tenantFilter } from '../../tenancy/tenantContext.js';
 import { AuditLog } from '../../models/auditLog.model.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
@@ -97,22 +99,57 @@ export async function list(actor, scope, query = {}) {
       : { $in: ids };
   }
   if (query.search) {
-    const rx = { $regex: escapeRegex(query.search), $options: 'i' };
-    const classMatchIds = await studentIdsMatchingClass(query.search);
+    // Leading, trailing and repeated spaces are typing, not meaning. Searching
+    // on the raw string made "  Diya   Patel " a different search from "Diya
+    // Patel", which is a difference nobody typing it intended.
+    const term = String(query.search).trim().replace(/\s+/g, ' ');
+    const rx = { $regex: escapeRegex(term), $options: 'i' };
+    const classMatchIds = await studentIdsMatchingClass(term);
     // A full name ("Rahul Sharma") spans two fields, so neither matches it on
     // its own: split it into first name + the rest as a surname.
-    const [first, ...others] = String(query.search).trim().split(/\s+/);
+    const [first, ...others] = term.split(' ');
     const fullName = others.length
       ? [{
           firstName: { $regex: escapeRegex(first), $options: 'i' },
           lastName: { $regex: escapeRegex(others.join(' ')), $options: 'i' },
         }]
       : [];
+
+    // The same name written without the space. "DiyaPatel" is how a person
+    // types a name they are reading off a screen, and it matched nothing at
+    // all: the term spans two fields, and with no space there is nothing to
+    // split it on. Matching against the joined-up full name costs one
+    // comparison and ignores WHITESPACE ONLY -- no letter is changed, dropped
+    // or guessed at, so this cannot turn one student's name into another's.
+    // Only for a term with no space in it. A term that HAS one is already
+    // handled by the two-field comparison above, and this branch cannot use an
+    // index -- $expr computes the joined name per document -- so running it on
+    // every search would make the directory pay for a case that cannot arise.
+    const joined = term.replace(/\s+/g, '');
+    const joinedName = !term.includes(' ') && joined.length >= 3
+      ? [{
+          $expr: {
+            $regexMatch: {
+              input: {
+                $replaceAll: {
+                  input: { $concat: [{ $ifNull: ['$firstName', ''] }, { $ifNull: ['$lastName', ''] }] },
+                  find: ' ',
+                  replacement: '',
+                },
+              },
+              regex: escapeRegex(joined),
+              options: 'i',
+            },
+          },
+        }]
+      : [];
+
     filter.$or = [
       { firstName: rx },
       { lastName: rx },
       { admissionNo: rx },
       ...fullName,
+      ...joinedName,
       ...(classMatchIds.length ? [{ _id: { $in: classMatchIds } }] : []),
     ];
   }
@@ -572,17 +609,43 @@ export async function anonymiseStudent(actor, id, { reason = null } = {}) {
 }
 
 // ── Guardians ──
-export async function addGuardian(studentId, data) {
+/**
+ * Links a guardian profile to a student.
+ *
+ * Profile is not tenant-scoped, so the guardian is looked up inside the acting
+ * school explicitly — otherwise an id from another school would be linked and
+ * that person would start seeing this child. Only the link's own fields are
+ * written; `studentId` comes from the path, never the body.
+ */
+export async function addGuardian(studentId, data = {}) {
   const student = await Student.findOne({ _id: studentId, deletedAt: null });
   if (!student) throw new AppError('Student not found', 404);
-  return StudentGuardian.create({ ...data, studentId });
+  const guardian = await Profile.findOne({ _id: data.guardianProfileId, deletedAt: null, ...tenantFilter() }).select('_id').lean();
+  if (!guardian) throw new AppError('Guardian profile not found in this school', 404);
+  try {
+    return await StudentGuardian.create({
+      studentId,
+      guardianProfileId: guardian._id,
+      relation: data.relation,
+      ...(data.isPrimary !== undefined ? { isPrimary: Boolean(data.isPrimary) } : {}),
+      ...(data.pickupAuthorized !== undefined ? { pickupAuthorized: Boolean(data.pickupAuthorized) } : {}),
+    });
+  } catch (err) {
+    if (err.code === 11000) throw new AppError('That guardian is already linked to this student', 409);
+    throw err;
+  }
 }
 
 /**
  * List query over guardian contact details — names and relationships tied to a
  * named child, so it is audited with the row count the caller received.
  */
-export async function listGuardians(actor, studentId) {
+export async function listGuardians(actor, studentId, scope = null) {
+  // The REST route passes the caller's scope; an OWN-scoped parent or student
+  // may only list the guardians of a student getById() would show them (the
+  // assistant's tool resolves the student at the caller's scope before
+  // calling, so it passes none).
+  if (scope) await getById(actor, scope, String(studentId), { audit: false });
   const links = await StudentGuardian.find({ studentId }).populate('guardianProfileId', 'displayName');
 
   await recordPiiRead({
@@ -616,7 +679,13 @@ export async function enroll(data) {
       await existing.save();
       return existing;
     } else {
-      return await Enrollment.create(data);
+      // The roll-number index is unique on (section, year, rollNo), and a
+      // missing rollNo is indexed as null — so a second enrolment without one
+      // collided with the first. The Add User form never sends one, which made
+      // it work exactly once per class. Assign the next free number instead,
+      // the same rule bulkEnroll() applies to rows without one.
+      const rollNo = data.rollNo ?? await nextRollNo(data.sectionId, data.academicYearId);
+      return await Enrollment.create({ ...data, rollNo });
     }
   } catch (err) {
     if (err.code === 11000) {
@@ -758,6 +827,19 @@ export async function nextRollNo(sectionId, academicYearId) {
     .sort({ rollNo: -1 })
     .select('rollNo');
   return (last?.rollNo ?? 0) + 1;
+}
+
+/**
+ * Narrows an enrolment filter to the students an OWN-scoped caller may see —
+ * a teacher's classes, a parent's children, a student's own record. Without
+ * it GET /enrollments handed any holder of students.read the whole school's
+ * roster. A requested studentId outside that set matches nothing.
+ */
+export async function scopeEnrollmentFilter(actor, scope, filter = {}) {
+  if (scope !== 'OWN') return filter;
+  const own = await resolveOwnStudentIds(actor);
+  const wanted = filter.studentId ? String(filter.studentId) : null;
+  return { ...filter, studentId: { $in: wanted ? own.filter((id) => id === wanted) : own } };
 }
 
 export async function listEnrollments(filter = {}) {

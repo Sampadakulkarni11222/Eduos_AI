@@ -9,6 +9,13 @@ const profileSchema = new Schema(
     roleId: { type: Schema.Types.ObjectId, ref: 'Role', required: true },
     displayName: { type: String, required: true, trim: true },
     avatarUrl: { type: String, default: null },
+    // The school's website as its School Admin gave it, e.g.
+    // "https://www.abcschool.com/". Meaningful on ADMIN profiles only, and only
+    // ever written through the Super Admin's School Admin routes. Kept as
+    // entered — the normalised hostname lives on the school's SchoolDomain,
+    // which is where domain management reads it from (see
+    // modules/domains/domain.service.js#fetchProfileDomain).
+    website: { type: String, default: null, trim: true },
     tenantId: { type: String, default: 'eduos-demo-tenant' },
     tenantName: { type: String, default: 'EduOS AI Academy' },
     status: { type: String, enum: ['ACTIVE', 'INACTIVE', 'SUSPENDED'], default: 'ACTIVE' },

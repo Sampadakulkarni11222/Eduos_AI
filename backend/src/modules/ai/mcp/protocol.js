@@ -133,7 +133,9 @@ export function failFromError(err) {
   const status = err?.statusCode ?? err?.status ?? null;
   if (err?.code === 'AGENT_NEEDS_INPUT') return fail(MCP_ERROR.NEEDS_INPUT, err.message);
   if (status === 401) return fail(MCP_ERROR.UNAUTHENTICATED, err.message);
-  if (status === 403) return fail(MCP_ERROR.FORBIDDEN, err.message);
+  // The reason is kept when the tool gave one: "you can only see your own
+  // records" is an answer to give, where a bare 403 is a refusal to relay.
+  if (status === 403) return fail(MCP_ERROR.FORBIDDEN, err.message, err?.code === 'STUDENT_OUT_OF_SCOPE' ? { reason: err.code } : undefined);
   if (status === 404) return fail(MCP_ERROR.NOT_FOUND, err.message);
   if (status === 409) return fail(MCP_ERROR.CONFLICT, err.message);
   if (status === 410) return fail(MCP_ERROR.CONFIRMATION_INVALID, err.message);
@@ -177,5 +179,11 @@ export function errorToAppError(envelope) {
         : `MCP_${code ?? 'INTERNAL'}`;
   const err = new AppError(message ?? 'That could not be completed.', STATUS_FOR[code] ?? 500, [], appCode);
   err.mcpCode = code ?? MCP_ERROR.INTERNAL;
+  // What the envelope said, carried rather than dropped. A validation refusal
+  // names the arguments that were missing, and the agent turns that list into
+  // a question a person can answer ("tell me a title and the date it is due").
+  // Without this the list stopped here, and every such turn came out as the
+  // bare "I need a bit more to do that".
+  if (envelope?.error?.details) err.details = envelope.error.details;
   return err;
 }

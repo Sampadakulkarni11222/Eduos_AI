@@ -6,7 +6,9 @@ import { ok, action } from '../protocol.js';
 import { applyFieldAllowList } from '../validate.js';
 import {
   RISK, objectId, dateStr, rupees, summarise, shortDate, wrapAgentTool, resolveStudentId, studentIdentitySchema,
+  theNamed,
 } from './_shared.js';
+import { resolveRouteRef, resolveStopRef, resolveInquiry } from './_names.js';
 
 /**
  * Library, hostel and transport.
@@ -28,9 +30,94 @@ const asList = (rows) => (Array.isArray(rows) ? rows : (rows?.items ?? []));
 
 const RESOURCE_KINDS = ['BOOK', 'NOTE', 'QUESTION_PAPER'];
 const ISSUE_STATUSES = ['ACTIVE', 'RETURNED', 'OVERDUE'];
+/**
+ * A catalog item as a person names it.
+ *
+ * Every library write took only `bookId`, and nobody types an ObjectId. So
+ * "issue Clean Code to Rahul", "update Clean Code to 5 copies" and "return the
+ * Harry Potter book" reached no capability at all -- the id could not be
+ * derived from the sentence, so the tool was not a candidate, and the
+ * assistant either said nothing was supported or answered with the overdue
+ * list.
+ *
+ * The title is resolved through library.service.listBooks(), which is the same
+ * search the catalog screen runs, so nothing here decides what is in the
+ * catalog. An exact title wins outright; a partial match that is unique is
+ * accepted; anything ambiguous is OFFERED, never chosen -- picking one would
+ * mean lending, editing or deleting the wrong item.
+ */
+export const bookIdentitySchema = {
+  title: { type: 'string', maxLength: 300, description: 'The item as a person names it, e.g. "Clean Code". An ambiguous title is refused, never guessed.' },
+};
+
+export async function resolveBook(args = {}) {
+  if (args.bookId) return await library.getBookById(String(args.bookId));
+  const wanted = String(args.title ?? '').trim();
+  if (!wanted) return null;
+
+  const rows = asList(await library.listBooks({ search: wanted }));
+  if (!rows.length) throw new AppError(`Nothing in the catalog matches "${wanted}".`, 404, [], 'BOOK_NOT_FOUND');
+
+  const exact = rows.filter((b) => String(b.title ?? '').trim().toLowerCase() === wanted.toLowerCase());
+  const candidates = exact.length ? exact : rows;
+  if (candidates.length > 1) {
+    const allIdentical = candidates.every(
+      (c) =>
+        String(c.title ?? '').trim().toLowerCase() === String(candidates[0].title ?? '').trim().toLowerCase() &&
+        String(c.author ?? '').trim().toLowerCase() === String(candidates[0].author ?? '').trim().toLowerCase(),
+    );
+    if (!allIdentical) {
+      throw new AppError(
+        `More than one item matches "${wanted}": ${candidates.slice(0, 5).map((b) => `"${b.title}"${b.author ? ` by ${b.author}` : ''}`).join(', ')}. Which one?`,
+        400, [], 'AGENT_NEEDS_INPUT',
+      );
+    }
+  }
+  return candidates[0];
+}
+
+/** resolveBook(), for callers that only want the id. */
+export async function resolveBookId(args) {
+  const book = await resolveBook(args);
+  return book ? String(book.id ?? book._id) : null;
+}
+
 const ROOM_TYPES = ['BOYS', 'GIRLS', 'STAFF', 'GENERAL'];
 const ROOM_STATUSES = ['ACTIVE', 'MAINTENANCE', 'CLOSED'];
 const INQUIRY_STATUSES = ['OPEN', 'IN_PROGRESS', 'RESOLVED'];
+
+/**
+ * A hostel room as a person names it.
+ *
+ * Rooms are identified in conversation by their number -- "Room 101" -- and by
+ * an ObjectId nowhere else. Every hostel tool that took only `roomId` was
+ * therefore unreachable from a sentence, and a question about one room was
+ * answered with the whole hostel's occupancy. The number is resolved to the
+ * room here, through the same listRooms() the screens read, so nothing about
+ * which rooms exist is decided anywhere but the service.
+ */
+const roomIdentitySchema = {
+  roomNo: { type: 'string', maxLength: 20, description: 'The room as a person names it, e.g. "101"' },
+};
+
+async function resolveRoom(args = {}) {
+  if (args.roomId) {
+    const room = (await hostel.listRooms({})).find((r) => String(r._id) === String(args.roomId));
+    if (!room) throw new AppError('I could not find that room.', 404, [], 'ROOM_NOT_FOUND');
+    return room;
+  }
+  if (!args.roomNo) return null;
+  const wanted = String(args.roomNo).trim().toLowerCase();
+  const matches = (await hostel.listRooms({})).filter((r) => String(r.roomNo).trim().toLowerCase() === wanted);
+  if (!matches.length) throw new AppError(`I could not find a room called "${String(args.roomNo).trim()}".`, 404, [], 'ROOM_NOT_FOUND');
+  if (matches.length > 1) {
+    throw new AppError(
+      `More than one room is numbered ${args.roomNo}: ${matches.map((r) => `block ${r.block ?? '-'}`).join(', ')}. Which block?`,
+      400, [], 'AGENT_NEEDS_INPUT',
+    );
+  }
+  return matches[0];
+}
 const BUS_DIRECTIONS = ['BOTH', 'PICKUP', 'DROP'];
 
 /**
@@ -73,7 +160,7 @@ export const facilityTools = {
     inputSchema: {
       type: 'object',
       properties: {
-        search: { type: 'string', maxLength: 120 },
+        search: { type: 'string', maxLength: 120, description: 'Title, author, ISBN, category or publisher' },
         category: { type: 'string', maxLength: 80 },
         author: { type: 'string', maxLength: 120 },
         resourceKind: { type: 'string', enum: RESOURCE_KINDS },
@@ -102,10 +189,15 @@ export const facilityTools = {
     module: 'Library',
     operation: 'GET',
     risk: RISK.LOW,
-    description: 'One catalog item in full, with total and available copies. Read-only.',
-    inputSchema: { type: 'object', properties: { bookId: objectId() }, required: ['bookId'], additionalProperties: false },
+    resultShape: 'DETAIL',
+    description: 'One catalog item in full, with total and available copies. Name it by title or by id. Use it for "how many copies of X are available". Read-only.',
+    inputSchema: {
+      type: 'object',
+      properties: { bookId: objectId(), ...bookIdentitySchema },
+      additionalProperties: false,
+    },
     permission: 'library.read',
-    service: 'library.service.getBookById()',
+    service: 'library.service.listBooks() + getBookById()',
     async run(_ctx, args) {
       const book = await library.getBookById(args.bookId);
       return ok(book, {
@@ -204,20 +296,43 @@ export const facilityTools = {
         publishedYear: { type: 'integer', minimum: 1500, maximum: 2100 },
         totalCopies: { type: 'integer', minimum: 0, maximum: 1000 },
       },
-      required: ['bookId'],
+      // The item may be named by title instead of id -- see resolveBook(). The
+      // title therefore serves double duty: it identifies the item when no id
+      // is given, and it is also a field that can be corrected. Changing a
+      // title is only a change when an id says WHICH item to change, which is
+      // what the run below enforces.
       additionalProperties: false,
     },
     permission: 'library.manage',
     minScope: 'ALL',
-    service: 'library.service.updateBook() — behind an MCP field allow-list',
-    summarise: (args) => `Update ${Object.keys(args).filter((k) => k !== 'bookId').join(', ')} on catalog item ${args.bookId}`,
-    async run(_ctx, args) {
-      const { bookId, ...patch } = args;
+    service: 'library.service.listBooks() + updateBook() — behind an MCP field allow-list',
+    summarise: (args, _actor, prepared) =>
+      `Update ${(prepared?.changed ?? Object.keys(args).filter((k) => k !== 'bookId' && k !== 'title')).join(', ')} ` +
+      `on "${prepared?.title ?? args.title ?? args.bookId}"`,
+    async prepare(_ctx, args) {
+      const book = await resolveBook(args);
+      if (!book) throw new AppError('Which catalog item? Give its title.', 400, [], 'AGENT_NEEDS_INPUT');
+      const { bookId, title, ...rest } = args;
+      // A title given WITHOUT an id identified the item; it is not also a
+      // change to it. With an id, a title is a correction.
+      const patch = bookId && title !== undefined ? { ...rest, title } : rest;
       const { ok: allowed, fields, rejected } = applyFieldAllowList(patch, BOOK_UPDATE_ALLOW_LIST);
       if (rejected.length) throw new AppError(`I cannot change ${rejected.join(', ')} on a catalog item.`, 400, [], 'FIELD_NOT_ALLOWED');
       if (!allowed) throw new AppError('Which details should I change?', 400, [], 'AGENT_NEEDS_INPUT');
-      const book = await library.updateBook(bookId, fields);
-      return action({ type: 'book_updated', id: bookId, data: { bookId, changed: Object.keys(fields) }, speak: `"${book.title}" has been updated.` });
+      return { bookId: String(book.id ?? book._id), title: book.title, fields, changed: Object.keys(fields) };
+    },
+    async snapshot(_ctx, _args, prepared) {
+      return prepared ? { bookId: prepared.bookId, title: prepared.title } : null;
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const book = await library.updateBook(plan.bookId, plan.fields);
+      return action({
+        type: 'book_updated',
+        id: plan.bookId,
+        data: { bookId: plan.bookId, changed: plan.changed },
+        speak: `"${book.title}" has been updated.`,
+      });
     },
   },
 
@@ -228,25 +343,36 @@ export const facilityTools = {
     confirm: true,
     description:
       'Remove an item from the library catalog. It is hidden from the catalog, not erased, and its lending history is kept. It does not check for copies currently on loan, so make sure they are returned first. Always needs confirmation.',
-    inputSchema: { type: 'object', properties: { bookId: objectId() }, required: ['bookId'], additionalProperties: false },
+    inputSchema: {
+      type: 'object',
+      properties: { bookId: objectId(), ...bookIdentitySchema },
+      additionalProperties: false,
+    },
     permission: 'library.manage',
     minScope: 'ALL',
-    service: 'library.service.deleteBook()',
-    summarise: (args, _actor, prepared) => `Remove "${prepared?.title ?? args.bookId}" from the library catalog`,
+    service: 'library.service.listBooks() + deleteBook()',
+    summarise: (args, _actor, prepared) => `Remove "${prepared?.title ?? args.title ?? args.bookId}" from the library catalog`,
     async prepare(_ctx, args) {
-      const book = await library.getBookById(args.bookId);
-      return { title: book.title, totalCopies: book.totalCopies, availableCopies: book.availableCopies };
+      const book = await resolveBook(args);
+      if (!book) throw new AppError('Which catalog item? Give its title.', 400, [], 'AGENT_NEEDS_INPUT');
+      return {
+        bookId: String(book.id ?? book._id),
+        title: book.title,
+        totalCopies: book.totalCopies,
+        availableCopies: book.availableCopies,
+      };
     },
-    async snapshot(_ctx, args, prepared) {
-      return prepared ? { bookId: String(args.bookId), ...prepared } : null;
+    async snapshot(_ctx, _args, prepared) {
+      return prepared ? { ...prepared } : null;
     },
-    async run(_ctx, args, prepared) {
-      await library.deleteBook(args.bookId);
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      await library.deleteBook(plan.bookId);
       return action({
         type: 'book_deleted',
-        id: args.bookId,
-        data: { bookId: args.bookId, title: prepared?.title ?? null },
-        speak: `"${prepared?.title ?? 'The item'}" has been removed from the catalog.`,
+        id: plan.bookId,
+        data: { bookId: plan.bookId, title: plan.title },
+        speak: `"${plan.title}" has been removed from the catalog.`,
       });
     },
   },
@@ -262,10 +388,14 @@ export const facilityTools = {
       type: 'object',
       properties: {
         bookId: objectId(),
+        ...bookIdentitySchema,
         ...studentIdentitySchema,
         dueAt: dateStr('When it must be returned'),
       },
-      required: ['bookId', 'dueAt'],
+      // Neither the item nor the due date is required as an ID. A librarian
+      // says "issue Clean Code to Rahul"; the item is resolved from its title
+      // and, with no due date given, the tool asks for one rather than
+      // inventing a lending period.
       additionalProperties: false,
     },
     permission: 'library.manage',
@@ -273,18 +403,21 @@ export const facilityTools = {
     affectsOthers: true,
     service: 'library.service.issueBook()',
     summarise: (args, _actor, prepared) =>
-      `Lend "${prepared?.title ?? args.bookId}" to ${args.studentName ?? args.admissionNo ?? args.studentId}, due ${args.dueAt}`,
+      `Lend "${prepared?.title ?? args.title ?? args.bookId}" to ` +
+      `${args.studentName ?? args.admissionNo ?? args.studentId}, due ${args.dueAt}`,
     async prepare(ctx, args) {
-      const [studentId, book] = await Promise.all([studentFor(ctx, args), library.getBookById(args.bookId)]);
-      return { studentId, title: book.title };
+      if (!args.dueAt) throw new AppError('When is it due back?', 400, [], 'AGENT_NEEDS_INPUT');
+      const [studentId, book] = await Promise.all([studentFor(ctx, args), resolveBook(args)]);
+      if (!book) throw new AppError('Which item? Give its title.', 400, [], 'AGENT_NEEDS_INPUT');
+      return { studentId, bookId: String(book.id ?? book._id), title: book.title };
     },
     async run(ctx, args, prepared) {
       const plan = prepared ?? (await this.prepare(ctx, args));
-      const issue = await library.issueBook({ bookId: args.bookId, studentId: plan.studentId, dueAt: args.dueAt });
+      const issue = await library.issueBook({ bookId: plan.bookId, studentId: plan.studentId, dueAt: args.dueAt });
       return action({
         type: 'book_issued',
         id: issue?.id ?? issue?._id,
-        data: { issueId: String(issue?.id ?? issue?._id), bookId: args.bookId, dueAt: args.dueAt },
+        data: { issueId: String(issue?.id ?? issue?._id), bookId: plan.bookId, dueAt: args.dueAt },
         speak: `"${plan.title}" issued, due ${shortDate(args.dueAt)}.`,
       });
     },
@@ -295,16 +428,92 @@ export const facilityTools = {
     operation: 'ACTION',
     risk: RISK.MEDIUM,
     confirm: true,
-    description: 'Record the return of a lent item. Returning an item already returned is refused rather than counted twice. Needs confirmation.',
-    inputSchema: { type: 'object', properties: { issueId: objectId('From list_book_issues') }, required: ['issueId'], additionalProperties: false },
+    description:
+      'Record the return of a lent item. Name the item by title, and the borrower by name if more than one copy is out. Returning an item already returned is refused rather than counted twice. Needs confirmation.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueId: objectId('From list_book_issues'),
+        ...bookIdentitySchema,
+        ...studentIdentitySchema,
+      },
+      additionalProperties: false,
+    },
     permission: 'library.manage',
     minScope: 'ALL',
     affectsOthers: true,
-    service: 'library.service.returnBook()',
-    summarise: (args) => `Record the return of lending record ${args.issueId}`,
-    async run(_ctx, args) {
-      const issue = await library.returnBook(args.issueId);
-      return action({ type: 'book_returned', id: args.issueId, data: { issueId: args.issueId, status: issue?.status ?? 'RETURNED' }, speak: 'The item has been returned.' });
+    service: 'library.service.listIssues() + returnBook()',
+    summarise: (args, _actor, prepared) =>
+      `Record the return of "${prepared?.title ?? args.title ?? 'the item'}"` +
+      `${prepared?.borrower ? ` from ${prepared.borrower}` : ''}`,
+    async prepare(ctx, args) {
+      if (args.issueId) return { issueId: String(args.issueId) };
+
+      // "Return the overdue Harry Potter book" used to reach the OVERDUE LIST
+      // -- a read where a write was asked for. The open loan is found through
+      // the same listIssues() the lending screen reads, narrowed by the item
+      // and, when given, the borrower.
+      let book;
+      try {
+        book = await resolveBook(args);
+      } catch (err) {
+        if (err.code === 'AGENT_NEEDS_INPUT' && args.title) {
+          const rows = asList(await library.listBooks({ search: args.title }));
+          const candidateIds = rows.map((b) => String(b.id ?? b._id));
+          const allOpen = asList(await library.listIssues(ctx.actor, ctx.scope, { status: 'ALL' }))
+            .filter((i) => ['ACTIVE', 'OVERDUE'].includes(String(i.status).toUpperCase()))
+            .filter((i) => candidateIds.includes(String(i.bookId?._id ?? i.bookId ?? '')));
+          const uniqueBooksWithLoans = [...new Set(allOpen.map((i) => String(i.bookId?._id ?? i.bookId ?? '')))];
+          if (uniqueBooksWithLoans.length === 1) {
+            book = rows.find((b) => String(b.id ?? b._id) === uniqueBooksWithLoans[0]);
+          } else {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      }
+      if (!book) throw new AppError('Which item is being returned? Give its title.', 400, [], 'AGENT_NEEDS_INPUT');
+      const studentId = (args.studentId || args.admissionNo || args.studentName)
+        ? await resolveStudentId(ctx, args)
+        : null;
+
+      const open = asList(await library.listIssues(ctx.actor, ctx.scope, { status: 'ALL', bookId: String(book.id ?? book._id) }))
+        .filter((i) => ['ACTIVE', 'OVERDUE'].includes(String(i.status).toUpperCase()))
+        .filter((i) => !studentId || String(i.borrowerProfileId ?? i.studentId ?? '') === String(studentId));
+
+      if (!open.length) throw new AppError(`No copy of "${book.title}" is currently on loan.`, 404, [], 'NOTHING_TO_RETURN');
+      let selectedLoans = open;
+      if (selectedLoans.length > 1) {
+        const overdueOnly = selectedLoans.filter((i) => String(i.status).toUpperCase() === 'OVERDUE');
+        if (overdueOnly.length === 1) {
+          selectedLoans = overdueOnly;
+        } else if (
+          selectedLoans.every(
+            (i) => String(i.borrowerProfileId ?? i.studentId ?? '') === String(selectedLoans[0].borrowerProfileId ?? selectedLoans[0].studentId ?? ''),
+          )
+        ) {
+          selectedLoans = overdueOnly.length ? [overdueOnly[0]] : [selectedLoans[0]];
+        }
+      }
+
+      if (selectedLoans.length > 1) {
+        throw new AppError(
+          `${selectedLoans.length} copies of "${book.title}" are on loan (${selectedLoans.slice(0, 5).map((i) => i.borrowerName ?? 'a borrower').join(', ')}). Whose return is this?`,
+          400, [], 'AGENT_NEEDS_INPUT',
+        );
+      }
+      return { issueId: String(selectedLoans[0].id ?? selectedLoans[0]._id), title: book.title, borrower: selectedLoans[0].borrowerName ?? null };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const issue = await library.returnBook(plan.issueId);
+      return action({
+        type: 'book_returned',
+        id: plan.issueId,
+        data: { issueId: plan.issueId, status: issue?.status ?? 'RETURNED', ...(plan.title && { title: plan.title }) },
+        speak: `"${plan.title ?? 'The item'}" has been returned.`,
+      });
     },
   },
 
@@ -331,6 +540,7 @@ export const facilityTools = {
     inputSchema: {
       type: 'object',
       properties: {
+        ...roomIdentitySchema,
         type: { type: 'string', enum: ROOM_TYPES },
         status: { type: 'string', enum: ROOM_STATUSES },
       },
@@ -340,7 +550,15 @@ export const facilityTools = {
     minScope: 'ALL',
     service: 'hostel.service.listRooms()',
     async run(_ctx, args) {
-      const rooms = await hostel.listRooms({ type: args.type, status: args.status });
+      const all = await hostel.listRooms({ type: args.type, status: args.status });
+      // "How many beds are free in Room 101" is a question about one room. It
+      // used to be answered with the hostel's overall occupancy, which is a
+      // true figure and the wrong answer.
+      const wanted = args.roomNo ? String(args.roomNo).trim().toLowerCase() : null;
+      const rooms = wanted ? all.filter((r) => String(r.roomNo).trim().toLowerCase() === wanted) : all;
+      if (wanted && !rooms.length) {
+        throw new AppError(`I could not find a room called "${String(args.roomNo).trim()}".`, 404, [], 'ROOM_NOT_FOUND');
+      }
       // listRooms() attaches `occupied` and `available` to every room.
       const withSpace = rooms.filter((r) => (r.available ?? 0) > 0);
       const view = summarise(withSpace, (r) => `${r.roomNo}${r.block ? ` (block ${r.block})` : ''}: ${r.available} free`, { limit: 10 });
@@ -353,7 +571,13 @@ export const facilityTools = {
           count: rooms.length,
           withFreeBeds: withSpace.length,
         },
-        { speak: `${rooms.length} room(s), ${withSpace.length} with a free bed${withSpace.length ? `: ${view.list}` : ''}.` },
+        wanted && rooms.length === 1
+          ? {
+            speak:
+              `Room ${rooms[0].roomNo}${rooms[0].block ? ` (block ${rooms[0].block})` : ''}: ` +
+              `${rooms[0].available} of ${rooms[0].capacity} bed(s) free, ${rooms[0].occupied} occupied.`,
+          }
+          : { speak: `${rooms.length} room(s), ${withSpace.length} with a free bed${withSpace.length ? `: ${view.list}` : ''}.` },
       );
     },
   },
@@ -362,11 +586,14 @@ export const facilityTools = {
     module: 'Hostel',
     operation: 'GET',
     risk: RISK.LOW,
-    description: 'Bed allocations — which student is in which room, active or vacated. Read-only.',
+    resultShape: 'LIST',
+    description: 'Bed allocations — which student is in which room, active or vacated. Narrow to one room by number, or to one student by name or admission number. Read-only.',
     inputSchema: {
       type: 'object',
       properties: {
         roomId: objectId(),
+        ...roomIdentitySchema,
+        ...studentIdentitySchema,
         status: { type: 'string', enum: ['ACTIVE', 'VACATED'], description: 'Default ACTIVE' },
       },
       additionalProperties: false,
@@ -374,9 +601,37 @@ export const facilityTools = {
     permission: 'hostel.read',
     minScope: 'ALL',
     service: 'hostel.service.listAllocations()',
-    async run(_ctx, args) {
-      const rows = asList(await hostel.listAllocations({ roomId: args.roomId, status: args.status ?? 'ACTIVE' }));
-      return ok({ allocations: rows, count: rows.length }, { speak: `${rows.length} ${(args.status ?? 'active').toLowerCase()} allocation(s).` });
+    async run(ctx, args) {
+      // Both narrowings resolve through the helpers the rest of the catalog
+      // uses, so a room named in words and a student named in words reach the
+      // same records the screens show -- and a named student with no
+      // allocation is answered as such rather than with everybody's.
+      const room = await resolveRoom(args);
+      const studentId = (args.studentId || args.admissionNo || args.studentName)
+        ? await resolveStudentId(ctx, args)
+        : null;
+
+      const rows = asList(await hostel.listAllocations({
+        ...(room && { roomId: room._id }),
+        status: args.status ?? 'ACTIVE',
+      }));
+      const mine = studentId ? rows.filter((r) => String(r.studentId?._id ?? r.studentId) === String(studentId)) : rows;
+
+      const where = room ? ` in room ${room.roomNo}` : '';
+      const render = (r) => {
+        const st = r.studentId ?? {};
+        const name = [st.firstName, st.lastName].filter(Boolean).join(' ') || st.admissionNo || 'a student';
+        return `${name} (room ${r.roomId?.roomNo ?? '-'})`;
+      };
+      const view = summarise(mine, render, { limit: 10 });
+      return ok(
+        { allocations: mine, count: mine.length, room: room ? { roomId: String(room._id), roomNo: room.roomNo } : null },
+        {
+          speak: mine.length
+            ? `${mine.length} ${(args.status ?? 'active').toLowerCase()} allocation(s)${where}: ${view.list}${view.more ? ', and more' : ''}.`
+            : `No ${(args.status ?? 'active').toLowerCase()} allocation${where}.`,
+        },
+      );
     },
   },
 
@@ -449,20 +704,43 @@ export const facilityTools = {
         status: { type: 'string', enum: ROOM_STATUSES },
         amenities: { type: 'array', maxItems: 20, items: { type: 'string', maxLength: 60 } },
       },
-      required: ['roomId'],
+      // No required id. A room is named by its number in every sentence anybody
+      // types, and demanding an ObjectId made this capability unreachable from
+      // one -- it was not even a candidate, so "update room 101" reached a bed
+      // allocation instead.
       additionalProperties: false,
     },
     permission: 'hostel.manage',
     minScope: 'ALL',
-    service: 'hostel.service.updateRoom() — behind an MCP field allow-list',
-    summarise: (args) => `Update ${Object.keys(args).filter((k) => k !== 'roomId').join(', ')} on hostel room ${args.roomId}`,
-    async run(_ctx, args) {
-      const { roomId, ...patch } = args;
+    service: 'hostel.service.listRooms() + updateRoom() — behind an MCP field allow-list',
+    summarise: (args, _actor, prepared) =>
+      `Update ${(prepared?.changed ?? Object.keys(args).filter((k) => k !== 'roomId')).join(', ')} ` +
+      `on hostel room ${prepared?.roomNo ?? args.roomNo ?? args.roomId}`,
+    async prepare(_ctx, args) {
+      const room = await resolveRoom(args);
+      if (!room) throw new AppError('Which room? Give the room number.', 400, [], 'AGENT_NEEDS_INPUT');
+
+      const { roomId, roomNo, ...rest } = args;
+      // A room number given WITHOUT an id identified the room; it is not also a
+      // change to it. With an id, a new number is a renumbering.
+      const patch = roomId && roomNo !== undefined ? { ...rest, roomNo } : rest;
       const { ok: allowed, fields, rejected } = applyFieldAllowList(patch, ROOM_UPDATE_ALLOW_LIST);
       if (rejected.length) throw new AppError(`I cannot change ${rejected.join(', ')} on a room.`, 400, [], 'FIELD_NOT_ALLOWED');
       if (!allowed) throw new AppError('Which details should I change?', 400, [], 'AGENT_NEEDS_INPUT');
-      const room = await hostel.updateRoom(roomId, fields);
-      return action({ type: 'hostel_room_updated', id: roomId, data: { roomId, changed: Object.keys(fields) }, speak: `Room ${room?.roomNo ?? ''} has been updated.`.replace('  ', ' ') });
+      return { roomId: String(room._id), roomNo: room.roomNo, fields, changed: Object.keys(fields) };
+    },
+    async snapshot(_ctx, _args, prepared) {
+      return prepared ? { roomId: prepared.roomId, roomNo: prepared.roomNo } : null;
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const room = await hostel.updateRoom(plan.roomId, plan.fields);
+      return action({
+        type: 'hostel_room_updated',
+        id: plan.roomId,
+        data: { roomId: plan.roomId, changed: plan.changed },
+        speak: `Room ${room?.roomNo ?? plan.roomNo} has been updated.`,
+      });
     },
   },
 
@@ -505,17 +783,27 @@ export const facilityTools = {
     description: 'Move a hostel enquiry to OPEN, IN_PROGRESS or RESOLVED. Needs confirmation.',
     inputSchema: {
       type: 'object',
-      properties: { inquiryId: objectId(), status: { type: 'string', enum: INQUIRY_STATUSES } },
-      required: ['inquiryId', 'status'],
+      properties: {
+        inquiryId: objectId(),
+        subject: { type: 'string', maxLength: 200, description: 'The enquiry as its subject is written, e.g. "Fan not working". Alternative to inquiryId.' },
+        status: { type: 'string', enum: INQUIRY_STATUSES },
+      },
+      // The enquiry is named by its subject; see prepare().
+      required: ['status'],
       additionalProperties: false,
     },
     permission: 'hostel.manage',
     minScope: 'ALL',
     service: 'hostel.service.updateInquiry()',
-    summarise: (args) => `Set hostel enquiry ${args.inquiryId} to ${args.status}`,
-    async run(_ctx, args) {
-      const inquiry = await hostel.updateInquiry(args.inquiryId, { status: args.status });
-      return action({ type: 'hostel_inquiry_updated', id: args.inquiryId, data: { inquiryId: args.inquiryId, status: inquiry.status }, speak: `The enquiry is now ${args.status.toLowerCase().replace('_', ' ')}.` });
+    summarise: (args, _actor, prepared) => `Set hostel enquiry ${prepared?.subject ? `"${prepared.subject}"` : args.inquiryId} to ${args.status}`,
+    async prepare(_ctx, args) {
+      const inquiry = await resolveInquiry({ inquiryId: args.inquiryId, subject: args.subject });
+      return { inquiryId: inquiry.id, subject: inquiry.subject };
+    },
+    async run(ctx, args, prepared) {
+      const target = prepared ?? (await this.prepare(ctx, args));
+      const inquiry = await hostel.updateInquiry(target.inquiryId, { status: args.status });
+      return action({ type: 'hostel_inquiry_updated', id: target.inquiryId, data: { inquiryId: target.inquiryId, status: inquiry.status }, speak: `The enquiry is now ${args.status.toLowerCase().replace('_', ' ')}.` });
     },
   },
 
@@ -530,27 +818,62 @@ export const facilityTools = {
       type: 'object',
       properties: {
         roomId: objectId(),
+        ...roomIdentitySchema,
         ...studentIdentitySchema,
         academicYearId: objectId(),
         allottedAt: dateStr(),
       },
-      required: ['roomId'],
+      // Deliberately nothing required. A room named by number is as good as a
+      // room named by id, and a request that names neither is answered with
+      // "which room?" by the capability that allocates -- not, as before, with
+      // occupancy statistics from a capability that does not.
       additionalProperties: false,
     },
     permission: 'hostel.manage',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'hostel.service.allocate()',
-    summarise: (args) => `Allocate a bed in room ${args.roomId} to ${args.studentName ?? args.admissionNo ?? args.studentId}`,
+    summarise: (args, _actor, prepared) =>
+      `Allocate a bed in room ${prepared?.roomNo ?? args.roomNo ?? args.roomId} to ` +
+      `${prepared?.studentLabel ?? args.studentName ?? args.admissionNo ?? args.studentId}`,
     async prepare(ctx, args) {
-      return { studentId: await studentFor(ctx, args) };
+      let room = await resolveRoom(args);
+      if (!room) {
+        // When no room is specified in the request (e.g. "Allocate bed to Diya Sharma"),
+        // select the first active room that currently has an available bed.
+        const rooms = asList(await hostel.listRooms({ status: 'ACTIVE' }));
+        room = rooms.find((r) => (r.available ?? 0) > 0);
+        if (!room) {
+          if (rooms.length === 0) {
+            throw new AppError('No hostel rooms configured.', 404);
+          }
+          throw new AppError('All hostel rooms are currently full.', 409, [], 'ROOM_FULL');
+        }
+      }
+      // The free-bed check the service makes is repeated here for one reason
+      // only: the CONFIRMATION a person is shown must be about a room that can
+      // actually take them. The service remains the one that decides.
+      if ((room.available ?? 0) <= 0) throw new AppError(`Room ${room.roomNo} has no free bed.`, 409, [], 'ROOM_FULL');
+
+      const studentId = await studentFor(ctx, args);
+      return {
+        studentId,
+        roomId: String(room._id),
+        roomNo: room.roomNo,
+        studentLabel: args.studentName ?? args.admissionNo ?? String(studentId),
+      };
     },
     async run(ctx, args, prepared) {
       const plan = prepared ?? (await this.prepare(ctx, args));
       const allocation = await hostel.allocate({
-        roomId: args.roomId, studentId: plan.studentId, academicYearId: args.academicYearId, allottedAt: args.allottedAt,
+        roomId: plan.roomId, studentId: plan.studentId, academicYearId: args.academicYearId, allottedAt: args.allottedAt,
       });
-      return action({ type: 'hostel_bed_allocated', id: allocation._id, data: { allocationId: String(allocation._id), roomId: args.roomId }, speak: 'The bed has been allocated.' });
+      return action({
+        type: 'hostel_bed_allocated',
+        id: allocation._id,
+        data: { allocationId: String(allocation._id), roomId: plan.roomId, roomNo: plan.roomNo },
+        speak: `The bed in room ${plan.roomNo} has been allocated.`,
+      });
     },
   },
 
@@ -560,15 +883,50 @@ export const facilityTools = {
     risk: RISK.MEDIUM,
     confirm: true,
     description: 'Vacate a hostel allocation, freeing the bed. An allocation already vacated is refused. Needs confirmation.',
-    inputSchema: { type: 'object', properties: { allocationId: objectId() }, required: ['allocationId'], additionalProperties: false },
+    inputSchema: {
+      type: 'object',
+      // A warden says "vacate Diya Sharma's bed", never an allocation id. The
+      // student is resolved to their ONE active allocation; more than one is
+      // refused rather than guessed at, because a guess here frees the wrong
+      // bed.
+      properties: { allocationId: objectId(), ...studentIdentitySchema },
+      additionalProperties: false,
+    },
     permission: 'hostel.manage',
     minScope: 'ALL',
     affectsOthers: true,
     service: 'hostel.service.vacate()',
-    summarise: (args) => `Vacate hostel allocation ${args.allocationId}`,
-    async run(_ctx, args) {
-      await hostel.vacate(args.allocationId);
-      return action({ type: 'hostel_bed_vacated', id: args.allocationId, data: { allocationId: args.allocationId }, speak: 'The bed has been vacated.' });
+    summarise: (args, _actor, prepared) =>
+      `Vacate the hostel bed held by ` +
+      `${prepared?.studentLabel ?? args.studentName ?? args.admissionNo ?? `allocation ${args.allocationId}`}` +
+      `${prepared?.roomNo ? ` in room ${prepared.roomNo}` : ''}`,
+    async prepare(ctx, args) {
+      if (args.allocationId) return { allocationId: String(args.allocationId) };
+      const studentId = await resolveStudentId(ctx, args);
+      if (!studentId) throw new AppError('Name the student whose bed should be vacated.', 400, [], 'AGENT_NEEDS_INPUT');
+
+      const active = asList(await hostel.listAllocations({ status: 'ACTIVE' }))
+        .filter((r) => String(r.studentId?._id ?? r.studentId) === String(studentId));
+      if (!active.length) throw new AppError('That student has no active hostel allocation.', 404);
+      if (active.length > 1) {
+        throw new AppError('That student has more than one active allocation. Name the allocation.', 400, [], 'AGENT_NEEDS_INPUT');
+      }
+      const st = active[0].studentId ?? {};
+      return {
+        allocationId: String(active[0]._id),
+        roomNo: active[0].roomId?.roomNo ?? null,
+        studentLabel: [st.firstName, st.lastName].filter(Boolean).join(' ') || args.studentName || args.admissionNo,
+      };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      await hostel.vacate(plan.allocationId);
+      return action({
+        type: 'hostel_bed_vacated',
+        id: plan.allocationId,
+        data: { allocationId: plan.allocationId, ...(plan.roomNo && { roomNo: plan.roomNo }) },
+        speak: 'The bed has been vacated.',
+      });
     },
   },
 
@@ -576,10 +934,18 @@ export const facilityTools = {
   get_my_bus: {
     module: 'Transport',
     operation: 'GET',
+    // One assignment: the caller's route and pickup stop.
+    resultShape: 'DETAIL',
     risk: RISK.LOW,
-    description: "The caller's own (or their child's) bus route, vehicle, driver and stop. Read-only.",
+    description: "The caller's own (or their child's) bus assignment: route, vehicle, driver and pickup stop. Use for \"which bus am I on\" and \"what is my pickup point\". Read-only.",
     inputSchema: { type: 'object', properties: { studentId: objectId() }, additionalProperties: false },
-    permission: 'transport.read',
+    // The Web's /transport/my-bus is self-service -- it asks only that the
+    // caller be signed in, and getOwnBus() confines the answer to their own
+    // (or their child's) assignment. Gating it on transport.read, which only
+    // an administrator holds, hid a student's own bus from them here while the
+    // Web showed it. transport.request is the grant a student travels with,
+    // and it adds nobody who could not already open the Web page.
+    permission: 'transport.request',
     service: 'transport.service.getOwnBus()',
     async run(ctx, args) {
       const bus = await transport.getOwnBus(ctx.actor, args.studentId);
@@ -691,7 +1057,12 @@ export const facilityTools = {
       type: 'object',
       properties: {
         routeId: objectId('From list_transport_routes'),
-        name: { type: 'string', maxLength: 120 },
+        // A route is named in every sentence anybody types -- "Route 2" -- and
+        // by an ObjectId nowhere else, so `routeName` identifies it while
+        // `name` renames it. Requiring the id made the capability unreachable
+        // from a sentence at all.
+        routeName: { type: 'string', maxLength: 120, description: 'The route as it is written, e.g. "Route 2". An ambiguous name is refused, never guessed.' },
+        name: { type: 'string', maxLength: 120, description: 'A NEW name for the route' },
         operatorName: { type: 'string', maxLength: 120 },
         vehicleNo: { type: 'string', maxLength: 30 },
         driverName: { type: 'string', maxLength: 120 },
@@ -703,7 +1074,6 @@ export const facilityTools = {
           description: 'The yearly fare in paise, so ₹12,000 is 1200000. Zero means the route carries no charge.',
         },
       },
-      required: ['routeId'],
       additionalProperties: false,
     },
     permission: 'transport.manage',
@@ -717,16 +1087,29 @@ export const facilityTools = {
       for (const field of ['name', 'operatorName', 'vehicleNo', 'driverName', 'driverPhone']) {
         if (args[field] !== undefined) what.push(field === 'name' ? 'its name' : field.replace(/([A-Z])/g, ' $1').toLowerCase());
       }
-      return `Change ${what.join(', ') || 'nothing'} on route "${prepared?.name ?? args.routeId}"`;
+      return `Change ${what.join(', ') || 'nothing'} on route "${prepared?.name ?? args.routeName ?? args.routeId}"`;
     },
     /** The route must exist in this school, and the prompt names it. */
     async prepare(_ctx, args) {
-      const route = await transport.getRoute(args.routeId);
-      return { name: route.name, fareAmountPaise: route.fareAmountPaise ?? 0 };
+      // By id when one is given, by name otherwise -- the routes the school
+      // runs, read through the same listRoutes() the transport screen reads.
+      const route = args.routeId
+        ? await transport.getRoute(args.routeId)
+        : theNamed(await transport.listRoutes(), args.routeName, {
+          label: 'route',
+          nameOf: (r) => r.name,
+          describe: (r) => `"${r.name}"`,
+        });
+      return {
+        routeId: String(route._id ?? route.id),
+        name: route.name,
+        fareAmountPaise: route.fareAmountPaise ?? 0,
+      };
     },
-    async run(ctx, args) {
-      const { routeId, ...changes } = args;
-      const route = await transport.updateRoute(ctx.actor, routeId, changes);
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const { routeId: _id, routeName: _named, ...changes } = args;
+      const route = await transport.updateRoute(ctx.actor, plan.routeId, changes);
       return action({
         type: 'transport_route_updated',
         id: String(route._id),
@@ -748,25 +1131,31 @@ export const facilityTools = {
       type: 'object',
       properties: {
         routeId: objectId(),
+        routeName: { type: 'string', maxLength: 120, description: 'The route as it is written, e.g. "Route 7". Alternative to routeId.' },
         name: { type: 'string', maxLength: 120 },
         sequenceNo: { type: 'integer', minimum: 1, maximum: 200, description: 'Position along the route, 1 = first' },
         etaMinutesFromStart: { type: 'integer', minimum: 0, maximum: 600 },
       },
-      required: ['routeId', 'name', 'sequenceNo'],
+      // The route is named ("Route 7") as it is in every sentence; see prepare().
+      required: ['name', 'sequenceNo'],
       additionalProperties: false,
     },
     permission: 'transport.manage',
     minScope: 'ALL',
     service: 'transport.service.createStop()',
     summarise: (args, _actor, prepared) =>
-      `Add stop "${args.name}" as stop ${args.sequenceNo} on route "${prepared?.name ?? args.routeId}"`,
+      `Add stop "${args.name}" as stop ${args.sequenceNo} on route "${prepared?.name ?? args.routeName ?? args.routeId}"`,
     /** The route must exist in this school — checked before anyone is asked to confirm, and named in the prompt. */
     async prepare(_ctx, args) {
-      const route = await transport.getRoute(args.routeId);
-      return { routeId: route.id, name: route.name };
+      const named = await resolveRouteRef({ routeId: args.routeId, route: args.routeName });
+      if (!named) throw new AppError('Which route? For example "Route 7".', 400, [], 'AGENT_NEEDS_INPUT');
+      const route = await transport.getRoute(named.id);
+      return { routeId: String(route.id ?? route._id), name: route.name };
     },
-    async run(_ctx, args) {
-      const stop = await transport.createStop(args);
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
+      const { routeName: _named, ...rest } = args;
+      const stop = await transport.createStop({ ...rest, routeId: plan.routeId });
       return action({ type: 'transport_stop_created', id: stop._id, data: { stopId: String(stop._id), name: stop.name }, speak: `Stop "${stop.name}" has been added.` });
     },
   },
@@ -783,11 +1172,13 @@ export const facilityTools = {
       properties: {
         ...studentIdentitySchema,
         routeId: objectId(),
+        routeName: { type: 'string', maxLength: 120, description: 'The route as it is written, e.g. "Route 7". Alternative to routeId.' },
         stopId: objectId('A stop on that route, from list_transport_stops'),
+        stopName: { type: 'string', maxLength: 120, description: 'The stop as it is written, e.g. "Market". Alternative to stopId.' },
         academicYearId: objectId(),
         direction: { type: 'string', enum: BUS_DIRECTIONS, description: 'Default BOTH' },
       },
-      required: ['routeId', 'stopId'],
+      // The route and stop are named in words; see prepare().
       additionalProperties: false,
     },
     permission: 'transport.manage',
@@ -806,8 +1197,12 @@ export const facilityTools = {
      */
     async prepare(ctx, args) {
       const studentId = await studentFor(ctx, args);
+      const route = await resolveRouteRef({ routeId: args.routeId, route: args.routeName });
+      if (!route) throw new AppError('Which route? For example "Route 7".', 400, [], 'AGENT_NEEDS_INPUT');
+      const stop = await resolveStopRef({ stopId: args.stopId, stop: args.stopName }, route);
+      if (!stop) throw new AppError(`Which stop on ${route.name} does ${args.studentName ?? 'the student'} board at?`, 400, [], 'AGENT_NEEDS_INPUT');
       return transport.resolveEnrollment({
-        studentId, routeId: args.routeId, stopId: args.stopId, academicYearId: args.academicYearId,
+        studentId, routeId: route.id, stopId: stop.id, academicYearId: args.academicYearId,
       });
     },
     /** The student's bus before and after: enrolling again moves them, so the audit keeps where they were. */

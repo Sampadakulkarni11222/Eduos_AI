@@ -76,7 +76,12 @@ function Toggle({ value, scope, disabled, onToggle, onScope }: {
   );
 }
 
-export function AccessPermissionsContent() {
+/**
+ * `readOnly` is for the school-level page. The system roles shown here are
+ * shared by every school on the platform, so the server only lets a Super
+ * Admin change them; a School Admin sees the matrix but cannot toggle it.
+ */
+export function AccessPermissionsContent({ readOnly = false }: { readOnly?: boolean } = {}) {
   const [roles, setRoles] = useState<RoleDto[] | null>(null);
   const [catalog, setCatalog] = useState<PermissionDto[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -155,7 +160,9 @@ export function AccessPermissionsContent() {
         <div>
           <div style={{ fontSize: 13.5, fontWeight: 600, color: '#1a0a0d' }}>Role-Based Access Control</div>
           <div style={{ fontSize: 12.5, color: '#7a6a60', marginTop: 2 }}>
-            Changes save instantly to the server and are enforced on every API call.
+            {readOnly
+              ? 'These roles are shared by every school on the platform, so only the platform administrator can change them. '
+              : 'Changes save instantly to the server and are enforced on every API call. '}
             Scope <strong>ALL</strong> covers the whole school; <strong>OWN</strong> restricts to the role&apos;s own classes, children, or records.
           </div>
         </div>
@@ -208,7 +215,7 @@ export function AccessPermissionsContent() {
                           <Toggle
                             value={Boolean(grant)}
                             scope={grant?.scope ?? null}
-                            disabled={savingCell === cellId}
+                            disabled={readOnly || savingCell === cellId}
                             onToggle={() => void mutate(role, perm, 'toggle')}
                             onScope={() => void mutate(role, perm, 'scope')}
                           />
@@ -257,7 +264,7 @@ export function AccessPermissionsContent() {
                       <Toggle
                         value={Boolean(grant)}
                         scope={grant?.scope ?? null}
-                        disabled={savingCell === cellId}
+                        disabled={readOnly || savingCell === cellId}
                         onToggle={() => void mutate(mobileRole, perm, 'toggle')}
                         onScope={() => void mutate(mobileRole, perm, 'scope')}
                       />
