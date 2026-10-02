@@ -1,4 +1,4 @@
-services:
+﻿services:
   - type: web
     name: school-erp-backend
     env: node
@@ -6,25 +6,14 @@ services:
     rootDir: backend
     buildCommand: npm install && npm run build
     startCommand: npm start
-    # NOTE — uploaded files (documents/course material/ID cards live under
-    # backend/uploads) do NOT persist across deploys/restarts on Render's
-    # free plan: it has no writable disk that survives a redeploy. To fix
-    # this properly, either (a) upgrade this service to a paid plan and add
-    # a `disk:` block here mounted at `backend/uploads`, e.g.:
-    #   disk:
-    #     name: uploads
-    #     mountPath: /opt/render/project/src/backend/uploads
-    #     sizeGB: 1
-    # or (b) move file storage to S3-compatible object storage. Left
-    # undeclared here (rather than added and silently failing to deploy on
-    # the free plan) — pick one and apply it before relying on uploads in
-    # production.
+    # NOTE - uploaded files do NOT persist across deploys/restarts on Render's
+    # free plan. Upgrade to a paid plan and add a disk block, or use S3.
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 5000
-      # Secrets are NEVER committed here. `sync: false` means the value is
+      # Secrets are NEVER committed here. sync: false means the value is
       # entered once in the Render dashboard (Environment tab) and stays there.
       - key: MONGO_URI
         sync: false
@@ -33,17 +22,17 @@ services:
       - key: MEDICAL_ENCRYPTION_KEY
         sync: false
       - key: SWAGGER_ENABLED
-        value: "false"
-      # ── One-time sign-in codes (OTP) ─────────────────────────────
-      # Production never returns a code in an API response; codes are only
-      # delivered by a real provider. Without one, the service still starts,
-      # OTP sign-in answers 503, and password / Google sign-in keep working.
-      # To enable OTP, pick a provider here and enter its secrets in the
-      # Render dashboard (Environment tab) — never in this file.
-      #   Email: EMAIL_PROVIDER=resend + RESEND_API_KEY + EMAIL_FROM
+        value: 'false'
+
+      # CORS - must be your deployed frontend origin (no trailing slash).
+      # Example: https://school-erp-frontend.onrender.com
+      - key: CORS_ORIGIN
+        sync: false
+
+      # OTP delivery - production never echoes codes in responses.
+      # Without a real provider OTP sign-in answers 503; password/Google work.
+      #   Email: EMAIL_PROVIDER=resend  + RESEND_API_KEY + EMAIL_FROM
       #   SMS:   SMS_PROVIDER=twilio   + TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + TWILIO_FROM_NUMBER
-      # A provider named here but missing its secrets stops the service from
-      # starting, so a half-finished setup is caught at deploy time.
       - key: EMAIL_PROVIDER
         sync: false
       - key: SMS_PROVIDER
@@ -58,13 +47,57 @@ services:
         sync: false
       - key: TWILIO_FROM_NUMBER
         sync: false
-      # Real Google sign-in (verified server-side against this client id).
+
+      # Payments
+      # 'none'     - online payment disabled (safe default for a fresh deploy)
+      # 'razorpay' - override in dashboard; also add the three Razorpay keys
+      # 'sandbox'  - NEVER in production; the gate refuses to start on it
+      - key: PAYMENT_PROVIDER
+        value: none
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+
+      # WhatsApp
+      # WHATSAPP_VERIFY_TOKEN is always checked in production - the gate refuses
+      # to start if it is still the placeholder 'change-this-verify-token'.
+      # Generate with: openssl rand -hex 24
+      # Set the same value in the Meta app dashboard (webhook verify token field).
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      # The three below are needed only for live WhatsApp messages.
+      # Leaving them unset keeps the bot in simulation (log-only) mode.
+      - key: WA_PHONE_NUMBER_ID
+        sync: false
+      - key: WA_ACCESS_TOKEN
+        sync: false
+      # App Secret from the Meta dashboard - authenticates inbound webhooks.
+      # Required once WA_PHONE_NUMBER_ID and WA_ACCESS_TOKEN are set.
+      - key: WA_APP_SECRET
+        sync: false
+
+      # AI provider
+      # 'rules'      - no API key needed; deterministic answers (safe default)
+      # 'gemini'     - set GEMINI_API_KEY in the dashboard
+      # 'anthropic'  - set ANTHROPIC_API_KEY in the dashboard
+      # 'openrouter' - set OPENROUTER_API_KEY in the dashboard
+      - key: AI_PROVIDER
+        value: rules
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+
+      # Google Sign-In
       - key: GOOGLE_CLIENT_ID
         sync: false
-      # Same random value on both services (e.g. `openssl rand -hex 32`). Lets
-      # the frontend's session-refresh proxy — which limits failed refreshes
-      # per real client — skip this service's per-address failure limit.
-      # Optional; without it the proxy is simply one more address.
+
+      # Session refresh proxy - same value on both services (openssl rand -hex 32)
       - key: FRONTEND_PROXY_SECRET
         sync: false
 
@@ -78,8 +111,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # Real Google sign-in. The demo Google popup and the on-screen OTP hint
-      # exist only in development builds; no flag enables them here.
       - key: NEXT_PUBLIC_GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_ID
@@ -88,8 +119,7 @@ services:
         sync: false
       - key: NEXTAUTH_SECRET
         sync: false
-      # Must equal the backend's FRONTEND_PROXY_SECRET. Server-side only —
-      # never prefix it NEXT_PUBLIC_.
+      # Must equal the backend FRONTEND_PROXY_SECRET. Server-side only.
       - key: FRONTEND_PROXY_SECRET
         sync: false
       - key: NEXT_PUBLIC_BACKEND_URL
