@@ -1289,3 +1289,26 @@ body.role-student select option{background:var(--menu-bg,#fff);color:var(--text-
    a whole page can be dragged left and right on a phone. */
 body.role-student .content{overflow-x:hidden}
 body.role-student .filter-bar{max-width:100%}
+
+/* ===== User Guide Search Polish ===== */
+.guide-search-input {
+  width: 100%;
+  text-align: center;
+  padding: 16px 20px;
+  font-size: 16px;
+  border-radius: 24px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid transparent;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+}
+.guide-search-input:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+.guide-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(89, 22, 32, 0.15), 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
