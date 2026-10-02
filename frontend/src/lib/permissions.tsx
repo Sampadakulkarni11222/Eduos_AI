@@ -82,6 +82,9 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   '/teacher/student-requests': 'cocurricular.review',
   '/parent/medical': 'medical.read',
   '/admin/medical': 'medical.read',
+  // Same keys the document-request API enforces.
+  '/admin/document-requests': 'students.manage',
+  '/admin/document-types': 'settings.manage',
 };
 
 export function getRequiredPermission(pathname: string): string | null {

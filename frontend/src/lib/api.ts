@@ -14,6 +14,8 @@ import { cachedFetch, invalidateCache } from './cache';
 import { getActingSchool } from './acting-school';
 import { SESSION_MARKER } from './session-cookie';
 import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, SchoolThemeDto, SchoolDropdownDto, SchoolCustomizationDto, SchoolCustomizationSummaryDto, SchoolCustomizationInput, DomainListDto, SchoolDomainDetailDto, DomainChangeDto, DomainCheckDto, SeatSummaryDto, SeatRequestDto, SeatHistoryEntryDto, SeatPaymentStartDto, SeatPriceListDto, SeatPriceDto, SchoolSeatPriceDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AgentTurn, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, LearnStatusDto, LearnReplyDto, LearnModeKey,AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto, AnnouncementDraft, AnnouncementPreviewDto, TransportRosterRow, LibraryResourceKind, LeaveRequestDto, LeaveStatus, BookRequestDto, TransportRequestDto, AvailableRoutesDto, RequestStatus } from './types';
+import type { QuizListItem, QuizDetail, QuizInput, QuizQuestionInput, QuizResults, QuizOverview, QuizPaper, QuizResult, QuizMyAttempt } from './quiz-types';
+import type { RequestableDocumentType, DocumentTypeDto, DocumentTypeInput, DocumentRequestDto, AdminDocumentRequestDto, NewDocumentRequest, DocumentRequestFilters } from './document-request-types';
 
 /**
  * A document exactly as the API returns it, before this layer normalises it.
@@ -666,6 +668,66 @@ export const api = {
     request<{ status: string }>('/assignments/grade', { method: 'POST', body: JSON.stringify(body) }),
   assignmentSubmissions: (assignmentId: string) =>
     request<SubmissionRoster>(`/assignments/${assignmentId}/submissions`),
+
+  // ── quizzes ──
+  quizzes: () => request<QuizListItem[]>('/quizzes'),
+  quiz: (id: string) => request<QuizDetail>(`/quizzes/${id}`),
+  createQuiz: (body: QuizInput) => request<QuizDetail>('/quizzes', { method: 'POST', body: JSON.stringify(body) }),
+  updateQuiz: (id: string, body: Partial<QuizInput>) =>
+    request<QuizDetail>(`/quizzes/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteQuiz: (id: string) => request<{ id: string; deleted: boolean }>(`/quizzes/${id}`, { method: 'DELETE' }),
+  addQuizQuestion: (id: string, body: QuizQuestionInput) =>
+    request<QuizDetail>(`/quizzes/${id}/questions`, { method: 'POST', body: JSON.stringify(body) }),
+  updateQuizQuestion: (id: string, questionId: string, body: QuizQuestionInput) =>
+    request<QuizDetail>(`/quizzes/${id}/questions/${questionId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteQuizQuestion: (id: string, questionId: string) =>
+    request<QuizDetail>(`/quizzes/${id}/questions/${questionId}`, { method: 'DELETE' }),
+  publishQuiz: (id: string) => request<QuizDetail>(`/quizzes/${id}/publish`, { method: 'POST' }),
+  unpublishQuiz: (id: string) => request<QuizDetail>(`/quizzes/${id}/unpublish`, { method: 'POST' }),
+  quizResults: (id: string) => request<QuizResults>(`/quizzes/${id}/results`),
+  quizOverview: (id: string) => request<QuizOverview>(`/quizzes/${id}/take`),
+  startQuiz: (id: string) => request<QuizPaper>(`/quizzes/${id}/start`, { method: 'POST' }),
+  submitQuiz: (id: string, answers: Array<{ questionId: string; optionId: string }>) =>
+    request<QuizResult>(`/quizzes/${id}/submit`, { method: 'POST', body: JSON.stringify({ answers }) }),
+  myQuizResult: (id: string) => request<QuizResult>(`/quizzes/${id}/my-result`),
+  myQuizAttempts: () => request<QuizMyAttempt[]>('/quizzes/my-attempts'),
+
+  // ── document requests ──
+  // Student: their own requests. Issued files open through openProtectedFile,
+  // never through a stored /uploads link.
+  requestableDocumentTypes: () => request<RequestableDocumentType[]>('/document-requests/mine/types'),
+  myDocumentRequests: () => request<DocumentRequestDto[]>('/document-requests/mine'),
+  createDocumentRequest: (body: NewDocumentRequest) =>
+    request<DocumentRequestDto>('/document-requests/mine', { method: 'POST', body: JSON.stringify(body) }),
+  cancelDocumentRequest: (id: string) =>
+    request<DocumentRequestDto>(`/document-requests/mine/${id}/cancel`, { method: 'POST' }),
+  openMyIssuedDocument: (id: string) => openProtectedFile(`/document-requests/mine/${id}/file`),
+  // School office.
+  documentRequests: (filters: DocumentRequestFilters = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(filters).filter(([, v]) => v !== undefined && v !== '' && v !== false).map(([k, v]) => [k, String(v)]),
+    ).toString();
+    return request<AdminDocumentRequestDto[]>(`/document-requests${qs ? `?${qs}` : ''}`);
+  },
+  documentRequest: (id: string) => request<AdminDocumentRequestDto>(`/document-requests/${id}`),
+  reviewDocumentRequest: (id: string) =>
+    request<AdminDocumentRequestDto>(`/document-requests/${id}/review`, { method: 'POST' }),
+  approveDocumentRequest: (id: string, remarks?: string) =>
+    request<AdminDocumentRequestDto>(`/document-requests/${id}/approve`, { method: 'POST', body: JSON.stringify({ remarks }) }),
+  rejectDocumentRequest: (id: string, reason: string) =>
+    request<AdminDocumentRequestDto>(`/document-requests/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  issueDocument: (id: string, body: { fileUrl: string; remarks?: string }) =>
+    request<AdminDocumentRequestDto>(`/document-requests/${id}/issue`, { method: 'POST', body: JSON.stringify(body) }),
+  openIssuedDocument: (id: string, version?: number) =>
+    openProtectedFile(`/document-requests/${id}/file${version ? `?version=${version}` : ''}`),
+  documentTypes: () => request<DocumentTypeDto[]>('/document-types'),
+  createDocumentType: (body: DocumentTypeInput) =>
+    request<DocumentTypeDto>('/document-types', { method: 'POST', body: JSON.stringify(body) }),
+  updateDocumentType: (id: string, body: DocumentTypeInput) =>
+    request<DocumentTypeDto>(`/document-types/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteDocumentType: (id: string) => request<{ id: string; deleted: boolean }>(`/document-types/${id}`, { method: 'DELETE' }),
+  addSuggestedDocumentTypes: () =>
+    request<{ created: DocumentTypeDto[]; skipped: string[] }>('/document-types/suggested', { method: 'POST' }),
 
   // ── exams / performance ──
   performance: (enrollmentId: string) => request<PerformanceDto>(`/exams/performance?enrollmentId=${enrollmentId}`),

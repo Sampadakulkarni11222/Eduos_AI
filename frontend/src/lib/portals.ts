@@ -78,6 +78,10 @@ export const PORTALS: Record<string, Portal> = {
         // bills the fare.
         item('Transport Requests', '⇄', '/admin/transport-requests', { ready: true }),
         item('Documents', '🗎', '/admin/documents', { ready: true }),
+        // Students' document requests (and the issued documents), and the
+        // document types the school offers.
+        item('Document Requests', '⇄', '/admin/document-requests', { ready: true }),
+        item('Document Types', '⚙', '/admin/document-types', { ready: true }),
       ]},
       { title: 'SYSTEM', items: [
         item('Audit Logs', '▷', '/admin/audit', { ready: true }),
@@ -98,6 +102,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Attendance', '☱', '/teacher/attendance', { ready: true }),
         item('Timetable', '▥', '/teacher/timetable', { ready: true }),
         item('Assignments', '✎', '/teacher/assignments', { ready: true }),
+        item('Quizzes', '☑', '/teacher/quizzes', { ready: true }),
         item('Exams & Performance', '◌', '/teacher/exams', { ready: true }),
       ]},
       { title: 'CONTENT', items: [ item('Course Material', '❑', '/teacher/material', { ready: true }) ]},
@@ -157,6 +162,7 @@ export const PORTALS: Record<string, Portal> = {
         item('Subject Registration', '⊕', '/student/subjects', { ready: true }),
         item('Timetable', '▥', '/student/timetable', { ready: true }),
         item('Assignments', '✐', '/student/assignments', { ready: true }),
+        item('Quizzes', '☑', '/student/quizzes', { ready: true }),
         item('Performance', '◉', '/student/performance', { ready: true }),
         item('Attendance', '☱', '/student/attendance', { ready: true }),
         item('Course Material', '❑', '/student/material', { ready: true }),

@@ -5,6 +5,7 @@ import { Avatar, Card, EmptyState, Pill, SkeletonRows } from '@/components/ui';
 import { IdCardPanel } from '@/components/id-card-action';
 import { ProfileEditRequestPanel } from '@/components/student/profile-edit-request';
 import { CoCurricularPanel } from '@/components/student/cocurricular-panel';
+import { DocumentRequestsPanel } from '@/components/student/document-requests-panel';
 import { api, ApiError, fileHref } from '@/lib/api';
 import type { StudentOverviewDto } from '@/lib/types';
 
@@ -187,6 +188,8 @@ export default function StudentProfile() {
           <ProfileEditRequestPanel overview={overview} onApprovedChange={refresh} />
 
           <CoCurricularPanel />
+
+          <DocumentRequestsPanel />
 
           <Card pad={false} style={{ marginBottom: 16 }}>
             <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--hairline)' }}>
