@@ -385,7 +385,8 @@ describe('WhatsApp: signed webhook → phone identity → shared agent → MCP �
 
   it('MEMORY — "mark him absent" is resolved from the conversation, and authorized as the sender', async () => {
     const first = await whatsapp(school.people.ADMIN, "Show Rahul Sharma's attendance");
-    expect(first.reply).toMatch(/Attendance is 0%/);
+    // Rendered by agent/present.js and converted for WhatsApp: "*Attendance:* 0%".
+    expect(first.reply).toMatch(/Attendance:\*? 0%/);
 
     script.plans.set('mark him absent', [{ name: 'mark_attendance', args: { students: [{ studentName: 'Rahul Sharma', status: 'ABSENT' }] } }]);
     const proposal = await whatsapp(school.people.ADMIN, 'mark him absent');

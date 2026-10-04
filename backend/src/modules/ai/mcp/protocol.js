@@ -70,13 +70,19 @@ const STATUS_FOR = {
  * rendering hint for the agent (see utils/language.js), not part of the ERP
  * record, and a caller that only wants the facts can ignore them.
  */
-export function ok(data, { speakKey = null, params = null, speak = null } = {}) {
+export function ok(data, { speakKey = null, params = null, speak = null, view = null, range = null } = {}) {
   return {
     success: true,
     data: data ?? null,
     ...(speakKey && { speakKey }),
     ...(params && { params }),
     ...(speak && { speak }),
+    // How the answer should read to a person (agent/present.js renders it).
+    // Presentation only: never ids, never the raw record.
+    ...(view && { view }),
+    // Which rows of the whole this answer holds, and where the next window
+    // starts (mcp/tools/_shared.js rangeOf). Only on answers that were windowed.
+    ...(range && { range }),
   };
 }
 

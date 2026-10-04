@@ -609,7 +609,7 @@ export const api = {
   bulkMarkAttendance: (file: File, sectionId: string, date: string, periodNo?: number) =>
     uploadCsv('/attendance/mark/bulk', file, { sectionId, date, ...(periodNo ? { periodNo: String(periodNo) } : {}) }),
   attendanceSummary: (enrollmentId: string, yearMonth: string) =>
-    request<{ enrollmentId: string; yearMonth: string; PRESENT: number; ABSENT: number; LATE: number; EXCUSED: number; HALF_DAY: number; workingDays: number; pctPresent: number }>(`/attendance/summary?enrollmentId=${enrollmentId}&month=${yearMonth}`),
+    request<{ enrollmentId: string; yearMonth: string; PRESENT: number; ABSENT: number; LATE: number; EXCUSED: number; HALF_DAY: number; workingDays: number; pctPresent: number | null }>(`/attendance/summary?enrollmentId=${enrollmentId}&month=${yearMonth}`),
   attendanceCalendar: (enrollmentId: string, month: string) =>
     request<AttendanceCalendarDto>(`/attendance/calendar?enrollmentId=${enrollmentId}&month=${month}`),
   attendanceTrend: (enrollmentId: string, months = 6) =>
@@ -896,6 +896,12 @@ export const api = {
    */
   agentAsk: (message: string, lang?: string, history?: AgentTurn[]) =>
     request<AgentReply>('/ai/agent', { method: 'POST', body: JSON.stringify({ message, source: 'WEB', lang, history }) }),
+  /** The next window of a long answer ("Load more"). */
+  agentContinue: (continuationToken: string, lang?: string) =>
+    request<AgentReply>('/ai/agent/continue', {
+      method: 'POST',
+      body: JSON.stringify({ continuationToken, source: 'WEB', lang }),
+    }),
   agentConfirm: (confirmToken: string, accept: boolean, lang?: string) =>
     request<{ reply: string; executed?: boolean }>('/ai/agent/confirm', {
       method: 'POST',

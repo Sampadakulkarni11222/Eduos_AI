@@ -72,7 +72,7 @@ function expectNoCatalogLeak(text) {
  */
 const OWN_WORK = {
   PARENT: [
-    ["How is my child's attendance?", /attendance is \d+%|present of/i],
+    ["How is my child's attendance?", /attendance is \d+%|present of|Attendance:\*{1,2} \d+%/i],
     ['Does my child have any pending fees?', /8,000|outstanding/i],
     ['What announcements are there?', /announcement/i],
   ],
@@ -189,7 +189,7 @@ describe('a parent speaking of "my child" is answered about their child', () => 
     // The fixture's parent has exactly one child, Rahul, who is absent today
     // and owes ₹8,000. Both figures are his, reached without his name.
     expect(say(await api.ask(person('PARENT'), "How is my son's attendance?")))
-      .toMatch(/attendance is \d+%|present of/i);
+      .toMatch(/attendance is \d+%|present of|Attendance:\*{1,2} \d+%/i);
     expect(say(await api.ask(person('PARENT'), "Does my child owe any fees?")))
       .toMatch(/8,000/);
   }, 60000);

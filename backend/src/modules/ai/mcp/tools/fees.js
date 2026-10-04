@@ -5,6 +5,7 @@ import { ok, action } from '../protocol.js';
 import {
   RISK, objectId, dateStr, rupees, paise, summarise, wrapAgentTool, resolveSection, classIdentitySchema, resolveStudentId,
   studentIdentitySchema,
+  limitSchema, askedLimit, collectPages,
 } from './_shared.js';
 import {
   resolveGrade, resolveYear, resolveFeeHead, resolvePayment, resolveChangeRequest, resolveFeePlanRef, activeEnrollmentOf,
@@ -128,7 +129,7 @@ export const feeTools = {
         ...classIdentitySchema,
         sectionId: objectId(),
         academicYearId: objectId(),
-        limit: { type: 'integer', minimum: 1, maximum: 100, description: 'Invoices to return, default 25' },
+        limit: limitSchema('Invoices to return, only when the user asks for a number; omit for all'),
       },
       additionalProperties: false,
     },
@@ -194,7 +195,7 @@ export const feeTools = {
 
       return ok(
         {
-          invoices: pending.slice(0, Math.min(Number(args.limit) || 25, 100)),
+          invoices: askedLimit(args) ? pending.slice(0, askedLimit(args)) : pending,
           invoiceCount: pending.length,
           studentsWithPendingFees: withDues,
           totalOutstandingPaise: outstanding,
@@ -273,24 +274,25 @@ export const feeTools = {
         invoiceId: objectId(),
         from: dateStr(),
         to: dateStr(),
-        limit: { type: 'integer', minimum: 1, maximum: 100 },
+        limit: limitSchema(),
       },
       additionalProperties: false,
     },
     permission: 'fees.read',
     service: 'fee.service.listPayments()',
     async run(ctx, args) {
-      const page = await fees.listPayments(ctx.actor, ctx.scope, {
+      // Every page of the period, so the figure collected is the period's and
+      // every payment can be listed -- not the first 200.
+      const page = await collectPages((p, pageSize) => fees.listPayments(ctx.actor, ctx.scope, {
         ...(args.search && { search: args.search }),
         ...(args.invoiceId && { invoiceId: args.invoiceId }),
         ...(args.from && { from: args.from }),
         ...(args.to && { to: args.to }),
-        page: 1,
-        // The whole period is read (up to the service's own cap) so the figure
-        // collected is the period's, not that of the few rows the answer lists.
-        pageSize: 200,
-      });
-      const shownLimit = Math.min(Number(args.limit) || 20, 100);
+        page: p,
+        pageSize,
+      }), { offset: 0, size: Number.MAX_SAFE_INTEGER });
+      // The rows listed: all of them, unless a number was asked for.
+      const shownLimit = askedLimit(args) ?? Number.MAX_SAFE_INTEGER;
       const everyItem = asList(page).map((p) => ({
         paymentId: String(p.id),
         receiptNo: p.receiptNo,
@@ -321,7 +323,8 @@ export const feeTools = {
         {
           speak: everyItem.length
             ? `${count} payment(s); ${rupees(collectedPaise)} collected across ${settled.length} settled payment(s)`
-              + `${count > everyItem.length ? ` (the first ${everyItem.length} of ${count})` : ''}. The ${items.length} shown: ${view.list}.`
+              + `${count > everyItem.length ? ` (the first ${everyItem.length} of ${count})` : ''}. `
+              + `${items.length < everyItem.length ? `The ${items.length} asked for` : 'Payments'}: ${view.list}.`
             : 'No payments have been recorded for that.',
         },
       );
@@ -432,9 +435,9 @@ export const feeTools = {
         fees.listFeeStructures({ academicYearId: args.academicYearId, gradeId: args.gradeId ?? null }),
       ]);
       const headNames = heads.map((h) => h.name).filter(Boolean);
-      const headSummary = headNames.length > 0 ? ` (${headNames.slice(0, 5).join(', ')}${headNames.length > 5 ? '…' : ''})` : '';
+      const headSummary = headNames.length > 0 ? ` (${headNames.join(', ')})` : '';
       const structureNames = structures.map((s) => s.name).filter(Boolean);
-      const structureSummary = structureNames.length > 0 ? ` (${structureNames.slice(0, 5).join(', ')}${structureNames.length > 5 ? '…' : ''})` : '';
+      const structureSummary = structureNames.length > 0 ? ` (${structureNames.join(', ')})` : '';
       return ok(
         { feeHeads: heads, structures, headCount: heads.length, structureCount: structures.length },
         { speak: `${heads.length} fee head(s)${headSummary} and ${structures.length} fee structure(s)${structureSummary} configured.` },

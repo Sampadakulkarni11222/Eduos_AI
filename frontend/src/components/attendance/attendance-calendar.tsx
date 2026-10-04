@@ -13,7 +13,7 @@ import { ATTENDANCE_LEGEND, type DayInfo } from './attendance-status';
 
 interface MonthSummary {
   PRESENT: number; ABSENT: number; LATE: number; EXCUSED: number; HALF_DAY: number;
-  workingDays: number; pctPresent: number;
+  workingDays: number; pctPresent: number | null;
 }
 
 export function AttendanceCalendar() {
@@ -155,15 +155,15 @@ export function AttendanceCalendar() {
           <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 16 }}>
             <StatCard
               label="Attendance %"
-              value={summary ? `${summary.pctPresent}%` : '—'}
-              deltaDir={summary && summary.pctPresent < 75 ? 'down' : 'flat'}
+              value={summary?.pctPresent != null ? `${summary.pctPresent}%` : '—'}
+              deltaDir={summary?.pctPresent != null && summary.pctPresent < 75 ? 'down' : 'flat'}
             />
             <StatCard label="Present" value={summary ? summary.PRESENT + summary.LATE : '—'} />
             <StatCard label="Absent" value={summary ? summary.ABSENT : '—'} deltaDir={summary && summary.ABSENT > 3 ? 'down' : 'flat'} />
             <StatCard label="Leave" value={summary ? summary.EXCUSED + summary.HALF_DAY : '—'} />
           </div>
 
-          {summary && summary.pctPresent < 75 && (
+          {summary?.pctPresent != null && summary.pctPresent < 75 && (
             <div style={{ marginBottom: 16, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 13, color: '#b91c1c' }}>
               Attendance is below 75% this month. Please ensure regular attendance to avoid academic disruption.
             </div>

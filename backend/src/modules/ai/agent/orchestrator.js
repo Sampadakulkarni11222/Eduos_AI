@@ -10,10 +10,83 @@ import { detectLanguage, t } from '../../../utils/language.js';
 import { currentTenantId } from '../../../tenancy/tenantContext.js';
 import { handleRagFallback } from './rag.js';
 import { composeAnswer } from './response.js';
+import { presentOf } from './present.js';
 import { withMcpSession, listTools as listMcpTools, callTool as callMcpTool } from '../mcp/client.js';
 import { getMcpTool, mcpToolsFor } from '../mcp/registry.js';
 import { errorToAppError } from '../mcp/protocol.js';
 import { peekConfirmation, rejectConfirmation, markFailed, canonicalToolName } from '../mcp/confirm.js';
+import jwt from 'jsonwebtoken';
+import { env } from '../../../config/env.js';
+
+/* ── Continuing a long answer ────────────────────────────────
+   A tool answers a very long list a window at a time (mcp/tools/_shared.js).
+   The next window is offered as a continuation: a short-lived token, signed by
+   the server, naming the read tool, its arguments, where to resume, the person
+   and their school. Redeeming it is an ordinary MCP call through the same
+   authorization, scoping and audit as the first -- the token decides only
+   WHICH rows come next, never whether the person may read them. A token is
+   useless to anyone else (bound to the profile), in another school (bound to
+   the tenant), for a write (read tools only), or after it expires. */
+const CONTINUE_AUDIENCE = 'eduos-ai-continue';
+const CONTINUE_TTL = '30m';
+
+function continuationFor(step, result, actor) {
+  const range = result?.range;
+  if (!range?.next) return null;
+  const tool = getMcpTool(step.tool);
+  if (!tool || tool.operation !== 'GET') return null;
+  const token = jwt.sign(
+    { t: step.tool, a: step.args ?? {}, w: range.next, p: String(actor.profileId), s: currentTenantId() ?? null },
+    env.JWT_SECRET,
+    { audience: CONTINUE_AUDIENCE, expiresIn: CONTINUE_TTL },
+  );
+  const size = range.to - range.from + 1;
+  const nextTo = range.total != null ? Math.min(range.total, range.to + size) : range.to + size;
+  return {
+    token,
+    shown: { from: range.from, to: range.to },
+    next: { from: range.to + 1, to: nextTo },
+    total: range.total,
+  };
+}
+
+/**
+ * The next window of an answer, from its continuation token.
+ *
+ * @returns the same shape as runAgent: `reply`, `data`, and a further
+ *   `continuation` while rows remain.
+ */
+export async function continueAnswer({ token, actor, source = 'WEB', lang = 'en' } = {}) {
+  if (!actor?.profileId) throw new AppError('Select a profile first', 403);
+  let claim;
+  try {
+    claim = jwt.verify(String(token ?? ''), env.JWT_SECRET, { audience: CONTINUE_AUDIENCE });
+  } catch {
+    throw new AppError('That list has expired. Please ask again.', 410, [], 'AGENT_CONTINUATION_EXPIRED');
+  }
+  if (claim.p !== String(actor.profileId) || (claim.s ?? null) !== (currentTenantId() ?? null)) {
+    throw new AppError('That list belongs to someone else.', 403, [], 'AGENT_FORBIDDEN');
+  }
+  const tool = getMcpTool(claim.t);
+  if (!tool || tool.operation !== 'GET') {
+    throw new AppError('That list cannot be continued.', 400, [], 'AGENT_NEEDS_INPUT');
+  }
+  checkAgentRate(actor.profileId);
+
+  return withMcpSession({ actor, channel: source }, async (mcpSession) => {
+    const result = await callMcpTool(mcpSession, claim.t, claim.a ?? {}, { window: claim.w });
+    if (!result?.success) throw errorToAppError(result);
+    return {
+      reply: presentOf(result, lang),
+      data: result.data,
+      lang,
+      action: null,
+      tool: claim.t,
+      via: 'MCP',
+      continuation: continuationFor({ tool: claim.t, args: claim.a }, result, actor),
+    };
+  });
+}
 
 /**
  * Shared agent orchestration core.
@@ -383,7 +456,7 @@ export async function runAgentSafely(opts) {
           callMcpTool(mcpSession, intent.tool, intent.args ?? {}));
         if (result?.success) {
           return {
-            reply: speakOf(result, lang),
+            reply: presentOf(result, lang),
             data: result.data,
             lang,
             action: null,
@@ -788,6 +861,10 @@ async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
     tool: calls[0].tool,
     tools: calls.map((c) => c.tool),
     via: 'MCP',
+    // More rows than one answer carries: the way to the next window.
+    ...(succeeded.length === 1 && calls.length === 1 && {
+      continuation: continuationFor(steps[0], succeeded[0].result, actor) ?? undefined,
+    }),
   };
 }
 
@@ -1003,7 +1080,7 @@ export async function confirmAction({ confirmToken, actor, source = 'WEB', accep
     }
     if (!result.success) throw errorToAppError(result);
     return {
-      reply: speakOf(result, lang) || 'Done.',
+      reply: presentOf(result, lang) || 'Done.',
       data: result.data,
       action: result.action ?? null,
       lang,

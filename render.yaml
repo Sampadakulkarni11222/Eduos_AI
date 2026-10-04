@@ -78,6 +78,19 @@
       # Required once WA_PHONE_NUMBER_ID and WA_ACCESS_TOKEN are set.
       - key: WA_APP_SECRET
         sync: false
+      # WhatsApp via Chatflow-Pro. Webhook URL to register in Chatflow-Pro:
+      # https://<this-service>/api/v1/whatsapp/chatflow/webhook?token=<CHATFLOW_WEBHOOK_TOKEN>
+      - key: CHATFLOW_API_URL
+        sync: false
+      - key: CHATFLOW_API_KEY
+        sync: false
+      - key: CHATFLOW_WA_NUMBER_ID
+        sync: false
+      # Required once CHATFLOW_API_URL/KEY are set. Generate: openssl rand -hex 24
+      - key: CHATFLOW_WEBHOOK_TOKEN
+        sync: false
+      - key: CHATFLOW_WEBHOOK_SECRET
+        sync: false
 
       # AI provider
       # 'rules'      - no API key needed; deterministic answers (safe default)

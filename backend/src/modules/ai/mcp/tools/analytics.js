@@ -10,6 +10,7 @@ import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
 import {
   RISK, objectId, dateStr, noArgs, summarise, shortDate, resolveEnrollmentId, studentIdentitySchema,
+  limitSchema, resultWindow, windowSlice, rangeOf, collectPages, collectCursor,
   resolveSection, classIdentitySchema,
   theNamed,
 } from './_shared.js';
@@ -65,7 +66,7 @@ export const analyticsTools = {
         sectionId: objectId(),
         gradeName: { type: 'string', maxLength: 40 },
         search: { type: 'string', maxLength: 80 },
-        limit: { type: 'integer', minimum: 1, maximum: 100 },
+        limit: limitSchema(),
       },
       additionalProperties: false,
     },
@@ -111,7 +112,9 @@ export const analyticsTools = {
           .sort((a, b) => a.attendancePct - b.attendancePct);
       }
 
-      const limited = items.slice(0, Math.min(Number(args.limit) || 25, 100));
+      // Every flagged student, a window at a time; exactly n when n was asked for.
+      const win = resultWindow(_ctx, args);
+      const limited = windowSlice(items, win).items;
       const view = summarise(limited, (i) =>
         `${i.studentName}${i.class ? ` (${i.class})` : ''}${i.attendancePct != null ? ` — ${i.attendancePct}%` : ` — ${i.type}`}`);
 
@@ -123,6 +126,7 @@ export const analyticsTools = {
             : threshold != null
               ? `No students are below ${threshold}% attendance over the last 30 days.`
               : 'No students are currently flagged at risk.',
+          range: rangeOf(win, limited.length, items.length),
         },
       );
     },
@@ -225,19 +229,22 @@ export const analyticsTools = {
         roleKey: { type: 'string', maxLength: 40, description: 'e.g. TEACHER, FINANCE' },
         status: { type: 'string', maxLength: 20 },
         sectionId: objectId(),
-        limit: { type: 'integer', minimum: 1, maximum: 100 },
+        limit: limitSchema(),
       },
       additionalProperties: false,
     },
     permission: 'users.read',
     minScope: 'ALL',
     service: 'user.service.listUsers()',
-    async run(_ctx, args) {
-      const page = await users.listUsers({
+    async run(ctx, args) {
+      // Every page of the directory, a window at a time: each page is the same
+      // school-scoped read the Users screen makes.
+      const win = resultWindow(ctx, args);
+      const page = await collectPages((p, pageSize) => users.listUsers({
         search: args.search, roleKey: args.roleKey, status: args.status, sectionId: args.sectionId,
-        page: 1, pageSize: Math.min(Number(args.limit) || 25, 100),
-      });
-      const items = page.items ?? page ?? [];
+        page: p, pageSize,
+      }), win);
+      const items = page.items;
       const rows = items.map((u) => ({
         profileId: String(u.profileId ?? u.id),
         name: u.displayName ?? u.name,
@@ -249,7 +256,12 @@ export const analyticsTools = {
       const view = summarise(rows, (u) => `${u.name} (${u.role})`);
       return ok(
         { users: rows, total: page.total ?? rows.length },
-        { speak: rows.length ? `${page.total ?? rows.length} user(s): ${view.list}.` : 'No users match that.' },
+        {
+          speak: rows.length
+            ? `${page.total ?? rows.length} user(s): ${view.list}.`
+            : 'No users match that.',
+          range: rangeOf(win, rows.length, page.total),
+        },
       );
     },
   },
@@ -263,7 +275,7 @@ export const analyticsTools = {
       type: 'object',
       properties: {
         unreadOnly: { type: 'boolean' },
-        limit: { type: 'integer', minimum: 1, maximum: 50 },
+        limit: limitSchema(),
       },
       additionalProperties: false,
     },
@@ -273,13 +285,23 @@ export const analyticsTools = {
     service: 'notification.service.list() + unreadCount()',
     async run(ctx, args) {
       // list() returns a page — { items, nextCursor, unreadCount } — not an array.
-      const { items, unreadCount: unread } = await notifications.list(ctx.actor, {
-        unreadOnly: args.unreadOnly, limit: args.limit ?? 20,
-      });
+      // Cursor pages, followed to the end (or to what was asked for).
+      let unread = 0;
+      const win = resultWindow(ctx, args);
+      const { items, more, cursor } = await collectCursor(async (before, limit) => {
+        const page = await notifications.list(ctx.actor, { unreadOnly: args.unreadOnly, limit, ...(before && { before }) });
+        unread = page.unreadCount ?? unread;
+        return page;
+      }, win);
       const view = summarise(items, (n) => n.title);
       return ok(
         { notifications: items, unread },
-        { speak: items.length ? `${unread} unread. Latest: ${view.list}.` : 'You have no notifications.' },
+        {
+          speak: items.length
+            ? `${unread} unread. Notifications: ${view.list}.`
+            : 'You have no notifications.',
+          range: rangeOf(win, items.length, null, { cursor, more }),
+        },
       );
     },
   },
@@ -295,19 +317,27 @@ export const analyticsTools = {
       properties: {
         studentId: objectId(),
         type: { type: 'string', maxLength: 40 },
-        limit: { type: 'integer', minimum: 1, maximum: 50 },
+        limit: limitSchema(),
       },
       additionalProperties: false,
     },
     permission: 'materials.read',
     service: 'document.service.listForActor()',
     async run(ctx, args) {
-      const docs = await documents.listForActor(ctx.actor, ctx.scope, args.studentId ?? null, { type: args.type });
-      const items = (Array.isArray(docs) ? docs : (docs?.items ?? [])).slice(0, Math.min(Number(args.limit) || 20, 50));
+      // Paged: called without a page size, listForActor() stops at the
+      // service's 500-row cap. Each page is the same visibility-filtered read.
+      const win = resultWindow(ctx, args);
+      const docs = await collectPages((page, pageSize) => documents.listForActor(
+        ctx.actor, ctx.scope, args.studentId ?? null, { type: args.type, page, pageSize },
+      ), win);
+      const items = docs.items;
       const view = summarise(items, (d) => `${d.title} (${String(d.type).replace('_', ' ').toLowerCase()})`);
       return ok(
-        { documents: items, count: items.length },
-        { speak: items.length ? `${items.length} document(s): ${view.list}. Open Documents in the sidebar to download them.` : 'No documents have been published for you yet.' },
+        { documents: items, count: items.length, total: docs.total },
+        {
+          speak: items.length ? `${docs.total} document(s): ${view.list}. Open Documents in the sidebar to download them.` : 'No documents have been published for you yet.',
+          range: rangeOf(win, items.length, docs.total),
+        },
       );
     },
   },
@@ -328,7 +358,7 @@ export const analyticsTools = {
         to: dateStr(),
         month: { type: 'string', pattern: '^\\d{4}-\\d{2}$', description: 'YYYY-MM' },
         year: { type: 'string', pattern: '^\\d{4}$', description: 'YYYY' },
-        limit: { type: 'integer', minimum: 1, maximum: 100 },
+        limit: limitSchema(),
         cursor: { type: 'string', maxLength: 40, description: 'From a previous call, to fetch the next page' },
       },
       additionalProperties: false,
@@ -337,12 +367,23 @@ export const analyticsTools = {
     minScope: 'ALL',
     service: 'audit.service.listLogs()',
     async run(ctx, args) {
-      const page = await audit.listLogs(ctx.actor, { ...args, limit: args.limit ?? 25 });
-      const items = page.items ?? [];
+      // A trail can be very long: it is read a window at a time, from the
+      // cursor given (or the start), and the answer offers the next window.
+      const { cursor: startAt, limit: _asked, ...filters } = args;
+      const win = resultWindow(ctx, args);
+      const page = await collectCursor(async (cursor, limit) => audit.listLogs(ctx.actor, {
+        ...filters, limit, ...((cursor ?? startAt) && { cursor: cursor ?? startAt }),
+      }), win);
+      const items = page.items;
       const view = summarise(items, (l) => `${l.action} by ${l.actorName} (${shortDate(l.createdAt)})`);
       return ok(
-        { logs: items, returned: items.length, nextCursor: page.nextCursor ?? null },
-        { speak: items.length ? `${items.length} audit entry/entries: ${view.list}.` : 'No audit entries match that.' },
+        { logs: items, returned: items.length, nextCursor: page.more ? page.cursor : null },
+        {
+          speak: items.length
+            ? `Audit entries: ${view.list}.`
+            : 'No audit entries match that.',
+          range: rangeOf(win, items.length, null, { cursor: page.cursor, more: page.more }),
+        },
       );
     },
   },

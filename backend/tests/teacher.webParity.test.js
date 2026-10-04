@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { toWhatsAppText } from '../src/modules/ai/agent/present.js';
 import { Section, Subject, SubjectOffering, Term } from '../src/models/academics.model.js';
 import { Exam, ExamSubject, Mark } from '../src/models/exam.model.js';
 import { Assignment, Submission } from '../src/models/assignment.model.js';
@@ -172,9 +173,9 @@ describe('2. natural-language requests reach the same capability on the website 
     ['Show my timetable for today.', 'get_timetable'],
     // The fixture's timetable runs Monday to Saturday, so whichever day
     // tomorrow is, the answer names a weekday -- never an unrelated list.
-    ['What classes do I have tomorrow?', 'get_timetable', /^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)[: ]|Nothing is scheduled/],
+    ['What classes do I have tomorrow?', 'get_timetable', /Timetable — Tomorrow \((Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\)/],
     ['Show my timetable for next Monday.', 'get_timetable', /Monday/],
-    ['timetable this week', 'get_timetable', /Weekly timetable.*Monday.*Saturday/],
+    ['timetable this week', 'get_timetable', /Weekly Timetable[\s\S]*Monday[\s\S]*Saturday/],
     ['Which subjects do I teach?', 'get_subjects', /Mathematics/],
     ['Show my assigned classes.', 'get_my_classes', /Class 6 A/],
     ['Show students in my Class 6-A.', 'search_students', /Rahul Sharma/],
@@ -204,8 +205,10 @@ describe('2. natural-language requests reach the same capability on the website 
       expect(web.status).toBe(200);
       expect(webTool, 'website').toBe(tool);
       expect(waTool, 'WhatsApp').toBe(tool);
-      // The same capability answering the same question gives the same answer.
-      expect(wa.reply).toBe(web.reply);
+      // The same capability answering the same question gives the same answer
+      // -- in each channel's own format: Markdown on the website, WhatsApp's
+      // *bold* and one line per table row on WhatsApp (agent/present.js).
+      expect(wa.reply).toBe(toWhatsAppText(web.reply));
       if (reply) expect(web.reply).toMatch(reply);
     }, 60000);
   }
@@ -258,7 +261,7 @@ describe('3. an act the Web does not offer a teacher is declined, and nothing ru
       const assignmentsBefore = await inSchool(OAK, () => Assignment.countDocuments());
       const { web, wa, webTool, waTool } = await bothChannels(message);
       expect(web.reply).toMatch(reply);
-      expect(wa.reply).toBe(web.reply);
+      expect(wa.reply).toBe(toWhatsAppText(web.reply));
       // Declined before any capability was chosen: no MCP call on either channel.
       expect(webTool).toBeNull();
       expect(waTool).toBeNull();
@@ -275,7 +278,7 @@ describe('4. another teacher\'s class and another school stay out of reach', () 
     for (const message of ['Show attendance for Class 6-B.', 'Show students of Class 6-B.']) {
       const { web, wa } = await bothChannels(message);
       expect(web.reply).toMatch(/Class 6 B is not one of your classes/);
-      expect(wa.reply).toBe(web.reply);
+      expect(wa.reply).toBe(toWhatsAppText(web.reply));
       expect(web.reply).not.toMatch(/Riya|Kapoor/);
     }
   }, 60000);
@@ -483,7 +486,7 @@ describe('6. gaps closed after the first pass', () => {
   it('"all students in the entire platform" is refused outright, on both channels, running nothing', async () => {
     const { web, wa, webTool, waTool } = await bothChannels('Show all students in the entire platform');
     expect(web.reply).toMatch(/only look up records for your own school/);
-    expect(wa.reply).toBe(web.reply);
+    expect(wa.reply).toBe(toWhatsAppText(web.reply));
     expect(webTool).toBeNull();
     expect(waTool).toBeNull();
     expect(web.reply).not.toMatch(/Rahul|Priya|Aman|Riya/);
@@ -492,7 +495,7 @@ describe('6. gaps closed after the first pass', () => {
   it('"all students" from a teacher says the answer is their classes, never presented as the school', async () => {
     const { web, wa } = await bothChannels('Show all students.');
     expect(web.reply).toMatch(/You can only see students in your own classes/);
-    expect(wa.reply).toBe(web.reply);
+    expect(wa.reply).toBe(toWhatsAppText(web.reply));
     expect(web.reply).not.toMatch(/Riya Kapoor/);
   }, 60000);
 });

@@ -4,8 +4,9 @@ import { createPortal } from 'react-dom';
 import { api, ApiError } from '@/lib/api';
 import { Button, Spinner, cx } from './ui';
 import { useAuth } from '@/lib/auth';
-import type { AgentProposedAction, WhatsappAssistantLink } from '@/lib/types';
+import type { AgentContinuation, AgentProposedAction, WhatsappAssistantLink } from '@/lib/types';
 import { SPEECH_LANGUAGES, isSpeechSupported, startDictation } from '@/lib/speech';
+import { ChatMarkdown } from './chat-markdown';
 
 /**
  * Turns of this conversation sent with each message, so a follow-up resolves
@@ -23,6 +24,8 @@ interface Msg {
   action?: AgentProposedAction | null;
   /** Once resolved, the buttons are replaced by the outcome. */
   resolved?: 'done' | 'cancelled';
+  /** Set when this answer holds part of a longer list: loads the next rows. */
+  continuation?: AgentContinuation | null;
 }
 
 export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
@@ -152,7 +155,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
         .slice(-HISTORY_TURNS)
         .map((m) => ({ role: m.role, text: m.text }));
       const res = await api.agentAsk(text, speechLang.lang, history);
-      const aiMsg: Msg = { role: 'assistant', text: res.reply, action: res.action };
+      const aiMsg: Msg = { role: 'assistant', text: res.reply, action: res.action, continuation: res.continuation ?? null };
       msgsRef.current = [...msgsRef.current, aiMsg];
       setMsgs([...msgsRef.current]);
     } catch (err) {
@@ -163,6 +166,29 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
         : 'Sorry — I could not reach the assistant just now.';
       const errMsg: Msg = { role: 'assistant', text };
       msgsRef.current = [...msgsRef.current, errMsg];
+      setMsgs([...msgsRef.current]);
+    } finally { setBusy(false); }
+  };
+
+  /**
+   * The next rows of a long answer. The server sends a list a window at a time
+   * (1–1000, 1001–2000, …); each window arrives as the next message, numbered
+   * on from the last, and offers the following one until every row the person
+   * may see has been shown. The token is handed back untouched -- the server
+   * checks it is this person's and re-authorizes the read.
+   */
+  const loadMore = async (idx: number) => {
+    const msg = msgsRef.current[idx];
+    if (!msg?.continuation || busy) return;
+    setBusy(true);
+    try {
+      const res = await api.agentContinue(msg.continuation.token, speechLang.lang);
+      msgsRef.current = msgsRef.current.map((m, i) => (i === idx ? { ...m, continuation: null } : m));
+      msgsRef.current = [...msgsRef.current, { role: 'assistant', text: res.reply, continuation: res.continuation ?? null }];
+      setMsgs([...msgsRef.current]);
+    } catch (err) {
+      const text = err instanceof ApiError ? err.message : 'Sorry — I could not load the rest just now.';
+      msgsRef.current = [...msgsRef.current, { role: 'assistant', text }];
       setMsgs([...msgsRef.current]);
     } finally { setBusy(false); }
   };
@@ -302,7 +328,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                 <button type="button" className="modal-close" aria-label="Close dialog" title="Close" onClick={() => setOpen(false)}>×</button>
               </div>
             </div>
-            <div className="ai-body" ref={scrollRef}>
+            <div className="ai-body" ref={scrollRef} role="log" aria-live="polite" aria-relevant="additions">
               {msgs.length === 0 && waLink?.enabled && (
                 <div className="ai-channels">
                   <p className="ai-channels-title">Need quick help?</p>
@@ -336,31 +362,12 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
               )}
               {msgs.length === 0 && (
                 <div className="ai-empty">
-                  <p style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-1)', marginBottom: 8 }}>Suggested queries for you:</p>
-                  <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <p className="ai-empty-title">Suggested questions</p>
+                  <ul className="ai-suggestions">
                     {suggestions.map((sText, idx) => (
                       <li key={idx}>
-                        <button
-                          type="button"
-                          onClick={() => handleSuggestionClick(sText)}
-                          style={{
-                            width: '100%',
-                            textAlign: 'left',
-                            background: '#f8fafc',
-                            border: '1px solid #e2e8f0',
-                            borderRadius: 8,
-                            padding: '8px 12px',
-                            fontSize: 12.5,
-                            color: 'var(--accent)',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                          }}
-                          onMouseOver={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-                          onMouseOut={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                          onFocus={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-                          onBlur={(e) => (e.currentTarget.style.background = '#f8fafc')}
-                        >
-                          💬 &nbsp; {sText}
+                        <button type="button" className="ai-suggestion" onClick={() => handleSuggestionClick(sText)}>
+                          {sText}
                         </button>
                       </li>
                     ))}
@@ -369,7 +376,13 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
               )}
               {msgs.map((m, i) => (
                 <div key={i} className={`ai-msg ${m.role}`}>
-                  <div className="ai-bubble">{m.text}</div>
+                  {/* The assistant's replies are formatted on the server (headings,
+                      labelled figures, tables) and rendered here as Markdown --
+                      as React elements, never as HTML. The person's own words
+                      are shown exactly as typed. */}
+                  <div className="ai-bubble">
+                    {m.role === 'assistant' ? <ChatMarkdown text={m.text} /> : m.text}
+                  </div>
                   {m.tools && m.tools.length > 0 && <div className="ai-tools">used: {Array.from(new Set(m.tools)).join(', ')}</div>}
 
                   {/* Nothing is written until this is confirmed. The summary
@@ -392,12 +405,26 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                       <div className="ai-confirm-expiry">Expires in {m.action.expiresInMinutes} min</div>
                     </div>
                   )}
+                  {m.continuation && (
+                    <button
+                      type="button"
+                      className="ai-read-more ai-load-more"
+                      disabled={busy}
+                      onClick={() => void loadMore(i)}
+                    >
+                      Load more{' '}
+                      <span className="ai-read-more-count">
+                        ({m.continuation.next.from}–{m.continuation.next.to}
+                        {m.continuation.total != null ? ` of ${m.continuation.total}` : ''})
+                      </span>
+                    </button>
+                  )}
                   {m.resolved && (
                     <div className="ai-tools">{m.resolved === 'done' ? '✓ confirmed' : '✕ cancelled'}</div>
                   )}
                 </div>
               ))}
-              {busy && <div className="ai-msg assistant"><div className="ai-bubble"><Spinner /></div></div>}
+              {busy && <div className="ai-msg assistant"><div className="ai-bubble ai-typing"><Spinner /><span className="sr-only">Assistant is replying</span></div></div>}
             </div>
             {voiceNote && <div className="ai-voice-note" role="status">{voiceNote}</div>}
             <form className="ai-input" onSubmit={send}>

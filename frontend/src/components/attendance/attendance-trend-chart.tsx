@@ -65,7 +65,9 @@ export function AttendanceTrendChart({ points }: { points: AttendanceTrendPointD
     <div style={{ width: '100%', overflow: 'hidden' }}>
       <div style={{ fontSize: 12.5, color: 'var(--text-2b)', marginBottom: 8, minHeight: 32 }}>
         {hovered
-          ? `${monthLabelFull(hovered.month)} — ${hovered.pctPresent}% present (${hovered.presentDays}/${hovered.workingDays} working days)`
+          ? (hovered.workingDays > 0 && hovered.pctPresent != null
+            ? `${monthLabelFull(hovered.month)} — ${hovered.pctPresent}% present (${hovered.presentDays}/${hovered.workingDays} working days)`
+            : `${monthLabelFull(hovered.month)} — no attendance marked`)
           : `Dashed line marks the ${THRESHOLD}% attendance threshold.`}
       </div>
       <svg
@@ -95,14 +97,15 @@ export function AttendanceTrendChart({ points }: { points: AttendanceTrendPointD
         ))}
 
         {points.map((p, i) => {
-          const top = yFor(p.pctPresent);
+          // An unmarked month has no percentage (null); it draws no bar.
+          const top = yFor(p.pctPresent ?? 0);
           // A month with records but a very low percentage still gets a
           // visible sliver; a month with no records at all gets nothing.
           const barH = p.workingDays > 0 ? Math.max(baselineY - top, 2) : 0;
           const barY = baselineY - barH;
           const x = PAD_LEFT + i * COL_W + BAR_GAP / 2;
           const barW = COL_W - BAR_GAP;
-          const color = p.workingDays > 0 ? pctColor(p.pctPresent) : 'var(--hairline)';
+          const color = p.workingDays > 0 && p.pctPresent != null ? pctColor(p.pctPresent) : 'var(--hairline)';
           const dimmed = hoverIdx !== null && hoverIdx !== i;
           // Above the bar normally; inside it when the bar is tall enough that
           // "above" would mean over the top of the plot.

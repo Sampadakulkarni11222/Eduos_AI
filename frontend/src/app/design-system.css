@@ -412,8 +412,8 @@ body.role-warden{
 .ai-dock{position:fixed;top:0;right:0;width:var(--ai-dock-w);max-width:100vw;height:100vh;z-index:60;display:flex;flex-direction:column;background:var(--panel-bg);border-left:1px solid var(--input-border);box-shadow:-24px 0 60px rgba(40,20,15,.16);animation:eduPanel .25s ease}
 .ai-panel-inner{display:flex;flex-direction:column;height:100%;min-height:0}
 .ai-header-actions{display:flex;align-items:center;gap:4px}
-.ai-minimize{background:none;border:none;cursor:pointer;color:rgba(255,255,255,.8);font-size:22px;line-height:1;padding:0 8px;border-radius:6px}
-.ai-minimize:hover{background:rgba(255,255,255,.14);color:#fff}
+.ai-minimize{background:none;border:none;cursor:pointer;color:var(--on-accent);opacity:.85;font-size:22px;line-height:1;padding:0 8px;border-radius:8px}
+.ai-minimize:hover{background:rgba(255,255,255,.14);opacity:1}
 /* Both header controls get a ≥32px hit target — the close "×" was previously a
    bare glyph and genuinely hard to hit. */
 .ai-minimize,.ai-header .modal-close{min-width:32px;min-height:32px;display:inline-flex;align-items:center;justify-content:center}
@@ -427,28 +427,30 @@ body.ai-docked .main{padding-right:var(--ai-dock-w);transition:padding-right .2s
    dialogs (and their Submit buttons) beside the panel rather than behind it. */
 body.ai-docked .modal-overlay{padding-right:var(--ai-dock-w)}
 
-/* ===== Ask Agent — channel choice (in-portal AI vs WhatsApp) ===== */
-.ai-channels{padding:14px;border:1px solid rgba(255,255,255,.10);border-radius:12px;background:#141614;margin-bottom:14px}
-.ai-channels-title{font-weight:600;font-size:13px;color:#e8e3d6;margin:0 0 10px}
+/* ===== Ask Agent — channel choice (in-portal AI vs WhatsApp) =====
+   Drawn as an ERP card, so the choice reads as part of the portal. */
+.ai-channels{padding:14px;border:1px solid var(--card-border);border-radius:14px;background:var(--card-bg);margin-bottom:14px}
+.ai-channels-title{font-weight:700;font-size:13px;color:var(--text-1);margin:0 0 10px}
 .ai-channel{width:100%;display:flex;align-items:center;gap:12px;text-align:left;cursor:pointer;
-  background:#1d1f1c;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:11px 13px;color:#e8e3d6}
-.ai-channel:hover{background:#242723;border-color:rgba(255,255,255,.2)}
-.ai-channel:focus-visible{outline:2px solid #25D366;outline-offset:2px}
+  background:var(--field-bg,#fff);border:1px solid var(--input-border);border-radius:10px;padding:11px 13px;color:var(--text-1);transition:background .15s ease,border-color .15s ease}
+.ai-channel:hover{background:var(--hairline);border-color:var(--hairline-2)}
+.ai-channel:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .ai-channel-icon{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;flex:none;
-  border-radius:9px;background:rgba(255,255,255,.07);font-size:17px}
+  border-radius:9px;background:var(--hairline);font-size:17px}
 .ai-channel-text{display:flex;flex-direction:column;gap:2px;min-width:0}
 .ai-channel-label{font-weight:700;font-size:13.5px}
-.ai-channel-sub{font-size:11.5px;color:#a9a496;line-height:1.35}
+.ai-channel-sub{font-size:11.5px;color:var(--text-2);line-height:1.35}
 
-/* WhatsApp's own green, so the destination is recognisable before it is read. */
-.ai-channel-wa{background:#25D366;border-color:#25D366;color:#06251a}
-.ai-channel-wa:hover{background:#20bd5a;border-color:#20bd5a}
-.ai-channel-wa .ai-channel-icon{background:rgba(0,0,0,.12);color:#06251a}
-.ai-channel-wa .ai-channel-sub{color:#0a3d29}
+/* The ERP's own WhatsApp button colour (.btn-whatsapp), so the destination is
+   recognisable and its text keeps AA contrast. */
+.ai-channel-wa{background:#137A3C;border-color:#137A3C;color:#fff}
+.ai-channel-wa:hover{background:#0f6532;border-color:#0f6532}
+.ai-channel-wa .ai-channel-icon{background:rgba(255,255,255,.16);color:#fff}
+.ai-channel-wa .ai-channel-sub{color:rgba(255,255,255,.88)}
 
-.ai-channels-or{display:flex;align-items:center;gap:10px;margin:10px 0;color:#7f7a71;font-size:11px;letter-spacing:.08em}
-.ai-channels-or::before,.ai-channels-or::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.12)}
-.ai-channels-note{margin:10px 0 0;text-align:center;font-size:11px;color:#7f7a71}
+.ai-channels-or{display:flex;align-items:center;gap:10px;margin:10px 0;color:var(--text-muted);font-size:11px;letter-spacing:.08em}
+.ai-channels-or::before,.ai-channels-or::after{content:'';flex:1;height:1px;background:var(--hairline-2)}
+.ai-channels-note{margin:10px 0 0;text-align:center;font-size:11px;color:var(--text-muted)}
 
 /* Touch targets grow on small screens, where this is most likely to be used. */
 @media (max-width:640px){
@@ -477,21 +479,71 @@ body.ai-docked .modal-overlay{padding-right:var(--ai-dock-w)}
      itself rather than overflow behind the sheet. */
   body.ai-docked .modal{max-height:calc(100vh - var(--ai-dock-h) - 24px);overflow-y:auto}
   .ai-fab{right:14px;bottom:14px}
+  .ai-dock{border-radius:16px 16px 0 0;overflow:hidden}
+  .ai-body{padding:14px}
+  .ai-input{padding:10px}
 }
-.ai-header{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.08);background:#128C3E}
-.ai-header .ai-title{font-family:Newsreader,serif;font-size:18px;font-weight:600;color:#fff}
-.ai-header .ai-sub{font-size:11.5px;color:rgba(255,255,255,.75)}
-.ai-header .modal-close{color:rgba(255,255,255,.8)}
-.ai-body{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;background:#0d0e0c}
-.ai-empty{color:#a9a496;font-size:13px}.ai-empty ul{margin:8px 0 0 16px;display:flex;flex-direction:column;gap:5px}
+/* Header in the role's accent gradient -- the same treatment as the sidebar
+   and the minimised launcher -- rather than a fixed green-on-black theme. */
+.ai-header{display:flex;justify-content:space-between;align-items:center;padding:16px 18px;background:linear-gradient(120deg,var(--accent),var(--accent-2));color:var(--on-accent)}
+.ai-header .ai-title{font-family:Newsreader,serif;font-size:18px;font-weight:600;color:var(--on-accent)}
+.ai-header .ai-sub{font-size:11.5px;color:var(--on-accent);opacity:.8}
+.ai-header .modal-close{color:var(--on-accent);opacity:.85}
+.ai-header .modal-close:hover{opacity:1;background:rgba(255,255,255,.14);border-radius:8px}
+.ai-header .modal-close:focus-visible,.ai-header .ai-minimize:focus-visible{outline:2px solid var(--on-accent);outline-offset:1px}
+.ai-body{flex:1;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px;background:var(--panel-bg)}
+.ai-empty{color:var(--text-2);font-size:13px}
+.ai-empty-title{font-weight:700;font-size:13px;color:var(--text-1);margin-bottom:8px}
+.ai-suggestions{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
+.ai-suggestion{width:100%;text-align:left;background:var(--card-bg);border:1px solid var(--card-border);border-radius:10px;
+  padding:9px 12px;font-size:12.5px;font-weight:600;color:var(--accent);cursor:pointer;transition:background .15s ease,border-color .15s ease}
+.ai-suggestion:hover{background:var(--hairline);border-color:var(--hairline-2)}
 .ai-msg{display:flex;flex-direction:column}.ai-msg.user{align-items:flex-end}.ai-msg.assistant{align-items:flex-start}
-.ai-bubble{max-width:85%;padding:10px 13px;border-radius:13px;font-size:13.5px;line-height:1.5;white-space:pre-wrap}
-.ai-msg.user .ai-bubble{background:#25D366;color:#06251a;border-bottom-right-radius:4px}
-.ai-msg.assistant .ai-bubble{background:#1d1f1c;color:#e8e3d6;border-bottom-left-radius:4px}
-.ai-tools{font-size:10px;color:#7f7a71;margin-top:3px}
-.ai-input{display:flex;gap:8px;padding:12px;border-top:1px solid rgba(255,255,255,.08);background:#10110f}
-.ai-input input{flex:1;background:#1d1f1c;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:9px 12px;color:#ECE6D8;font-size:13.5px}
-.ai-input input::placeholder{color:#89857c}
+.ai-bubble{max-width:88%;padding:10px 13px;border-radius:14px;font-size:13.5px;line-height:1.5;overflow-wrap:anywhere}
+/* The same bubbles as the ERP's own chat (.chat-bubble.me / .them). */
+.ai-msg.user .ai-bubble{background:var(--accent);color:var(--on-accent);border-radius:14px 14px 4px 14px;white-space:pre-wrap;max-width:82%}
+.ai-msg.assistant .ai-bubble{background:var(--card-bg);border:1px solid var(--card-border);color:var(--text-1);border-radius:14px 14px 14px 4px;box-shadow:0 1px 2px rgba(40,20,15,.04)}
+.ai-typing{display:flex;align-items:center}
+.ai-typing .spinner{width:18px;height:18px}
+.ai-tools{font-size:10.5px;color:var(--text-muted);margin-top:3px}
+.ai-input{display:flex;gap:8px;padding:12px;border-top:1px solid var(--hairline-2);background:var(--surface-raised,#fff);align-items:center}
+.ai-input input{flex:1;min-width:0;background:var(--field-bg,#fff);border:1px solid var(--input-border);border-radius:10px;padding:9px 12px;color:var(--text-1);font-size:13.5px;font-family:inherit}
+.ai-input input::placeholder{color:var(--text-faint)}
+.ai-input input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,0,0,.05)}
+.ai-input input:disabled{opacity:.6}
+
+/* Formatted replies (components/chat-markdown.tsx), sized for the 400px dock. */
+.ai-md{display:flex;flex-direction:column;gap:8px}
+.ai-md p{margin:0}
+.ai-md .ai-md-heading{font-weight:700;font-size:14px;color:var(--header-title,var(--text-1));margin:0}
+.ai-md ul,.ai-md ol{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:3px}
+.ai-md ul{list-style:disc}.ai-md ol{list-style:decimal}
+.ai-md li::marker{color:var(--text-muted)}
+.ai-md strong{font-weight:700;color:var(--text-1)}
+.ai-md em{color:var(--text-2)}
+.ai-md code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;background:var(--hairline);border-radius:5px;padding:1px 5px}
+.ai-md pre{background:var(--hairline);border:1px solid var(--hairline-2);border-radius:10px;padding:10px 12px;overflow-x:auto}
+.ai-md pre code{background:none;padding:0}
+.ai-md-table{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--card-border);border-radius:10px}
+.ai-md-table table{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+.ai-md-table th{background:var(--panel-bg);color:var(--text-2);font-weight:700;font-size:11.5px;letter-spacing:.02em;padding:7px 10px;border-bottom:1px solid var(--card-border);white-space:nowrap}
+.ai-md-table td{padding:7px 10px;border-bottom:1px solid var(--hairline);color:var(--text-1);vertical-align:top}
+/* Period and time (or label and count) stay on one line; longer cells wrap. */
+.ai-md-table td:nth-child(-n+2){white-space:nowrap}
+.ai-md-table tr:last-child td{border-bottom:none}
+/* Long collections (components/expandable-result.tsx): a preview, then "Read
+   more". An expanded table keeps its header in view while it scrolls. */
+.ai-md-collection{display:flex;flex-direction:column;gap:6px;min-width:0}
+.ai-md-collection .ai-md-table{max-height:420px;overflow:auto}
+.ai-md-collection .ai-md-table th{position:sticky;top:0;z-index:1}
+.ai-read-more{align-self:flex-start;background:none;border:1px solid var(--input-border);border-radius:8px;padding:5px 11px;
+  font-family:inherit;font-size:12px;font-weight:700;color:var(--accent);cursor:pointer}
+.ai-read-more:hover{background:var(--hairline)}
+.ai-read-more-count{font-weight:500;color:var(--text-2)}
+/* "Load more" under a windowed answer: the next rows come from the server. */
+.ai-load-more{margin-top:6px}
+.ai-load-more:disabled{opacity:.55;cursor:not-allowed}
+@media (pointer: coarse){.ai-read-more{min-height:40px;padding:8px 14px}}
 
 /* Growth ring */
 .growth-ring{position:relative;width:160px;height:160px}
@@ -803,33 +855,33 @@ body.ai-docked .modal-overlay{padding-right:var(--ai-dock-w)}
 .profile-avatar-lg{width:64px;height:64px;font-size:22px}
 
 /* ===== Agent confirmation prompt (in-app assistant) ===== */
-.ai-confirm{margin-top:8px;max-width:88%;background:#1d1f1c;border:1px solid rgba(255,255,255,.14);
-  border-radius:12px;padding:11px 13px;align-self:flex-start}
-.ai-confirm-summary{font-size:12.5px;line-height:1.5;color:#ECE6D8}
+.ai-confirm{margin-top:8px;max-width:88%;background:var(--card-bg);border:1px solid var(--card-border);
+  border-radius:14px;padding:11px 13px;align-self:flex-start;box-shadow:0 1px 2px rgba(40,20,15,.04)}
+.ai-confirm-summary{font-size:12.5px;line-height:1.5;color:var(--text-1)}
 .ai-confirm-warn{display:block;font-size:10.5px;font-weight:800;letter-spacing:.05em;
-  text-transform:uppercase;color:#F0B429;margin-bottom:4px}
+  text-transform:uppercase;color:var(--amber);margin-bottom:4px}
 .ai-confirm-actions{display:flex;gap:8px;margin-top:10px}
-.ai-confirm-yes,.ai-confirm-no{flex:1;min-height:38px;border-radius:9px;font-family:inherit;
+.ai-confirm-yes,.ai-confirm-no{flex:1;min-height:38px;border-radius:10px;font-family:inherit;
   font-size:12.5px;font-weight:700;cursor:pointer;border:1px solid transparent}
-.ai-confirm-yes{background:#25D366;color:#06251a}
-.ai-confirm-yes:hover:not(:disabled){background:#1fbb5a}
-.ai-confirm-no{background:transparent;border-color:rgba(255,255,255,.22);color:#cfc9bb}
-.ai-confirm-no:hover:not(:disabled){background:rgba(255,255,255,.08)}
+.ai-confirm-yes{background:var(--accent);color:var(--on-accent)}
+.ai-confirm-yes:hover:not(:disabled){background:var(--accent-2)}
+.ai-confirm-no{background:#F3ECDC;border-color:var(--input-border);color:var(--text-2)}
+.ai-confirm-no:hover:not(:disabled){background:var(--hairline-2)}
 .ai-confirm-yes:disabled,.ai-confirm-no:disabled{opacity:.55;cursor:not-allowed}
-.ai-confirm-expiry{font-size:10.5px;color:#8b867c;margin-top:7px}
+.ai-confirm-expiry{font-size:10.5px;color:var(--text-muted);margin-top:7px}
 @media (pointer: coarse){.ai-confirm-yes,.ai-confirm-no{min-height:44px}}
 
 /* ===== Voice input (assistant panel) ===== */
 .ai-mic{flex:none;width:38px;height:38px;border-radius:10px;cursor:pointer;font-size:15px;
-  background:#1d1f1c;border:1px solid rgba(255,255,255,.14);color:#ECE6D8}
-.ai-mic:hover:not(:disabled){background:#282b26}
-.ai-mic.listening{background:#A8322E;border-color:#A8322E;color:#fff;animation:aiPulse 1.2s ease infinite}
+  background:var(--field-bg,#fff);border:1px solid var(--input-border);color:var(--text-2)}
+.ai-mic:hover:not(:disabled){background:var(--hairline)}
+.ai-mic.listening{background:var(--red);border-color:var(--red);color:#fff;animation:aiPulse 1.2s ease infinite}
 .ai-mic:disabled{opacity:.5;cursor:not-allowed}
 @keyframes aiPulse{0%,100%{box-shadow:0 0 0 0 rgba(168,50,46,.55)}50%{box-shadow:0 0 0 6px rgba(168,50,46,0)}}
-.ai-lang{flex:none;max-width:104px;background:#1d1f1c;border:1px solid rgba(255,255,255,.14);
-  border-radius:10px;color:#ECE6D8;font-family:inherit;font-size:12.5px;padding:8px 6px}
-.ai-voice-note{padding:8px 12px;font-size:12px;color:#F0B429;background:#1d1f1c;
-  border-top:1px solid rgba(255,255,255,.08)}
+.ai-lang{flex:none;max-width:104px;background:var(--field-bg,#fff);border:1px solid var(--input-border);
+  border-radius:10px;color:var(--text-1);font-family:inherit;font-size:12.5px;padding:8px 6px}
+.ai-voice-note{padding:8px 12px;font-size:12px;color:var(--amber);background:var(--surface-raised,#fff);
+  border-top:1px solid var(--hairline-2)}
 @media (pointer: coarse){.ai-mic{width:44px;height:44px}.ai-lang{min-height:44px}}
 
 /* ===== Admissions CRM kanban board =====

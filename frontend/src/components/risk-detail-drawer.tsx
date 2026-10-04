@@ -174,7 +174,7 @@ export function RiskDetailDrawer({ item, onClose }: { item: RiskItem; onClose: (
                   <div className="drawer-row"><dt>Present</dt><dd>{overview.attendance.PRESENT} of {overview.attendance.workingDays} days</dd></div>
                   <div className="drawer-row"><dt>Absent</dt><dd>{overview.attendance.ABSENT}</dd></div>
                   <div className="drawer-row"><dt>Late</dt><dd>{overview.attendance.LATE}</dd></div>
-                  <div className="drawer-row"><dt>Attendance rate</dt><dd>{overview.attendance.pctPresent}%</dd></div>
+                  <div className="drawer-row"><dt>Attendance rate</dt><dd>{overview.attendance.pctPresent != null ? `${overview.attendance.pctPresent}%` : '—'}</dd></div>
                 </dl>
               </div>
             )}

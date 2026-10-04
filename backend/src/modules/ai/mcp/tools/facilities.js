@@ -7,6 +7,7 @@ import { applyFieldAllowList } from '../validate.js';
 import {
   RISK, objectId, dateStr, rupees, summarise, shortDate, wrapAgentTool, resolveStudentId, studentIdentitySchema,
   theNamed,
+  limitSchema, resultWindow, windowSlice, rangeOf,
 } from './_shared.js';
 import { resolveRouteRef, resolveStopRef, resolveInquiry } from './_names.js';
 
@@ -165,7 +166,7 @@ export const facilityTools = {
         author: { type: 'string', maxLength: 120 },
         resourceKind: { type: 'string', enum: RESOURCE_KINDS },
         availableOnly: { type: 'boolean', description: 'Only items with a copy on the shelf' },
-        limit: { type: 'integer', minimum: 1, maximum: 100 },
+        limit: limitSchema(),
       },
       additionalProperties: false,
     },
@@ -176,11 +177,17 @@ export const facilityTools = {
         search: args.search, category: args.category, author: args.author, resourceKind: args.resourceKind,
       }));
       const filtered = args.availableOnly ? items.filter((b) => (b.availableCopies ?? 0) > 0) : items;
-      const limited = filtered.slice(0, Math.min(Number(args.limit) || 20, 100));
+      const win = resultWindow(_ctx, args);
+      const limited = windowSlice(filtered, win).items;
       const view = summarise(limited, (b) => `${b.title}${b.author ? ` — ${b.author}` : ''} (${b.availableCopies ?? 0} available)`);
       return ok(
         { books: limited, total: filtered.length, returned: limited.length },
-        { speak: filtered.length ? `${filtered.length} matching item(s): ${view.list}.` : 'Nothing in the catalog matches that.' },
+        {
+          speak: filtered.length
+            ? `${filtered.length} matching item(s): ${view.list}.`
+            : 'Nothing in the catalog matches that.',
+          range: rangeOf(win, limited.length, filtered.length),
+        },
       );
     },
   },
@@ -217,7 +224,7 @@ export const facilityTools = {
         status: { type: 'string', enum: ISSUE_STATUSES, description: 'ACTIVE means currently on loan' },
         bookId: objectId(),
         studentId: objectId(),
-        limit: { type: 'integer', minimum: 1, maximum: 100 },
+        limit: limitSchema(),
       },
       additionalProperties: false,
     },
@@ -227,11 +234,17 @@ export const facilityTools = {
       const rows = asList(await library.listIssues(ctx.actor, ctx.scope, {
         status: args.status, bookId: args.bookId, studentId: args.studentId,
       }));
-      const limited = rows.slice(0, Math.min(Number(args.limit) || 20, 100));
+      const win = resultWindow(ctx, args);
+      const limited = windowSlice(rows, win).items;
       const view = summarise(limited, (i) => `${i.bookTitle} → ${i.studentName ?? i.borrowerName ?? '—'} (due ${shortDate(i.dueAt ?? i.dueDate)})`);
       return ok(
         { issues: limited, total: rows.length, returned: limited.length },
-        { speak: rows.length ? `${rows.length} lending record(s): ${view.list}.` : 'No lending records match that.' },
+        {
+          speak: rows.length
+            ? `${rows.length} lending record(s): ${view.list}.`
+            : 'No lending records match that.',
+          range: rangeOf(win, limited.length, rows.length),
+        },
       );
     },
   },
@@ -561,7 +574,7 @@ export const facilityTools = {
       }
       // listRooms() attaches `occupied` and `available` to every room.
       const withSpace = rooms.filter((r) => (r.available ?? 0) > 0);
-      const view = summarise(withSpace, (r) => `${r.roomNo}${r.block ? ` (block ${r.block})` : ''}: ${r.available} free`, { limit: 10 });
+      const view = summarise(withSpace, (r) => `${r.roomNo}${r.block ? ` (block ${r.block})` : ''}: ${r.available} free`);
       return ok(
         {
           rooms: rooms.map((r) => ({
@@ -623,7 +636,7 @@ export const facilityTools = {
         const name = [st.firstName, st.lastName].filter(Boolean).join(' ') || st.admissionNo || 'a student';
         return `${name} (room ${r.roomId?.roomNo ?? '-'})`;
       };
-      const view = summarise(mine, render, { limit: 10 });
+      const view = summarise(mine, render);
       return ok(
         { allocations: mine, count: mine.length, room: room ? { roomId: String(room._id), roomNo: room.roomNo } : null },
         {
@@ -1006,7 +1019,13 @@ export const facilityTools = {
       const stops = await transport.listStops(args.routeId);
       return ok(
         { stops: stops.map((s) => ({ ...s, id: String(s.id), routeId: String(s.routeId) })), count: stops.length },
-        { speak: stops.length ? `${stops.length} stop(s): ${stops.map((s) => s.name).join(', ')}.` : 'That route has no stops yet.' },
+        {
+          speak: stops.length ? `${stops.length} stop(s): ${stops.map((s) => s.name).join(', ')}.` : 'That route has no stops yet.',
+          // In the order the bus reaches them, one numbered line each (agent/present.js).
+          view: stops.length
+            ? { type: 'list.numbered', intro: `This route has ${stops.length} ${stops.length === 1 ? 'stop' : 'stops'}:`, items: stops.map((s) => ({ label: s.name })) }
+            : null,
+        },
       );
     },
   },

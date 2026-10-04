@@ -3,11 +3,12 @@ import { Profile } from '../../models/profile.model.js';
 import { AgentAction } from '../../models/agentAction.model.js';
 import { buildPermissionMap } from '../../utils/buildPermissionMap.js';
 import { logger } from '../../utils/logger.js';
-import { runAgentSafely, confirmAction } from '../ai/agent/orchestrator.js';
+import { runAgentSafely, confirmAction, continueAnswer } from '../ai/agent/orchestrator.js';
+import { toWhatsAppText } from '../ai/agent/present.js';
 import { latestPendingFor, reissueToken } from '../ai/mcp/confirm.js';
 import { detectLanguage, t } from '../../utils/language.js';
 import { runWithTenant, runAcrossSchools } from '../../tenancy/tenantContext.js';
-import { normalisePhone, buildHistory } from './whatsapp.session.js';
+import { normalisePhone, buildHistory, latestContinuation } from './whatsapp.session.js';
 import { isOpeningMessage, buildBriefing } from './whatsapp.briefing.js';
 
 /**
@@ -47,6 +48,21 @@ const COPILOT_PERMISSION = 'ai.copilot.use';
 
 const YES = /^(y|yes|yeah|yep|ok|okay|confirm|confirmed|go ahead|do it|haan|haa|ha|ji|thik hai|ठीक है|हाँ)$/i;
 const NO = /^(n|no|nope|cancel|stop|don'?t|nahi|nahin|nai|नहीं)$/i;
+/** "MORE" after a long list: the next window of it. */
+const MORE = /^(more|next|show more|load more|aur|और)$/i;
+
+/**
+ * "Reply *MORE* for 1001–2000 of 4500." -- WhatsApp's equivalent of the
+ * website's "Load more". The token itself is never shown; it is kept on the
+ * outgoing message (whatsapp.service deliver → metadata) and found again by
+ * latestContinuation() when the person replies.
+ */
+function moreLine(continuation) {
+  if (!continuation?.next) return '';
+  const { from, to } = continuation.next;
+  const of = continuation.total != null ? ` of ${continuation.total}` : '';
+  return `\n\nReply *MORE* for ${from}–${to}${of}.`;
+}
 
 /**
  * Finds the accounts a WhatsApp sender's number could belong to.
@@ -214,7 +230,10 @@ export async function handleInboundMessage({ from, text, conversation = null }) 
   );
 
   // Every ERP read and write below runs inside the sender's own school.
-  return runInActorScope(resolved, () => converse({ ...resolved, text, history }));
+  // The continuation of the last long list, if the last reply offered one.
+  const continuationToken = await latestContinuation(conversation);
+
+  return runInActorScope(resolved, () => converse({ ...resolved, text, history, continuationToken }));
 }
 
 /**
@@ -224,7 +243,7 @@ export async function handleInboundMessage({ from, text, conversation = null }) 
  * in-app simulator (actor from the session), so the simulator is a true
  * preview rather than a lookalike.
  */
-export async function converse({ actor, multipleProfiles = false, roleLabel = '', text, history = [] }) {
+export async function converse({ actor, multipleProfiles = false, roleLabel = '', text, history = [], continuationToken = null }) {
   const message = String(text ?? '').trim();
   const lang = detectLanguage(message).lang;
   if (!message) return { reply: t('agent.sendText', lang), lang };
@@ -245,6 +264,21 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
     return { reply, lang, briefing: true, tools: briefing.tools };
   }
 
+  // "MORE" continues the last long list, through the same authorized read.
+  if (MORE.test(message) && continuationToken) {
+    try {
+      const next = await continueAnswer({ token: continuationToken, actor, source: 'WHATSAPP', lang });
+      return {
+        reply: toWhatsAppText(next.reply) + moreLine(next.continuation),
+        lang,
+        tool: next.tool,
+        continuationToken: next.continuation?.token ?? null,
+      };
+    } catch (err) {
+      return { reply: err?.message ?? 'That list has expired. Please ask again.', lang };
+    }
+  }
+
   // A bare yes/no answers the outstanding proposal rather than starting a new
   // request, which is how people actually reply on WhatsApp.
   if (YES.test(message) || NO.test(message)) {
@@ -260,7 +294,7 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
       accept: YES.test(message),
       lang,
     });
-    return { reply: result.reply, lang, executed: result.executed };
+    return { reply: toWhatsAppText(result.reply), lang, executed: result.executed };
   }
 
   // The safe variant, for the same reason the web route uses it: a provider
@@ -268,7 +302,9 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
   // phone.
   const result = await runAgentSafely({ message, actor, source: 'WHATSAPP', lang, history });
 
-  let reply = result.reply;
+  // The assistant answers in Markdown (agent/present.js); WhatsApp shows
+  // `**` and table pipes literally, so the reply is put in its own dialect.
+  let reply = toWhatsAppText(result.reply) + moreLine(result.continuation);
   if (result.action) {
     // WhatsApp cannot carry a hidden token, so the reply asks for a plain
     // yes/no and the pending action is matched from the actor's own queue.
@@ -289,6 +325,7 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
     flagged: result.flagged ?? null,
     tool: result.tool ?? null,
     degraded: Boolean(result.degraded),
+    continuationToken: result.continuation?.token ?? null,
   };
 }
 
