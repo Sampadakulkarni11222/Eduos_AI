@@ -6,6 +6,7 @@ import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
 import {
   RISK, objectId, dateStr, noArgs, summarise, decidableSchema, thePendingRequest, raisedBy,
+  limitSchema, resultWindow, rangeOf, collectPages,
 } from './_shared.js';
 
 /**
@@ -203,7 +204,7 @@ export const requestTools = {
       type: 'object',
       properties: {
         status: { type: 'string', enum: ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED', 'ALL'] },
-        limit: { type: 'integer', minimum: 1, maximum: 100 },
+        limit: limitSchema(),
       },
       additionalProperties: false,
     },
@@ -212,15 +213,21 @@ export const requestTools = {
     service: 'library.service.listBookRequestsForReview()',
     resultShape: 'LIST',
     async run(ctx, args) {
-      const page = await library.listBookRequestsForReview(ctx.actor, ctx.scope, {
+      // Every page of the queue, not the first 25.
+      const win = resultWindow(ctx, args);
+      const page = await collectPages((p, pageSize) => library.listBookRequestsForReview(ctx.actor, ctx.scope, {
         status: args.status ?? 'PENDING',
-        pageSize: Math.min(Number(args.limit) || 25, 100),
-      });
-      const rows = asList(page);
+        page: p,
+        pageSize,
+      }), win);
+      const rows = page.items;
       const view = summarise(rows, (r) => `${r.studentName ?? 'A student'} — ${r.bookTitle}`);
       return ok(
-        { requests: rows, count: rows.length },
-        { speak: rows.length ? `${rows.length} book request(s): ${view.list}.` : 'No book requests are waiting.' },
+        { requests: rows, count: rows.length, total: page.total },
+        {
+          speak: rows.length ? `${page.total ?? rows.length} book request(s): ${view.list}.` : 'No book requests are waiting.',
+          range: rangeOf(win, rows.length, page.total),
+        },
       );
     },
   },
@@ -446,7 +453,7 @@ export const requestTools = {
       type: 'object',
       properties: {
         status: { type: 'string', enum: ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED', 'ALL'] },
-        limit: { type: 'integer', minimum: 1, maximum: 100 },
+        limit: limitSchema(),
       },
       additionalProperties: false,
     },
@@ -455,15 +462,21 @@ export const requestTools = {
     service: 'transport.service.listTransportRequestsForReview()',
     resultShape: 'LIST',
     async run(ctx, args) {
-      const page = await transport.listTransportRequestsForReview(ctx.actor, ctx.scope, {
+      // Every page of the queue, not the first 25.
+      const win = resultWindow(ctx, args);
+      const page = await collectPages((p, pageSize) => transport.listTransportRequestsForReview(ctx.actor, ctx.scope, {
         status: args.status ?? 'PENDING',
-        pageSize: Math.min(Number(args.limit) || 25, 100),
-      });
-      const rows = asList(page);
+        page: p,
+        pageSize,
+      }), win);
+      const rows = page.items;
       const view = summarise(rows, (r) => `${r.studentName ?? 'A student'} — ${r.routeName} (${r.stopName})`);
       return ok(
-        { requests: rows, count: rows.length },
-        { speak: rows.length ? `${rows.length} transport request(s): ${view.list}.` : 'No transport requests are waiting.' },
+        { requests: rows, count: rows.length, total: page.total },
+        {
+          speak: rows.length ? `${page.total ?? rows.length} transport request(s): ${view.list}.` : 'No transport requests are waiting.',
+          range: rangeOf(win, rows.length, page.total),
+        },
       );
     },
   },

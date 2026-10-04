@@ -142,5 +142,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm audit --audit-level=high
+      # `npm audit --audit-level=high`, except advisories reviewed and listed in
+      # .github/audit-allowlist.json (each with its reason and a review date).
+      # Any other high/critical advisory still fails this job.
+      - run: node ../.github/scripts/audit-check.mjs
         working-directory: ${{ matrix.package }}

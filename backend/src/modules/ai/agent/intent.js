@@ -338,7 +338,7 @@ const RULES = [
     // form these produced no month at all, and the tool answered for the
     // CURRENT month -- a confident answer to a different question.
     args: (msg) => {
-      const month = monthFromText(msg);
+      const month = monthFromText(msg) ?? unreadableMonthIn(msg);
       return month ? { month } : {};
     },
   },
@@ -398,7 +398,7 @@ const RULES = [
     // form these produced no month at all, and the tool answered for the
     // CURRENT month -- a confident answer to a different question.
     args: (msg) => {
-      const month = monthFromText(msg);
+      const month = monthFromText(msg) ?? unreadableMonthIn(msg);
       return month ? { month } : {};
     },
   },
@@ -1724,8 +1724,55 @@ function passesRule(rule, step, message, actor) {
     : respectsSpecificity(step, String(message), actor);
 }
 
+/**
+ * A month the sentence writes in the ISO shape but that is not a month
+ * ("2026-13"), returned as written. monthFromText() rightly reads nothing from
+ * it -- and with no month the question used to be answered for ALL time, a
+ * confident answer to a different question. Passed through instead, schema
+ * validation refuses it and the person is told the month could not be read.
+ */
+function unreadableMonthIn(msg) {
+  const m = /\b(20\d{2})-(\d{1,2})\b(?!-\d)/.exec(String(msg ?? ''));
+  return m && (Number(m[2]) < 1 || Number(m[2]) > 12) ? m[0] : null;
+}
+
+/** "month wise", "monthly", "month by month", "history", "trend", "last 3 months". */
+const MONTH_WISE = /\b(?:month[\s-]?wise|monthly|month[\s-]by[\s-]month|by months?|per month|each month|every month|(?:last|past)\s+\d{1,2}\s+months|history|trend)\b/i;
+
+/**
+ * A student's (or a parent's) own attendance, month by month.
+ *
+ * "Give me the attendance percentage month wise", "show my attendance
+ * history" and "my monthly attendance" all ask for the per-month breakdown,
+ * and every one of them used to reach the single overall summary -- the word
+ * "percentage" or "attendance" was louder than "month wise". Only for the two
+ * roles that have a record of their own; anyone else asking this is asking
+ * about somebody, and the existing rules decide who.
+ *
+ * Yields (null) whenever the sentence is about something narrower: one named
+ * month, a lecture or subject breakdown, a write, or another person.
+ */
+function ownAttendanceTrendStep(message, actor) {
+  if (!SELF_RECORD_ROLES.has(actor?.roleKey)) return null;
+  const text = String(message ?? '');
+  if (!/\b(?:attendance|present|absent)\b/i.test(text) || !MONTH_WISE.test(text)) return null;
+  if (/\b(?:mark|record|update|set|change|correct|lectures?|periods?|subjects?|class(?:es)?|calendar|day[\s-]by[\s-]day|daily|below|under|less than)\b/i.test(text)) return null;
+  if (monthFromText(text) || unreadableMonthIn(text)) return null;
+  // Someone else named: "Rahul's monthly attendance", "attendance history of Rahul".
+  if (/\b(?!child\b)[\p{L}]{3,}'s\b/iu.test(text)) return null;
+  if (/\b(?:of|for)\s+(?!(?:me|my|the|this|last|past|each|every|all)\b)\p{Lu}/u.test(text)) return null;
+  if (FOLLOW_UP_PRONOUN.test(text)) return null;
+  const months = Number(/\b(?:last|past)\s+(\d{1,2})\s+months\b/i.exec(text)?.[1]);
+  return { tool: 'get_attendance_trend', args: Number.isInteger(months) && months >= 1 && months <= 24 ? { months } : {} };
+}
+
 function chooseStep(message, actor) {
   if (!mayBeRouted(actor)) return null;
+
+  // Before every other tier: "month wise" is the whole point of the question,
+  // and the tiers below read it as the overall summary.
+  const ownTrend = ownAttendanceTrendStep(message, actor);
+  if (ownTrend) return ownTrend;
 
   const decisive = decisiveStep(message, actor);
   if (decisive) return decisive;
@@ -1825,6 +1872,11 @@ function planSteps(message, actor) {
 
   const decisive = decisiveStep(msg, actor);
   if (decisive) return [decisive];
+
+  // As in chooseStep: "month wise" is the point of the question. A sentence
+  // joining two questions is left to the planner below.
+  const ownTrend = CONJUNCTION.test(msg) ? null : ownAttendanceTrendStep(msg, actor);
+  if (ownTrend) return [ownTrend];
 
   const capability = capabilityStep(msg, actor);
   // A capability match is ONE step. A message that joins two questions --

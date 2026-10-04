@@ -38,7 +38,7 @@ export interface StudentListItem {
 
 export interface StudentGuardianInfo { name: string; relation: 'FATHER' | 'MOTHER' | 'GUARDIAN'; phone: string | null; email: string | null; isPrimary: boolean }
 export interface StudentAssignmentRow { id: string; title: string; subject: string; dueAt: string | null; status: string; marks: number | null; maxMarks: number | null }
-export interface AttendanceSummaryDto { PRESENT: number; ABSENT: number; LATE: number; EXCUSED: number; HALF_DAY: number; workingDays: number; pctPresent: number }
+export interface AttendanceSummaryDto { PRESENT: number; ABSENT: number; LATE: number; EXCUSED: number; HALF_DAY: number; workingDays: number; pctPresent: number | null }
 export interface StudentOverviewDto {
   id: string;
   admissionNo: string;
@@ -170,7 +170,7 @@ export interface CalendarEventDto { id: string; title: string; description: stri
 // ── Attendance calendar & trend ──
 export interface AttendanceDayDto { date: string; status: AttStatus }
 export interface AttendanceCalendarDto { enrollmentId: string; month: string; days: AttendanceDayDto[] }
-export interface AttendanceTrendPointDto { month: string; pctPresent: number; presentDays: number; workingDays: number }
+export interface AttendanceTrendPointDto { month: string; pctPresent: number | null; presentDays: number; workingDays: number }
 
 /**
  * `basis` says where these numbers come from — PERIOD is a true per-subject
@@ -1458,6 +1458,20 @@ export interface AgentReply {
   action: AgentProposedAction | null;
   flagged?: string;
   suggestions?: string[];
+  /** Present when the answer holds part of a longer list: how to load the next rows. */
+  continuation?: AgentContinuation | null;
+}
+
+/**
+ * The way to the next window of a long answer. The token is the server's own
+ * (signed, bound to this person and school, short-lived); the client only
+ * hands it back.
+ */
+export interface AgentContinuation {
+  token: string;
+  shown: { from: number; to: number };
+  next: { from: number; to: number };
+  total: number | null;
 }
 
 /* ── Student assignments: extra fields used by the student filters ──

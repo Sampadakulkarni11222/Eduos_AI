@@ -3,6 +3,9 @@ import { handleInboundMessage, resolveActorByPhone, converse } from './whatsapp.
 import { t } from '../../utils/language.js';
 import { env, isWhatsappLive, isWhatsappSignatureConfigured } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
+import { sendText as sendChatflowText } from './chatflow.client.js';
+import { parseChatflowEvent } from './chatflow.inbound.js';
+import { chunkForWhatsApp } from '../ai/agent/present.js';
 import { Profile } from '../../models/profile.model.js';
 import { AuditLog } from '../../models/auditLog.model.js';
 import {
@@ -12,6 +15,8 @@ import {
   recordOutbound,
   markProcessed,
   buildHistory,
+  latestContinuation,
+  maskPhone,
 } from './whatsapp.session.js';
 
 /**
@@ -241,11 +246,30 @@ export function extractMessages(payload) {
  * several at once, and one sender's failure must not stop the rest of the
  * batch being answered.
  */
-async function handleOne(msg) {
+/**
+ * The two ways a WhatsApp message can reach us. Each channel replies through
+ * the provider it arrived from; everything between — dedupe, identity, agent,
+ * MCP — is shared and has no idea which one it is serving.
+ */
+const META_CHANNEL = { name: 'META', send: (to, text) => sendMessage(to, text) };
+
+function chatflowChannel(normalised) {
+  return {
+    name: 'CHATFLOW',
+    providerConversationId: normalised.conversationId ?? null,
+    send: (to, text) => sendChatflowText({ to, text, correlationId: normalised.messageId }),
+  };
+}
+
+async function handleOne(msg, channel = META_CHANNEL) {
   const conversation = await loadConversation(msg.from);
   if (!conversation) {
-    logger.warn('Ignoring a WhatsApp message with an unusable sender number');
+    logger.warn('Ignoring a WhatsApp message with an unusable sender number', { channel: channel.name });
     return { to: msg.from, reply: null, skipped: 'INVALID_NUMBER' };
+  }
+  if (channel.providerConversationId && conversation.providerConversationId !== channel.providerConversationId) {
+    conversation.provider = channel.name;
+    conversation.providerConversationId = channel.providerConversationId;
   }
 
   // Dedupe FIRST, before anything is resolved or executed. Meta redelivers any
@@ -258,15 +282,25 @@ async function handleOne(msg) {
     text: msg.text ?? '',
   });
   if (duplicate) {
+    logger.info('WhatsApp duplicate delivery ignored', { channel: channel.name, messageId: msg.id, from: maskPhone(msg.from) });
     return { to: msg.from, reply: null, skipped: 'DUPLICATE' };
   }
+  logger.info('WhatsApp inbound message', {
+    channel: channel.name,
+    messageId: msg.id,
+    conversationId: String(conversation._id),
+    providerConversationId: channel.providerConversationId ?? null,
+    sessionId: conversation.sessionId,
+    from: maskPhone(msg.from),
+    type: msg.type,
+  });
 
   if (!msg.text) {
     // No text to detect a language from, so English is the only honest default.
     const reply =
       msg.type === 'image' ? t('agent.imageNotSupported', 'en') : t('agent.sendText', 'en');
-    await markProcessed(inboundDoc, { status: 'PROCESSED', metadata: { unsupportedType: msg.type } });
-    await deliver(conversation, msg.from, reply, { unsupportedType: msg.type });
+    await markProcessed(inboundDoc, { status: 'PROCESSED', metadata: { unsupportedType: msg.type, channel: channel.name } });
+    await deliver(conversation, msg.from, reply, { unsupportedType: msg.type }, channel);
     return { to: msg.from, reply };
   }
 
@@ -281,17 +315,34 @@ async function handleOne(msg) {
     // Cached for auditing only -- the next turn re-resolves from live records.
     await attachIdentity(conversation, result.unknownSender ? null : await resolveActorByPhone(msg.from));
 
+    logger.info('WhatsApp turn answered', {
+      channel: channel.name,
+      messageId: msg.id,
+      erpProfileId: conversation.erpProfileId ? String(conversation.erpProfileId) : null,
+      tool: result.tool ?? null,
+      unknownSender: Boolean(result.unknownSender),
+      reason: result.reason ?? null,
+      awaitingConfirmation: Boolean(result.awaitingConfirmation),
+      degraded: Boolean(result.degraded),
+    });
+
     await markProcessed(inboundDoc, {
       status: 'PROCESSED',
       metadata: {
+        channel: channel.name,
         tool: result.tool ?? null,
         lang: result.lang ?? null,
         unknownSender: Boolean(result.unknownSender),
         reason: result.reason ?? null,
       },
     });
-    await deliver(conversation, msg.from, result.reply, { tool: result.tool ?? null });
-    return { to: msg.from, reply: result.reply };
+    await deliver(conversation, msg.from, result.reply, {
+      tool: result.tool ?? null,
+      // Kept so a following "MORE" can continue this list (whatsapp.session latestContinuation).
+      ...(result.continuationToken && { continuationToken: result.continuationToken }),
+    }, channel);
+    // `parts` is what the person receives: the reply as WhatsApp-sized messages.
+    return { to: msg.from, reply: result.reply, parts: chunkForWhatsApp(result.reply) };
   } catch (err) {
     // A refusal ("you don't have permission to do that", "you are out of AI
     // credits") is a legitimate, expected answer and must reach the user as
@@ -300,12 +351,12 @@ async function handleOne(msg) {
     // vague message, and none of them get a stack trace.
     const expected = err?.statusCode >= 400 && err?.statusCode < 500;
     const reply = expected ? err.message : t('agent.failed', 'en');
-    if (!expected) logger.error(`WhatsApp agent failed for a sender: ${err.message}`);
+    if (!expected) logger.error(`WhatsApp agent failed for a sender: ${err.message}`, { channel: channel.name, messageId: msg.id });
     await markProcessed(inboundDoc, {
       status: 'FAILED',
-      metadata: { code: err?.code ?? null, status: err?.statusCode ?? null },
+      metadata: { channel: channel.name, code: err?.code ?? null, status: err?.statusCode ?? null },
     });
-    await deliver(conversation, msg.from, reply, { error: err?.code ?? 'UNEXPECTED' });
+    await deliver(conversation, msg.from, reply, { error: err?.code ?? 'UNEXPECTED' }, channel);
     return { to: msg.from, reply };
   }
 }
@@ -318,11 +369,16 @@ async function handleOne(msg) {
  * conversation's context is concerned, and losing it would leave the next
  * follow-up with a hole in the middle of the thread.
  */
-async function deliver(conversation, to, text, metadata = null) {
-  const sent = await sendMessage(to, text);
+async function deliver(conversation, to, text, metadata = null, channel = META_CHANNEL) {
+  const sent = await channel.send(to, text);
   await recordOutbound(conversation, {
     text,
-    metadata,
+    metadata: {
+      ...(metadata ?? {}),
+      channel: channel.name,
+      ...(sent.messageIds?.length ? { providerMessageIds: sent.messageIds } : {}),
+      ...(sent.code ? { sendError: sent.code } : {}),
+    },
     status: sent.sent === false && sent.error ? 'SEND_FAILED' : 'SENT',
   });
   return sent;
@@ -346,7 +402,7 @@ export async function receiveWebhook(payload) {
   for (const msg of messages) {
     try {
       const outcome = await handleOne(msg);
-      if (outcome.reply !== null) replies.push({ to: outcome.to, reply: outcome.reply });
+      if (outcome.reply !== null) replies.push({ to: outcome.to, reply: outcome.reply, ...(outcome.parts && { parts: outcome.parts }) });
       else replies.push({ to: outcome.to, skipped: outcome.skipped });
     } catch (err) {
       // Reaching here means the session store itself failed. Acknowledge the
@@ -365,36 +421,80 @@ export async function receiveWebhook(payload) {
 }
 
 /**
+ * Processes one Chatflow-Pro webhook event through the same pipeline as Meta's.
+ *
+ * Dedupe keys on the WhatsApp message id Chatflow forwards (Meta's `wamid`),
+ * not on Chatflow's delivery id, so a retried delivery, a redelivery and even
+ * the same message arriving over both providers are processed once.
+ *
+ * Always resolves, for the same reason receiveWebhook() does.
+ */
+export async function receiveChatflowEvent(payload) {
+  const messages = parseChatflowEvent(payload);
+  if (!messages.length) {
+    return { received: true, handled: 0, event: payload?.event ?? null };
+  }
+
+  const replies = [];
+  for (const normalised of messages) {
+    const msg = { from: normalised.phoneNumber, id: normalised.messageId, type: normalised.type, text: normalised.text };
+    try {
+      const outcome = await handleOne(msg, chatflowChannel(normalised));
+      if (outcome.reply !== null) replies.push({ to: outcome.to, reply: outcome.reply, ...(outcome.parts && { parts: outcome.parts }) });
+      else replies.push({ to: outcome.to, skipped: outcome.skipped });
+    } catch (err) {
+      logger.error(`Chatflow message could not be processed at all: ${err.message}`, { messageId: normalised.messageId });
+      replies.push({ to: msg.from, skipped: 'INTERNAL_ERROR' });
+    }
+  }
+
+  return {
+    received: true,
+    handled: replies.filter((r) => r.reply).length,
+    skipped: replies.filter((r) => r.skipped).length,
+    replies,
+  };
+}
+
+/**
  * Outbound send. In simulation mode this logs rather than calling Meta, so the
  * whole flow can be exercised without credentials.
  */
 export async function sendMessage(to, text) {
+  // A long reply is sent as numbered parts (agent/present.js). This used to be
+  // `text.slice(0, 4096)`: everything past Meta's limit was silently dropped,
+  // so a long list arrived with most of it missing.
+  const parts = chunkForWhatsApp(text);
   if (!isLiveMode()) {
-    logger.info(`[WhatsApp SIMULATION] → ${to}: ${String(text).slice(0, 200)}`);
-    return { sent: false, simulated: true };
+    logger.info(`[WhatsApp SIMULATION] → ${to} (${parts.length} part(s)): ${String(parts[0] ?? '').slice(0, 200)}`);
+    return { sent: false, simulated: true, parts: parts.length };
   }
   try {
-    const res = await fetch(
-      // Read through `env` rather than process.env: config.env.js is the one
-      // place these are validated and defaulted, and reading around it is how
-      // a deployment ends up "live" against `undefined`.
-      `https://graph.facebook.com/v20.0/${env.WA_PHONE_NUMBER_ID}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.WA_ACCESS_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messaging_product: 'whatsapp',
-          to: to.replace(/^\+/, ''),
-          type: 'text',
-          text: { body: String(text).slice(0, 4096) },
-        }),
-      }
-    );
-    if (!res.ok) throw new Error(`WhatsApp send failed: ${res.status}`);
-    return { sent: true };
+    // In order, one at a time, so the parts arrive in sequence.
+    for (const body of parts) {
+      // eslint-disable-next-line no-await-in-loop -- parts must arrive in order
+      const res = await fetch(
+        // Read through `env` rather than process.env: config.env.js is the one
+        // place these are validated and defaulted, and reading around it is how
+        // a deployment ends up "live" against `undefined`.
+        `https://graph.facebook.com/v20.0/${env.WA_PHONE_NUMBER_ID}/messages`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${env.WA_ACCESS_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            to: to.replace(/^\+/, ''),
+            type: 'text',
+            text: { body },
+          }),
+        }
+      );
+      if (!res.ok) throw new Error(`WhatsApp send failed: ${res.status}`);
+    }
+    return { sent: true, parts: parts.length };
   } catch (err) {
     // Never rethrown. A Meta outage must not turn into a 500 on the webhook,
     // because Meta answers a 500 by redelivering the same message -- which
@@ -441,21 +541,36 @@ export async function simulate({ text, message }, actor) {
     }));
   }
 
+  // "MORE" continues the last long list exactly as on a real phone: the same
+  // lookup (the latest reply's stored continuation token, in this same
+  // thread), the same converse() branch, the same signed-token redemption.
+  // The token is never taken from the request -- only the server's own stored
+  // copy is used, so nothing typed can move the position.
+  const continuationToken = await latestContinuation(conversation);
+
   // No tenant wrapper here: /simulate arrives through `authenticate`, which
   // has already scoped the request to the caller's school.
-  const result = await converse({ actor, text: body, history });
+  const result = await converse({ actor, text: body, history, continuationToken });
 
   if (conversation) {
     await markProcessed(inboundDoc, { status: 'PROCESSED', metadata: { simulated: true } });
     await recordOutbound(conversation, {
       text: result.reply,
-      metadata: { simulated: true, tool: result.tool ?? null },
+      metadata: {
+        simulated: true,
+        tool: result.tool ?? null,
+        // Stored the way deliver() stores it for a real reply, so the next
+        // "MORE" -- simulated or real -- finds it.
+        ...(result.continuationToken && { continuationToken: result.continuationToken }),
+      },
       status: 'SENT',
     });
   }
 
   return {
     reply: result.reply,
+    // The messages a phone would receive, so the preview shows the parts too.
+    messages: chunkForWhatsApp(result.reply),
     buttons: result.awaitingConfirmation
       ? [{ id: 'yes', title: 'YES' }, { id: 'no', title: 'NO' }]
       : SUGGESTIONS,

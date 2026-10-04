@@ -5,6 +5,7 @@ import { applyFieldAllowList } from '../validate.js';
 import {
   RISK, objectId, resolveStudentId, studentIdentitySchema, summarise, resolveSection,
   allowedSectionIds, classIdentitySchema,
+  limitSchema, resultWindow, windowSlice, rangeOf, collectPages,
 } from './_shared.js';
 import { classFromText, refersToOwnClasses } from '../../../../utils/classNames.js';
 import { resolveYear, resolveStaff } from './_names.js';
@@ -75,7 +76,7 @@ export const studentTools = {
       properties: {
         query: { type: 'string', maxLength: 80, description: 'Name, admission number or class, e.g. "Rahul", "OAK-12", "Class 6 A". Omit to list everyone in scope.' },
         sectionId: objectId('Restrict to one section'),
-        limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Default 20' },
+        limit: limitSchema(),
       },
       // `query` is NOT required. The Web students page lists the directory
       // with no search term in the box, so demanding one here made a plain
@@ -102,18 +103,20 @@ export const studentTools = {
         ? await resolveSection(ctx, { sectionId: args.sectionId, className: named?.text })
         : null;
 
-      const page = await students.list(ctx.actor, ctx.scope, {
+      // Every page of the caller's own directory scope -- the whole class,
+      // the whole school for an administrator -- not the first 50. Each page
+      // is the same students.read-scoped read the Students screen makes.
+      const win = resultWindow(ctx, args);
+      const page = await collectPages((p, pageSize) => students.list(ctx.actor, ctx.scope, {
         // A class question filters by section; a question about a person
         // searches the text. "my classes" needs neither — an OWN-scoped
         // teacher's list is already exactly their own students.
         ...(section && { sectionId: section.sectionId }),
         ...(!section && !ownClasses && asked && { search: asked }),
-        page: 1,
-        // An unfiltered listing is a browse rather than a lookup, so it gets
-        // the larger page the class views already use.
-        pageSize: Math.min(Number(args.limit) || (section || ownClasses || !asked ? 50 : 20), 50),
-      });
-      const items = page.items ?? [];
+        page: p,
+        pageSize,
+      }), win);
+      const items = page.items;
       // Minimised on purpose: a search result is a way to pick a student, not a
       // way to read their file. Date of birth, address and guardian contact
       // stay behind get_student, whose read is audited.
@@ -161,6 +164,7 @@ export const studentTools = {
             : (total
               ? `${total} student(s): ${view.list}${view.more ? ', and more' : ''}.`
               : 'There are no students on the roll.')),
+          range: rangeOf(win, rows.length, total),
         },
       );
     },
@@ -452,11 +456,17 @@ export const studentTools = {
         ...(args.status && { status: args.status }),
       };
       const rows = await students.listEnrollments(filter);
-      const limited = rows.slice(0, Math.min(Number(args.limit) || 50, 200));
+      const win = resultWindow(ctx, args);
+      const limited = windowSlice(rows, win).items;
       const view = summarise(limited, (e) => `${e.studentName} (${e.class}${e.rollNo ? `, roll ${e.rollNo}` : ''})`);
       return ok(
         { enrollments: limited, total: rows.length, returned: limited.length },
-        { speak: rows.length ? `${rows.length} enrolment(s). First ${view.shown}: ${view.list}.` : 'No enrolments match that.' },
+        {
+          speak: rows.length
+            ? `${rows.length} enrolment(s): ${view.list}.`
+            : 'No enrolments match that.',
+          range: rangeOf(win, limited.length, rows.length),
+        },
       );
     },
   },

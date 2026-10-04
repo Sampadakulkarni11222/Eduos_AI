@@ -187,6 +187,31 @@ export const env = {
   // recovered from this transcript, and a smaller window forgot the request
   // on WhatsApp that the website still remembered.
   WHATSAPP_HISTORY_TURNS: Number(process.env.WHATSAPP_HISTORY_TURNS) || 10,
+  // ── WhatsApp via Chatflow-Pro (Public API) ──
+  // Chatflow-Pro owns the Meta connection; EduOS receives its signed
+  // `message.received` webhook and replies through POST {CHATFLOW_API_URL}/messages.
+  // The API key is workspace-bound, so no separate project/workspace id is sent.
+  //
+  // Base URL including the /api/v1/public prefix, no trailing slash, e.g.
+  // https://chatflow.example.com/api/v1/public
+  CHATFLOW_API_URL: String(process.env.CHATFLOW_API_URL ?? '').trim().replace(/\/+$/, ''),
+  // `cfp_…` key from Chatflow-Pro → API Keys. Needs the `messages:send` scope.
+  CHATFLOW_API_KEY: String(process.env.CHATFLOW_API_KEY ?? '').trim(),
+  // Optional: which of the workspace's numbers replies are sent from. Unset,
+  // Chatflow picks one — fine for a single-number workspace.
+  CHATFLOW_WA_NUMBER_ID: String(process.env.CHATFLOW_WA_NUMBER_ID ?? '').trim(),
+  // Chatflow signs each webhook with HMAC-SHA256 keyed by the workspace's
+  // "Verify Token" (X-ChatFlow-Signature-256). Set this to that token when the
+  // workspace has one; when set, every webhook must carry a valid signature.
+  CHATFLOW_WEBHOOK_SECRET: String(process.env.CHATFLOW_WEBHOOK_SECRET ?? '').trim(),
+  // Shared token carried in the registered webhook URL (?token=…). Required in
+  // production: Chatflow's verify token defaults to empty and cannot be set over
+  // its API, in which case the HMAC above is keyed by '' and proves nothing.
+  CHATFLOW_WEBHOOK_TOKEN: String(process.env.CHATFLOW_WEBHOOK_TOKEN ?? '').trim(),
+  CHATFLOW_TIMEOUT_MS: Number(process.env.CHATFLOW_TIMEOUT_MS) || 10_000,
+  CHATFLOW_MAX_RETRIES: numFromEnv('CHATFLOW_MAX_RETRIES', 2),
+  // WhatsApp's text body limit; longer answers are split into several messages.
+  CHATFLOW_MAX_MESSAGE_CHARS: Math.min(Number(process.env.CHATFLOW_MAX_MESSAGE_CHARS) || 4096, 4096),
   // ── Provider abstractions (all optional — safe fallbacks in dev) ──
   // Google Sign-In: when set, /auth/google verifies the ID token audience.
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? '',
@@ -311,6 +336,21 @@ export function isWhatsappSignatureConfigured() {
   return !isPlaceholderSecret(env.WA_APP_SECRET);
 }
 
+/** Chatflow-Pro can send once it has an API base URL and a key. */
+export function isChatflowLive(e = env) {
+  return Boolean(e.CHATFLOW_API_URL && e.CHATFLOW_API_KEY);
+}
+
+/**
+ * True when an inbound Chatflow webhook can be authenticated by at least one
+ * real secret. The HMAC secret alone is not counted as sufficient in
+ * production — see CHATFLOW_WEBHOOK_TOKEN above — but either one is enough to
+ * stop development accepting unverified events.
+ */
+export function isChatflowWebhookAuthConfigured(e = env) {
+  return Boolean(e.CHATFLOW_WEBHOOK_TOKEN) || !isPlaceholderSecret(e.CHATFLOW_WEBHOOK_SECRET);
+}
+
 /** The hosts in a MongoDB URI, lower-cased and without ports or credentials. */
 export function databaseHostsOf(uri) {
   const m = /^mongodb(?:\+srv)?:\/\/(?:[^@/]*@)?([^/?]+)/i.exec(String(uri ?? ''));
@@ -395,6 +435,16 @@ export function productionConfigProblems(e = env) {
   // appear to come from any parent's number.
   if (e.WA_PHONE_NUMBER_ID && e.WA_ACCESS_TOKEN && isPlaceholderSecret(e.WA_APP_SECRET)) {
     fatal.push('WA_APP_SECRET (WhatsApp is live — inbound webhooks cannot be authenticated without it)');
+  }
+  // Chatflow-Pro: once it can send, its webhook drives real agent actions, so
+  // it must be authenticated by something Chatflow cannot leave empty.
+  if (isChatflowLive(e)) {
+    if (String(e.CHATFLOW_WEBHOOK_TOKEN ?? '').length < 24) {
+      fatal.push('CHATFLOW_WEBHOOK_TOKEN (≥24 chars — Chatflow-Pro is live and its webhook cannot be authenticated without it)');
+    }
+    if (!/^https:\/\//i.test(e.CHATFLOW_API_URL)) fatal.push('CHATFLOW_API_URL (must be an https:// URL)');
+  } else if (e.CHATFLOW_API_URL || e.CHATFLOW_API_KEY) {
+    warnings.push('Chatflow-Pro is half-configured — set both CHATFLOW_API_URL and CHATFLOW_API_KEY, or neither');
   }
   if (e.CORS_ORIGIN === '*') fatal.push('CORS_ORIGIN (must name your frontend origin)');
 

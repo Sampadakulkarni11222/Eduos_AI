@@ -37,6 +37,13 @@ const whatsappConversationSchema = new Schema(
       enum: ['ACTIVE', 'UNLINKED', 'BLOCKED'],
       default: 'ACTIVE',
     },
+    /**
+     * Which provider last delivered this thread (META or CHATFLOW) and that
+     * provider's own conversation id. Correlation only — the thread is still
+     * keyed on the phone, so switching provider keeps the conversation memory.
+     */
+    provider: { type: String, default: null },
+    providerConversationId: { type: String, default: null },
     /** Stable id for the current run of turns; rotates after an idle gap. */
     sessionId: { type: String, required: true },
     sessionStartedAt: { type: Date, default: Date.now },

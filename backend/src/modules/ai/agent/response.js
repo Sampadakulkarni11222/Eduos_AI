@@ -1,6 +1,7 @@
 import { generate, isLlmEnabled } from '../../../providers/ai.provider.js';
 import { t } from '../../../utils/language.js';
 import { logger } from '../../../utils/logger.js';
+import { presentOf, structureSentence } from './present.js';
 
 /**
  * Turning MCP results into an answer.
@@ -28,16 +29,32 @@ export function speakOf(result, lang) {
   return result?.speak ?? '';
 }
 
-/** The deterministic, model-free answer for a set of results. */
+/**
+ * The deterministic, model-free answer for a set of results.
+ *
+ * A result carrying a `view` is rendered by the presentation layer
+ * (agent/present.js) -- a heading, labelled figures, a table where it helps --
+ * and is set apart from its neighbours by a blank line. Results without one
+ * keep their single sentence, exactly as before.
+ */
 export function joinResults(results, lang) {
-  return results
-    .map((r) => speakOf(r, lang))
+  const parts = results
+    .map((r) => presentOf(r, lang))
     .map((line) => line?.trim())
-    .filter(Boolean)
-    .join('\n');
+    .filter(Boolean);
+  return parts.join(parts.some((p) => p.includes('\n')) ? '\n\n' : '\n');
 }
 
 const MAX_GROUNDING_CHARS = 6000;
+/** Rows of a list the model is shown; summariseData() cuts the rest. */
+const GROUNDING_ROWS = 5;
+
+/** True when a result has a list longer than the model would be shown. */
+function carriesLongList(data) {
+  if (Array.isArray(data)) return data.length > GROUNDING_ROWS;
+  if (!data || typeof data !== 'object') return false;
+  return Object.values(data).some((v) => Array.isArray(v) && v.length > GROUNDING_ROWS);
+}
 
 /**
  * Trims a tool's data to something a prompt can carry.
@@ -91,8 +108,13 @@ export async function composeAnswer({ message, calls, lang = 'en' }) {
     ? refused.map((c) => c.result?.error?.message).filter(Boolean).join(' ')
     : '';
 
-  if (!isLlmEnabled()) {
-    return [deterministic, failureNote].filter(Boolean).join('\n');
+  // The model is shown only the first few rows of each list (summariseData),
+  // so an answer it writes about a long list would silently be about part of
+  // it. When any result carries more rows than the model would see, the
+  // complete deterministic answer is used instead -- every record, laid out by
+  // the presentation layer.
+  if (!isLlmEnabled() || answered.some((c) => carriesLongList(c.result?.data))) {
+    return [deterministic, failureNote].filter(Boolean).join('\n\n');
   }
 
   const grounding = JSON.stringify(
@@ -112,7 +134,10 @@ export async function composeAnswer({ message, calls, lang = 'en' }) {
     '- If the results do not answer part of the question, say that part is not',
     '  available. Do not guess it.',
     '- Never say an action was performed unless a result says it was.',
-    '- No preamble and no offers of further help. Two or three sentences.',
+    '- No preamble and no offers of further help. Be brief.',
+    '- Format in Markdown: one **bold** heading per part of the question, then',
+    '  a short sentence or "- " bullets (one item per bullet). Never run a list',
+    '  together with semicolons, and never show JSON, ids or field names.',
     '- Amounts are in paise unless the field name says otherwise; present them',
     '  in rupees.',
     `- Reply in ${lang === 'hi' ? 'Hindi' : 'English'}.`,
@@ -128,7 +153,8 @@ export async function composeAnswer({ message, calls, lang = 'en' }) {
 
   try {
     const result = await generate({ system, message, maxTokens: 1024 });
-    if (result.generated && result.text?.trim()) return result.text.trim();
+    // A model that still answers with a run-on list is laid out like any other.
+    if (result.generated && result.text?.trim()) return structureSentence(result.text.trim());
   } catch (err) {
     logger.warn(`Answer composition failed, using the deterministic reply: ${err.message}`);
   }

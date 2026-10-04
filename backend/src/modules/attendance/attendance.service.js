@@ -11,6 +11,38 @@ import { AppError } from '../../utils/AppError.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 import { rowError } from '../../utils/csvImport.js';
 
+/** Every status a register can hold. Anything else is not a mark and is not counted. */
+export const ATTENDANCE_STATUSES = ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY'];
+
+/**
+ * The figures one set of status counts supports, and nothing more.
+ *
+ * The percentage used to be `workingDays > 0 ? ... : 0`, so a student with no
+ * marks at all was told their attendance was 0% -- a number computed from
+ * nothing, read out by the assistant as if it were a record. With no marked
+ * days there is no percentage: it is `null`, and every reader treats null as
+ * "not available" rather than as a value.
+ *
+ * Which statuses count towards attendance is this module's existing rule
+ * (late and excused count as attended, a half day as half), unchanged.
+ * `pctPresent` stays a whole number for the screens that already show it;
+ * `pctExact` carries two decimals for anything that wants them.
+ */
+export function attendanceFigures(stats = {}) {
+  const counts = Object.fromEntries(
+    ATTENDANCE_STATUSES.map((s) => [s, Math.max(0, Number.isFinite(Number(stats[s])) ? Number(stats[s]) : 0)]),
+  );
+  const marked = ATTENDANCE_STATUSES.reduce((sum, s) => sum + counts[s], 0);
+  const attended = counts.PRESENT + counts.LATE + counts.EXCUSED + counts.HALF_DAY * 0.5;
+  const ratio = marked > 0 ? attended / marked : null;
+  return {
+    ...counts,
+    workingDays: marked,
+    pctPresent: ratio === null ? null : Math.round(ratio * 100),
+    pctExact: ratio === null ? null : Math.round(ratio * 10_000) / 100,
+  };
+}
+
 export function parseDateToMidnight(dateStr) {
   if (!dateStr) return null;
   const match = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -430,7 +462,12 @@ export async function getSummary(actor, scope, { enrollmentId, from, to, month }
     dateTo = new Date(Date.UTC(year, monthIdx + 1, 0, 23, 59, 59, 999));
   }
 
-  const match = { enrollmentId: { $in: enrollmentIds.map((id) => new mongoose.Types.ObjectId(id)) } };
+  // Only real marks are counted: a row with no valid status or no date is not
+  // attendance, whatever else it carries.
+  const match = {
+    enrollmentId: { $in: enrollmentIds.map((id) => new mongoose.Types.ObjectId(id)) },
+    status: { $in: ATTENDANCE_STATUSES },
+  };
   if (dateFrom || dateTo) {
     match.date = {};
     if (dateFrom) match.date.$gte = dateFrom;
@@ -462,21 +499,11 @@ export async function getSummary(actor, scope, { enrollmentId, from, to, month }
     : (enrollmentIds.length === 1 ? enrollmentIds[0] : null);
 
   if (singleId) {
-    const stats = summary[singleId] ?? { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
-    const workingDays = stats.PRESENT + stats.ABSENT + stats.LATE + stats.EXCUSED + stats.HALF_DAY;
-    const presentCount = stats.PRESENT + stats.LATE + stats.EXCUSED + (stats.HALF_DAY * 0.5);
-    const pctPresent = workingDays > 0 ? Math.round((presentCount / workingDays) * 100) : 0;
-
+    // No marks means no percentage (null), never 0%. See attendanceFigures().
     return {
       enrollmentId: singleId,
       yearMonth: month || 'custom',
-      PRESENT: stats.PRESENT,
-      ABSENT: stats.ABSENT,
-      LATE: stats.LATE,
-      EXCUSED: stats.EXCUSED,
-      HALF_DAY: stats.HALF_DAY,
-      workingDays,
-      pctPresent,
+      ...attendanceFigures(summary[singleId]),
     };
   }
 
@@ -783,6 +810,7 @@ export async function getTrend(actor, scope, { enrollmentId, months }) {
         enrollmentId: new mongoose.Types.ObjectId(targetId),
         periodNo: null,
         date: { $gte: rangeStart },
+        status: { $in: ATTENDANCE_STATUSES },
       },
     },
     {
@@ -804,11 +832,17 @@ export async function getTrend(actor, scope, { enrollmentId, months }) {
   for (let i = n - 1; i >= 0; i--) {
     const d = new Date(Date.UTC(now.getFullYear(), now.getMonth() - i, 1));
     const ym = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-    const stats = byMonth.get(ym) ?? { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
-    const workingDays = stats.PRESENT + stats.ABSENT + stats.LATE + stats.EXCUSED + stats.HALF_DAY;
-    const presentCount = stats.PRESENT + stats.LATE + stats.EXCUSED + stats.HALF_DAY * 0.5;
-    const pctPresent = workingDays > 0 ? Math.round((presentCount / workingDays) * 100) : 0;
-    points.push({ month: ym, pctPresent, presentDays: stats.PRESENT + stats.LATE, workingDays });
+    const stats = byMonth.get(ym) ?? {};
+    // A month with nothing marked has no percentage (null), not 0%.
+    const f = attendanceFigures(stats);
+    points.push({
+      month: ym,
+      pctPresent: f.pctPresent,
+      pctExact: f.pctExact,
+      presentDays: f.PRESENT + f.LATE,
+      absentDays: f.ABSENT,
+      workingDays: f.workingDays,
+    });
   }
   return points;
 }

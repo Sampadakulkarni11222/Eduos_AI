@@ -91,6 +91,26 @@ export const agent = asyncHandler(async (req, res) => {
   );
 });
 
+/**
+ * The next window of a long answer ("Load more"). The token was issued by the
+ * server with the answer; redeeming it is an ordinary MCP read for this same
+ * caller, authorized and audited like the first.
+ */
+export const agentContinue = asyncHandler(async (req, res) => {
+  const { continuationToken, source, lang } = req.body;
+  if (!continuationToken) throw new AppError('continuationToken is required', 400);
+  sendSuccess(
+    res,
+    await agentCore.continueAnswer({
+      token: continuationToken,
+      actor: req.actor,
+      source: source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB',
+      lang,
+    }),
+    'Agent response continued'
+  );
+});
+
 export const agentConfirm = asyncHandler(async (req, res) => {
   const { confirmToken, accept, source, lang } = req.body;
   sendSuccess(

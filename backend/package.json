@@ -31,6 +31,8 @@
     "registrations:apply": "node scripts/seed-registrations.js --apply",
     "whatsapp:webhook": "node scripts/whatsapp-webhook-setup.js",
     "whatsapp:webhook:check": "node scripts/whatsapp-webhook-setup.js --check",
+    "chatflow:check": "node scripts/chatflow-setup.js",
+    "chatflow:webhook": "node scripts/chatflow-setup.js --register",
     "lint": "eslint src scripts --ext .js"
   },
   "keywords": [

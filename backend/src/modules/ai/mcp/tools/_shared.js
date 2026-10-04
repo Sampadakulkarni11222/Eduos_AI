@@ -37,15 +37,147 @@ export const paise = (n) => Number(n ?? 0);
 export const rupees = (n) => '₹' + (paise(n) / 100).toLocaleString('en-IN');
 export const shortDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '—');
 
-/** Truncates a list for a spoken answer while reporting the true total. */
-export function summarise(items, render, { limit = 5 } = {}) {
-  const shown = items.slice(0, limit);
+/**
+ * Every item of a list, rendered for the answer.
+ *
+ * This used to keep the first five (or whatever `limit` a tool passed) and end
+ * the sentence with "…", so a teacher with forty pupils was told about five.
+ * That was a DISPLAY decision taken at the data layer: the rest were gone
+ * before any screen could offer them. Now the whole authorized list goes into
+ * the answer, and keeping a long answer readable is the presentation layer's
+ * job -- "Read more" on the website (components/chat-markdown.tsx), numbered
+ * parts on WhatsApp (agent/present.js chunkForWhatsApp).
+ *
+ * `limit` remains for the one legitimate reason to cut a list here: the
+ * person asked for a number ("top 10"). It is never a default.
+ */
+export function summarise(items, render, { limit = Infinity } = {}) {
+  const shown = Number.isFinite(limit) ? items.slice(0, limit) : items;
   return {
     shown: shown.length,
     total: items.length,
     list: shown.map(render).join('; '),
     more: items.length > shown.length,
   };
+}
+
+/* ── Complete results, in windows ────────────────────────────
+   DATA limiting and DISPLAY limiting are kept apart.
+
+   A tool answers with every row the caller is authorized to see. It stops
+   early only when the person asked for a number ("top 10"), and then exactly
+   there. Otherwise one answer carries at most RESULT_WINDOW rows -- a bound on
+   a single turn, because several collections (audit log, notifications,
+   users, payments) grow for the life of a school, and an envelope is
+   serialised twice on its way through MCP. A window is never an end: the
+   answer carries a `range`, the agent turns its `next` into a continuation the
+   person can follow ("Load more" on the website, "MORE" on WhatsApp), and the
+   tool is called again for rows 1001–2000, and so on until every row has been
+   seen. The resume position travels in MCP `_meta` (eduos/window) rather than
+   as an argument, so nothing in a sentence can set it, and every window is a
+   fresh call through the same authorization. */
+
+/** The most rows one answer carries before it offers the next window. */
+export const RESULT_WINDOW = 1000;
+
+/** Schema for a tool's optional `limit`: only what the person asked for. */
+export const limitSchema = (description) => ({
+  type: 'integer',
+  minimum: 1,
+  maximum: 100_000,
+  description: description ?? 'Only when the user asks for a number ("top 10", "first 5"); omit it to return everything',
+});
+
+/** The number the person asked for, or null when they asked for none. */
+export function askedLimit(args) {
+  const n = Number(args?.limit);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/**
+ * Which rows this call answers with.
+ *
+ *   asked a number → rows 1..n, and no continuation (what was asked for, exactly)
+ *   otherwise      → the window starting where the previous one ended
+ *                    (ctx.window, from MCP _meta), RESULT_WINDOW rows long
+ */
+export function resultWindow(ctx, args) {
+  const asked = askedLimit(args);
+  if (asked) return { offset: 0, size: asked, asked: true, cursor: null };
+  const offset = Number(ctx?.window?.offset);
+  return {
+    offset: Number.isInteger(offset) && offset > 0 ? offset : 0,
+    size: RESULT_WINDOW,
+    asked: false,
+    cursor: typeof ctx?.window?.cursor === 'string' ? ctx.window.cursor : null,
+  };
+}
+
+/** One window of a list already in memory. */
+export function windowSlice(items, win) {
+  return { items: items.slice(win.offset, win.offset + win.size), total: items.length };
+}
+
+/**
+ * Where this answer sits in the whole, and where the next one starts.
+ * `next` is null when there is nothing after it -- or when the person asked
+ * for a number, which this answer has already given them.
+ */
+export function rangeOf(win, returned, total, { cursor = null, more = null } = {}) {
+  const to = win.offset + returned;
+  const hasMore = !win.asked && returned > 0 && (more ?? (total != null ? to < total : false));
+  return {
+    from: returned ? win.offset + 1 : 0,
+    to,
+    total: total ?? null,
+    next: hasMore ? { offset: to, ...(cursor && { cursor }) } : null,
+  };
+}
+
+/**
+ * One window of a page-numbered service (utils/paginate.js shape: `{ items,
+ * total, totalPages }`), starting at `win.offset`. Each page is the service's
+ * own authorized read, so walking them reads nothing a single page could not.
+ */
+export async function collectPages(fetchPage, win = { offset: 0, size: RESULT_WINDOW }, { pageSize = 200 } = {}) {
+  const { offset = 0, size: limit = RESULT_WINDOW } = win;
+  // One page size for the whole walk: the services skip (page - 1) x pageSize,
+  // so changing it between pages would re-read or skip rows.
+  const size = Math.max(1, pageSize);
+  const items = [];
+  let total = null;
+  let skip = offset % size;
+  for (let page = Math.floor(offset / size) + 1; items.length < limit; page++) {
+    // eslint-disable-next-line no-await-in-loop -- pages are sequential by nature
+    const res = await fetchPage(page, size);
+    const rows = Array.isArray(res) ? res : (res?.items ?? []);
+    total = res?.total ?? total;
+    // paginate() clamps an out-of-range page back to the last one. A page past
+    // the end is therefore detected by number, never by waiting for it to be
+    // empty -- which would re-read the last page forever.
+    const lastPage = res?.totalPages ?? null;
+    if (lastPage != null && page > lastPage) break;
+    items.push(...rows.slice(skip));
+    skip = 0;
+    if (Array.isArray(res) || rows.length < size || (lastPage != null && page >= lastPage)) break;
+  }
+  return { items: items.slice(0, limit), total: total ?? (offset + items.length) };
+}
+
+/** As collectPages, for a cursor-paged service (`{ items, nextCursor }`), resuming at `win.cursor`. */
+export async function collectCursor(fetchPage, win = { size: RESULT_WINDOW, cursor: null }, { pageSize = 100 } = {}) {
+  const limit = win.size ?? RESULT_WINDOW;
+  const items = [];
+  let cursor = win.cursor ?? null;
+  while (items.length < limit) {
+    // eslint-disable-next-line no-await-in-loop -- each page needs the previous cursor
+    const res = await fetchPage(cursor, Math.min(pageSize, limit - items.length));
+    const rows = res?.items ?? [];
+    items.push(...rows);
+    cursor = res?.nextCursor ?? null;
+    if (!rows.length || !cursor) break;
+  }
+  return { items: items.slice(0, limit), cursor, more: Boolean(cursor) };
 }
 
 /**
@@ -136,6 +268,7 @@ export function wrapAgentTool(name, { description, inputSchema = noArgs, module,
         speakKey: result?.speakKey ?? null,
         params: result?.params ?? null,
         speak: result?.speak ?? null,
+        view: result?.view ?? null,
       });
     },
   };

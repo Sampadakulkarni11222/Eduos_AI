@@ -8,7 +8,7 @@ import type { StudentListItem } from '@/lib/types';
 interface Summary {
   enrollmentId: string; yearMonth: string;
   PRESENT: number; ABSENT: number; LATE: number; EXCUSED: number; HALF_DAY: number;
-  workingDays: number; pctPresent: number;
+  workingDays: number; pctPresent: number | null;
 }
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -63,7 +63,7 @@ export default function ParentAttendance() {
       {!loading && summary && (
         <>
           <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
-            <StatCard label="Attendance %" value={<span style={{ color: pctColor(summary.pctPresent) }}>{summary.pctPresent}%</span>} />
+            <StatCard label="Attendance %" value={summary.pctPresent == null ? '—' : <span style={{ color: pctColor(summary.pctPresent) }}>{summary.pctPresent}%</span>} />
             <StatCard label="Present" value={summary.PRESENT} delta={summary.LATE ? `+${summary.LATE} late` : undefined} deltaDir="flat" />
             <StatCard label="Absent" value={summary.ABSENT} deltaDir={summary.ABSENT > 3 ? 'down' : 'flat'} />
             <StatCard label="Working Days" value={summary.workingDays} />
@@ -81,7 +81,7 @@ export default function ParentAttendance() {
                 </div>
               ))}
             </div>
-            {summary.pctPresent < 75 && (
+            {summary.pctPresent != null && summary.pctPresent < 75 && (
               <div style={{ marginTop: 16, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 13, color: '#b91c1c' }}>
                 Attendance is below 75%. Please ensure regular attendance to avoid academic disruption.
               </div>

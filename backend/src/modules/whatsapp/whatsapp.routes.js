@@ -51,6 +51,29 @@ router.post('/webhook', controller.receiveWebhook);
 
 /**
  * @swagger
+ * /whatsapp/chatflow/webhook:
+ *   post:
+ *     summary: Receive a Chatflow-Pro webhook event
+ *     description: >
+ *       Register this URL (with `?token=<CHATFLOW_WEBHOOK_TOKEN>`) as the
+ *       Chatflow-Pro workspace webhook. `message.received` events run through
+ *       the same pipeline as Meta's webhook — dedupe on the WhatsApp message id,
+ *       phone → ERP account, shared agent + MCP — and the reply is sent back
+ *       through Chatflow-Pro's Public API. Other events are acknowledged.
+ *       Authenticated by the URL token and, when configured, the
+ *       X-ChatFlow-Signature-256 HMAC.
+ *     tags: [WhatsApp]
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Event accepted (processed asynchronously)
+ *       401:
+ *         description: Missing or invalid token / signature
+ */
+router.post('/chatflow/webhook', controller.receiveChatflowWebhook);
+
+/**
+ * @swagger
  * /whatsapp/simulate:
  *   post:
  *     summary: Simulate an inbound WhatsApp message without a real WhatsApp number

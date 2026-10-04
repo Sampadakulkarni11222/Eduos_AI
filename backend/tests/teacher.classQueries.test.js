@@ -325,7 +325,7 @@ describe('7. the six reported questions, over HTTP', () => {
   it('A — "How many students are in Class 5-A?" answers the roll', async () => {
     const res = await api.ask(teacher(), 'How many students are in Class 5-A?');
     expect(res.status).toBe(200);
-    expect(res.reply).toMatch(/^Class 5 A has 3 student\(s\)/);
+    expect(res.reply).toMatch(/^\*\*Class 5 A has 3 students\*\*/);
     expectNoCatalogLeak(res.reply);
     const call = await lastCall();
     expect(call).toMatchObject({ tool: 'search_students', status: 'READ', actor: teacher().actor.profileId });

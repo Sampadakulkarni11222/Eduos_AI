@@ -29,6 +29,16 @@ export function normalisePhone(raw) {
 }
 
 /**
+ * A phone number fit for a log line: country code and last four digits only.
+ * Logs are read by more people than the ERP, and a full number is personal data.
+ */
+export function maskPhone(raw) {
+  const digits = String(raw ?? '').replace(/\D/g, '');
+  if (digits.length < 6) return '***';
+  return `+${digits.slice(0, 2)}${'*'.repeat(digits.length - 6)}${digits.slice(-4)}`;
+}
+
+/**
  * How long a thread may sit idle before the next message starts a fresh
  * session.
  *
@@ -179,6 +189,28 @@ export async function markProcessed(messageDoc, { status, metadata = null }) {
  * Text is truncated because history is here to supply *reference*, not to be
  * re-read in full.
  */
+/**
+ * The continuation token of this session's most recent reply, or null.
+ *
+ * Only the latest reply counts: "MORE" continues the list just shown, never an
+ * older one. The token is the server's own (signed, bound to the person and
+ * their school, short-lived); storing it here only remembers which list was
+ * last on screen.
+ */
+export async function latestContinuation(conversation) {
+  if (!conversation) return null;
+  try {
+    const last = await WhatsappMessage.findOne({
+      conversationId: conversation._id,
+      sessionId: conversation.sessionId,
+      direction: 'OUTBOUND',
+    }).sort({ createdAt: -1, _id: -1 }).select('metadata').lean();
+    return last?.metadata?.continuationToken ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function buildHistory(conversation) {
   if (!conversation) return [];
   const rows = await WhatsappMessage.find({
