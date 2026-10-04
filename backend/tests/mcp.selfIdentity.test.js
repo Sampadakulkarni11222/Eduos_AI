@@ -136,8 +136,15 @@ describe('callers who have no record of their own are still asked', () => {
 
 describe('a student performing an action through MCP', () => {
   it('applying for leave needs no identity from the caller, and is proposed before it is filed', async () => {
+    // Dates a week ahead, so the test does not expire with the calendar: the
+    // leave service refuses a date in the past, and these used to be fixed
+    // dates that are now behind us.
+    const dayAhead = (n) => {
+      const d = new Date(Date.now() + n * 86_400_000);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
     const proposal = await mcp(OAK, school.people.STUDENT.actor, 'apply_for_leave', {
-      fromDate: '2026-10-01', toDate: '2026-10-02', reason: 'Fever',
+      fromDate: dayAhead(7), toDate: dayAhead(8), reason: 'Fever',
     });
     expect(proposal.action?.status).toBe('confirmation_required');
     expect(proposal.action.summary).toBeTruthy();
