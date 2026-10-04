@@ -141,6 +141,13 @@ export const env = {
   // code in the HTTP response, which is account takeover for any known phone
   // or email address; production now never does that, whatever this says.
   ALLOW_DEV_OTP_IN_PRODUCTION: process.env.ALLOW_DEV_OTP_IN_PRODUCTION === 'true',
+  // Demo deployments only: show the one-time code on the sign-in screen when
+  // no email/SMS provider is configured. Off unless set to exactly 'true' in
+  // the deployment's own environment (never committed on). While it is on,
+  // anyone who knows an account's email or phone number can sign in as that
+  // account, so it belongs only on a deployment holding demo data. A real
+  // provider is unaffected: its codes are delivered, never shown.
+  SHOW_OTP_ON_SCREEN: process.env.SHOW_OTP_ON_SCREEN === 'true',
   // ── WhatsApp (Meta Cloud API) ──
   // Live mode is inferred from the phone number + access token; the app secret
   // is what authenticates inbound webhooks. All three live here rather than
@@ -468,6 +475,13 @@ export function productionConfigProblems(e = env) {
   if (e.EMAIL_PROVIDER === 'console') warnings.push('EMAIL_PROVIDER=console — email OTP sign-in is unavailable until a real email provider is configured');
   if (e.ALLOW_DEV_OTP_IN_PRODUCTION) {
     warnings.push('ALLOW_DEV_OTP_IN_PRODUCTION is set and IGNORED — production never returns one-time codes; remove it from the environment');
+  }
+  if (e.SHOW_OTP_ON_SCREEN && (e.SMS_PROVIDER === 'console' || e.EMAIL_PROVIDER === 'console')) {
+    warnings.push(
+      'SHOW_OTP_ON_SCREEN=true — one-time codes are SHOWN ON THE SIGN-IN SCREEN for every account on a channel '
+      + 'with no provider. Anyone who knows an email or phone number can sign in as that account. '
+      + 'Use only on a demo deployment; unset it before real users sign in.',
+    );
   }
 
   // A sandbox gateway in production marks invoices Paid without money moving.

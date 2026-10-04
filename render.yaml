@@ -29,8 +29,15 @@
       - key: CORS_ORIGIN
         sync: false
 
-      # OTP delivery - production never echoes codes in responses.
-      # Without a real provider OTP sign-in answers 503; password/Google work.
+      # OTP delivery - production does not echo codes in responses unless the
+      # demo opt-in below is set. Without a real provider OTP sign-in answers
+      # 503; password/Google work.
+      # SHOW_OTP_ON_SCREEN=true (demo deployments only): with no provider, the
+      # code is shown on the sign-in screen for every account -- anyone who
+      # knows an email/phone can sign in as it. Set in the dashboard; unset it
+      # before real users sign in.
+      - key: SHOW_OTP_ON_SCREEN
+        sync: false
       #   Email: EMAIL_PROVIDER=resend  + RESEND_API_KEY + EMAIL_FROM
       #   SMS:   SMS_PROVIDER=twilio   + TWILIO_ACCOUNT_SID + TWILIO_AUTH_TOKEN + TWILIO_FROM_NUMBER
       - key: EMAIL_PROVIDER

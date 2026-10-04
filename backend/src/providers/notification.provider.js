@@ -44,6 +44,13 @@ export function mayEchoOtp(nodeEnv = env.NODE_ENV) {
  * reported as failed.
  */
 function deliverLocally(channel, recipient, code) {
+  // The one deliberate exception: a demo deployment that has opted in with
+  // SHOW_OTP_ON_SCREEN=true (see config/env.js, which warns loudly at boot).
+  // Only this console provider is affected; a real provider never echoes.
+  if (env.SHOW_OTP_ON_SCREEN) {
+    logger.warn(`[otp:${channel}] code for ${recipient} returned for on-screen display (SHOW_OTP_ON_SCREEN=true)`);
+    return { delivered: true, devOtp: code };
+  }
   if (!mayEchoOtp()) {
     logger.error(
       `[otp:${channel}] no ${channel.toUpperCase()} provider is configured (provider=console) — ` +
