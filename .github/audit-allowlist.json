@@ -1,0 +1,12 @@
+{
+  "$comment": "Advisories the Dependency audit job accepts, each with why and when to look again. Remove an entry as soon as a patched version is available. Anything high/critical NOT listed here still fails the job.",
+  "advisories": [
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "reason": "Flagged in every published version (no patched release to upgrade to). Reached only through development tooling: nodemon -> chokidar (backend); tailwindcss -> chokidar/micromatch and eslint-config-next -> fast-glob -> micromatch (frontend). None of these ship in the production build; `npm audit --omit=dev` is clean at high.",
+      "added": "2026-10-04",
+      "reviewBy": "2026-11-04"
+    }
+  ]
+}

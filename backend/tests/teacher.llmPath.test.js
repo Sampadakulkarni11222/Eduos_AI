@@ -38,6 +38,7 @@ vi.mock('../src/providers/ai.provider.js', async (importOriginal) => {
 
 const { resetMcpClient } = await import('../src/modules/ai/mcp/client.js');
 const { resetAgentThrottle } = await import('../src/modules/ai/agent/throttle.js');
+const { toWhatsAppText } = await import('../src/modules/ai/agent/present.js');
 const { AuditLog } = await import('../src/models/auditLog.model.js');
 const { Announcement } = await import('../src/models/announcement.model.js');
 const { Section } = await import('../src/models/academics.model.js');
@@ -102,7 +103,8 @@ describe('1. the smoke list: which tier answers, and that both channels agree', 
     it(`"${message}"`, async () => {
       const { web, wa, calls } = await both(message);
       expect(web.status).toBe(200);
-      expect(wa.reply).toBe(web.reply);
+      // Same answer, each in its channel's own format (agent/present.js).
+      expect(wa.reply).toBe(toWhatsAppText(web.reply));
       if (TENTATIVE.has(message)) expect(script.calls, message).toContain(message);
       else expect(script.calls, `the model was consulted for "${message}"`).not.toContain(message);
       // Whatever ran, ran as MCP calls the teacher is allowed -- never a write

@@ -81,7 +81,7 @@ function apiCompressionMiddleware(req, res, next) {
 }
 
 
-import { env, isWhatsappLive, isWhatsappSignatureConfigured } from './config/env.js';
+import { env, isWhatsappLive, isWhatsappSignatureConfigured, isChatflowLive, isChatflowWebhookAuthConfigured } from './config/env.js';
 import { connectDB } from './config/db.js';
 import { swaggerSpec } from './config/swagger.js';
 import { logger } from './utils/logger.js';
@@ -311,6 +311,19 @@ async function bootstrap() {
     }
   } else {
     logger.info('-  WhatsApp simulation mode  →  set WA_PHONE_NUMBER_ID / WA_ACCESS_TOKEN to go live');
+  }
+
+  // ── WhatsApp via Chatflow-Pro ──
+  if (isChatflowLive()) {
+    logger.info(
+      `✔  Chatflow-Pro live  →  replies via ${env.CHATFLOW_API_URL}/messages; ` +
+        `webhook ${isChatflowWebhookAuthConfigured() ? 'authenticated' : 'UNAUTHENTICATED (dev only)'} at /api/v1/whatsapp/chatflow/webhook`
+    );
+    if (isWhatsappLive()) {
+      logger.warn('!  Both Meta (WA_*) and Chatflow-Pro are live — make sure Meta delivers to Chatflow, not to /whatsapp/webhook, or users get two replies.');
+    }
+  } else {
+    logger.info('-  Chatflow-Pro not configured  →  set CHATFLOW_API_URL / CHATFLOW_API_KEY to go live');
   }
 
   // ── Swagger ──

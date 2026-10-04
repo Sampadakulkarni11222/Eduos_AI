@@ -6,8 +6,36 @@ import {
   RISK, objectId, dateStr, MONTH, resolveEnrollmentId, resolveStudentEnrollment, studentIdentitySchema,
   wrapAgentTool, summarise, resolveSection, classIdentitySchema,
 } from './_shared.js';
+import { attendanceAnswer, isFutureMonth, unreadableMonthMessage } from '../../agent/present.js';
 
 const STATUSES = ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY'];
+
+/**
+ * The name to put on a named student's answer ("Rahul Sharma — Attendance
+ * Summary"), or null when the caller named nobody and is asking about
+ * themselves. Resolved at the caller's own scope, so it can only ever name a
+ * student the lookup already allowed.
+ */
+async function namedStudent(ctx, args) {
+  if (!args.studentId && !args.admissionNo && !args.studentName) return null;
+  try {
+    return (await resolveStudentEnrollment(ctx, args)).name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Refuses a month argument that is the right shape but not a month ("2026-13"). */
+function assertReadableMonth(month) {
+  const unreadable = unreadableMonthMessage(month);
+  if (unreadable) throw new AppError(unreadable, 400, [], 'AGENT_NEEDS_INPUT');
+}
+
+/** One student's summary as an envelope: a percentage only from real marks. */
+function summaryEnvelope(summary, opts) {
+  const { view, ...said } = attendanceAnswer(summary, opts);
+  return ok(summary, { ...said, view });
+}
 
 /** Today as YYYY-MM-DD in the school's local calendar, not UTC's. */
 const today = () => {
@@ -36,6 +64,7 @@ export const attendanceTools = {
     permission: 'attendance.read',
     service: 'attendance.service.getSummary()',
     async run(ctx, args) {
+      assertReadableMonth(args.month);
       const enrollmentId = await resolveEnrollmentId(ctx, args);
       const whichStudent = () => new AppError('Which student? Give a name, admission number or id.', 400, [], 'AGENT_NEEDS_INPUT');
       // A school-wide reader who names nobody has no "own" record to report.
@@ -47,10 +76,12 @@ export const attendanceTools = {
       // teacher's classes): the service answers with a per-enrolment map, and
       // reading that out as "no attendance recorded" would be wrong. Ask.
       if (!enrollmentId && summary && summary.enrollmentId === undefined) throw whichStudent();
-      if (summary?.pctPresent == null) return ok(summary, { speakKey: 'attendance.none' });
-      return ok(summary, {
-        speakKey: 'attendance.summary',
-        params: { pct: summary.pctPresent, present: summary.PRESENT ?? 0, days: summary.workingDays ?? 0 },
+      // A percentage only from valid marks; none marked is "not available",
+      // a month that has not started is said to be in the future.
+      return summaryEnvelope(summary, {
+        month: args.month ?? null,
+        who: await namedStudent(ctx, args),
+        child: !enrollmentId && ctx.actor?.roleKey === 'PARENT',
       });
     },
   },
@@ -154,7 +185,7 @@ export const attendanceTools = {
         ?? r.name
         ?? ([r.studentId?.firstName, r.studentId?.lastName].filter(Boolean).join(' ').trim() || 'Unknown');
       const absent = rows.filter((r) => r.status === 'ABSENT').map(nameOf);
-      const view = summarise(absent, (n) => n, { limit: 10 });
+      const view = summarise(absent, (n) => n);
       return ok(
         { roster, count: rows.length, marked, absent, absentCount: absent.length, class: section.label, date: day },
         {
@@ -186,12 +217,33 @@ export const attendanceTools = {
     service: 'attendance.service.getTrend()',
     async run(ctx, args) {
       const enrollmentId = await resolveEnrollmentId(ctx, args);
+      // getTrend() resolves a single enrolment, and for a teacher naming
+      // nobody that would be the first pupil on their list -- an answer about
+      // somebody nobody asked about. Only a caller with a record of their own
+      // (a student, or a parent's child) may leave the student out.
+      if (!enrollmentId && !['STUDENT', 'PARENT'].includes(ctx.actor?.roleKey)) {
+        throw new AppError('Which student? Give a name, admission number or id.', 400, [], 'AGENT_NEEDS_INPUT');
+      }
       const trend = await attendance.getTrend(ctx.actor, ctx.scope, { enrollmentId, months: args.months ?? 6 });
       const points = Array.isArray(trend) ? trend : (trend?.points ?? []);
+      // Months with nothing marked carry no percentage and are said to be
+      // unmarked -- never read out as 0%.
+      const marked = points.filter((p) => p.workingDays > 0 && p.pctPresent != null);
       return ok(trend, {
-        speak: points.length
-          ? `Attendance by month: ${points.map((p) => `${p.month ?? p.label} ${p.pctPresent ?? p.pct}%`).join(', ')}.`
-          : 'There is not enough attendance history to show a trend.',
+        speak: marked.length
+          ? `Attendance by month: ${marked.map((p) => `${p.month} ${p.pctPresent}%`).join(', ')}.`
+          : 'No attendance has been marked in that period, so there is no monthly percentage to show.',
+        view: {
+          type: 'attendance.trend',
+          who: await namedStudent(ctx, args),
+          points: points.map((p) => ({
+            month: p.month,
+            present: p.presentDays ?? 0,
+            absent: p.absentDays ?? 0,
+            marked: p.workingDays ?? 0,
+            pct: p.workingDays > 0 ? (p.pctExact ?? p.pctPresent) : null,
+          })),
+        },
       });
     },
   },
@@ -217,7 +269,7 @@ export const attendanceTools = {
       const enrollmentId = await resolveEnrollmentId(ctx, args);
       const data = await attendance.getSubjectWiseSummary(ctx.actor, ctx.scope, { enrollmentId, month: args.month });
       const rows = data?.subjects ?? [];
-      const view = summarise(rows, (s) => `${s.subject}: ${s.pctPresent ?? s.pct}%`, { limit: 8 });
+      const view = summarise(rows, (s) => `${s.subject}: ${s.pctPresent ?? s.pct}%`);
       return ok(data, { speak: rows.length ? `Attendance by subject — ${view.list}.` : 'No per-subject attendance is recorded yet.' });
     },
   },
@@ -311,12 +363,17 @@ export const attendanceTools = {
             `${data.PRESENT} present, ${data.ABSENT} absent, ${data.LATE} late, ${data.EXCUSED} excused.`,
         });
       }
+      assertReadableMonth(args.month);
+      if (args.month && isFutureMonth(args.month)) {
+        return summaryEnvelope(null, { month: args.month });
+      }
       const summary = await attendance.getSummary(ctx.actor, ctx.scope, { month: args.month });
-      if (summary?.pctPresent != null) {
-        return ok({ basis: 'OWN', ...summary }, {
-          speakKey: 'attendance.summary',
-          params: { pct: summary.pctPresent, present: summary.PRESENT ?? 0, days: summary.workingDays ?? 0 },
+      if (summary?.enrollmentId !== undefined) {
+        // One student's own record: the same answer get_attendance gives.
+        const { view, ...said } = attendanceAnswer(summary, {
+          month: args.month ?? null, child: ctx.actor?.roleKey === 'PARENT',
         });
+        return ok({ basis: 'OWN', ...summary }, { ...said, view });
       }
 
       // A teacher's OWN scope covers every pupil they teach, so getSummary()

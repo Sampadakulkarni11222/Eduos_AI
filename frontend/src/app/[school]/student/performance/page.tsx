@@ -146,7 +146,7 @@ export default function StudentPerformance() {
               label="Attendance"
               value={year.attendance?.pctPresent != null ? `${year.attendance.pctPresent}%` : '—'}
               delta={year.attendance ? `${year.attendance.workingDays} days recorded` : undefined}
-              deltaDir={year.attendance && year.attendance.pctPresent < 75 ? 'down' : 'flat'}
+              deltaDir={year.attendance?.pctPresent != null && year.attendance.pctPresent < 75 ? 'down' : 'flat'}
             />
           </div>
 

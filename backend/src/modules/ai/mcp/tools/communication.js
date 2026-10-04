@@ -5,7 +5,9 @@ import * as notifications from '../../../notifications/notification.service.js';
 import * as whatsapp from '../../../whatsapp/whatsapp.service.js';
 import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
-import { RISK, objectId, dateStr, shortDate, summarise, wrapAgentTool, resolveSection, classIdentitySchema } from './_shared.js';
+import {
+  RISK, objectId, dateStr, shortDate, summarise, wrapAgentTool, resolveSection, classIdentitySchema, limitSchema, askedLimit,
+} from './_shared.js';
 import { resolveLead, resolveProfilesByName } from './_names.js';
 
 /**
@@ -81,7 +83,7 @@ export const communicationTools = {
       type: 'object',
       properties: {
         stage: { type: 'string', enum: LEAD_STAGES },
-        limit: { type: 'integer', minimum: 1, maximum: 50 },
+        limit: limitSchema('Leads per stage, only when the user asks for a number'),
       },
       additionalProperties: false,
     },
@@ -90,7 +92,8 @@ export const communicationTools = {
     service: 'admission.service.getPipeline()',
     async run(_ctx, args) {
       const pipeline = await admissions.getPipeline();
-      const limit = Math.min(Number(args.limit) || 10, 50);
+      // Every lead in each stage, unless a number per stage was asked for.
+      const limit = askedLimit(args) ?? Number.MAX_SAFE_INTEGER;
       const stages = args.stage ? [args.stage] : pipeline.stages;
       const counts = Object.fromEntries(pipeline.stages.map((s) => [s, pipeline.byStage[s]?.length ?? 0]));
       const leads = stages.flatMap((s) =>

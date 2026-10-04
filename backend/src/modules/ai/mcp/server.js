@@ -45,6 +45,8 @@ import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 
 export const SESSION_META_KEY = 'eduos/session';
 export const CONFIRM_META_KEY = 'eduos/confirmation';
+/** Where a continued answer resumes (`{ offset, cursor }`). Never an argument: nothing in a sentence can set it. */
+export const WINDOW_META_KEY = 'eduos/window';
 export const SERVER_NAME = 'eduos-erp';
 export const SERVER_VERSION = '1.0.0';
 
@@ -89,6 +91,17 @@ export function redactResultData(value, removed = new Set(), depth = 0) {
     out[key] = redactResultData(item, removed, depth + 1);
   }
   return out;
+}
+
+/** A resume position, or null: a non-negative integer offset and/or a short cursor string. */
+function sanitiseWindow(window) {
+  if (!window || typeof window !== 'object') return null;
+  const offset = Number(window.offset);
+  const cursor = typeof window.cursor === 'string' && window.cursor.length <= 64 ? window.cursor : null;
+  return {
+    offset: Number.isInteger(offset) && offset >= 0 ? offset : 0,
+    ...(cursor && { cursor }),
+  };
 }
 
 function asToolResult(envelope) {
@@ -309,7 +322,7 @@ function assertSchoolForWrite(tool, session) {
  *   presence is never enough on its own — the token must belong to this actor,
  *   be unused and unexpired, and the tool is re-authorized before it runs.
  */
-export async function executeToolCall({ sessionId, name, args, confirmationToken = null }) {
+export async function executeToolCall({ sessionId, name, args, confirmationToken = null, window = null }) {
   const started = Date.now();
   const session = resolveSession(sessionId);
 
@@ -341,7 +354,9 @@ export async function executeToolCall({ sessionId, name, args, confirmationToken
     return schoolError;
   }
 
-  const ctx = { actor, scope, channel: session.channel };
+  // `window` only says which rows of an authorized read to return next; the
+  // read itself, and who may make it, are decided exactly as for any call.
+  const ctx = { actor, scope, channel: session.channel, window: sanitiseWindow(window) };
   let pending = null;
   let rawArgs = args;
 
@@ -551,6 +566,7 @@ export function createMcpServer() {
     const envelope = await executeToolCall({
       sessionId: request.params?._meta?.[SESSION_META_KEY],
       confirmationToken: request.params?._meta?.[CONFIRM_META_KEY] ?? null,
+      window: request.params?._meta?.[WINDOW_META_KEY] ?? null,
       name: request.params.name,
       args: request.params.arguments ?? {},
     });

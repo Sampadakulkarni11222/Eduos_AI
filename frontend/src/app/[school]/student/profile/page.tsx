@@ -142,7 +142,7 @@ export default function StudentProfile() {
               <div style={{ fontSize: 13, color: 'var(--text-2)', marginTop: 3, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span>{overview.enrollment?.class ?? 'Not enrolled'}</span>
                 {overview.enrollment?.rollNo != null && <Pill tone="blue">Roll {overview.enrollment.rollNo}</Pill>}
-                {overview.attendance && <Pill tone={overview.attendance.pctPresent >= 75 ? 'green' : 'amber'}>
+                {overview.attendance?.pctPresent != null && <Pill tone={overview.attendance.pctPresent >= 75 ? 'green' : 'amber'}>
                   {overview.attendance.pctPresent}% attendance
                 </Pill>}
               </div>

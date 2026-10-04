@@ -118,7 +118,7 @@ export const academicTools = {
         gradeId: s.gradeId?._id ? String(s.gradeId._id) : null,
         classTeacherId: s.classTeacherId ? String(s.classTeacherId) : null,
       }));
-      const view = summarise(rows, (s) => `${s.grade ?? ''} ${s.name}`.trim(), { limit: 12 });
+      const view = summarise(rows, (s) => `${s.grade ?? ''} ${s.name}`.trim());
       return ok(
         { grades: grades.map((g) => ({ gradeId: String(g._id), name: g.name, level: g.level })), sections: rows },
         { speak: `${grades.length} grade(s) and ${rows.length} section(s): ${view.list}.` },
@@ -226,9 +226,22 @@ export const academicTools = {
       const offRows = (wanted ? offAll.filter((o) => o.sectionId === wanted.sectionId) : offAll).map((o) => o.row);
 
       const list = () => secRows.map((s) => `${s.grade ?? ''} ${s.name}`.trim()).join(', ');
+      // One numbered line per class, with the subjects taught there
+      // (agent/present.js), rather than every class run into one sentence.
+      const subjectsIn = (sectionId) => [...new Set(offAll
+        .filter((o) => o.sectionId === sectionId && o.row.subject)
+        .map((o) => o.row.subject))].join(', ');
+      const view = secRows.length && !wanted
+        ? {
+          type: 'list.numbered',
+          intro: `You have ${secRows.length} ${secRows.length === 1 ? 'class' : 'classes'}:`,
+          items: secRows.map((s) => ({ label: `${s.grade ?? ''} ${s.name}`.trim(), detail: subjectsIn(s.sectionId) || null })),
+        }
+        : null;
       return ok(
         { sections: secRows, offerings: offRows },
         {
+          view,
           speak: secRows.length
             ? (wanted
               ? `${list()}: ${offRows.length} subject(s) you teach there.`
@@ -1211,7 +1224,8 @@ export const academicTools = {
       if (isFamily && args.status === 'SUBMITTED') rows = rows.filter(handedIn);
 
       const ordered = [...rows].sort((a, b) => new Date(a.dueAt ?? 0) - new Date(b.dueAt ?? 0));
-      const shown = ordered.slice(0, 10).map((a) => ({
+      // Every assignment in scope; "Read more" keeps a long list readable.
+      const shown = ordered.map((a) => ({
         id: String(a.id),
         title: a.title,
         subject: a.subject,
@@ -1244,6 +1258,25 @@ export const academicTools = {
         },
         {
           speak: `${ordered.length} ${pendingOnly ? 'still to submit' : isFamily && args.status === 'SUBMITTED' ? 'submitted' : 'homework item(s)'}${scopeLabel ? ` for ${scopeLabel}` : ''}: ${view.list}${view.more ? ', …' : ''}.`,
+          // A table (agent/present.js). The class is shown whenever the rows
+          // span more than one: "Chapter 1 Assignment" four times over was
+          // four different classes, indistinguishable in a sentence.
+          view: {
+            type: 'assignments.list',
+            audience: isFamily ? 'family' : 'staff',
+            kind: pendingOnly ? 'pending' : isFamily && args.status === 'SUBMITTED' ? 'submitted' : 'all',
+            scope: scopeLabel || null,
+            total: ordered.length,
+            showClass: !isFamily && new Set(shown.map((a) => a.class)).size > 1,
+            items: shown.map((a) => ({
+              title: a.title,
+              subject: a.subject ?? null,
+              class: a.class ?? null,
+              dueAt: a.dueAt ? new Date(a.dueAt).toISOString().slice(0, 10) : null,
+              submissions: isFamily ? null : (a.submissionCount ?? 0),
+              status: isFamily ? (a.status ?? 'PENDING') : null,
+            })),
+          },
         },
       );
     },

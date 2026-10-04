@@ -127,7 +127,8 @@ describe('A. a request for the student list reaches the directory, however it is
     const res = await api.ask(school.people.ADMIN, 'Show me the list of students in my school.');
     expect(res.status).toBe(200);
     expect(res.tool).toBe('search_students');
-    expect(replyOf(res)).toMatch(/4 student\(s\)/);
+    // List answers are laid out with a pluralised heading ("4 students").
+    expect(replyOf(res)).toMatch(/4 student(?:\(s\)|s)\b/);
     expect(replyOf(res)).not.toMatch(/Riverside/);
     expect(script.ragCalls).toBe(0);
   });

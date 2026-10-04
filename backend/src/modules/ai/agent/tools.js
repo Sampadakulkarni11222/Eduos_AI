@@ -11,6 +11,21 @@ import * as hostel from '../../hostel/hostel.service.js';
 import * as library from '../../library/library.service.js';
 import * as timetable from '../../timetable/timetable.service.js';
 import { AppError } from '../../../utils/AppError.js';
+import { attendanceAnswer, isFutureMonth, unreadableMonthMessage } from './present.js';
+import { Section } from '../../../models/academics.model.js';
+import { classLabel } from '../../../utils/classNames.js';
+
+/**
+ * "Class 6 A" for each section the slots belong to, as every screen labels it.
+ * Read inside the caller's school (the tenancy plugin scopes it); only the
+ * sections already in the authorized timetable are looked up.
+ */
+async function sectionLabels(slots) {
+  const ids = [...new Set(slots.map((s) => String(s.sectionId)).filter(Boolean))];
+  if (!ids.length) return new Map();
+  const sections = await Section.find({ _id: { $in: ids } }).populate('gradeId', 'name').select('name gradeId').lean();
+  return new Map(sections.map((sec) => [String(sec._id), classLabel(sec.gradeId?.name, sec.name)]));
+}
 
 /**
  * Agent tool registry.
@@ -91,6 +106,16 @@ export const TOOLS = {
         };
       }
 
+      const unreadable = unreadableMonthMessage(args.month);
+      if (unreadable) throw new AppError(unreadable, 400, [], 'AGENT_NEEDS_INPUT');
+
+      // A month that has not started has no attendance to read, and saying so
+      // is the answer -- not "not marked", and certainly not a percentage.
+      if (args.month && isFutureMonth(args.month)) {
+        const { view, ...said } = attendanceAnswer(null, { month: args.month });
+        return { ...said, view, data: null };
+      }
+
       let summary;
       try {
         summary = await attendance.getSummary(actor, scope, { month: args.month });
@@ -112,13 +137,19 @@ export const TOOLS = {
         return { speakKey: 'attendance.noEnrolment', data: null };
       }
 
-      return summary?.pctPresent != null
-        ? {
-            speakKey: 'attendance.summary',
-            params: { pct: summary.pctPresent, present: summary.PRESENT ?? 0, days: summary.workingDays ?? 0 },
-            data: summary,
-          }
-        : { speakKey: 'attendance.none', data: summary };
+      // A parent of several children gets one entry per child: "my child's
+      // attendance" is then genuinely ambiguous. It used to fall through to
+      // "no attendance recorded", which is untrue. Ask instead.
+      if (summary && summary.enrollmentId === undefined) {
+        throw new AppError("Which child? Tell me your child's name.", 400, [], 'AGENT_NEEDS_INPUT');
+      }
+
+      // One rule for when a percentage exists (agent/present.js): only from
+      // valid marks, never 0% for nothing marked.
+      return {
+        ...attendanceAnswer(summary, { month: args.month ?? null, child: actor.roleKey === 'PARENT' }),
+        data: summary,
+      };
     },
   },
 
@@ -181,7 +212,6 @@ export const TOOLS = {
       // and list() sorts newest-first for the table view.
       const byDue = [...pending].sort((a, b) => new Date(a.dueAt ?? 0) - new Date(b.dueAt ?? 0));
       const list = byDue
-        .slice(0, 5)
         .map((a) => `${a.title} (${a.subject}${a.dueAt ? `, due ${new Date(a.dueAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''})`)
         .join('; ');
 
@@ -208,7 +238,9 @@ export const TOOLS = {
         if (name && !seen.has(name)) seen.set(name, o.teacherId?.displayName ?? null);
       }
 
-      if (seen.size === 0) return { speakKey: 'subjects.none', data: { subjects: [] } };
+      if (seen.size === 0) {
+        return { speakKey: 'subjects.none', view: { type: 'subjects.list', subjects: [] }, data: { subjects: [] } };
+      }
 
       const subjects = [...seen.entries()].map(([name, teacher]) => ({ name, teacher }));
       return {
@@ -216,6 +248,13 @@ export const TOOLS = {
         params: {
           count: subjects.length,
           list: subjects.map((s) => (s.teacher ? `${s.name} (${s.teacher})` : s.name)).join(', '),
+        },
+        // A numbered list (agent/present.js). A teacher's subjects are the ones
+        // they teach, so their own name after every one says nothing.
+        view: {
+          type: 'subjects.list',
+          showTeacher: actor.roleKey !== 'TEACHER',
+          subjects: subjects.map((s) => ({ name: s.name, teacher: s.teacher })),
         },
         data: { subjects },
       };
@@ -304,10 +343,10 @@ export const TOOLS = {
         block: a.roomId?.block ?? null,
       }));
 
-      // A full roster can run to hundreds of names and WhatsApp caps a message
-      // at 4096 characters, so the spoken answer is the count plus the first
-      // few. `data` still carries every row for callers that can render a list.
-      const shown = residents.slice(0, 10);
+      // Every resident. A long roster is kept readable by the presentation
+      // layer ("Read more" on the website, numbered parts on WhatsApp), not by
+      // dropping names here.
+      const shown = residents;
       const list = shown
         .map((r) => `${r.name}${r.room ? ` (room ${r.room}${r.block ? `, block ${r.block}` : ''})` : ''}`)
         .join('; ');
@@ -365,7 +404,7 @@ export const TOOLS = {
       const issues = await library.listIssues(null, 'ALL', { status: 'OVERDUE' });
       if (issues.length === 0) return { speakKey: 'library.overdue.none', data: { overdue: [] } };
 
-      const shown = issues.slice(0, 10);
+      const shown = issues;
       const list = shown
         .map((i) => `${i.bookTitle} - ${i.studentName}${i.dueAt ? ` (due ${new Date(i.dueAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })})` : ''}`)
         .join('; ');
@@ -392,7 +431,7 @@ export const TOOLS = {
       const items = await announcements.list(actor);
       if (items.length === 0) return { speakKey: 'announcements.none', data: { announcements: [] } };
 
-      const shown = items.slice(0, 5);
+      const shown = items;
       const list = shown
         .map((a) => `${a.title}${a.publishedAt ? ` (${new Date(a.publishedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })})` : ''}`)
         .join('; ');
@@ -442,21 +481,54 @@ export const TOOLS = {
       // The whole week, as the timetable screen shows it. A timetable repeats
       // weekly, so "this week" and "next week" are the same grid; answering
       // either with one day presented a day as though it were the week.
+      // How each period reads to a person (agent/present.js renders it as a
+      // table). A teacher's periods are all their own, so the teacher column
+      // would repeat their name; the class is what they need instead. A reader
+      // who sees several classes needs the class too.
+      const multiClass = new Set(slots.map((s) => String(s.sectionId))).size > 1;
+      const showClass = actor.roleKey === 'TEACHER' || multiClass;
+      const showTeacher = actor.roleKey !== 'TEACHER';
+      const classOf = showClass ? await sectionLabels(slots) : new Map();
+      const periodView = (s) => ({
+        period: s.periodNo,
+        start: s.startTime ?? null,
+        end: s.endTime ?? null,
+        subject: s.subjectOfferingId?.subjectId?.name ?? null,
+        teacher: showTeacher ? (s.subjectOfferingId?.teacherId?.displayName ?? null) : null,
+        room: s.room ?? null,
+        class: showClass ? (classOf.get(String(s.sectionId)) ?? null) : null,
+      });
+
       if (asked === 'week') {
         const byDay = new Map();
         for (const s of [...slots].sort((a, b) => a.dayOfWeek - b.dayOfWeek || a.periodNo - b.periodNo)) {
           if (!byDay.has(s.dayOfWeek)) byDay.set(s.dayOfWeek, []);
           byDay.get(s.dayOfWeek).push(s);
         }
-        if (!byDay.size) return { speak: 'Nothing is scheduled in the weekly timetable.', data: { slots: [] } };
+        if (!byDay.size) {
+          return {
+            speak: 'Nothing is scheduled in the weekly timetable.',
+            view: { type: 'timetable.none', day: null },
+            data: { slots: [] },
+          };
+        }
+        const dayName = (dow) => DAYS[dow % 7].replace(/^./, (c) => c.toUpperCase());
         const lines = [...byDay].map(([dow, daySlots]) => {
-          const name = DAYS[dow % 7].replace(/^./, (c) => c.toUpperCase());
           const periods = daySlots
             .map((s) => `P${s.periodNo} ${s.startTime}-${s.endTime} ${s.subjectOfferingId?.subjectId?.name ?? 'Break'}`)
             .join('; ');
-          return `${name}: ${periods}`;
+          return `${dayName(dow)}: ${periods}`;
         });
-        return { speak: `Weekly timetable — ${lines.join('. ')}.`, data: { slots } };
+        return {
+          speak: `Weekly timetable — ${lines.join('. ')}.`,
+          view: {
+            type: 'timetable.week',
+            showClass,
+            showTeacher,
+            days: [...byDay].map(([dow, daySlots]) => ({ day: dayName(dow), periods: daySlots.map(periodView) })),
+          },
+          data: { slots },
+        };
       }
 
       const now = new Date();
@@ -476,9 +548,21 @@ export const TOOLS = {
         .filter((s) => s.dayOfWeek === dayOfWeek)
         .sort((a, b) => a.periodNo - b.periodNo);
 
-      if (today.length === 0) return { speakKey: 'timetable.none', params: { day: dayName }, data: { slots: [] } };
+      // "Tomorrow (Monday)" -- the day the person said, and the day it is.
+      const label = asked in RELATIVE && asked !== 'today'
+        ? `${asked.replace(/^./, (c) => c.toUpperCase())} (${dayName})`
+        : dayName;
 
-      const shown = today.slice(0, 12);
+      if (today.length === 0) {
+        return {
+          speakKey: 'timetable.none',
+          params: { day: dayName },
+          view: { type: 'timetable.none', day: label },
+          data: { slots: [] },
+        };
+      }
+
+      const shown = today;
       // The teacher is named because "with teachers" is how the question is
       // asked, and the offering is already populated with them -- leaving it
       // out meant answering a question about who teaches with a list of
@@ -494,6 +578,14 @@ export const TOOLS = {
       return {
         speakKey: today.length > shown.length ? 'timetable.day.more' : 'timetable.day',
         params: { day: dayName, count: today.length, shown: shown.length, list },
+        view: {
+          type: 'timetable.day',
+          day: label,
+          showClass,
+          showTeacher,
+          total: today.length,
+          periods: shown.map(periodView),
+        },
         data: { slots: today },
       };
     },

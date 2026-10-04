@@ -70,6 +70,16 @@ router.post('/agent', requirePermission('ai.copilot.use'), controller.agent);
 router.post('/agent/confirm', requirePermission('ai.copilot.use'), controller.agentConfirm);
 
 /**
+ * @openapi
+ * /ai/agent/continue:
+ *   post:
+ *     tags: [AI]
+ *     summary: The next window of a long answer ("Load more")
+ *     description: Redeems the continuationToken returned with an answer that held part of a long list. Same caller, same authorization; read tools only.
+ */
+router.post('/agent/continue', requirePermission('ai.copilot.use'), controller.agentContinue);
+
+/**
  * @swagger
  * /ai/agent/capabilities:
  *   get:

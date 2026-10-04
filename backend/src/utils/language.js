@@ -136,6 +136,8 @@ const MESSAGES = {
 
     'attendance.summary': 'Attendance is {pct}% ({present} present of {days} working days).',
     'attendance.none': 'No attendance has been recorded yet.',
+    'attendance.month.none': 'No attendance has been marked for {month}, so an attendance percentage cannot be calculated.',
+    'attendance.month.future': "{month} hasn't started yet, so there is no attendance to show.",
     // Staff have no enrolment of their own; said plainly rather than as the
     // service's `enrollmentId is required`.
     'attendance.noEnrolment': "Your account has no student enrolment, so there's no attendance record of your own to show.",
@@ -150,7 +152,7 @@ const MESSAGES = {
     'assignments.due': 'You have {count} assignment(s) still to submit: {list}.',
     'assignments.none': 'Nothing is pending — every assignment set for your class has been submitted.',
     'subjects.list': 'You have {count} subject(s): {list}.',
-    'subjects.none': 'No subjects have been set up for your class yet.',
+    'subjects.none': "You currently don't have any subjects assigned.",
     'leave.submitted': 'Your leave application has been submitted.',
     // Asked, not errored: a leave request with no dates is an ordinary
     // half-finished sentence, not a failure.
@@ -169,7 +171,7 @@ const MESSAGES = {
     'library.overdue.more': '{count} book(s) overdue. First {shown}: {list}.',
     'library.overdue.none': 'No books are overdue right now.',
 
-    'announcements.list': '{count} announcement(s). Latest {shown}: {list}.',
+    'announcements.list': '{count} announcement(s): {list}.',
     'announcements.none': 'No announcements have been published for you yet.',
 
     'timetable.day': '{day}: {list}.',
@@ -210,6 +212,8 @@ const MESSAGES = {
 
     'attendance.summary': 'उपस्थिति {pct}% है ({days} कार्य दिवसों में से {present} दिन उपस्थित)।',
     'attendance.none': 'अभी तक कोई उपस्थिति दर्ज नहीं की गई है।',
+    'attendance.month.none': '{month} के लिए कोई उपस्थिति दर्ज नहीं हुई है, इसलिए उपस्थिति प्रतिशत की गणना नहीं की जा सकती।',
+    'attendance.month.future': '{month} अभी शुरू नहीं हुआ है, इसलिए दिखाने को कोई उपस्थिति नहीं है।',
     'attendance.noEnrolment': 'आपके खाते से कोई विद्यार्थी नामांकन जुड़ा नहीं है, इसलिए आपकी अपनी उपस्थिति का कोई रिकॉर्ड नहीं है।',
     'attendance.marked': '{count} विद्यार्थियों की उपस्थिति दर्ज कर दी गई है।',
     'fees.outstanding': '₹{amount} फीस बकाया है।',
@@ -239,7 +243,7 @@ const MESSAGES = {
     'library.overdue.more': '{count} पुस्तक(ें) विलंबित। पहली {shown}: {list}।',
     'library.overdue.none': 'अभी कोई पुस्तक विलंबित नहीं है।',
 
-    'announcements.list': '{count} सूचनाएँ। नवीनतम {shown}: {list}।',
+    'announcements.list': '{count} सूचनाएँ: {list}।',
     'announcements.none': 'आपके लिए अभी कोई सूचना प्रकाशित नहीं हुई है।',
 
     'timetable.day': '{day}: {list}।',

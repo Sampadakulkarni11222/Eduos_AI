@@ -1,6 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { createMcpServer, SESSION_META_KEY, CONFIRM_META_KEY, SERVER_NAME } from './server.js';
+import { createMcpServer, SESSION_META_KEY, CONFIRM_META_KEY, WINDOW_META_KEY, SERVER_NAME } from './server.js';
 import { withSession } from './session.js';
 import { fail, errorToAppError, MCP_ERROR } from './protocol.js';
 import { logger } from '../../../utils/logger.js';
@@ -59,10 +59,11 @@ export async function resetMcpClient() {
   }
 }
 
-const meta = (sessionId, confirmationToken) => ({
+const meta = (sessionId, confirmationToken, window = null) => ({
   _meta: {
     [SESSION_META_KEY]: sessionId,
     ...(confirmationToken && { [CONFIRM_META_KEY]: confirmationToken }),
+    ...(window && { [WINDOW_META_KEY]: window }),
   },
 });
 
@@ -89,10 +90,10 @@ export async function listTools(sessionId) {
  * which is an infrastructure fault and belongs on the orchestrator's degraded
  * path.
  */
-export async function callTool(sessionId, name, args = {}, { confirmationToken = null } = {}) {
+export async function callTool(sessionId, name, args = {}, { confirmationToken = null, window = null } = {}) {
   const client = await getMcpClient();
   try {
-    const result = await client.callTool({ name, arguments: args, ...meta(sessionId, confirmationToken) });
+    const result = await client.callTool({ name, arguments: args, ...meta(sessionId, confirmationToken, window) });
     if (result?.structuredContent) return result.structuredContent;
     // A server that only returns text: the envelope is the text.
     const text = result?.content?.find((c) => c.type === 'text')?.text;
