@@ -225,7 +225,9 @@ function DevOtpHint({ code }: { code: string }) {
       textAlign: 'center',
       lineHeight: 1.5,
     }}>
-      Development mode — your one-time code is <strong style={{ fontSize: 15, letterSpacing: '0.15em' }}>{code}</strong>
+      {/* Shown only when the server returns the code: in development, or on a
+          demo deployment that opted in with SHOW_OTP_ON_SCREEN. */}
+      Demo mode — your one-time code is <strong style={{ fontSize: 15, letterSpacing: '0.15em' }}>{code}</strong>
     </div>
   );
 }

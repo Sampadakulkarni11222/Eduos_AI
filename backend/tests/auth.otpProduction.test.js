@@ -27,11 +27,12 @@ const PASSWORD = 'correct horse battery';
 const SCHOOL = 'eduos-demo-tenant';
 
 // The settings these tests override, restored after each one.
-const OVERRIDDEN = ['NODE_ENV', 'isProd', 'isDev', 'ALLOW_DEV_OTP_IN_PRODUCTION', 'SMS_PROVIDER', 'EMAIL_PROVIDER',
+const OVERRIDDEN = ['NODE_ENV', 'isProd', 'isDev', 'ALLOW_DEV_OTP_IN_PRODUCTION', 'SHOW_OTP_ON_SCREEN', 'SMS_PROVIDER', 'EMAIL_PROVIDER',
   'RESEND_API_KEY', 'EMAIL_FROM', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM_NUMBER'];
 let saved;
 
-const asProduction = (extra = {}) => Object.assign(env, { NODE_ENV: 'production', isProd: true, isDev: false, ...extra });
+// The demo opt-in is OFF unless a test turns it on: everything below pins the default.
+const asProduction = (extra = {}) => Object.assign(env, { NODE_ENV: 'production', isProd: true, isDev: false, SHOW_OTP_ON_SCREEN: false, ...extra });
 
 beforeEach(async () => {
   saved = Object.fromEntries(OVERRIDDEN.map((k) => [k, env[k]]));
@@ -136,6 +137,64 @@ describe('sign-in still works with a production configuration', () => {
     asProduction({ EMAIL_PROVIDER: 'console', SMS_PROVIDER: 'console' });
     const session = await login({ email: EMAIL, password: PASSWORD, schoolId: SCHOOL }, {});
     expect(session.accessToken).toBeTruthy();
+  });
+});
+
+/**
+ * SHOW_OTP_ON_SCREEN: the explicit demo opt-in. A deployment that sets it shows
+ * codes on the sign-in screen when no provider is configured -- a deliberate,
+ * loudly warned choice for demo data. These tests pin its edges: it must be
+ * set to exactly 'true' to apply, a real provider is never affected, and the
+ * old ALLOW_DEV_OTP_IN_PRODUCTION switch stays ignored.
+ */
+describe('demo opt-in: SHOW_OTP_ON_SCREEN', () => {
+  it('returns the code for on-screen display, and that code signs in', async () => {
+    asProduction({ EMAIL_PROVIDER: 'console', SMS_PROVIDER: 'console', SHOW_OTP_ON_SCREEN: true });
+    const email = await requestEmailOtp({ email: EMAIL, schoolId: SCHOOL });
+    expect(email.devOtp).toMatch(/^\d{6}$/);
+    const session = await verifyEmailOtp({ email: EMAIL, code: email.devOtp, schoolId: SCHOOL }, {});
+    expect(session.accessToken).toBeTruthy();
+
+    const phone = await requestOtp({ phone: PHONE, schoolId: SCHOOL });
+    expect(phone.devOtp).toMatch(/^\d{6}$/);
+  });
+
+  it('never shows a code that a real provider delivers', async () => {
+    const fetchMock = vi.fn(async () => new Response('{"id":"x"}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    asProduction({
+      EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 'test-key', EMAIL_FROM: 'EduOS <no-reply@example.test>', SHOW_OTP_ON_SCREEN: true,
+    });
+    const result = await requestEmailOtp({ email: EMAIL, schoolId: SCHOOL });
+    expect(result.devOtp).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('is read only from exactly "true"', async () => {
+    const readWith = async (value) => {
+      process.env.SHOW_OTP_ON_SCREEN = value;
+      vi.resetModules();
+      return (await import('../src/config/env.js')).env.SHOW_OTP_ON_SCREEN;
+    };
+    try {
+      for (const value of ['1', 'yes', 'TRUE ', 'false', '']) {
+        expect(await readWith(value), JSON.stringify(value)).toBe(false);
+      }
+      expect(await readWith('true')).toBe(true);
+    } finally {
+      delete process.env.SHOW_OTP_ON_SCREEN;
+      vi.resetModules();
+    }
+  });
+
+  it('warns loudly at boot while it is on', () => {
+    const { fatal, warnings } = productionConfigProblems({
+      JWT_SECRET: 'x'.repeat(48), MEDICAL_ENCRYPTION_KEY: 'real-key', WHATSAPP_VERIFY_TOKEN: 'real-token',
+      CORS_ORIGIN: 'https://app.example.test', PAYMENT_PROVIDER: 'none',
+      SMS_PROVIDER: 'console', EMAIL_PROVIDER: 'console', SHOW_OTP_ON_SCREEN: true,
+    });
+    expect(fatal).toEqual([]);
+    expect(warnings.join(' ')).toMatch(/SHOW_OTP_ON_SCREEN=true .*SHOWN ON THE SIGN-IN SCREEN/);
   });
 });
 
