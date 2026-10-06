@@ -4,6 +4,7 @@ import { AgentAction } from '../../models/agentAction.model.js';
 import { buildPermissionMap } from '../../utils/buildPermissionMap.js';
 import { logger } from '../../utils/logger.js';
 import { runAgentSafely, confirmAction, continueAnswer } from '../ai/agent/orchestrator.js';
+import { hasOpenWrite } from '../ai/agent/intent.js';
 import { toWhatsAppText } from '../ai/agent/present.js';
 import { latestPendingFor, reissueToken } from '../ai/mcp/confirm.js';
 import { detectLanguage, t } from '../../utils/language.js';
@@ -207,7 +208,7 @@ async function latestPending(actor) {
  * the recent turns that let a follow-up like "what about last month?" resolve,
  * and nothing else: it is never consulted for who the sender is.
  */
-export async function handleInboundMessage({ from, text, conversation = null }) {
+export async function handleInboundMessage({ from, text, conversation = null, inboundMessageId = null }) {
   const lang = detectLanguage(text).lang;
   const resolved = await resolveActorByPhone(from);
 
@@ -222,7 +223,8 @@ export async function handleInboundMessage({ from, text, conversation = null }) 
     };
   }
 
-  const history = await buildHistory(conversation);
+  // The turns BEFORE this message, exactly what the website sends.
+  const history = await buildHistory(conversation, { excludeMessageId: inboundMessageId });
 
   logger.info(
     `WhatsApp turn: profile ${resolved.actor.profileId} (${resolved.actor.roleKey}) ` +
@@ -281,8 +283,12 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
 
   // A bare yes/no answers the outstanding proposal rather than starting a new
   // request, which is how people actually reply on WhatsApp.
-  if (YES.test(message) || NO.test(message)) {
-    const pending = await latestPending(actor);
+  // ...unless what is outstanding is not a proposal but a QUESTION: "I need a
+  // start and end date for the leave." answered "Okay" is still the leave
+  // request, so it goes to the shared agent, which asks for the dates again.
+  const yesNo = YES.test(message) || NO.test(message);
+  const pending = yesNo ? await latestPending(actor) : null;
+  if (yesNo && (pending || !hasOpenWrite(history, message, actor))) {
     if (!pending) {
       return { reply: t('agent.nothingPending', lang), lang };
     }

@@ -34,7 +34,7 @@
  * validates and authorizes again.
  */
 
-import { monthFromText, toIsoDate, writtenDatesIn } from '../../../utils/naturalDates.js';
+import { monthFromText, toIsoDate, writtenDatesIn, unreadableDatesIn } from '../../../utils/naturalDates.js';
 
 export const FOUND = 'found';
 export const MISSING = 'missing';
@@ -142,10 +142,21 @@ export function extractEnum(message, schema = {}) {
  * Uses the same helpers the rest of the application dates things with, so a
  * calendar day means here exactly what it means everywhere else.
  */
+/**
+ * Every date the sentence names as a calendar date, ISO first, in order:
+ * "2026-10-07", "07-10-2026", "7th October", "7th to 9th October". One reader
+ * shared by both extractors, so a date written one way is not understood by
+ * one capability and missed by the next.
+ */
+function calendarDatesIn(text, now) {
+  const iso = [...text.matchAll(/\b(\d{4}-\d{1,2}-\d{1,2})\b/g)].map((m) => m[1]);
+  return [...iso, ...writtenDatesIn(text, now).map((w) => w.iso)];
+}
+
 export function extractDate(message, { now = new Date() } = {}) {
   const text = String(message ?? '');
-  const iso = [...text.matchAll(/\b(\d{4}-\d{1,2}-\d{1,2})\b/g)].map((m) => m[1]);
-  const uniqueIso = [...new Set(iso)];
+  if (unreadableDatesIn(text).length) return invalid('not a calendar date');
+  const uniqueIso = [...new Set(calendarDatesIn(text, now))];
   if (uniqueIso.length > 1) return ambiguous(uniqueIso.map((d) => toIsoDate(d, now)));
   if (uniqueIso.length === 1) {
     const value = toIsoDate(uniqueIso[0], now);
@@ -170,7 +181,8 @@ export function extractDate(message, { now = new Date() } = {}) {
  */
 export function extractDateRange(message, { now = new Date() } = {}) {
   const text = String(message ?? '');
-  const iso = [...new Set([...text.matchAll(/\b(\d{4}-\d{1,2}-\d{1,2})\b/g)].map((m) => m[1]))]
+  if (unreadableDatesIn(text).length) return invalid('not a calendar date');
+  const iso = [...new Set(calendarDatesIn(text, now))]
     .map((d) => toIsoDate(d, now))
     .filter(Boolean)
     .sort();

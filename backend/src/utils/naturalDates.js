@@ -29,6 +29,13 @@ const pad = (n) => String(n).padStart(2, '0');
 const isoMonth = (year, month1) => `${year}-${pad(month1)}`;
 const isoDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
+/** "YYYY-MM-DD" for a day that exists, else null: "31 February" is nobody's date. */
+function calendarDate(year, month1, day) {
+  if (month1 < 1 || month1 > 12 || day < 1) return null;
+  const probe = new Date(year, month1 - 1, day);
+  return probe.getMonth() === month1 - 1 ? `${year}-${pad(month1)}-${pad(day)}` : null;
+}
+
 /**
  * 0-11 for a full or abbreviated English month name, or -1.
  *
@@ -98,16 +105,23 @@ export function toIsoMonth(value, now = new Date()) {
  * One value → "YYYY-MM-DD", or null when it cannot be read as a date.
  *
  * Accepts the ISO form unchanged, loose digits ("2026-9-1"), the three relative
- * days a conversation actually uses, and named forms ("1 July 2026",
- * "July 1st"). Slash-separated all-digit dates are deliberately refused:
- * "01/07/2026" is the first of July to most of the world and the seventh of
- * January to some of it, and a wrong date recorded confidently is worse than a
- * question.
+ * days a conversation actually uses, named forms ("1 July 2026",
+ * "July 1st"), and all-digit dates with a four-digit year written DAY FIRST
+ * ("07-10-2026", "07/10/2026", "7.10.2026" = 7 October 2026).
+ *
+ * Day-first is a decision, not a guess: these are Indian schools, where
+ * DD-MM-YYYY is how every date is written, and refusing it outright meant
+ * "Leave from 07-10-2026 to 09-10-2026" was read as no dates at all. It is
+ * never read month-first -- "12-13-2026" is not a date -- and a day that does
+ * not exist ("31-02-2026") is refused rather than rolled over.
  */
 export function toIsoDate(value, now = new Date()) {
   const text = String(value ?? '').trim().toLowerCase();
   if (!text) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+
+  const dayFirst = /^(\d{1,2})([-/.])(\d{1,2})\2(\d{4})$/.exec(text);
+  if (dayFirst) return calendarDate(Number(dayFirst[4]), Number(dayFirst[3]), Number(dayFirst[1]));
 
   const day = 86_400_000;
   if (text === 'today') return isoDate(now);
@@ -133,9 +147,7 @@ export function toIsoDate(value, now = new Date()) {
   return null;
 }
 
-/**
- * Every calendar date a sentence writes out in words, in order.
- *
+/*
  * toIsoDate() reads "5th August 2026" when that is the whole value; a sentence
  * carries it among other words, and nothing looked for it there. So "show
  * attendance for Class 5-A on 5th August 2026" was read for its MONTH alone --
@@ -153,11 +165,57 @@ export function toIsoDate(value, now = new Date()) {
  */
 const DAY_FIRST = /\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?([a-z]{3,9})\.?(?:,?\s+(\d{4}))?\b/gi;
 const MONTH_FIRST = /\b([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/gi;
+// "07-10-2026", "07/10/2026": all digits, four-digit year, day first -- see
+// toIsoDate(). Not part of a longer run of digits or separators, so an id or a
+// phone number is never read as one.
+const NUMERIC_DAY_FIRST = /(?<![\d/.-])(\d{1,2})([-/.])(\d{1,2})\2(\d{4})(?![\d/.-])/g;
+// "7th to 9th October", "7-9 Oct 2026": a range whose month is written once,
+// after its second day. Without this only "9th October" was a date and the
+// "7th" was lost.
+const DAY_RANGE_ONE_MONTH = /\b(\d{1,2})(?:st|nd|rd|th)?\s*(?:to|till|until|through|-|–|and)\s*(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?([a-z]{3,9})\.?(?:,?\s+(\d{4}))?\b/gi;
 
+/**
+ * Day-first numeric dates in a sentence that are not real days ("31-02-2026"),
+ * as written. A caller that finds one must not take the sentence's OTHER date
+ * on its own -- "from 31-02-2026 to 02-03-2026" is not a one-day request for
+ * 2 March -- and should ask instead.
+ */
+export function unreadableDatesIn(text) {
+  return [...String(text ?? '').matchAll(NUMERIC_DAY_FIRST)]
+    .filter((m) => !calendarDate(Number(m[4]), Number(m[3]), Number(m[1])))
+    .map((m) => m[0]);
+}
+
+/**
+ * Every calendar date a sentence names -- in words ("5th August 2026"), as a
+ * day-first numeric date ("05-08-2026"), or as a one-month range ("7th to 9th
+ * October") -- in order.
+ */
 export function writtenDatesIn(text, now = new Date()) {
   const str = String(text ?? '');
   const found = [];
   const overlaps = (start, end) => found.some((f) => start < f.end && end > f.start);
+
+  for (const m of str.matchAll(NUMERIC_DAY_FIRST)) {
+    const iso = calendarDate(Number(m[4]), Number(m[3]), Number(m[1]));
+    if (!iso) continue;
+    found.push({ text: m[0], iso, start: m.index, end: m.index + m[0].length, yearGiven: true });
+  }
+
+  for (const m of str.matchAll(DAY_RANGE_ONE_MONTH)) {
+    const monthWord = m[3].toLowerCase();
+    const idx = monthIndex(monthWord);
+    if (idx < 0 || (monthWord === 'may' && !m[4])) continue;
+    const year = m[4] ? Number(m[4]) : yearForBareMonth(idx, now);
+    const first = calendarDate(year, idx + 1, Number(m[1]));
+    const second = calendarDate(year, idx + 1, Number(m[2]));
+    if (!first || !second || overlaps(m.index, m.index + m[0].length)) continue;
+    // Two spans, so a caller removing dates from the sentence removes both.
+    const firstText = m[0].slice(0, m[0].search(/\s*(?:to|till|until|through|-|–|and)\s*\d/i));
+    const secondStart = m.index + m[0].indexOf(m[2], firstText.length);
+    found.push({ text: firstText, iso: first, start: m.index, end: m.index + firstText.length, yearGiven: Boolean(m[4]) });
+    found.push({ text: str.slice(secondStart, m.index + m[0].length), iso: second, start: secondStart, end: m.index + m[0].length, yearGiven: Boolean(m[4]) });
+  }
 
   for (const [re, dayAt, monthAt] of [[DAY_FIRST, 1, 2], [MONTH_FIRST, 2, 1]]) {
     for (const m of str.matchAll(re)) {

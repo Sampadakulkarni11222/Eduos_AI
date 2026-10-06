@@ -1,16 +1,16 @@
-import { generate, isLlmEnabled } from '../../../providers/ai.provider.js';
+import { generate, isLlmEnabled, classifyLlmError } from '../../../providers/ai.provider.js';
 
 /** Enough for a reasoning model to think and then emit a small JSON object. */
 const ROUTING_MAX_TOKENS = 4096;
 import { toolsAvailableTo } from './tools.js';
-import { monthFromText, looksLikeMonth } from '../../../utils/naturalDates.js';
+import { monthFromText, looksLikeMonth, writtenDatesIn, unreadableDatesIn } from '../../../utils/naturalDates.js';
 import { classFromText, refersToOwnClasses } from '../../../utils/classNames.js';
 import { detectSelfCategory } from './profileIntent.js';
 import { detectEntityIntent, subjectFromText, detectOperation } from './entityIntent.js';
 import {
   resolveCapability, argumentsFor, dimensionsOf, operationsAskedFor, RANGE_PAIRS, performsAsked, isWholeMonth, isWholeWeek,
   withoutLeadingVerb } from './capabilityResolver.js';
-import { capabilityIndex, capabilitiesFor, subjectEntityOf, TARGET_ARGS, namesARecord } from '../mcp/capabilities.js';
+import { capabilityIndex, capabilitiesFor, subjectEntityOf, TARGET_ARGS, namesARecord, entitiesInText } from '../mcp/capabilities.js';
 import { getMcpTool } from '../mcp/registry.js';
 import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 import { orderToolsByRelevance } from '../mcp/capabilities.js';
@@ -91,6 +91,26 @@ function readMarksHead(msg) {
   const marks = m ? Number(m[1] ?? m[2]) : undefined;
   return { paper, student, marks };
 }
+
+/**
+ * "Who is <Name>?": the whole message is the question and one to four words of
+ * name. Lower-case is allowed -- WhatsApp users rarely capitalise -- which is
+ * why the words that make "who is ..." a different question are excluded
+ * below rather than relying on capitals.
+ */
+const WHO_IS_NAME = /^\s*(?:and\s+|so\s+|tell me\s+)?who\s+(?:is|'s)\s+([\p{L}][\p{L}.'-]*(?:\s+[\p{L}][\p{L}.'-]*){0,3})\s*[?.!]*\s*$/iu;
+const WHO_IS_NOT_A_NAME = new RegExp(
+  '^\\s*(?:and\\s+|so\\s+|tell me\\s+)?who\\s+(?:is|\'s)\\s+(?:'
+  + [
+    'my', 'your', 'our', 'the', 'this', 'that', 'it', 'he', 'she', 'him', 'her', 'you', 'i', 'me', 'there', 'here',
+    'a', 'an', 'any', 'anyone', 'someone', 'everyone', 'not', 'still', 'also',
+    'absent', 'present', 'late', 'on', 'in', 'at', 'off', 'out', 'away', 'missing', 'pending', 'due', 'free',
+    'teaching', 'taking', 'handling', 'responsible', 'incharge', 'in-charge', 'available', 'coming', 'going',
+    'class', 'principal', 'admin', 'administrator', 'teacher', 'head', 'topper', 'top', 'first', 'last',
+  ].join('|')
+  + ')\\b',
+  'i',
+);
 
 const RULES = [
   /* ── Live-ERP lookups added with MCP ─────────────────────
@@ -200,6 +220,21 @@ const RULES = [
       const admission = msg.match(/\b([A-Z]{2,}-\d{1,6})\b/)?.[1];
       const query = (admission ?? quoted ?? after ?? '').trim().replace(/[?.!,]+$/, '');
       return query ? { query } : {};
+    },
+  },
+  {
+    // "Who is Shoaib Abrar?" -- a person, named and nothing else. The same
+    // student search "find student Shoaib Abrar" reaches; no scope demanded
+    // here, because the MCP tool already answers at the caller's own scope (a
+    // teacher finds only their own pupils, a student only themselves).
+    tool: 'search_students',
+    patterns: [WHO_IS_NAME],
+    exclude: [WHO_IS_NOT_A_NAME],
+    requires: { permission: 'students.read' },
+    weight: 3,
+    args: (msg) => {
+      const name = WHO_IS_NAME.exec(msg)?.[1]?.trim();
+      return name ? { query: name } : {};
     },
   },
   {
@@ -728,11 +763,20 @@ const RULES = [
       /\bapprove\b/i, /\breject\b/i,
     ],
     args: (msg) => {
-      const dates = [...msg.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g)].map((m) => m[1]);
+      // Any calendar date the sentence names -- ISO, day-first numeric
+      // ("07-10-2026"), in words ("7th October"), or a one-month range ("7th
+      // to 9th October") -- through the one shared reader.
+      // A date that cannot be read ("31-02-2026") voids the rest: the tool then
+      // asks for the dates instead of applying for the one that parsed.
+      const unreadable = unreadableDatesIn(msg).length > 0;
+      const dates = unreadable ? [] : [...new Set([
+        ...[...msg.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g)].map((m) => m[1]),
+        ...writtenDatesIn(msg).map((w) => w.iso),
+      ])].sort();
 
       // Relative dates. "leave tomorrow" is the commonest phrasing there is,
       // and previously produced a 400 because only ISO dates were understood.
-      if (dates.length === 0) {
+      if (dates.length === 0 && !unreadable) {
         const iso = (d) => d.toISOString().slice(0, 10);
         const today = new Date();
         const dayMs = 86_400_000;
@@ -757,7 +801,7 @@ const RULES = [
       // confirmation the user is asked to approve reads like nonsense.
       const reason =
         msg.match(/(?:because of|because|due to|reason\s*[:-]?)\s+(.{3,80})/i)?.[1]?.trim() ??
-        msg.match(/\bfor\s+(?!a\s+leave\b|leave\b|\d+\s*days?\b|(?:one|two|three|four|five)\s+days?\b)(.{3,80})/i)?.[1]?.trim() ??
+        msg.match(/\bfor\s+(?!(?:a|an|the|my)?\s*leaves?\b|\d+\s*days?\b|(?:one|two|three|four|five)\s+days?\b)(.{3,80})/i)?.[1]?.trim() ??
         msg.match(/(.{3,80}?)\s*(?:के कारण|की वजह से|कारण)/)?.[1]?.trim() ??
         msg.match(/(?:kyunki|kyuki|wajah se|karan)\s+(.{3,80})/i)?.[1]?.trim() ??
         null;
@@ -767,6 +811,24 @@ const RULES = [
         ...(reason && { reason }),
       };
     },
+  },
+  {
+    // "Leave from 07-10-2026 to 09-10-2026", "Leave on 7th October": a
+    // sentence that OPENS with "leave" and a when is asking for one. The
+    // catalogue scorer, having no verb to go on, read the dates as a filter on
+    // the leave HISTORY -- so this grammar is decisive. Reading the history is
+    // phrased "my leaves", "show leave", "leave status", which this never
+    // matches. Same arguments as the rule above.
+    tool: 'apply_for_leave',
+    decisive: true,
+    patterns: [
+      /^\s*(?:a\s+)?leave\s+(?:from|on|for|starting)\b/i,
+      // "I need leave from ...", "I want a leave tomorrow" -- read as a history
+      // filter for the same reason, long before numeric dates were understood.
+      /^\s*(?:i\s+)?(?:want|need|require|would like)\s+(?:a\s+|to\s+(?:take|apply\s+for)\s+(?:a\s+)?)?leave\s+(?:from|on|for|starting|tomorrow|today)\b/i,
+    ],
+    exclude: [/\b(status|history|list|show|view|balance)\b/i, /\bapprove\b/i, /\breject\b/i],
+    args: (msg) => RULES.find((rule) => rule.tool === 'apply_for_leave' && !rule.decisive).args(msg),
   },
   {
     tool: 'get_payment_link',
@@ -1638,9 +1700,31 @@ function heldBy(actor, tool) {
   return Boolean(actor) && Boolean(tool);
 }
 
+/**
+ * Compound words people type joined or hyphenated, split into the form every
+ * tier already reads.
+ *
+ * "Who is my classteacher?" missed every tier that knows "class teacher": the
+ * word-boundary patterns (`\bteacher\b`, `\bclass\b`) cannot see inside one
+ * joined word. Splitting it here, once, is the fix for all of them rather than
+ * a second spelling in each. Only the compound itself changes -- "class",
+ * "teacher" and "classroom" are left exactly as written.
+ */
+const JOINED_COMPOUNDS = [
+  // classteacher / class-teacher / ClassTeachers -> class teacher(s), casing kept.
+  [/\b(class)-?(teachers?)\b/gi, '$1 $2'],
+];
+
+export function normaliseQuery(message) {
+  let text = String(message ?? '');
+  for (const [re, to] of JOINED_COMPOUNDS) text = text.replace(re, to);
+  return text;
+}
+
 /** Rule-based parse. Returns { tool, args } or null. */
 export function parseIntent(message, actor) {
-  return toClassLevel(chooseStep(message, actor), actor, message);
+  const msg = normaliseQuery(message);
+  return toClassLevel(chooseStep(msg, actor), actor, msg);
 }
 
 /**
@@ -1857,7 +1941,8 @@ export const MAX_PLAN_STEPS = 3;
  * parseIntentWithLlm); this is what keeps multi-part questions working on a
  * deployment with no model at all.
  */
-export function parsePlan(message, actor) {
+export function parsePlan(rawMessage, actor) {
+  const message = normaliseQuery(rawMessage);
   // The same class-level reading parseIntent() applies, on every step -- this
   // is the path the assistant actually runs, so a fix to one alone is no fix.
   return planSteps(message, actor).map((step) => {
@@ -2032,11 +2117,11 @@ function carrySubjectForward(steps, message, actor, { history = [], tools = null
   let subject = null;
   for (const turn of [...history].reverse()) {
     if (turn?.role !== 'user') continue;
-    const named = parsePlan(String(turn.text ?? ''), actor).map((s) => s.args).find(namesStudent);
-    if (named) {
-      subject = Object.fromEntries(STUDENT_IDENTITY_KEYS.filter((k) => named[k]).map((k) => [k, named[k]]));
-      break;
-    }
+    // studentNamedBy() also reads "Who is Rahul Sharma?" -- a person named
+    // through the student search -- so "what about his attendance?" after it
+    // is about Rahul, not about nobody.
+    subject = parsePlan(String(turn.text ?? ''), actor).map(studentNamedBy).find(Boolean) ?? null;
+    if (subject) break;
   }
   if (!subject) return steps;
   return steps.map((s) => (takesStudent(s.tool) && !namesStudent(s.args) ? { ...s, args: { ...s.args, ...subject } } : s));
@@ -2061,8 +2146,30 @@ function carrySubjectForward(steps, message, actor, { history = [], tools = null
  */
 const PROPOSAL_REPLY = /Shall I go ahead|Reply YES|क्या मैं आगे/i;
 // A question anywhere: "Whose marks, and how many? For example ..." ends
-// with its example, not with the question mark.
-const ASKED_REPLY = /\?|\bTell me\b|I need a bit more|थोड़ी और जानकारी/i;
+// with its example, not with the question mark. And a request for what is
+// missing, however it is worded: "I need a start and end date for the leave."
+// asks for the dates as plainly as a question does, and missing it here closed
+// the leave request, so the dates that followed were read as a new message.
+// Only ever applied to ASSISTANT turns -- a user saying "I need leave" is a
+// request, not a clarification.
+const ASKED_REPLY = new RegExp([
+  '\\?', '\\bTell me\\b', 'I need a bit more', 'थोड़ी और जानकारी',
+  '\\bI need (?:a|an|the|to know|more|some|your)\\b',
+  '\\bPlease (?:provide|give|share|send|specify|enter|mention|tell|choose|pick)\\b',
+  '\\b(?:Can|Could) you (?:please )?(?:provide|give|share|send|specify|tell|confirm)\\b',
+].join('|'), 'i');
+
+/** True when an assistant reply asked for something (and is not a yes/no proposal). */
+export function isClarificationReply(text) {
+  const reply = String(text ?? '');
+  return ASKED_REPLY.test(reply) && !PROPOSAL_REPLY.test(reply);
+}
+
+// A follow-up that carries nothing new but plainly stays on the request:
+// an acknowledgement ("Okay"), or "a new one" / "create it". It must not
+// close the open request -- nor be read on its own, where it means nothing
+// and earned "I'm not sure what you need".
+const STILL_ON_IT = /^\s*(?:yes|yeah|yep|ok|okay|sure|fine|alright|right|go ahead|haan|ha|ji|theek hai|ठीक है|हाँ)\b[\s.!]*$|\b(?:(?:a\s+)?new one|another one|create (?:it|one)|do it|same (?:one|thing)|continue|proceed)\b/i;
 const NEW_REQUEST = /^\s*(?:please\s+)?(?:what|which|who|whom|whose|when|where|why|how|show|list|display|view|find|get|tell|give\s+me|can|could|would|is|are|do|does|yes|no|ok|okay|cancel|stop)\b/i;
 
 function standsAlone(message, actor) {
@@ -2072,8 +2179,18 @@ function standsAlone(message, actor) {
   return detectOperation(first) !== 'GET' || operationsAskedFor(str, actor).size > 0;
 }
 
-/** A write step's arguments with what one more answer supplies. */
-function withAnswer(step, answer, actor) {
+/** True when an assistant question names a property: "What is the reason ..." names `reason`. */
+function asksForProperty(asked, name) {
+  const words = String(name).replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+  return Boolean(asked) && new RegExp(`\\b${words.split(/\s+/).join('\\s+')}\\b`, 'i').test(String(asked));
+}
+
+/**
+ * A write step's arguments with what one more answer supplies. `asked` is the
+ * assistant's question the answer replies to, when known: it says which
+ * free-text field a bare answer fills when the schema does not require it.
+ */
+function withAnswer(step, answer, actor, asked = '') {
   const schema = getMcpTool(step.tool)?.inputSchema ?? {};
   const properties = schema.properties ?? {};
   const args = structuredClone(step.args ?? {});
@@ -2135,7 +2252,11 @@ function withAnswer(step, answer, actor) {
   // Only a required free-text argument, never one that names a record.
   if (!supplied) {
     const text = String(answer).trim().replace(/^["'“‘]|["'”’]$/g, '').replace(/[\s.!]+$/, '').trim();
-    const missing = (schema.required ?? []).find((name) => args[name] === undefined && isFreeText(name));
+    // A required free-text field, or the one the question asked for by name:
+    // "What is the reason for the leave?" answered "Family function" is the
+    // reason, although the schema leaves it optional for the tool to ask.
+    const missing = (schema.required ?? []).find((name) => args[name] === undefined && isFreeText(name))
+      ?? Object.keys(properties).find((name) => args[name] === undefined && isFreeText(name) && asksForProperty(asked, name));
     if (missing && text) {
       args[missing] = text;
       // An announcement's words are both its headline and its body when only
@@ -2147,36 +2268,213 @@ function withAnswer(step, answer, actor) {
   return supplied ? { tool: step.tool, args, text: step.text } : null;
 }
 
-function continuedWrite(message, actor, conversation = []) {
-  // WhatsApp stores the inbound message before replying, so its transcript
-  // already ends with the message being answered now. It is this turn, not an
-  // earlier one.
+/** A user turn that opens a write request, or null. */
+function opensWrite(said, actor, plan = parsePlan(said, actor)) {
+  return plan.length === 1 && isWrite(plan[0].tool) ? { tool: plan[0].tool, args: plan[0].args ?? {}, text: said } : null;
+}
+
+
+/**
+ * Where an open request stands after one more user turn: answered (more
+ * arguments), still waiting (nothing new, but on the same request), replaced
+ * by a new write, or closed by an unrelated message.
+ *
+ * `final` is the turn being answered now. There, a reply that supplies nothing
+ * and is not something else either keeps the request -- returned as it stands,
+ * so the tool asks again for exactly what is missing.
+ */
+function advance(open, said, actor, { final = false, asked = '' } = {}) {
+  if (!open) return opensWrite(said, actor);
+  if (!standsAlone(said, actor)) {
+    const answered = withAnswer(open, said, actor, asked);
+    if (answered) return answered;
+    if (!final) return open;
+    // Supplied nothing: keep the request unless the words are a request of
+    // their own ("Rahul's attendance" opens no verb, yet is one).
+    return parsePlan(said, actor).some((step) => step.tool !== open.tool) ? null : open;
+  }
+  const plan = parsePlan(said, actor);
+  // The same KIND of request said again ("I want leave", "Create an
+  // assignment.") starts that request afresh, exactly as it would with no
+  // history -- the tool asks for whatever it lacks. Merging it into the open
+  // one carried an earlier request's half-filled arguments into a new one.
+  if (plan.length === 1 && plan[0].tool === open.tool) return opensWrite(said, actor, plan);
+  if (STILL_ON_IT.test(said)) return open;
+  return final ? null : opensWrite(said, actor, plan);
+}
+
+/**
+ * The write request the conversation left open -- one the assistant answered
+ * by asking for something -- or null. Read from the caller's own turns; an
+ * assistant turn only says whether it asked.
+ */
+function openWriteIn(conversation, message, actor) {
+  // WhatsApp used to store the inbound message before building its
+  // transcript, so the transcript could end with the message being answered
+  // now. It is this turn, not an earlier one.
   const history = [...conversation];
   while (history.length && history.at(-1)?.role === 'user'
     && String(history.at(-1).text ?? '').trim() === String(message ?? '').trim()) history.pop();
-  if (!history.length || standsAlone(message, actor)) return null;
   let open = null;
+  let asked = '';
   for (let i = 0; i < history.length; i += 1) {
     const turn = history[i];
     if (turn?.role !== 'user') continue;
-    const said = String(turn.text ?? '');
-    if (open && !standsAlone(said, actor)) {
-      open = withAnswer(open, said, actor) ?? open;
-    } else {
-      const plan = parsePlan(said, actor);
-      open = plan.length === 1 && isWrite(plan[0].tool) ? { tool: plan[0].tool, args: plan[0].args ?? {}, text: said } : null;
-    }
+    open = advance(open, String(turn.text ?? ''), actor, { asked });
     // Still open only if the assistant's reply to it ASKED for something. A
     // proposal, an answer or a refusal closes it.
     const reply = history.slice(i + 1).find((t) => t?.role === 'assistant')?.text ?? '';
     const nextUser = history.slice(i + 1).findIndex((t) => t?.role === 'user');
     const replied = nextUser === -1 || history.slice(i + 1, i + 1 + nextUser).some((t) => t?.role === 'assistant');
-    if (!replied || PROPOSAL_REPLY.test(reply) || !ASKED_REPLY.test(reply)) open = null;
+    if (!replied || !isClarificationReply(reply)) open = null;
+    asked = open ? reply : '';
   }
-  return open ? withAnswer(open, message, actor) : null;
+  return open ? { ...open, asked } : null;
 }
 
-export async function parseIntentWithLlm(message, actor, { callModel, history = [], tools = null } = {}) {
+/** True when the conversation is waiting on an answer to an unfinished write. */
+export function hasOpenWrite(conversation, message, actor) {
+  return Boolean(openWriteIn(conversation ?? [], message, actor));
+}
+
+function continuedWrite(message, actor, conversation = []) {
+  if (!conversation.length) return null;
+  const open = openWriteIn(conversation, message, actor);
+  if (!open) return null;
+  const next = advance(open, String(message ?? ''), actor, { final: true, asked: open.asked });
+  return next ? { tool: next.tool, args: next.args, text: next.text } : null;
+}
+
+/* ── Follow-ups that only name somebody ─────────────────────────
+ *
+ * "What about Aman?", "And Priya?", "What about him?" carry no operation of
+ * their own: they ask the PREVIOUS question again about someone else. That
+ * used to be left wholly to the model, so a deployment whose model was slow,
+ * out of quota or misconfigured answered "I'm not sure what you need" to a
+ * sentence whose meaning the conversation makes obvious.
+ *
+ * Resolved here from the caller's own earlier turns, generically: the
+ * previous request is re-run with the person swapped in -- on the same tool
+ * when it takes a student, otherwise on the caller's student-level read of
+ * the same entity (found in the catalogue, never named here). A pronoun takes
+ * the one person named earlier; with none, or several, it asks. The step is
+ * an ordinary plan step: the MCP server still resolves the name at the
+ * caller's own scope and authorizes the call.
+ */
+const FOLLOW_UP_ABOUT = /^\s*(?:(?:and|so|ok(?:ay)?|but)\s+)?(?:(?:what|how)\s+about|and)\s+(.+?)\s*[?.!]*\s*$/i;
+const FOLLOW_UP_PRONOUN_ONLY = /^(?:him|her|them|he|she|that (?:student|child|one)|this (?:student|child))$/i;
+const NAME_SHAPED = /^[\p{L}][\p{L}.'-]*(?:\s+[\p{L}][\p{L}.'-]*){0,3}$/u;
+const TIME_WORDS = /^(?:(?:last|this|next|previous|current|coming)\s+(?:month|week|term|year|day|semester)|today|tomorrow|yesterday|now|then|later|earlier)$/i;
+const CLASS_TARGET_ARGS = ['className', 'sectionId', 'section', 'gradeId', 'classes'];
+
+/** The student a step names, as `{ studentName }`-style identity, or null. */
+function studentNamedBy(step) {
+  const args = step?.args ?? {};
+  const keys = STUDENT_IDENTITY_KEYS.filter((k) => args[k]);
+  if (keys.length) return Object.fromEntries(keys.map((k) => [k, args[k]]));
+  // "Who is Rahul Sharma?" names him through the student search.
+  if (step?.tool === 'search_students' && args.query && !classFromText(args.query) && NAME_SHAPED.test(args.query)) {
+    return { studentName: args.query };
+  }
+  return null;
+}
+const displayNameOf = (identity) => identity?.studentName ?? identity?.admissionNo ?? null;
+
+/** True when the words could be a person rather than a topic, a time or a class. */
+function couldBeAPerson(words, actor) {
+  if (!NAME_SHAPED.test(words) || FOLLOW_UP_PRONOUN_ONLY.test(words)) return false;
+  if (TIME_WORDS.test(words) || looksLikeMonth(words) || classFromText(words)) return false;
+  if (entitiesInText(words).length || subjectFromText(words)) return false;
+  return parsePlan(words, actor).length === 0;
+}
+
+/** The previous request to re-ask, and every person the caller has named, newest last. */
+function priorContext(history, actor) {
+  let prior = null;
+  const people = [];
+  for (const turn of history) {
+    if (turn?.role !== 'user') continue;
+    const said = String(turn.text ?? '');
+    const about = FOLLOW_UP_ABOUT.exec(said)?.[1]?.trim();
+    if (about && couldBeAPerson(about, actor)) {
+      people.push(about);
+      continue;
+    }
+    const plan = parsePlan(said, actor);
+    if (plan.length === 1 && !isWrite(plan[0].tool)) {
+      prior = plan[0];
+      const named = displayNameOf(studentNamedBy(plan[0]));
+      if (named) people.push(named);
+    }
+  }
+  return { prior, people };
+}
+
+/** The previous step asked about `person` instead. */
+function retarget(prior, person, actor) {
+  const props = getMcpTool(prior.tool)?.inputSchema?.properties ?? {};
+  const keep = Object.fromEntries(Object.entries(prior.args ?? {}).filter(([k]) => !STUDENT_IDENTITY_KEYS.includes(k)));
+  if (props.studentName) return { tool: prior.tool, args: { ...keep, studentName: person } };
+  if (prior.tool === 'search_students' && props.query) return { tool: prior.tool, args: { query: person } };
+
+  // A class-level question ("who is absent in Class 6-A?") asked again about
+  // one pupil: the caller's student-level read of the same entity.
+  const entity = capabilityIndex().find((c) => c.name === prior.tool)?.entity;
+  if (!entity) return null;
+  const candidates = capabilitiesFor(actor, { entity, operation: 'GET' })
+    .filter((c) => !c.supersededBy && c.schema?.properties?.studentName);
+  const target = candidates.find((c) => c.resultShape === 'DETAIL') ?? candidates[0];
+  if (!target) return null;
+  const targetProps = target.schema.properties;
+  const carried = Object.fromEntries(Object.entries(keep)
+    .filter(([k]) => targetProps[k] && !CLASS_TARGET_ARGS.includes(k)));
+  return { tool: target.name, args: { ...carried, studentName: person } };
+}
+
+const titleCase = (s) => String(s).replace(/\b\p{L}/gu, (c) => c.toUpperCase());
+
+/**
+ * A name-only follow-up resolved from the conversation: `{ tool, args, steps }`
+ * to run, `{ clarify }` to ask, or null when the message is not one.
+ */
+export function resolveFollowUp(message, actor, history = []) {
+  const about = FOLLOW_UP_ABOUT.exec(normaliseQuery(message))?.[1]?.trim();
+  if (!about) return null;
+  const pronoun = FOLLOW_UP_PRONOUN_ONLY.test(about);
+  if (!pronoun && !couldBeAPerson(about, actor)) return null;
+
+  const { prior, people } = priorContext(history, actor);
+  if (!prior) {
+    return { clarify: pronoun
+      ? 'Who do you mean, and what would you like to know about them?'
+      : `What would you like to know about ${titleCase(about)}?` };
+  }
+
+  let person = about;
+  if (pronoun) {
+    const distinct = [...new Map(people.map((p) => [p.toLowerCase(), p])).values()];
+    if (distinct.length === 0) return { clarify: 'Who do you mean?' };
+    if (distinct.length > 1) return { clarify: `Who do you mean — ${distinct.map(titleCase).join(' or ')}?` };
+    [person] = distinct;
+  }
+
+  const step = retarget(prior, person, actor);
+  if (!step) return { clarify: `What would you like to know about ${titleCase(person)}?` };
+  return { ...step, steps: [step] };
+}
+
+export async function parseIntentWithLlm(message, actor, options = {}) {
+  const { history = [] } = options;
+  // An obvious follow-up is resolved from the conversation itself, before
+  // and without the model. A clarification is kept for when nothing better
+  // turns up -- the model may still read what the rules could not.
+  const followUp = resolveFollowUp(message, actor, history);
+  if (followUp?.steps) return followUp;
+  const parsed = await parseIntentCore(message, actor, options);
+  return parsed ?? (followUp?.clarify ? followUp : null);
+}
+
+async function parseIntentCore(message, actor, { callModel, history = [], tools = null } = {}) {
   // The answer to a question about an unfinished write comes first: read on
   // its own it is usually a different request -- "Fractions and decimals." is
   // a pupil search -- and the rules would claim it.
@@ -2280,7 +2578,8 @@ export async function parseIntentWithLlm(message, actor, { callModel, history = 
   } catch (err) {
     // A model failure degrades to the deterministic reading rather than taking
     // the assistant offline.
-    logger.warn(`LLM intent parsing failed: ${err.message}`);
+    const { category, status, detail } = classifyLlmError(err);
+    logger.warn(`LLM intent parsing failed: [${category}] ${detail}`, { event: 'llm_intent_failure', category, status });
     return fallback;
   }
 }
@@ -2415,7 +2714,14 @@ async function defaultCallModel(message, actor, history = [], mcpTools = null) {
    * not a small token budget, is what bounds the wait.
    */
   const result = await generate({ system, message, maxTokens: ROUTING_MAX_TOKENS });
-  if (!result.generated) return null;
+  if (!result.generated) {
+    // Not configured is a deployment choice, not a failure; everything else is
+    // logged with its category so "the model did nothing" has a reason.
+    if (result.reason !== 'LLM_NOT_CONFIGURED') {
+      logIntentFailure(result.category ?? result.reason ?? 'UNKNOWN', { provider: result.provider ?? null, model: result.model ?? null });
+    }
+    return null;
+  }
 
   try {
     const json = result.text.slice(result.text.indexOf('{'), result.text.lastIndexOf('}') + 1);
@@ -2435,6 +2741,19 @@ async function defaultCallModel(message, actor, history = [], mcpTools = null) {
 
     return steps.length ? { ...steps[0], steps } : null;
   } catch {
+    // A reply that is not the JSON asked for -- prose, a truncated thought, an
+    // empty string. Its first characters are logged (no secrets can be in a
+    // model's reply to a routing prompt) so the shape of the problem shows.
+    logIntentFailure('PARSE', { model: result.model ?? null, sample: String(result.text ?? '').slice(0, 120) });
     return null;
   }
+}
+
+/**
+ * One warning per routing call the model could not serve, categorised (see
+ * classifyLlmError in ai.provider.js). The message keeps its historical text,
+ * "LLM intent parsing failed", so existing log searches find it.
+ */
+function logIntentFailure(category, fields = {}) {
+  logger.warn(`LLM intent parsing failed: [${category}]`, { event: 'llm_intent_failure', category, ...fields });
 }
