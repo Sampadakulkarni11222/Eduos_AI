@@ -157,6 +157,9 @@ export const PORTALS: Record<string, Portal> = {
         item('Documents', '🗎', '/parent/documents', { ready: true }),
         item('Support', '✉', '/parent/tickets', { ready: true }),
       ]},
+      { title: 'HELP & SUPPORT', items: [
+        item('User Guide', '📖', '/parent/guide', { ready: true }),
+      ]},
     ],
   },
   student: {
@@ -211,6 +214,9 @@ export const PORTALS: Record<string, Portal> = {
         item('Escalated Tickets', '✉', '/principal/tickets', { ready: true }),
       ]},
       { title: 'GOVERNANCE', items: [ item('Audit Logs', '▷', '/principal/audit', { ready: true }) ]},
+      { title: 'HELP & SUPPORT', items: [
+        item('User Guide', '📖', '/principal/guide', { ready: true }),
+      ]},
     ],
   },
   'super-admin': {
@@ -232,6 +238,9 @@ export const PORTALS: Record<string, Portal> = {
         item('Audit Logs', '▷', '/super-admin/audit', { ready: true }),
         item('Access & Permissions', '🔐', '/super-admin/permissions', { ready: true }),
       ]},
+      { title: 'HELP & SUPPORT', items: [
+        item('User Guide', '📖', '/super-admin/guide', { ready: true }),
+      ]},
     ],
   },
   librarian: {
@@ -252,6 +261,9 @@ export const PORTALS: Record<string, Portal> = {
         item('Announcements', '◍', '/librarian/announcements', { ready: true }),
         item('Support Tickets', '✉', '/librarian/tickets', { ready: true }),
       ]},
+      { title: 'HELP & SUPPORT', items: [
+        item('User Guide', '📖', '/librarian/guide', { ready: true }),
+      ]},
     ],
   },
   warden: {
@@ -270,6 +282,9 @@ export const PORTALS: Record<string, Portal> = {
         item('Announcements', '◍', '/warden/announcements', { ready: true }),
         item('Support Tickets', '✉', '/warden/tickets', { ready: true }),
       ]},
+      { title: 'HELP & SUPPORT', items: [
+        item('User Guide', '📖', '/warden/guide', { ready: true }),
+      ]},
     ],
   },
   finance: {
@@ -282,7 +297,10 @@ export const PORTALS: Record<string, Portal> = {
       { title: 'FINANCE', items: [
         { label: 'Payments & Fees', icon: '₹', href: '/finance/payments', ready: true },
         { label: 'Reports', icon: '📊', href: '/finance/reports', ready: true }
-      ]}
+      ]},
+      { title: 'HELP & SUPPORT', items: [
+        item('User Guide', '📖', '/finance/guide', { ready: true }),
+      ]},
     ],
   },
 };
