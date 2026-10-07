@@ -88,11 +88,17 @@ describe('toIsoDate', () => {
     expect(toIsoDate('9 sept', NOW)).toBe('2026-09-09');
   });
 
-  it('refuses an all-digit slash date, because it is genuinely ambiguous', () => {
-    // 01/07/2026 is 1 July to most of the world and 7 January to some of it. A
-    // wrong date recorded confidently is worse than a question.
-    expect(toIsoDate('01/07/2026', NOW)).toBeNull();
-    expect(toIsoDate('7/1/2026', NOW)).toBeNull();
+  it('reads an all-digit date day-first, as Indian schools write it, and never month-first', () => {
+    // A deliberate policy for this deployment: 01/07/2026 is 1 July here, the
+    // way every Indian school writes it. It was refused as ambiguous, which
+    // left "Leave from 07-10-2026 to 09-10-2026" with no dates at all.
+    expect(toIsoDate('01/07/2026', NOW)).toBe('2026-07-01');
+    expect(toIsoDate('7/1/2026', NOW)).toBe('2026-01-07');
+    expect(toIsoDate('07-10-2026', NOW)).toBe('2026-10-07');
+    // What it still refuses: a day that does not exist, and a month-first
+    // reading -- there is no 13th month to fall back to.
+    expect(toIsoDate('31/02/2026', NOW)).toBeNull();
+    expect(toIsoDate('12/13/2026', NOW)).toBeNull();
   });
 
   it('refuses what it cannot read', () => {

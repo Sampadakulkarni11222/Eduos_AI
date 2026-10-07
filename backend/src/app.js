@@ -82,6 +82,7 @@ function apiCompressionMiddleware(req, res, next) {
 
 
 import { env, isWhatsappLive, isWhatsappSignatureConfigured, isChatflowLive, isChatflowWebhookAuthConfigured } from './config/env.js';
+import { llmConfigSummary } from './providers/ai.provider.js';
 import { connectDB } from './config/db.js';
 import { swaggerSpec } from './config/swagger.js';
 import { logger } from './utils/logger.js';
@@ -324,6 +325,18 @@ async function bootstrap() {
     }
   } else {
     logger.info('-  Chatflow-Pro not configured  →  set CHATFLOW_API_URL / CHATFLOW_API_KEY to go live');
+  }
+
+  // ── AI model ──
+  // Said at boot so a deployment's model setup can be checked from its log:
+  // which provider and model id are in use, and whether a key is present.
+  {
+    const ai = llmConfigSummary();
+    if (ai.enabled) {
+      logger.info(`✔  AI model  →  ${ai.provider} / ${ai.model ?? 'n/a'}, key ${ai.keyPresent ? 'present' : 'MISSING'}${ai.openRouterFallback ? ', OpenRouter fallback' : ''}, timeout ${ai.timeoutMs}ms`, { event: 'llm_config', ...ai });
+    } else {
+      logger.warn(`✘  AI model off  →  AI_PROVIDER=${ai.provider}${ai.provider !== 'rules' ? ' but its API key is missing' : ''}; Ask AI uses rules only`, { event: 'llm_config', ...ai });
+    }
   }
 
   // ── Swagger ──

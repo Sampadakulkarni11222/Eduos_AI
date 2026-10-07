@@ -309,6 +309,7 @@ async function handleOne(msg, channel = META_CHANNEL) {
       from: msg.from,
       text: msg.text,
       conversation,
+      inboundMessageId: inboundDoc?._id ?? null,
     });
 
     // Recorded after the turn, from what the number actually resolved to.

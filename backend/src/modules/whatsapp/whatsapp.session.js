@@ -211,12 +211,18 @@ export async function latestContinuation(conversation) {
   }
 }
 
-export async function buildHistory(conversation) {
+export async function buildHistory(conversation, { excludeMessageId = null } = {}) {
   if (!conversation) return [];
   const rows = await WhatsappMessage.find({
     conversationId: conversation._id,
     sessionId: conversation.sessionId,
     processingStatus: { $ne: 'SKIPPED_DUPLICATE' },
+    // The message being answered is stored before the turn runs (that is the
+    // dedupe), so without this it came back as the LAST turn of its own
+    // history: the model saw the question twice, and the website -- which
+    // sends only the turns before the current one -- never did. Excluded from
+    // the read only; the stored row is untouched.
+    ...(excludeMessageId ? { _id: { $ne: excludeMessageId } } : {}),
   })
     .sort({ createdAt: -1 })
     .limit(HISTORY_TURNS)

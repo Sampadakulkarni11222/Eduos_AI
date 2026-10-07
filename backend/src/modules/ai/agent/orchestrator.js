@@ -2,7 +2,7 @@ import { AuditLog } from '../../../models/auditLog.model.js';
 import { checkAgentRate, recordInjectionAttempt } from './throttle.js';
 import { AppError } from '../../../utils/AppError.js';
 import { logger } from '../../../utils/logger.js';
-import { parseIntentWithLlm, parseIntent, clarificationFor, MAX_PLAN_STEPS } from './intent.js';
+import { parseIntentWithLlm, parseIntent, clarificationFor, MAX_PLAN_STEPS, normaliseQuery } from './intent.js';
 import {
   unmetNarrowing, asksBeyondOwnSchool, dimensionsOf, unavailableAction, asksAboutOthers, asksBulkDestruction,
 } from './capabilityResolver.js';
@@ -541,7 +541,9 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
  * Split out from runAgent so the session's lifetime is one visible
  * `withMcpSession` block rather than a handle threaded through early returns.
  */
-async function routeTurn({ mcpSession, message, actor, source, lang, history }) {
+async function routeTurn({ mcpSession, message: rawMessage, actor, source, lang, history }) {
+  // One spelling for every check below and for the parser ("classteacher").
+  const message = normaliseQuery(rawMessage);
   // The tool definitions come from the MCP server's own tools/list, which the
   // server filters to this caller's permissions. The agent therefore reasons
   // about exactly the capabilities the protocol says exist — one catalog, not
@@ -584,6 +586,11 @@ async function routeTurn({ mcpSession, message, actor, source, lang, history }) 
   if (bulk) return declineBulk(bulk, lang);
 
   const intent = await parseIntentWithLlm(message, actor, { history, tools: mcpTools });
+
+  // A follow-up whose subject the conversation does not settle ("What about
+  // him?" after two people, "What about Aman?" with nothing before it): ask,
+  // rather than guess or shrug.
+  if (intent?.clarify) return { reply: intent.clarify, lang, action: null, clarification: true };
 
   // The act asked for is not one the caller can perform, and the plan answers
   // it with one they CAN -- the swap this exists to stop. "Approve my own

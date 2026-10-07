@@ -33,6 +33,14 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 const MAX_TOKENS = 16000;
 
 /**
+ * OpenAI: called with fetch against the Chat Completions endpoint, the same
+ * way OpenRouter is — no SDK dependency. `max_completion_tokens` rather than
+ * `max_tokens`: the newer (reasoning) models reject the latter.
+ */
+const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_MODEL = env.OPENAI_MODEL || 'gpt-4o-mini';
+
+/**
  * OpenRouter: one OpenAI-compatible endpoint in front of many providers.
  *
  * It is here to keep the chatbot answering when a single provider does not.
@@ -55,27 +63,46 @@ let anthropicClient = null;
 let geminiClient = null;
 
 const hasOpenRouterKey = () => Boolean(process.env.OPENROUTER_API_KEY);
+const hasOpenAiKey = () => Boolean(process.env.OPENAI_API_KEY);
 
 /** Whether the provider named by AI_PROVIDER has its own key. */
 function primaryConfigured() {
   switch (env.AI_PROVIDER) {
     case 'gemini': return Boolean(process.env.GEMINI_API_KEY);
     case 'anthropic': return Boolean(process.env.ANTHROPIC_API_KEY);
+    case 'openai': return hasOpenAiKey();
     case 'openrouter': return hasOpenRouterKey();
     default: return false;
   }
 }
 
 /**
- * OpenRouter backs up gemini/anthropic only. `rules` stays model-free even
+ * OpenRouter backs up gemini/anthropic/openai only. `rules` stays model-free even
  * with a key present: it is a deliberate deployment choice, not a missing key.
  */
 function openRouterIsFallback() {
-  return (env.AI_PROVIDER === 'gemini' || env.AI_PROVIDER === 'anthropic') && hasOpenRouterKey();
+  return ['gemini', 'anthropic', 'openai'].includes(env.AI_PROVIDER) && hasOpenRouterKey();
 }
 
 export function isLlmEnabled() {
   return primaryConfigured() || openRouterIsFallback();
+}
+
+/**
+ * What the model layer is configured to do, for the boot log. Answers "is
+ * Render actually using the model I set?" without a request: provider, model
+ * id, timeout and whether a key is PRESENT -- never the key.
+ */
+export function llmConfigSummary() {
+  const model = { gemini: GEMINI_MODEL, anthropic: ANTHROPIC_MODEL, openai: OPENAI_MODEL, openrouter: OPENROUTER_MODEL }[env.AI_PROVIDER] ?? null;
+  return {
+    provider: env.AI_PROVIDER,
+    model,
+    keyPresent: primaryConfigured(),
+    openRouterFallback: openRouterIsFallback(),
+    timeoutMs: env.AI_TIMEOUT_MS,
+    enabled: isLlmEnabled(),
+  };
 }
 
 function getAnthropicClient() {
@@ -118,6 +145,60 @@ const openRouterBreaker = new CircuitBreaker('llm-openrouter', breakerOptions);
 /** The shape every caller treats as "no model answer" — never a thrown error. */
 const notGenerated = (reason) => ({ text: null, generated: false, reason });
 
+/** Anything that could be a credential, scrubbed from text bound for a log. */
+function redactSecrets(text) {
+  return String(text ?? '')
+    .replace(/([?&](?:key|api_key|apikey|access_token|token)=)[^&\s"']+/gi, '$1[REDACTED]')
+    .replace(/\bAIza[0-9A-Za-z_-]{10,}/g, '[REDACTED]')
+    .replace(/\b(?:sk|cfp|xox[bap])[-_][0-9A-Za-z_-]{10,}/g, '[REDACTED]')
+    .replace(/\b(Bearer)\s+[^\s"']+/gi, '$1 [REDACTED]');
+}
+
+/**
+ * What kind of failure a model call was, so a log can say "the key is wrong"
+ * or "out of quota" instead of a stack of SDK text. Every provider failure used
+ * to collapse into `PROVIDER_ERROR`, and the routing layer then answered "I'm
+ * not sure what you need" with no log line saying why -- the exact situation in
+ * which an operator most needs one.
+ *
+ *   AUTH          401/403, an invalid or missing API key, permission denied
+ *   MODEL         404 / "not found" / "no longer available" -- check GEMINI_MODEL
+ *   QUOTA         429, RESOURCE_EXHAUSTED, quota or rate limit
+ *   TIMEOUT       the call outran AI_TIMEOUT_MS
+ *   CIRCUIT_OPEN  three recent failures; calls are skipped for a minute
+ *   NETWORK       DNS / connection failures before any HTTP status
+ *   API           any other provider-side failure (5xx, 400 ...)
+ *
+ * `detail` is the provider's message with anything credential-shaped removed.
+ */
+export function classifyLlmError(err) {
+  const message = String(err?.message ?? err ?? '');
+  const status = Number(err?.status ?? err?.statusCode ?? err?.response?.status)
+    || Number(/\[(\d{3})\b|\bHTTP (\d{3})\b|\bstatus(?: code)?:? (\d{3})\b/i.exec(message)?.slice(1).find(Boolean))
+    || null;
+  let category = 'API';
+  if (/CircuitBreaker .* is OPEN|concurrency limit/i.test(message)) category = 'CIRCUIT_OPEN';
+  else if (/Timeout of \d+ms exceeded|timed? ?out|AbortError|ETIMEDOUT/i.test(message) || err?.name === 'TimeoutError') category = 'TIMEOUT';
+  else if (status === 429 || /RESOURCE_EXHAUSTED|quota|rate.?limit|too many requests/i.test(message)) category = 'QUOTA';
+  else if (status === 401 || status === 403 || /API key not valid|invalid api key|API_KEY_INVALID|permission denied|unauthori[sz]ed|PERMISSION_DENIED/i.test(message)) category = 'AUTH';
+  else if (status === 404 || /not found for API version|no longer available|is not found|model.*not (?:found|supported)/i.test(message)) category = 'MODEL';
+  else if (!status && /ENOTFOUND|ECONNREFUSED|ECONNRESET|EAI_AGAIN|fetch failed|network/i.test(message)) category = 'NETWORK';
+  return { category, status, detail: redactSecrets(message).slice(0, 300) };
+}
+
+/** One structured line per failed model call, and the matching "no answer". */
+function providerFailure(provider, model, err, legacyPrefix) {
+  const { category, status, detail } = classifyLlmError(err);
+  // The prefix is kept so existing log searches ("Gemini generation failed")
+  // still find these; the fields after it are what a dashboard can group by.
+  logger.error(`${legacyPrefix}: [${category}] ${detail}`, {
+    event: 'llm_provider_failure', provider, model, category, status, timeoutMs: env.AI_TIMEOUT_MS,
+  });
+  // `reason` stays PROVIDER_ERROR -- callers (tutor, study help) key their own
+  // messages on it -- and the classification travels alongside as `category`.
+  return { ...notGenerated('PROVIDER_ERROR'), category, provider, model };
+}
+
 /**
  * Runs the configured provider, then OpenRouter if that produced nothing.
  *
@@ -146,9 +227,11 @@ export async function generate({ system, message, maxTokens = MAX_TOKENS }) {
     return notGenerated('LLM_NOT_CONFIGURED');
   }
 
-  const primary = env.AI_PROVIDER === 'gemini'
-    ? () => geminiGenerate({ system, parts: [{ text: message }], maxTokens, breaker: true })
-    : () => anthropicGenerate({ system, content: message, maxTokens, effort: 'medium', breaker: true });
+  const primary = {
+    gemini: () => geminiGenerate({ system, parts: [{ text: message }], maxTokens, breaker: true }),
+    openai: () => openAiGenerate({ system, content: message, maxTokens, breaker: true }),
+  }[env.AI_PROVIDER]
+    ?? (() => anthropicGenerate({ system, content: message, maxTokens, effort: 'medium', breaker: true }));
 
   return withFallback(primary, () => openRouterGenerate({ system, content: message, maxTokens }));
 }
@@ -164,6 +247,11 @@ export async function generateFromImage({ system, message, imageBase64, mediaTyp
     return notGenerated('LLM_NOT_CONFIGURED');
   }
 
+  const openAiImageContent = [
+    { type: 'image_url', image_url: { url: `data:${mediaType};base64,${imageBase64}` } },
+    { type: 'text', text: message },
+  ];
+
   const primary = env.AI_PROVIDER === 'gemini'
     ? () => geminiGenerate({
       system,
@@ -171,6 +259,8 @@ export async function generateFromImage({ system, message, imageBase64, mediaTyp
       maxTokens,
       breaker: false,
     })
+    : env.AI_PROVIDER === 'openai'
+    ? () => openAiGenerate({ system, content: openAiImageContent, maxTokens, breaker: false })
     : () => anthropicGenerate({
       system,
       content: [
@@ -182,14 +272,7 @@ export async function generateFromImage({ system, message, imageBase64, mediaTyp
       breaker: false,
     });
 
-  return withFallback(primary, () => openRouterGenerate({
-    system,
-    content: [
-      { type: 'image_url', image_url: { url: `data:${mediaType};base64,${imageBase64}` } },
-      { type: 'text', text: message },
-    ],
-    maxTokens,
-  }));
+  return withFallback(primary, () => openRouterGenerate({ system, content: openAiImageContent, maxTokens }));
 }
 
 async function geminiGenerate({ system, parts, maxTokens, breaker }) {
@@ -217,8 +300,7 @@ async function geminiGenerate({ system, parts, maxTokens, breaker }) {
       },
     };
   } catch (err) {
-    logger.error(`Gemini generation failed: ${err.message}`);
-    return notGenerated('PROVIDER_ERROR');
+    return providerFailure('gemini', GEMINI_MODEL, err, 'Gemini generation failed');
   }
 }
 
@@ -248,8 +330,57 @@ async function anthropicGenerate({ system, content, maxTokens, effort, breaker }
 
     return { text, generated: true, model: response.model, usage: response.usage };
   } catch (err) {
-    logger.error(`LLM generation failed: ${err.message}`);
-    return notGenerated('PROVIDER_ERROR');
+    return providerFailure('anthropic', ANTHROPIC_MODEL, err, 'LLM generation failed');
+  }
+}
+
+async function openAiGenerate({ system, content, maxTokens, breaker }) {
+  try {
+    const call = async () => {
+      const res = await fetch(OPENAI_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: OPENAI_MODEL,
+          max_completion_tokens: maxTokens,
+          messages: [
+            ...(system ? [{ role: 'system', content: system }] : []),
+            { role: 'user', content },
+          ],
+        }),
+        signal: AbortSignal.timeout(env.AI_TIMEOUT_MS),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || json?.error) {
+        throw new Error(`HTTP ${res.status}: ${json?.error?.message ?? res.statusText}`);
+      }
+      return json;
+    };
+    const data = breaker ? await llmBreaker.execute(call) : await call();
+
+    const message = data?.choices?.[0]?.message;
+    if (message?.refusal) {
+      logger.warn('LLM refused a request (openai)');
+      return notGenerated('REFUSED');
+    }
+
+    const text = (message?.content ?? '').trim();
+    if (!text) return notGenerated('EMPTY_RESPONSE');
+
+    return {
+      text,
+      generated: true,
+      model: data.model ?? OPENAI_MODEL,
+      usage: {
+        input_tokens: data.usage?.prompt_tokens ?? 0,
+        output_tokens: data.usage?.completion_tokens ?? 0,
+      },
+    };
+  } catch (err) {
+    return providerFailure('openai', OPENAI_MODEL, err, 'OpenAI generation failed');
   }
 }
 
@@ -298,8 +429,7 @@ async function openRouterGenerate({ system, content, maxTokens }) {
 
     const choice = data?.choices?.[0];
     if (choice?.error) {
-      logger.error(`OpenRouter generation failed: ${choice.error.message ?? 'choice error'}`);
-      return notGenerated('PROVIDER_ERROR');
+      return providerFailure('openrouter', OPENROUTER_MODEL, new Error(choice.error.message ?? 'choice error'), 'OpenRouter generation failed');
     }
 
     const raw = choice?.message?.content;
@@ -318,7 +448,6 @@ async function openRouterGenerate({ system, content, maxTokens }) {
       },
     };
   } catch (err) {
-    logger.error(`OpenRouter generation failed: ${err.message}`);
-    return notGenerated('PROVIDER_ERROR');
+    return providerFailure('openrouter', OPENROUTER_MODEL, err, 'OpenRouter generation failed');
   }
 }
