@@ -20,6 +20,9 @@ SELF="$APP_DIR/.github/scripts/deploy-vps.sh"
 
 BACKEND_PROCESS="${EDUOS_BACKEND_PROCESS:-eduos-backend}"
 FRONTEND_PROCESS="${EDUOS_FRONTEND_PROCESS:-eduos-frontend}"
+# The major version the PM2 processes already run on, and the one CI tests the
+# backend with.
+NODE_VERSION="${EDUOS_NODE_VERSION:-22}"
 # The ports the server's own backend/.env and PM2 setup use. They are not read
 # from this repository because the repository does not decide them.
 BACKEND_HEALTH_URL="${EDUOS_BACKEND_HEALTH_URL:-http://127.0.0.1:5300/api/v1/health}"
@@ -29,16 +32,23 @@ log() { printf '[deploy] %s\n' "$*"; }
 die() { printf '[deploy] ERROR: %s\n' "$*" >&2; exit 1; }
 
 # A non-interactive SSH session does not read ~/.bashrc, so a Node installed
-# through nvm is not on PATH until nvm is loaded by hand.
+# through nvm is not on PATH until nvm is loaded by hand. The version is asked
+# for by name because the server's system Node (18.17) is older than Next.js
+# accepts, and it is what a bare `node` resolves to there; the other projects
+# on the box depend on it, so it is left alone rather than upgraded.
 load_node() {
   export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
   if [ -s "$NVM_DIR/nvm.sh" ]; then
     # shellcheck disable=SC1091
     . "$NVM_DIR/nvm.sh" >/dev/null
+    nvm use "$NODE_VERSION" >/dev/null || die "nvm has no Node $NODE_VERSION installed"
   fi
   for tool in git node npm pm2 curl; do
     command -v "$tool" >/dev/null || die "'$tool' is not on PATH for this SSH session"
   done
+  local major
+  major="$(node -p 'process.versions.node.split(".")[0]')"
+  [ "$major" -ge 20 ] || die "Node $(node -v) is too old to build this project; it needs 20 or newer"
 }
 
 # npm ci empties node_modules before refilling it, which the running app would
