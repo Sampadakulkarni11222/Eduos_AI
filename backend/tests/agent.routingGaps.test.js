@@ -212,7 +212,15 @@ describe('FIX 3 — the leave request stays open until its dates arrive', () => 
   }, 90_000);
 
   it('the whole flow ends in exactly one leave once confirmed', async () => {
-    const [, , third] = await web(student(), ['I want to apply for leave', '07-10-2026 to 09-10-2026', 'Family function']);
+    // Dates relative to today, unlike the fixed ones above: this is the one
+    // case that actually writes the leave, and the leave service refuses a
+    // start date in the past -- so a fixed date passes only until it goes by.
+    const ahead = (days) => {
+      const d = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+      const two = (n) => String(n).padStart(2, '0');
+      return `${two(d.getUTCDate())}-${two(d.getUTCMonth() + 1)}-${d.getUTCFullYear()}`;
+    };
+    const [, , third] = await web(student(), ['I want to apply for leave', `${ahead(7)} to ${ahead(9)}`, 'Family function']);
     expect(third.action?.confirmToken).toBeTruthy();
     await api.confirm(student(), third.action.confirmToken);
     expect(await leaves()).toBe(1);
