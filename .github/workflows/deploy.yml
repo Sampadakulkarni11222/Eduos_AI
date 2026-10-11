@@ -1,0 +1,79 @@
+name: Deploy
+
+# Ships main to the VPS once CI has passed on it.
+#
+# A separate workflow rather than a job in ci.yml: CI cancels its in-flight run
+# when a newer push arrives, and a deploy must never be cancelled halfway
+# through a build on the server. Here a newer deploy waits its turn instead.
+#
+# Repository secrets (Settings -> Secrets and variables -> Actions):
+#   VPS_HOST         server address
+#   VPS_USER         SSH user that owns the checkout
+#   VPS_SSH_KEY      private half of the deploy key
+#   VPS_KNOWN_HOSTS  output of `ssh-keyscan -H <VPS_HOST>`, run once from a
+#                    machine that already trusts the server
+#   VPS_PORT         optional, defaults to 22
+#
+# The deploy key's authorized_keys entry on the server must be pinned to the
+# deploy script, so the key can trigger a deploy and nothing else:
+#   command="bash /root/apps/eduos/.github/scripts/deploy-vps.sh",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA...
+# Until VPS_HOST is set this workflow does nothing and stays green.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # Manual re-deploy of main from the Actions tab.
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  vps:
+    name: VPS — pull, build and restart
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # workflow_run also fires for pull-request runs of CI and for failed ones;
+    # only a green push to main is a release.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    steps:
+      - name: Deploy over SSH
+        env:
+          # The commit CI actually tested, not whatever main points at by now.
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$VPS_HOST" ]; then
+            echo "::notice::VPS_HOST is not set, so nothing was deployed. See the header of .github/workflows/deploy.yml."
+            exit 0
+          fi
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Pinned host key: a first-use ssh-keyscan here would trust whoever
+          # answered, on every single run.
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+          # The server ignores everything in this command except the sha: the
+          # key is pinned to the deploy script, which reads it and validates it.
+          ssh -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 \
+            -p "${VPS_PORT:-22}" \
+            "$VPS_USER@$VPS_HOST" "$DEPLOY_SHA"
