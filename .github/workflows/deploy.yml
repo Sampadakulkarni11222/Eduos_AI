@@ -63,11 +63,13 @@ jobs:
           fi
 
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          # tr: a secret saved from Windows carries CRLF line endings, and ssh
+          # rejects a private key with carriage returns as "invalid format".
+          printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           # Pinned host key: a first-use ssh-keyscan here would trust whoever
           # answered, on every single run.
-          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf '%s\n' "$VPS_KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
 
           # The server ignores everything in this command except the sha: the
           # key is pinned to the deploy script, which reads it and validates it.
