@@ -523,7 +523,10 @@ export async function executeToolCall({ sessionId, name, args, confirmationToken
 
     await audit({
       session, tool: name, args: toolArgs,
-      status: result.success ? (mutates(tool) ? 'EXECUTED' : 'READ') : 'ERROR',
+      // A write that found nothing to change (an attendance mark already in
+      // place) is recorded as that, so the trail never claims a mutation that
+      // did not happen.
+      status: result.success ? (mutates(tool) ? (result.unchanged ? 'NO_CHANGE' : 'EXECUTED') : 'READ') : 'ERROR',
       code: result.success ? null : result.error?.code,
       confirmed: pending ? true : mutates(tool) ? false : null,
       actionId: pending?._id ?? null,

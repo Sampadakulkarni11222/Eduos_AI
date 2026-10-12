@@ -40,7 +40,18 @@ function toOneClass(base) {
     async run(ctx, args, prepared) {
       const { className, ...rest } = args ?? {};
       if (className && !prepared?.audience) prepared = await this.prepare(ctx, args);
-      return base.run(ctx, prepared?.audience ? { ...rest, audience: prepared.audience } : rest, prepared);
+      const result = await base.run(ctx, prepared?.audience ? { ...rest, audience: prepared.audience } : rest, prepared);
+      // Named for a class: the confirmation says WHICH class, from the section
+      // this call resolved -- and only once the record's own audience is that
+      // section. If the service wrote it to anything else, that is said rather
+      // than papered over with the class the person asked for.
+      if (prepared?.classLabel && result?.success) {
+        const written = (result.data?.audience?.sectionIds ?? []).map(String);
+        const intended = (prepared.audience?.sectionIds ?? []).map(String);
+        const same = written.length === intended.length && intended.every((id) => written.includes(id));
+        return { ...result, params: { ...(result.params ?? {}), audience: same ? prepared.classLabel : 'a different audience than the class you named — please check it' } };
+      }
+      return result;
     },
   }));
 }

@@ -34,7 +34,9 @@
  * validates and authorizes again.
  */
 
-import { monthFromText, toIsoDate, writtenDatesIn, unreadableDatesIn } from '../../../utils/naturalDates.js';
+import {
+  monthFromText, toIsoDate, writtenDatesIn, unreadableDatesIn, weekdayDateIn, FORWARD_DATE_ARGS,
+} from '../../../utils/naturalDates.js';
 
 export const FOUND = 'found';
 export const MISSING = 'missing';
@@ -153,7 +155,7 @@ function calendarDatesIn(text, now) {
   return [...iso, ...writtenDatesIn(text, now).map((w) => w.iso)];
 }
 
-export function extractDate(message, { now = new Date() } = {}) {
+export function extractDate(message, { now = new Date(), prefer = null } = {}) {
   const text = String(message ?? '');
   if (unreadableDatesIn(text).length) return invalid('not a calendar date');
   const uniqueIso = [...new Set(calendarDatesIn(text, now))];
@@ -168,6 +170,12 @@ export function extractDate(message, { now = new Date() } = {}) {
     const value = toIsoDate(relative.toLowerCase(), now);
     return value ? found(value) : missing();
   }
+  // A weekday, when the direction is known: the sentence says it ("next
+  // Monday", "last Friday"), or the argument is one whose date is still to
+  // come (`prefer`, from FORWARD_DATE_ARGS). A bare weekday with neither is
+  // left to the dimension readers, which know what the question is about.
+  const weekday = weekdayDateIn(text, now, { prefer: prefer ?? 'past' });
+  if (weekday && (prefer || (weekday.qualifier && weekday.qualifier !== 'this'))) return found(weekday.iso);
   return missing();
 }
 
@@ -317,7 +325,7 @@ export function extractText(message, schema = {}) {
 export const EXTRACTORS = {
   identifier: (message) => extractIdentifier(message),
   enum: (message, { schema }) => extractEnum(message, schema),
-  date: (message, { now }) => extractDate(message, { now }),
+  date: (message, { now, prefer }) => extractDate(message, { now, prefer }),
   dateRange: (message, { now }) => extractDateRange(message, { now }),
   month: (message, { now }) => extractMonth(message, { now }),
   money: (message) => extractMoney(message),
@@ -341,7 +349,7 @@ export function extractArgument(name, schema, message, { now = new Date(), write
   const extractor = kind ? EXTRACTORS[kind] : null;
   if (!extractor) return { status: MISSING, value: undefined, kind };
 
-  const result = extractor(message, { schema, now });
+  const result = extractor(message, { schema, now, prefer: FORWARD_DATE_ARGS.has(name) ? 'future' : null });
   if (write && result.status === AMBIGUOUS) {
     return { ...result, status: AMBIGUOUS, kind, refusedForWrite: true };
   }

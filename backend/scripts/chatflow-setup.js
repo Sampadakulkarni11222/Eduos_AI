@@ -63,7 +63,36 @@ async function main() {
       }
     }
   }
-  console.log('\nAlso in Chatflow-Pro: turn off this workspace\'s own AI agent, keyword triggers and welcome/OOO messages, or users get two replies.');
+  // The workspace's OWN automation answers the same inbound message EduOS does.
+  // It is not EduOS and knows nothing about the school: a workspace still
+  // carrying a demo agent replied to a teacher's "Yes" with a refusal about
+  // selling phones, next to EduOS's own confirmation. EduOS cannot switch it
+  // off through the Public API, so anything the key's own profile reveals about
+  // it is reported here, and the instruction below is not optional.
+  const automation = [];
+  const scan = (value, path, depth = 0) => {
+    if (!value || typeof value !== 'object' || depth > 4) return;
+    for (const [key, item] of Object.entries(value)) {
+      const where = path ? `${path}.${key}` : key;
+      if (/(?:ai|bot|agent|auto[-_ ]?reply|autoreply|chatbot|workflow|welcome|away|keyword)/i.test(key)) {
+        const on = item === true || item === 'enabled' || item === 'ACTIVE' || item === 'active'
+          || (item && typeof item === 'object' && (item.enabled === true || item.active === true || item.isActive === true));
+        if (on) automation.push(where);
+      }
+      if (item && typeof item === 'object') scan(item, where, depth + 1);
+    }
+  };
+  scan(me?.workspace, 'workspace');
+  for (const n of me?.waNumbers ?? []) scan(n, `number ${n.id ?? ''}`.trim());
+  if (automation.length) {
+    console.error(`\n✘ This workspace has its own automation switched ON: ${automation.join(', ')}.`);
+    console.error('  It will answer every WhatsApp message alongside EduOS, with replies that have nothing to do with the school.');
+    process.exitCode = 1;
+  }
+
+  console.log('\nREQUIRED in Chatflow-Pro: turn OFF this workspace\'s own AI agent, keyword triggers, workflows and welcome/away messages.');
+  console.log('  Otherwise every message gets two replies -- one from EduOS, and one from that agent, which is not EduOS and');
+  console.log('  will answer about whatever it was configured for (a second, unrelated reply to a "Yes" is this, every time).');
 }
 
 main().catch((err) => {

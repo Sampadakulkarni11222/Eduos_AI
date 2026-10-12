@@ -41,11 +41,22 @@ export function errorHandler(err, req, res, next) {
     logger.error(err);
   }
 
+  // A stack trace is never part of a response unless somebody asked for it by
+  // name. It used to be sent whenever the process was in development mode --
+  // and "development" is what NODE_ENV defaults to, so any deployment that did
+  // not set it (docker-compose ships `development`) answered an unexpected
+  // failure with the whole stack: internal file paths, module names, sometimes
+  // a connection string, in the body of a 500 that a browser or a tester's
+  // screenshot then carried anywhere. The full error is in the server log
+  // above, which is where a developer reads it. DEBUG_ERROR_STACKS=true puts it
+  // back in the response for local debugging, and is ignored in production.
+  const exposeStack = env.isDev && !env.isProd && process.env.DEBUG_ERROR_STACKS === 'true' && !error.isOperational;
+
   sendError(
     res,
     message,
     statusCode,
-    env.isDev && !error.isOperational ? [err.stack] : errors,
+    exposeStack ? [err.stack] : errors,
     error.code ?? null
   );
 }

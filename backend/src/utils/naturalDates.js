@@ -186,6 +186,74 @@ export function unreadableDatesIn(text) {
     .map((m) => m[0]);
 }
 
+/** True for "YYYY-MM-DD" naming a day that exists: "2026-02-31" is the right shape and no day. */
+export function isCalendarIsoDate(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? '').trim());
+  return Boolean(m && calendarDate(Number(m[1]), Number(m[2]), Number(m[3])));
+}
+
+const ISO_SHAPED = /(?<![\d-])(\d{4})-(\d{1,2})-(\d{1,2})(?![\d-])/g;
+// A number after a month name that is a COUNT, not a day: "give April 31
+// marks" is thirty-one marks for a pupil called April.
+const COUNTED = /^\s*(?:marks?|points?|students?|pupils?|days?|periods?|copies|books?|rupees|rs\b|%|percent)/i;
+
+/**
+ * Every date in a sentence that names a day which does not exist, as written:
+ * "31 February", "February 30", "31st of April 2026", "29 Feb 2027",
+ * "31-02-2026", "2026-02-31", "30 to 31 June".
+ *
+ * A date like this used to be skipped by every reader -- none of them could
+ * place it -- and the request then ran for whatever the tool's default is.
+ * "Mark Aman Gupta absent on 31 February" was proposed for TODAY. A caller
+ * that finds one asks for a real date and does nothing else.
+ *
+ * Written with no year, a date is judged in the year it would be read in
+ * (yearForBareMonth) -- so "29 February" is refused in a year with no such
+ * day rather than read as nothing; the person is asked for the full date.
+ * "may" needs a year, as everywhere in this file.
+ */
+export function impossibleDatesIn(text, now = new Date()) {
+  const str = String(text ?? '');
+  const found = [];
+  const add = (index, written) => { if (!found.some((f) => f.index === index)) found.push({ index, written }); };
+
+  // Digits are only a date when the year is one: "98-76-5432" is part of a
+  // phone number, not the 98th of the 76th month.
+  const aYear = (year) => year >= 1900 && year <= 2100;
+  for (const m of str.matchAll(NUMERIC_DAY_FIRST)) {
+    if (aYear(Number(m[4])) && !calendarDate(Number(m[4]), Number(m[3]), Number(m[1]))) add(m.index, m[0]);
+  }
+  for (const m of str.matchAll(ISO_SHAPED)) {
+    if (aYear(Number(m[1])) && !calendarDate(Number(m[1]), Number(m[2]), Number(m[3]))) add(m.index, m[0]);
+  }
+  const real = (year, idx, day) => Boolean(calendarDate(year, idx + 1, day));
+  // With no year, only a number that could be a day of SOME month is taken
+  // for one: "top 50 Dec defaulters" is a count.
+  const dayLike = (day, yearGiven) => yearGiven || (day >= 1 && day <= 31);
+  for (const m of str.matchAll(DAY_RANGE_ONE_MONTH)) {
+    const word = m[3].toLowerCase();
+    const idx = monthIndex(word);
+    if (idx < 0 || (word === 'may' && !m[4])) continue;
+    const year = m[4] ? Number(m[4]) : yearForBareMonth(idx, now);
+    if (!dayLike(Number(m[1]), Boolean(m[4])) || !dayLike(Number(m[2]), Boolean(m[4]))) continue;
+    if (!real(year, idx, Number(m[1])) || !real(year, idx, Number(m[2]))) add(m.index, m[0]);
+  }
+  for (const [re, dayAt, monthAt] of [[DAY_FIRST, 1, 2], [MONTH_FIRST, 2, 1]]) {
+    for (const m of str.matchAll(re)) {
+      const word = m[monthAt].toLowerCase();
+      const idx = monthIndex(word);
+      if (idx < 0 || (word === 'may' && !m[3])) continue;
+      if (re === MONTH_FIRST && !m[3] && COUNTED.test(str.slice(m.index + m[0].length))) continue;
+      // Inside a range already judged above ("30 to 31 June").
+      if (found.some((f) => m.index >= f.index && m.index < f.index + f.written.length)) continue;
+      const year = m[3] ? Number(m[3]) : yearForBareMonth(idx, now);
+      if (!dayLike(Number(m[dayAt]), Boolean(m[3]))) continue;
+      if (!real(year, idx, Number(m[dayAt]))) add(m.index, m[0]);
+    }
+  }
+  return found.sort((a, b) => a.index - b.index).map((f) => f.written.trim());
+}
+
 /**
  * Every calendar date a sentence names -- in words ("5th August 2026"), as a
  * day-first numeric date ("05-08-2026"), or as a one-month range ("7th to 9th
@@ -235,6 +303,69 @@ export function writtenDatesIn(text, now = new Date()) {
     }
   }
   return found.sort((a, b) => a.start - b.start);
+}
+
+const WEEKDAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const WEEKDAY_IN_TEXT = new RegExp(
+  `\\b(?:(next|coming|this coming|upcoming|this|last|previous|past)\\s+)?(${WEEKDAY_NAMES.join('|')})\\b`, 'i',
+);
+
+/**
+ * Argument names whose date is, by what they mean, still to come: a due date,
+ * the days of a leave, when an event or an exam starts. A bare weekday written
+ * into one of these is the NEXT such day; written anywhere else (a register
+ * date, a payment date) it is the most recent one.
+ */
+export const FORWARD_DATE_ARGS = new Set([
+  'dueAt', 'dueOn', 'fromDate', 'toDate', 'startsAt', 'endsAt', 'startsOn', 'endsOn', 'nextActionAt', 'examDate',
+]);
+
+/**
+ * The calendar day a weekday name in a sentence means, or null.
+ *
+ * One definition for every tier, because the same word was being read two ways
+ * and one of them was wrong: "apply for leave on Monday", said on a Sunday, was
+ * proposed for the Monday six days EARLIER -- the only weekday reader in the
+ * codebase was written for attendance registers and always looked back.
+ *
+ *   "next Monday", "coming Monday"   the first Monday strictly after today
+ *   "last Monday", "previous Monday" the most recent Monday strictly before today
+ *   "Monday" / "this Monday"         decided by `prefer`:
+ *        'future'  the next Monday, today included (an instruction about a day
+ *                  still to come: leave, a due date, an event)
+ *        'past'    the most recent Monday before today (a question about a day
+ *                  that has happened: attendance, a payment)
+ *
+ * On Saturday 10 October 2026: next Monday is the 12th, last Monday the 5th.
+ * The qualifier always wins over `prefer` -- nobody who writes "last Monday"
+ * means a day that has not happened. Local calendar days throughout, as every
+ * other reader in this file.
+ */
+export function weekdayDateIn(text, now = new Date(), { prefer = 'past' } = {}) {
+  const m = WEEKDAY_IN_TEXT.exec(String(text ?? ''));
+  if (!m) return null;
+  const qualifier = (m[1] ?? '').toLowerCase().replace(/\s+/g, ' ');
+  const target = WEEKDAY_NAMES.indexOf(m[2].toLowerCase());
+  const today = now.getDay();
+  const ahead = (target - today + 7) % 7;
+  const back = (today - target + 7) % 7;
+  let offset;
+  if (/^(?:next|coming|this coming|upcoming)$/.test(qualifier)) offset = ahead || 7;
+  else if (/^(?:last|previous|past)$/.test(qualifier)) offset = -(back || 7);
+  else offset = prefer === 'future' ? ahead : -(back || 7);
+  const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
+  return {
+    iso: isoDate(day),
+    text: m[0],
+    weekday: m[2].toLowerCase(),
+    qualifier: qualifier || null,
+    direction: offset >= 0 ? 'future' : 'past',
+  };
+}
+
+/** Today's local calendar day as "YYYY-MM-DD" (never the UTC day). */
+export function localToday(now = new Date()) {
+  return isoDate(now);
 }
 
 /**

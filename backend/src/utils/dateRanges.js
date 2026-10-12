@@ -102,11 +102,19 @@ export function rangeFromText(text, now = new Date()) {
   // the phrase was read as nothing, the question fell back to TODAY, and
   // "attendance for Class 6-A this week" was answered with one day presented
   // as though it were the week.
-  const namedWeek = /\b(this|current|next|coming)\s+week\b/i.exec(str);
+  //
+  // "Last week" is a calendar week too -- the Monday-to-Sunday before this one
+  // -- exactly as "last month" is the previous calendar month. It used to fall
+  // through to the rolling spans below and mean "the seven days ending today",
+  // so "attendance last week", asked on a Wednesday, mixed three days of this
+  // week into last week's figure. "Past week" and "last 7 days" stay rolling:
+  // they say a length, not a week.
+  const namedWeek = /\b(this|current|next|coming|last|previous)\s+week\b/i.exec(str);
   if (namedWeek) {
     const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
     const monday = new Date(today.getTime() - ((today.getUTCDay() + 6) % 7) * 86_400_000);
-    const start = /next|coming/i.test(namedWeek[1]) ? new Date(monday.getTime() + 7 * 86_400_000) : monday;
+    const shift = /next|coming/i.test(namedWeek[1]) ? 7 : /last|previous/i.test(namedWeek[1]) ? -7 : 0;
+    const start = new Date(monday.getTime() + shift * 86_400_000);
     return { from: iso(start), to: iso(new Date(start.getTime() + 6 * 86_400_000)) };
   }
 

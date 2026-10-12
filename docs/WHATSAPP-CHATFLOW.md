@@ -54,3 +54,34 @@ refuses to boot without it once Chatflow is live.
 5. Each WhatsApp user's number must be the `phoneE164` on their EduOS account.
 
 Tests: `npx vitest run tests/whatsapp.chatflow.test.js`.
+
+## Troubleshooting: a second, unrelated reply
+
+**Symptom.** A user gets two answers to one message — EduOS's, and another that
+has nothing to do with the school. The reported case: a teacher confirmed an
+announcement with "Yes" and received *"I cannot help with class announcements or
+school tasks, as I am only here to help you explore the Samsung Galaxy S25 and
+iPhone 16"*, followed by EduOS's own confirmation.
+
+**Cause.** That text is not EduOS's. No prompt, fallback or message in this
+repository mentions phones, and EduOS sends exactly one reply per inbound
+message (asserted in `tests/askAi.writeWorkflows.channels.test.js`). It is the
+**Chatflow-Pro workspace's own AI agent** (or a keyword trigger / workflow /
+welcome message), which answers the same inbound message in parallel — here a
+workspace still carrying a demo "phone shop" agent. Step 4 above is what
+prevents it, and it is not optional.
+
+**Fix (in Chatflow-Pro, not in EduOS).** For the workspace the API key belongs
+to:
+
+1. Turn **off** the AI agent / auto-reply bot for the connected WhatsApp number.
+2. Disable keyword triggers and workflows that fire on inbound messages.
+3. Disable welcome and away (out-of-office) messages.
+4. Run `npm run chatflow:check`. It reports any automation flags the workspace
+   profile exposes and exits non-zero if one is on. The Public API does not let
+   EduOS switch these off, and may not expose all of them — so also send a test
+   "Hi" and a "Yes" from a registered number and confirm a single reply to each.
+
+Until that is done, every message — not only confirmations — can draw a second
+reply, and a confirmation can look contradictory even though EduOS performed
+exactly what was confirmed.

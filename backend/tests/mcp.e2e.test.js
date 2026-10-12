@@ -383,17 +383,22 @@ describe('WhatsApp: signed webhook → phone identity → shared agent → MCP �
     expect(res.reply).not.toMatch(/Sharma/);
   });
 
-  it('MEMORY — "mark him absent" is resolved from the conversation, and authorized as the sender', async () => {
+  it('MEMORY — "mark him late" is resolved from the conversation, and authorized as the sender', async () => {
     const first = await whatsapp(school.people.ADMIN, "Show Rahul Sharma's attendance");
     // Rendered by agent/present.js and converted for WhatsApp: "*Attendance:* 0%".
     expect(first.reply).toMatch(/Attendance:\*? 0%/);
 
-    script.plans.set('mark him absent', [{ name: 'mark_attendance', args: { students: [{ studentName: 'Rahul Sharma', status: 'ABSENT' }] } }]);
-    const proposal = await whatsapp(school.people.ADMIN, 'mark him absent');
-    expect(proposal.reply).toMatch(/Rahul Sharma → ABSENT/);
+    // Rahul is ALREADY absent today in this fixture, and marking a student as
+    // what the register already says is now reported as "nothing to change"
+    // rather than proposed and written again. So the mark here is one that
+    // changes the register; everything asserted about memory, the transcript
+    // and the sender is as before.
+    script.plans.set('mark him late', [{ name: 'mark_attendance', args: { students: [{ studentName: 'Rahul Sharma', status: 'LATE' }] } }]);
+    const proposal = await whatsapp(school.people.ADMIN, 'mark him late');
+    expect(proposal.reply).toMatch(/Rahul Sharma → LATE/);
 
     // The model was given the earlier turn to resolve "him" — as transcript.
-    const routed = script.routing.find((r) => r.message === 'mark him absent');
+    const routed = script.routing.find((r) => r.message === 'mark him late');
     expect(routed.system).toMatch(/Earlier turns of this conversation/);
     expect(routed.system).toMatch(/Rahul Sharma/);
 

@@ -121,20 +121,29 @@ is only the permission map their session carries, from which the same registry
 yields a different capability set. The exclusion works the same way: it is a
 permission SUPER_ADMIN does not hold, not a rule about its name.
 
-The registry holds **173 capabilities, 89 of them writes**: GET 84, CREATE 33,
-UPDATE 15, DELETE 10, ACTION 31.
+The registry holds **174 capabilities, 89 of them writes**: GET 85, CREATE 33,
+UPDATE 15, DELETE 10, ACTION 31. (The figures below are the generated ones —
+`docs/mcp-tools.json`, `roleMatrix` — which is the source to trust if this table
+and that file ever disagree.)
 
 | Role | Granted permissions | Capabilities visible | Writes |
 |---|---|---|---|
 | `SUPER_ADMIN` | 80 | **0 — excluded** | 0 |
-| `ADMIN` | 72 | 172 | 88 |
-| `PRINCIPAL` | 32 | 77 | 24 |
-| `STUDENT` | 24 | 62 | 13 |
-| `TEACHER` | 28 | 58 | 17 |
-| `PARENT` | 18 | 43 | 3 |
+| `ADMIN` | 72 | 173 | 88 |
+| `PRINCIPAL` | 32 | 78 | 24 |
+| `STUDENT` | 24 | 64 | 13 |
+| `TEACHER` | 28 | 57 | 15 |
+| `PARENT` | 18 | 44 | 3 |
 | `FINANCE` | 12 | 31 | 10 |
 | `WARDEN` | 11 | 29 | 8 |
 | `LIBRARIAN` | 9 | 28 | 7 |
+
+The 174th is `get_class_attendance_summary`, added with the Ask AI defect fixes
+(regression suites: `backend/tests/askAi.*.test.js`): attendance compared
+across classes over a stated period. It declares `attendance.read`, the key the
+class register already uses, and the service behind it draws the same line the
+register does — a school-wide reader sees every class, a teacher only the
+classes they teach, and a student or parent is refused.
 
 The route-by-route audit of 2026-09-24 found six single-row web operations with
 no capability, each hidden by a neighbour that already declared its permission:

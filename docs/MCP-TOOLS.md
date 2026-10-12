@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**173 tools** — 84 GET, 33 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION.
+**174 tools** — 85 GET, 33 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION.
 
-Risk mix: 90 LOW, 30 HIGH, 52 MEDIUM, 1 CRITICAL.
+Risk mix: 91 LOW, 30 HIGH, 52 MEDIUM, 1 CRITICAL.
 
-Status: 171 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 172 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -28,15 +28,15 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
 | `SUPER_ADMIN` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `ADMIN` | 172 | 84 | 33 | 15 | 30 | 10 | 30 | 82 |
-| `PRINCIPAL` | 77 | 53 | 8 | 6 | 9 | 1 | 7 | 24 |
-| `TEACHER` | 56 | 41 | 3 | 1 | 10 | 1 | 6 | 15 |
-| `PARENT` | 43 | 40 | 1 | 1 | 0 | 1 | 2 | 2 |
-| `STUDENT` | 63 | 50 | 7 | 0 | 1 | 5 | 0 | 8 |
+| `ADMIN` | 173 | 85 | 33 | 15 | 30 | 10 | 30 | 82 |
+| `PRINCIPAL` | 78 | 54 | 8 | 6 | 9 | 1 | 7 | 24 |
+| `TEACHER` | 57 | 42 | 3 | 1 | 10 | 1 | 6 | 15 |
+| `PARENT` | 44 | 41 | 1 | 1 | 0 | 1 | 2 | 2 |
+| `STUDENT` | 64 | 51 | 7 | 0 | 1 | 5 | 0 | 8 |
 | `FINANCE` | 31 | 21 | 5 | 1 | 4 | 0 | 8 | 10 |
 | `LIBRARIAN` | 28 | 21 | 1 | 1 | 4 | 1 | 1 | 7 |
 | `WARDEN` | 29 | 21 | 2 | 3 | 3 | 0 | 0 | 7 |
-| `COUNSELLOR (custom, example)` | 18 | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `COUNSELLOR (custom, example)` | 19 | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 Custom roles are database rows, created per school, so none can be listed here in advance. The COUNSELLOR row is the custom role the test suites create; any custom role is computed exactly this way from its own grants.
 
@@ -121,6 +121,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_book` | Library | GET | `library.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_book_requests` | Library | GET | `library.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_calendar_events` | Communication | GET | `calendar.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_class_attendance_summary` | Attendance | GET | `attendance.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_class_marks` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_dashboard` | Analytics | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_editable_fields` | Student requests | GET | `profile.edit.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -383,7 +384,7 @@ Create a class section within a grade, optionally assigning a class teacher. Nee
 
 **Input**
 
-`gradeId`: string **(required)**<br>`name`: string **(required)** — e.g. "A"<br>`classTeacherId`: string — Teacher profile id
+`gradeId`: string<br>`grade`: string — The grade as a person names it, e.g. "Class 7". Alternative to gradeId.<br>`name`: string **(required)** — e.g. "A"<br>`classTeacherId`: string — Teacher profile id<br>`classTeacher`: string — The class teacher as a person names them. Alternative to classTeacherId.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -415,7 +416,7 @@ Create an academic year, e.g. "2027-28", with its start and end dates. Needs con
 
 ### `create_term`
 
-Create a term inside an academic year, e.g. "Term 1", with its start and end dates. Use list_academic_years for the year id. Needs confirmation.
+Create a term inside an academic year, e.g. "Term 1", with its start and end dates. Name the year ("2026-27"), or leave it out for the current one. Needs confirmation.
 
 | | |
 |---|---|
@@ -431,7 +432,7 @@ Create a term inside an academic year, e.g. "Term 1", with its start and end dat
 
 **Input**
 
-`academicYearId`: string **(required)**<br>`name`: string **(required)** — e.g. "Term 1"<br>`startsOn`: string **(required)**<br>`endsOn`: string **(required)**
+`academicYearId`: string<br>`academicYear`: string — The year as a person names it, e.g. "2026-27". Omit for the current year.<br>`name`: string **(required)** — e.g. "Term 1"<br>`startsOn`: string **(required)**<br>`endsOn`: string **(required)**
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -503,7 +504,7 @@ Rename a section or change its class teacher. Needs confirmation.
 
 **Input**
 
-`sectionId`: string **(required)**<br>`name`: string<br>`classTeacherId`: string
+`sectionId`: string<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`name`: string — A NEW name for the section<br>`classTeacherId`: string<br>`classTeacher`: string — The new class teacher as a person names them. Alternative to classTeacherId.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -527,7 +528,7 @@ Create a subject offering — the link between a subject, a section, a term and 
 
 **Input**
 
-`subjectId`: string **(required)**<br>`sectionId`: string **(required)**<br>`termId`: string **(required)**<br>`teacherId`: string — Teacher profile id
+`subjectId`: string<br>`subject`: string — The subject as a person names it, e.g. "Science". Alternative to subjectId.<br>`sectionId`: string<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`termId`: string<br>`term`: string — The term as a person names it, e.g. "Term 1". Omit for the running term.<br>`teacherId`: string — Teacher profile id<br>`teacherName`: string — The teacher as a person names them. Alternative to teacherId.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -551,7 +552,7 @@ Change a subject offering — most often to reassign the teacher. Needs confirma
 
 **Input**
 
-`offeringId`: string **(required)**<br>`teacherId`: string<br>`isElective`: boolean<br>`capacity`: integer
+`offeringId`: string<br>`subject`: string — The subject of the offering as a person names it, e.g. "Art". Identifies the offering with className.<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`termId`: string<br>`term`: string — The term, when the class teaches the subject in more than one<br>`teacherId`: string<br>`teacherName`: string — The new teacher as a person names them. Alternative to teacherId.<br>`isElective`: boolean<br>`capacity`: integer
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -601,7 +602,7 @@ The admissions pipeline: how many enquiries sit at each stage (new, contacted, t
 
 **Input**
 
-`stage`: string — one of: NEW, CONTACTED, TOUR_SCHEDULED, APPLICATION, ENROLLED, LOST<br>`limit`: integer
+`stage`: string — one of: NEW, CONTACTED, TOUR_SCHEDULED, APPLICATION, ENROLLED, LOST<br>`limit`: integer — Leads per stage, only when the user asks for a number
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -673,7 +674,7 @@ Move an admission enquiry to a new stage, or change its notes, assignee or next 
 
 **Input**
 
-`leadId`: string **(required)**<br>`stage`: string — one of: NEW, CONTACTED, TOUR_SCHEDULED, APPLICATION, ENROLLED, LOST — ENROLLED approves the admission; LOST rejects it<br>`notes`: string<br>`assigneeProfileId`: string<br>`nextActionAt`: string
+`leadId`: string<br>`childName`: string — The applicant child as a person names them, e.g. "Kabir Kapoor". Alternative to leadId.<br>`stage`: string — one of: NEW, CONTACTED, TOUR_SCHEDULED, APPLICATION, ENROLLED, LOST — ENROLLED approves the admission; LOST rejects it<br>`notes`: string<br>`assigneeProfileId`: string<br>`nextActionAt`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -699,7 +700,7 @@ Students flagged at risk from the last 30 days of attendance, published marks an
 
 **Input**
 
-`attendanceBelowPct`: integer — Only students whose 30-day attendance is below this percentage, e.g. 75<br>`level`: string — one of: LOW, MEDIUM, HIGH — Risk level<br>`type`: string — one of: ATTENDANCE, ACADEMIC_DECLINE, FEE_DEFAULT — Risk type<br>`sectionId`: string<br>`gradeName`: string<br>`search`: string<br>`limit`: integer
+`attendanceBelowPct`: integer — Only students whose 30-day attendance is below this percentage, e.g. 75<br>`level`: string — one of: LOW, MEDIUM, HIGH — Risk level<br>`type`: string — one of: ATTENDANCE, ACADEMIC_DECLINE, FEE_DEFAULT — Risk type<br>`sectionId`: string<br>`gradeName`: string<br>`search`: string<br>`limit`: integer — Only when the user asks for a number ("top 10", "first 5"); omit it to return everything
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -773,7 +774,7 @@ Homework and assignments. For a student or parent with no filters, the work stil
 
 **Input**
 
-`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — Narrow to one subject, e.g. "Mathematics"<br>`status`: string — one of: PENDING, SUBMITTED, ALL — For a student or parent: their work still to submit (PENDING), already handed in (SUBMITTED), or both
+`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — Narrow to one subject, e.g. "Mathematics"<br>`status`: string — one of: PENDING, SUBMITTED, ALL — For a student or parent: their work still to submit (PENDING), already handed in (SUBMITTED), or both<br>`dueFrom`: string — Only work due on or after this day<br>`dueTo`: string — Only work due on or before this day<br>`first`: boolean — true for "which one is due first / next": only the assignment with the earliest due date that has not passed
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -1093,6 +1094,30 @@ Attendance statistics. For staff, the school's register for a date with the pres
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
 
+### `get_class_attendance_summary`
+
+Attendance compared ACROSS classes over a period, plus the figure for all of them together: each class with its attendance percentage, ranked. Use for "which class has the lowest/highest attendance", "class-wise attendance", "rank classes by attendance" and "overall attendance" of the school. The period is one date, one month, or a from/to range; with none it is the current month to date, and the answer always states the period. A school-wide reader sees every class; a teacher sees only the classes they teach. For ONE class use get_attendance_roster, for one student get_student_attendance. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `attendance.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `attendance.service.getClassWiseSummary()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_class_attendance_summary` |
+
+**Input**
+
+`date`: string — One day<br>`month`: string — YYYY-MM — one calendar month<br>`from`: string — Start of a range<br>`to`: string — End of a range<br>`order`: string — one of: LOWEST, HIGHEST — Rank from the lowest or the highest attendance; lowest first by default<br>`limit`: integer — Only when the user asks for a number of classes ("bottom 3")
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
 ### `who_is_absent_today`
 
 Today's school-wide absence snapshot for leadership. Equivalent to get_absent_students. Read-only.
@@ -1209,7 +1234,7 @@ The audit trail: who did what and when, including every action the assistant per
 
 **Input**
 
-`action`: string — Exact action name, e.g. "agent.mark_attendance"<br>`roleKey`: string — Only actions by holders of this role, e.g. FINANCE<br>`actorProfileId`: string — Only actions by this person<br>`from`: string<br>`to`: string<br>`month`: string — YYYY-MM<br>`year`: string — YYYY<br>`limit`: integer<br>`cursor`: string — From a previous call, to fetch the next page
+`action`: string — Exact action name, e.g. "agent.mark_attendance"<br>`roleKey`: string — Only actions by holders of this role, e.g. FINANCE<br>`actorProfileId`: string — Only actions by this person<br>`from`: string<br>`to`: string<br>`month`: string — YYYY-MM<br>`year`: string — YYYY<br>`limit`: integer — Only when the user asks for a number ("top 10", "first 5"); omit it to return everything<br>`cursor`: string — From a previous call, to fetch the next page
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -1355,7 +1380,7 @@ Send an in-app notification to named people, by their profile ids. This appears 
 
 **Input**
 
-`recipientProfileIds`: array **(required)** — Profile ids, e.g. from list_users<br>`title`: string **(required)**<br>`body`: string **(required)**<br>`link`: string — In-app path to open, e.g. /admin/payments
+`recipientProfileIds`: array — Profile ids, e.g. from list_users<br>`recipient`: string — Who to notify, by name -- one person, or several separated by "and" or commas. Alternative to recipientProfileIds.<br>`title`: string — Defaults to the start of the message<br>`body`: string **(required)**<br>`link`: string — In-app path to open, e.g. /admin/payments
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1431,7 +1456,7 @@ Documents published to the caller — report cards, transfer certificates, lette
 
 **Input**
 
-`studentId`: string<br>`type`: string<br>`limit`: integer
+`studentId`: string<br>`type`: string<br>`limit`: integer — Only when the user asks for a number ("top 10", "first 5"); omit it to return everything
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -1723,7 +1748,7 @@ Create an exam within a term. Add exam subjects afterwards with create_exam_subj
 
 **Input**
 
-`name`: string **(required)**<br>`termId`: string **(required)**<br>`startsOn`: string **(required)**<br>`endsOn`: string **(required)**
+`name`: string **(required)**<br>`termId`: string<br>`term`: string — The term as a person names it, e.g. "Term 1". Omit for the running term.<br>`startsOn`: string **(required)**<br>`endsOn`: string **(required)**
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1747,7 +1772,7 @@ Add a subject to an exam, with its maximum marks and exam date. Needs confirmati
 
 **Input**
 
-`examId`: string **(required)**<br>`subjectOfferingId`: string **(required)**<br>`maxMarks`: integer **(required)**<br>`examDate`: string
+`examId`: string<br>`exam`: string — The exam as a person names it, e.g. "Half Yearly". Alternative to examId.<br>`subjectOfferingId`: string<br>`subject`: string — The subject of the paper, e.g. "Mathematics". With className, alternative to subjectOfferingId.<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`maxMarks`: integer **(required)**<br>`examDate`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -1821,7 +1846,7 @@ Unpaid and partly paid fee invoices with the amount still owed on each, and the 
 
 **Input**
 
-`search`: string — One student by name or admission number, or an invoice number<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string<br>`academicYearId`: string<br>`limit`: integer — Invoices to return, default 25
+`search`: string — One student by name or admission number, or an invoice number<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string<br>`academicYearId`: string<br>`limit`: integer — Invoices to return, only when the user asks for a number; omit for all
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -1853,7 +1878,7 @@ Fee collection statistics: total billed, total collected, collection percentage,
 
 ### `get_payment_history`
 
-Fee payments that have been recorded — receipt number, invoice, student, amount, mode, date and verification status. Staff see the school; a family sees only their own settled payments. Read-only.
+Fee payments that have been recorded — receipt number, invoice, student, amount, mode, date and verification status. Also the answer to fee collection over a period: how much was collected this month, today or between two dates. Staff see the school; a family sees only their own settled payments. Read-only.
 
 | | |
 |---|---|
@@ -1869,7 +1894,7 @@ Fee payments that have been recorded — receipt number, invoice, student, amoun
 
 **Input**
 
-`search`: string — Student name, admission number or receipt/invoice number<br>`invoiceId`: string<br>`from`: string<br>`to`: string<br>`limit`: integer
+`search`: string — Student name, admission number or receipt/invoice number<br>`invoiceId`: string<br>`from`: string<br>`to`: string<br>`limit`: integer — Only when the user asks for a number ("top 10", "first 5"); omit it to return everything
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -2037,7 +2062,7 @@ Raise one fee invoice against one enrolment, with its line items. The invoice nu
 
 **Input**
 
-`enrollmentId`: string **(required)**<br>`invoiceNo`: string **(required)**<br>`dueOn`: string **(required)**<br>`lines`: array **(required)**
+`enrollmentId`: string<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`invoiceNo`: string **(required)** — The new invoice number, unique in the school<br>`dueOn`: string **(required)**<br>`lines`: array **(required)**
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2061,7 +2086,7 @@ Generate invoices in bulk for every active enrolment in an academic year (option
 
 **Input**
 
-`academicYearId`: string **(required)**<br>`gradeId`: string — Restrict to one grade; omit to bill the whole year<br>`dueOn`: string<br>`dryRun`: boolean — Count and total without writing anything
+`academicYearId`: string<br>`academicYear`: string — The year as a person names it, e.g. "2026-27". Omit for the current year; the confirmation names it.<br>`gradeId`: string — Restrict to one grade; omit to bill the whole year<br>`grade`: string — Restrict to one grade by name, e.g. "Class 6"<br>`dueOn`: string<br>`dryRun`: boolean — Count and total without writing anything
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2085,7 +2110,7 @@ Draft an installment or part-payment plan for one enrolment. This creates a DRAF
 
 **Input**
 
-`enrollmentId`: string **(required)**<br>`mode`: string **(required)** — one of: ONE_TIME, PARTIAL, INSTALLMENT<br>`totalPaise`: integer **(required)** — Whole paise<br>`installments`: array **(required)** — Installments in due-date order. Their amounts must add up exactly to totalPaise. ONE_TIME has exactly one; PARTIAL and INSTALLMENT at least two.<br>`name`: string — Defaults to "Fee plan"<br>`feeHeadId`: string — The fee head this plan settles, if one<br>`notes`: string
+`enrollmentId`: string<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`mode`: string **(required)** — one of: ONE_TIME, PARTIAL, INSTALLMENT<br>`totalPaise`: integer **(required)** — Whole paise<br>`installments`: array **(required)** — Installments in due-date order. Their amounts must add up exactly to totalPaise. ONE_TIME has exactly one; PARTIAL and INSTALLMENT at least two.<br>`name`: string — Defaults to "Fee plan"<br>`feeHeadId`: string — The fee head this plan settles, if one<br>`notes`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2109,7 +2134,7 @@ Amend a fee plan that is still a draft or came back rejected. A plan under revie
 
 **Input**
 
-`planId`: string **(required)**<br>`mode`: string — one of: ONE_TIME, PARTIAL, INSTALLMENT<br>`totalPaise`: integer<br>`installments`: array — Installments in due-date order. Their amounts must add up exactly to totalPaise. ONE_TIME has exactly one; PARTIAL and INSTALLMENT at least two.<br>`name`: string<br>`feeHeadId`: string<br>`notes`: string
+`planId`: string<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`mode`: string — one of: ONE_TIME, PARTIAL, INSTALLMENT<br>`totalPaise`: integer<br>`installments`: array — Installments in due-date order. Their amounts must add up exactly to totalPaise. ONE_TIME has exactly one; PARTIAL and INSTALLMENT at least two.<br>`name`: string<br>`feeHeadId`: string<br>`notes`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2133,7 +2158,7 @@ Correct a payment record: its mode, paid-on date, receipt number, notes or instr
 
 **Input**
 
-`paymentId`: string **(required)**<br>`amountPaise`: integer — Only on a REJECTED payment<br>`mode`: string — one of: CASH, CHEQUE, DD, BANK<br>`paidOn`: string<br>`receiptNo`: string<br>`notes`: string<br>`instrument`: object — Required for CHEQUE, DD and BANK: number, bankName, instrumentDate and a proofUrl (image or PDF). Not used for CASH.<br>`reason`: string — Why the record is being corrected — recorded with the change
+`paymentId`: string<br>`invoiceNo`: string — The invoice the payment is on, e.g. "INV-1042". Alternative to paymentId.<br>`amountPaise`: integer — Only on a REJECTED payment<br>`mode`: string — one of: CASH, CHEQUE, DD, BANK<br>`paidOn`: string<br>`receiptNo`: string — The NEW receipt number<br>`notes`: string<br>`instrument`: object — Required for CHEQUE, DD and BANK: number, bankName, instrumentDate and a proofUrl (image or PDF). Not used for CASH.<br>`reason`: string — Why the record is being corrected — recorded with the change
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2181,7 +2206,7 @@ Approve a payment that is pending admin approval, making it final and visible to
 
 **Input**
 
-`paymentId`: string **(required)**
+`paymentId`: string<br>`invoiceNo`: string — The invoice the payment is on, e.g. "INV-1042". Alternative to paymentId.<br>`receiptNo`: string — The receipt number of the payment, when there is more than one on the invoice
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2205,7 +2230,7 @@ Reject a payment awaiting approval. A reason is required and is recorded. Needs 
 
 **Input**
 
-`paymentId`: string **(required)**<br>`reason`: string **(required)**
+`paymentId`: string<br>`invoiceNo`: string — The invoice the payment is on, e.g. "INV-1042". Alternative to paymentId.<br>`receiptNo`: string — The receipt number of the payment, when there is more than one on the invoice<br>`reason`: string **(required)**
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2253,7 +2278,7 @@ Ask for a correction to a published (finalised) payment — one field, its new v
 
 **Input**
 
-`paymentId`: string **(required)**<br>`field`: string **(required)** — one of: amountPaise, mode, paidOn, receiptNo, notes, instrument.number, instrument.referenceNo, instrument.bankName, instrument.instrumentDate<br>`requestedValue`: string **(required)** — The new value; paise for amountPaise, YYYY-MM-DD for dates<br>`reason`: string **(required)**
+`paymentId`: string<br>`invoiceNo`: string — The invoice the payment is on, e.g. "INV-1042". Alternative to paymentId.<br>`field`: string **(required)** — one of: amountPaise, mode, paidOn, receiptNo, notes, instrument.number, instrument.referenceNo, instrument.bankName, instrument.instrumentDate<br>`requestedValue`: string **(required)** — The new value; paise for amountPaise, YYYY-MM-DD for dates<br>`reason`: string **(required)**
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2277,7 +2302,7 @@ Approve or reject a request to amend a finalised payment. Approving applies the 
 
 **Input**
 
-`requestId`: string **(required)**<br>`approve`: boolean **(required)**<br>`reason`: string — Required when rejecting
+`requestId`: string<br>`invoiceNo`: string — The invoice the payment is on, e.g. "INV-1042". Alternative to paymentId.<br>`approve`: boolean **(required)**<br>`reason`: string — Required when rejecting
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2301,7 +2326,7 @@ Move a fee plan along its approval workflow: submit (draft → finance review), 
 
 **Input**
 
-`planId`: string **(required)**<br>`step`: string **(required)** — one of: submit, review, requestApproval, approve, reject<br>`reason`: string — Required for reject<br>`note`: string
+`planId`: string<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`step`: string **(required)** — one of: submit, review, requestApproval, approve, reject<br>`reason`: string — Required for reject<br>`note`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2325,7 +2350,7 @@ Publish an approved fee plan, which raises one invoice per installment — the p
 
 **Input**
 
-`planId`: string **(required)**
+`planId`: string<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2373,7 +2398,7 @@ Set what a fee head costs for an academic year, and optionally for one grade onl
 
 **Input**
 
-`feeHeadId`: string **(required)** — From get_fee_structures<br>`academicYearId`: string **(required)** — The year this charge applies to<br>`gradeId`: string — One grade only; omit for every grade<br>`name`: string **(required)** — e.g. "Tuition — Term 1"<br>`amountPaise`: integer **(required)** — The amount in paise, so ₹4,000 is 400000<br>`dueOn`: string **(required)** — When it falls due
+`feeHeadId`: string — From get_fee_structures<br>`feeHead`: string — The fee head by name, e.g. "Tuition". Omit when the structure name starts with an existing fee head. Alternative to feeHeadId.<br>`academicYearId`: string — The year this charge applies to<br>`academicYear`: string — The year as a person names it, e.g. "2026-27". Omit for the current year; the confirmation names it.<br>`gradeId`: string — One grade only; omit for every grade<br>`grade`: string — One grade by name, e.g. "Class 6". Omit for every grade.<br>`name`: string **(required)** — e.g. "Tuition — Term 1"<br>`amountPaise`: integer **(required)** — The amount in paise, so ₹4,000 is 400000<br>`dueOn`: string **(required)** — When it falls due
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2591,7 +2616,7 @@ Move a hostel enquiry to OPEN, IN_PROGRESS or RESOLVED. Needs confirmation.
 
 **Input**
 
-`inquiryId`: string **(required)**<br>`status`: string **(required)** — one of: OPEN, IN_PROGRESS, RESOLVED
+`inquiryId`: string<br>`subject`: string — The enquiry as its subject is written, e.g. "Fan not working". Alternative to inquiryId.<br>`status`: string **(required)** — one of: OPEN, IN_PROGRESS, RESOLVED
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2787,7 +2812,7 @@ Search the library catalog by title, author, ISBN, category or publisher, with h
 
 **Input**
 
-`search`: string — Title, author, ISBN, category or publisher<br>`category`: string<br>`author`: string<br>`resourceKind`: string — one of: BOOK, NOTE, QUESTION_PAPER<br>`availableOnly`: boolean — Only items with a copy on the shelf<br>`limit`: integer
+`search`: string — Title, author, ISBN, category or publisher<br>`category`: string<br>`author`: string<br>`resourceKind`: string — one of: BOOK, NOTE, QUESTION_PAPER<br>`availableOnly`: boolean — Only items with a copy on the shelf<br>`limit`: integer — Only when the user asks for a number ("top 10", "first 5"); omit it to return everything
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -2835,7 +2860,7 @@ Lending records — what is on loan, to whom, when it is due, and what has been 
 
 **Input**
 
-`status`: string — one of: ACTIVE, RETURNED, OVERDUE — ACTIVE means currently on loan<br>`bookId`: string<br>`studentId`: string<br>`limit`: integer
+`status`: string — one of: ACTIVE, RETURNED, OVERDUE — ACTIVE means currently on loan and not yet due; OVERDUE is past its return date<br>`bookId`: string<br>`title`: string — The item as a person names it, e.g. "Clean Code". An ambiguous title is refused, never guessed.<br>`studentId`: string<br>`outstanding`: boolean — true for everything not yet returned (on loan or overdue) — "who has this book"<br>`limit`: integer — Only when the user asks for a number ("top 10", "first 5"); omit it to return everything
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -3027,7 +3052,7 @@ Book requests waiting for the librarian to decide, with who asked and whether a 
 
 **Input**
 
-`status`: string — one of: PENDING, APPROVED, REJECTED, CANCELLED, ALL<br>`limit`: integer
+`status`: string — one of: PENDING, APPROVED, REJECTED, CANCELLED, ALL<br>`limit`: integer — Only when the user asks for a number ("top 10", "first 5"); omit it to return everything
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -3175,7 +3200,7 @@ The caller's own in-app notifications, and how many are unread. Read-only.
 
 **Input**
 
-`unreadOnly`: boolean<br>`limit`: integer
+`unreadOnly`: boolean<br>`limit`: integer — Only when the user asks for a number ("top 10", "first 5"); omit it to return everything
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -3665,7 +3690,7 @@ The student directory: find students by name, admission number or class, or list
 
 **Input**
 
-`query`: string — Name, admission number or class, e.g. "Rahul", "OAK-12", "Class 6 A". Omit to list everyone in scope.<br>`sectionId`: string — Restrict to one section<br>`limit`: integer — Default 20
+`query`: string — Name, admission number or class, e.g. "Rahul", "OAK-12", "Class 6 A". Omit to list everyone in scope.<br>`sectionId`: string — Restrict to one section<br>`limit`: integer — Only when the user asks for a number ("top 10", "first 5"); omit it to return everything
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -3761,7 +3786,7 @@ Link an existing parent profile to a student as their father, mother or guardian
 
 **Input**
 
-`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`guardianProfileId`: string **(required)** — The parent's profile id, e.g. from list_users<br>`relation`: string **(required)** — one of: FATHER, MOTHER, GUARDIAN<br>`isPrimary`: boolean — Whether this is the primary contact<br>`pickupAuthorized`: boolean — Whether they may collect the child; defaults to yes
+`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`guardianProfileId`: string — The parent's profile id, e.g. from list_users<br>`guardianName`: string — The parent's name as a person writes it, e.g. "Mr Sharma". An existing parent profile; alternative to guardianProfileId.<br>`relation`: string **(required)** — one of: FATHER, MOTHER, GUARDIAN<br>`isPrimary`: boolean — Whether this is the primary contact<br>`pickupAuthorized`: boolean — Whether they may collect the child; defaults to yes
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3833,7 +3858,7 @@ Enrol an existing student into a section for an academic year, optionally with a
 
 **Input**
 
-`studentId`: string **(required)** — The student to enrol<br>`sectionId`: string **(required)** — The class section<br>`academicYearId`: string **(required)**<br>`rollNo`: integer
+`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section<br>`academicYearId`: string<br>`academicYear`: string — The year as a person names it, e.g. "2026-27". Omit for the current year.<br>`rollNo`: integer
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3881,7 +3906,7 @@ Change an enrolment's status to ACTIVE, TRANSFERRED, WITHDRAWN or GRADUATED. Thi
 
 **Input**
 
-`enrollmentId`: string **(required)** — From search_students or list_enrollments<br>`status`: string **(required)** — one of: ACTIVE, TRANSFERRED, WITHDRAWN, GRADUATED
+`enrollmentId`: string — From search_students or list_enrollments<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`status`: string **(required)** — one of: ACTIVE, TRANSFERRED, WITHDRAWN, GRADUATED
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -4077,7 +4102,7 @@ The timetable for a day or the whole week, with the subject and the teacher for 
 
 **Input**
 
-`day`: string — Weekday name, today/tomorrow/yesterday, or "week" for the whole week<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section, when the id is already known
+`day`: string — Weekday name, today/tomorrow/yesterday, or "week" for the whole week<br>`next`: boolean — true for "what is my next class/period?": only the next period after the current time, not the whole day<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`sectionId`: string — The class section, when the id is already known
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -4101,7 +4126,7 @@ Create or replace one timetable period for a section — its day, period number,
 
 **Input**
 
-`sectionId`: string **(required)**<br>`dayOfWeek`: integer **(required)** — 1 = Monday … 7 = Sunday<br>`periodNo`: integer **(required)**<br>`startTime`: string **(required)** — HH:MM<br>`endTime`: string **(required)** — HH:MM<br>`subjectOfferingId`: string — Omit for a break
+`sectionId`: string<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`dayOfWeek`: integer — 1 = Monday … 7 = Sunday<br>`day`: string — The weekday by name, e.g. "Monday". Alternative to dayOfWeek.<br>`periodNo`: integer **(required)**<br>`startTime`: string **(required)** — HH:MM<br>`endTime`: string **(required)** — HH:MM<br>`subjectOfferingId`: string — Omit for a break<br>`subject`: string — The subject taught in the period, e.g. "Mathematics". Omit for a break.
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -4271,7 +4296,7 @@ Add a stop to a bus route at a position in its order. Two stops cannot share a p
 
 **Input**
 
-`routeId`: string **(required)**<br>`name`: string **(required)**<br>`sequenceNo`: integer **(required)** — Position along the route, 1 = first<br>`etaMinutesFromStart`: integer
+`routeId`: string<br>`routeName`: string — The route as it is written, e.g. "Route 7". Alternative to routeId.<br>`name`: string **(required)**<br>`sequenceNo`: integer **(required)** — Position along the route, 1 = first<br>`etaMinutesFromStart`: integer
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -4295,7 +4320,7 @@ Put a student on a bus route and stop for an academic year (the current one if n
 
 **Input**
 
-`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`routeId`: string **(required)**<br>`stopId`: string **(required)** — A stop on that route, from list_transport_stops<br>`academicYearId`: string<br>`direction`: string — one of: BOTH, PICKUP, DROP — Default BOTH
+`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`routeId`: string<br>`routeName`: string — The route as it is written, e.g. "Route 7". Alternative to routeId.<br>`stopId`: string — A stop on that route, from list_transport_stops<br>`stopName`: string — The stop as it is written, e.g. "Market". Alternative to stopId.<br>`academicYearId`: string<br>`direction`: string — one of: BOTH, PICKUP, DROP — Default BOTH
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -4391,7 +4416,7 @@ Transport requests waiting for a decision, with who asked, which route and stop,
 
 **Input**
 
-`status`: string — one of: PENDING, APPROVED, REJECTED, CANCELLED, ALL<br>`limit`: integer
+`status`: string — one of: PENDING, APPROVED, REJECTED, CANCELLED, ALL<br>`limit`: integer — Only when the user asks for a number ("top 10", "first 5"); omit it to return everything
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -4465,7 +4490,7 @@ Staff and user accounts, searchable by name, phone or email and filterable by ro
 
 **Input**
 
-`search`: string<br>`roleKey`: string — e.g. TEACHER, FINANCE<br>`status`: string<br>`sectionId`: string<br>`limit`: integer
+`search`: string<br>`roleKey`: string — Deprecated — use ofRole. The server discards this name before the tool runs.<br>`ofRole`: string — one of: ADMIN, PRINCIPAL, TEACHER, FINANCE, LIBRARIAN, WARDEN, PARENT, STUDENT — Only users holding this role, e.g. TEACHER<br>`status`: string<br>`sectionId`: string<br>`limit`: integer — Only when the user asks for a number ("top 10", "first 5"); omit it to return everything
 
 **Output** — `{ success: true, data: { … } }`.
 

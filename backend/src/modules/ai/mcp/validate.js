@@ -1,4 +1,4 @@
-import { toIsoMonth, toIsoDate } from '../../../utils/naturalDates.js';
+import { toIsoMonth, toIsoDate, isCalendarIsoDate } from '../../../utils/naturalDates.js';
 
 /**
  * Argument validation for MCP tool calls.
@@ -76,6 +76,12 @@ function checkValue(key, rule, raw) {
       if (normalised && re.test(normalised)) v = normalised;
     }
     if (!re.test(v)) return [[`${key} is not in the expected format`], undefined];
+    // The right SHAPE is not a real day: "2026-02-31" passes the pattern and
+    // names nothing. Refused here, for every tool, so no service is ever
+    // handed one -- whoever supplied it (a rule, the model, an API caller).
+    if (wantsIsoDate(re) && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isCalendarIsoDate(v)) {
+      return [[`${key} is not in the expected format`], undefined];
+    }
   }
   if (typeof v === 'number') {
     if (rule.minimum !== undefined && v < rule.minimum) errors.push(`${key} must be at least ${rule.minimum}`);

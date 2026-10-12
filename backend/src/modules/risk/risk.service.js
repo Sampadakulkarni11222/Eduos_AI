@@ -8,6 +8,16 @@ import { Invoice } from '../../models/fee.model.js';
 const LEVEL = (p) => (p >= 0.7 ? 'HIGH' : p >= 0.4 ? 'MEDIUM' : 'LOW');
 
 /**
+ * The attendance percentage below which a student starts to be scored at risk.
+ *
+ * Named, and exported, because it is the one attendance threshold this product
+ * defines: the scoring rule below has always risen from this figure. Anything
+ * that speaks of "low attendance" without stating a percentage of its own uses
+ * this one rather than inventing a second.
+ */
+export const ATTENDANCE_SAFE_PCT = 75;
+
+/**
  * STAND-IN implementation. core-api's risk module scores dropout/academic
  * risk with a trained model; here we use plain rule-based thresholds over
  * the last 30 days of attendance, published marks, and overdue invoices.
@@ -26,7 +36,7 @@ function scoreEnrollment({ records, marks, overdueCount }) {
 
   if (records.length > 0) {
     const presentPct = records.filter((r) => r.status === 'PRESENT').length / records.length;
-    const probability = Math.max(0, 1 - presentPct / 0.75); // risk rises below 75% attendance
+    const probability = Math.max(0, 1 - presentPct / (ATTENDANCE_SAFE_PCT / 100)); // risk rises below the safe threshold
     predictions.push({
       type: 'ATTENDANCE',
       probability: Math.min(1, Math.round(probability * 100) / 100),
