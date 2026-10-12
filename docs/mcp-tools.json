@@ -1,16 +1,16 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 173,
+    "total": 174,
     "byOperation": {
-      "GET": 84,
+      "GET": 85,
       "CREATE": 33,
       "UPDATE": 15,
       "DELETE": 10,
       "ACTION": 31
     },
     "byRisk": {
-      "LOW": 90,
+      "LOW": 91,
       "HIGH": 30,
       "MEDIUM": 52,
       "CRITICAL": 1
@@ -38,8 +38,8 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 50,
-            "description": "Default 20"
+            "maximum": 100000,
+            "description": "Only when the user asks for a number (\"top 10\", \"first 5\"); omit it to return everything"
           }
         },
         "additionalProperties": false
@@ -207,6 +207,11 @@
             "pattern": "^[a-f0-9]{24}$",
             "description": "The parent's profile id, e.g. from list_users"
           },
+          "guardianName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The parent's name as a person writes it, e.g. \"Mr Sharma\". An existing parent profile; alternative to guardianProfileId."
+          },
           "relation": {
             "type": "string",
             "enum": [
@@ -225,7 +230,6 @@
           }
         },
         "required": [
-          "guardianProfileId",
           "relation"
         ],
         "additionalProperties": false
@@ -354,7 +358,22 @@
           "studentId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
-            "description": "The student to enrol"
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
           },
           "sectionId": {
             "type": "string",
@@ -365,17 +384,17 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "academicYear": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The year as a person names it, e.g. \"2026-27\". Omit for the current year."
+          },
           "rollNo": {
             "type": "integer",
             "minimum": 1,
             "maximum": 9999
           }
         },
-        "required": [
-          "studentId",
-          "sectionId",
-          "academicYearId"
-        ],
         "additionalProperties": false
       },
       "permission": "enrollments.manage",
@@ -467,6 +486,21 @@
             "pattern": "^[a-f0-9]{24}$",
             "description": "From search_students or list_enrollments"
           },
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -478,7 +512,6 @@
           }
         },
         "required": [
-          "enrollmentId",
           "status"
         ],
         "additionalProperties": false
@@ -917,6 +950,61 @@
       "wrapsAgentTool": null
     },
     {
+      "name": "get_class_attendance_summary",
+      "module": "Attendance",
+      "operation": "GET",
+      "description": "Attendance compared ACROSS classes over a period, plus the figure for all of them together: each class with its attendance percentage, ranked. Use for \"which class has the lowest/highest attendance\", \"class-wise attendance\", \"rank classes by attendance\" and \"overall attendance\" of the school. The period is one date, one month, or a from/to range; with none it is the current month to date, and the answer always states the period. A school-wide reader sees every class; a teacher sees only the classes they teach. For ONE class use get_attendance_roster, for one student get_student_attendance. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "One day"
+          },
+          "month": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}$",
+            "description": "YYYY-MM — one calendar month"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Start of a range"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "End of a range"
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "LOWEST",
+              "HIGHEST"
+            ],
+            "description": "Rank from the lowest or the highest attendance; lowest first by default"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200,
+            "description": "Only when the user asks for a number of classes (\"bottom 3\")"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "attendance.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "attendance.service.getClassWiseSummary()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
       "name": "who_is_absent_today",
       "module": "Attendance",
       "operation": "GET",
@@ -1207,8 +1295,8 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 100,
-            "description": "Invoices to return, default 25"
+            "maximum": 100000,
+            "description": "Invoices to return, only when the user asks for a number; omit for all"
           }
         },
         "additionalProperties": false
@@ -1252,7 +1340,7 @@
       "name": "get_payment_history",
       "module": "Fees",
       "operation": "GET",
-      "description": "Fee payments that have been recorded — receipt number, invoice, student, amount, mode, date and verification status. Staff see the school; a family sees only their own settled payments. Read-only.",
+      "description": "Fee payments that have been recorded — receipt number, invoice, student, amount, mode, date and verification status. Also the answer to fee collection over a period: how much was collected this month, today or between two dates. Staff see the school; a family sees only their own settled payments. Read-only.",
       "input": {
         "type": "object",
         "properties": {
@@ -1276,7 +1364,8 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 100
+            "maximum": 100000,
+            "description": "Only when the user asks for a number (\"top 10\", \"first 5\"); omit it to return everything"
           }
         },
         "additionalProperties": false
@@ -1485,9 +1574,25 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
+          },
           "invoiceNo": {
             "type": "string",
-            "maxLength": 40
+            "maxLength": 40,
+            "description": "The new invoice number, unique in the school"
           },
           "dueOn": {
             "type": "string",
@@ -1529,7 +1634,6 @@
           }
         },
         "required": [
-          "enrollmentId",
           "invoiceNo",
           "dueOn",
           "lines"
@@ -1558,10 +1662,20 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "academicYear": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The year as a person names it, e.g. \"2026-27\". Omit for the current year; the confirmation names it."
+          },
           "gradeId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "Restrict to one grade; omit to bill the whole year"
+          },
+          "grade": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "Restrict to one grade by name, e.g. \"Class 6\""
           },
           "dueOn": {
             "type": "string",
@@ -1572,9 +1686,6 @@
             "description": "Count and total without writing anything"
           }
         },
-        "required": [
-          "academicYearId"
-        ],
         "additionalProperties": false
       },
       "permission": "fees.manage",
@@ -1598,6 +1709,21 @@
           "enrollmentId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
+          },
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
           },
           "mode": {
             "type": "string",
@@ -1657,7 +1783,6 @@
           }
         },
         "required": [
-          "enrollmentId",
           "mode",
           "totalPaise",
           "installments"
@@ -1685,6 +1810,21 @@
           "planId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
+          },
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
           },
           "mode": {
             "type": "string",
@@ -1740,9 +1880,6 @@
             "maxLength": 1000
           }
         },
-        "required": [
-          "planId"
-        ],
         "additionalProperties": false
       },
       "permission": "fees.plan.request",
@@ -1767,6 +1904,11 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "invoiceNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The invoice the payment is on, e.g. \"INV-1042\". Alternative to paymentId."
+          },
           "amountPaise": {
             "type": "integer",
             "minimum": 1,
@@ -1787,7 +1929,8 @@
           },
           "receiptNo": {
             "type": "string",
-            "maxLength": 40
+            "maxLength": 40,
+            "description": "The NEW receipt number"
           },
           "notes": {
             "type": "string",
@@ -1833,9 +1976,6 @@
             "description": "Why the record is being corrected — recorded with the change"
           }
         },
-        "required": [
-          "paymentId"
-        ],
         "additionalProperties": false
       },
       "permission": "fees.payments.approve",
@@ -1954,11 +2094,18 @@
           "paymentId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
+          },
+          "invoiceNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The invoice the payment is on, e.g. \"INV-1042\". Alternative to paymentId."
+          },
+          "receiptNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The receipt number of the payment, when there is more than one on the invoice"
           }
         },
-        "required": [
-          "paymentId"
-        ],
         "additionalProperties": false
       },
       "permission": "fees.payments.approve",
@@ -1983,6 +2130,16 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "invoiceNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The invoice the payment is on, e.g. \"INV-1042\". Alternative to paymentId."
+          },
+          "receiptNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The receipt number of the payment, when there is more than one on the invoice"
+          },
           "reason": {
             "type": "string",
             "minLength": 3,
@@ -1990,7 +2147,6 @@
           }
         },
         "required": [
-          "paymentId",
           "reason"
         ],
         "additionalProperties": false
@@ -2045,6 +2201,11 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "invoiceNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The invoice the payment is on, e.g. \"INV-1042\". Alternative to paymentId."
+          },
           "field": {
             "type": "string",
             "enum": [
@@ -2070,7 +2231,6 @@
           }
         },
         "required": [
-          "paymentId",
           "field",
           "requestedValue",
           "reason"
@@ -2099,6 +2259,11 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "invoiceNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The invoice the payment is on, e.g. \"INV-1042\". Alternative to paymentId."
+          },
           "approve": {
             "type": "boolean"
           },
@@ -2109,7 +2274,6 @@
           }
         },
         "required": [
-          "requestId",
           "approve"
         ],
         "additionalProperties": false
@@ -2136,6 +2300,21 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
+          },
           "step": {
             "type": "string",
             "enum": [
@@ -2157,7 +2336,6 @@
           }
         },
         "required": [
-          "planId",
           "step"
         ],
         "additionalProperties": false
@@ -2183,11 +2361,23 @@
           "planId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
+          },
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
           }
         },
-        "required": [
-          "planId"
-        ],
         "additionalProperties": false
       },
       "permission": "fees.plan.approve",
@@ -2247,15 +2437,30 @@
             "pattern": "^[a-f0-9]{24}$",
             "description": "From get_fee_structures"
           },
+          "feeHead": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The fee head by name, e.g. \"Tuition\". Omit when the structure name starts with an existing fee head. Alternative to feeHeadId."
+          },
           "academicYearId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "The year this charge applies to"
           },
+          "academicYear": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The year as a person names it, e.g. \"2026-27\". Omit for the current year; the confirmation names it."
+          },
           "gradeId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "One grade only; omit for every grade"
+          },
+          "grade": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "One grade by name, e.g. \"Class 6\". Omit for every grade."
           },
           "name": {
             "type": "string",
@@ -2274,8 +2479,6 @@
           }
         },
         "required": [
-          "feeHeadId",
-          "academicYearId",
           "name",
           "amountPaise",
           "dueOn"
@@ -2414,6 +2617,11 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "grade": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The grade as a person names it, e.g. \"Class 7\". Alternative to gradeId."
+          },
           "name": {
             "type": "string",
             "maxLength": 40,
@@ -2423,10 +2631,14 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "Teacher profile id"
+          },
+          "classTeacher": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The class teacher as a person names them. Alternative to classTeacherId."
           }
         },
         "required": [
-          "gradeId",
           "name"
         ],
         "additionalProperties": false
@@ -2484,13 +2696,18 @@
       "name": "create_term",
       "module": "Academics",
       "operation": "CREATE",
-      "description": "Create a term inside an academic year, e.g. \"Term 1\", with its start and end dates. Use list_academic_years for the year id. Needs confirmation.",
+      "description": "Create a term inside an academic year, e.g. \"Term 1\", with its start and end dates. Name the year (\"2026-27\"), or leave it out for the current one. Needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
           "academicYearId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
+          },
+          "academicYear": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The year as a person names it, e.g. \"2026-27\". Omit for the current year."
           },
           "name": {
             "type": "string",
@@ -2507,7 +2724,6 @@
           }
         },
         "required": [
-          "academicYearId",
           "name",
           "startsOn",
           "endsOn"
@@ -2606,18 +2822,26 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
           "name": {
             "type": "string",
-            "maxLength": 40
+            "maxLength": 40,
+            "description": "A NEW name for the section"
           },
           "classTeacherId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
+          },
+          "classTeacher": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The new class teacher as a person names them. Alternative to classTeacherId."
           }
         },
-        "required": [
-          "sectionId"
-        ],
         "additionalProperties": false
       },
       "permission": "academics.structure.manage",
@@ -2642,25 +2866,40 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "subject": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The subject as a person names it, e.g. \"Science\". Alternative to subjectId."
+          },
           "sectionId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
           },
           "termId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "term": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The term as a person names it, e.g. \"Term 1\". Omit for the running term."
+          },
           "teacherId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "Teacher profile id"
+          },
+          "teacherName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The teacher as a person names them. Alternative to teacherId."
           }
         },
-        "required": [
-          "subjectId",
-          "sectionId",
-          "termId"
-        ],
         "additionalProperties": false
       },
       "permission": "academics.structure.manage",
@@ -2685,9 +2924,33 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "subject": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The subject of the offering as a person names it, e.g. \"Art\". Identifies the offering with className."
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
+          "termId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$"
+          },
+          "term": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The term, when the class teaches the subject in more than one"
+          },
           "teacherId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
+          },
+          "teacherName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The new teacher as a person names them. Alternative to teacherId."
           },
           "isElective": {
             "type": "boolean"
@@ -2698,9 +2961,6 @@
             "maximum": 500
           }
         },
-        "required": [
-          "offeringId"
-        ],
         "additionalProperties": false
       },
       "permission": "academics.structure.manage",
@@ -2725,6 +2985,10 @@
             "type": "string",
             "maxLength": 24,
             "description": "Weekday name, today/tomorrow/yesterday, or \"week\" for the whole week"
+          },
+          "next": {
+            "type": "boolean",
+            "description": "true for \"what is my next class/period?\": only the next period after the current time, not the whole day"
           },
           "className": {
             "type": "string",
@@ -2761,11 +3025,21 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
           "dayOfWeek": {
             "type": "integer",
             "minimum": 1,
             "maximum": 7,
             "description": "1 = Monday … 7 = Sunday"
+          },
+          "day": {
+            "type": "string",
+            "maxLength": 12,
+            "description": "The weekday by name, e.g. \"Monday\". Alternative to dayOfWeek."
           },
           "periodNo": {
             "type": "integer",
@@ -2786,11 +3060,14 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "Omit for a break"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The subject taught in the period, e.g. \"Mathematics\". Omit for a break."
           }
         },
         "required": [
-          "sectionId",
-          "dayOfWeek",
           "periodNo",
           "startTime",
           "endTime"
@@ -3073,6 +3350,11 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "term": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The term as a person names it, e.g. \"Term 1\". Omit for the running term."
+          },
           "startsOn": {
             "type": "string",
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
@@ -3084,7 +3366,6 @@
         },
         "required": [
           "name",
-          "termId",
           "startsOn",
           "endsOn"
         ],
@@ -3112,9 +3393,24 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "exam": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The exam as a person names it, e.g. \"Half Yearly\". Alternative to examId."
+          },
           "subjectOfferingId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The subject of the paper, e.g. \"Mathematics\". With className, alternative to subjectOfferingId."
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
           },
           "maxMarks": {
             "type": "integer",
@@ -3127,8 +3423,6 @@
           }
         },
         "required": [
-          "examId",
-          "subjectOfferingId",
           "maxMarks"
         ],
         "additionalProperties": false
@@ -3306,6 +3600,20 @@
               "ALL"
             ],
             "description": "For a student or parent: their work still to submit (PENDING), already handed in (SUBMITTED), or both"
+          },
+          "dueFrom": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Only work due on or after this day"
+          },
+          "dueTo": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Only work due on or before this day"
+          },
+          "first": {
+            "type": "boolean",
+            "description": "true for \"which one is due first / next\": only the assignment with the earliest due date that has not passed"
           }
         },
         "additionalProperties": false
@@ -3645,7 +3953,8 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 50
+            "maximum": 100000,
+            "description": "Leads per stage, only when the user asks for a number"
           }
         },
         "additionalProperties": false
@@ -3760,6 +4069,11 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "childName": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The applicant child as a person names them, e.g. \"Kabir Kapoor\". Alternative to leadId."
+          },
           "stage": {
             "type": "string",
             "enum": [
@@ -3785,9 +4099,6 @@
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           }
         },
-        "required": [
-          "leadId"
-        ],
         "additionalProperties": false
       },
       "permission": "admissions.manage",
@@ -4032,9 +4343,15 @@
             },
             "description": "Profile ids, e.g. from list_users"
           },
+          "recipient": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "Who to notify, by name -- one person, or several separated by \"and\" or commas. Alternative to recipientProfileIds."
+          },
           "title": {
             "type": "string",
-            "maxLength": 160
+            "maxLength": 160,
+            "description": "Defaults to the start of the message"
           },
           "body": {
             "type": "string",
@@ -4047,8 +4364,6 @@
           }
         },
         "required": [
-          "recipientProfileIds",
-          "title",
           "body"
         ],
         "additionalProperties": false
@@ -4175,7 +4490,8 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 100
+            "maximum": 100000,
+            "description": "Only when the user asks for a number (\"top 10\", \"first 5\"); omit it to return everything"
           }
         },
         "additionalProperties": false
@@ -4235,20 +4551,30 @@
               "RETURNED",
               "OVERDUE"
             ],
-            "description": "ACTIVE means currently on loan"
+            "description": "ACTIVE means currently on loan and not yet due; OVERDUE is past its return date"
           },
           "bookId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "title": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "The item as a person names it, e.g. \"Clean Code\". An ambiguous title is refused, never guessed."
+          },
           "studentId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "outstanding": {
+            "type": "boolean",
+            "description": "true for everything not yet returned (on loan or overdue) — \"who has this book\""
+          },
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 100
+            "maximum": 100000,
+            "description": "Only when the user asks for a number (\"top 10\", \"first 5\"); omit it to return everything"
           }
         },
         "additionalProperties": false
@@ -4857,6 +5183,11 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "subject": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The enquiry as its subject is written, e.g. \"Fan not working\". Alternative to inquiryId."
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -4867,7 +5198,6 @@
           }
         },
         "required": [
-          "inquiryId",
           "status"
         ],
         "additionalProperties": false
@@ -5199,6 +5529,11 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "routeName": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The route as it is written, e.g. \"Route 7\". Alternative to routeId."
+          },
           "name": {
             "type": "string",
             "maxLength": 120
@@ -5216,7 +5551,6 @@
           }
         },
         "required": [
-          "routeId",
           "name",
           "sequenceNo"
         ],
@@ -5259,10 +5593,20 @@
             "type": "string",
             "pattern": "^[a-f0-9]{24}$"
           },
+          "routeName": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The route as it is written, e.g. \"Route 7\". Alternative to routeId."
+          },
           "stopId": {
             "type": "string",
             "pattern": "^[a-f0-9]{24}$",
             "description": "A stop on that route, from list_transport_stops"
+          },
+          "stopName": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The stop as it is written, e.g. \"Market\". Alternative to stopId."
           },
           "academicYearId": {
             "type": "string",
@@ -5278,10 +5622,6 @@
             "description": "Default BOTH"
           }
         },
-        "required": [
-          "routeId",
-          "stopId"
-        ],
         "additionalProperties": false
       },
       "permission": "transport.manage",
@@ -6366,7 +6706,8 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 100
+            "maximum": 100000,
+            "description": "Only when the user asks for a number (\"top 10\", \"first 5\"); omit it to return everything"
           }
         },
         "additionalProperties": false
@@ -6548,7 +6889,8 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 100
+            "maximum": 100000,
+            "description": "Only when the user asks for a number (\"top 10\", \"first 5\"); omit it to return everything"
           }
         },
         "additionalProperties": false
@@ -6800,7 +7142,8 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 100
+            "maximum": 100000,
+            "description": "Only when the user asks for a number (\"top 10\", \"first 5\"); omit it to return everything"
           }
         },
         "additionalProperties": false
@@ -6910,7 +7253,21 @@
           "roleKey": {
             "type": "string",
             "maxLength": 40,
-            "description": "e.g. TEACHER, FINANCE"
+            "description": "Deprecated — use ofRole. The server discards this name before the tool runs."
+          },
+          "ofRole": {
+            "type": "string",
+            "enum": [
+              "ADMIN",
+              "PRINCIPAL",
+              "TEACHER",
+              "FINANCE",
+              "LIBRARIAN",
+              "WARDEN",
+              "PARENT",
+              "STUDENT"
+            ],
+            "description": "Only users holding this role, e.g. TEACHER"
           },
           "status": {
             "type": "string",
@@ -6923,7 +7280,8 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 100
+            "maximum": 100000,
+            "description": "Only when the user asks for a number (\"top 10\", \"first 5\"); omit it to return everything"
           }
         },
         "additionalProperties": false
@@ -6952,7 +7310,8 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 50
+            "maximum": 100000,
+            "description": "Only when the user asks for a number (\"top 10\", \"first 5\"); omit it to return everything"
           }
         },
         "additionalProperties": false
@@ -6986,7 +7345,8 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 50
+            "maximum": 100000,
+            "description": "Only when the user asks for a number (\"top 10\", \"first 5\"); omit it to return everything"
           }
         },
         "additionalProperties": false
@@ -7045,7 +7405,8 @@
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 100
+            "maximum": 100000,
+            "description": "Only when the user asks for a number (\"top 10\", \"first 5\"); omit it to return everything"
           },
           "cursor": {
             "type": "string",
@@ -7406,8 +7767,8 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 172,
-      "GET": 84,
+      "total": 173,
+      "GET": 85,
       "CREATE": 33,
       "UPDATE": 15,
       "ACTION": 30,
@@ -7467,6 +7828,7 @@
         "get_attendance_calendar",
         "get_lecture_attendance",
         "get_attendance_statistics",
+        "get_class_attendance_summary",
         "who_is_absent_today",
         "get_attendance",
         "mark_attendance",
@@ -7624,8 +7986,8 @@
     {
       "role": "PRINCIPAL",
       "custom": false,
-      "total": 77,
-      "GET": 53,
+      "total": 78,
+      "GET": 54,
       "CREATE": 8,
       "UPDATE": 6,
       "ACTION": 9,
@@ -7655,6 +8017,7 @@
         "get_attendance_calendar",
         "get_lecture_attendance",
         "get_attendance_statistics",
+        "get_class_attendance_summary",
         "who_is_absent_today",
         "get_attendance",
         "get_pending_fees",
@@ -7724,8 +8087,8 @@
     {
       "role": "TEACHER",
       "custom": false,
-      "total": 56,
-      "GET": 41,
+      "total": 57,
+      "GET": 42,
       "CREATE": 3,
       "UPDATE": 1,
       "ACTION": 10,
@@ -7753,6 +8116,7 @@
         "get_attendance_calendar",
         "get_lecture_attendance",
         "get_attendance_statistics",
+        "get_class_attendance_summary",
         "get_attendance",
         "mark_attendance",
         "bulk_mark_attendance",
@@ -7802,8 +8166,8 @@
     {
       "role": "PARENT",
       "custom": false,
-      "total": 43,
-      "GET": 40,
+      "total": 44,
+      "GET": 41,
       "CREATE": 1,
       "UPDATE": 1,
       "ACTION": 0,
@@ -7827,6 +8191,7 @@
         "get_attendance_calendar",
         "get_lecture_attendance",
         "get_attendance_statistics",
+        "get_class_attendance_summary",
         "get_attendance",
         "get_pending_fees",
         "get_payment_history",
@@ -7863,8 +8228,8 @@
     {
       "role": "STUDENT",
       "custom": false,
-      "total": 63,
-      "GET": 50,
+      "total": 64,
+      "GET": 51,
       "CREATE": 7,
       "UPDATE": 0,
       "ACTION": 1,
@@ -7885,6 +8250,7 @@
         "get_attendance_calendar",
         "get_lecture_attendance",
         "get_attendance_statistics",
+        "get_class_attendance_summary",
         "get_attendance",
         "get_pending_fees",
         "get_payment_history",
@@ -8085,8 +8451,8 @@
     {
       "role": "COUNSELLOR (custom, example)",
       "custom": true,
-      "total": 18,
-      "GET": 18,
+      "total": 19,
+      "GET": 19,
       "CREATE": 0,
       "UPDATE": 0,
       "ACTION": 0,
@@ -8108,6 +8474,7 @@
         "get_attendance_calendar",
         "get_lecture_attendance",
         "get_attendance_statistics",
+        "get_class_attendance_summary",
         "who_is_absent_today",
         "get_attendance",
         "get_dashboard",

@@ -570,6 +570,8 @@ function renderNumberedList(view) {
   return blocks(
     view.intro ?? null,
     mdNumbered(items.map((item) => (item.detail ? `**${item.label}** — ${item.detail}` : `**${item.label}**`))),
+    // What the list adds up to, or how to read it -- said after the rows.
+    view.outro ?? null,
   );
 }
 

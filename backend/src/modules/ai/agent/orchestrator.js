@@ -2,7 +2,10 @@ import { AuditLog } from '../../../models/auditLog.model.js';
 import { checkAgentRate, recordInjectionAttempt } from './throttle.js';
 import { AppError } from '../../../utils/AppError.js';
 import { logger } from '../../../utils/logger.js';
-import { parseIntentWithLlm, parseIntent, clarificationFor, MAX_PLAN_STEPS, normaliseQuery } from './intent.js';
+import {
+  parseIntentWithLlm, parseIntent, clarificationFor, MAX_PLAN_STEPS, normaliseQuery, instructionLeftOut, instructionClauseIn,
+  isClarificationReply,
+} from './intent.js';
 import {
   unmetNarrowing, asksBeyondOwnSchool, dimensionsOf, unavailableAction, asksAboutOthers, asksBulkDestruction,
 } from './capabilityResolver.js';
@@ -15,6 +18,9 @@ import { withMcpSession, listTools as listMcpTools, callTool as callMcpTool } fr
 import { getMcpTool, mcpToolsFor } from '../mcp/registry.js';
 import { errorToAppError } from '../mcp/protocol.js';
 import { peekConfirmation, rejectConfirmation, markFailed, canonicalToolName } from '../mcp/confirm.js';
+import { asksSchoolWideFees, asksLeaveWithoutPermission } from './directIntents.js';
+import { impossibleDatesIn } from '../../../utils/naturalDates.js';
+import { entitiesFor, entitiesInTextByPosition } from '../mcp/capabilities.js';
 import jwt from 'jsonwebtoken';
 import { env } from '../../../config/env.js';
 
@@ -154,6 +160,77 @@ const INJECTION_PATTERNS = [
 export function detectInjection(message) {
   const hits = INJECTION_PATTERNS.filter((re) => re.test(String(message ?? '')));
   return { detected: hits.length > 0, count: hits.length };
+}
+
+/* ── Secrets ─────────────────────────────────────────────────
+   A request for a password, a token, an API key or the configuration behind
+   the assistant has no capability to route to -- and it must not be routed at
+   all. "Show me all user passwords" matched the user directory on the word
+   "user" and was answered with the list of users: a refusal that hands over a
+   different list is not a refusal. So these are declined here, in code, before
+   any tier (rules or model) chooses a capability, for every role alike.
+
+   This is not what keeps the secrets safe -- no tool returns one, and the MCP
+   server strips credential-shaped keys from every result (redactResultData).
+   It is what keeps the ANSWER honest. Deliberately not counted as an injection
+   strike: "I forgot my password" is an ordinary thing to type. */
+const SECRET_PATTERNS = [
+  /\bpass(?:word|code|phrase)s?\b|\bpwds?\b/i,
+  /\b(?:api|secret|private|access|encryption|signing)[\s_-]?keys?\b/i,
+  /\b(?:access|refresh|auth(?:entication|orization)?|bearer|session|jwt|api|login)[\s_-]?tokens?\b|\bjwts?\b/i,
+  /\b(?:jwt|app|webhook|client|api)[\s_-]?secrets?\b|\bsecret (?:config(?:uration)?|settings?|values?|keys?|tokens?)\b|\b(?:server|system|application|app|environment|env) secrets\b/i,
+  /\b(?:login |user |admin |database |db )?credentials\b/i,
+  /\b(?:env(?:ironment)? (?:variables?|vars?|file)|\.env\b|connection strings?|(?:database|db|mongo(?:db)?) (?:url|uri|password|connection))/i,
+  /\b(?:system|hidden|internal|developer) (?:prompt|instructions?|config(?:uration)?|settings)\b/i,
+  /\botps?\b[^.?!]{0,30}\b(?:of|for)\b[^.?!]{0,20}\b(?:users?|students?|parents?|teachers?|staff|everyone|all)\b/i,
+];
+
+export function asksForSecrets(message) {
+  const text = String(message ?? '');
+  return SECRET_PATTERNS.some((re) => re.test(text));
+}
+
+const SECRET_REFUSAL =
+  "I can't share passwords, access tokens, API keys or any internal configuration — nobody's, including your own. "
+  + 'To change or reset a password, use the reset option on the sign-in screen or ask your school administrator.';
+
+/** Where one request in a sentence ends and the next begins. */
+const JOINED_PARTS = /\s+(?:and\s+also|and\s+then|and|also|plus|as\s+well\s+as|along\s+with|&)\s+|\s*;\s*/i;
+/** The question invalidDateReply() asks, and its reminder. */
+const ASKED_FOR_A_DATE = /\bnot (?:a )?calendar dates?\b|\bI still need a valid date\b/i;
+/** A reply that agrees and says nothing else. */
+const ONLY_AGREES = /^\s*(?:yes|yeah|yep|y|ok(?:ay)?|sure|fine|alright|right|go\s+ahead|do\s+it|proceed|continue|confirm|haan|ha|ji|theek\s+hai|ठीक है|हाँ)(?:\s+please)?\s*[.!]*\s*$/i;
+
+/** A reply that only calls off whatever was being asked about. */
+const CANCELS = /^\s*(?:(?:please\s+)?cancel(?:\s+(?:it|that|this))?|never\s*mind|forget\s+(?:it|that)|leave\s+it|stop|no\s+need|nothing)\s*[.!]*\s*$/i;
+
+/**
+ * Why a leave application is not available to this account.
+ *
+ * `leave.apply` is a STUDENT's own leave of absence (leave.service.apply
+ * files it against the caller's own enrolment). Nobody else holds it, and
+ * there is no staff-leave module at all -- so for a member of staff this is
+ * an operation EduOS does not have, not a record they are barred from, and
+ * the reply says which. An account that reviews leave is told what it can do.
+ */
+function leaveNotEnabledReply(actor) {
+  if (actor?.permissions?.['leave.review']) {
+    return "Applying for leave isn't enabled for your account — a leave application in EduOS is a student's leave of absence, made from the student's own account, "
+      + 'and staff leave is not handled here (please use the school office). '
+      + 'You can review your students\' requests: ask "show pending leave requests".';
+  }
+  return "Applying for leave isn't enabled for your account — in this school's setup a leave application is made from the student's own account, "
+    + 'or through the school office.';
+}
+
+/** "31 February" is not a calendar date, so I haven't looked anything up or changed anything. Please give a valid date ... */
+function invalidDateReply(dates) {
+  const quoted = dates.map((d) => `"${d}"`);
+  const list = quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} and ${quoted.at(-1)}` : quoted[0];
+  return `${list} ${dates.length > 1 ? 'are not calendar dates' : 'is not a calendar date'}, so I haven't looked anything up or changed anything. `
+    // The example is a FORMAT, never a real day: quoting today's date here
+    // would read as the date about to be used.
+    + 'Please give a valid date — the day and month in words, or as YYYY-MM-DD.';
 }
 
 /* ── Authorization ─────────────────────────────────────────── */
@@ -526,6 +603,28 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
     };
   }
 
+  // A secret is never routed: see SECRET_PATTERNS. Refused before an MCP
+  // session is even opened, so no capability can be chosen in its place.
+  if (asksForSecrets(message)) {
+    await auditAgentAction({
+      actor, tool: 'secret_request', args: { message: String(message).slice(0, 300) }, source, status: 'REFUSED',
+    });
+    return { reply: SECRET_REFUSAL, lang, action: null, refused: 'SECRET_REQUEST' };
+  }
+
+  // A date that is not a day -- "31 February", "2026-02-31". No reader can
+  // place it, so every one of them skipped it, and the request then ran for
+  // the tool's default: "mark Aman Gupta absent on 31 February" was proposed
+  // for TODAY. Asked about before anything is routed, so nothing is looked up
+  // or proposed for a date the person did not give.
+  const impossible = impossibleDatesIn(message);
+  if (impossible.length) {
+    await auditAgentAction({
+      actor, tool: 'invalid_date', args: { dates: impossible.slice(0, 5) }, source, status: 'REFUSED',
+    });
+    return { reply: invalidDateReply(impossible), lang, action: null, needsInput: true, refused: 'INVALID_DATE' };
+  }
+
   // Everything from here runs with an MCP session open. The handle is the only
   // thing that lets a tool call reach the ERP; it exists for this turn alone,
   // and it — not anything in the message or the model's output — is what tells
@@ -571,6 +670,49 @@ async function routeTurn({ mcpSession, message: rawMessage, actor, source, lang,
   // as their own attendance -- a true answer to a question nobody asked.
   if (actor?.roleKey === 'STUDENT' && asksAboutOthers(message)) {
     return { reply: t('agent.ownRecordsOnly', lang), lang, action: null, refused: 'OUT_OF_SCOPE' };
+  }
+
+  // The school's money as a whole, asked by somebody who may read only their
+  // own fees. Every fee capability a student or a parent holds answers about
+  // their own invoices, so "show school fee collection" came back as their own
+  // balance -- a true figure given as the answer to a different question.
+  // Declined as what it is, before any capability is chosen in its place.
+  if (asksSchoolWideFees(message, actor)) {
+    return {
+      reply: "The school's fee collection isn't available to your account — you can see only your own fees. "
+        + 'Ask "show my fees" for your balance, or "my payment history" for what has been paid.',
+      lang,
+      action: null,
+      refused: 'OUT_OF_SCOPE',
+    };
+  }
+
+  // Applying for leave from an account that can only read it (a parent, in
+  // the role matrix as shipped): said plainly, with what they can do instead.
+  if (asksLeaveWithoutPermission(message, actor)) {
+    return { reply: leaveNotEnabledReply(actor), lang, action: null, refused: 'NOT_PERMITTED' };
+  }
+
+  // "Cancel", said to a question the assistant asked ("Which one?", "Please
+  // give a valid date"). Nothing was proposed, so there is nothing to undo --
+  // but it was answered "I'm not sure what you need", as though the person had
+  // asked for something. The request they were being asked about is dropped
+  // (the conversation state is rebuilt from the transcript, and a reply that
+  // asks nothing closes it).
+  const lastReply = [...(history ?? [])].reverse().find((turn) => turn?.role === 'assistant')?.text ?? '';
+  if (CANCELS.test(String(rawMessage ?? '')) && isClarificationReply(lastReply)) {
+    return { reply: t('agent.cancelled', lang), lang, action: null, cancelled: true };
+  }
+
+  // "Yes", said to "that is not a calendar date -- please give a valid one".
+  // It gives no date. Read as "carry on", the request went ahead with the
+  // date left out, which a tool fills with TODAY: the very substitution the
+  // question was asked to prevent. So it is asked again.
+  if (ASKED_FOR_A_DATE.test(lastReply) && ONLY_AGREES.test(String(rawMessage ?? ''))) {
+    return {
+      reply: 'I still need a valid date before I can do that. Which date should I use? Give the day and month in words, or as YYYY-MM-DD — or say "cancel".',
+      lang, action: null, needsInput: true, refused: 'INVALID_DATE',
+    };
   }
 
   // An act the caller cannot perform. Read BEFORE routing, acted on after it:
@@ -622,7 +764,32 @@ async function routeTurn({ mcpSession, message: rawMessage, actor, source, lang,
     // reached. Questions about wording and policy are left to the knowledge
     // tier, which is what they are for.
     const named = dimensionsOf(message);
-    const unmet = named.quoting || KNOWLEDGE_CUE.test(String(message ?? '')) ? null : unmetNarrowing(message, actor);
+    const asksKnowledge = named.quoting || KNOWLEDGE_CUE.test(String(message ?? ''));
+
+    // Nothing routed because the caller holds NOTHING in the module asked
+    // about. That is a refusal, and it is said as one. It used to come out as
+    // "I can't narrow that by a class. What I can give you: the school's grades
+    // and class sections" (a librarian asking for a class's attendance) or as
+    // "I'm not sure what you need" (a teacher asking about a library book) --
+    // both of which read as the assistant failing to understand a request it
+    // had understood perfectly and was not permitted to answer.
+    // Only for a request for RECORDS -- "show", "list", "search", "mark", "how
+    // many" -- or one that names a class. "When does the library close?" is a
+    // question about the school, which its own notices may answer; that stays
+    // with the knowledge tier below.
+    const asksForRecords = RECORDS_REQUEST.test(String(message ?? '')) || Boolean(named.class);
+    const denied = asksKnowledge || !asksForRecords ? null : deniedTopic(message, actor);
+    if (denied) {
+      return {
+        reply: `You don't have access to ${denied} with your ${roleLabel(actor)} account, so I can't show or change that. `
+          + `I can help you with: ${helpTopics(mcpTools) || 'your own profile'}.`,
+        lang,
+        action: null,
+        refused: 'NOT_PERMITTED',
+      };
+    }
+
+    const unmet = asksKnowledge ? null : unmetNarrowing(message, actor);
     if (unmet) return cannotNarrowReply(unmet, lang);
 
     // No ERP tool fits. This is the case RAG is *for*: the school's own written
@@ -664,7 +831,38 @@ async function routeTurn({ mcpSession, message: rawMessage, actor, source, lang,
     };
   }
 
-  const steps = (intent.steps ?? [intent]).slice(0, MAX_PLAN_STEPS);
+  let steps = (intent.steps ?? [intent]).slice(0, MAX_PLAN_STEPS);
+
+  // A leave application given as the instruction of a joined sentence ("Show
+  // my timetable and apply for leave tomorrow"), from an account that cannot
+  // apply. Alone, that request is explained (asksLeaveWithoutPermission,
+  // above); joined to a question it went to the tool, was refused there, and
+  // came back as the bare "You are not authorized to access this
+  // information" -- which is the wording for a record one may not see, not
+  // for an action this account does not have. The question is still answered;
+  // the leave is not attempted, and the reply says why.
+  //
+  // Read a part at a time, whichever half the leave is in: with the leave
+  // said FIRST the sentence is planned as the leave alone (its reason is free
+  // text, so it is never split by the planner), and what is left of it is
+  // read again here so the question is not lost with the refusal.
+  let leaveNote = null;
+  if (steps.some((step) => step.tool === 'apply_for_leave')) {
+    const parts = String(message ?? '').split(JOINED_PARTS).map((part) => part?.trim()).filter(Boolean);
+    const asksLeave = parts.map((part) => asksLeaveWithoutPermission(part, actor));
+    const instruction = instructionClauseIn(message, actor);
+    if ((asksLeave.some(Boolean) && !asksLeave.every(Boolean)) || (instruction && asksLeaveWithoutPermission(instruction, actor))) {
+      leaveNote = leaveNotEnabledReply(actor);
+      steps = steps.filter((step) => step.tool !== 'apply_for_leave');
+      if (!steps.length) {
+        const rest = parseIntent(parts.filter((_, i) => !asksLeave[i]).join(' and '), actor);
+        steps = (rest ? (rest.steps ?? [rest]) : [])
+          .filter((step) => getMcpTool(step.tool)?.operation === 'GET')
+          .slice(0, MAX_PLAN_STEPS);
+      }
+      if (!steps.length) return { reply: leaveNote, lang, action: null, refused: 'NOT_PERMITTED' };
+    }
+  }
 
   // Every tool a plan can name is an MCP tool: the rule parser's tool names are
   // all MCP names, and a model's proposal is filtered against the MCP
@@ -676,8 +874,107 @@ async function routeTurn({ mcpSession, message: rawMessage, actor, source, lang,
     throw new AppError('That capability is not available.', 400);
   }
 
-  const result = await runMcpPlan({ mcpSession, steps, message, actor, source, lang });
-  return withKnowledge({ result, message, actor, lang });
+  const ran = await runMcpPlan({ mcpSession, steps, message, actor, source, lang });
+  const result = leaveNote ? { ...ran, reply: `${ran.reply}\n\n${leaveNote}`, declined: 'NOT_PERMITTED' } : ran;
+  return withKnowledge({ result: withInstructionLeftOut(withUnansweredParts(result, message, actor), message, actor), message, actor, lang });
+}
+
+/** Two requests joined in one sentence. */
+const JOINED_REQUEST = /\b(?:and|also|plus|as\s+well\s+as|along\s+with)\b|&|;/i;
+
+/**
+ * Says which part of a two-part question was NOT answered, and why.
+ *
+ * "Show Aarav Mishra's attendance and fees", from a teacher: the attendance is
+ * theirs to read and the fees are not. The plan answered what it could -- and
+ * said nothing at all about the rest, so the answer read as complete. A part
+ * left out because the caller holds nothing in that module is named, with the
+ * reason, after the answer. Nothing is added to a proposal awaiting a yes, or
+ * to a refusal, and nothing about the withheld part is disclosed -- only that
+ * it was asked for and is not available to this account.
+ */
+function withUnansweredParts(result, message, actor) {
+  if (!result || result.action || result.via !== 'MCP' || result.refused || result.needsInput) return result;
+  if (!JOINED_REQUEST.test(String(message ?? ''))) return result;
+  const held = new Set(entitiesFor(actor));
+  const missing = [...new Set(entitiesInTextByPosition(String(message ?? ''))
+    .filter((entity) => DENIED_TOPICS[entity] && !held.has(entity))
+    .map((entity) => DENIED_TOPICS[entity]))];
+  if (!missing.length) return result;
+  const list = missing.length > 1 ? `${missing.slice(0, -1).join(', ')} and ${missing.at(-1)}` : missing[0];
+  return {
+    ...result,
+    reply: `${result.reply}\n\n_Not included: ${list} — your ${roleLabel(actor)} account doesn't have access to ${missing.length > 1 ? 'them' : 'that'}._`,
+    unanswered: missing,
+  };
+}
+
+/**
+ * Says which instruction in the message was NOT carried out, when it could
+ * not be planned at all.
+ *
+ * "Show attendance of Class 6 A and mark him absent", with nobody named: the
+ * attendance is shown, and the marking -- which has no one to apply to -- used
+ * to vanish without a word. Nothing is proposed or written for it; the answer
+ * says so and asks for it again with a name.
+ */
+function withInstructionLeftOut(result, message, actor) {
+  if (!result || result.action || result.executed || result.via !== 'MCP') return result;
+  const left = instructionLeftOut(message, actor);
+  if (!left) return result;
+  return {
+    ...result,
+    reply: `${result.reply}\n\n_Not done: "${left}" — I couldn't tell which student that means. Send it again with the student's name._`,
+    leftOut: left,
+  };
+}
+
+/** A sentence that asks for records to be shown, counted or changed. */
+const RECORDS_REQUEST = /^\s*(?:please\s+)?(?:show|list|search|find|look\s*up|get|give|display|view|fetch|check|open|mark|record|create|add|update|change|delete|remove|issue|return|allocate|approve|reject|how\s+many|how\s+much)\b/i;
+
+/** The caller's role as a person would say it: "Teacher", "Librarian". */
+function roleLabel(actor) {
+  const key = String(actor?.roleKey ?? '').toLowerCase().replace(/_/g, ' ');
+  return key ? key.charAt(0).toUpperCase() + key.slice(1) : 'current';
+}
+
+/** Topics for a refusal: what the module is, as a thing one has access to. */
+const DENIED_TOPICS = {
+  attendance: 'attendance records',
+  marks: 'marks and results',
+  homework: 'homework and assignments',
+  fee: 'fee information',
+  library: 'the library',
+  hostel: 'the hostel',
+  transport: 'transport',
+  medical: 'medical records',
+  leave: 'leave applications',
+  timetable: 'the timetable',
+  announcement: 'announcements',
+  calendar: 'the school calendar',
+  ticket: 'support tickets',
+  material: 'course material',
+  admission: 'admissions',
+  elective: 'subject registrations',
+  studentRequest: 'student requests',
+  seat: 'seat management',
+};
+
+/**
+ * The topic a message is about, when the caller holds no capability in it at
+ * all -- as a phrase for a refusal -- or null.
+ *
+ * Read from the registry, not from a list of roles: the entity the sentence is
+ * about (its first entity that is not merely the population it is asked over)
+ * is compared with the entities this caller holds ANY capability for. A role
+ * that is later granted the module stops being refused the same day, and a
+ * custom role is judged by what it was actually given.
+ */
+function deniedTopic(message, actor) {
+  const spoken = entitiesInTextByPosition(String(message ?? ''));
+  const about = spoken.find((entity) => DENIED_TOPICS[entity]);
+  if (!about) return null;
+  return new Set(entitiesFor(actor)).has(about) ? null : DENIED_TOPICS[about];
 }
 
 /** "You can't approve a co-curricular request from your account." */
@@ -764,8 +1061,16 @@ async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
     // question, and running the rest of the plan underneath that question would
     // mean answering something they have not agreed to yet.
     if (result?.action?.status === 'confirmation_required') {
+      const confirm = t('agent.confirm', lang, { summary: result.action.summary });
+      // What the same message ASKED, before it gave this instruction, has
+      // already been looked up -- and is said, ahead of the question. It used
+      // to be dropped: "Show attendance of Class 6 A and mark Aman absent"
+      // came back as the proposal alone. `preface` carries it separately for
+      // a channel that words the confirmation itself (WhatsApp).
+      const preface = calls.length ? await composeAnswer({ message, calls: inPlainWords(calls, lang), lang }) : '';
       return {
-        reply: t('agent.confirm', lang, { summary: result.action.summary }),
+        reply: preface ? `${preface}\n\n${confirm}` : confirm,
+        ...(preface && { preface, tools: [...calls.map((c) => c.tool), step.tool] }),
         lang,
         action: {
           id: result.action.id,
@@ -812,6 +1117,16 @@ async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
     // student. Read-only." -- internal routing advice, about nothing they
     // asked. One value is wrong, so that is what is said, with the shape that
     // works.
+    // A value that is too long for the field it goes in. Said as that, with
+    // the limit, and that nothing was saved -- never cut to fit: a ticket whose
+    // title lost its second half was created under a subject nobody wrote.
+    const tooLong = tooLongParameters(result?.error?.details?.errors);
+    if (tooLong.length) {
+      return {
+        reply: tooLongReply(tooLong, steps[0]?.args ?? {}),
+        lang, action: null, tool, refused: 'TOO_LONG', via: 'MCP',
+      };
+    }
     const unreadable = unreadableParameters(result?.error?.details?.errors);
     if (unreadable.length) {
       return {
@@ -850,7 +1165,7 @@ async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
     throw humaniseToolError(err, { actor, lang, tool });
   }
 
-  const reply = await composeAnswer({ message, calls, lang });
+  const reply = await composeAnswer({ message, calls: inPlainWords(calls, lang), lang });
   const performed = calls.filter((c) => c.result?.action?.status === 'completed');
 
   return {
@@ -873,6 +1188,25 @@ async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
       continuation: continuationFor(steps[0], succeeded[0].result, actor) ?? undefined,
     }),
   };
+}
+
+/**
+ * The calls of a plan, with a WRITE that could not be prepared said the way it
+ * is when it is the only call.
+ *
+ * A write refused by its schema ("students is required") is phrased for a
+ * program. Alone, it is turned into the tool's own question (needsInputReply);
+ * as the last step of a plan that also answered something, it was appended to
+ * the answer as it stood. Reads are left exactly as they were.
+ */
+function inPlainWords(calls, lang) {
+  return calls.map((call) => {
+    const { tool, result } = call;
+    if (result?.success || getMcpTool(tool)?.operation === 'GET') return call;
+    if (!Array.isArray(result?.error?.details?.errors)) return call;
+    const message = needsInputReply(tool, errorToAppError(result), lang);
+    return { ...call, result: { ...result, error: { ...result.error, message } } };
+  });
 }
 
 /** The parameters a validation failure names as not accepted by the tool ("fields.phone"). */
@@ -899,6 +1233,25 @@ function unsupportedReply(toolName, paths) {
     : [];
   return `I can't do that: ${names.map((n) => `"${n}"`).join(', ')} ${names.length === 1 ? 'is' : 'are'} not something this action accepts` +
     (accepted.length ? `. It accepts only: ${accepted.join(', ')}.` : '.');
+}
+
+/** The arguments a validation failure says are over their length limit, with the limit. */
+function tooLongParameters(errors) {
+  if (!Array.isArray(errors)) return [];
+  return errors
+    .map((e) => /^([\w.[\]]+) is too long \(max (\d+)\)$/.exec(String(e)))
+    .filter(Boolean)
+    .map((m) => ({ field: m[1], max: Number(m[2]) }));
+}
+
+/** "The title is too long: 240 characters, and the most it can hold is 200. ..." */
+function tooLongReply(fields, args) {
+  const NOUN = { subject: 'title', title: 'title', content: 'message', body: 'message', description: 'description', reason: 'reason' };
+  return fields.map(({ field, max }) => {
+    const noun = NOUN[field.split('.').pop()] ?? 'text';
+    const given = typeof args?.[field] === 'string' ? `${args[field].length} characters, and ` : '';
+    return `The ${noun} is too long: ${given}the most it can hold is ${max}. Please shorten it and send it again — nothing was saved, and I have not cut it short for you.`;
+  }).join(' ');
 }
 
 /** The arguments a validation failure says it could not read ("month"). */
@@ -1039,6 +1392,14 @@ const FRIENDLY_FIELDS = {
   marks: 'the marks',
   fileUrl: 'the uploaded file',
   students: 'which students',
+  // An admission enquiry. Without these "create an admission lead" was
+  // answered with a bare "I need a bit more to do that".
+  childName: "the child's name",
+  guardianName: "the parent or guardian's name",
+  phone: "the guardian's phone number",
+  roomNo: 'the room number',
+  capacity: 'how many beds it has',
+  topic: 'what it is about',
 };
 
 /**

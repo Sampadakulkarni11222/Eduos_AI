@@ -292,17 +292,54 @@ export async function markAttendance(actor, scope, { date, periodNo = null, reco
     }
   }
 
-  const ops = items.map(({ enrollmentId, status, note }) => ({
-    updateOne: {
-      filter: { enrollmentId, date: day, periodNo },
-      update: {
-        $set: { status: status.toUpperCase(), note, source: 'WEB', markedByProfileId: actor.profileId },
-      },
-      upsert: true,
-    },
-  }));
+  // One student named twice with two different statuses is not a request the
+  // register can honour: the bulk write applied both in order, so whichever
+  // happened to come last won, silently. The same status twice is harmless and
+  // collapses to one entry.
+  const wanted = new Map();
+  for (const { enrollmentId, status, note } of items) {
+    const key = String(enrollmentId);
+    const next = status.toUpperCase();
+    const seen = wanted.get(key);
+    if (seen && seen.status !== next) {
+      throw new AppError('The same student appears twice with different statuses', 400, [], 'ATTENDANCE_CONFLICTING_ENTRIES');
+    }
+    wanted.set(key, { enrollmentId, status: next, note: note ?? seen?.note });
+  }
 
-  await AttendanceRecord.bulkWrite(ops);
+  // Idempotent by state, not only by key. The unique index on (enrollment,
+  // date, period) already stops a second ROW; what it did not stop was a second
+  // WRITE -- a retried request, a redelivered webhook or a repeated "mark Rahul
+  // absent" rewrote an identical record, replacing who marked it and when, for
+  // a change that changed nothing. Only entries whose status (or note) really
+  // differs from the register are written; a genuine correction still is.
+  const existing = await AttendanceRecord.find({
+    enrollmentId: { $in: [...wanted.keys()] }, date: day, periodNo,
+  }).select('enrollmentId status note').lean();
+  const current = new Map(existing.map((r) => [String(r.enrollmentId), r]));
+  const changes = [...wanted.values()].filter(({ enrollmentId, status, note }) => {
+    const row = current.get(String(enrollmentId));
+    if (!row) return true;
+    return row.status !== status || (note !== undefined && (row.note ?? '') !== (note ?? ''));
+  });
+
+  if (changes.length) {
+    const ops = changes.map(({ enrollmentId, status, note }) => ({
+      updateOne: {
+        filter: { enrollmentId, date: day, periodNo },
+        update: {
+          $set: {
+            status, source: 'WEB', markedByProfileId: actor.profileId,
+            // An omitted note leaves the stored one alone; it used to be
+            // overwritten with `undefined` on every re-mark.
+            ...(note !== undefined && { note }),
+          },
+        },
+        upsert: true,
+      },
+    }));
+    await AttendanceRecord.bulkWrite(ops);
+  }
   // Same period back, so the caller sees what it just wrote rather than the
   // whole-day roster.
   return getRoster(actor, 'ALL', sectionId, date, periodNo);
@@ -576,6 +613,126 @@ export async function getDailyAbsenceSummary({ date } = {}) {
     // Of those actually marked -- not of the roll. A register that is half
     // taken must not be reported as though the missing half were present.
     pctPresent: marked > 0 ? Math.round((counts.PRESENT / marked) * 100) : null,
+  };
+}
+
+/** A calendar day as the register stores it, for a local "now": that day at UTC midnight. */
+const calendarDayOf = (now) => new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+
+/**
+ * The period an attendance aggregate covers, as stored calendar days.
+ *
+ * One named day, one calendar month, or an explicit range -- and, with nothing
+ * named, the current calendar month up to today. The period actually used is
+ * always RETURNED, so whatever reads the figures can say which days they are
+ * for: a percentage with no period attached is how one morning's register came
+ * to be read out as a school's "overall attendance".
+ */
+export function resolveAttendancePeriod({ date, month, from, to } = {}, now = new Date()) {
+  const iso = (d) => d.toISOString().slice(0, 10);
+  if (date) {
+    const day = parseDateToMidnight(date);
+    if (!day) throw new AppError('Invalid date format', 400);
+    return { from: day, to: day, label: iso(day), basis: 'DAY' };
+  }
+  if (month) {
+    const [year, monthNo] = String(month).split('-').map(Number);
+    if (!year || !monthNo || monthNo < 1 || monthNo > 12) throw new AppError('Invalid month format', 400);
+    const first = new Date(Date.UTC(year, monthNo - 1, 1));
+    const last = new Date(Date.UTC(year, monthNo, 0));
+    return { from: first, to: last, label: `${iso(first)} to ${iso(last)}`, basis: 'MONTH' };
+  }
+  if (from || to) {
+    const start = from ? parseDateToMidnight(from) : null;
+    const end = to ? parseDateToMidnight(to) : calendarDayOf(now);
+    if ((from && !start) || !end) throw new AppError('Invalid date format', 400);
+    if (start && end < start) throw new AppError('The end date cannot be before the start date', 400);
+    return { from: start, to: end, label: `${start ? iso(start) : 'the start'} to ${iso(end)}`, basis: 'RANGE' };
+  }
+  const today = calendarDayOf(now);
+  const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+  return { from: first, to: today, label: `${iso(first)} to ${iso(today)}`, basis: 'MONTH_TO_DATE' };
+}
+
+/**
+ * Attendance per class over a period, with the figure for all of them together.
+ *
+ * Exists because nothing could answer "which class has the lowest attendance?"
+ * or "what is the overall attendance?": getSummary() is built around one
+ * student's enrolments, and getDailyAbsenceSummary() is one day for the whole
+ * school with no class in it -- so both questions were answered with today's
+ * school-wide head count, which is neither a ranking nor an overall figure.
+ *
+ * Authorization is by scope, the same line assertSectionAccess() draws: a
+ * school-wide reader sees every class; a teacher sees the classes they teach
+ * and no others; any other OWN-scoped caller (a student, a parent) is refused,
+ * because a class register is a staff view.
+ *
+ * Counted exactly as every other figure in this module: real marks only,
+ * day-level (periodNo null, as getDailyAbsenceSummary counts, so a school that
+ * marks per period does not count one pupil six times), active enrolments, and
+ * the percentage from attendanceFigures() -- late and excused attended, a half
+ * day as half, and NO percentage (null) for a class with nothing marked.
+ * AttendanceRecord, Enrollment and Section are tenant-scoped, so the aggregate
+ * is confined to the acting school by the plugin.
+ */
+export async function getClassWiseSummary(actor, scope, { date, month, from, to } = {}, now = new Date()) {
+  let sectionFilter = {};
+  if (scope !== 'ALL') {
+    if (actor?.roleKey !== 'TEACHER') throw new AppError('You are not allowed to view class attendance', 403);
+    const mine = await getTeacherSectionIds(actor.profileId);
+    sectionFilter = { _id: { $in: mine } };
+  }
+  const period = resolveAttendancePeriod({ date, month, from, to }, now);
+
+  const sections = await Section.find(sectionFilter).select('_id name gradeId').populate('gradeId', 'name level').lean();
+  const enrollments = await Enrollment.find({ sectionId: { $in: sections.map((s) => s._id) }, status: 'ACTIVE' })
+    .select('_id sectionId').lean();
+  const sectionOf = new Map(enrollments.map((e) => [String(e._id), String(e.sectionId)]));
+
+  const match = {
+    enrollmentId: { $in: enrollments.map((e) => e._id) },
+    status: { $in: ATTENDANCE_STATUSES },
+    periodNo: null,
+    date: { ...(period.from && { $gte: period.from }), $lte: new Date(period.to.getTime() + 24 * 60 * 60 * 1000 - 1) },
+  };
+  const rows = await AttendanceRecord.aggregate([
+    { $match: match },
+    { $group: { _id: { enrollmentId: '$enrollmentId', status: '$status' }, count: { $sum: 1 } } },
+  ]);
+
+  const perSection = new Map(sections.map((s) => [String(s._id), { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 }]));
+  const total = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
+  for (const row of rows) {
+    const tally = perSection.get(sectionOf.get(String(row._id.enrollmentId)));
+    if (!tally) continue;
+    tally[row._id.status] += row.count;
+    total[row._id.status] += row.count;
+  }
+
+  const studentsIn = new Map();
+  for (const e of enrollments) studentsIn.set(String(e.sectionId), (studentsIn.get(String(e.sectionId)) ?? 0) + 1);
+
+  const classes = sections.map((s) => {
+    const figures = attendanceFigures(perSection.get(String(s._id)));
+    return {
+      sectionId: String(s._id),
+      class: `${s.gradeId?.name ?? ''} ${s.name ?? ''}`.trim() || 'Unknown class',
+      level: s.gradeId?.level ?? null,
+      students: studentsIn.get(String(s._id)) ?? 0,
+      marked: figures.workingDays,
+      pctPresent: figures.pctPresent,
+      pctExact: figures.pctExact,
+      PRESENT: figures.PRESENT, ABSENT: figures.ABSENT, LATE: figures.LATE, EXCUSED: figures.EXCUSED, HALF_DAY: figures.HALF_DAY,
+    };
+  });
+
+  const overall = attendanceFigures(total);
+  return {
+    period: { from: period.from ? period.from.toISOString().slice(0, 10) : null, to: period.to.toISOString().slice(0, 10), label: period.label, basis: period.basis },
+    scope: scope === 'ALL' ? 'SCHOOL' : 'MY_CLASSES',
+    classes,
+    overall: { students: enrollments.length, marked: overall.workingDays, pctPresent: overall.pctPresent, pctExact: overall.pctExact, ...total },
   };
 }
 

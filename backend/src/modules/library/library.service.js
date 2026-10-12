@@ -50,11 +50,29 @@ function toIssueDto(issue) {
 
 // ─── Dashboard Summary ──────────────────────────────────────
 export async function getSummary() {
-  const [totalBooks, activeIssues, overdueReturns] = await Promise.all([
+  // Loans past their due date are marked OVERDUE first, exactly as the
+  // librarian dashboard and listIssues() do before they count. This summary
+  // did not, so a loan that fell due overnight was still "on loan" here while
+  // the dashboard already showed it overdue -- two screens, two answers to
+  // "how many books are overdue?", until somebody happened to open the list.
+  await BookIssue.updateMany(
+    { status: 'ACTIVE', dueDate: { $lt: new Date() } },
+    { $set: { status: 'OVERDUE' } },
+  );
+
+  const [totalBooks, activeIssues, overdueReturns, copyAgg] = await Promise.all([
     Book.countDocuments({ deletedAt: null }),
     BookIssue.countDocuments({ status: 'ACTIVE' }),
     BookIssue.countDocuments({ status: 'OVERDUE' }),
+    // The same copy totals the dashboard reports (dashboard.service
+    // getLibrarianDashboard), so "how many books" can be said both ways:
+    // catalog entries, and physical copies.
+    Book.aggregate([
+      { $match: { deletedAt: null } },
+      { $group: { _id: null, totalCopies: { $sum: '$totalCopies' }, availableCopies: { $sum: '$availableCopies' } } },
+    ]),
   ]);
+  const copies = copyAgg[0] ?? { totalCopies: 0, availableCopies: 0 };
 
   const uniqueShelfItems = await Book.aggregate([
     { $match: { deletedAt: null } },
@@ -64,6 +82,8 @@ export async function getSummary() {
 
   return {
     totalCatalogBooks: totalBooks,
+    totalCopies: copies.totalCopies,
+    availableCopies: copies.availableCopies,
     uniqueTitles: uniqueShelfItems[0]?.count ?? totalBooks,
     activeBookIssues: activeIssues,
     inCirculation: activeIssues,

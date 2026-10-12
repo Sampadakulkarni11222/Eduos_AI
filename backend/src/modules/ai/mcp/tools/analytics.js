@@ -110,22 +110,44 @@ export const analyticsTools = {
         items = items
           .filter((i) => i.type === 'ATTENDANCE' && i.attendancePct != null && i.attendancePct < threshold)
           .sort((a, b) => a.attendancePct - b.attendancePct);
+      } else if (!args.level) {
+        // "At risk" means FLAGGED. The scan scores every enrolment for every
+        // signal it has data for, so most rows are LOW at 0% probability --
+        // "checked, nothing wrong", as risk.service's own summary counts them.
+        // Listing those read a student with 100% attendance out as "flagged at
+        // risk — 100%". Only an explicit request for the LOW level shows them.
+        items = items.filter((i) => i.level !== 'LOW');
       }
 
       // Every flagged student, a window at a time; exactly n when n was asked for.
       const win = resultWindow(_ctx, args);
       const limited = windowSlice(items, win).items;
+      // Each row says WHICH signal flagged it. An attendance percentage is shown
+      // only on an attendance row, and is labelled as one, so it can never be
+      // read as a marks percentage or sit beside an unrelated flag unexplained.
+      const SIGNAL = { ATTENDANCE: 'attendance', ACADEMIC_DECLINE: 'low marks', FEE_DEFAULT: 'overdue fees' };
       const view = summarise(limited, (i) =>
-        `${i.studentName}${i.class ? ` (${i.class})` : ''}${i.attendancePct != null ? ` — ${i.attendancePct}%` : ` — ${i.type}`}`);
+        `${i.studentName}${i.class ? ` (${i.class})` : ''} — ${
+          threshold != null
+            ? `${i.attendancePct}%`
+            : i.type === 'ATTENDANCE' && i.attendancePct != null
+              ? `attendance ${i.attendancePct}%`
+              : (SIGNAL[i.type] ?? String(i.type).toLowerCase())
+        }`);
+      const onlyAttendance = threshold == null && args.type === 'ATTENDANCE';
 
       return ok(
         { students: limited, matched: items.length, returned: limited.length, threshold, counts: result.counts ?? {} },
         {
           speak: items.length
-            ? `${items.length} student(s)${threshold != null ? ` below ${threshold}% attendance over the last 30 days` : ' flagged at risk'}: ${view.list}.`
+            ? `${items.length} student(s)${threshold != null
+              ? ` below ${threshold}% attendance over the last 30 days`
+              : onlyAttendance ? ' flagged for attendance over the last 30 days' : ' flagged at risk'}: ${view.list}.`
             : threshold != null
               ? `No students are below ${threshold}% attendance over the last 30 days.`
-              : 'No students are currently flagged at risk.',
+              : onlyAttendance
+                ? 'No students are currently flagged for attendance.'
+                : 'No students are currently flagged at risk.',
           range: rangeOf(win, limited.length, items.length),
         },
       );
@@ -226,7 +248,20 @@ export const analyticsTools = {
       type: 'object',
       properties: {
         search: { type: 'string', maxLength: 80 },
-        roleKey: { type: 'string', maxLength: 40, description: 'e.g. TEACHER, FINANCE' },
+        roleKey: { type: 'string', maxLength: 40, description: 'Deprecated — use ofRole. The server discards this name before the tool runs.' },
+        // WHICH users to list, by the role they hold. Named `ofRole` because
+        // `roleKey` is one of the identity-shaped names the MCP server strips
+        // from every call (mcp/session.js STRIPPED_ARGS) -- rightly: it must
+        // never be possible to say who the CALLER is in an argument. The
+        // side effect was that this filter never reached the tool, so "how
+        // many teachers are there?" was answered with every user in the
+        // school. A filter over the directory is not a claim about the caller,
+        // and now has a name that cannot be mistaken for one.
+        ofRole: {
+          type: 'string',
+          enum: ['ADMIN', 'PRINCIPAL', 'TEACHER', 'FINANCE', 'LIBRARIAN', 'WARDEN', 'PARENT', 'STUDENT'],
+          description: 'Only users holding this role, e.g. TEACHER',
+        },
         status: { type: 'string', maxLength: 20 },
         sectionId: objectId(),
         limit: limitSchema(),
@@ -241,7 +276,7 @@ export const analyticsTools = {
       // school-scoped read the Users screen makes.
       const win = resultWindow(ctx, args);
       const page = await collectPages((p, pageSize) => users.listUsers({
-        search: args.search, roleKey: args.roleKey, status: args.status, sectionId: args.sectionId,
+        search: args.search, roleKey: args.ofRole ?? args.roleKey, status: args.status, sectionId: args.sectionId,
         page: p, pageSize,
       }), win);
       const items = page.items;
@@ -258,7 +293,7 @@ export const analyticsTools = {
         { users: rows, total: page.total ?? rows.length },
         {
           speak: rows.length
-            ? `${page.total ?? rows.length} user(s): ${view.list}.`
+            ? `${page.total ?? rows.length} user(s)${args.ofRole ? ` with the ${args.ofRole.toLowerCase()} role` : ''}: ${view.list}.`
             : 'No users match that.',
           range: rangeOf(win, rows.length, page.total),
         },

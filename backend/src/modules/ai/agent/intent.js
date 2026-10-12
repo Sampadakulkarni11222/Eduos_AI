@@ -4,7 +4,8 @@ import { generate, isLlmEnabled, classifyLlmError } from '../../../providers/ai.
 const ROUTING_MAX_TOKENS = 4096;
 import { toolsAvailableTo } from './tools.js';
 import { monthFromText, looksLikeMonth, writtenDatesIn, unreadableDatesIn } from '../../../utils/naturalDates.js';
-import { classFromText, refersToOwnClasses } from '../../../utils/classNames.js';
+import { classFromText, refersToOwnClasses, classKey } from '../../../utils/classNames.js';
+import { subjectsMentionedIn } from '../../../utils/subjectNames.js';
 import { detectSelfCategory } from './profileIntent.js';
 import { detectEntityIntent, subjectFromText, detectOperation } from './entityIntent.js';
 import {
@@ -15,8 +16,13 @@ import { getMcpTool } from '../mcp/registry.js';
 import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 import { orderToolsByRelevance } from '../mcp/capabilities.js';
 import { logger } from '../../../utils/logger.js';
-import { kindOfProperty, extractEnum, extractNumber, FOUND } from './argumentKinds.js';
+import { kindOfProperty, extractEnum, extractNumber, extractArgument, FOUND } from './argumentKinds.js';
 import { nameFromText } from '../../../utils/peopleNames.js';
+import { directStep, refineStep, settleStep, periodArgs, namesOnlyAPronoun, PERCENTAGE_QUESTION } from './directIntents.js';
+import { admissionNoFromText as admissionNoOf } from '../../../utils/studentIdentifiers.js';
+
+/** A sentence that opens by asking for something to be changed. */
+const WRITE_REQUEST_LEAD = /^\s*(?:please\s+)?(?:mark|record|set|update|change|edit|correct|create|add|delete|remove|post|send|apply|enter|publish|approve|reject|issue|return|allocate|enrol|enroll|assign|generate|make|raise|log)\b/i;
 
 /**
  * Intent parsing: natural language → { tool, args }.
@@ -777,7 +783,10 @@ const RULES = [
       // Relative dates. "leave tomorrow" is the commonest phrasing there is,
       // and previously produced a 400 because only ISO dates were understood.
       if (dates.length === 0 && !unreadable) {
-        const iso = (d) => d.toISOString().slice(0, 10);
+        // The LOCAL calendar day. toISOString() is the UTC day, which in India
+        // is still yesterday until 05:30 -- so "leave today", asked before
+        // breakfast, was proposed for the day before.
+        const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const today = new Date();
         const dayMs = 86_400_000;
         if (/\btoday\b|\baaj\b|आज/i.test(msg)) dates.push(iso(today));
@@ -825,7 +834,10 @@ const RULES = [
       /^\s*(?:a\s+)?leave\s+(?:from|on|for|starting)\b/i,
       // "I need leave from ...", "I want a leave tomorrow" -- read as a history
       // filter for the same reason, long before numeric dates were understood.
-      /^\s*(?:i\s+)?(?:want|need|require|would like)\s+(?:a\s+|to\s+(?:take|apply\s+for)\s+(?:a\s+)?)?leave\s+(?:from|on|for|starting|tomorrow|today)\b/i,
+      // ...and with the day named straight away: "I need leave next Monday",
+      // "I want leave this Friday". Without the weekday forms that sentence
+      // was read as a filter on the leave history too.
+      /^\s*(?:i\s+)?(?:want|need|require|would like)\s+(?:a\s+|to\s+(?:take|apply\s+for)\s+(?:a\s+)?)?leave\s+(?:from|on|for|starting|tomorrow|today|next|this|coming|(?:mon|tues|wednes|thurs|fri|satur|sun)day)\b/i,
     ],
     exclude: [/\b(status|history|list|show|view|balance)\b/i, /\bapprove\b/i, /\breject\b/i],
     args: (msg) => RULES.find((rule) => rule.tool === 'apply_for_leave' && !rule.decisive).args(msg),
@@ -1724,7 +1736,18 @@ export function normaliseQuery(message) {
 /** Rule-based parse. Returns { tool, args } or null. */
 export function parseIntent(message, actor) {
   const msg = normaliseQuery(message);
-  return toClassLevel(chooseStep(msg, actor), actor, msg);
+  return refined(toClassLevel(chooseStep(msg, actor), actor, msg), msg, actor);
+}
+
+/**
+ * A chosen step with its arguments corrected from the sentence as written
+ * (agent/directIntents.js refineStep), keeping whatever flags the step carried.
+ * Never changes which capability runs.
+ */
+function refined(step, message, actor) {
+  if (!step || step.steps) return step;
+  const next = refineStep(step, message, actor);
+  return next === step ? step : { ...step, ...next };
 }
 
 /**
@@ -1853,6 +1876,13 @@ function ownAttendanceTrendStep(message, actor) {
 function chooseStep(message, actor) {
   if (!mayBeRouted(actor)) return null;
 
+  // A request whose grammar settles its meaning ("fee COLLECTION", "which
+  // class has the LOWEST attendance", "my NEXT class"): read before anything
+  // scores it, because the scorers weigh nouns and these turn on one word.
+  // See agent/directIntents.js. Only ever a capability the caller holds.
+  const direct = directStep(message, actor);
+  if (direct) return direct;
+
   // Before every other tier: "month wise" is the whole point of the question,
   // and the tiers below read it as the overall summary.
   const ownTrend = ownAttendanceTrendStep(message, actor);
@@ -1946,14 +1976,222 @@ export function parsePlan(rawMessage, actor) {
   // The same class-level reading parseIntent() applies, on every step -- this
   // is the path the assistant actually runs, so a fix to one alone is no fix.
   return planSteps(message, actor).map((step) => {
-    const read = toClassLevel(step, actor, message);
-    return read === step ? step : { ...read, ...(step.tentative ? { tentative: true } : {}) };
-  });
+    const read = toClassLevel(step, actor, step.clause ?? message);
+    const settled = read === step ? step : { ...read, ...(step.tentative ? { tentative: true } : {}), ...(step.clause && { clause: step.clause }) };
+    // A step of a multi-part plan was read from its own clause, and is
+    // refined against that clause, not the whole sentence.
+    return refined(settled, step.clause ?? message, actor);
+  }).map(({ clause, ...step }) => step);
+}
+
+/** Where one question ends and the next begins. */
+const CLAUSE_BREAK = /\s+(?:and\s+also|and\s+then|and|also|plus|as\s+well\s+as|along\s+with|&)\s+|\s*;\s*|\s*,\s*(?:and\s+)?(?=(?:what|how|who|which|when|show|list|tell)\b)/i;
+/** A clause that carries its own request: a question word or an opening verb. */
+const OWN_LEAD = /^\s*(?:please\s+)?(?:what|which|who|whom|whose|when|where|why|how|is|are|do|does|did|can|could|show|list|display|view|find|get|give|tell|fetch|check|search)\b/i;
+/** The opening of the first clause that a later, bare clause borrows: "Show", "How many", "What is". */
+const LEAD_PHRASE = /^\s*((?:please\s+)?(?:show(?:\s+me)?|list|display|view|find|get|give\s+me|tell\s+me|fetch|check|how\s+many|how\s+much|what\s+(?:is|are|was|were)|who\s+(?:is|are|was|were)))\b/i;
+
+/**
+ * The steps of a sentence that asks more than one thing, or null.
+ *
+ * "How many students are there and how many teachers?", "Show Rahul Sharma's
+ * attendance and fees", "Show today's absent students and fee collection":
+ * one sentence, two questions -- and only the louder half was answered, with
+ * nothing said about the other. Each clause is read on its own, by the very
+ * tiers that read a whole sentence, after being made whole again: a bare
+ * second clause ("fees") borrows the first clause's opening ("Show") and the
+ * person it is about ("Rahul Sharma's").
+ *
+ * Reads only, and only when EVERY clause resolves to a capability of its own:
+ * if any part cannot be read, this yields (null) and the sentence is handled
+ * as it always was, so a conjunction inside one request ("mark Rahul and Aman
+ * absent", "name and class of Rahul") is never split apart. A clause that
+ * resolves to a capability the caller may not use is kept: the MCP server
+ * refuses it, and the answer says that part was refused rather than leaving it
+ * out.
+ */
+/**
+ * Arguments that take the caller's own words. A write that has one and comes
+ * FIRST in a sentence is never split from what follows it: "Post an
+ * announcement saying bring your atlas and show your ID card" is one notice,
+ * not a notice and a question.
+ */
+const FREE_TEXT_ARGS = ['title', 'body', 'message', 'description', 'subject', 'reason', 'content', 'text', 'note', 'notes', 'remarks', 'topic'];
+const takesFreeText = (tool) => {
+  const properties = getMcpTool(tool)?.inputSchema?.properties ?? {};
+  return FREE_TEXT_ARGS.some((name) => name in properties);
+};
+
+/**
+ * The part of a joined sentence that is an instruction of its own.
+ *
+ * "Show attendance of Class 6 A and mark Aman Gupta absent today" asks a
+ * question AND gives an instruction. Read as one request it became a single
+ * attendance write that took its class from the question and lost the student
+ * -- and the question was never answered. So the parts that open with their
+ * own instruction, when together they resolve to ONE write, are planned as
+ * that write, beside the questions around them.
+ *
+ * Narrow on purpose. The instruction is the run of parts that opens or ends
+ * the sentence ("... and mark Aman absent and mark Rahul present" is one
+ * marking); when it opens the sentence, every other part must be a request in
+ * its own right and the write must not take free text -- so a conjunction
+ * inside one instruction ("mark Rahul and Aman absent", "bring your atlas and
+ * compass") is never split.
+ *
+ * Returns `{ from, to, step, clause }`; `-1` when no part is an instruction
+ * (the sentence is questions only); `null` when the sentence is not this
+ * shape and is read as it always was. `step` is null for an instruction
+ * about "him", "her" or "them" when the questions name nobody: it cannot be
+ * planned, and is reported as left out (instructionLeftOut) rather than
+ * guessed at or silently dropped.
+ *
+ * The instruction borrows from the questions only what it plainly points back
+ * at: "him" is the one person they named, and an instruction naming nobody
+ * ("mark everyone present") is about the class they named.
+ */
+function writeClauseOf(parts, actor) {
+  const led = parts.map((part) => WRITE_REQUEST_LEAD.test(part));
+  if (!led.some(Boolean)) return -1;
+  const last = parts.length - 1;
+  let from = -1;
+  let to = -1;
+  if (led[0]) {
+    from = 0; to = 0;
+    while (to < last && led[to + 1]) to += 1;
+  } else if (led[last]) {
+    from = last; to = last;
+    while (from > 0 && led[from - 1]) from -= 1;
+  }
+  const aWrite = (clause) => {
+    const step = chooseStep(clause, actor);
+    return step && !step.steps && isWrite(step.tool) ? step : null;
+  };
+  const outside = parts.filter((_, i) => i < from || i > to);
+  // An instruction in the MIDDLE of the sentence, or every part an
+  // instruction: not a shape read here.
+  if (parts.some((part, i) => led[i] && (i < from || i > to) && aWrite(part))) return null;
+  if (from === -1) return -1;
+  if (!outside.length) return null;
+
+  const asked = outside.join(' and ');
+  const person = dimensionsOf(asked).student ?? null;
+  const spokenClass = classFromText(asked)?.text ?? null;
+  let clause = parts.slice(from, to + 1).join(' and ');
+  const names = dimensionsOf(clause).student;
+  const pointsBack = /\b(?:him|her|them)\b/i.test(clause);
+  if (!names && pointsBack && !person) {
+    return from !== 0 || outside.every((part) => OWN_LEAD.test(part)) ? { from, to, step: null, clause } : null;
+  }
+  if (!names && pointsBack) clause = clause.replace(/\b(?:him|her|them)\b/i, person);
+  else if (!names && spokenClass && !classFromText(clause)) clause = `${clause} for ${spokenClass}`;
+
+  const step = aWrite(clause);
+  // Opens with an instruction that is not, on its own words, a write: one
+  // request with a conjunction in it, left whole. At the end, such a part is
+  // a question after all ("... and record of fees").
+  if (!step) return from === 0 ? null : -1;
+  if (from === 0 && (takesFreeText(step.tool) || !outside.every((part) => OWN_LEAD.test(part)))) return null;
+  return { from, to, step, clause };
+}
+
+function clausePlan(message, actor) {
+  const text = String(message ?? '').trim().replace(/[?.!]+$/, '');
+  if (!CONJUNCTION.test(text)) return null;
+  const parts = text.split(CLAUSE_BREAK).map((p) => p?.trim()).filter(Boolean);
+  if (parts.length < 2 || parts.length > MAX_PLAN_STEPS) return null;
+
+  const instruction = writeClauseOf(parts, actor);
+  if (instruction === null) return null;
+  const apart = instruction !== -1;
+  const write = apart && instruction.step ? { ...instruction.step, clause: instruction.clause } : null;
+  const readParts = apart ? parts.filter((_, i) => i < instruction.from || i > instruction.to) : parts;
+  // What the QUESTIONS are about. The student an instruction names is that
+  // instruction's own, and is not lent to the question beside it.
+  const asked = apart ? readParts.join(' and ') : text;
+
+  const lead = LEAD_PHRASE.exec(readParts[0])?.[1] ?? null;
+
+  // WHO or WHICH CLASS the whole sentence is about, wherever it says so. A
+  // sentence names its subject once -- at the front ("Rahul Sharma's
+  // attendance and fees") or at the end ("attendance and marks of Rahul
+  // Sharma", "attendance and marks for Class 5 A") -- and means it for every
+  // part. Read from the whole sentence and given to each clause that lacks
+  // it; without this the half that did not carry the name was answered about
+  // nobody, or about the whole school.
+  const whole = dimensionsOf(asked);
+  const person = whole.student ?? null;
+  const code = whole.admissionNo ?? null;
+  const spokenClass = classFromText(asked)?.text ?? null;
+  const kin = /\bmy\s+(?:child|son|daughter|kid|ward)\b/i.exec(asked)?.[0] ?? null;
+  const has = (clause, phrase) => clause.toLowerCase().includes(String(phrase).toLowerCase());
+
+  const steps = [];
+  for (const [index, part] of readParts.entries()) {
+    const own = index === 0 || OWN_LEAD.test(part);
+    const opening = own ? (LEAD_PHRASE.exec(part)?.[1] ?? '') : (lead ?? 'Show');
+    let rest = own ? part.slice(opening.length).trim() : part;
+    if (person && !has(rest, person)) {
+      // "... and what are HIS fees": the pronoun is that person.
+      rest = /\b(?:his|her|their)\b/i.test(rest)
+        ? rest.replace(/\b(?:his|her|their)\b/i, `${person}'s`)
+        : `${person}'s ${rest}`;
+    } else if (!person && code && !has(rest, code)) {
+      rest = `${rest} of student ${code}`;
+    } else if (!person && !code && kin && !/\bmy\b/i.test(rest)) {
+      rest = `${kin}'s ${rest}`;
+    }
+    if (spokenClass && !classFromText(rest)) rest = `${rest} for ${spokenClass}`;
+    const clause = `${opening} ${rest}`.replace(/\s+/g, ' ').trim();
+    const step = chooseStep(clause, actor);
+    if (!step || step.steps || isWrite(step.tool)) return null;
+    if (steps.some((s) => s.tool === step.tool && JSON.stringify(s.args ?? {}) === JSON.stringify(step.args ?? {}))) return null;
+    steps.push({ ...step, clause });
+  }
+  // The questions first, the instruction last: it is proposed for
+  // confirmation, and nothing runs underneath a question still unanswered.
+  if (write) steps.push(write);
+  // An instruction that could not be planned leaves its questions standing,
+  // even when there is only one of them.
+  return steps.length > 1 || (apart && !write && steps.length) ? steps : null;
+}
+
+/**
+ * The instruction in a joined sentence that was NOT planned, in the caller's
+ * words, or null: "mark him absent" beside a question that names nobody. The
+ * questions are answered; this lets the answer say what was not done.
+ */
+export function instructionLeftOut(rawMessage, actor) {
+  const instruction = instructionIn(rawMessage, actor);
+  return instruction && !instruction.step ? instruction.clause : null;
+}
+
+/** The words of the instruction a joined sentence carries beside its questions, or null. */
+export function instructionClauseIn(rawMessage, actor) {
+  return instructionIn(rawMessage, actor)?.clause ?? null;
+}
+
+/** The instruction a joined sentence carries beside its questions, or null. */
+function instructionIn(rawMessage, actor) {
+  const text = String(normaliseQuery(rawMessage) ?? '').trim().replace(/[?.!]+$/, '');
+  if (!CONJUNCTION.test(text) || !mayBeRouted(actor)) return null;
+  const parts = text.split(CLAUSE_BREAK).map((p) => p?.trim()).filter(Boolean);
+  if (parts.length < 2 || parts.length > MAX_PLAN_STEPS) return null;
+  const instruction = writeClauseOf(parts, actor);
+  return instruction && instruction !== -1 ? instruction : null;
 }
 
 function planSteps(message, actor) {
   const msg = String(message ?? '');
   if (!mayBeRouted(actor)) return [];
+
+  // Two questions in one sentence, each read on its own.
+  const clauses = clausePlan(msg, actor);
+  if (clauses) return clauses;
+
+  // As in chooseStep: a grammar that settles the request comes first.
+  const direct = directStep(msg, actor);
+  if (direct) return [direct];
 
   const decisive = decisiveStep(msg, actor);
   if (decisive) return [decisive];
@@ -2190,14 +2428,177 @@ function asksForProperty(asked, name) {
  * assistant's question the answer replies to, when known: it says which
  * free-text field a bare answer fills when the schema does not require it.
  */
+/**
+ * The students a reply OFFERED, when a name matched more than one or none:
+ *
+ *   More than one student matches "Mishra": Ananya Mishra (OAK-52), Aarav Mishra (OAK-51). Which one?
+ *   No student named "Arav Mishra". Did you mean: Aarav Mishra (OAK-51)?
+ *
+ * Read from the tool's own sentence (mcp/tools/_shared.js), as `{ term,
+ * options: [{ name, code }] }` -- `term` being the name as it was first given.
+ */
+const OFFERED_STUDENTS = /(?:More than one student matches|No student named) "([^"]+)"[:.]\s*(?:Did you mean:\s*)?([^?]+?)[.?]\s*(?:Which one\?)?\s*$/i;
+function offeredStudents(asked) {
+  const m = OFFERED_STUDENTS.exec(String(asked ?? '').trim());
+  if (!m) return null;
+  const options = m[2].split(/,\s*(?![^()]*\))/).map((option) => {
+    const parts = /^(.*?)\s*\(([^)]+)\)\s*$/.exec(option.trim());
+    return { name: (parts ? parts[1] : option).trim(), code: parts ? parts[2].trim() : null };
+  }).filter((option) => option.name);
+  return options.length ? { term: m[1], options } : null;
+}
+
+const ORDINALS = { first: 0, '1st': 0, 1: 0, second: 1, '2nd': 1, 2: 1, third: 2, '3rd': 2, 3: 2, fourth: 3, '4th': 3, 4: 3, fifth: 4, '5th': 4, 5: 4 };
+
+/**
+ * Which of the offered students an answer picks, or null when it picks none
+ * -- or more than one. By full name ("Aarav Mishra"), admission number
+ * ("OAK-51"), position ("the second one"), or the part of a name that only one
+ * of them has ("Aarav"). Never the nearest guess: an answer that fits two is
+ * not a choice.
+ */
+function pickedStudent(offered, answer) {
+  const said = String(answer ?? '').toLowerCase().replace(/[“”"'’.,!?]/g, ' ')
+    .replace(/\b(?:the|one|please|its|it is|i mean|i meant|student|pupil|that|this|option|number)\b/g, ' ')
+    .replace(/\s+/g, ' ').trim();
+  if (!said) return null;
+  const { options } = offered;
+  const one = (hits) => (hits.length === 1 ? hits[0] : null);
+  const exact = options.filter((o) => o.name.toLowerCase() === said || (o.code && o.code.toLowerCase() === said));
+  if (exact.length) return one(exact);
+  if (said in ORDINALS) return options[ORDINALS[said]] ?? null;
+  if (said === 'last') return options.at(-1);
+  const words = said.split(' ');
+  return one(options.filter((o) => {
+    const nameWords = o.name.toLowerCase().split(/\s+/);
+    return words.every((w) => nameWords.includes(w) || (o.code && o.code.toLowerCase() === w));
+  }));
+}
+
+/** `args` with every use of the name first given replaced by the student chosen. */
+function withStudentChosen(args, term, chosen) {
+  const wanted = String(term).trim().toLowerCase();
+  let changed = false;
+  const walk = (value) => {
+    if (typeof value === 'string') {
+      if (value.trim().toLowerCase() !== wanted) return value;
+      changed = true;
+      return chosen;
+    }
+    if (Array.isArray(value)) return value.map(walk);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, walk(v)]));
+    return value;
+  };
+  const next = walk(args);
+  return changed ? next : null;
+}
+
 function withAnswer(step, answer, actor, asked = '') {
   const schema = getMcpTool(step.tool)?.inputSchema ?? {};
   const properties = schema.properties ?? {};
   const args = structuredClone(step.args ?? {});
   let supplied = false;
+
+  // The question OFFERED students to choose between, and this is the choice:
+  // the request stands exactly as it was, about the student now named in
+  // full. It used to be read as a request of its own -- "Aarav Mishra", said
+  // to "Which one?", ran a student search and the marking was forgotten. The
+  // tool resolves the chosen name again at the caller's own scope, and a write
+  // is still only proposed.
+  const choices = offeredStudents(asked);
+  if (choices) {
+    const picked = pickedStudent(choices, answer);
+    const chosen = picked ? withStudentChosen(args, choices.term, picked.name) : null;
+    if (chosen) return { tool: step.tool, args: chosen, text: step.text };
+    // A name that is NOT one of those offered: the same request, so the same
+    // question is asked again -- never a different student taken on a guess.
+    if (!picked && NAME_SHAPED.test(String(answer).trim().replace(/[\s.!?]+$/, ''))) {
+      return { tool: step.tool, args, text: step.text };
+    }
+  }
   const capability = capabilityIndex().find((c) => c.name === step.tool);
   const isFreeText = (name) => kindOfProperty(name, properties[name] ?? {}) === 'text'
     && !namesARecord(capability, name, properties[name] ?? {});
+
+  // A LABELLED answer says where it goes: "Title: Assignment 5", "Due date:
+  // Friday", "Class - 6 B". Read first, because every reader below treats the
+  // label as part of the value -- "Title: Assignment 5" was proposed as the
+  // homework "Friday: Title: Assignment".
+  const labelled = LABELLED_ANSWER.exec(String(answer));
+  if (labelled) {
+    const wanted = ANSWER_LABELS[labelled[1].toLowerCase().replace(/\s+/g, ' ')];
+    const name = (Array.isArray(wanted) ? wanted : [wanted]).find((n) => properties[n]);
+    const said = labelled[2].trim().replace(/^["'“‘]+|["'”’]+$/g, '').replace(/[\s.!]+$/, '').trim();
+    if (name && said) {
+      const kind = kindOfProperty(name, properties[name] ?? {});
+      const value = kind === 'date'
+        ? (() => { const found = extractArgument(name, properties[name], said, { write: true }); return found.status === FOUND ? found.value : null; })()
+        : said;
+      if (value) {
+        args[name] = value;
+        if (name === 'title' && properties.content && args.content === undefined) args.content = value;
+        return { tool: step.tool, args, text: step.text };
+      }
+    }
+  }
+
+  // The question NAMED the text it wants ("Tell me a title.") and the answer
+  // is that text. Taken as it is -- minus a date said alongside it, which goes
+  // to the date it names -- before the generic readers can take a number out
+  // of it as marks or a capitalised word as a class: "Assignment 5" is a
+  // title, not five marks.
+  const wantedText = (schema.required ?? []).find((n) => args[n] === undefined && isFreeText(n) && asksForProperty(asked, n));
+  // ...unless the answer names a CLASS: "Mathematics for Class 6-A", said to
+  // "tell me a title and the due date", is the class and subject the request
+  // was still missing, and the readers below place it as that.
+  if (wantedText && !classFromText(String(answer))) {
+    let text = String(answer).trim();
+    let dated = false;
+    for (const [name, property] of Object.entries(properties)) {
+      if (args[name] !== undefined || kindOfProperty(name, property) !== 'date') continue;
+      const found = extractArgument(name, property, text, { write: true });
+      if (found.status === FOUND) { args[name] = found.value; dated = true; }
+    }
+    if (dated) text = text.replace(/\s*[,;]?\s*\b(?:due|by|before|deadline|on)\b\s+.+$/i, '').trim();
+    text = text.replace(/^["'“‘]+|["'”’]+$/g, '').replace(/[\s.!,;:]+$/, '').trim();
+    const onlyWhen = !text || /^(?:(?:due|by|on)\s+)?(?:today|tomorrow|day after tomorrow|(?:(?:next|this|coming)\s+)?(?:mon|tues|wednes|thurs|fri|satur|sun)day)$/i.test(text);
+    if (!onlyWhen) {
+      args[wantedText] = text;
+      if (wantedText === 'title' && properties.content && args.content === undefined) args.content = text;
+      return { tool: step.tool, args, text: step.text };
+    }
+    if (dated) return { tool: step.tool, args, text: step.text };
+  }
+
+  // A class and subject chosen from the options the assistant listed: "6 B
+  // science", "Science - 6 B", answering "Which class did you mean? You teach:
+  // Science — Class 6 B; Mathematics — Class 5 A." The options are the tool's
+  // own (the caller's authorized classes), so the one the answer names is
+  // taken exactly as the tool wrote it -- and the tool still re-resolves it.
+  const offered = offeredPairs(asked);
+  if (offered.length && properties.className && properties.subject) {
+    const spoken = classFromText(String(answer), { lenient: true });
+    const said = String(answer).toLowerCase();
+    const fits = offered.filter((o) => (!spoken || classKey(o.className) === spoken.key)
+      && (subjectsMentionedIn(said, [o.subject]).length > 0 || !offered.some((x) => subjectsMentionedIn(said, [x.subject]).length > 0)));
+    const named = fits.filter((o) => (spoken && classKey(o.className) === spoken.key) || subjectsMentionedIn(said, [o.subject]).length > 0);
+    if (named.length === 1) {
+      args.className = named[0].className;
+      args.subject = named[0].subject;
+      return { tool: step.tool, args, text: step.text };
+    }
+    // A class alone, or a subject alone, narrows it: the tool asks for the rest.
+    if (spoken && named.length > 1) {
+      args.className = named[0].className;
+      delete args.subject;
+      return { tool: step.tool, args, text: step.text };
+    }
+    const subjects = [...new Set(named.map((o) => o.subject))];
+    if (!spoken && subjects.length === 1 && named.length > 1) {
+      args.subject = subjects[0];
+      return { tool: step.tool, args, text: step.text };
+    }
+  }
 
   // What the answer NAMES, read as the capability reads any sentence -- a
   // class, a subject, a date, a number -- and as its pattern rule reads it.
@@ -2268,9 +2669,37 @@ function withAnswer(step, answer, actor, asked = '') {
   return supplied ? { tool: step.tool, args, text: step.text } : null;
 }
 
+/** "Title: …", "Due date - …": an answer that says which detail it is. */
+const LABELLED_ANSWER = /^\s*(title|name|heading|subject|topic|reason|description|details|content|message|class|due\s*date|due|deadline)\s*(?:is\b|:|=|-|–)\s*(.+?)\s*$/i;
+const ANSWER_LABELS = {
+  title: 'title', name: ['title', 'name'], heading: 'title',
+  subject: 'subject', topic: ['topic', 'title'], reason: 'reason',
+  description: 'description', details: 'description',
+  content: ['content', 'body'], message: ['content', 'body', 'text'],
+  class: 'className', 'due date': ['dueAt', 'dueOn'], due: ['dueAt', 'dueOn'], deadline: ['dueAt', 'dueOn'],
+};
+
+/** The "Subject — Class" pairs a clarifying question listed after "You teach:" (or its school-wide wording). */
+function offeredPairs(asked) {
+  const list = /(?:You teach|The classes with subjects assigned are):\s*(.+?)\.?\s*$/is.exec(String(asked ?? ''))?.[1];
+  if (!list) return [];
+  return list.split(/\s*;\s*/)
+    .map((item) => /^(.+?)\s+—\s+(.+)$/.exec(item.trim()))
+    .filter(Boolean)
+    .map((m) => ({ subject: m[1].trim(), className: m[2].trim().replace(/\.$/, '') }));
+}
+
 /** A user turn that opens a write request, or null. */
 function opensWrite(said, actor, plan = parsePlan(said, actor)) {
-  return plan.length === 1 && isWrite(plan[0].tool) ? { tool: plan[0].tool, args: plan[0].args ?? {}, text: said } : null;
+  // One write -- alone, or as the instruction that ends a sentence which also
+  // asked questions (clausePlan): the questions were answered in that turn,
+  // and what stays open, if the tool had to ask, is the write.
+  const write = plan.at(-1);
+  if (!write || !isWrite(write.tool) || plan.slice(0, -1).some((step) => isWrite(step.tool))) return null;
+  // Its words are the instruction's own, not the questions' beside it: an
+  // answer is read back into THAT sentence (withAnswer).
+  const text = plan.length > 1 ? (instructionIn(said, actor)?.clause ?? said) : said;
+  return { tool: write.tool, args: write.args ?? {}, text };
 }
 
 
@@ -2285,6 +2714,15 @@ function opensWrite(said, actor, plan = parsePlan(said, actor)) {
  */
 function advance(open, said, actor, { final = false, asked = '' } = {}) {
   if (!open) return opensWrite(said, actor);
+  // The same request said again IN FULL -- it opens with its own instruction
+  // ("Log a hostel inquiry about the broken fan") -- starts afresh rather than
+  // being taken as the answer to the question still open. Read as an answer,
+  // the whole sentence became the subject: an inquiry titled "Log a hostel
+  // inquiry about the broken fan".
+  if (WRITE_REQUEST_LEAD.test(said)) {
+    const restated = parsePlan(said, actor);
+    if (restated.length === 1 && restated[0].tool === open.tool) return opensWrite(said, actor, restated);
+  }
   if (!standsAlone(said, actor)) {
     const answered = withAnswer(open, said, actor, asked);
     if (answered) return answered;
@@ -2342,7 +2780,13 @@ function continuedWrite(message, actor, conversation = []) {
   const open = openWriteIn(conversation, message, actor);
   if (!open) return null;
   const next = advance(open, String(message ?? ''), actor, { final: true, asked: open.asked });
-  return next ? { tool: next.tool, args: next.args, text: next.text } : null;
+  if (!next) return null;
+  // Settled against everything the caller actually said across the turns, so
+  // an argument a generic reader took from a stray word is not carried into
+  // the confirmation (see settleStep).
+  const said = [...conversation.filter((t) => t?.role === 'user').map((t) => String(t.text ?? '')), String(message ?? '')];
+  const settled = settleStep({ tool: next.tool, args: next.args }, said);
+  return { tool: settled.tool, args: settled.args, text: next.text };
 }
 
 /* ── Follow-ups that only name somebody ─────────────────────────
@@ -2383,7 +2827,11 @@ const displayNameOf = (identity) => identity?.studentName ?? identity?.admission
 /** True when the words could be a person rather than a topic, a time or a class. */
 function couldBeAPerson(words, actor) {
   if (!NAME_SHAPED.test(words) || FOLLOW_UP_PRONOUN_ONLY.test(words)) return false;
-  if (TIME_WORDS.test(words) || looksLikeMonth(words) || classFromText(words)) return false;
+  // A weekday or any other WHEN is not somebody: "what about Monday?" asked
+  // the timetable again for Monday, and "Monday" was then remembered as a
+  // person -- so a later "mark him present" was proposed for a pupil called
+  // Monday.
+  if (TIME_WORDS.test(words) || TIME_ONLY.test(words) || looksLikeMonth(words) || classFromText(words)) return false;
   if (entitiesInText(words).length || subjectFromText(words)) return false;
   return parsePlan(words, actor).length === 0;
 }
@@ -2405,6 +2853,16 @@ function priorContext(history, actor) {
       prior = plan[0];
       const named = displayNameOf(studentNamedBy(plan[0]));
       if (named) people.push(named);
+    } else if (plan.length === 1) {
+      // A write names people too -- "Mark Rahul Sharma absent" -- and "now
+      // mark him present" means the same pupil. Only WHO was named is kept;
+      // a write is never the request a follow-up re-asks.
+      const named = displayNameOf(studentNamedBy(plan[0]));
+      if (named) people.push(named);
+      for (const entry of Array.isArray(plan[0].args?.students) ? plan[0].args.students : []) {
+        const one = displayNameOf(studentNamedBy({ args: entry }));
+        if (one) people.push(one);
+      }
     }
   }
   return { prior, people };
@@ -2463,14 +2921,383 @@ export function resolveFollowUp(message, actor, history = []) {
   return { ...step, steps: [step] };
 }
 
+/* ── Reads that continue across turns ───────────────────────────
+ *
+ * The conversation state of a READ, rebuilt from the transcript on every turn.
+ *
+ * Writes already carried across turns (continuedWrite): "create homework" →
+ * "which title?" → "Fractions" finishes the homework. Reads did not, and every
+ * reported context failure is that one gap:
+ *
+ *   "Show attendance for my class." → "Which class?" → "Class 10 A"
+ *        answered with the subjects taught in 10 A: the reply was read as a
+ *        new request about a class, and the attendance question was gone.
+ *   "Show my attendance." → "What about last month?"
+ *        answered "I'm not sure what you need" (or, for a principal, with the
+ *        audit log -- the one capability that happened to take a date range).
+ *   "Who is absent in my class?" → "Show their names."
+ *   "Show assignments due this week." → "Which one is due first?"
+ *        answered about FEES, on the word "due".
+ *
+ * So the state kept is exactly what those need, and nothing else: the READ the
+ * caller last asked for (its capability and arguments), and what the assistant
+ * said back. It is derived from the caller's OWN earlier words -- replayed
+ * through the same tiers that read any sentence -- and an assistant turn is
+ * consulted only for whether it asked a question. It is never stored, so there
+ * is nothing to go stale or leak: the transcript belongs to one signed-in
+ * person in one school (the website sends its own; WhatsApp's is keyed to the
+ * verified number and re-resolved every turn), and identity, role and scope
+ * come from `actor` on this turn, never from it.
+ *
+ * What comes out is an ordinary plan step. The MCP server authorizes it at the
+ * caller's own scope, exactly as if they had typed the whole question again --
+ * a follow-up can no more reach another class than the first question could.
+ */
+
+const WEEKDAY = '(?:mon|tues|wednes|thurs|fri|satur|sun)day';
+const MONTH_NAME = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+const COUNT_WORD = '(?:\\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)';
+/** Words that are nothing but a WHEN. */
+const TIME_ONLY = new RegExp(`^(?:${[
+  'today', 'tomorrow', 'yesterday', 'day after tomorrow',
+  '(?:this|last|next|previous|current|coming|past)\\s+(?:week|month|year)',
+  `(?:(?:this|last|next|previous|coming|this\\s+coming)\\s+)?${WEEKDAY}`,
+  `(?:the\\s+)?(?:last|past|previous)\\s+${COUNT_WORD}\\s+(?:days?|weeks?|months?|years?)`,
+  `${MONTH_NAME}(?:\\s+20\\d{2})?`,
+  '20\\d{2}-\\d{1,2}(?:-\\d{1,2})?',
+  `\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?${MONTH_NAME}(?:,?\\s+20\\d{2})?`,
+  `${MONTH_NAME}\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+20\\d{2})?`,
+  '\\d{1,2}[-/.]\\d{1,2}[-/.]20\\d{2}',
+].join('|')})$`, 'i');
+/** What a follow-up puts in front of the thing it changes: "what about", "and", "for". */
+const FOLLOW_UP_LEAD = /^\s*(?:(?:and|so|ok(?:ay)?|but|then)\s+)?(?:(?:what|how)\s+about|same\s+for|(?:and\s+)?(?:show|give)(?:\s+me)?(?:\s+(?:it|that|the\s+same|those))?\s+(?:for|on|in)|and|for|on|in|of)?\s*(?:the\s+)?/i;
+
+/** The WHEN a follow-up names when it names nothing else, or null. */
+function timeOnly(message) {
+  const rest = String(message ?? '').replace(FOLLOW_UP_LEAD, '').replace(/[\s?.!]+$/, '').trim();
+  return rest && TIME_ONLY.test(rest) ? rest : null;
+}
+
+const PERIOD_ARGS = ['date', 'month', 'from', 'to', 'day', 'dueFrom', 'dueTo', 'next', 'first'];
+
+/** A period (`{date}` | `{month}` | `{from,to}`) as the arguments THIS tool takes, or null when it takes none that fit. */
+function periodFor(tool, period, spoken) {
+  const props = getMcpTool(tool)?.inputSchema?.properties ?? {};
+  // A tool that takes the day as a WORD (the timetable: a weekly grid).
+  if (props.day && kindOfProperty('day', props.day) !== 'date') {
+    const word = /\b(day after tomorrow|today|tomorrow|yesterday)\b/i.exec(spoken)?.[1]
+      ?? new RegExp(`\\b(${WEEKDAY})\\b`, 'i').exec(spoken)?.[1]
+      ?? (/\bweek\b/i.test(spoken) ? 'week' : null);
+    return word ? { day: word.toLowerCase() } : null;
+  }
+  const bounds = (month) => {
+    const [y, m] = month.split('-').map(Number);
+    return { from: `${month}-01`, to: new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10) };
+  };
+  const span = period.date ? { from: period.date, to: period.date }
+    : period.month ? bounds(period.month)
+      : period.from ? { from: period.from, to: period.to } : null;
+  if (!span) return null;
+  if (period.date && props.date) return { date: period.date };
+  if (period.month && props.month) return { month: period.month };
+  if (props.from && props.to) return span;
+  if (props.dueFrom && props.dueTo) return { dueFrom: span.from, dueTo: span.to };
+  if (props.month && span.from.slice(0, 7) === span.to.slice(0, 7) && span.from.endsWith('-01')
+    && span.to === bounds(span.from.slice(0, 7)).to) return { month: span.from.slice(0, 7) };
+  return null;
+}
+
+/** The previous read, asked again for another period. */
+function retimed(prior, spoken, now = new Date()) {
+  const period = periodArgs(spoken, now);
+  // A weekday alone is read by periodArgs as a date; "week" by the tool.
+  const placed = periodFor(prior.tool, period, spoken);
+  if (!placed) return null;
+  const kept = Object.fromEntries(Object.entries(prior.args ?? {}).filter(([name]) => !PERIOD_ARGS.includes(name)));
+  return { tool: prior.tool, args: { ...kept, ...placed } };
+}
+
+/** Capabilities that answer about attendance for a group, from which "their names" can be asked. */
+const ATTENDANCE_GROUP_READS = new Set([
+  'get_absent_students', 'who_is_absent_today', 'get_attendance', 'get_attendance_statistics',
+  'get_attendance_roster', 'get_class_attendance_summary',
+]);
+const ASKS_FOR_NAMES = /^\s*(?:(?:please\s+)?(?:show|list|give|tell|name)(?:\s+me)?\s+)?(?:(?:their|the|those|these|all\s+the(?:ir)?)\s+)?names?\b|^\s*who\s+(?:all\s+)?(?:are|were)\s+(?:they|those|absent)\b|^\s*which\s+(?:students?|ones|pupils?)\b|^\s*(?:name|list)\s+them\b|^\s*who\s*\??\s*$/i;
+const ASKS_DUE_FIRST = /^\s*(?:and\s+)?(?:which|what)\s+(?:one|(?:assignment|homework|task)s?)?\s*(?:is|are)?\s*(?:due\s+)?(?:first|next|soonest|earliest)\b|^\s*(?:which|what)\s+(?:one\s+)?(?:is\s+)?(?:the\s+)?(?:first|earliest|next|soonest)\b/i;
+
+/**
+ * A short reply read as the ANSWER to a question the assistant asked about a
+ * read: a class, a period, a person or a subject, placed into the argument the
+ * capability holds it in. Null when the reply supplies nothing it takes.
+ */
+function answeredRead(prior, reply, asked, actor, now = new Date()) {
+  const props = getMcpTool(prior.tool)?.inputSchema?.properties ?? {};
+  // The question offered students to choose between (see withAnswer): the
+  // same read, for the one chosen -- or asked again when none was.
+  const offered = offeredStudents(asked);
+  if (offered) {
+    const picked = pickedStudent(offered, reply);
+    const chosen = picked ? withStudentChosen(prior.args ?? {}, offered.term, picked.name) : null;
+    if (chosen) return { tool: prior.tool, args: chosen };
+    if (!picked && NAME_SHAPED.test(String(reply).trim().replace(/[\s.!?]+$/, ''))) return { tool: prior.tool, args: { ...(prior.args ?? {}) } };
+  }
+  const text = String(reply ?? '').replace(/^\s*(?:for|in|of|it(?:'s| is)|its|the)\s+/i, '').replace(/[\s?.!]+$/, '').trim();
+  if (!text || text.split(/\s+/).length > 8) return null;
+  const args = { ...(prior.args ?? {}) };
+  let supplied = false;
+
+  // A class -- including the bare "6 B" people type once the question has
+  // already said a class is what is wanted.
+  const spokenClass = classFromText(text, { lenient: true });
+  if (spokenClass && props.className) {
+    args.className = spokenClass.lenient ? `Class ${spokenClass.key.toUpperCase()}` : spokenClass.text;
+    delete args.sectionId;
+    supplied = true;
+  }
+  const rest = spokenClass ? text.split(spokenClass.text).join(' ').trim() : text;
+
+  const spokenWhen = rest.replace(/^(?:and\s+)?(?:for|on|in)\s+/i, '').trim();
+  const when = spokenWhen && TIME_ONLY.test(spokenWhen) ? periodFor(prior.tool, periodArgs(spokenWhen, now), spokenWhen) : null;
+  if (when) {
+    for (const name of PERIOD_ARGS) delete args[name];
+    Object.assign(args, when);
+    supplied = true;
+  }
+  // An ANSWER is the class, the period, or both -- and nothing more. Anything
+  // else in it is a request of its own ("attendance for Class 6-A this week"),
+  // and reading that as an answer kept the class and dropped the week.
+  if (supplied && (when ? '' : spokenWhen).replace(/\b(?:for|in|of|the|please|and)\b/gi, '').replace(/[\s,.-]+/g, '') !== '') return null;
+
+  if (!supplied && /\b(?:which|what)\s+(?:student|child|pupil)|\bwhose\b|\bwho\b|\bname\s+(?:a|the)\s+student/i.test(asked)) {
+    const admissionNo = admissionNoOf(text);
+    if (admissionNo && props.admissionNo) { args.admissionNo = admissionNo; supplied = true; }
+    else if (props.studentName && NAME_SHAPED.test(text) && !entitiesInText(text).length) { args.studentName = text; supplied = true; }
+  }
+  if (!supplied && props.subject && /\bwhich\s+subject\b/i.test(asked) && NAME_SHAPED.test(text)) {
+    args.subject = text;
+    supplied = true;
+  }
+  return supplied ? { tool: prior.tool, args } : null;
+}
+
+/** What a follow-up asks of the read before it, as a step -- or null when it is not one. */
+function followedRead(message, state, actor, now = new Date()) {
+  const { step: prior, reply } = state ?? {};
+  if (!prior) return null;
+  const text = String(message ?? '').trim();
+
+  // "What about last month?", "and yesterday?", "for this week".
+  const when = timeOnly(text);
+  if (when) return retimed(prior, when, now);
+
+  // "Show their names", "who are they?": the register of the same day, which
+  // names who is absent. Class by class -- the register tool asks which class
+  // when the caller has more than one, never a school-wide list of names.
+  if (ASKS_FOR_NAMES.test(text) && ATTENDANCE_GROUP_READS.has(prior.tool)
+    && capabilitiesFor(actor).some((c) => c.name === 'get_attendance_roster')) {
+    const day = prior.args?.date ? { date: prior.args.date } : {};
+    const group = prior.args?.className ? { className: prior.args.className } : {};
+    return { tool: 'get_attendance_roster', args: { ...group, ...day } };
+  }
+
+  // A class and nothing else -- "Class 10 A", "and 6 B?" -- after a read that
+  // can be asked about one class: the same question, for that class. This is
+  // what a reply to "which class?" is, and also the natural next question
+  // after a school-wide answer.
+  const onlyClass = classOnly(text);
+  if (onlyClass) {
+    const props = getMcpTool(prior.tool)?.inputSchema?.properties ?? {};
+    if (props.className) {
+      const { sectionId, ...kept } = prior.args ?? {};
+      return { tool: prior.tool, args: { ...kept, className: onlyClass } };
+    }
+    if (ATTENDANCE_GROUP_READS.has(prior.tool) && capabilitiesFor(actor).some((c) => c.name === 'get_attendance_roster')) {
+      const when = prior.args?.date ? { date: prior.args.date } : prior.args?.month ? { month: prior.args.month } : {};
+      return { tool: 'get_attendance_roster', args: { className: onlyClass, ...when } };
+    }
+  }
+
+  // "Which one is due first?" after a list of homework.
+  if (ASKS_DUE_FIRST.test(text) && prior.tool === 'get_assignments') {
+    const { dueFrom, dueTo, ...kept } = prior.args ?? {};
+    return { tool: 'get_assignments', args: { ...kept, first: true } };
+  }
+
+  // The answer to a question the assistant asked about this read.
+  if (isClarificationReply(reply) && !standsAlone(text, actor)) {
+    return answeredRead(prior, text, reply, actor, now);
+  }
+  return null;
+}
+
+/** The class a message names when it names nothing else ("Class 10 A", "and 6 B?"), or null. */
+function classOnly(message) {
+  const rest = String(message ?? '').replace(FOLLOW_UP_LEAD, '').replace(/[\s?.!]+$/, '').trim();
+  if (!rest || rest.split(/\s+/).length > 4) return null;
+  const spoken = classFromText(rest, { lenient: true });
+  if (!spoken || spoken.gradeOnly) return null;
+  // Nothing left over once the class is taken out.
+  if (rest.split(spoken.text).join('').replace(/[\s,.-]+/g, '') !== '') return null;
+  return spoken.lenient ? `Class ${spoken.key.toUpperCase()}` : spoken.text;
+}
+
+/** One user turn as a single READ step, or null (a write, a multi-part plan, or nothing). */
+function readOf(text, actor) {
+  const plan = parsePlan(text, actor);
+  return plan.length === 1 && !isWrite(plan[0].tool) ? { tool: plan[0].tool, args: plan[0].args ?? {} } : null;
+}
+
+/** The read the conversation is on after its last user turn, and what the assistant then said. */
+function readState(history, actor) {
+  let state = null;
+  for (let i = 0; i < history.length; i += 1) {
+    const turn = history[i];
+    if (turn?.role !== 'user') continue;
+    const said = String(turn.text ?? '');
+    const next = history.slice(i + 1).findIndex((t) => t?.role === 'user');
+    const reply = history.slice(i + 1, next === -1 ? undefined : i + 1 + next).find((t) => t?.role === 'assistant')?.text ?? '';
+    const step = followedRead(said, state, actor) ?? readOf(said, actor);
+    state = step ? { step, reply: String(reply) } : null;
+  }
+  return state;
+}
+
+/**
+ * The read this message continues, as `{ tool, args, steps }` -- or null when
+ * it does not continue one.
+ */
+export function continuedRead(message, actor, history = []) {
+  if (!mayBeRouted(actor)) return null;
+  if (!history.length) {
+    const alone = timeOnly(message);
+    // Only the bare follow-up FORM ("what about last month?") -- a message
+    // that is just "today" or "Monday" is left to the ordinary readers.
+    return alone && /^\s*(?:and\s+|so\s+)?(?:what|how)\s+about\b/i.test(String(message ?? ''))
+      ? { clarify: `What would you like to see for ${alone}?` } : null;
+  }
+  // The transcript may end with the message being answered now (see openWriteIn).
+  const turns = [...history];
+  while (turns.length && turns.at(-1)?.role === 'user'
+    && String(turns.at(-1).text ?? '').trim() === String(message ?? '').trim()) turns.pop();
+  const state = readState(turns, actor);
+  const when = timeOnly(message);
+  if (!state) {
+    // "What about last month?" with nothing before it to be about. Asked,
+    // rather than matched to whichever capability happens to take a date.
+    return when ? { clarify: `What would you like to see for ${when}?` } : null;
+  }
+  const step = followedRead(normaliseQuery(message), state, actor);
+  if (step) return { ...step, steps: [step] };
+  // A period the previous answer cannot be given for is said to be so.
+  return when ? { clarify: `I can't show that for ${when}. Tell me what you would like to see for that period.` } : null;
+}
+
+/** The question asked when "percentage" could be of attendance or of marks. */
+export const WHICH_PERCENTAGE = 'Do you mean your attendance percentage, or your exam (marks) percentage?';
+
+/**
+ * A bare "what is my percentage?", and the one-word answer to being asked which.
+ *
+ * Attendance and marks are both quoted as percentages, and the word alone was
+ * being sent to one or the other on a guess. For somebody with a record of
+ * their own it is a question with two possible answers, so it is asked -- and
+ * "attendance" or "marks" then finishes it.
+ */
+function percentageTurn(message, actor, history) {
+  if (!SELF_RECORD_ROLES.has(actor?.roleKey)) return null;
+  const text = String(message ?? '').trim();
+  const lastReply = [...history].reverse().find((t) => t?.role === 'assistant')?.text ?? '';
+  if (String(lastReply).includes(WHICH_PERCENTAGE) && text.split(/\s+/).length <= 4) {
+    const held = (tool) => heldBy(actor, tool) && capabilitiesFor(actor).some((c) => c.name === tool);
+    if (/\battend|\bpresent|\babsen/i.test(text) && held('get_attendance')) {
+      const step = { tool: 'get_attendance', args: {} };
+      return { ...step, steps: [step] };
+    }
+    if (/\bmarks?\b|\bexams?\b|\bresults?\b|\bscor|\btests?\b|\bgrades?\b|\bacademic/i.test(text) && held('get_report_card')) {
+      const step = { tool: 'get_report_card', args: {} };
+      return { ...step, steps: [step] };
+    }
+  }
+  return PERCENTAGE_QUESTION.test(text) ? { clarify: WHICH_PERCENTAGE } : null;
+}
+
+/**
+ * "Mark him present", "show his marks" -- with nobody the pronoun can mean.
+ *
+ * A pronoun is resolved only when the caller's own earlier turns named exactly
+ * one person. Named nobody: ask who. Named several: ask which. Attendance and
+ * marks are never read or written for a student somebody had to guess.
+ */
+function unresolvedPronoun(message, actor, history, parsed) {
+  if (!namesOnlyAPronoun(message)) return null;
+  // Their own record, or their child's: "his marks" from a parent is not a riddle.
+  if (SELF_RECORD_ROLES.has(actor?.roleKey)) return null;
+  // A capability was chosen: it is about one student, and with nobody named it
+  // asks who itself (resolveEnrollmentIdOrAsk) -- in its own words, and with
+  // the call on the audit trail. This only speaks for the case where NOTHING
+  // was chosen, which used to end in "I'm not sure what you need".
+  const steps = parsed ? (parsed.steps ?? [parsed]) : [];
+  if (steps.length) return null;
+  const { people } = priorContext(history, actor);
+  const distinct = [...new Map(people.map((p) => [String(p).toLowerCase(), p])).values()];
+  if (distinct.length === 1) return null;
+  return {
+    clarify: distinct.length > 1
+      ? `Who do you mean — ${distinct.map(titleCase).join(' or ')}?`
+      : 'Which student? Give a name, admission number or id.',
+  };
+}
+
+/** "Mark him present" when the conversation names exactly one person: that person, marked. */
+function pronounMarking(message, actor, history) {
+  const m = /^\s*(?:please\s+)?(?:mark|record|set)\s+(?:him|her|them)\s+(?:as\s+)?(present|absent|late|excused)\b/i.exec(String(message ?? ''));
+  if (!m || !heldBy(actor, 'mark_attendance') || !capabilitiesFor(actor).some((c) => c.name === 'mark_attendance')) return null;
+  const { people } = priorContext(history, actor);
+  const distinct = [...new Map(people.map((p) => [String(p).toLowerCase(), p])).values()];
+  if (distinct.length !== 1) return null;
+  const date = periodArgs(message).date;
+  const step = { tool: 'mark_attendance', args: { students: [{ studentName: distinct[0], status: m[1].toUpperCase() }], ...(date && { date }) } };
+  return { ...step, steps: [step] };
+}
+
 export async function parseIntentWithLlm(message, actor, options = {}) {
   const { history = [] } = options;
+
+  // A read the conversation is already on -- the answer to "which class?",
+  // "what about last month?", "show their names" -- unless what is open is a
+  // WRITE waiting for an answer, which keeps its turn (continuedWrite, below).
+  if (!hasOpenWrite(history, message, actor)) {
+    const percentage = percentageTurn(message, actor, history);
+    if (percentage) return percentage;
+    const carried = continuedRead(message, actor, history);
+    if (carried) return carried;
+    // "Mark him present": with a model configured this is the model's to
+    // resolve, from the transcript it is given (pinned by mcp.e2e MEMORY) --
+    // so the deterministic reading is used up front only when there is no
+    // model, and otherwise only if the model comes back with nothing (below).
+    const marking = isLlmEnabled() ? null : pronounMarking(message, actor, history);
+    if (marking) return marking;
+  }
+
   // An obvious follow-up is resolved from the conversation itself, before
   // and without the model. A clarification is kept for when nothing better
   // turns up -- the model may still read what the rules could not.
   const followUp = resolveFollowUp(message, actor, history);
   if (followUp?.steps) return followUp;
   const parsed = await parseIntentCore(message, actor, options);
+
+  // A pronoun nobody can resolve is asked about, whatever a tier made of the
+  // rest of the sentence: never answered, or marked, for a guessed student.
+  const pronoun = unresolvedPronoun(message, actor, history, parsed);
+  if (pronoun) return pronoun;
+
+  // The model had its turn and proposed nothing: the one person the
+  // conversation named is still who "him" is.
+  if (!parsed && !hasOpenWrite(history, message, actor)) {
+    const marking = pronounMarking(message, actor, history);
+    if (marking) return marking;
+  }
+
   return parsed ?? (followUp?.clarify ? followUp : null);
 }
 

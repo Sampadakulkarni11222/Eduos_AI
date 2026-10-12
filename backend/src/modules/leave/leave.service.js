@@ -91,6 +91,21 @@ export async function apply(actor, { fromDate, toDate, reason, documentUrl, docu
   const attachment = normaliseAttachment(documentUrl, documentName);
   const enrollmentId = await resolveOwnActiveEnrollmentId(actor);
 
+  // One application per set of days. Nothing stopped the same leave being
+  // filed twice -- a double-tapped Submit, a retried request, a "yes" delivered
+  // twice -- and each copy then had to be reviewed and rejected by hand. An
+  // application for exactly these days that is still pending or already
+  // approved is the same request; a rejected one may be applied for again.
+  const duplicate = await LeaveApplication.findOne({
+    enrollmentId, fromDate: from, toDate: to, status: { $in: ['PENDING', 'APPROVED'] },
+  }).select('_id status').lean();
+  if (duplicate) {
+    throw new AppError(
+      `A leave application for these dates is already ${duplicate.status === 'APPROVED' ? 'approved' : 'awaiting review'}`,
+      409, [], 'LEAVE_ALREADY_APPLIED',
+    );
+  }
+
   const application = await LeaveApplication.create({
     enrollmentId,
     fromDate: from,

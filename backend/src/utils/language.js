@@ -157,7 +157,7 @@ const MESSAGES = {
     // Asked, not errored: a leave request with no dates is an ordinary
     // half-finished sentence, not a failure.
     'leave.needDates': 'Which dates do you need off? Tell me like "leave on 2026-08-12" or "leave from 2026-08-12 to 2026-08-14".',
-    'announcement.posted': 'The announcement has been posted.',
+    'announcement.posted': 'The announcement "{title}" has been posted to {audience}.',
     'absent.today': '{absent} student(s) absent today, {present} present ({late} late, {excused} excused) out of {marked} marked.',
     'absent.notMarked': "Today's attendance hasn't been marked yet, so there is nothing to report.",
 
@@ -166,7 +166,7 @@ const MESSAGES = {
     'hostel.residents.more': '{count} student(s) currently in the hostel. First {shown}: {list}.',
     'hostel.residents.none': 'No students are currently allocated a hostel bed.',
 
-    'library.summary': 'Library: {books} book(s) in the catalog ({titles} titles), {onLoan} on loan, {overdue} overdue.',
+    'library.summary': 'Library: {books} book(s) in the catalog ({titles} titles) with {copies} copies of which {available} are on the shelf. {onLoan} on loan and not yet due, {overdue} overdue.',
     'library.overdue': '{count} book(s) overdue: {list}.',
     'library.overdue.more': '{count} book(s) overdue. First {shown}: {list}.',
     'library.overdue.none': 'No books are overdue right now.',
@@ -229,7 +229,7 @@ const MESSAGES = {
     'subjects.none': 'आपकी कक्षा के लिए अभी तक कोई विषय निर्धारित नहीं किया गया है।',
     'leave.submitted': 'आपका छुट्टी का आवेदन जमा हो गया है।',
     'leave.needDates': 'आपको किन तारीखों की छुट्टी चाहिए? जैसे "leave on 2026-08-12" या "leave from 2026-08-12 to 2026-08-14"।',
-    'announcement.posted': 'सूचना प्रकाशित कर दी गई है।',
+    'announcement.posted': 'सूचना "{title}" प्रकाशित कर दी गई है ({audience})।',
     'absent.today': 'आज {absent} विद्यार्थी अनुपस्थित और {present} उपस्थित हैं ({late} देर से, {excused} अवकाश), कुल {marked} दर्ज।',
     'absent.notMarked': 'आज की उपस्थिति अभी दर्ज नहीं हुई है, इसलिए बताने को कुछ नहीं है।',
 
@@ -238,7 +238,7 @@ const MESSAGES = {
     'hostel.residents.more': 'इस समय {count} विद्यार्थी छात्रावास में हैं। पहले {shown}: {list}।',
     'hostel.residents.none': 'अभी किसी विद्यार्थी को छात्रावास में स्थान नहीं दिया गया है।',
 
-    'library.summary': 'पुस्तकालय: सूची में {books} पुस्तकें ({titles} शीर्षक), {onLoan} जारी, {overdue} विलंबित।',
+    'library.summary': 'पुस्तकालय: सूची में {books} पुस्तकें ({titles} शीर्षक), {copies} प्रतियाँ जिनमें {available} उपलब्ध। {onLoan} जारी, {overdue} विलंबित।',
     'library.overdue': '{count} पुस्तक(ें) विलंबित: {list}।',
     'library.overdue.more': '{count} पुस्तक(ें) विलंबित। पहली {shown}: {list}।',
     'library.overdue.none': 'अभी कोई पुस्तक विलंबित नहीं है।',

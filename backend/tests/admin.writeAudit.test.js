@@ -148,7 +148,7 @@ describe('0. the no-model fallback path', () => {
   it('Admin is offered 172 capabilities, 88 of them writes', () => {
     const offered = mcpToolsFor(actorForRole('ADMIN')).map((t) => t.name);
     const writes = offered.filter((n) => index()[n].operation !== 'GET');
-    expect(offered).toHaveLength(172);
+    expect(offered).toHaveLength(173);
     expect(writes).toHaveLength(88);
   });
 });
@@ -239,7 +239,11 @@ describe('2. requests that were not understood now reach an existing capability'
     ['Notify the Other teacher that the staff meeting is at 3pm.', 'notify_users', { recipient: 'Other teacher', body: 'the staff meeting is at 3pm' }],
     ['Close the Bus timing ticket.', 'update_ticket', { subject: 'Bus timing', status: 'CLOSED' }],
     ['Mark the Bus timing ticket as resolved.', 'update_ticket', { subject: 'Bus timing', status: 'RESOLVED' }],
-    ['Raise a ticket about the broken projector in Class 6-A.', 'create_ticket', { subject: 'the broken projector' }],
+    // The WHOLE of what was written is the ticket's subject. This used to
+    // expect 'the broken projector' -- the subject cut at the class it
+    // mentions, which is the truncation the exploratory testing reported
+    // (finding G): where the projector is, is part of what is being raised.
+    ['Raise a ticket about the broken projector in Class 6-A.', 'create_ticket', { subject: 'The broken projector in Class 6-A' }],
     // Library, hostel, transport
     ['Update Wings of Fire to 5 copies.', 'update_book', { title: 'Wings of Fire', totalCopies: 5 }],
     ['Mark the Fan not working hostel inquiry as resolved.', 'update_hostel_inquiry', { subject: 'Fan not working', status: 'RESOLVED' }],

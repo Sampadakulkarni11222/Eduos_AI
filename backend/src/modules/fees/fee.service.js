@@ -333,8 +333,19 @@ export async function listInvoices(actor, scope, query = {}) {
   }
   if (query.search) {
     const rx = new RegExp(escapeRegex(query.search), 'i');
+    // A name is searched a WORD at a time, every word having to match the
+    // first name, the last name or the admission number. The whole string used
+    // to be tested against each field separately, so a full name -- "Rahul
+    // Sharma" -- matched neither `firstName` nor `lastName` and found nobody:
+    // a student owing fees was reported as having none outstanding. One word
+    // behaves exactly as before.
+    const words = String(query.search).trim().split(/\s+/).filter(Boolean);
     const students = await Student.find({
-      $or: [{ firstName: rx }, { lastName: rx }, { admissionNo: rx }], deletedAt: null,
+      deletedAt: null,
+      $and: words.map((word) => {
+        const wordRx = new RegExp(escapeRegex(word), 'i');
+        return { $or: [{ firstName: wordRx }, { lastName: wordRx }, { admissionNo: wordRx }] };
+      }),
     }).select('_id');
     const enrs = students.length
       ? await Enrollment.find({ studentId: { $in: students.map((s) => s._id) } }).select('_id')

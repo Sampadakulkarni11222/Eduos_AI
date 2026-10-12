@@ -3,10 +3,10 @@ import * as students from '../../../students/student.service.js';
 import { ok, action } from '../protocol.js';
 import { AppError } from '../../../../utils/AppError.js';
 import {
-  RISK, objectId, dateStr, MONTH, resolveEnrollmentId, resolveStudentEnrollment, studentIdentitySchema,
+  RISK, objectId, dateStr, MONTH, resolveEnrollmentId, resolveEnrollmentIdOrAsk, resolveStudentEnrollment, studentIdentitySchema,
   wrapAgentTool, summarise, resolveSection, classIdentitySchema,
 } from './_shared.js';
-import { attendanceAnswer, isFutureMonth, unreadableMonthMessage } from '../../agent/present.js';
+import { attendanceAnswer, isFutureMonth, unreadableMonthMessage, formatPercent, formatDate } from '../../agent/present.js';
 
 const STATUSES = ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY'];
 
@@ -42,6 +42,35 @@ const today = () => {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 };
+
+/**
+ * The entries of a marking plan that would actually change the register.
+ *
+ * Compared against what is stored for that class, date and period -- the same
+ * read the audit snapshot makes. An entry whose status is already the one asked
+ * for is not a change, and proposing it again (a repeated request, a retried
+ * message) asked a teacher to approve, and then audited, a write of nothing.
+ */
+async function entriesThatChange(plan) {
+  const records = await attendance.findExisting(plan.sectionId, plan.date, plan.periodNo);
+  const current = new Map(records.map((r) => [String(r.enrollmentId), r.status]));
+  return plan.entries.filter((e) => current.get(String(e.enrollmentId)) !== String(e.status).toUpperCase());
+}
+
+/**
+ * Refuses a plan that changes nothing, before anybody is asked to confirm it.
+ * A 409 rather than a question: nothing is missing, and the orchestrator reads
+ * a conflict out as the answer it is.
+ */
+async function assertChangesSomething(plan) {
+  const changing = await entriesThatChange(plan);
+  if (changing.length) return plan;
+  const who = plan.names?.length ? plan.names.join(', ') : `${plan.entries.length} student(s)`;
+  throw new AppError(
+    `Attendance is already recorded that way${plan.className ? ` for ${plan.className}` : ''} on ${plan.date} — ${who}. Nothing to change.`,
+    409, [], 'ATTENDANCE_UNCHANGED',
+  );
+}
 
 export const attendanceTools = {
   get_student_attendance: {
@@ -172,7 +201,11 @@ export const attendanceTools = {
 
       // The day is named in the answer: "attendance has not been marked yet"
       // with no date said was read as an answer about some other period.
-      const day = args.date ?? new Date().toISOString().slice(0, 10);
+      // The school's local calendar day, as every other attendance read and
+      // write here uses (today()). The UTC day this used to take is still
+      // yesterday until 05:30 in India, so an early-morning "who is absent in
+      // Class 5 A?" was answered from the previous day's register.
+      const day = args.date ?? today();
       const roster = await attendance.getRoster(ctx.actor, ctx.scope, section.sectionId, day, args.periodNo ?? null);
       // getRoster() returns its rows under `roster`, beside section and period details.
       const rows = Array.isArray(roster) ? roster : (roster?.roster ?? []);
@@ -266,7 +299,7 @@ export const attendanceTools = {
     permission: 'attendance.read',
     service: 'attendance.service.getSubjectWiseSummary()',
     async run(ctx, args) {
-      const enrollmentId = await resolveEnrollmentId(ctx, args);
+      const enrollmentId = await resolveEnrollmentIdOrAsk(ctx, args);
       const data = await attendance.getSubjectWiseSummary(ctx.actor, ctx.scope, { enrollmentId, month: args.month });
       const rows = data?.subjects ?? [];
       const view = summarise(rows, (s) => `${s.subject}: ${s.pctPresent ?? s.pct}%`);
@@ -292,7 +325,7 @@ export const attendanceTools = {
     permission: 'attendance.read',
     service: 'attendance.service.getCalendar()',
     async run(ctx, args) {
-      const enrollmentId = await resolveEnrollmentId(ctx, args);
+      const enrollmentId = await resolveEnrollmentIdOrAsk(ctx, args);
       const data = await attendance.getCalendar(ctx.actor, ctx.scope, { enrollmentId, month: args.month });
       const days = data?.days ?? [];
       const absent = days.filter((d) => d.status === 'ABSENT').length;
@@ -323,7 +356,7 @@ export const attendanceTools = {
       // The service re-checks the enrolment through
       // resolveSummaryEnrollmentIds(), which refuses an id the caller is not
       // entitled to (404) rather than treating the id as proof of entitlement.
-      const enrollmentId = await resolveEnrollmentId(ctx, args);
+      const enrollmentId = await resolveEnrollmentIdOrAsk(ctx, args);
       const data = await attendance.getLectureAttendance(ctx.actor, ctx.scope, {
         enrollmentId,
         ...(args.month && { month: args.month }),
@@ -404,6 +437,80 @@ export const attendanceTools = {
         }
       }
       return ok({ basis: 'OWN', ...summary }, { speakKey: 'attendance.none' });
+    },
+  },
+
+  get_class_attendance_summary: {
+    module: 'Attendance',
+    // A staff view of classes: never a candidate for a caller who holds no
+    // class (a student or parent), whose "how many days was I present this
+    // month?" is about their own record.
+    requiresClass: true,
+    resultShape: 'SUMMARY',
+    operation: 'GET',
+    risk: RISK.LOW,
+    description:
+      'Attendance compared ACROSS classes over a period, plus the figure for all of them together: each class with its attendance percentage, ranked. Use for "which class has the lowest/highest attendance", "class-wise attendance", "rank classes by attendance" and "overall attendance" of the school. The period is one date, one month, or a from/to range; with none it is the current month to date, and the answer always states the period. A school-wide reader sees every class; a teacher sees only the classes they teach. For ONE class use get_attendance_roster, for one student get_student_attendance. Read-only.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        date: dateStr('One day'),
+        month: { type: 'string', pattern: MONTH, description: 'YYYY-MM — one calendar month' },
+        from: dateStr('Start of a range'),
+        to: dateStr('End of a range'),
+        order: { type: 'string', enum: ['LOWEST', 'HIGHEST'], description: 'Rank from the lowest or the highest attendance; lowest first by default' },
+        limit: { type: 'integer', minimum: 1, maximum: 200, description: 'Only when the user asks for a number of classes ("bottom 3")' },
+      },
+      additionalProperties: false,
+    },
+    permission: 'attendance.read',
+    service: 'attendance.service.getClassWiseSummary()',
+    async run(ctx, args) {
+      assertReadableMonth(args.month);
+      const data = await attendance.getClassWiseSummary(ctx.actor, ctx.scope, {
+        date: args.date, month: args.month, from: args.from, to: args.to,
+      });
+      const highestFirst = args.order === 'HIGHEST';
+      // Classes with nothing marked have no percentage, so they cannot be
+      // ranked: they are listed after the ranking, and said to be unmarked --
+      // never placed at the bottom as though they were 0%.
+      const ranked = data.classes.filter((c) => c.pctExact != null)
+        .sort((a, b) => (highestFirst ? b.pctExact - a.pctExact : a.pctExact - b.pctExact) || String(a.class).localeCompare(String(b.class)));
+      const unmarked = data.classes.filter((c) => c.pctExact == null);
+      const shown = args.limit ? ranked.slice(0, args.limit) : ranked;
+      const whose = data.scope === 'SCHOOL' ? 'the school' : 'your classes';
+      const period = `${formatDate(data.period.from ?? data.period.to)}${data.period.from && data.period.from !== data.period.to ? ` to ${formatDate(data.period.to)}` : ''}`;
+      const periodNote = data.period.basis === 'MONTH_TO_DATE' ? `${period} (this month so far)` : period;
+
+      if (!ranked.length) {
+        return ok({ ...data, ranked: [] }, {
+          speak: `No attendance has been marked for ${whose} in the period ${periodNote}, so there is no percentage to compare.`,
+        });
+      }
+
+      const overallLine = `Overall for ${whose}: **${formatPercent(data.overall.pctExact)}** — ${data.overall.marked} day-level marks for ${data.overall.students} student(s).`;
+      const first = shown[0];
+      const lead = `${first.class} has the ${highestFirst ? 'highest' : 'lowest'} attendance at ${formatPercent(first.pctExact)}`;
+      return ok({ ...data, ranked: shown, order: highestFirst ? 'HIGHEST' : 'LOWEST' }, {
+        speak:
+          `Attendance by class for ${periodNote}, ${highestFirst ? 'highest' : 'lowest'} first: `
+          + `${shown.map((c) => `${c.class} ${formatPercent(c.pctExact)}`).join('; ')}. ${lead}. `
+          + `Overall for ${whose}: ${formatPercent(data.overall.pctExact)}.`,
+        view: {
+          type: 'list.numbered',
+          intro: `**Attendance by class — ${periodNote}** (${highestFirst ? 'highest' : 'lowest'} first)`,
+          items: shown.map((c) => ({
+            label: c.class,
+            detail: `${formatPercent(c.pctExact)} · ${c.students} student(s) · ${c.ABSENT} absent of ${c.marked} marks`,
+          })),
+          outro: [
+            `${lead}.`,
+            overallLine,
+            unmarked.length ? `_Not marked in this period: ${unmarked.map((c) => c.class).join(', ')}._` : null,
+            data.period.basis === 'MONTH_TO_DATE' ? '_Say a date, a month ("last month") or a range for a different period._' : null,
+          ].filter(Boolean).join('\n\n'),
+        },
+      });
     },
   },
 
@@ -551,14 +658,14 @@ export const attendanceTools = {
           status: exceptions.get(String(r.enrollmentId)) ?? args.everyone.status,
         }));
         const rest = entries.length - exceptions.size;
-        return {
+        return assertChangesSomething({
           sectionId,
           date,
           periodNo,
           entries,
           names: [...exceptionNames, `${exceptions.size ? 'everyone else' : 'everyone'} (${rest}) → ${args.everyone.status}`],
           className: section?.label ?? roster.section.name,
-        };
+        });
       }
 
       if (args.students?.length) {
@@ -573,14 +680,25 @@ export const attendanceTools = {
         if (new Set(resolved.map((r) => r.sectionId)).size > 1) {
           throw new AppError('Those students are in different classes — mark each class separately.', 400);
         }
-        return {
-          sectionId: resolved[0].sectionId,
+        // The same pupil named twice with two statuses is a contradiction, not
+        // two instructions: asked about, never settled by whichever came last.
+        const statusOf = new Map();
+        for (const r of resolved) {
+          const seen = statusOf.get(String(r.enrollmentId));
+          if (seen && seen !== r.status) {
+            throw new AppError(`${r.name} is named twice with different statuses (${seen} and ${r.status}). Which one?`, 400, [], 'AGENT_NEEDS_INPUT');
+          }
+          statusOf.set(String(r.enrollmentId), r.status);
+        }
+        const unique = resolved.filter((r, i) => resolved.findIndex((x) => String(x.enrollmentId) === String(r.enrollmentId)) === i);
+        return assertChangesSomething({
+          sectionId: unique[0].sectionId,
           date,
           periodNo,
-          entries: resolved.map((r) => ({ enrollmentId: r.enrollmentId, status: r.status })),
-          names: resolved.map((r) => `${r.name} → ${r.status}`),
-          className: resolved[0].class,
-        };
+          entries: unique.map((r) => ({ enrollmentId: r.enrollmentId, status: r.status })),
+          names: unique.map((r) => `${r.name} → ${r.status}`),
+          className: unique[0].class,
+        });
       }
 
       // A class named in words is resolved at the caller's own scope, the same
@@ -594,7 +712,7 @@ export const attendanceTools = {
       if (!sectionId || !args.entries?.length) {
         throw new AppError('Which students should I mark, and as what?', 400, [], 'AGENT_NEEDS_INPUT');
       }
-      return { sectionId, date, periodNo, entries: args.entries, names: null, className: section?.label ?? null };
+      return assertChangesSomething({ sectionId, date, periodNo, entries: args.entries, names: null, className: section?.label ?? null });
     },
     /**
      * Attendance is the tool most likely to be disputed later ("my child was
@@ -619,15 +737,32 @@ export const attendanceTools = {
     },
     async run(ctx, args, prepared) {
       const plan = prepared ?? (await this.prepare(ctx, args));
+      // Counted against the register as it stands NOW, not as it stood when the
+      // proposal was made: between the two, the same marking may already have
+      // been confirmed once (a second "yes", a redelivered message). The
+      // service writes only what differs; this says truthfully how much did.
+      const changing = await entriesThatChange(plan);
       const result = await attendance.markAttendance(ctx.actor, ctx.scope, {
         sectionId: plan.sectionId,
         date: plan.date,
         periodNo: plan.periodNo,
         entries: plan.entries,
       });
+      const data = { ...result, sectionId: String(plan.sectionId), date: plan.date, marked: plan.entries.length, changed: changing.length };
+      if (!changing.length) {
+        return {
+          ...action({
+            type: 'attendance_unchanged',
+            data,
+            speak: `Attendance was already recorded that way on ${plan.date}${plan.names?.length ? ` — ${plan.names.join(', ')}` : ''}. Nothing was changed.`,
+          }),
+          // Read by the MCP server's audit entry: nothing was written.
+          unchanged: true,
+        };
+      }
       return action({
         type: 'attendance_marked',
-        data: { ...result, sectionId: String(plan.sectionId), date: plan.date, marked: plan.entries.length },
+        data,
         ...(plan.names?.length
           ? { speak: `Attendance recorded: ${plan.names.join(', ')}.` }
           : { speakKey: 'attendance.marked', params: { count: plan.entries.length } }),

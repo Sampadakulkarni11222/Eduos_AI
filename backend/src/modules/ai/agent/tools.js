@@ -14,6 +14,8 @@ import { AppError } from '../../../utils/AppError.js';
 import { attendanceAnswer, isFutureMonth, unreadableMonthMessage } from './present.js';
 import { Section } from '../../../models/academics.model.js';
 import { classLabel } from '../../../utils/classNames.js';
+import { getGuardianStudentIds } from '../../../utils/scope.js';
+import { localToday } from '../../../utils/naturalDates.js';
 
 /**
  * "Class 6 A" for each section the slots belong to, as every screen labels it.
@@ -180,6 +182,18 @@ export const TOOLS = {
     mutates: false,
     params: { exam: 'exam name, optional' },
     async execute(actor, scope, args) {
+      // "Results" with nobody named are the caller's own -- which only a
+      // student, or a parent of one child, has. For a teacher the service
+      // resolved its first pupil (exam.service getPerformance reads ids[0]) and
+      // an arbitrary child's report card was read out as the answer; for a
+      // parent of two it was whichever child sorted first. Whose record to
+      // open is never guessed: ask.
+      if (actor.roleKey === 'PARENT') {
+        const children = await getGuardianStudentIds(actor.profileId);
+        if (children.length > 1) throw needsInput("Which child? Tell me your child's name.");
+      } else if (actor.roleKey !== 'STUDENT') {
+        throw needsInput('Whose results? Name a student, or a class such as "Class 5 A".');
+      }
       const card = await exams.getReportCard(actor, scope, { exam: args.exam });
       const s = card.summary;
       return s?.percentage != null
@@ -384,6 +398,10 @@ export const TOOLS = {
           titles: data.uniqueTitles,
           onLoan: data.activeBookIssues,
           overdue: data.overdueReturns,
+          // Named exactly as the librarian dashboard names them, so the two
+          // can be compared figure for figure.
+          copies: data.totalCopies ?? 0,
+          available: data.availableCopies ?? 0,
         },
         data,
       };
@@ -498,6 +516,50 @@ export const TOOLS = {
         room: s.room ?? null,
         class: showClass ? (classOf.get(String(s.sectionId)) ?? null) : null,
       });
+
+      // "What is my next class?" -- ONE period: the first that starts after
+      // now, from the same authorized slots. It used to be answered with the
+      // whole day, leaving the person to work out which row was next.
+      if (args.next) {
+        // A school-wide reader's timetable is every class at once, so "next"
+        // means nothing until a class is named.
+        if (scope === 'ALL' && !args.sectionId) {
+          throw needsInput('The next class for which class? Name it, for example "Class 5 A".');
+        }
+        const nowAt = new Date();
+        const clock = `${String(nowAt.getHours()).padStart(2, '0')}:${String(nowAt.getMinutes()).padStart(2, '0')}`;
+        const taught = slots.filter((s) => s.subjectOfferingId); // a break is not a class
+        const dayLabel = (offset, jsDay) => (offset === 0 ? 'today' : offset === 1 ? 'tomorrow' : `on ${DAYS[jsDay].replace(/^./, (c) => c.toUpperCase())}`);
+        const describe = (s) => {
+          const p = periodView(s);
+          const withWhom = actor.roleKey === 'TEACHER' ? (p.class ? ` with ${p.class}` : '') : (p.teacher ? ` with ${p.teacher}` : '');
+          const forClass = actor.roleKey !== 'TEACHER' && p.class ? ` (${p.class})` : '';
+          return `${p.subject ?? 'a class'}${withWhom}${forClass} — period ${p.period}, ${[p.start, p.end].filter(Boolean).join('–')}${p.room ? `, room ${p.room}` : ''}`;
+        };
+        const todayDow = nowAt.getDay() === 0 ? 7 : nowAt.getDay();
+        const ongoing = taught.find((s) => s.dayOfWeek === todayDow && s.startTime <= clock && clock < s.endTime) ?? null;
+        for (let offset = 0; offset <= 7; offset += 1) {
+          const jsDay = (nowAt.getDay() + offset) % 7;
+          const dow = jsDay === 0 ? 7 : jsDay;
+          const upcoming = taught
+            .filter((s) => s.dayOfWeek === dow && (offset > 0 || s.startTime > clock))
+            .sort((a, b) => String(a.startTime).localeCompare(String(b.startTime)) || a.periodNo - b.periodNo);
+          if (!upcoming.length) continue;
+          const next = upcoming[0];
+          const lead = offset === 0 ? '' : 'There are no more classes today. ';
+          const now = ongoing ? `Right now: ${describe(ongoing)}. ` : '';
+          return {
+            speak: `${now}${lead}The next class is ${describe(next)}, ${dayLabel(offset, jsDay)}.`,
+            data: { next: periodView(next), day: DAYS[jsDay], ongoing: ongoing ? periodView(ongoing) : null, asOf: clock },
+          };
+        }
+        return {
+          speak: ongoing
+            ? `Right now: ${describe(ongoing)}. Nothing else is scheduled after it in the timetable.`
+            : 'Nothing is scheduled in the timetable, so there is no next class to show.',
+          data: { next: null, ongoing: ongoing ? periodView(ongoing) : null, asOf: clock },
+        };
+      }
 
       if (asked === 'week') {
         const byDay = new Map();
@@ -632,6 +694,18 @@ export const TOOLS = {
       if (!args.fromDate || !args.toDate) throw needsInput('I need a start and end date for the leave.', 'leave.needDates');
       if (new Date(args.toDate) < new Date(args.fromDate)) {
         throw new AppError('The end date cannot be before the start date.', 400);
+      }
+      // Leave is for a day still to come. The leave service refuses a past
+      // date (LEAVE_DATE_IN_PAST), but only at the moment of writing -- so a
+      // leave for last Monday was proposed, approved with a "yes", and THEN
+      // refused. The same policy is applied here, before anybody is asked to
+      // confirm, against the caller's own calendar day. (The service keeps a
+      // day of slack for clients in other timezones; a conversation knows what
+      // day it is, so "yesterday" is the past.)
+      if (String(args.fromDate) < localToday()) {
+        throw needsInput(
+          `Leave cannot be applied for a date in the past (${args.fromDate}). Which date from today onwards do you need it for?`,
+        );
       }
       // The leave service requires a reason. Asking BEFORE the confirmation
       // step matters: otherwise the user approves a summary for something that
@@ -791,7 +865,25 @@ export const TOOLS = {
         content: args.content ?? args.title,
         audience: args.audience,
       });
-      return { speakKey: 'announcement.posted', data: created };
+      // The confirmation is built from the RECORD THAT WAS WRITTEN, not from
+      // the request: the title the service stored and the audience it actually
+      // resolved. "The announcement has been posted." said nothing a person
+      // could check, and would have read the same had a different notice gone
+      // to a different class. No record, no success -- a create that returned
+      // nothing is a failure, and is reported as one.
+      if (!created?._id && !created?.id) {
+        throw new AppError('The announcement could not be posted. Nothing was sent.', 502, [], 'ANNOUNCEMENT_NOT_CREATED');
+      }
+      const audience = created.audience ?? {};
+      const classes = audience.sectionIds?.length ?? 0;
+      return {
+        speakKey: 'announcement.posted',
+        params: {
+          title: created.title ?? args.title,
+          audience: audience.all ? 'the whole school' : classes === 1 ? 'one class' : classes > 1 ? `${classes} classes` : 'the classes you selected',
+        },
+        data: created,
+      };
     },
   },
 };

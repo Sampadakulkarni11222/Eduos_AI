@@ -47,6 +47,10 @@ const NOT_A_NAME = new Set([
   'show', 'give', 'list', 'display', 'get', 'tell', 'find', 'fetch', 'see', 'view', 'open', 'check', 'pull',
   'what', 'which', 'whats', 'when', 'where', 'how', 'please', 'kindly', 'can', 'could', 'would', 'do', 'does', 'did', 'is', 'are',
   'my', 'mine', 'me', 'myself', 'i', 'his', 'her', 'hers', 'their', 'theirs', 'them', 'your', 'yours', 'our', 'ours', 'its',
+  // The subject and object forms too. "his" and "her" were here and "him" was
+  // not, so "mark him present" named a pupil called "him" -- which is how a
+  // sentence naming nobody looked as though it had named somebody.
+  'him', 'he', 'she', 'they', 'himself', 'herself', 'themselves',
   'today', 'tomorrow', 'yesterday', 'week', 'month', 'year', 'term', 'class', 'classes', 'section', 'grade', 'std',
   'student', 'students', 'pupil', 'teacher', 'school', 'everyone', 'everybody', 'somebody', 'anyone', 'nobody',
   // Kinship. A parent says "my child's marks", "my son's attendance" — the
@@ -189,7 +193,10 @@ function trimLeadingNonNames(phrase) {
  * answered with a student search.
  */
 function isNotAName(word) {
-  const w = String(word ?? '').toLowerCase();
+  // A possessive ending is not part of the word: "today's absent students"
+  // put "today's" before a status, where "mark Rahul absent" puts a pupil, and
+  // it was looked up as one -- `No student named "today's"`.
+  const w = String(word ?? '').toLowerCase().replace(/['’]s$/, '');
   if (NOT_A_NAME.has(w)) return true;
   // "notices" → "notice", "classes" → "class", "marks" → "mark".
   if (w.endsWith('es') && NOT_A_NAME.has(w.slice(0, -2))) return true;
@@ -288,6 +295,23 @@ export function nameFromText(text) {
     `(?:\\b(?:give|award)\\s+|^\\s*)(${NAME_PHRASE})\\s+\\d{1,3}(?:\\.\\d{1,2})?\\s*(?:marks?|points?)\\b`, 'iu',
   ).exec(str)?.[1];
   if (given && isNameLike(given)) return clean(given);
+
+  // "Show Aman Gupta attendance": the record straight after the name, with
+  // no possessive and no preposition -- how the question is typed on a phone.
+  // It was read as naming nobody, and answered with a class register (or, for
+  // a student or a parent, with their own record: a true answer to a question
+  // about somebody else). The evidence is weaker than "'s", so the test is
+  // stricter: a first name AND a surname, each written with a capital and
+  // neither of them a school word -- "show class wise attendance", "last
+  // month attendance" and "show date wise attendance" name no one. (Typed
+  // all in lower case, the possessive or "attendance of ..." is still needed:
+  // nothing else tells "aman gupta" from "morning shift".)
+  const recorded = new RegExp(`\\b(${NAME_PHRASE})\\s+attendance\\b`, 'iu').exec(str)?.[1];
+  if (recorded) {
+    const trimmed = trimLeadingNonNames(recorded);
+    const words = trimmed.split(' ');
+    if (words.length >= 2 && words.every((w) => /^\p{Lu}/u.test(w)) && !looksLikeDomainPhrase(trimmed) && isNameLike(trimmed)) return clean(trimmed);
+  }
 
   // A message that is nothing but a name — "Arav Mishra" — which is how a
   // teacher looks somebody up after being shown a list.

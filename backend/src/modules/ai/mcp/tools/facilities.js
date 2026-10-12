@@ -206,7 +206,11 @@ export const facilityTools = {
     permission: 'library.read',
     service: 'library.service.listBooks() + getBookById()',
     async run(_ctx, args) {
-      const book = await library.getBookById(args.bookId);
+      // By title as well as by id, as the schema has always said. The run read
+      // only `bookId`, so "is Clean Code available?" -- a title, which is all a
+      // person ever has -- looked up an undefined id and failed.
+      const book = await resolveBook(args);
+      if (!book) throw new AppError('Which book? Give its title.', 400, [], 'AGENT_NEEDS_INPUT');
       return ok(book, {
         speak: `${book.title}${book.author ? ` by ${book.author}` : ''} — ${book.availableCopies ?? 0} of ${book.totalCopies ?? 0} copies available.`,
       });
@@ -221,9 +225,14 @@ export const facilityTools = {
     inputSchema: {
       type: 'object',
       properties: {
-        status: { type: 'string', enum: ISSUE_STATUSES, description: 'ACTIVE means currently on loan' },
+        status: { type: 'string', enum: ISSUE_STATUSES, description: 'ACTIVE means currently on loan and not yet due; OVERDUE is past its return date' },
         bookId: objectId(),
+        // "Who borrowed Clean Code?" names the book by its title. Without this
+        // the only way to ask was an id nobody types, so the question reached
+        // nothing.
+        ...bookIdentitySchema,
         studentId: objectId(),
+        outstanding: { type: 'boolean', description: 'true for everything not yet returned (on loan or overdue) — "who has this book"' },
         limit: limitSchema(),
       },
       additionalProperties: false,
@@ -231,9 +240,24 @@ export const facilityTools = {
     permission: 'library.read',
     service: 'library.service.listIssues()',
     async run(ctx, args) {
-      const rows = asList(await library.listIssues(ctx.actor, ctx.scope, {
-        status: args.status, bookId: args.bookId, studentId: args.studentId,
+      const bookId = args.bookId ?? (args.title ? await resolveBookId(args) : undefined);
+      let rows = asList(await library.listIssues(ctx.actor, ctx.scope, {
+        status: args.status, bookId, studentId: args.studentId,
       }));
+      if (args.outstanding && !args.status) rows = rows.filter((r) => r.status !== 'RETURNED');
+      // A student's or parent's own loans read as theirs, and say when a book
+      // is late -- the question behind "do I have any overdue books?".
+      if (ctx.scope !== 'ALL') {
+        const mine = rows;
+        const late = mine.filter((r) => r.status === 'OVERDUE');
+        const describe = (i) => `${i.bookTitle} (due ${shortDate(i.dueAt ?? i.dueDate)})`;
+        const speak = args.status === 'OVERDUE'
+          ? (late.length ? `${late.length} book(s) overdue: ${late.map(describe).join('; ')}.` : 'You have no overdue books.')
+          : (mine.length
+            ? `${mine.length} lending record(s): ${mine.map((i) => `${describe(i)}${i.status === 'OVERDUE' ? ' — overdue' : i.status === 'RETURNED' ? ' — returned' : ''}`).join('; ')}.`
+            : 'You have no library loans on record.');
+        return ok({ issues: mine, total: mine.length, returned: mine.length }, { speak });
+      }
       const win = resultWindow(ctx, args);
       const limited = windowSlice(rows, win).items;
       const view = summarise(limited, (i) => `${i.bookTitle} → ${i.studentName ?? i.borrowerName ?? '—'} (due ${shortDate(i.dueAt ?? i.dueDate)})`);

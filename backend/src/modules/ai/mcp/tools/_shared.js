@@ -329,6 +329,23 @@ export async function selfStudentId(ctx) {
 const ONLY_OWN_RECORDS = "You can only see your own records — I can't look up another student's.";
 const isStudent = (ctx) => ctx?.actor?.roleKey === 'STUDENT';
 
+/**
+ * The same refusal, for a PARENT naming a child who is not theirs.
+ *
+ * A parent's scope holds their own children and nobody else, so another pupil
+ * "matches nobody" exactly as it does for a student -- and `No student named
+ * "Priya Verma"` told a parent something untrue about the school (Priya is
+ * enrolled; she is simply not their child) while reading, to anyone probing, as
+ * a way to learn who is NOT on the roll. The scope is the answer, and it is the
+ * same sentence whether or not the other child exists.
+ *
+ * A near miss on their OWN child's name is still offered ("did you mean Rahul
+ * Sharma?"): the suggestion is drawn from their own scope, so it can only ever
+ * name a child they already see.
+ */
+const ONLY_OWN_CHILD = "You can only see your own child's records — I can't look up another student's.";
+const isParent = (ctx) => ctx?.actor?.roleKey === 'PARENT';
+
 export async function resolveStudentId(ctx, { studentId, admissionNo, studentName }) {
   if (studentId) {
     // Confirms the caller may see this student at all; throws the same 404 the
@@ -354,6 +371,7 @@ export async function resolveStudentId(ctx, { studentId, admissionNo, studentNam
   if (admissionNo) {
     const exact = rows.find((s) => s.admissionNo?.toLowerCase() === String(admissionNo).toLowerCase());
     if (!exact && isStudent(ctx)) throw new AppError(ONLY_OWN_RECORDS, 403, [], 'STUDENT_OUT_OF_SCOPE');
+    if (!exact && isParent(ctx)) throw new AppError(ONLY_OWN_CHILD, 403, [], 'STUDENT_OUT_OF_SCOPE');
     if (!exact) throw new AppError(`No student with admission number "${admissionNo}".`, 404);
     return exact.id;
   }
@@ -390,6 +408,7 @@ export async function resolveStudentId(ctx, { studentId, admissionNo, studentNam
     // close ones are OFFERED, never chosen: picking for the caller would mean
     // guessing whose record to open, and a write must never rest on a guess.
     const suggestions = await similarlyNamed(ctx, scope, term, rows);
+    if (isParent(ctx) && !suggestions.length) throw new AppError(ONLY_OWN_CHILD, 403, [], 'STUDENT_OUT_OF_SCOPE');
     throw new AppError(
       `No student named "${studentName}".` +
         (suggestions.length ? ` Did you mean: ${suggestions.map(label).join(', ')}?` : ''),
@@ -447,6 +466,32 @@ export async function resolveEnrollmentId(ctx, args) {
   const enrolments = await students.listEnrollments({ studentId, status: 'ACTIVE' });
   if (!enrolments.length) throw new AppError('That student has no active enrolment.', 404);
   return enrolments[0].id;
+}
+
+/**
+ * As resolveEnrollmentId(), for a read about ONE student that must never be
+ * answered for somebody nobody named.
+ *
+ * The services behind these reads resolve a missing enrolment from the caller's
+ * scope, and for a scope that holds several students they take the first:
+ * exam.service.getPerformance() reads `ids[0]`. For a student that is their own
+ * record. For a teacher it is an arbitrary pupil of theirs, and for a parent of
+ * two it is whichever child sorts first -- so "show his marks", with nobody
+ * named, was answered with a real child's report card. Whose record to open is
+ * never the assistant's guess: with nobody named and no single record that is
+ * the caller's own, the tool asks.
+ */
+export async function resolveEnrollmentIdOrAsk(ctx, args) {
+  const enrollmentId = await resolveEnrollmentId(ctx, args ?? {});
+  if (enrollmentId) return enrollmentId;
+  const role = ctx?.actor?.roleKey;
+  if (role === 'STUDENT') return undefined; // their own record; the service resolves it
+  if (role === 'PARENT') {
+    const children = await getGuardianStudentIds(ctx.actor.profileId);
+    if (children.length <= 1) return undefined;
+    throw new AppError("Which child? Tell me your child's name.", 400, [], 'AGENT_NEEDS_INPUT');
+  }
+  throw new AppError('Which student? Give a name, admission number or id.', 400, [], 'AGENT_NEEDS_INPUT');
 }
 
 /**

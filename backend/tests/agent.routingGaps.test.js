@@ -50,6 +50,43 @@ const NOT_SURE = /not sure what you need/i;
 const ASKS_DATES = /start and end date/i;
 const ASKS_REASON = /reason/i;
 
+/**
+ * Leave days still to come, written the three ways these conversations write
+ * them.
+ *
+ * The flows below were written with fixed dates -- 7 to 9 October 2026. Leave
+ * for a past date is refused (by leave.service at the write, and by the
+ * assistant before it proposes one), so once that week had passed, a
+ * conversation about it could no longer end in a proposal. The dates are
+ * derived from today instead; everything asserted about each conversation is
+ * as it was. (The pure parsing tests further up keep their fixed dates: reading
+ * a date out of a sentence does not depend on what day it is.)
+ */
+const LEAVE = (() => {
+  const start = new Date();
+  start.setDate(start.getDate() + 10);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 2);
+  // Both days in one month, so the "7th to 9th October 2026" form can say it.
+  if (end.getMonth() !== start.getMonth()) {
+    start.setDate(start.getDate() + 3);
+    end.setTime(start.getTime());
+    end.setDate(end.getDate() + 2);
+  }
+  const pad = (n) => String(n).padStart(2, '0');
+  const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const dmy = (d, sep) => [pad(d.getDate()), pad(d.getMonth() + 1), d.getFullYear()].join(sep);
+  const ord = (n) => `${n}${n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'}`;
+  const month = start.toLocaleString('en-US', { month: 'long' });
+  return {
+    from: iso(start),
+    to: iso(end),
+    dashed: `${dmy(start, '-')} to ${dmy(end, '-')}`,
+    slashed: `${dmy(start, '/')} to ${dmy(end, '/')}`,
+    words: `${ord(start.getDate())} to ${ord(end.getDate())} ${month} ${start.getFullYear()}`,
+  };
+})();
+
 /** A web conversation with the transcript ask-eduos.tsx sends (the turns before this one). */
 async function web(person, turns) {
   const history = [];
@@ -176,43 +213,43 @@ describe('FIX 3 — the leave request stays open until its dates arrive', () => 
     }, 90_000);
 
     it(`${door}: the dates supplied afterwards continue the same request`, async () => {
-      const replies = await talk(student(), ['I want to apply for leave', 'I want to create new one', '07-10-2026 to 09-10-2026', 'Family function']);
+      const replies = await talk(student(), ['I want to apply for leave', 'I want to create new one', LEAVE.dashed, 'Family function']);
       // The dates were taken: the leave tool moves on to its next question.
       expect(replies[2].reply).toMatch(ASKS_REASON);
       expect(replies[2].reply).not.toMatch(ASKS_DATES);
       const last = replies.at(-1);
-      expect(last.reply).toMatch(/2026-10-07/);
-      expect(last.reply).toMatch(/2026-10-09/);
+      expect(last.reply).toContain(LEAVE.from);
+      expect(last.reply).toContain(LEAVE.to);
       expect(last.reply).not.toMatch(NOT_SURE);
       // A proposal, not a write: nothing exists until it is confirmed.
       expect(await leaves()).toBe(0);
     }, 90_000);
   }
 
-  for (const answer of ['7th to 9th October 2026', '07/10/2026 to 09/10/2026', '07-10-2026 to 09-10-2026']) {
+  for (const answer of [LEAVE.words, LEAVE.slashed, LEAVE.dashed]) {
     it(`"${answer}" answers the date question directly`, async () => {
       const [, second, third] = await web(student(), ['I want to apply for leave', answer, 'Family function']);
       expect(second.reply).toMatch(ASKS_REASON);
       expect(third.action?.tool).toBe('apply_for_leave');
-      expect(third.reply).toMatch(/2026-10-07/);
-      expect(third.reply).toMatch(/2026-10-09/);
+      expect(third.reply).toContain(LEAVE.from);
+      expect(third.reply).toContain(LEAVE.to);
     }, 90_000);
   }
 
   it('dates and a reason in the first message go straight to the proposal, on both channels', async () => {
-    const msg = 'I want to apply for leave from 07-10-2026 to 09-10-2026 because of a family function';
+    const msg = `I want to apply for leave from ${LEAVE.dashed} because of a family function`;
     const [w] = await web(student(), [msg]);
     expect(w.action?.tool).toBe('apply_for_leave');
-    expect(w.reply).toMatch(/2026-10-07/);
-    expect(w.reply).toMatch(/2026-10-09/);
+    expect(w.reply).toContain(LEAVE.from);
+    expect(w.reply).toContain(LEAVE.to);
     const [a] = await whatsapp(student(), [msg]);
-    expect(a.reply).toMatch(/2026-10-07/);
+    expect(a.reply).toContain(LEAVE.from);
     expect(a.reply).toMatch(/Reply YES/i);
     expect(await leaves()).toBe(0);
   }, 90_000);
 
   it('the whole flow ends in exactly one leave once confirmed', async () => {
-    const [, , third] = await web(student(), ['I want to apply for leave', '07-10-2026 to 09-10-2026', 'Family function']);
+    const [, , third] = await web(student(), ['I want to apply for leave', LEAVE.dashed, 'Family function']);
     expect(third.action?.confirmToken).toBeTruthy();
     await api.confirm(student(), third.action.confirmToken);
     expect(await leaves()).toBe(1);
