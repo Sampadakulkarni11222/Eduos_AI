@@ -173,9 +173,25 @@ export const welfareTools = {
     async run(ctx, args) {
       const reviewScope = ctx.actor?.permissions?.['leave.review'];
       const forReview = Boolean(reviewScope) && !args.mine;
-      const all = asList(forReview
-        ? await leave.listForReview(ctx.actor, reviewScope, { status: args.status ?? 'PENDING' })
-        : await leave.listMine(ctx.actor, { status: args.status }));
+      let all;
+      try {
+        all = asList(forReview
+          ? await leave.listForReview(ctx.actor, reviewScope, { status: args.status ?? 'PENDING' })
+          : await leave.listMine(ctx.actor, { status: args.status }));
+      } catch (err) {
+        // "My own applications" exist only for an account that IS a student:
+        // leave.service.listMine() reads the caller's own enrolment. A parent
+        // holds leave.read, but nothing in the service (or on the Web) lists a
+        // child's leave for them, and the raw refusal -- "No student record
+        // linked to this account" -- read as though their child had vanished.
+        if (!forReview && (err?.statusCode ?? err?.status) === 404) {
+          return ok(
+            { leaveApplications: [], count: 0, view: 'OWN', available: false },
+            { speak: "Leave is applied for and tracked from the student's own account, so there are no leave applications to list on this account." },
+          );
+        }
+        throw err;
+      }
       // A leave application spans days, so a window matches when the two
       // ranges overlap -- asking about July finds leave that runs into it.
       const items = (args.from || args.to)

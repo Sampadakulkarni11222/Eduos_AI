@@ -1,5 +1,6 @@
 import * as authService from '../../../auth/auth.service.js';
 import * as academics from '../../../academics/academics.service.js';
+import * as students from '../../../students/student.service.js';
 import { Profile } from '../../../../models/profile.model.js';
 import { ok } from '../protocol.js';
 import { RISK } from './_shared.js';
@@ -73,6 +74,43 @@ const NOT_RECORDED = {
   reportingManager: 'The school does not record a reporting manager in EduOS.',
 };
 
+/**
+ * Roles whose profile is a FAMILY profile, not a staff one.
+ *
+ * The whole-profile answer was written for staff and read out to everyone: a
+ * student was told they were "assigned to 1 class(es) and teach 1 subject(s)"
+ * and that the school "does not record an employee ID, designation, department
+ * or reporting manager" -- staff vocabulary on a child's profile. A student has
+ * a class, a roll number and an admission number; a parent has children. Those
+ * are what their profile says, and the staff categories are not mentioned at
+ * all unless asked for, when they are said not to apply.
+ */
+const FAMILY_ROLES = new Set(['STUDENT', 'PARENT']);
+const STAFF_ONLY = 'That is a staff detail — it does not apply to a student or parent profile.';
+
+/**
+ * The student record(s) behind a family profile: the caller's own for a
+ * student, their linked children for a parent. Read through the student
+ * directory at the caller's OWN scope -- the same read the portal's own screens
+ * make -- so it can only ever return records the caller already sees, and
+ * nothing when they hold no students.read.
+ */
+async function ownStudentRecords(ctx) {
+  if (ctx.actor?.permissions?.['students.read'] !== 'OWN') return [];
+  try {
+    const page = await students.list(ctx.actor, 'OWN', { page: 1, pageSize: 20 });
+    return (page.items ?? []).map((st) => ({
+      name: st.name,
+      admissionNo: st.admissionNo ?? null,
+      class: st.enrollment?.class ?? null,
+      rollNo: st.enrollment?.rollNo ?? null,
+    }));
+  } catch {
+    // An account with no linked student simply has none to describe.
+    return [];
+  }
+}
+
 const shortDate = (d) => (d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : null);
 
 export const profileTools = {
@@ -112,6 +150,10 @@ export const profileTools = {
       // A single unavailable category is an answer in itself: the person asked
       // something reasonable and deserves to know it is not held, not a
       // fabricated value and not silence.
+      const family = FAMILY_ROLES.has(ctx.actor?.roleKey);
+      if (NOT_RECORDED[field] && family) {
+        return ok({ field, available: false, applicable: false }, { speak: STAFF_ONLY });
+      }
       if (NOT_RECORDED[field]) {
         return ok(
           { field, available: false, unavailable: [field], ...(field === 'designation' && { role }) },
@@ -160,6 +202,50 @@ export const profileTools = {
       if (answers[field]) {
         const { data, speak } = answers[field]();
         return ok({ field, ...data }, { speak });
+      }
+
+      /* field === 'all', for a student or a parent: their own schema. */
+      if (family) {
+        const records = await ownStudentRecords(ctx);
+        const contact = [me.phone, me.email].filter(Boolean).join(', ');
+        const describe = (r) => [
+          r.name,
+          r.class && `${r.class}`,
+          r.rollNo != null && `roll no ${r.rollNo}`,
+          r.admissionNo && `admission no ${r.admissionNo}`,
+        ].filter(Boolean).join(', ');
+        let about = '';
+        if (ctx.actor.roleKey === 'STUDENT') {
+          const own = records[0];
+          about = own
+            ? ` You are in ${[own.class, own.rollNo != null && `roll no ${own.rollNo}`].filter(Boolean).join(', ') || 'no class yet'}`
+              + `${own.admissionNo ? `, admission no ${own.admissionNo}` : ''}.`
+            : ' No student record is linked to this account yet.';
+        } else {
+          about = records.length
+            ? ` Your ${records.length === 1 ? 'child' : 'children'}: ${records.map(describe).join('; ')}.`
+            : ' No child is linked to this account yet — please contact the school office.';
+        }
+        return ok(
+          {
+            field: 'all',
+            name,
+            role,
+            school,
+            status: me.profile?.status ?? 'ACTIVE',
+            phone: me.phone ?? null,
+            email: me.email ?? null,
+            profileCreatedOn: createdOn,
+            ...(ctx.actor.roleKey === 'STUDENT' ? { student: records[0] ?? null } : { children: records }),
+          },
+          {
+            speak:
+              `${[name && `You are ${name}`, `registered as a ${role}`, school && `at ${school}`].filter(Boolean).join(', ')}.`
+              + about
+              + (contact ? ` Contact: ${contact}.` : '')
+              + (createdOn ? ` Your profile was created on ${createdOn}.` : ''),
+          },
+        );
       }
 
       /* field === 'all' — the whole profile. */

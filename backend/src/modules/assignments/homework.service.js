@@ -4,6 +4,7 @@ import { generate, isLlmEnabled } from '../../providers/ai.provider.js';
 import { languageInstruction } from '../../utils/language.js';
 import * as assignments from './assignment.service.js';
 import { classKey } from '../../utils/classNames.js';
+import { sameSubject, subjectsMentionedIn } from '../../utils/subjectNames.js';
 
 /**
  * Drafts homework for a class the teacher actually teaches.
@@ -37,7 +38,7 @@ const MAX_TITLE = 140;
  * Nothing here authorizes: the permission and its scope were checked before
  * this ran, and the service that writes checks the offering again.
  */
-export async function resolveOffering(actor, scope, { subjectOfferingId, subject, className }) {
+export async function resolveOffering(actor, scope, { subjectOfferingId, subject, className, hint = null }) {
   const ownOnly = scope !== 'ALL';
   const mine = await SubjectOffering.find(ownOnly ? { teacherId: actor.profileId } : {})
     .populate({ path: 'sectionId', populate: { path: 'gradeId' } })
@@ -78,7 +79,26 @@ export async function resolveOffering(actor, scope, { subjectOfferingId, subject
 
   const norm = (s) => String(s ?? '').toLowerCase().trim();
   let candidates = options;
-  if (subject) candidates = candidates.filter((o) => norm(o.subject).includes(norm(subject)));
+
+  // The subject, when nobody labelled it: found in the words of the request
+  // itself, against the subjects THIS caller can set work for. "Create an
+  // assignment for class 6th b science chapter 4 questions" names Science
+  // without saying "subject", and the only honest way to know that "science"
+  // is the subject is that Science is a subject they teach. Narrowed to the
+  // class first when one was named, so a word that is a subject elsewhere but
+  // not in that class is not taken for one. One match is the subject; none or
+  // several leaves it unnamed and the question below is asked.
+  let subjectName = subject;
+  if (!subjectName && hint) {
+    const wantedClass = className ? classKey(className) : '';
+    const inClass = wantedClass ? options.filter((o) => classKey(o.className) === wantedClass) : options;
+    const mentioned = subjectsMentionedIn(hint, inClass.map((o) => o.subject));
+    if (mentioned.length === 1) [subjectName] = mentioned;
+  }
+
+  // "Maths" names Mathematics (utils/subjectNames.js); a substring compare
+  // found nothing for the way the subject is actually said.
+  if (subjectName) candidates = candidates.filter((o) => sameSubject(subjectName, o.subject));
   if (className) {
     // Matched on the canonical class key, so "Class 5-A", "class 5a" and "5-A"
     // all find the offering stored as "Class 5 A". A plain substring compare
@@ -97,10 +117,35 @@ export async function resolveOffering(actor, scope, { subjectOfferingId, subject
   const list = (candidates.length ? candidates : options)
     .map((o) => `${o.subject} — ${o.className}`)
     .join('; ');
+  const yours = ownOnly ? 'You teach' : 'The classes with subjects assigned are';
+
+  // What was named and matched nothing is said, rather than asked about again:
+  // "which class did you mean?" in answer to a class that was just named sent
+  // a teacher round the same question three times.
+  if (!candidates.length) {
+    const named = [subjectName, className].filter(Boolean).join(' for ');
+    throw new AppError(
+      named
+        ? `${ownOnly ? 'You do not teach' : 'There is no'} ${named}. ${yours}: ${list}.`
+        : `I could not match that to a class ${ownOnly ? 'you teach' : 'with a subject assigned'}. ${yours}: ${list}.`,
+      400,
+      [],
+      'OFFERING_NOT_MATCHED'
+    );
+  }
+
+  // Several fit. The question names what is still missing -- the subject when
+  // the class is settled, the class when the subject is -- instead of always
+  // asking for the class.
+  const classes = new Set(candidates.map((o) => o.className));
+  const subjects = new Set(candidates.map((o) => o.subject));
+  const question = classes.size === 1 && subjects.size > 1
+    ? `Which subject for ${[...classes][0]}?`
+    : subjects.size === 1 && classes.size > 1
+      ? `Which class for ${[...subjects][0]}?`
+      : 'Which class and subject did you mean?';
   throw new AppError(
-    candidates.length
-      ? `Which class did you mean? You teach: ${list}.`
-      : `I could not match that to a class you teach. You teach: ${list}.`,
+    `${question} ${yours}: ${list}.`,
     400,
     [],
     'OFFERING_AMBIGUOUS'

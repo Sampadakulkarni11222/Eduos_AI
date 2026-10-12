@@ -318,6 +318,9 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
       summary: result.action.summary,
       minutes: result.action.expiresInMinutes,
     });
+    // The same message also ASKED something, and that was answered in this
+    // turn: said first, as on the website, never replaced by the proposal.
+    if (result.preface) reply = `${toWhatsAppText(result.preface)}\n\n${reply}`;
   }
 
   if (multipleProfiles) {

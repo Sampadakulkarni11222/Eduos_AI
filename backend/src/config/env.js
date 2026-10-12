@@ -5,6 +5,35 @@ import dns from 'dns';
 dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 /**
+ * The school's clock.
+ *
+ * "Today", "tomorrow", "next Monday", "my next class" and the day a register is
+ * marked for are all read from the process's LOCAL time -- deliberately, and
+ * consistently: a school day is a calendar day where the school is, not a UTC
+ * instant. That is only right when the process is running in the school's
+ * timezone. A server left on UTC (the default on most hosts) is five and a half
+ * hours behind India: until 05:30 its "today" is still yesterday, and a class at
+ * 09:00 is "next" until 14:30.
+ *
+ * SCHOOL_TIMEZONE (an IANA name, e.g. Asia/Kolkata) sets it once, here, before
+ * anything reads a date -- so every reader agrees, rather than each converting
+ * for itself. An explicit TZ wins, since that is the platform's own way of
+ * saying the same thing. With neither set nothing changes.
+ */
+if (process.env.SCHOOL_TIMEZONE && !process.env.TZ) {
+  const zone = process.env.SCHOOL_TIMEZONE.trim();
+  try {
+    // Throws a RangeError for a name that is not a timezone, so a typo is
+    // reported instead of silently leaving the process on UTC.
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    process.env.TZ = zone;
+  } catch {
+    // eslint-disable-next-line no-console -- the logger is not built yet at this point
+    console.warn(`SCHOOL_TIMEZONE "${zone}" is not a valid IANA timezone; the server's own timezone is being used.`);
+  }
+}
+
+/**
  * Reads a numeric setting, treating a configured **0 as a real value**.
  *
  * The usual `Number(process.env.X) || fallback` idiom silently discards 0,

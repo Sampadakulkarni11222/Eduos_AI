@@ -64,6 +64,8 @@ import { capabilitiesFor, capabilityIndex, entitiesInText, subjectEntityOf, name
 import { classFromText } from '../../../utils/classNames.js';
 import { monthFromText, writtenDatesIn } from '../../../utils/naturalDates.js';
 import { rangeFromText, monthBounds } from '../../../utils/dateRanges.js';
+import { admissionNoFromText as readAdmissionNo } from '../../../utils/studentIdentifiers.js';
+import { FORWARD_DATE_ARGS } from '../../../utils/naturalDates.js';
 import { nameFromText } from '../../../utils/peopleNames.js';
 import { fieldChangeFromText, propertyForField, coerceFieldValue } from '../../../utils/fieldChange.js';
 import { extractArgument, kindOfProperty, FOUND } from './argumentKinds.js';
@@ -472,8 +474,13 @@ export function numberedThingFromText(text) {
  */
 const ADMISSION_NO = /\b([A-Z]{2,6}[-/]\d{2,4}(?:[-/]\d{1,6})?|[A-Z]{2,6}-\d{1,6})\b/;
 
+/**
+ * The admission number a sentence names -- by its shape, or by the words that
+ * introduce it ("student ID 1024"). See utils/studentIdentifiers.js, which every
+ * tier shares so they cannot read the same sentence differently.
+ */
 export function admissionNoFromText(text) {
-  return ADMISSION_NO.exec(String(text ?? ''))?.[1] ?? null;
+  return readAdmissionNo(text);
 }
 
 /**
@@ -900,6 +907,10 @@ export function dimensionsOf(text, now = new Date()) {
     range,
     writtenDates: identity.writtenDates,
     date: range ? null : dateFromText(unquoted, now),
+    // The same day read as one still to come: a bare weekday in "leave on
+    // Monday" or "due Friday" is the NEXT one. Written only into arguments
+    // that are forward-looking by meaning (FORWARD_DATE_ARGS); see the scorer.
+    dateAhead: range ? null : dateFromText(unquoted, now, { prefer: 'future' }),
     spokenDay: range ? null : spokenDayOf(unquoted),
     // Read past the opening verb, for the reason the entity and the subject
     // are: "Generate Mathematics homework ..." puts the verb inside the
@@ -1672,8 +1683,11 @@ export function scoreCapability(
     // is simply a matter of both ends being the same day.
     const oneDay = !argName && dimension === 'date' ? rangeArgsOf(properties) : null;
     if (oneDay) {
-      args[oneDay[0]] = value;
-      args[oneDay[1]] = value;
+      // A pair that is forward-looking by meaning (the days of a leave) takes
+      // the day as one still to come.
+      const day = FORWARD_DATE_ARGS.has(oneDay[0]) && dimensions.dateAhead ? dimensions.dateAhead : value;
+      args[oneDay[0]] = day;
+      args[oneDay[1]] = day;
       filled.add('date');
       add(WEIGHT.FILTER_FILLED, 'date as a one-day range');
       continue;
@@ -1716,6 +1730,12 @@ export function scoreCapability(
     if (dimension === 'date' && dimensions.spokenDay) {
       const shape = capability.schema?.properties?.[argName];
       if (kindOfProperty(argName, shape ?? {}) !== 'date') spoken = dimensions.spokenDay;
+    }
+    // "Due Friday" is the coming Friday: a date still to come, by what the
+    // argument means. Everything else keeps the most recent reading.
+    if (dimension === 'date' && FORWARD_DATE_ARGS.has(argName) && dimensions.dateAhead
+      && kindOfProperty(argName, capability.schema?.properties?.[argName] ?? {}) === 'date') {
+      spoken = dimensions.dateAhead;
     }
 
     // One span, one ARGUMENT. `topic` and `title` can both land in `title`,
@@ -2331,12 +2351,27 @@ const UNMET_DIMENSION_WORDS = {
  */
 export function unmetNarrowing(message, actor, { now = new Date(), candidates = null } = {}) {
   const ranked = rank(String(message ?? ''), actor, { now, candidates }).filter((r) => r.score > 0);
-  const best = ranked[0];
-  if (!best) return null;
+  if (!ranked[0]) return null;
 
-  const missing = [...new Set((best.why ?? [])
+  const missingOf = (entry) => [...new Set((entry.why ?? [])
     .map((reason) => /^cannot express the (\w+) asked for/.exec(reason)?.[1])
     .filter((dimension) => dimension && UNMET_DIMENSION_WORDS[dimension]))];
+
+  // The NEAREST capability is the one that is about the right thing. Of two
+  // that each miss something, one that holds the class or the person named and
+  // cannot hold the period is nearer than one that holds the period and
+  // answers about every class: "attendance for Class 6-A this week" is a
+  // question about Class 6-A that the register cannot give for a week -- not a
+  // question about a week that cannot be given for Class 6-A.
+  const IDENTITY = ['class', 'student', 'admissionNo', 'numbered'];
+  const dropsIdentity = (entry) => missingOf(entry).some((dimension) => IDENTITY.includes(dimension));
+  let best = ranked[0];
+  if (dropsIdentity(best)) {
+    best = ranked.find((entry) => entry.capability.entity === best.capability.entity
+      && missingOf(entry).length && !dropsIdentity(entry)) ?? best;
+  }
+
+  const missing = missingOf(best);
   if (!missing.length) return null;
 
   return {

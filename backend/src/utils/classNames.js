@@ -33,6 +33,11 @@ export function classKey(text) {
   s = s.replace(NOISE, ' ');
   // Hyphens, en dashes, dots, slashes and underscores are all just separators.
   s = s.replace(/[^a-z0-9]+/g, ' ').trim();
+  // "6th B" and "Class 6th-B" are Class 6 B: the ordinal ending is how the
+  // grade is spoken, not part of its name. Left in, the key was "6th b", which
+  // matched no section -- so a teacher who typed their class the way they say
+  // it was asked "which class did you mean?" for a class they had just named.
+  s = s.replace(/\b(\d{1,2})(?:st|nd|rd|th)\b/g, '$1');
   // "5a" and "10b" are a grade and a section run together.
   s = s.replace(/\b(\d{1,2})([a-z]{1,2})\b/g, '$1 $2');
   return s.replace(/\s+/g, ' ').trim();
@@ -61,19 +66,39 @@ export function classLabel(gradeName, sectionName) {
  * Returns both the text as written -- so a reply can quote the person's own
  * words -- and the canonical key for matching.
  */
-export function classFromText(text) {
+export function classFromText(text, { lenient = false } = {}) {
   const str = String(text ?? '');
 
-  const cued = /\b(?:class|grade|std|standard|division|div)\s*([0-9]{1,2})\s*(?:-|–|—|:)?\s*(?:section\s*)?([a-z])\b/i.exec(str);
+  // The grade may carry its ordinal ending: "class 6th b", "Class 10th-A".
+  const cued = /\b(?:class|grade|std|standard|division|div)\s*([0-9]{1,2})(?:st|nd|rd|th)?\s*(?:-|–|—|:)?\s*(?:section\s*)?([a-z])\b/i.exec(str);
   if (cued) return { text: cued[0].trim(), key: classKey(`${cued[1]} ${cued[2]}`) };
+
+  // "6th B", "10th-A": an ordinal grade and a section, with no "class" in
+  // front. The ordinal is what marks it as a grade -- a bare "6 b" is not read
+  // (see below). Sections A-H only, and never straight after a word that
+  // introduces a date ("on the 5th a test..."), so a day of the month is not
+  // taken for a class.
+  const ordinal = /\b([0-9]{1,2})(?:st|nd|rd|th)\s*(?:-|–|—)?\s*([a-h])\b/i.exec(str);
+  if (ordinal && !/\b(?:on|the|by|before|after|until|till|from|to|since)\s+$/i.test(str.slice(0, ordinal.index))) {
+    return { text: ordinal[0].trim(), key: classKey(`${ordinal[1]} ${ordinal[2]}`) };
+  }
 
   // "5-A" / "9 - B": a grade and a section joined by a dash.
   const dashed = /\b([0-9]{1,2})\s*(?:-|–|—)\s*([a-z])\b/i.exec(str);
   if (dashed) return { text: dashed[0].trim(), key: classKey(`${dashed[1]} ${dashed[2]}`) };
 
   // "Class 5" on its own — a grade with no section named.
-  const gradeOnly = /\b(?:class|grade|std|standard)\s*([0-9]{1,2})\b/i.exec(str);
+  const gradeOnly = /\b(?:class|grade|std|standard)\s*([0-9]{1,2})(?:st|nd|rd|th)?\b/i.exec(str);
   if (gradeOnly) return { text: gradeOnly[0].trim(), key: classKey(gradeOnly[1]), gradeOnly: true };
+
+  // LENIENT: a bare "6 B" or "6B". Only for a caller that already knows a
+  // class is what is being named -- the answer to "which class?", or the words
+  // of a request to set work for a class. In an arbitrary sentence "5 a" is
+  // not a class ("give me 5 a day"), which is why this is never the default.
+  if (lenient) {
+    const bare = /(?<![\w-])([0-9]{1,2})(?:st|nd|rd|th)?\s*([a-h])(?![\w-])/i.exec(str);
+    if (bare) return { text: bare[0].trim(), key: classKey(`${bare[1]} ${bare[2]}`), lenient: true };
+  }
 
   return null;
 }

@@ -33,8 +33,9 @@
  */
 
 import { classFromText } from '../../../utils/classNames.js';
-import { monthFromText, toIsoDate, writtenDatesIn } from '../../../utils/naturalDates.js';
+import { monthFromText, toIsoDate, writtenDatesIn, weekdayDateIn } from '../../../utils/naturalDates.js';
 import { nameFromText } from '../../../utils/peopleNames.js';
+import { admissionNoFromText, withoutStudentIdPhrase } from '../../../utils/studentIdentifiers.js';
 import { capabilitiesFor, capabilityIndex, entitiesInText, ENTITY_VOCABULARY, namesARecord } from '../mcp/capabilities.js';
 import { extractArgument, FOUND } from './argumentKinds.js';
 
@@ -250,7 +251,7 @@ export function subjectFromText(text, entity) {
 }
 
 /** A single day named in the message: today, yesterday, a weekday, an ISO date. */
-export function dateFromText(text, now = new Date()) {
+export function dateFromText(text, now = new Date(), { prefer = 'past' } = {}) {
   const str = String(text ?? '');
   const iso = /\b(\d{4}-\d{1,2}-\d{1,2})\b/.exec(str)?.[1];
   if (iso) return toIsoDate(iso, now);
@@ -262,16 +263,11 @@ export function dateFromText(text, now = new Date()) {
   const relative = /\b(today|tomorrow|yesterday|day after tomorrow)\b/i.exec(str)?.[1];
   if (relative) return toIsoDate(relative.toLowerCase(), now);
 
-  const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-  const named = new RegExp(`\\b(${DAYS.join('|')})\\b`, 'i').exec(str)?.[1];
-  if (named) {
-    // The most recent one that has happened — a register is about a day that exists.
-    const target = DAYS.indexOf(named.toLowerCase());
-    const back = (now.getDay() - target + 7) % 7 || 7;
-    const d = new Date(now.getTime() - back * 86_400_000);
-    return toIsoDate(`${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`, now);
-  }
-  return null;
+  // A weekday. By default the most recent one that has happened -- a register
+  // is about a day that exists -- unless the sentence says otherwise ("next
+  // Monday") or the caller is filling a date still to come (`prefer: 'future'`).
+  // One shared reader: see weekdayDateIn() in utils/naturalDates.js.
+  return weekdayDateIn(str, now, { prefer })?.iso ?? null;
 }
 
 /**
@@ -329,6 +325,8 @@ const ARG_NAMES = {
   // never for `sectionId`, which the identifier guard below excludes.
   class: ['className', 'sectionId', 'query'],
   student: ['studentName', 'studentId', 'admissionNo'],
+  // A student named by code rather than by name; see dimensionsNamed().
+  admissionNo: ['admissionNo'],
   subject: ['subject'],
   month: ['month'],
   date: ['date', 'dueAt', 'from'],
@@ -347,11 +345,20 @@ const ARG_NAMES = {
 const AGGREGATE_REQUEST = /\bhow\s+many\b|\bhow\s+much\b|\bcount\b|\bnumber\s+of\b|\btotal\b|\bsummar(y|ies)\b|\bstatistics\b|\bstats\b|\bpercentage\b|\boccupancy\b|\bvacanc(?:y|ies)\b/i;
 
 /** Everything the sentence names, in the dimensions capabilities are declared in. */
-function dimensionsNamed(str, entity, operation, now) {
+function dimensionsNamed(spoken, entity, operation, now) {
   // Identity first, then the subject from what is left -- the order
   // dimensionsOf() reads in. "Enter marks for Rahul Sharma" otherwise read
   // "Rahul" as the school subject ("marks for <X>").
-  const named = nameFromText(str);
+  // A student named by CODE ("student ID 1024", "admission no OAK-12") is read
+  // first and its words taken out: left in, the name reader took the "ID" of
+  // "attendance for student ID 1024" for the pupil's name, and the question
+  // was answered `No student named "id"`.
+  // Attendance, marks and homework are about students, so a reference code
+  // here ("marks of student OAK-52") is a student's too.
+  const admissionNo = admissionNoFromText(spoken);
+  // Every reader below sees the sentence without the code.
+  const str = admissionNo ? withoutStudentIdPhrase(spoken).split(admissionNo).join(' ') : spoken;
+  const named = admissionNo ? null : nameFromText(str);
   const everywhere = subjectFromText(str, entity);
   const subject = named
     ? subjectFromText(str.split(named).join(' , '), entity)
@@ -361,7 +368,8 @@ function dimensionsNamed(str, entity, operation, now) {
     : everywhere;
   const student = named;
   return {
-    class: classFromText(str)?.text ?? null,
+    class: classFromText(spoken)?.text ?? null,
+    admissionNo,
     // One phrase fills one dimension. "Show marks for Mathematics" puts the
     // subject where a name can also sit ("marks for <X>"), and reading it as
     // both sent a lookup for a pupil called Mathematics. The subject reading
@@ -426,12 +434,13 @@ function scoreCapability(capability, named) {
       continue;
     }
     args[argName] = value;
-    filled.add(dimension);
+    // A code names a student exactly as a name does.
+    filled.add(dimension === 'admissionNo' ? 'student' : dimension);
     // One named day, on a capability that takes a range rather than a date:
     // "today" is the one-day range today..today. Without this the day landed
     // in `from` alone and meant "from today onwards".
     if (dimension === 'date' && argName === 'from' && capability.properties.includes('to')) args.to = value;
-    score += capability.targets.includes(dimension) ? 3 : 2;
+    score += capability.targets.includes(dimension === 'admissionNo' ? 'student' : dimension) ? 3 : 2;
   }
 
   // Judged on what was actually FILLED, not what was merely mentioned: a class
@@ -496,7 +505,10 @@ function chooseCapability(candidates, named) {
  */
 function residualMessage(str, named, now = new Date()) {
   let rest = String(str ?? '');
-  for (const spoken of [named.class, named.student, named.subject]) {
+  // The words that introduce a student code go with the code: its digits are
+  // not a period number or a limit.
+  if (named.admissionNo) rest = withoutStudentIdPhrase(rest);
+  for (const spoken of [named.class, named.student, named.admissionNo, named.subject]) {
     if (typeof spoken === 'string' && spoken.length) rest = rest.split(spoken).join(' ');
   }
   // A day written in words is accounted for by the date dimension, and its
@@ -574,13 +586,13 @@ export function detectEntityIntent(text, actor, now = new Date()) {
   // answer this, and taking it here would change answers that are correct.
   // "What Mathematics homework did I give?" is NOT this case — the caller is
   // the author there, not the subject.
-  const aboutTheCaller = SELF.test(str) && !named.class && !named.student && !BY_THE_CALLER.test(str);
+  const aboutTheCaller = SELF.test(str) && !named.class && !named.student && !named.admissionNo && !BY_THE_CALLER.test(str);
   if (aboutTheCaller && !(entity === 'homework' && named.subject)) return null;
 
   // A date alone does not say what a question is ABOUT. Who is absent today
   // names no class and no person, and answering it from a class-level
   // capability would narrow a school-wide question.
-  const claimed = named.class || named.student || named.subject || named.month || named.topic;
+  const claimed = named.class || named.student || named.admissionNo || named.subject || named.month || named.topic;
   if (!claimed) return null;
 
   // Authorized capabilities only, narrowed by entity and operation before

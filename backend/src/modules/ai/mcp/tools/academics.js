@@ -6,10 +6,11 @@ import * as timetable from '../../../timetable/timetable.service.js';
 import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
 import {
-  RISK, objectId, dateStr, noArgs, summarise, shortDate, wrapAgentTool, resolveEnrollmentId,
+  RISK, objectId, dateStr, noArgs, summarise, shortDate, wrapAgentTool, resolveEnrollmentId, resolveEnrollmentIdOrAsk,
   studentIdentitySchema, resolveSection, classIdentitySchema, theNamed, resolveStudentId, resolveStudentEnrollment,
 } from './_shared.js';
 import { classKey } from '../../../../utils/classNames.js';
+import { sameSubject } from '../../../../utils/subjectNames.js';
 import {
   resolveGrade, resolveYear, resolveTerm, resolveSubject, resolveStaff, resolveOfferingRef, resolveExam,
 } from './_names.js';
@@ -608,6 +609,7 @@ export const academicTools = {
       type: 'object',
       properties: {
         day: { type: 'string', maxLength: 24, description: 'Weekday name, today/tomorrow/yesterday, or "week" for the whole week' },
+        next: { type: 'boolean', description: 'true for "what is my next class/period?": only the next period after the current time, not the whole day' },
         ...classIdentitySchema,
         sectionId: objectId('The class section, when the id is already known'),
       },
@@ -713,25 +715,31 @@ export const academicTools = {
     permission: 'marks.read',
     service: 'exam.service.getReportCard()',
     async run(ctx, args) {
-      const enrollmentId = await resolveEnrollmentId(ctx, args);
+      // Never for a pupil nobody named: see resolveEnrollmentIdOrAsk().
+      const enrollmentId = await resolveEnrollmentIdOrAsk(ctx, args);
       const card = await exams.getReportCard(ctx.actor, ctx.scope, { enrollmentId, exam: args.exam });
       // One subject asked for: the same authorized report card, narrowed to
       // that subject's rows. "My Mathematics marks" is a question about those
       // rows; the overall percentage answers something else, and the class
       // marks sheet -- where it used to go -- is not a student's to read.
       if (args.subject) {
-        const wanted = String(args.subject).toLowerCase();
-        const rows = (card.subjects ?? []).filter((r) => String(r.subject ?? '').toLowerCase().includes(wanted));
-        return ok({ ...card, subjects: rows, subject: args.subject }, {
+        // "Maths" names Mathematics: matched as a person says a subject, not
+        // as a substring (see utils/subjectNames.js).
+        const rows = (card.subjects ?? []).filter((r) => sameSubject(args.subject, r.subject));
+        const label = rows[0]?.subject ?? args.subject;
+        // The percentage is of MARKS -- said so, with the marks it comes from,
+        // so it is never taken for an attendance figure.
+        const pct = (r) => (r.percentage != null ? ` (${r.percentage}%)` : '');
+        return ok({ ...card, subjects: rows, subject: label }, {
           speak: rows.length
-            ? `${args.subject}: ${rows.map((r) => `${r.exam ? `${r.exam} ` : ''}${r.marks ?? '—'}/${r.maxMarks ?? '—'}`).join('; ')}.`
+            ? `${label} marks: ${rows.map((r) => `${r.exam ? `${r.exam} ` : ''}${r.marks ?? '—'}/${r.maxMarks ?? '—'}${pct(r)}`).join('; ')}.`
             : `No published ${args.subject} results yet.`,
         });
       }
       const s = card.summary;
       return ok(card, {
         speak: s?.percentage != null
-          ? `${card.student?.name ?? 'The student'} scored ${s.percentage}%, grade ${s.grade?.label ?? '—'}${s.gpa ? `, GPA ${s.gpa}` : ''}.`
+          ? `${card.student?.name ?? 'The student'} scored ${s.percentage}% in exams, grade ${s.grade?.label ?? '—'}${s.gpa ? `, GPA ${s.gpa}` : ''}.`
           : 'No results have been published for that student yet.',
       });
     },
@@ -932,7 +940,7 @@ export const academicTools = {
     permission: 'marks.read',
     service: 'exam.service.getPerformance()',
     async run(ctx, args) {
-      const enrollmentId = await resolveEnrollmentId(ctx, args);
+      const enrollmentId = await resolveEnrollmentIdOrAsk(ctx, args);
       // The service is the authority on who may read this: at OWN scope it
       // checks a teacher against their own sections, and narrows a subject
       // teacher who is not the section's class teacher to the subjects they
@@ -1180,6 +1188,12 @@ export const academicTools = {
           enum: ['PENDING', 'SUBMITTED', 'ALL'],
           description: 'For a student or parent: their work still to submit (PENDING), already handed in (SUBMITTED), or both',
         },
+        // A due-date window over the same authorized rows. Without one, "show
+        // assignments due this week" could not be expressed and was refused as
+        // a range the tool could not narrow by.
+        dueFrom: dateStr('Only work due on or after this day'),
+        dueTo: dateStr('Only work due on or before this day'),
+        first: { type: 'boolean', description: 'true for "which one is due first / next": only the assignment with the earliest due date that has not passed' },
       },
       additionalProperties: false,
     },
@@ -1211,7 +1225,7 @@ export const academicTools = {
       const wantedSubject = args.subject ? String(args.subject).toLowerCase() : null;
 
       let rows = all;
-      if (wantedSubject) rows = rows.filter((a) => String(a.subject ?? '').toLowerCase().includes(wantedSubject));
+      if (wantedSubject) rows = rows.filter((a) => sameSubject(args.subject, a.subject));
       if (section) rows = rows.filter((a) => classKey(a.class) === classKey(section.label));
 
       // A family's unfiltered question is about what is still due; a filtered
@@ -1223,7 +1237,34 @@ export const academicTools = {
       if (pendingOnly) rows = rows.filter((a) => !handedIn(a));
       if (isFamily && args.status === 'SUBMITTED') rows = rows.filter(handedIn);
 
-      const ordered = [...rows].sort((a, b) => new Date(a.dueAt ?? 0) - new Date(b.dueAt ?? 0));
+      // A due-date window, compared as local calendar days -- the day a
+      // teacher means by "due Friday".
+      const dueDay = (a) => {
+        if (!a.dueAt) return null;
+        const d = new Date(a.dueAt);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      };
+      if (args.dueFrom || args.dueTo) {
+        rows = rows.filter((a) => {
+          const day = dueDay(a);
+          return day !== null && (!args.dueFrom || day >= args.dueFrom) && (!args.dueTo || day <= args.dueTo);
+        });
+      }
+
+      let ordered = [...rows].sort((a, b) => new Date(a.dueAt ?? 0) - new Date(b.dueAt ?? 0));
+      // "Which one is due first?" -- the earliest deadline still ahead, from
+      // the same authorized set; when every deadline has passed, the most
+      // recent of them, and the answer says it is overdue.
+      let firstNote = null;
+      if (args.first && ordered.length) {
+        const nowDay = dueDay({ dueAt: new Date() });
+        const upcoming = ordered.filter((a) => dueDay(a) !== null && dueDay(a) >= nowDay);
+        const pick = upcoming[0] ?? ordered.filter((a) => a.dueAt).at(-1) ?? ordered[0];
+        firstNote = upcoming.length
+          ? `Due first: ${pick.title} (${pick.subject}${pick.class && !isFamily ? `, ${pick.class}` : ''}) — due ${shortDate(pick.dueAt)}.`
+          : `Nothing is due from today onwards. The most recent deadline was ${pick.title} (${pick.subject}), due ${shortDate(pick.dueAt)}.`;
+        ordered = [pick];
+      }
       // Every assignment in scope; "Read more" keeps a long list readable.
       const shown = ordered.map((a) => ({
         id: String(a.id),
@@ -1236,7 +1277,16 @@ export const academicTools = {
         ...(isFamily && { status: a.mySubmission?.status ?? 'PENDING' }),
       }));
 
-      const scopeLabel = [args.subject, section?.label].filter(Boolean).join(' for ');
+      const windowLabel = args.dueFrom && args.dueTo
+        ? (args.dueFrom === args.dueTo ? `due ${shortDate(args.dueFrom)}` : `due ${shortDate(args.dueFrom)} – ${shortDate(args.dueTo)}`)
+        : args.dueFrom ? `due from ${shortDate(args.dueFrom)}` : args.dueTo ? `due by ${shortDate(args.dueTo)}` : null;
+      const scopeLabel = [[args.subject, section?.label].filter(Boolean).join(' for '), windowLabel].filter(Boolean).join(', ');
+      if (firstNote) {
+        return ok(
+          { assignments: shown, count: shown.length, first: true },
+          { speak: firstNote },
+        );
+      }
       const view = summarise(shown, (a) => `${a.title} (${a.subject}${a.dueAt ? `, due ${shortDate(a.dueAt)}` : ''})`);
 
       if (!ordered.length) {
@@ -1244,7 +1294,7 @@ export const academicTools = {
           { assignments: [], count: 0, ...(section && { class: section.label }), ...(args.subject && { subject: args.subject }) },
           {
             speak: scopeLabel
-              ? `No homework found for ${scopeLabel}.`
+              ? `No homework found ${scopeLabel.startsWith('due') ? scopeLabel : `for ${scopeLabel}`}.`
               : (pendingOnly ? 'You have nothing due.' : args.status === 'SUBMITTED' ? 'Nothing has been submitted yet.' : 'No homework has been set.'),
           },
         );
@@ -1257,7 +1307,7 @@ export const academicTools = {
           ...(args.subject && { subject: args.subject }),
         },
         {
-          speak: `${ordered.length} ${pendingOnly ? 'still to submit' : isFamily && args.status === 'SUBMITTED' ? 'submitted' : 'homework item(s)'}${scopeLabel ? ` for ${scopeLabel}` : ''}: ${view.list}${view.more ? ', …' : ''}.`,
+          speak: `${ordered.length} ${pendingOnly ? 'still to submit' : isFamily && args.status === 'SUBMITTED' ? 'submitted' : 'homework item(s)'}${scopeLabel ? (scopeLabel.startsWith('due') ? ` ${scopeLabel}` : ` for ${scopeLabel}`) : ''}: ${view.list}${view.more ? ', …' : ''}.`,
           // A table (agent/present.js). The class is shown whenever the rows
           // span more than one: "Chapter 1 Assignment" four times over was
           // four different classes, indistinguishable in a sentence.
@@ -1341,8 +1391,12 @@ export const academicTools = {
       const offering = prepared?.offering;
       const subject = offering?.subject ?? args.subject;
       const className = offering?.className ?? args.className;
+      // Everything that will be written is shown: the work's description is
+      // part of what the class sees, so it is part of what is approved.
+      const about = args.description && String(args.description).toLowerCase() !== String(args.title ?? '').toLowerCase()
+        ? ` — ${String(args.description).slice(0, 160)}${String(args.description).length > 160 ? '…' : ''}` : '';
       return `Set "${args.title}"${subject ? ` (${subject})` : ''}`
-        + `${className ? ` for ${className}` : ' for the class'}, due ${args.dueAt}`;
+        + `${className ? ` for ${className}` : ' for the class'}, due ${args.dueAt}${about}`;
     },
     /**
      * Which class and subject, resolved BEFORE the proposal -- the same set the
@@ -1353,7 +1407,11 @@ export const academicTools = {
      */
     async prepare(ctx, args) {
       const { className, subject, subjectOfferingId } = args ?? {};
-      return { offering: await resolveOffering(ctx.actor, ctx.scope, { subjectOfferingId, subject, className }) };
+      // `hint`: the words of the request, in which the subject may be named
+      // without being labelled ("science chapter 4 questions"). The service
+      // reads it against the caller's own class-subject records.
+      const hint = [args?.description, args?.chapter].filter(Boolean).join(' ') || null;
+      return { offering: await resolveOffering(ctx.actor, ctx.scope, { subjectOfferingId, subject, className, hint }) };
     },
     async run(ctx, args, prepared) {
       const { className, subject, subjectOfferingId, ...rest } = args;
@@ -1364,7 +1422,7 @@ export const academicTools = {
       // the proposal fixed, so a class lost between proposal and yes is refused.
       const offering = await resolveOffering(ctx.actor, ctx.scope, prepared?.offering?.id
         ? { subjectOfferingId: prepared.offering.id }
-        : { subjectOfferingId, subject, className });
+        : { subjectOfferingId, subject, className, hint: [rest.description, rest.chapter].filter(Boolean).join(' ') || null });
       const created = await assignments.create(ctx.actor, ctx.scope, { ...rest, subjectOfferingId: offering.id });
       return action({
         type: 'assignment_created',

@@ -1,0 +1,5 @@
+# The Student Learning Buddy prompt is verified byte-for-byte against the
+# SHA-256 in its MANIFEST.json (backend/tests/studyHelp.skillSync.test.js),
+# which is computed over LF line endings. Without this, a Windows checkout
+# with core.autocrlf=true rewrites the file to CRLF and the check fails.
+ai-skills/**/UNIVERSAL_SYSTEM_PROMPT.txt text eol=lf
