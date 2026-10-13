@@ -22,6 +22,18 @@ export function isMedicalAuditEntry({ entityType, action } = {}) {
   return entityType === 'MedicalRecord' || /medical/i.test(String(action ?? ''));
 }
 
+/**
+ * Routes whose request bodies must never be copied into the audit trail:
+ * safeguarding reports (encrypted at rest), background-verification evidence,
+ * and pay structures / bank details. The action is still logged; the payload
+ * is replaced, for the same reason as medical records above.
+ */
+const RESTRICTED_PAYLOAD_PATHS = /^\/?(api\/v1\/)?(safeguarding|verification|payroll\/compensation|payroll\/employees)(\/|$|\?)/;
+export function isRestrictedPayloadPath(url) {
+  return RESTRICTED_PAYLOAD_PATHS.test(String(url ?? '').replace(/^\/+/, ''));
+}
+export const RESTRICTED_PAYLOAD_WITHHELD = Object.freeze({ redacted: 'restricted payload is not kept in the audit trail' });
+
 export const MEDICAL_PAYLOAD_WITHHELD = Object.freeze({ redacted: 'medical record contents are not kept in the audit trail' });
 
 export function redact(value, depth = 0) {
@@ -204,7 +216,9 @@ export const auditLogger = (req, res, next) => {
           }
 
           const ip = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
-          const safeBody = isMedicalAuditEntry({ entityType, action }) ? MEDICAL_PAYLOAD_WITHHELD : redact(req.body);
+          const safeBody = isMedicalAuditEntry({ entityType, action })
+            ? MEDICAL_PAYLOAD_WITHHELD
+            : isRestrictedPayloadPath(req.originalUrl || req.url) ? RESTRICTED_PAYLOAD_WITHHELD : redact(req.body);
 
           await AuditLog.create({
             actorProfileId,

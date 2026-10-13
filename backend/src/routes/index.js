@@ -46,6 +46,11 @@ import uploadRoutes from '../modules/uploads/upload.routes.js';
 // Institution operations (see docs/erp-operations).
 import approvalRoutes from '../modules/approvals/approval.routes.js';
 import messagingRoutes from '../modules/messaging/messaging.routes.js';
+import { institutionRouter, orgRouter } from '../modules/institution/institution.routes.js';
+import {
+  correspondenceRouter, facilitiesRouter, eventsRouter, contractsRouter, verificationRouter,
+  complianceRouter, safeguardingRouter, governanceRouter,
+} from '../modules/administration/administration.routes.js';
 import { auditLogger } from '../middleware/auditLogger.js';
 import { signUploadUrlsInResponses, unsignUploadUrlsInBody } from '../modules/uploads/signedUrls.js';
 
@@ -136,6 +141,16 @@ router.use('/domains', domainRoutes);
 router.use('/uploads', uploadRoutes);
 router.use('/approvals', approvalRoutes);
 router.use('/messaging', messagingRoutes);
+router.use('/institution', institutionRouter);
+router.use('/org', orgRouter);
+router.use('/correspondence', correspondenceRouter);
+router.use('/facilities', facilitiesRouter);
+router.use('/institution-events', eventsRouter);
+router.use('/contracts', contractsRouter);
+router.use('/verification', verificationRouter);
+router.use('/compliance', complianceRouter);
+router.use('/safeguarding', safeguardingRouter);
+router.use('/governance', governanceRouter);
 
 // NOTE — a public GET /admin-seed endpoint used to live here, gated only by a
 // hardcoded default secret ('eduos-seed-2026'). Anyone who could reach the API
