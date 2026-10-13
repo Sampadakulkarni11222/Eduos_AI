@@ -148,8 +148,12 @@ export async function sendOperational({
   if (!recipients.length) return [];
   const preview = template.text(variables);
 
-  // The in-app copy always goes; it is the fallback for every skip below.
-  await notify({ recipientProfileIds: recipients, type: 'SYSTEM', title: preview.slice(0, 140), body: preview, link });
+  // The in-app copy always goes; it is the fallback for every skip below. A
+  // repeat of the same message (same idempotency key) is not announced again,
+  // so a scheduled reminder that runs every hour notifies once.
+  const already = new Set((await MessageOutbox.find({ idempotencyKey, recipientProfileId: { $in: recipients } }).select('recipientProfileId').lean()).map((m) => String(m.recipientProfileId)));
+  const fresh = recipients.filter((id) => !already.has(id));
+  if (fresh.length) await notify({ recipientProfileIds: fresh, type: 'SYSTEM', title: preview.slice(0, 140), body: preview, link });
 
   const [profiles, prefs] = await Promise.all([
     Profile.find({ _id: { $in: recipients } }).select('_id accountId').lean(),
@@ -226,7 +230,8 @@ export async function sendOperational({
  * twice, because a row leaves DEFERRED the first time.
  */
 export async function releaseDeferred(actor, { now = new Date() } = {}) {
-  requireProfile(actor);
+  // The scheduler calls this with no person behind it.
+  if (!actor?.system) requireProfile(actor);
   const due = await MessageOutbox.find({ status: 'DEFERRED', channel: 'WHATSAPP', scheduledFor: { $lte: now } }).limit(500);
   const counts = {};
   for (const row of due) {

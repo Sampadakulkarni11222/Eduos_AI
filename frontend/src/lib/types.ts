@@ -83,7 +83,7 @@ export interface PageResult<T> {
 export interface SectionDto { id: string; name: string; gradeName: string; classTeacher?: string | null; classTeacherId?: string | null; classRepresentativeId?: string | null }
 export interface OfferingDto { id: string; subject: string; subjectId?: string; sectionId: string; sectionName: string; gradeName?: string; teacherId?: string | null; teacherName?: string | null; isElective?: boolean; capacity?: number | null }
 export interface GradeDto { id: string; name: string; level: number }
-export interface SubjectDto { id: string; name: string; code?: string | null }
+export interface SubjectDto { id: string; name: string; code?: string | null; /** Course credits, where the institution uses them. */ credits?: number | null }
 export interface TermDto { id: string; academicYearId: string; name: string; startsOn: string; endsOn: string }
 
 // Actual shape of GET /users (account + nested profiles) — distinct from the
@@ -380,7 +380,7 @@ export type WhatsappAssistantLink =
   | { enabled: false; reason: string };
 
 // ── Phase 8: Transport ──
-export interface TransportRouteDto { id: string; name: string; operatorName: string | null; vehicleNo: string | null; driverName: string | null; driverPhone: string | null; status: string; stopCount: number; /** Yearly fare in paise; 0 means the route carries no charge. */ fareAmountPaise?: number }
+export interface TransportRouteDto { id: string; name: string; operatorName: string | null; vehicleNo: string | null; driverName: string | null; driverPhone: string | null; status: string; stopCount: number; /** Yearly fare in paise; 0 means the route carries no charge. */ fareAmountPaise?: number; /** Background-check status of the named driver; sent only to people who manage transport or read verification. */ driverClearance?: { status: 'CLEARED' | 'NOT_CLEARED' | 'NO_RECORD' | 'NO_DRIVER'; reason: string | null } }
 export interface TransportStopDto { id: string; routeId: string; name: string; sequenceNo: number; etaMinutesFromStart: number }
 export interface MyBusDto { route: Omit<TransportRouteDto, 'stopCount'>; stop: TransportStopDto; direction: string; nextEta: string | null }
 

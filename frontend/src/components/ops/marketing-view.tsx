@@ -5,7 +5,7 @@ import { Button, EmptyState, Field, Modal, useToast } from '@/components/ui';
 import { fileHref } from '@/lib/api';
 import { opsApi } from '@/lib/ops-api';
 import { usePermissions } from '@/lib/permissions';
-import { useSchoolHref } from '@/lib/school-path';
+import { usePortalHref } from '@/lib/school-path';
 import type { CreativeAssetDto } from '@/lib/ops-types';
 import { AttachUpload } from './attach';
 import { DataNote, ErrorNote, Loadable, PromptModal, SectionCard, StatusPill, Tabs, Tile, fmtDate, fmtDateTime, humanize, money, rupeesToPaise, useAction, useLoad } from './kit';
@@ -25,7 +25,7 @@ function Funnel({ canReadLeads }: { canReadLeads: boolean }) {
   const state = useLoad(() => opsApi.marketingAnalytics(), []);
   // Enquiry details need admissions.read; without it only the aggregate figures load.
   const dups = useLoad(() => (canReadLeads ? opsApi.duplicateLeads() : Promise.resolve([])), [canReadLeads]);
-  const link = useSchoolHref();
+  const link = usePortalHref();
   return (
     <Loadable state={state}>{(a) => (
       <div className="ops-stack">
@@ -219,7 +219,7 @@ export function MarketingView() {
   const canAdmit = Boolean(permissions['admissions.manage']);
   const canReadLeads = Boolean(permissions['admissions.read']);
   const canReview = Boolean(permissions['marketing.manage'] || permissions['community.moderate']);
-  const link = useSchoolHref();
+  const link = usePortalHref();
   const [tab, setTab] = useState<Tab>('funnel');
   return (
     <div className="ops-stack">

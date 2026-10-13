@@ -106,6 +106,9 @@ const mongo = resolveMongoUri();
 
 export const env = {
   NODE_ENV: process.env.NODE_ENV ?? 'development',
+  // The in-process scheduler (reminders, held messages, expiry checks). Turn it
+  // off on all but one process if you would rather run it in a dedicated worker.
+  SCHEDULER_ENABLED: (process.env.SCHEDULER_ENABLED ?? (process.env.NODE_ENV === 'test' ? 'false' : 'true')) === 'true',
   PORT: Number(process.env.PORT) || 5000,
   HOST: process.env.HOST ?? '0.0.0.0',
   MONGO_URI: mongo.uri,

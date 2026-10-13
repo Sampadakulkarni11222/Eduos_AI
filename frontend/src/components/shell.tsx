@@ -253,6 +253,12 @@ export function PortalShell({
               </div>
             </div>
             <div className="topbar-ask" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* The campus map, one click from any page of a portal that has it. */}
+              {PORTALS[expectedSlug]?.nav.some((g) => g.items.some((i) => i.href === `/${expectedSlug}/campus`)) && hasAccess(me?.profile?.role, 'campus.map.read') && (
+                <Link className="btn btn-soft btn-sm topbar-campus" href={withSchool(school, `/${expectedSlug}/campus`)} title="Open the 3D campus map">
+                  <span aria-hidden="true">◈</span><span className="topbar-campus-text"> Campus</span>
+                </Link>
+              )}
               <NotificationBell portalSlug={expectedSlug} />
               <AskEduOS label="Ask Agent" />
             </div>

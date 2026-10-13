@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui';
 import { opsApi } from '@/lib/ops-api';
 import { usePermissions } from '@/lib/permissions';
-import { useSchoolHref } from '@/lib/school-path';
+import { usePathname } from 'next/navigation';
+import { usePortalHref, stripSchool, useSchoolSegment } from '@/lib/school-path';
+import { PORTALS } from '@/lib/portals';
 import type { CampusMapDto, CampusNodeDto, FacilityDetailDto } from '@/lib/ops-types';
 import { BookRoomModal, ReportIssueModal } from '@/components/ops/operations-views';
 import { DataNote, ErrorNote, StatusPill, fmtDateTime, humanize, useLoad } from '@/components/ops/kit';
@@ -40,9 +42,43 @@ function stateLabel(n: CampusNodeDto) {
   return s ? `${s.label}${s.until ? ` · until ${String(s.until).length <= 5 ? s.until : fmtDateTime(s.until)}` : ''}` : n.now ? 'Free now' : '';
 }
 
+/**
+ * Pages of the reader's own portal that relate to a kind of space, so a room on
+ * the map leads on to the work done there. Only pages in that portal's sidebar
+ * are offered, which keeps the buttons inside what the role may open.
+ */
+const RELATED: Record<string, string[]> = {
+  CLASSROOM: ['timetable', 'attendance', 'classes', 'classrooms', 'assignments'],
+  LECTURE_HALL: ['timetable', 'attendance', 'classes', 'classrooms'],
+  LAB: ['timetable', 'attendance', 'material'],
+  LIBRARY: ['library', 'books', 'notes'],
+  OFFICE: ['approvals', 'correspondence', 'fees', 'payments', 'admissions'],
+  STAFF_ROOM: ['staff', 'organization', 'leave'],
+  AUDITORIUM: ['events', 'calendar', 'announcements'],
+  GROUND: ['events', 'calendar'],
+  COURT: ['events', 'calendar'],
+  TRANSPORT_BAY: ['transport', 'transport-requests'],
+  PARKING: ['transport'],
+  GATE: ['transport', 'safeguarding'],
+  HOSTEL: ['rooms', 'leave'],
+  CLINIC: ['medical', 'safeguarding'],
+  CANTEEN: ['events', 'calendar'],
+  BUILDING: ['facilities', 'events'],
+};
+
+function relatedPages(portal: string, kind: string): Array<{ href: string; label: string }> {
+  const items = (PORTALS[portal]?.nav ?? []).flatMap((g) => g.items);
+  return (RELATED[kind] ?? []).flatMap((page) => {
+    const item = items.find((i) => i.href === `/${portal}/${page}`);
+    return item ? [{ href: item.href, label: item.label }] : [];
+  }).slice(0, 3);
+}
+
 export function CampusWorldView() {
+  const pathname = usePathname() ?? '';
   const { permissions } = usePermissions();
-  const link = useSchoolHref();
+  const link = usePortalHref();
+  const portal = stripSchool(pathname, useSchoolSegment()).split('/')[1] ?? '';
   const map = useLoad(() => opsApi.campusMap(), []);
   const holder = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<CampusScene | null>(null);
@@ -50,7 +86,8 @@ export function CampusWorldView() {
   const prefersReduced = useReducedMotion();
   const [reducedMotion, setReducedMotion] = useState(false);
   const [lowPower, setLowPower] = useState(false);
-  const [night, setNight] = useState(() => { const h = new Date(Date.now() + 330 * 60_000).getUTCHours(); return h >= 19 || h < 6; });
+  // Daylight by default: the map is read for information, and the dusk palette is harder to read.
+  const [night, setNight] = useState(false);
   const [level, setLevel] = useState<Level>({ kind: 'campus' });
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<FacilityDetailDto | null>(null);
@@ -70,6 +107,9 @@ export function CampusWorldView() {
   const buildings = useMemo(() => nodes.filter((n) => n.kind === 'BUILDING'), [nodes]);
 
   // Mount the scene once data and the container exist; Three.js is loaded only here.
+  // Keyed on whether data has arrived, not on each minute's refresh: a refresh
+  // only pushes new data into the live scene (below), it does not rebuild it.
+  const hasData = Boolean(map.data && map.data.facilities.length);
   useEffect(() => {
     if (view !== '3d' || !holder.current || !map.data) return;
     let disposed = false;
@@ -88,7 +128,7 @@ export function CampusWorldView() {
     })();
     return () => { disposed = true; scene?.dispose(); sceneRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- options are pushed to the live scene below
-  }, [view, map.data]);
+  }, [view, hasData]);
 
   useEffect(() => { sceneRef.current?.applyLighting(night); }, [night]);
   useEffect(() => { sceneRef.current?.setQuality(lowPower); try { localStorage.setItem('eduos.campus.lowPower', lowPower ? '1' : '0'); } catch { /* ignore */ } }, [lowPower]);
@@ -134,6 +174,10 @@ export function CampusWorldView() {
   };
   const building = level.kind === 'building' ? byId.get(level.buildingId) : null;
   const floors = building ? nodes.filter((n) => n.parentId === building.id && n.kind === 'FLOOR').sort((a, c) => (a.floorNo ?? 0) - (c.floorNo ?? 0)) : [];
+
+  const currentFloor = level.kind === 'building' ? floors.find((f) => (f.floorNo ?? 0) === level.floorNo) ?? null : null;
+  const roomsHere = currentFloor ? nodes.filter((n) => n.parentId === currentFloor.id) : [];
+  const outdoor = nodes.filter((n) => ['GROUND', 'COURT', 'PARKING', 'TRANSPORT_BAY', 'GATE'].includes(n.kind));
 
   if (map.error) return <ErrorNote error={map.error} />;
   if (!map.data) return <div className="cw-wrap"><div className="cw-fallback">Loading campus…</div></div>;
@@ -218,6 +262,8 @@ export function CampusWorldView() {
                 </nav>
                 {level.kind === 'campus' && <div className="ops-inline" style={{ marginTop: 6 }}>{buildings.map((b) => <Button key={b.id} small variant="soft" onClick={() => enterBuilding(b)}>{b.name}</Button>)}</div>}
                 {building && floors.length > 0 && <div className="ops-inline" style={{ marginTop: 6 }} role="group" aria-label="Floors">{floors.map((f) => <Button key={f.id} small variant={(f.floorNo ?? 0) === (level.kind === 'building' ? level.floorNo : -1) ? 'accent' : 'soft'} aria-pressed={(f.floorNo ?? 0) === (level.kind === 'building' ? level.floorNo : -1)} onClick={() => setLevel({ kind: 'building', buildingId: building.id, floorNo: f.floorNo })}>{f.floorNo === 0 ? 'Ground' : `Floor ${f.floorNo}`}</Button>)}<Button small variant="ghost" onClick={() => { setLevel({ kind: 'campus' }); setSelected(null); }}>← Back to campus</Button></div>}
+                {currentFloor && roomsHere.length > 0 && <div className="ops-inline" style={{ marginTop: 6 }} role="group" aria-label="Rooms on this floor">{roomsHere.map((n) => <Button key={n.id} small variant={n.id === selected ? 'accent' : 'ghost'} aria-pressed={n.id === selected} onClick={() => setSelected(n.id)}>{n.name}</Button>)}</div>}
+                {level.kind === 'campus' && outdoor.length > 0 && <div className="ops-inline" style={{ marginTop: 6 }} role="group" aria-label="Grounds and outdoor spaces">{outdoor.map((n) => <Button key={n.id} small variant={n.id === selected ? 'accent' : 'ghost'} aria-pressed={n.id === selected} onClick={() => setSelected(n.id)}>{n.name}</Button>)}</div>}
                 <div className="cw-legend" style={{ marginTop: 8 }} aria-label="Legend">{COLORS_LEGEND.map(([k, label]) => <span key={k}><i style={{ background: ({ FREE: '#9CC9A4', SCHEDULED_CLASS: '#6F96C9', BOOKED: '#9A86C9', EVENT: '#E2B04C', UNDER_MAINTENANCE: '#E39A55', CLOSED: '#A9A39A', RESTRICTED: '#5C5650' } as Record<string, string>)[k] }} />{label}</span>)}</div>
                 <div className="ops-inline" style={{ marginTop: 6, fontSize: 12 }}>
                   <label className="ops-chip"><input type="checkbox" checked={night} onChange={(e) => setNight(e.target.checked)} />Night (decorative)</label>
@@ -242,6 +288,7 @@ export function CampusWorldView() {
                         {detail.bookable && <Button small onClick={() => setModal('book')}>Book</Button>}
                         {permissions['facilities.request'] && <Button small variant="soft" onClick={() => setModal('issue')}>Report an issue</Button>}
                         {permissions['facilities.read'] && <Link className="btn btn-ghost btn-sm" href={link('/facilities?tab=spaces')}>Open full details →</Link>}
+                        {relatedPages(portal, sel.kind).map((p) => <Link key={p.href} className="btn btn-ghost btn-sm" href={link(p.href)}>{p.label} →</Link>)}
                       </div>
                     </>
                   )}

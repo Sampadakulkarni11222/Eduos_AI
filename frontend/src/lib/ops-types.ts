@@ -101,6 +101,16 @@ export interface VerificationDto {
 }
 
 // ── compliance ──
+export interface AccreditationItemDto { id: string; metric: string; ownerProfileId: string | null; ownerName: string | null; dueOn: string | null; status: 'NOT_STARTED' | 'IN_PROGRESS' | 'READY' | 'NOT_APPLICABLE'; note: string | null; evidence: Attachment[] }
+export interface AccreditationCycleDto {
+  id: string; refNo: string; framework: string; frameworkLabel: string; title: string; programme: string | null; targetDate: string | null;
+  status: 'PREPARING' | 'SUBMITTED' | 'CLOSED'; templateVerified: boolean; templateNote: string | null;
+  criteria: Array<{ id: string; code: string; title: string; items: AccreditationItemDto[]; ready: number; counted: number }>;
+  progress: { items: number; counted: number; ready: number; inProgress: number; notStarted: number; overdue: number; readyPct: number | null };
+  submission?: { at: string | null; reference: string | null }; outcome: string | null;
+}
+export interface AccreditationFrameworkDto { key: string; label: string; note: string; criteria: Array<{ code: string; title: string }> }
+export interface MyEvidenceItemDto { cycleId: string; cycle: string; criterion: string; itemId: string; metric: string; status: AccreditationItemDto['status']; dueOn: string | null; note: string | null; evidence: Attachment[] }
 export interface ObligationDto { id: string; code: string; title: string; authority: string; category: string; institutionTypes: string[]; frequency: string; dueRule: string | null; nextDueOn: string | null; applicability: string; applicabilityNote: string | null; reviewedAt: string | null; sourceRef: string | null; ownerRole: string; active: boolean }
 export interface ReturnDto { id: string; refNo: string; template: string; title: string; authority: string; period: string; dueOn: string | null; status: string; data: Record<string, unknown>; generatedAt: string; validation: Array<{ level: 'ERROR' | 'WARNING'; field: string; message: string }>; submission: { method: string | null; at: string | null; acknowledgementNo: string | null; receiptUrl: string | null }; authorityResponse: string | null; approvalRequestId: string | null; errors: number; warnings: number; isOverdue: boolean; history?: HistoryEntry[] }
 export interface LicenceDto { id: string; kind: string; title: string; issuer: string | null; number: string | null; campusCode: string | null; issuedOn: string | null; expiresOn: string | null; renewalLeadDays: number; renewalCostPaise: number; renewalStatus: string | null; publicDisclosure: boolean; evidence: Attachment[]; status: string; daysToExpiry: number | null; notes: string | null }

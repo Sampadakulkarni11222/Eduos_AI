@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { Button, EmptyState, Field, Modal, useToast } from '@/components/ui';
 import { fileHref } from '@/lib/api';
+import { MyEvidencePanel } from './accreditation-view';
 import { opsApi } from '@/lib/ops-api';
 import type { MyPolicyDto } from '@/lib/ops-types';
 import { ConsentsPanel } from './newsroom-view';
@@ -21,6 +22,7 @@ export function MySpaceView() {
   const toast = useToast();
   return (
     <div className="ops-stack">
+      <MyEvidencePanel />
       <Loadable state={policies}>{(rows) => (
         <SectionCard title="Policies for you" sub="Read each policy; where asked, confirm you have read it.">
           {!rows.length ? <p className="ops-muted">No policies addressed to you.</p> : (

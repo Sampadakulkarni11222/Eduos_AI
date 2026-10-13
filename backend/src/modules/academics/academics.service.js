@@ -288,10 +288,18 @@ export async function bulkCreateSections(rows) {
 }
 
 // ── Subjects ──
+/** Credits as entered: blank means the subject carries none; anything else must be a sensible number. */
+function subjectCredits(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0 || n > 40) throw new AppError('Credits must be a number between 0 and 40.', 400);
+  return Math.round(n * 2) / 2;
+}
 export const listSubjects = () => Subject.find().sort({ name: 1 });
 export const createSubject = (data = {}) => Subject.create({
   name: requireText(data.name, 'Subject name'),
   ...(data.code ? { code: String(data.code).trim().slice(0, 20) } : {}),
+  ...(subjectCredits(data.credits) !== null ? { credits: subjectCredits(data.credits) } : {}),
 });
 
 export async function bulkCreateSubjects(rows) {

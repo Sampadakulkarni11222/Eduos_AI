@@ -4,8 +4,8 @@ import { AppError } from '../../utils/AppError.js';
 import { parseCsvRows } from '../../utils/csvImport.js';
 import * as service from './transport.service.js';
 
-export const listRoutes = asyncHandler(async (_req, res) => {
-  sendSuccess(res, await service.listRoutes(), 'Routes fetched successfully');
+export const listRoutes = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.listRoutes(req.actor), 'Routes fetched successfully');
 });
 
 export const listStops = asyncHandler(async (req, res) => {

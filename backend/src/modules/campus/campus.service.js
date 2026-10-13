@@ -2,7 +2,7 @@ import { Facility, FacilityBooking, WorkOrder } from '../../models/facility.mode
 import { InstitutionEvent } from '../../models/administration.model.js';
 import { InstitutionProfile } from '../../models/institution.model.js';
 import { AppError } from '../../utils/AppError.js';
-import { presentFacility, scheduledSlots } from '../administration/facility.service.js';
+import { presentFacility, scheduledSlots, createSampleCampus } from '../administration/facility.service.js';
 import { assertObjectId, startOfDayUtc } from '../ops/common.js';
 
 /**
@@ -47,7 +47,25 @@ const istNow = (now) => {
 };
 const toMin = (s) => { const [h, m] = String(s).split(':').map(Number); return h * 60 + (m || 0); };
 
+/**
+ * A school that has not mapped its buildings yet gets the labelled sample
+ * campus the first time anyone opens the map, so every profile sees the 3D
+ * view from day one instead of an empty page. Every record is flagged
+ * `sampleLayout` and the map says so. Two first visits at once are safe: the
+ * unique facility code per school lets only one of them create it.
+ */
+async function ensureCampus() {
+  if (await Facility.exists({})) return;
+  const profile = await InstitutionProfile.findOne({}).select('institutionType').lean();
+  try {
+    await createSampleCampus({ institutionType: profile?.institutionType === 'COLLEGE' ? 'COLLEGE' : 'SCHOOL' });
+  } catch (err) {
+    if (err?.code !== 11000 && err?.code !== 'FACILITIES_EXIST') throw err;
+  }
+}
+
 export async function campusMap(actor, { campusCode, now = new Date() } = {}) {
+  await ensureCampus();
   const layers = layersFor(actor);
   const staff = STAFF.has(actor.roleKey);
   const filter = campusCode ? { campusCode } : {};

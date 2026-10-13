@@ -16,6 +16,7 @@ import { AppError } from '../../utils/AppError.js';
 import { logger } from '../../utils/logger.js';
 import { createRequest, registerApprovalHandler } from '../approvals/approval.service.js';
 import { notify } from '../notifications/notification.service.js';
+import { sendOperational } from '../messaging/messaging.service.js';
 import {
   nextRef, requireProfile, assertObjectId, assertTransition, pushHistory, cleanAttachments, asPaise,
   parseDate, requireText, optionalText, oneOf, dto, pageArgs, startOfDayUtc, profilesWithRoles,
@@ -845,6 +846,31 @@ export async function checkNoticeSource(actor, id) {
 }
 
 // ── Calendar & overview ──────────────────────────────────────────────────
+
+/**
+ * Reminds the compliance officer and administrators of dated items that fall
+ * due within `withinDays`, or are already overdue. Once per item per week, so
+ * a daily run does not nag. Letters are left to the correspondence reminders,
+ * which go to each letter's own owner.
+ */
+export async function sendDeadlineReminders(actor, { withinDays = 14, now = new Date() } = {}) {
+  const items = (await calendar({ days: withinDays })).filter((i) => i.kind !== 'CORRESPONDENCE');
+  if (!items.length) return { itemsDue: 0, messages: 0 };
+  const who = (await profilesWithRoles(['COMPLIANCE', 'ADMIN'])).map((p) => String(p._id));
+  const week = Math.floor(now.getTime() / (7 * 86_400_000));
+  let messages = 0;
+  for (const i of items) {
+    // eslint-disable-next-line no-await-in-loop
+    const r = await sendOperational({
+      templateKey: 'DEADLINE_REMINDER', recipientProfileIds: who,
+      variables: { title: `${i.title}${i.overdue ? ' (overdue)' : ''}`.slice(0, 120), dueOn: new Date(i.renewBy ?? i.date).toISOString().slice(0, 10) },
+      link: i.link, idempotencyKey: `compliance-due:${i.kind}:${i.id}:${week}`,
+      relatedEntityType: i.kind, relatedEntityId: i.id, requestedBy: actor?.profileId ?? null,
+    });
+    messages += r.filter((x) => !x.duplicate).length;
+  }
+  return { itemsDue: items.length, messages };
+}
 
 /** Every dated compliance item in one list, soonest first. */
 export async function calendar({ days = 120 } = {}) {

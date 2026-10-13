@@ -176,6 +176,14 @@ export default function AdminTransport() {
                     <td data-label="Driver Details">
                       <div>{r.driverName ?? '—'}</div>
                       <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{r.driverPhone ?? ''}</div>
+                      {r.driverClearance && r.driverClearance.status !== 'NO_DRIVER' && (
+                        <div
+                          title={r.driverClearance.reason ?? undefined}
+                          style={{ fontSize: 11, fontWeight: 600, marginTop: 2, color: r.driverClearance.status === 'CLEARED' ? 'var(--green, #2E7D32)' : 'var(--red, #B3261E)' }}
+                        >
+                          {r.driverClearance.status === 'CLEARED' ? '✓ Background check cleared' : r.driverClearance.status === 'NO_RECORD' ? '⚠ No background check on record' : `⚠ Not cleared: ${r.driverClearance.reason ?? ''}`}
+                        </div>
+                      )}
                     </td>
                     <td data-label="Yearly Fare">
                       {r.fareAmountPaise

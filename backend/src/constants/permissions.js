@@ -628,6 +628,7 @@ export const SYSTEM_ROLES = [
       ['compliance.read', 'ALL'],
       ['announcements.read', 'ALL'],
       ['calendar.read', 'ALL'],
+      ['ai.copilot.use', 'ALL'],
     ]),
   },
   {
@@ -642,6 +643,7 @@ export const SYSTEM_ROLES = [
       ['announcements.read', 'ALL'],
       ['calendar.read', 'ALL'],
       ['academics.read', 'ALL'],
+      ['ai.copilot.use', 'ALL'],
     ]),
   },
   {
@@ -658,6 +660,7 @@ export const SYSTEM_ROLES = [
       ['verification.read', 'ALL'],
       ['announcements.read', 'ALL'],
       ['calendar.read', 'ALL'],
+      ['ai.copilot.use', 'ALL'],
     ]),
   },
   {
@@ -677,6 +680,7 @@ export const SYSTEM_ROLES = [
       ['campus.map.read', 'OWN'],
       ['announcements.read', 'ALL'],
       ['calendar.read', 'ALL'],
+      ['ai.copilot.use', 'OWN'],
     ]),
   },
   {
@@ -686,6 +690,7 @@ export const SYSTEM_ROLES = [
     grants: merge(FAMILY_COMMUNITY, [
       ['community.post', 'OWN'],
       ['mentoring.participate', 'OWN'],
+      ['ai.copilot.use', 'OWN'],
     ]),
   },
 ];

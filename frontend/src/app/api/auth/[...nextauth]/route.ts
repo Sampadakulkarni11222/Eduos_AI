@@ -22,7 +22,7 @@ const authOptions: NextAuthOptions = {
 
         // Exchange with backend to get EduOS JWT tokens
         try {
-          const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
+          const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://127.0.0.1:5000';
           // Which sign-in address the Google button was pressed at. The OAuth
           // round trip leaves the page, so the door travels in a short-lived
           // cookie written just before the redirect (see DOOR_COOKIE in

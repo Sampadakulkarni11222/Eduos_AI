@@ -43,14 +43,7 @@ const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'sr
  * exclusion itself is asserted separately.
  */
 const ALL_ROLES = SYSTEM_ROLES.map((r) => r.key);
-/**
- * The institution-operations roles (HR, marketing, compliance, trustees and
- * alumni) are not served by the assistant yet: it has no tools for the pages
- * they work in, so they hold no `ai.copilot.use`. The list is pinned below, so
- * a role added later has to be placed on one side or the other on purpose.
- */
-const NOT_YET_SERVED = ['HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'ALUMNUS'];
-const EXCLUDED_ROLES = ['SUPER_ADMIN', ...NOT_YET_SERVED];
+const EXCLUDED_ROLES = ['SUPER_ADMIN'];
 const ROLES = ALL_ROLES.filter((key) => !EXCLUDED_ROLES.includes(key));
 const actorFor = (roleKey) => ({
   roleKey,
@@ -76,21 +69,32 @@ function uncoveredFor(roleKey) {
  * C — blocked: either the service cannot be called safely as an actor, or the
  *     feature does not exist in the backend at all.
  * D — deliberately unavailable to the assistant.
- * P — planned: the feature exists, but no assistant tool has been built for it.
  */
 /**
- * Institution-operations permissions (approvals, administration, compliance,
- * governance, payroll, procurement, budgets, marketing, community, campus and
- * messaging). The pages and API exist; the assistant has no tool for them yet.
- * Read-only tools for these are the first AI item in
- * docs/erp-operations/COMPETITOR-GAP-ANALYSIS.md.
+ * Institution-operations permissions that no capability declares.
+ *
+ * The read side of these modules is covered by tools/operations.js. What is
+ * left is of two kinds, and both are deliberate:
+ *   - the keys that decide, approve, manage or configure. The assistant reports
+ *     on operations and never approves, files, pays, clears or decides, so
+ *     these acts stay on their own screens behind the approval engine;
+ *   - the reads withheld from a chat transcript altogether: individual pay,
+ *     and anything to do with a safeguarding case.
  */
-const OPERATIONS_KEYS = PERMISSION_CATALOG.map((p) => p.key).filter((key) => /^(approvals|governance|institution|org|correspondence|compliance|contracts|verification|events|facilities|safeguarding|payroll|procurement|budget|funding|marketing|community|mentoring|campus|messaging)\./.test(key));
-const PLANNED_WHY = 'Institution-operations feature with its own pages and API; the assistant has no tool for it yet. Planned as read-only tools first, and never a tool that approves, files or decides.';
+const OPERATIONS_PREFIX = /^(approvals|governance|institution|org|correspondence|compliance|contracts|verification|events|facilities|safeguarding|payroll|procurement|budget|funding|marketing|community|mentoring|campus|messaging)\./;
+const DECLARED_BY_A_TOOL = new Set(Object.values(MCP_TOOLS).map((t) => t.permission));
+const OPERATIONS_KEYS = PERMISSION_CATALOG.map((p) => p.key).filter((key) => OPERATIONS_PREFIX.test(key) && !DECLARED_BY_A_TOOL.has(key));
+const OPERATIONS_WHY = 'Institution-operations act or restricted read. The assistant reports on operations through read-only tools and never approves, files, pays, clears or decides; safeguarding and individual pay are kept out of chat altogether.';
 
 const UNCOVERED = {
-  /* ── P. planned: the feature exists, the assistant tool does not ── */
-  ...Object.fromEntries(OPERATIONS_KEYS.map((key) => [key, { category: 'P', why: PLANNED_WHY }])),
+  /* ── D. institution operations: acts and restricted reads ── */
+  ...Object.fromEntries(OPERATIONS_KEYS.map((key) => [key, { category: 'D', why: OPERATIONS_WHY }])),
+
+  'payroll.read': {
+    category: 'D',
+    scopes: ['OWN'],
+    why: 'list_payroll_runs reports school-wide run totals, so it needs school-wide scope. A holder at OWN scope may see only their own payslips, and individual pay is deliberately kept out of chat: it is read on My Payslips.',
+  },
 
   /* ── A. reachable under another permission key ─────────── */
   'reportcards.read': {
@@ -243,7 +247,7 @@ describe('the authorized permission surface is covered by the capability surface
 
   it('records a category and a real reason for each', () => {
     for (const [key, entry] of Object.entries(UNCOVERED)) {
-      expect(['A', 'C', 'D', 'P'], `${key}`).toContain(entry.category);
+      expect(['A', 'C', 'D'], `${key}`).toContain(entry.category);
       expect(entry.why.length, `${key} has no real reason recorded`).toBeGreaterThan(40);
       // Category A claims a capability exists; it has to actually exist.
       if (entry.category === 'A') expect(MCP_TOOLS, `${key} claims ${entry.via}`).toHaveProperty(entry.via);
@@ -500,7 +504,16 @@ describe('role-specific figures are reachable by the role they describe', () => 
       TEACHER: 'teacher', STUDENT: 'student', PARENT: 'parent',
       WARDEN: 'warden', LIBRARIAN: 'librarian',
     };
-    for (const role of ROLES) {
+    // The institution-operations roles have no dashboard view of their own:
+    // their figures are their role home, which get_my_day reads and which
+    // gates on institution.read, a key every one of them holds.
+    const HOME_INSTEAD = ['HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'ALUMNUS'];
+    for (const role of HOME_INSTEAD) {
+      const actor = actorFor(role);
+      expect(mcpToolsFor(actor).some((t) => t.name === 'get_my_day'), `${role} cannot see get_my_day`).toBe(true);
+      expect(actor.permissions[MCP_TOOLS.get_my_day.permission], `${role} cannot read its own home`).toBeTruthy();
+    }
+    for (const role of ROLES.filter((r) => !HOME_INSTEAD.includes(r))) {
       const actor = actorFor(role);
       const view = ROLE_VIEW[role];
       expect(view, `${role} has no dashboard view`).toBeTruthy();

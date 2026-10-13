@@ -1,7 +1,7 @@
 'use client';
-import { useParams } from 'next/navigation';
+import { useParams, usePathname } from 'next/navigation';
 import { getActiveSchool } from './school';
-import { ROLE_TO_SLUG } from './portals';
+import { PORTALS, ROLE_TO_SLUG } from './portals';
 import type { RoleKey } from './types';
 
 /**
@@ -57,3 +57,34 @@ export function useSchoolHref(): (href: string) => string {
 /** Where a role's portal lives for a given school. */
 export const portalHome = (school: string | null | undefined, role: RoleKey): string =>
   withSchool(school, `/${ROLE_TO_SLUG[role] ?? 'admin'}`);
+
+/**
+ * Links written relative to the portal the reader is in: `/approvals?id=1`
+ * becomes `/oakridge/principal/approvals?id=1` for a principal and
+ * `/oakridge/teacher/approvals?id=1` for a teacher. The operations screens are
+ * shared by every portal, and the API returns links in this portal-relative
+ * form, so one component can link correctly wherever it is mounted.
+ *
+ * A link that names another portal (`/admin/admissions`) is moved to the
+ * reader's own portal when that portal has the same page, and left alone
+ * otherwise.
+ */
+export function usePortalHref(): (href: string) => string {
+  const school = useSchoolSegment();
+  const pathname = usePathname() ?? '';
+  const portal = stripSchool(pathname, school).split('/')[1] ?? '';
+  return (href: string) => {
+    if (!href.startsWith('/') || isUnscopedPath(href) || !PORTALS[portal]) return withSchool(school, href);
+    const [path, suffix = ''] = href.split(/(?=[?#])/, 2);
+    const [, first, ...rest] = path.split('/');
+    const inNav = (p: string) => PORTALS[portal].nav.some((g) => g.items.some((i) => i.href === p));
+    // A page of the reader's own portal comes first: "/compliance" is the
+    // Compliance Centre page everywhere, even though a portal shares its name.
+    if (inNav(`/${portal}${path}`) || !PORTALS[first]) return withSchool(school, `/${portal}${href}`);
+    if (first !== portal) {
+      const own = `/${[portal, ...rest].join('/')}`;
+      if (rest.length && inNav(own)) return withSchool(school, own + suffix);
+    }
+    return withSchool(school, href);
+  };
+}

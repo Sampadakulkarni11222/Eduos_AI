@@ -14,7 +14,7 @@ import { isPlatformHost, normalizeHost, routeForSchoolHost } from '@/lib/domain-
  * they skip the lookup; localhost always does.
  */
 
-const BACKEND = process.env.API_URL ?? process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
+const BACKEND = process.env.API_URL ?? process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://127.0.0.1:5000';
 const TTL_MS = 60_000;
 const LOOKUP_TIMEOUT_MS = 2_000;
 const cache = new Map<string, { slug: string | null; at: number }>();

@@ -11,6 +11,8 @@ import { logger } from '../utils/logger.js';
 // Import Models
 import { Account } from '../models/account.model.js';
 import { School } from '../models/school.model.js';
+import { createSampleCampus } from '../modules/administration/facility.service.js';
+import { Facility } from '../models/facility.model.js';
 import { runWithTenant } from '../tenancy/tenantContext.js';
 import { Profile } from '../models/profile.model.js';
 import { Role } from '../models/role.model.js';
@@ -89,7 +91,7 @@ async function seedSchool() {
     'assignments', 'submissions', 'invoices', 'invoicelines', 'payments',
     'timetableslots', 'hostelrooms', 'hostelallocations', 'transportroutes',
     'transportstops', 'busenrollments', 'calendarevents', 'medicalrecords',
-    'subjectregistrations'
+    'subjectregistrations', 'facilities', 'facilitybookings', 'workorders'
   ];
   for (const c of collectionsToClear) {
     await mongoose.connection.db.collection(c).deleteMany({});
@@ -148,9 +150,9 @@ async function seedSchool() {
     { key: 'LIBRARIAN', name: 'Demo Librarian', phone: '+910000000005', email: 'librarian@schoolerp.com' },
     { key: 'WARDEN', name: 'Demo Warden', phone: '+910000000006', email: 'warden@schoolerp.com' },
     { key: 'HR', name: 'Demo HR Manager', phone: '+910000000010', email: 'hr@schoolerp.com' },
-    { key: 'MARKETING', name: 'Demo Admissions Lead', phone: '+910000000011', email: 'marketing@schoolerp.com' },
-    { key: 'COMPLIANCE', name: 'Demo Compliance Officer', phone: '+910000000012', email: 'compliance@schoolerp.com' },
-    { key: 'TRUSTEE', name: 'Demo Trustee', phone: '+910000000013', email: 'trustee@schoolerp.com' },
+    { key: 'MARKETING', name: 'Demo Admissions Lead', phone: '+910000000030', email: 'marketing@schoolerp.com' },
+    { key: 'COMPLIANCE', name: 'Demo Compliance Officer', phone: '+910000000031', email: 'compliance@schoolerp.com' },
+    { key: 'TRUSTEE', name: 'Demo Trustee', phone: '+910000000032', email: 'trustee@schoolerp.com' },
   ];
   for (const staff of staffToCreate) {
     const acc = await Account.create({
@@ -871,6 +873,21 @@ async function seedSchool() {
       audience: { all: true },
     },
   ]);
+
+  // A labelled sample campus, so the 3D Campus World has buildings to show.
+  logger.info('Seeding a sample campus layout for Campus World...');
+  await createSampleCampus({ institutionType: 'SCHOOL' });
+  // Give each class section a home classroom, so its timetable shows as
+  // scheduled use of that room on the map.
+  const [homeRooms, allSections] = await Promise.all([
+    Facility.find({ kind: 'CLASSROOM' }).sort({ code: 1 }),
+    Section.find({}).sort({ _id: 1 }).lean(),
+  ]);
+  for (const [i, room] of homeRooms.entries()) {
+    if (!allSections[i]) break;
+    room.sectionId = allSections[i]._id;
+    await room.save();
+  }
 
   logger.info('====================================================');
   logger.info('  FULL SCHOOL SEEDING COMPLETED SUCCESSFULLY!  🚀');

@@ -10,6 +10,7 @@ import { recordAudit } from '../../utils/auditTrail.js';
 import { paginate, mapPage } from '../../utils/paginate.js';
 import { notify } from '../notifications/notification.service.js';
 import { createInvoice } from '../fees/fee.service.js';
+import { clearanceFor } from '../administration/verification.service.js';
 
 /* ── Routes, stops and bus enrolment ─────────────────────────
    Moved here from transport.controller.js, which used to write the models
@@ -17,8 +18,26 @@ import { createInvoice } from '../fees/fee.service.js';
    implementation instead of the tools having to copy the controller's. The
    behaviour is unchanged: same validation, same defaults, same upsert. */
 
-/** Active routes with their stop and enrolment counts. */
-export async function listRoutes() {
+/**
+ * Whether the named driver holds a current background clearance, for the
+ * people who run transport or handle verification. It is matched on the
+ * driver's name as recorded on the route, so a route with no driver named, or
+ * a name that differs from the verification record, reads as "no record".
+ */
+async function driverClearance(driverName) {
+  if (!driverName) return { status: 'NO_DRIVER', reason: 'No driver is named on this route.' };
+  const c = await clearanceFor({ subjectName: driverName.trim(), subjectType: 'DRIVER' });
+  if (c.cleared) return { status: 'CLEARED', reason: c.conditions ?? null };
+  return { status: c.caseId ? 'NOT_CLEARED' : 'NO_RECORD', reason: c.reason };
+}
+
+/**
+ * Active routes with their stop and enrolment counts. A caller who manages
+ * transport or reads verification also gets each driver's clearance; nobody
+ * else does, so a family never sees why a driver is not cleared.
+ */
+export async function listRoutes(actor = null) {
+  const showClearance = Boolean(actor?.permissions?.['transport.manage'] || actor?.permissions?.['verification.read']);
   const routes = await TransportRoute.find({ status: 'ACTIVE' }).sort({ name: 1 }).lean();
   return Promise.all(routes.map(async (route) => {
     const [stopsCount, enrollmentsCount] = await Promise.all([
@@ -36,7 +55,10 @@ export async function listRoutes() {
       // on them costs nothing until one is set.
       fareAmountPaise: route.fareAmountPaise ?? 0,
       stopsCount,
+      // The transport screen reads this name.
+      stopCount: stopsCount,
       enrollmentsCount,
+      ...(showClearance ? { driverClearance: await driverClearance(route.driverName) } : {}),
     };
   }));
 }

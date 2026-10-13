@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'next/navigation';
 import { Button, Card, Field, Modal, Pill, SkeletonRows, cx, rupees } from '@/components/ui';
 import { errorMessage, fileHref } from '@/lib/api';
-import { useSchoolHref } from '@/lib/school-path';
+import { usePortalHref } from '@/lib/school-path';
 import type { Attachment, HistoryEntry, KpiDto } from '@/lib/ops-types';
 
 /**
@@ -58,7 +58,7 @@ export function formatKpi(k: Pick<KpiDto, 'value' | 'unit' | 'status'>): string 
  * time it was computed is shown, and "No data" is never rendered as 0.
  */
 export function Kpi({ k }: { k: KpiDto }) {
-  const link = useSchoolHref();
+  const link = usePortalHref();
   const [open, setOpen] = useState(false);
   const body = (
     <>
@@ -87,7 +87,7 @@ export function KpiGrid({ kpis }: { kpis: KpiDto[] }) {
 
 /** A small numeric tile when there is no server KPI definition to show. */
 export function Tile({ label, value, tone = 'neutral', href }: { label: string; value: ReactNode; tone?: 'good' | 'warn' | 'bad' | 'neutral'; href?: string }) {
-  const link = useSchoolHref();
+  const link = usePortalHref();
   const body = (<><div className="kpi-label">{label}</div><div className={cx('kpi-value', `tone-${tone}`)}>{value}</div></>);
   return <div className={cx('kpi', `kpi-${tone}`)}>{href ? <Link href={link(href)} className="kpi-main">{body}</Link> : <div className="kpi-main">{body}</div>}</div>;
 }

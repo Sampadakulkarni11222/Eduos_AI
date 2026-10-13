@@ -1,5 +1,5 @@
 import type { GuideTopic, RoleGuide } from './types';
-import { notificationsTopic, accessTip, signInTopic } from './shared';
+import { askAgentTopic, notificationsTopic, accessTip, signInTopic } from './shared';
 import { opsTopics } from './ops';
 
 /** Guides for the department portals: HR, marketing, compliance, trustees and alumni. */
@@ -26,6 +26,12 @@ export const hrGuide: RoleGuide = {
       tips: ['A figure shows "Not available" when its data has not been entered yet.'],
     },
     ...opsTopics('hr'),
+    askAgentTopic({
+      askAbout: ['what is waiting on you today', 'approvals waiting on you', 'background verification counts', 'payroll runs and their totals', 'the organisation and its vacancies', 'compliance deadlines, licences and trainings', 'staff and users', 'announcements and the calendar'],
+      canDo: [],
+      examples: ['How many verifications are awaiting the principal?', 'What is the status of the latest payroll run?', 'How many positions are vacant?'],
+      notYet: ['safeguarding', 'individual pay', 'approving or deciding anything'],
+    }),
     ...common,
   ],
 };
@@ -60,6 +66,12 @@ export const marketingGuide: RoleGuide = {
       ],
     },
     ...opsTopics('marketing'),
+    askAgentTopic({
+      askAbout: ['what is waiting on you today', 'the admissions funnel and enquiry sources', 'approvals waiting on you', 'events being planned', 'newsroom posts', 'classes and subjects', 'announcements and the calendar'],
+      canDo: [],
+      examples: ['How many enquiries enrolled this year?', 'Which source brings the most enquiries?', 'What events are coming up?'],
+      notYet: ['safeguarding', 'individual pay', 'approving or deciding anything'],
+    }),
     ...common,
   ],
 };
@@ -97,6 +109,12 @@ export const complianceGuide: RoleGuide = {
       ],
     },
     ...opsTopics('compliance'),
+    askAgentTopic({
+      askAbout: ['what is waiting on you today', 'compliance deadlines, returns and licences', 'open letters from boards and government', 'background verification counts', 'approvals waiting on you', 'staff and users', 'announcements and the calendar'],
+      canDo: [],
+      examples: ['What compliance items are overdue?', 'Which licences expire in the next 60 days?', 'Which letters are past their reply date?'],
+      notYet: ['safeguarding', 'individual pay', 'approving or deciding anything'],
+    }),
     ...common,
   ],
 };
@@ -121,6 +139,12 @@ export const trusteeGuide: RoleGuide = {
       tips: ['You see summaries, not individual students\' or staff members\' records.', 'A figure shows "Not available" when its data has not been entered yet.'],
     },
     ...opsTopics('trustee'),
+    askAgentTopic({
+      askAbout: ['what is waiting on you today', 'approvals waiting on the board', 'board and committee meetings', 'budgets: planned, committed and spent', 'compliance deadlines and licences', 'the organisation in numbers', 'the campus right now', 'announcements and the calendar'],
+      canDo: [],
+      examples: ['What is waiting for the board?', 'How much of the budget is spent?', 'When is the next meeting?'],
+      notYet: ['safeguarding', 'individual pay', 'approving or deciding anything'],
+    }),
     ...common,
   ],
 };
@@ -145,6 +169,12 @@ export const alumnusGuide: RoleGuide = {
       steps: ['Read and react to stories.', 'Join the circle for your batch.'],
     },
     ...opsTopics('alumnus'),
+    askAgentTopic({
+      askAbout: ['recent newsroom posts', 'the campus right now'],
+      canDo: [],
+      examples: ['What is new at the school?', 'What events are on today?'],
+      notYet: ['mentoring requests'],
+    }),
     ...common,
   ],
 };

@@ -55,6 +55,21 @@ const ENTITY_OF_MODULE = {
   Seats: 'seat',
   Customization: 'customization',
   Domains: 'domain',
+  Operations: 'myDay',
+  Approvals: 'approval',
+  Compliance: 'compliance',
+  Correspondence: 'correspondence',
+  Governance: 'governance',
+  Events: 'institutionEvent',
+  Facilities: 'maintenance',
+  Verification: 'verification',
+  Procurement: 'procurement',
+  Budgets: 'budget',
+  Payroll: 'payroll',
+  Marketing: 'marketing',
+  Organisation: 'organisation',
+  Newsroom: 'newsroom',
+  Campus: 'campus',
 };
 
 /**
@@ -359,7 +374,26 @@ export const ENTITY_VOCABULARY = [
   // Admissions, but NOT the words "admission number" -- that is how a STUDENT
   // is identified, and reading it as the admissions pipeline would answer a
   // question about a pupil with a list of enquiries.
-  ['admission', /\badmissions?\b(?!\s*(?:number|no\b))|\benquir(y|ies)\b|\bapplicants?\b|\badmission\s+leads?\b/i],
+  ['admission', /\badmissions?\b(?!\s*(?:number|no\b))|\benquir(y|ies)\b|\bapplicants?\b|\badmission\s+leads?\b/i],  // ── Institution operations ──
+  // Each of these is named by its own word and nothing looser, so none of
+  // them takes a sentence away from the entities above: "approve the pending
+  // payment" is still a fee, "the event on Friday" is still the calendar,
+  // "attendance summary" is still analytics.
+  ['myDay', /\bmy\s+day\b|\bwaiting\s+(?:on|for)\s+me\b|\bneeds?\s+me\s+today\b|\bbrief\s+me\b/i],
+  ['approval', /\bapprovals\b|\bapproval\s+(?:inbox|requests?)\b/i],
+  ['compliance', /\bcompliance\b|\blicen[cs]es?\b|\bregulatory\s+returns?\b/i],
+  ['correspondence', /\bcorrespondence\b|\bofficial\s+letters?\b/i],
+  ['governance', /\bboard\s+meetings?\b|\btrustee\s+meetings?\b|\bgoverning\s+body\b|\bcommittee\s+meetings?\b/i],
+  ['institutionEvent', /\bfests?\b/i],
+  ['maintenance', /\bmaintenance\b|\brepairs?\b|\bwork\s+orders?\b/i],
+  ['verification', /\bbackground\s+(?:verification|checks?)\b|\bverification\s+counts?\b/i],
+  ['procurement', /\bprocurement\b|\bpurchase\s+(?:requests?|orders?)\b/i],
+  ['budget', /\bbudgets?\b/i],
+  ['payroll', /\bpayroll\b/i],
+  ['marketing', /\bmarketing\b|\bmarket\s+funnel\b|\bcampaigns?\b/i],
+  ['organisation', /\borgani[sz]ation\b|\bvacanc(?:y|ies)\b/i],
+  ['newsroom', /\bnewsroom\b/i],
+  ['campus', /\bcampus\b/i],
 ];
 
 /**

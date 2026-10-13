@@ -52,7 +52,7 @@ export default function ClassroomManagement() {
   const [editSectionForm, setEditSectionForm] = useState({ id: '', gradeId: '', name: '', classTeacherId: '', classRepresentativeId: '' });
 
   const [showSubjectModal, setShowSubjectModal] = useState(false);
-  const [subjectForm, setSubjectForm] = useState({ name: '', code: '' });
+  const [subjectForm, setSubjectForm] = useState({ name: '', code: '', credits: '' });
 
   const [showOfferingModal, setShowOfferingModal] = useState(false);
   const [offeringForm, setOfferingForm] = useState({ sectionId: '', subjectId: '', termId: '', teacherId: '' });
@@ -114,9 +114,9 @@ export default function ClassroomManagement() {
     e.preventDefault();
     if (!subjectForm.name) return;
     try {
-      await api.createSubject({ name: subjectForm.name, code: subjectForm.code || undefined });
+      await api.createSubject({ name: subjectForm.name, code: subjectForm.code || undefined, ...(subjectForm.credits !== '' && { credits: Number(subjectForm.credits) }) });
       setShowSubjectModal(false);
-      setSubjectForm({ name: '', code: '' });
+      setSubjectForm({ name: '', code: '', credits: '' });
       toast('Subject created.');
       loadSubjects();
     } catch (err) {
@@ -267,7 +267,7 @@ export default function ClassroomManagement() {
                   {subjects.map((s) => (
                     <tr key={s.id}>
                       <td className="cell-primary" data-label="Subject">{s.name}</td>
-                      <td data-label="Code">{s.code ?? '—'}</td>
+                      <td data-label="Code">{s.code ?? '—'}{s.credits != null ? ` · ${s.credits} credits` : ''}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -415,6 +415,9 @@ export default function ClassroomManagement() {
 
               <div className="field-label">Code (optional)</div>
               <input className="field-input" value={subjectForm.code} onChange={(e) => setSubjectForm({ ...subjectForm, code: e.target.value })} placeholder="e.g. MATH" />
+
+              <div className="field-label">Credits (optional)</div>
+              <input className="field-input" type="number" min={0} max={40} step={0.5} value={subjectForm.credits} onChange={(e) => setSubjectForm({ ...subjectForm, credits: e.target.value })} placeholder="For colleges and credit-based programmes, e.g. 4" />
 
               <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
                 <Button type="submit">Add Subject</Button>

@@ -36,10 +36,10 @@ export const DEMO_USERS = [
   { roleKey: 'WARDEN', displayName: 'Demo Warden', phone: '+910000000006', email: 'warden@schoolerp.com', password: DEMO_PASSWORD },
   // Institution operations roles (fictional demo accounts).
   { roleKey: 'HR', displayName: 'Demo HR Manager', phone: '+910000000010', email: 'hr@schoolerp.com', password: DEMO_PASSWORD },
-  { roleKey: 'MARKETING', displayName: 'Demo Admissions Lead', phone: '+910000000011', email: 'marketing@schoolerp.com', password: DEMO_PASSWORD },
-  { roleKey: 'COMPLIANCE', displayName: 'Demo Compliance Officer', phone: '+910000000012', email: 'compliance@schoolerp.com', password: DEMO_PASSWORD },
-  { roleKey: 'TRUSTEE', displayName: 'Demo Trustee', phone: '+910000000013', email: 'trustee@schoolerp.com', password: DEMO_PASSWORD },
-  { roleKey: 'ALUMNUS', displayName: 'Demo Alumnus', phone: '+910000000014', email: null, password: null },
+  { roleKey: 'MARKETING', displayName: 'Demo Admissions Lead', phone: '+910000000030', email: 'marketing@schoolerp.com', password: DEMO_PASSWORD },
+  { roleKey: 'COMPLIANCE', displayName: 'Demo Compliance Officer', phone: '+910000000031', email: 'compliance@schoolerp.com', password: DEMO_PASSWORD },
+  { roleKey: 'TRUSTEE', displayName: 'Demo Trustee', phone: '+910000000032', email: 'trustee@schoolerp.com', password: DEMO_PASSWORD },
+  { roleKey: 'ALUMNUS', displayName: 'Demo Alumnus', phone: '+910000000033', email: null, password: null },
   { roleKey: 'PARENT', displayName: 'Demo Parent', phone: '+910000000007', email: null, password: null },
   { roleKey: 'STUDENT', displayName: 'Demo Student', phone: '+910000000008', email: null, password: null },
 ];

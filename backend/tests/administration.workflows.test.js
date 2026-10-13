@@ -361,3 +361,24 @@ describe('Organization structure', () => {
     expect(college.completeness.missing).toContain('AISHE code on a campus');
   });
 });
+
+describe('driver clearance on transport routes', () => {
+  it('shows transport managers whether each named driver is cleared, and shows families nothing', async () => {
+    const { TransportRoute } = await import('../src/models/transport.model.js');
+    const transport = await import('../src/modules/transport/transport.service.js');
+    await inSchool(OAK, () => TransportRoute.create([
+      { name: 'Route A', driverName: 'Ramesh Kumar', status: 'ACTIVE' },
+      { name: 'Route B', status: 'ACTIVE' },
+    ]));
+    const admin = { roleKey: 'ADMIN', profileId: '000000000000000000000001', permissions: { 'transport.manage': 'ALL' } };
+    const routes = await inSchool(OAK, () => transport.listRoutes(admin));
+    expect(routes.find((r) => r.name === 'Route A').driverClearance).toMatchObject({ status: 'NO_RECORD' });
+    expect(routes.find((r) => r.name === 'Route B').driverClearance).toMatchObject({ status: 'NO_DRIVER' });
+
+    const parent = { roleKey: 'PARENT', profileId: '000000000000000000000002', permissions: { 'transport.read': 'OWN' } };
+    const forFamily = await inSchool(OAK, () => transport.listRoutes(parent));
+    expect(forFamily.every((r) => r.driverClearance === undefined)).toBe(true);
+    // The assistant's tools call it with no actor and get no clearance either.
+    expect((await inSchool(OAK, () => transport.listRoutes())).every((r) => r.driverClearance === undefined)).toBe(true);
+  });
+});

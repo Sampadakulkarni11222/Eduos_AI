@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { Button, EmptyState, Field, Modal, useToast } from '@/components/ui';
 import { opsApi, downloadCsv } from '@/lib/ops-api';
 import { usePermissions } from '@/lib/permissions';
-import { useSchoolHref } from '@/lib/school-path';
+import { usePortalHref } from '@/lib/school-path';
+import { AccreditationTab } from './accreditation-view';
 import type { LicenceDto, NoticeDto, ObligationDto, PolicyDto, ReturnDto, TrainingDto } from '@/lib/ops-types';
 import { AttachUpload } from './attach';
 import { Drawer } from './drawer';
@@ -20,10 +21,10 @@ import {
  * licence's status comes from its dates.
  */
 
-type Tab = 'calendar' | 'obligations' | 'returns' | 'licences' | 'policies' | 'trainings' | 'notices';
+type Tab = 'calendar' | 'obligations' | 'returns' | 'licences' | 'policies' | 'trainings' | 'notices' | 'accreditation';
 
 function CalendarTab() {
-  const link = useSchoolHref();
+  const link = usePortalHref();
   const state = useLoad(() => Promise.all([opsApi.complianceOverview(), opsApi.complianceCalendar(120)]), []);
   return (
     <Loadable state={state}>{([o, items]) => (
@@ -479,11 +480,12 @@ export function ComplianceView() {
   const [tab, setTab] = useState<Tab>(initial);
   return (
     <div className="ops-stack">
-      <Tabs tabs={[{ key: 'calendar', label: 'Overview & calendar' }, { key: 'obligations', label: 'Obligations' }, { key: 'returns', label: 'Returns' }, { key: 'licences', label: 'Licences' }, { key: 'policies', label: 'Policies' }, { key: 'trainings', label: 'Trainings' }, { key: 'notices', label: 'Notices' }]} value={tab} onChange={setTab} />
+      <Tabs tabs={[{ key: 'calendar', label: 'Overview & calendar' }, { key: 'obligations', label: 'Obligations' }, { key: 'returns', label: 'Returns' }, { key: 'licences', label: 'Licences' }, { key: 'accreditation', label: 'Accreditation' }, { key: 'policies', label: 'Policies' }, { key: 'trainings', label: 'Trainings' }, { key: 'notices', label: 'Notices' }]} value={tab} onChange={setTab} />
       {tab === 'calendar' && <CalendarTab />}
       {tab === 'obligations' && <ObligationsTab canManage={canManage} />}
       {tab === 'returns' && <ReturnsTab canManage={canManage} />}
       {tab === 'licences' && <LicencesTab canManage={canManage} />}
+      {tab === 'accreditation' && <AccreditationTab canManage={canManage} />}
       {tab === 'policies' && <PoliciesTab canManage={canManage} />}
       {tab === 'trainings' && <TrainingsTab canManage={canManage} />}
       {tab === 'notices' && <NoticesTab canManage={canManage} />}

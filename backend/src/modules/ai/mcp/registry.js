@@ -12,6 +12,7 @@ import { profileTools } from './tools/profile.js';
 import { seatTools } from './tools/seats.js';
 import { customizationTools } from './tools/customization.js';
 import { domainTools } from './tools/domains.js';
+import { operationsTools } from './tools/operations.js';
 import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 
 /**
@@ -61,6 +62,7 @@ export const MCP_TOOLS = {
   ...seatTools,
   ...customizationTools,
   ...domainTools,
+  ...operationsTools,
 };
 
 export function getMcpTool(name) {

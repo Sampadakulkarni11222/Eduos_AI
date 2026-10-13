@@ -93,6 +93,7 @@ import { sendError } from './utils/response.js';
 import apiRoutes from './routes/index.js';
 import { corsOrigin } from './modules/domains/domain.cors.js';
 import { requireSignedUploadUrl } from './modules/uploads/signedUrls.js';
+import { startScheduler } from './jobs/scheduler.js';
 
 const app = express();
 
@@ -360,6 +361,8 @@ async function bootstrap() {
     }
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     logger.info('  Server is ready to accept connections  🚀');
+    if (env.SCHEDULER_ENABLED) startScheduler();
+    else logger.warn('✘  Scheduler disabled  →  set SCHEDULER_ENABLED=true to enable');
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   });
 

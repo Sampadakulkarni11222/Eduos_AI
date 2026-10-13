@@ -150,7 +150,7 @@ describe('1. every Teacher write the Web offers is exposed, and nothing else', (
     expect(writes).toEqual([...WRITES].sort());
     const by = (op) => writes.filter((name) => index[name].operation === op).length;
     expect([by('CREATE'), by('UPDATE'), by('DELETE'), by('ACTION')]).toEqual([3, 1, 1, 10]);
-    expect(offered).toHaveLength(57);
+    expect(offered).toHaveLength(65);
     // Every one of them asks before it writes.
     for (const name of writes) expect(index[name].confirms, name).toBe(true);
   });

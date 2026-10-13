@@ -62,6 +62,7 @@ const CONTENT: Record<string, OpsContent> = {
     highlights: [
       { label: 'Returns', text: 'Prepare data for returns such as UDISE+ or AISHE from your records, have it reviewed and approved, then record the submission with its acknowledgement.' },
       { label: 'Licences', text: 'Certificates and registrations with expiry dates and renewal reminders.' },
+      { label: 'Accreditation', text: 'Prepare for NAAC, NBA or an inspection: list the evidence each criterion needs, give each item an owner, attach the proof and see how much is ready. An item counts as ready only with its evidence attached.' },
       { label: 'Notices', text: 'Circulars from boards, government and the district office, with the actions they require.' },
     ],
     tips: [

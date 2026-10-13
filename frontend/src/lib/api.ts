@@ -578,7 +578,7 @@ export const api = {
     const raw = await cachedRequest<RawDoc<SubjectDto>[]>('/academics/subjects');
     return raw.map((s) => ({ id: s._id ?? s.id ?? '', name: s.name ?? '', code: s.code ?? null }));
   },
-  createSubject: (body: { name: string; code?: string }) =>
+  createSubject: (body: { name: string; code?: string; credits?: number }) =>
     request<{ id: string }>('/academics/subjects', { method: 'POST', body: JSON.stringify(body) }),
   bulkCreateSubjects: (file: File) => uploadCsv('/academics/subjects/bulk', file),
   listTerms: async (academicYearId?: string) => {

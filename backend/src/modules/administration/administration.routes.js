@@ -8,6 +8,7 @@ import * as facilities from './facility.service.js';
 import * as events from './events.service.js';
 import * as verification from './verification.service.js';
 import * as compliance from '../compliance/compliance.service.js';
+import * as accreditation from '../compliance/accreditation.service.js';
 import * as safeguarding from '../compliance/safeguarding.service.js';
 import * as governance from '../governance/governance.service.js';
 import * as institution from '../institution/institution.service.js';
@@ -166,6 +167,23 @@ complianceRouter.get('/trainings', kRead, ok((r) => compliance.listTrainings(r.q
 complianceRouter.get('/trainings/coverage', kRead, ok(() => compliance.trainingCoverage()));
 complianceRouter.post('/trainings', kManage, ok((r) => compliance.scheduleTraining(r.actor, r.body), 'Training scheduled', 201));
 complianceRouter.post('/trainings/:id/attendance', kManage, ok((r) => compliance.recordTrainingAttendance(r.actor, r.params.id, r.body), 'Attendance recorded'));
+
+// Accreditation preparation. Reading a cycle follows compliance.read and
+// changing its structure follows compliance.manage. The two routes without a
+// permission are for the person an evidence item is assigned to, who may hold
+// neither: the service returns only their own items and lets them change only
+// those.
+complianceRouter.get('/accreditation/frameworks', kRead, ok(() => accreditation.frameworks()));
+complianceRouter.get('/accreditation/mine', ok((r) => accreditation.myItems(r.actor)));
+complianceRouter.get('/accreditation', kRead, ok(() => accreditation.listCycles()));
+complianceRouter.post('/accreditation', kManage, ok((r) => accreditation.createCycle(r.actor, r.body), 'Accreditation cycle created', 201));
+complianceRouter.get('/accreditation/:id', kRead, ok((r) => accreditation.getCycle(r.params.id)));
+complianceRouter.post('/accreditation/:id/template-verified', kManage, ok((r) => accreditation.verifyTemplate(r.actor, r.params.id, r.body), 'Recorded'));
+complianceRouter.post('/accreditation/:id/criteria', kManage, ok((r) => accreditation.addCriterion(r.actor, r.params.id, r.body), 'Criterion added', 201));
+complianceRouter.post('/accreditation/:id/criteria/:criterionId/items', kManage, ok((r) => accreditation.addItem(r.actor, r.params.id, r.params.criterionId, r.body), 'Evidence item added', 201));
+complianceRouter.patch('/accreditation/:id/items/:itemId', ok((r) => accreditation.updateItem(r.actor, r.params.id, r.params.itemId, r.body), 'Evidence item updated'));
+complianceRouter.post('/accreditation/:id/submission', kManage, ok((r) => accreditation.recordSubmission(r.actor, r.params.id, r.body), 'Submission recorded'));
+complianceRouter.post('/accreditation/:id/outcome', kManage, ok((r) => accreditation.recordOutcome(r.actor, r.params.id, r.body), 'Outcome recorded'));
 
 complianceRouter.get('/notices', kRead, ok((r) => compliance.listNotices(r.query)));
 complianceRouter.post('/notices', kManage, ok((r) => compliance.createNotice(r.actor, r.body), 'Notice recorded', 201));
