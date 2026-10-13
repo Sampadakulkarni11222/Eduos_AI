@@ -280,7 +280,10 @@ export function FlashcardDeck({ data, date, periodNo, onSubmitted }: {
                 {current.recorded && <span className="fc-recorded" title="Already in the submitted register">Register: {STATUS_LABEL[current.recorded] ?? current.recorded}</span>}
               </div>
               <div className="fc-photo" aria-hidden="true">
-                {current.photoUrl ? <img src={fileHref(current.photoUrl)} alt="" /> : <span>{initials(current.studentName)}</span>}
+                {current.photoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- student photo served from the API origin
+                  <img src={fileHref(current.photoUrl)} alt="" />
+                ) : <span>{initials(current.studentName)}</span>}
               </div>
               <h2 className="fc-name">{current.studentName}</h2>
               <p className="fc-meta">

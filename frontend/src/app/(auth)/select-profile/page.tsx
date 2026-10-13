@@ -10,6 +10,7 @@ import type { ProfileSummary } from '@/lib/types';
 const ROLE_GLYPH: Record<string, string> = {
   SUPER_ADMIN: '🛡️', ADMIN: '🏛️', PRINCIPAL: '🎓', TEACHER: '👩‍🏫', PARENT: '👨‍👩‍👧',
   STUDENT: '🎒', FINANCE: '💰', LIBRARIAN: '📚', WARDEN: '🔑',
+  HR: '🧑‍💼', MARKETING: '📣', COMPLIANCE: '🛡', TRUSTEE: '🏛', ALUMNUS: '🎓',
 };
 
 function roleLabel(role: string) {

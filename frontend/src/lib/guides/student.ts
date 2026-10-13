@@ -1,5 +1,6 @@
 import type { RoleGuide } from './types';
 import { askAgentTopic, notificationsTopic, accessTip, signInTopic } from './shared';
+import { opsTopics } from './ops';
 
 export const studentGuide: RoleGuide = {
   slug: 'student',
@@ -260,6 +261,7 @@ export const studentGuide: RoleGuide = {
       examples: ['What is my attendance this month?', 'What homework is due this week?', 'Apply for leave tomorrow, I have a fever'],
       notYet: ['quizzes', 'document requests'],
     }),
+    ...opsTopics('student'),
     signInTopic(),
     { ...notificationsTopic, tips: [accessTip] },
   ],

@@ -1,0 +1,52 @@
+{
+  "//": "Institution-operations pages per portal. Read by lib/portals.ts (navigation), lib/permissions.tsx (route gating) and scripts/generate-ops-pages.mjs (page files). Permission keys mirror the API's requirePermission gates.",
+  "groups": {
+    "COMMAND": "COMMAND CENTRE",
+    "ADMINISTRATION": "ADMINISTRATION",
+    "FINANCE_OPS": "FINANCE OPERATIONS",
+    "PEOPLE_ORG": "ORGANISATION",
+    "GROWTH": "MARKETING & ADMISSIONS",
+    "COMMUNITY": "COMMUNITY",
+    "SAFETY": "SAFETY & POLICIES"
+  },
+  "pages": {
+    "today": { "title": "Today", "desc": "What needs you now, with the numbers that matter.", "icon": "☀", "permission": null, "view": "RoleHome", "group": "COMMAND" },
+    "approvals": { "title": "Approvals", "desc": "Decisions waiting on you, requests you raised, delegation and approval rules.", "icon": "✓", "permission": "approvals.read", "view": "ApprovalsView", "group": "COMMAND" },
+    "campus": { "title": "Campus World", "desc": "Your campus in 3D: rooms, what is scheduled, bookings, maintenance and events.", "icon": "◈", "permission": "campus.map.read", "view": "CampusWorldView", "group": "COMMAND" },
+    "correspondence": { "title": "Correspondence", "desc": "Letters and circulars from the board, government, university and district office — reply, approve, dispatch, close with evidence.", "icon": "✉", "permission": "correspondence.read", "view": "CorrespondenceView", "group": "ADMINISTRATION" },
+    "compliance": { "title": "Compliance Centre", "desc": "Obligations, regulatory returns, licences, policies, trainings and official notices.", "icon": "⚖", "permission": "compliance.read", "view": "ComplianceView", "group": "ADMINISTRATION" },
+    "verification": { "title": "Background Verification", "desc": "Staff, teacher, driver and vendor checks with the principal's final decision.", "icon": "⛨", "permission": "verification.read", "view": "VerificationView", "group": "ADMINISTRATION" },
+    "events": { "title": "Events & Fests", "desc": "Propose, approve, prepare and close out events, fests, meetings and visits.", "icon": "✦", "permission": "events.read", "view": "EventsView", "group": "ADMINISTRATION" },
+    "facilities": { "title": "Facilities", "desc": "Rooms and spaces, bookings and maintenance.", "icon": "▦", "permission": "facilities.read", "view": "FacilitiesView", "group": "ADMINISTRATION" },
+    "contracts": { "title": "Agreements", "desc": "Vendor, service, lease, transport and partnership agreements with renewal dates.", "icon": "✍", "permission": "contracts.read", "view": "ContractsView", "group": "ADMINISTRATION" },
+    "governance": { "title": "Board & Committees", "desc": "Trustee, SMC and governing body meetings — agenda, minutes, resolutions and actions.", "icon": "⚑", "permission": "governance.read", "view": "GovernanceView", "group": "ADMINISTRATION" },
+    "payroll": { "title": "Payroll", "desc": "Pay structures, statutory rules, payroll runs, bank file, payment confirmation and statutory filings.", "icon": "₹", "permission": "payroll.read", "view": "PayrollView", "group": "FINANCE_OPS" },
+    "procurement": { "title": "Procurement", "desc": "Purchase requests, quotes, orders, receipts, invoices, payments and assets.", "icon": "⇄", "permission": "procurement.read", "view": "ProcurementView", "group": "FINANCE_OPS" },
+    "budgets": { "title": "Budgets & Funding", "desc": "Budgets with commitments and actuals; funding proposals and loan comparison.", "icon": "◔", "permission": "budget.read", "view": "BudgetsView", "group": "FINANCE_OPS" },
+    "payslips": { "title": "My Payslips", "desc": "Your payslips for approved payroll.", "icon": "🧾", "permission": "payroll.read", "view": "PayslipsView", "group": "FINANCE_OPS" },
+    "organization": { "title": "Organisation Map", "desc": "Departments, positions and people — built from appointments.", "icon": "⌘", "permission": "org.read", "view": "OrganizationView", "group": "PEOPLE_ORG" },
+    "institution": { "title": "Institution Profile", "desc": "Legal entity, campuses, affiliations, terminology and public disclosures.", "icon": "🏛", "permission": "institution.read", "view": "InstitutionView", "group": "PEOPLE_ORG" },
+    "marketing": { "title": "Marketing & Admissions", "desc": "Funnel, campaigns, creative, seats and counselling.", "icon": "📣", "permission": "admissions.read", "view": "MarketingView", "group": "GROWTH" },
+    "newsroom": { "title": "Newsroom", "desc": "Stories, events, achievements, circles and mentoring.", "icon": "◉", "permission": "community.read", "view": "NewsroomView", "group": "COMMUNITY" },
+    "mentoring": { "title": "Mentoring", "desc": "Seniors and alumni who help — always supervised for students.", "icon": "☍", "permission": "community.read", "view": "NewsroomView:mentoring", "group": "COMMUNITY" },
+    "safeguarding": { "title": "Safeguarding", "desc": "Raise a concern. Child-protection reporting never waits for internal approval.", "icon": "♡", "permission": "safeguarding.report", "view": "SafeguardingView", "group": "SAFETY" },
+    "policies": { "title": "My Policies & Trainings", "desc": "Policies to read and acknowledge, your trainings, and how we contact you.", "icon": "☰", "permission": null, "view": "MySpaceView", "group": "SAFETY" },
+    "trainings": { "title": "My Policies & Trainings", "desc": "Policies to read and acknowledge, your trainings, and how we contact you.", "icon": "☰", "permission": null, "view": "MySpaceView", "group": "SAFETY", "hidden": true },
+    "messaging": { "title": "Messages Sent", "desc": "WhatsApp/SMS/email notifications with their real delivery status.", "icon": "✆", "permission": "messaging.read", "view": "MessagingView", "group": "SAFETY" }
+  },
+  "portals": {
+    "principal": ["today", "approvals", "campus", "correspondence", "compliance", "verification", "events", "facilities", "contracts", "governance", "payroll", "procurement", "budgets", "organization", "institution", "marketing", "newsroom", "mentoring", "safeguarding", "policies", "trainings", "payslips", "messaging"],
+    "admin": ["today", "approvals", "campus", "correspondence", "compliance", "verification", "events", "facilities", "contracts", "governance", "procurement", "budgets", "organization", "institution", "marketing", "newsroom", "mentoring", "safeguarding", "policies", "trainings", "messaging"],
+    "teacher": ["today", "approvals", "campus", "events", "facilities", "procurement", "payslips", "organization", "newsroom", "mentoring", "safeguarding", "policies", "trainings"],
+    "finance": ["today", "approvals", "campus", "events", "facilities", "contracts", "verification", "payroll", "procurement", "budgets", "payslips", "organization", "newsroom", "safeguarding", "policies", "trainings"],
+    "librarian": ["today", "approvals", "campus", "events", "facilities", "procurement", "payslips", "newsroom", "safeguarding", "policies", "trainings"],
+    "warden": ["today", "approvals", "campus", "events", "facilities", "procurement", "payslips", "newsroom", "safeguarding", "policies", "trainings"],
+    "parent": ["newsroom", "campus", "safeguarding", "policies"],
+    "student": ["newsroom", "mentoring", "campus", "safeguarding", "policies"],
+    "hr": ["today", "approvals", "campus", "verification", "payroll", "payslips", "organization", "compliance", "events", "facilities", "procurement", "newsroom", "mentoring", "safeguarding", "policies", "trainings"],
+    "marketing": ["today", "marketing", "approvals", "campus", "events", "facilities", "procurement", "payslips", "organization", "newsroom", "mentoring", "safeguarding", "policies", "trainings"],
+    "compliance": ["today", "safeguarding", "compliance", "verification", "correspondence", "approvals", "campus", "contracts", "events", "facilities", "procurement", "payslips", "organization", "newsroom", "policies", "trainings"],
+    "trustee": ["today", "approvals", "governance", "budgets", "compliance", "institution", "organization", "campus", "newsroom", "safeguarding"],
+    "alumnus": ["newsroom", "mentoring", "campus", "safeguarding", "policies"]
+  }
+}

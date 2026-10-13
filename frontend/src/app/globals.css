@@ -4,3 +4,4 @@
 @tailwind utilities;
 /* Design system loaded after Tailwind so our resets and component styles win */
 @import './design-system.css';
+@import './operations.css';

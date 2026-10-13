@@ -157,10 +157,10 @@ describe('BUG-04: Create User offers the staff roles the backend supports', () =
   it('lists student, teacher and every non-admin staff role, but not ADMIN or PARENT', async () => {
     const modal = await openModal();
     const options = within(within(modal).getByLabelText('Select Role')).getAllByRole('option').map((o) => (o as HTMLOptionElement).value);
-    expect(options).toEqual(['STUDENT', 'TEACHER', 'PRINCIPAL', 'FINANCE', 'LIBRARIAN', 'WARDEN']);
+    expect(options).toEqual(['STUDENT', 'TEACHER', 'PRINCIPAL', 'FINANCE', 'LIBRARIAN', 'WARDEN', 'HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'ALUMNUS']);
   });
 
-  it.each(['PRINCIPAL', 'FINANCE', 'LIBRARIAN', 'WARDEN'])('creates a %s without student-only fields', async (roleKey) => {
+  it.each(['PRINCIPAL', 'FINANCE', 'LIBRARIAN', 'WARDEN', 'HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'ALUMNUS'])('creates a %s without student-only fields', async (roleKey) => {
     const modal = await openModal();
     fireEvent.change(within(modal).getByLabelText('Select Role'), { target: { value: roleKey } });
     expect(within(modal).queryByText('Admission Number (Optional)')).toBeNull();

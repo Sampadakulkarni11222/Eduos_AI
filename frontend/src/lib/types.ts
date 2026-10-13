@@ -1,7 +1,9 @@
 export type RoleKey =
   | 'SUPER_ADMIN'
   | 'ADMIN' | 'PRINCIPAL' | 'TEACHER' | 'PARENT'
-  | 'STUDENT' | 'FINANCE' | 'LIBRARIAN' | 'WARDEN';
+  | 'STUDENT' | 'FINANCE' | 'LIBRARIAN' | 'WARDEN'
+  // Institution operations roles.
+  | 'HR' | 'MARKETING' | 'COMPLIANCE' | 'TRUSTEE' | 'ALUMNUS';
 
 export interface ProfileSummary {
   id: string;

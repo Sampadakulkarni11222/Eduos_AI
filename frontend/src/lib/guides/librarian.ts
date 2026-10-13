@@ -1,5 +1,6 @@
 import type { RoleGuide } from './types';
 import { askAgentTopic, notificationsTopic, accessTip, signInTopic } from './shared';
+import { opsTopics } from './ops';
 
 export const librarianGuide: RoleGuide = {
   slug: 'librarian',
@@ -74,6 +75,7 @@ export const librarianGuide: RoleGuide = {
       examples: ['Which books are overdue?', 'Is "Introduction to Algorithms" available?', 'Show pending book requests'],
       notYet: ['library notes', 'question papers'],
     }),
+    ...opsTopics('librarian'),
     signInTopic(),
     { ...notificationsTopic, tips: [accessTip] },
   ],

@@ -1,5 +1,6 @@
 import type { RoleGuide } from './types';
 import { askAgentTopic, notificationsTopic, accessTip, signInTopic } from './shared';
+import { opsTopics } from './ops';
 
 export const financeGuide: RoleGuide = {
   slug: 'finance',
@@ -87,6 +88,7 @@ export const financeGuide: RoleGuide = {
       ],
       examples: ['Show all overdue invoices', 'List recently paid fee invoices', 'How much fee is pending in Class 8?'],
     }),
+    ...opsTopics('finance'),
     signInTopic(),
     { ...notificationsTopic, tips: [accessTip] },
   ],

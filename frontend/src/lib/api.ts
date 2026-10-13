@@ -68,6 +68,11 @@ export async function clearSession() {
   await fetch('/api/session', { method: 'DELETE' }).catch(() => {});
 }
 
+/** The in-memory access token, for authenticated downloads (never persisted). */
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
 export function hasSession(): boolean {
   return typeof window !== 'undefined' && !!localStorage.getItem(SESSION_MARKER);
 }

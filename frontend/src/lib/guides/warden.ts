@@ -1,5 +1,6 @@
 import type { RoleGuide } from './types';
 import { askAgentTopic, notificationsTopic, accessTip, signInTopic } from './shared';
+import { opsTopics } from './ops';
 
 export const wardenGuide: RoleGuide = {
   slug: 'warden',
@@ -69,6 +70,7 @@ export const wardenGuide: RoleGuide = {
       canDo: ['add or update rooms', 'allocate or vacate a bed', 'record and update hostel enquiries', 'reply to and update hostel queries'],
       examples: ['Which rooms are vacant?', 'Who is in room 104?', 'Allocate a bed in Block A to Riya Sharma'],
     }),
+    ...opsTopics('warden'),
     signInTopic(),
     { ...notificationsTopic, tips: [accessTip] },
   ],

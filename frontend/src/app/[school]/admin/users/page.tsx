@@ -7,7 +7,7 @@ import { Pagination } from '@/components/pagination';
 import { api, errorMessage } from '@/lib/api';
 import type { UserDto, SectionDto, RoleKey } from '@/lib/types';
 
-const ROLE_KEYS: RoleKey[] = ['ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT', 'FINANCE', 'LIBRARIAN', 'WARDEN'];
+const ROLE_KEYS: RoleKey[] = ['ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT', 'FINANCE', 'LIBRARIAN', 'WARDEN', 'HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'ALUMNUS'];
 
 /**
  * Roles this form creates — all accepted by POST /users (user.service.js
@@ -15,7 +15,7 @@ const ROLE_KEYS: RoleKey[] = ['ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT', 'STUDEN
  * Super Admin (schools module). PARENT is left out: a parent is only useful
  * linked to a child, which this form cannot do.
  */
-type CreatableRole = 'STUDENT' | 'TEACHER' | 'PRINCIPAL' | 'FINANCE' | 'LIBRARIAN' | 'WARDEN';
+type CreatableRole = 'STUDENT' | 'TEACHER' | 'PRINCIPAL' | 'FINANCE' | 'LIBRARIAN' | 'WARDEN' | 'HR' | 'MARKETING' | 'COMPLIANCE' | 'TRUSTEE' | 'ALUMNUS';
 const CREATABLE_ROLES: Array<{ key: CreatableRole; label: string }> = [
   { key: 'STUDENT', label: 'Student' },
   { key: 'TEACHER', label: 'Teacher' },
@@ -23,6 +23,11 @@ const CREATABLE_ROLES: Array<{ key: CreatableRole; label: string }> = [
   { key: 'FINANCE', label: 'Finance' },
   { key: 'LIBRARIAN', label: 'Librarian' },
   { key: 'WARDEN', label: 'Warden' },
+  { key: 'HR', label: 'HR & Payroll' },
+  { key: 'MARKETING', label: 'Marketing & Admissions' },
+  { key: 'COMPLIANCE', label: 'Compliance & Safeguarding Officer' },
+  { key: 'TRUSTEE', label: 'Trustee / Governing Body' },
+  { key: 'ALUMNUS', label: 'Alumnus' },
 ];
 const PAGE_SIZES = [10, 25, 50, 100];
 
