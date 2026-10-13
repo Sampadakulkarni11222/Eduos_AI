@@ -395,7 +395,15 @@ async function deliver(conversation, to, text, metadata = null, channel = META_C
 export async function receiveWebhook(payload) {
   const messages = extractMessages(payload);
   if (!messages.length) {
-    // Delivery receipts and status callbacks land here too; acknowledge them.
+    // Delivery receipts and status callbacks land here too. They move the
+    // operational outbox forward (sent → delivered → read); a failure to do so
+    // is logged, never surfaced to Meta, which would only redeliver.
+    try {
+      const { applyProviderStatuses } = await import('../messaging/messaging.service.js');
+      await applyProviderStatuses(payload);
+    } catch (err) {
+      logger.error(`WhatsApp status callback could not be applied: ${err.message}`);
+    }
     return { received: true, handled: 0 };
   }
 

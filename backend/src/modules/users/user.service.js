@@ -277,7 +277,8 @@ export async function getUserById(id) {
   };
 }
 
-const VALID_ROLE_KEYS = new Set(['ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT', 'FINANCE', 'LIBRARIAN', 'WARDEN']);
+const VALID_ROLE_KEYS = new Set(['ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT', 'FINANCE', 'LIBRARIAN', 'WARDEN',
+  'HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'ALUMNUS']);
 const E164 = /^\+[1-9]\d{7,14}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

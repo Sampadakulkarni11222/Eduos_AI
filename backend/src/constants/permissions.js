@@ -178,6 +178,75 @@ export const PERMISSION_CATALOG = [
   { key: 'analytics.school.read', group: 'analytics', description: 'View school-wide analytics' },
   { key: 'analytics.class.read', group: 'analytics', description: 'View class-level analytics' },
   { key: 'analytics.child.read', group: 'analytics', description: "View a child's analytics" },
+
+  // ── Institution operations (see docs/erp-operations) ───────────────────
+  //
+  // Approvals. Who may decide a given stage is set by the stage itself (its
+  // approver role, or a named approver, or a delegate); `approvals.decide` is
+  // only the precondition for deciding anything at all. A requester can never
+  // decide their own request, whatever they hold.
+  { key: 'approvals.read', group: 'governance', description: 'View approval requests addressed to or raised by you (ALL: every request)' },
+  { key: 'approvals.submit', group: 'governance', description: 'Raise an approval request' },
+  { key: 'approvals.decide', group: 'governance', description: 'Approve, reject, return, delegate or escalate a request at a stage you are the approver of' },
+  { key: 'approvals.configure', group: 'governance', description: 'Configure approval stages, thresholds and delegations' },
+  { key: 'governance.read', group: 'governance', description: 'View board/committee meetings, agendas, minutes and resolutions you are invited to (ALL: every meeting)' },
+  { key: 'governance.manage', group: 'governance', description: 'Schedule meetings, prepare agendas, record minutes, resolutions and actions' },
+
+  // Institution profile and organization structure.
+  { key: 'institution.read', group: 'organization', description: 'View the institution profile, affiliations and public disclosures' },
+  { key: 'institution.manage', group: 'organization', description: 'Edit the institution profile, campuses, affiliations and terminology' },
+  { key: 'org.read', group: 'organization', description: 'View the organization structure map' },
+  { key: 'org.manage', group: 'organization', description: 'Manage departments, positions, reporting lines and appointments' },
+
+  // Administration department.
+  { key: 'correspondence.read', group: 'administration', description: 'View the inward/outward correspondence register (OWN: assigned items)' },
+  { key: 'correspondence.manage', group: 'administration', description: 'Register, assign, draft replies to and dispatch correspondence' },
+  { key: 'compliance.read', group: 'administration', description: 'View the compliance calendar, returns, licences, policies, notices and trainings' },
+  { key: 'compliance.manage', group: 'administration', description: 'Prepare returns, track licences, publish policies, review notices and run trainings' },
+  { key: 'contracts.read', group: 'administration', description: 'View agreements and their obligations' },
+  { key: 'contracts.manage', group: 'administration', description: 'Draft, track and renew agreements' },
+  { key: 'verification.read', group: 'administration', description: 'See clearance STATUS of staff, drivers and vendors (never the evidence)' },
+  { key: 'verification.manage', group: 'administration', description: 'Run background verification checks and attach evidence' },
+  { key: 'verification.decide', group: 'administration', description: 'Give the final institutional clearance decision' },
+  { key: 'events.read', group: 'administration', description: 'View institutional events and their plans' },
+  { key: 'events.manage', group: 'administration', description: 'Propose and run events, fests, meetings and visits' },
+  { key: 'facilities.read', group: 'administration', description: 'View facilities, bookings and work orders' },
+  { key: 'facilities.request', group: 'administration', description: 'Book a room or report a maintenance issue' },
+  { key: 'facilities.manage', group: 'administration', description: 'Manage facilities, confirm bookings and run work orders' },
+  // Raising a concern is open to every staff member and student; reading cases
+  // is for designated officers only. Reports are never shown to anyone else.
+  { key: 'safeguarding.report', group: 'sensitive', description: 'Report a safeguarding concern (you see only your own reports)' },
+  { key: 'safeguarding.manage', group: 'sensitive', description: 'Designated officer: handle safeguarding, POCSO, POSH and anti-ragging cases' },
+
+  // Finance operations.
+  { key: 'payroll.read', group: 'finance', description: 'View payroll runs and totals (OWN: your own payslips)' },
+  { key: 'payroll.prepare', group: 'finance', description: 'Maintain pay structures and statutory rules; calculate payroll runs' },
+  { key: 'payroll.approve', group: 'finance', description: 'Approve a calculated payroll run' },
+  { key: 'payroll.sensitive.read', group: 'sensitive', description: 'See salary components and bank details of other employees' },
+  { key: 'procurement.read', group: 'finance', description: 'View purchase requests, orders, receipts and invoices (OWN: your requests)' },
+  { key: 'procurement.request', group: 'finance', description: 'Raise a purchase request' },
+  { key: 'procurement.manage', group: 'finance', description: 'Run procurement: quotes, orders, receipts, invoices and payment status' },
+  { key: 'budget.read', group: 'finance', description: 'View budgets, commitments and actuals' },
+  { key: 'budget.manage', group: 'finance', description: 'Prepare budgets and explain variances' },
+  { key: 'funding.read', group: 'finance', description: 'View funding proposals, grants and loans' },
+  { key: 'funding.manage', group: 'finance', description: 'Prepare funding proposals and compare offers' },
+
+  // Marketing and admissions.
+  { key: 'marketing.read', group: 'admissions', description: 'View campaigns, creative assets and enrolment analytics' },
+  { key: 'marketing.manage', group: 'admissions', description: 'Plan campaigns and manage creative assets' },
+
+  // Newsroom and community.
+  { key: 'community.read', group: 'community', description: 'Read the institution newsroom and circles you belong to' },
+  { key: 'community.post', group: 'community', description: 'Draft newsroom stories and post in circles' },
+  { key: 'community.moderate', group: 'community', description: 'Review, publish, hide and take down posts and comments' },
+  { key: 'mentoring.participate', group: 'community', description: 'Offer or request mentoring from seniors and alumni' },
+
+  // Campus world.
+  { key: 'campus.map.read', group: 'campus', description: 'Open the campus map (layers are limited by your other permissions)' },
+
+  // Outbound messaging (WhatsApp/SMS/email) log and preferences.
+  { key: 'messaging.read', group: 'communication', description: 'View the outbound message log and delivery states' },
+  { key: 'messaging.manage', group: 'communication', description: 'Configure message templates and send operational notifications' },
 ];
 
 const grants = (pairs) => pairs.map(([key, scope]) => ({ key, scope }));
@@ -218,6 +287,57 @@ export const SUPER_ADMIN_ONLY = [
  */
 export const AI_ASSISTANT_PERMISSION = 'ai.copilot.use';
 
+/**
+ * Authorities no general-purpose role receives by default.
+ *
+ * The school ADMIN otherwise holds nearly every key, and the platform
+ * SUPER_ADMIN every key. These four are kept from both so that separation of
+ * duties holds out of the box: Finance/HR prepare payroll and the Principal
+ * approves it; salary and bank details stay with Finance/HR; safeguarding cases
+ * stay with the designated officer (COMPLIANCE); the final clearance of a staff
+ * member or driver is the Principal's. A school that wants otherwise grants the
+ * key deliberately through Access & Permissions, which is audited.
+ */
+export const RESTRICTED_BY_DEFAULT = [
+  'payroll.approve',
+  'payroll.sensitive.read',
+  'safeguarding.manage',
+  'verification.decide',
+];
+
+/** Keys every staff role holds for the shared operations surfaces. */
+const STAFF_OPERATIONS = [
+  ['approvals.read', 'OWN'],
+  ['approvals.submit', 'OWN'],
+  ['facilities.read', 'ALL'],
+  ['facilities.request', 'OWN'],
+  ['procurement.request', 'OWN'],
+  ['procurement.read', 'OWN'],
+  ['payroll.read', 'OWN'],
+  ['safeguarding.report', 'OWN'],
+  ['events.read', 'ALL'],
+  ['institution.read', 'ALL'],
+  ['org.read', 'ALL'],
+  ['community.read', 'ALL'],
+  ['community.post', 'OWN'],
+  ['campus.map.read', 'ALL'],
+];
+
+/** Keys a student, parent or alumnus holds for the community surfaces. */
+const FAMILY_COMMUNITY = [
+  ['institution.read', 'ALL'],
+  ['community.read', 'OWN'],
+  ['campus.map.read', 'OWN'],
+  ['safeguarding.report', 'OWN'],
+];
+
+/** Later grants of the same key replace earlier ones. */
+const merge = (...lists) => {
+  const byKey = new Map();
+  for (const list of lists) for (const [key, scope] of list) byKey.set(key, scope);
+  return grants([...byKey.entries()]);
+};
+
 const ALL_EXCEPT = (...excluded) =>
   PERMISSION_CATALOG.filter((p) => !excluded.includes(p.key)).map((p) => ({ key: p.key, scope: 'ALL' }));
 
@@ -226,19 +346,21 @@ export const SYSTEM_ROLES = [
     key: 'SUPER_ADMIN',
     name: 'Super Admin',
     description: 'Platform administrator — manages schools and their School Admin accounts',
-    grants: ALL_EXCEPT(AI_ASSISTANT_PERMISSION),
+    // Platform support does not get child-protection cases or payroll
+    // internals by default either — see RESTRICTED_BY_DEFAULT.
+    grants: ALL_EXCEPT(AI_ASSISTANT_PERMISSION, 'safeguarding.manage', 'payroll.sensitive.read'),
   },
   {
     key: 'ADMIN',
     name: 'Administrator',
     description: 'Manages day-to-day school operations',
-    grants: ALL_EXCEPT('permissions.manage', 'fees.payments.refund', ...SUPER_ADMIN_ONLY),
+    grants: ALL_EXCEPT('permissions.manage', 'fees.payments.refund', ...SUPER_ADMIN_ONLY, ...RESTRICTED_BY_DEFAULT),
   },
   {
     key: 'PRINCIPAL',
     name: 'Principal',
     description: 'Oversight across the whole school',
-    grants: grants([
+    grants: merge([
       ['users.read', 'ALL'],
       ['students.read', 'ALL'],
       ['attendance.read', 'ALL'],
@@ -271,13 +393,40 @@ export const SYSTEM_ROLES = [
       ['cocurricular.read', 'ALL'],
       ['cocurricular.review', 'ALL'],
       ['profile.edit.review', 'ALL'],
+    ], STAFF_OPERATIONS, [
+      // The accountable approver. Decides at the stages addressed to the
+      // principal; never at a stage on their own request.
+      ['approvals.read', 'ALL'],
+      ['approvals.decide', 'ALL'],
+      ['approvals.configure', 'ALL'],
+      ['governance.read', 'ALL'],
+      ['governance.manage', 'ALL'],
+      ['institution.manage', 'ALL'],
+      ['correspondence.read', 'ALL'],
+      ['compliance.read', 'ALL'],
+      ['contracts.read', 'ALL'],
+      ['verification.read', 'ALL'],
+      ['verification.decide', 'ALL'],
+      ['events.manage', 'ALL'],
+      ['facilities.request', 'ALL'],
+      ['payroll.read', 'ALL'],
+      ['payroll.approve', 'ALL'],
+      ['procurement.read', 'ALL'],
+      ['budget.read', 'ALL'],
+      ['funding.read', 'ALL'],
+      ['admissions.read', 'ALL'],
+      ['marketing.read', 'ALL'],
+      ['community.read', 'ALL'],
+      ['community.post', 'ALL'],
+      ['community.moderate', 'ALL'],
+      ['messaging.read', 'ALL'],
     ]),
   },
   {
     key: 'TEACHER',
     name: 'Teacher',
     description: 'Manages their own classes',
-    grants: grants([
+    grants: merge([
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
       ['attendance.mark', 'OWN'],
@@ -315,13 +464,13 @@ export const SYSTEM_ROLES = [
       // school-wide by nature; what a teacher may *do* with a class is still
       // scoped OWN by every other permission above.
       ['academics.read', 'ALL'],
-    ]),
+    ], STAFF_OPERATIONS),
   },
   {
     key: 'PARENT',
     name: 'Parent',
     description: "Views their own children's records",
-    grants: grants([
+    grants: merge([
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
       ['leave.read', 'OWN'],
@@ -340,13 +489,13 @@ export const SYSTEM_ROLES = [
       ['medical.manage', 'OWN'],
       ['ai.copilot.use', 'OWN'],
       ['analytics.child.read', 'OWN'],
-    ]),
+    ], FAMILY_COMMUNITY),
   },
   {
     key: 'STUDENT',
     name: 'Student',
     description: 'Views their own records',
-    grants: grants([
+    grants: merge([
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
       ['leave.apply', 'OWN'],
@@ -376,13 +525,13 @@ export const SYSTEM_ROLES = [
       ['tickets.read', 'OWN'],
       ['tickets.create', 'OWN'],
       ['ai.copilot.use', 'OWN'],
-    ]),
+    ], FAMILY_COMMUNITY, [['community.post', 'OWN'], ['mentoring.participate', 'OWN']]),
   },
   {
     key: 'FINANCE',
     name: 'Finance',
     description: 'Manages fees and payments',
-    grants: grants([
+    grants: merge([
       ['students.read', 'ALL'],
       ['fees.structure.manage', 'ALL'],
       ['fees.read', 'ALL'],
@@ -404,13 +553,29 @@ export const SYSTEM_ROLES = [
       ['ai.copilot.use', 'ALL'],
       // Fee structures are defined per academic year and grade.
       ['academics.read', 'ALL'],
+    ], STAFF_OPERATIONS, [
+      // Prepares and pays; never approves its own payroll (payroll.approve is
+      // the Principal's) — same separation as the fee approval workflow above.
+      ['approvals.read', 'ALL'],
+      ['approvals.decide', 'ALL'],
+      ['payroll.read', 'ALL'],
+      ['payroll.prepare', 'ALL'],
+      ['payroll.sensitive.read', 'ALL'],
+      ['procurement.read', 'ALL'],
+      ['procurement.manage', 'ALL'],
+      ['budget.read', 'ALL'],
+      ['budget.manage', 'ALL'],
+      ['funding.read', 'ALL'],
+      ['funding.manage', 'ALL'],
+      ['contracts.read', 'ALL'],
+      ['verification.read', 'ALL'],
     ]),
   },
   {
     key: 'LIBRARIAN',
     name: 'Librarian',
     description: 'Manages the school library catalog and lending',
-    grants: grants([
+    grants: merge([
       ['library.read', 'ALL'],
       ['library.manage', 'ALL'],
       ['students.read', 'ALL'],
@@ -420,13 +585,13 @@ export const SYSTEM_ROLES = [
       ['tickets.respond', 'ALL'],
       ['ai.copilot.use', 'ALL'],
       ['academics.read', 'ALL'],
-    ]),
+    ], STAFF_OPERATIONS),
   },
   {
     key: 'WARDEN',
     name: 'Warden',
     description: 'Manages hostel facilities and student welfare',
-    grants: grants([
+    grants: merge([
       ['hostel.read', 'ALL'],
       ['hostel.manage', 'ALL'],
       ['medical.read', 'ALL'],
@@ -438,6 +603,83 @@ export const SYSTEM_ROLES = [
       ['tickets.respond', 'ALL'],
       ['ai.copilot.use', 'ALL'],
       ['academics.read', 'ALL'],
+    ], STAFF_OPERATIONS),
+  },
+  // ── Institution operations roles ───────────────────────────────────────
+  {
+    key: 'HR',
+    name: 'HR & Payroll',
+    description: 'Recruitment, staff records, verification and payroll preparation',
+    grants: merge(STAFF_OPERATIONS, [
+      ['users.read', 'ALL'],
+      ['org.manage', 'ALL'],
+      ['payroll.read', 'ALL'],
+      ['payroll.prepare', 'ALL'],
+      ['payroll.sensitive.read', 'ALL'],
+      ['verification.read', 'ALL'],
+      ['verification.manage', 'ALL'],
+      ['approvals.decide', 'ALL'],
+      ['compliance.read', 'ALL'],
+      ['announcements.read', 'ALL'],
+      ['calendar.read', 'ALL'],
+    ]),
+  },
+  {
+    key: 'MARKETING',
+    name: 'Marketing & Admissions',
+    description: 'Campaigns, creative assets, enquiries, counselling and enrolment',
+    grants: merge(STAFF_OPERATIONS, [
+      ['admissions.read', 'ALL'],
+      ['admissions.manage', 'ALL'],
+      ['marketing.read', 'ALL'],
+      ['marketing.manage', 'ALL'],
+      ['announcements.read', 'ALL'],
+      ['calendar.read', 'ALL'],
+      ['academics.read', 'ALL'],
+    ]),
+  },
+  {
+    key: 'COMPLIANCE',
+    name: 'Compliance & Safeguarding Officer',
+    description: 'Designated officer for safeguarding, statutory compliance, policies and training',
+    grants: merge(STAFF_OPERATIONS, [
+      ['users.read', 'ALL'],
+      ['compliance.read', 'ALL'],
+      ['compliance.manage', 'ALL'],
+      ['safeguarding.manage', 'ALL'],
+      ['correspondence.read', 'ALL'],
+      ['contracts.read', 'ALL'],
+      ['verification.read', 'ALL'],
+      ['announcements.read', 'ALL'],
+      ['calendar.read', 'ALL'],
+    ]),
+  },
+  {
+    key: 'TRUSTEE',
+    name: 'Trustee / Governing Body Member',
+    description: 'Governance: meetings, resolutions, board-level approvals and institution health',
+    grants: grants([
+      ['governance.read', 'OWN'],
+      ['approvals.read', 'OWN'],
+      ['approvals.decide', 'OWN'],
+      ['institution.read', 'ALL'],
+      ['org.read', 'ALL'],
+      ['budget.read', 'ALL'],
+      ['funding.read', 'ALL'],
+      ['compliance.read', 'ALL'],
+      ['community.read', 'ALL'],
+      ['campus.map.read', 'OWN'],
+      ['announcements.read', 'ALL'],
+      ['calendar.read', 'ALL'],
+    ]),
+  },
+  {
+    key: 'ALUMNUS',
+    name: 'Alumnus',
+    description: 'Verified former student: newsroom, alumni circles and mentoring',
+    grants: merge(FAMILY_COMMUNITY, [
+      ['community.post', 'OWN'],
+      ['mentoring.participate', 'OWN'],
     ]),
   },
 ];

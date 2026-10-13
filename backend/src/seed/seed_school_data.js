@@ -147,6 +147,10 @@ async function seedSchool() {
     { key: 'FINANCE', name: 'Demo Finance', phone: '+910000000004', email: 'finance@schoolerp.com' },
     { key: 'LIBRARIAN', name: 'Demo Librarian', phone: '+910000000005', email: 'librarian@schoolerp.com' },
     { key: 'WARDEN', name: 'Demo Warden', phone: '+910000000006', email: 'warden@schoolerp.com' },
+    { key: 'HR', name: 'Demo HR Manager', phone: '+910000000010', email: 'hr@schoolerp.com' },
+    { key: 'MARKETING', name: 'Demo Admissions Lead', phone: '+910000000011', email: 'marketing@schoolerp.com' },
+    { key: 'COMPLIANCE', name: 'Demo Compliance Officer', phone: '+910000000012', email: 'compliance@schoolerp.com' },
+    { key: 'TRUSTEE', name: 'Demo Trustee', phone: '+910000000013', email: 'trustee@schoolerp.com' },
   ];
   for (const staff of staffToCreate) {
     const acc = await Account.create({

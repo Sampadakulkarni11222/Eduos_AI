@@ -43,6 +43,9 @@ import seatRoutes from '../modules/seats/seat.routes.js';
 import customizationRoutes from '../modules/customization/customization.routes.js';
 import domainRoutes from '../modules/domains/domain.routes.js';
 import uploadRoutes from '../modules/uploads/upload.routes.js';
+// Institution operations (see docs/erp-operations).
+import approvalRoutes from '../modules/approvals/approval.routes.js';
+import messagingRoutes from '../modules/messaging/messaging.routes.js';
 import { auditLogger } from '../middleware/auditLogger.js';
 import { signUploadUrlsInResponses, unsignUploadUrlsInBody } from '../modules/uploads/signedUrls.js';
 
@@ -131,6 +134,8 @@ router.use('/seats', seatRoutes);
 router.use('/customization', customizationRoutes);
 router.use('/domains', domainRoutes);
 router.use('/uploads', uploadRoutes);
+router.use('/approvals', approvalRoutes);
+router.use('/messaging', messagingRoutes);
 
 // NOTE — a public GET /admin-seed endpoint used to live here, gated only by a
 // hardcoded default secret ('eduos-seed-2026'). Anyone who could reach the API
