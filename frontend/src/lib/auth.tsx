@@ -1,6 +1,7 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { signOut as endGoogleSession } from 'next-auth/react';
 import { api, clearSession, hasSession, setSession } from './api';
 import { useSessionActivity } from './session-activity';
 import { portalHome } from './school-path';
@@ -87,6 +88,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // session may already be dead; clear regardless
     }
     await clearSession();
+    // A Google sign-in leaves a NextAuth session of its own. The sign-in screen
+    // ends it once it has taken the tokens out, so this is normally a no-op —
+    // but signing out is the one place that must not depend on that having
+    // happened, or the next visit to the sign-in screen signs straight back in.
+    await endGoogleSession({ redirect: false }).catch(() => {});
     clearLoginProfiles();
     // Whichever school a platform admin was looking at does not carry into the
     // next session on this tab.

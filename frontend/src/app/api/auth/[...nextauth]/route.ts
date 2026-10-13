@@ -11,6 +11,12 @@ const authOptions: NextAuthOptions = {
     }),
   ],
   secret: process.env.NEXTAUTH_SECRET,
+  // This session only carries the result of the Google round trip back to the
+  // sign-in screen, which takes the EduOS tokens out and ends it at once (see
+  // components/sign-in.tsx). Five minutes is the backstop for when that
+  // clean-up cannot reach the server: NextAuth's default would otherwise keep
+  // those tokens in a cookie for thirty days.
+  session: { strategy: 'jwt', maxAge: 5 * 60 },
   callbacks: {
     async jwt({ token, account, profile }) {
       // On initial Google sign-in, exchange the Google ID token with our backend

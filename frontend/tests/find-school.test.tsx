@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { FindSchool } from '@/components/find-school';
 import { ApiError, api } from '@/lib/api';
+import SchoolEntryPage from '@/app/[school]/page';
 
 /**
  * The school finder: who is sent where, and what the form does with each
@@ -13,6 +14,7 @@ const replace = vi.fn();
 const push = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace, push, prefetch: vi.fn(), back: vi.fn() }),
+  useParams: () => ({ school: 'oakridge' }),
 }));
 
 let auth: { loading: boolean; me: unknown } = { loading: false, me: null };
@@ -147,5 +149,36 @@ describe('looking a school up', () => {
     expect(button).toBeDisabled();
     fireEvent.submit(button.closest('form')!);
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('a remembered school whose door no longer opens', () => {
+  it('is forgotten when the server says there is no such school, and the finder is offered', async () => {
+    localStorage.setItem('eduos.lastSchool', 'oakridge');
+    vi.spyOn(api, 'publicSchool').mockRejectedValue(new ApiError(404, 'ERROR', 'School not found'));
+    render(<SchoolEntryPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Find your school' }));
+    expect(replace).toHaveBeenCalledWith('/find-school?change=1');
+    // Otherwise every launch of the app would land on this dead end again.
+    expect(localStorage.getItem('eduos.lastSchool')).toBeNull();
+  });
+
+  it('is kept when the lookup merely failed to reach the server', async () => {
+    localStorage.setItem('eduos.lastSchool', 'oakridge');
+    vi.spyOn(api, 'publicSchool').mockRejectedValue(new TypeError('Failed to fetch'));
+    render(<SchoolEntryPage />);
+
+    await screen.findByRole('button', { name: 'Find your school' });
+    expect(localStorage.getItem('eduos.lastSchool')).toBe('oakridge');
+  });
+
+  it('leaves a different remembered school alone', async () => {
+    localStorage.setItem('eduos.lastSchool', 'nvmp');
+    vi.spyOn(api, 'publicSchool').mockRejectedValue(new ApiError(404, 'ERROR', 'School not found'));
+    render(<SchoolEntryPage />);
+
+    await screen.findByRole('button', { name: 'Find your school' });
+    expect(localStorage.getItem('eduos.lastSchool')).toBe('nvmp');
   });
 });
