@@ -170,6 +170,9 @@ export async function getRoster(actor, scope, sectionId, date, periodNo = null) 
     enrollmentId: e._id.toString(),
     rollNo: e.rollNo ?? null,
     studentName: e.studentId ? `${e.studentId.firstName} ${e.studentId.lastName || ''}`.trim() : 'Unknown',
+    // Shown on attendance flashcards to tell apart students who share a name.
+    admissionNo: e.studentId?.admissionNo ?? null,
+    photoUrl: e.studentId?.photoUrl ?? null,
     status: recordByEnrollment.get(e._id.toString())?.status ?? null,
     note: recordByEnrollment.get(e._id.toString())?.note ?? null,
   }));
@@ -212,7 +215,7 @@ export async function getRoster(actor, scope, sectionId, date, periodNo = null) 
  * A school-wide grant is unaffected, and so is the class teacher, who reaches
  * their own periods through the second rule anyway.
  */
-async function assertMarkAccess(actor, scope, sectionId, periodNo, day) {
+export async function assertMarkAccess(actor, scope, sectionId, periodNo, day) {
   if (scope === 'ALL') return;
 
   if (actor?.roleKey !== 'TEACHER') {

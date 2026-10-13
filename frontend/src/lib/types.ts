@@ -96,7 +96,7 @@ export interface StaffAccountDto {
   email?: string | null;
   status?: string | null;
 }
-export interface RosterRow { enrollmentId: string; rollNo: number | null; studentName: string; status: AttStatus | null; note: string | null }
+export interface RosterRow { enrollmentId: string; rollNo: number | null; studentName: string; status: AttStatus | null; note: string | null; admissionNo?: string | null; photoUrl?: string | null }
 export type AttStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY';
 export interface TimetabledPeriod {
   periodNo: number;

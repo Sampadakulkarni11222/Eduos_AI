@@ -129,7 +129,7 @@ export function renewSession(): Promise<boolean> {
   return refresh();
 }
 
-async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
   const res = await fetch(`${BACKEND_URL}/api/v1${path}`, {
     ...init,
     headers: {

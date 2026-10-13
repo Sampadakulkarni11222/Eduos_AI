@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, DateField, EmptyState, SkeletonRows, cx } from '@/components/ui';
 import { BulkUploadModal } from '@/components/bulk-upload-modal';
+import { FlashcardDeck } from '@/components/attendance/flashcard-deck';
 import { api, errorMessage } from '@/lib/api';
 import type { AttStatus, AttendanceRoster, SectionDto } from '@/lib/types';
 
@@ -37,6 +38,16 @@ export default function AttendancePage() {
   // attendance; without it every record is day-level and subject breakdowns
   // can only be inferred from the timetable.
   const [periodNo, setPeriodNo] = useState<number | null>(null);
+  // Flashcards are an additional way to mark the same register; the list stays
+  // the default and the choice is remembered on this device.
+  const [mode, setModeState] = useState<'list' | 'cards'>('list');
+  useEffect(() => {
+    try { if (localStorage.getItem('eduos.attendance.mode') === 'cards') setModeState('cards'); } catch { /* storage unavailable */ }
+  }, []);
+  const setMode = (m: 'list' | 'cards') => {
+    setModeState(m);
+    try { localStorage.setItem('eduos.attendance.mode', m); } catch { /* storage unavailable */ }
+  };
 
   useEffect(() => {
     api.mySections().then((s) => { setSections(s); if (s[0]) setSectionId(s[0].id); }).catch(() => setSections([]));
@@ -166,7 +177,11 @@ export default function AttendancePage() {
             ))}
           </select>
         )}
-        {data && data.roster.length > 0 && <Button variant="soft" small onClick={allPresent} disabled={saving}>Mark all present</Button>}
+        <div className="seg-toggle" role="group" aria-label="Marking mode">
+          <button type="button" aria-pressed={mode === 'list'} className={cx('seg-btn', mode === 'list' && 'is-on')} onClick={() => setMode('list')}>☰ List</button>
+          <button type="button" aria-pressed={mode === 'cards'} className={cx('seg-btn', mode === 'cards' && 'is-on')} onClick={() => setMode('cards')}>▭ Flashcards</button>
+        </div>
+        {mode === 'list' && data && data.roster.length > 0 && <Button variant="soft" small onClick={allPresent} disabled={saving}>Mark all present</Button>}
         {summary && (
           <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--text-2)' }}>
             {summary.PRESENT} present · {summary.ABSENT} absent · {summary.LATE} late
@@ -209,7 +224,26 @@ export default function AttendancePage() {
       {sections?.length === 0 && <EmptyState title="No sections assigned" sub="You'll mark attendance here once classes are linked to you." />}
       {loading && <Card><SkeletonRows rows={6} /></Card>}
       {!loading && data && data.roster.length === 0 && <EmptyState title="No students in this section" sub="Add enrollments to begin marking attendance." />}
-      {!loading && data && data.roster.length > 0 && (
+      {!loading && data && data.roster.length > 0 && mode === 'cards' && (
+        <FlashcardDeck
+          key={`${data.section.id}|${date}|${periodNo ?? 'day'}`}
+          data={data}
+          date={date}
+          periodNo={periodNo}
+          onSubmitted={(updated) => {
+            setData(updated);
+            const next: Record<string, AttStatus> = {};
+            updated.roster.forEach((row) => { if (row.status) next[row.enrollmentId] = row.status; });
+            setMarks(next);
+            setSaved(true);
+          }}
+        />
+      )}
+      {!loading && data && data.roster.length > 0 && mode === 'cards' && saved && (
+        <p className="fc-banner is-success" role="status">✓ Attendance submitted to the register.</p>
+      )}
+
+      {!loading && data && data.roster.length > 0 && mode === 'list' && (
         <Card pad={false}>
           <table className="data-table data-table-cards">
             <thead><tr><th>Roll</th><th>Student</th><th style={{ textAlign: 'right' }}>Status</th></tr></thead>
@@ -248,7 +282,7 @@ export default function AttendancePage() {
       )}
 
       {/* Sticky save bar — stays visible while the roster scrolls. */}
-      {!loading && data && data.roster.length > 0 && (
+      {!loading && data && data.roster.length > 0 && mode === 'list' && (
         <div className={cx('sticky-actions', saveErr && 'is-error', saved && !saveErr && 'is-saved')}>
           <div className="sticky-actions-status" role="status" aria-live="polite">
             {saveErr ? (
