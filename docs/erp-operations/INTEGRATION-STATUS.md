@@ -8,12 +8,12 @@ Last updated 2026-10-13. Nothing in this branch talks to a government portal, a 
 |---|---|---|---|
 | WhatsApp notifications (approvals, meetings, deadlines, notices) | **Simulated** until configured | The message is written to the outbox with status `SIMULATED` and logged. The person is always notified in the app as well. | See "WhatsApp" below. |
 | SMS and email for these notifications | **Planned** | The outbox can hold SMS and email rows, but no sender is connected for them. | Choose a provider and add a sender. |
-| Scheduled jobs (reminders, quiet-hours release, expiry checks, notice watching) | **Blocked on deployment choice** | There is no scheduler in the app. Each job has a route that does it once and is safe to repeat: correspondence reminders (`POST /correspondence/reminders/run`) and releasing messages held for quiet hours (`POST /messaging/outbox/release`, which re-checks consent before sending). Until something calls them on a timer, they run only when an administrator triggers them. | A scheduler (cron, a cloud scheduler or a worker) calling those routes. |
+| Scheduled jobs (reminders, quiet-hours release, expiry checks, notice watching) | **Built** | The backend runs its own scheduler (`SCHEDULER_ENABLED`, on by default). Once a minute it runs whichever jobs are due for each active school: release held messages (every 15 minutes), expire lapsed clearances and send meeting reminders (hourly), and send correspondence and compliance deadline reminders and check watched notice pages (daily). Each job runs once per school per window even with several server processes, and each can still be triggered by hand. | Nothing. To run the jobs in one dedicated worker instead, set `SCHEDULER_ENABLED=false` on the other processes. |
 | Government and board portals (UDISE+, AISHE, CBSE OASIS, state portals) | **Not integrated, by design** | The system prepares the data and a person files it on the portal, then records the acknowledgement number and proof. A return cannot be marked submitted without that evidence. | These portals offer no general filing API to schools. Keep manual. |
 | EPFO, ESIC, professional tax, TDS | **Simulated** (file export) | Payroll produces export files. Nothing is uploaded. | The school's accountant must check the formats against the current portal templates before first use. |
 | Bank salary payment | **Simulated** (file export) | Payroll produces a bank file. A second person confirms payment from the bank statement. | The bank's own bulk-upload format; adjust the export to match. |
 | Background verification agencies and police verification | **Not integrated** | Staff record each check's result and evidence by hand. | An agency contract and its API, if wanted. |
-| Regulatory notice sources (board, government, district sites) | **Built, not run against live sites** | For each source a school adds, the system fetches the page and detects that it changed. A person then reads it and records the notice. It does not interpret the notice. | Add the source addresses; run on a schedule; check each site permits automated fetching. |
+| Regulatory notice sources (board, government, district sites) | **Built, checked daily by the scheduler; not yet run against live sites** | For each source a school adds, the system fetches the page and detects that it changed. A person then reads it and records the notice. It does not interpret the notice. | Add the source addresses; run on a schedule; check each site permits automated fetching. |
 | Social media and ad platforms | **Planned** | Creative is stored and approved in the system, then posted by hand. | Platform accounts and their APIs. |
 | File uploads | **Existing** | Uses the upload service already in the platform. | Nothing new. |
 
@@ -44,3 +44,13 @@ No live WhatsApp message was sent while building or testing this branch.
 ## Secrets
 
 Safeguarding case details are encrypted with the platform's existing field-encryption key (`MEDICAL_ENCRYPTION_KEY`). Use a strong, unique value in production and keep it backed up: losing it makes those records unreadable.
+
+## AI assistant (Ask Agent)
+
+The assistant has sixteen read-only tools for the new modules and is available to every school role, including HR, marketing, compliance, trustees and alumni. It can report what is waiting on a person, approvals in their inbox, compliance deadlines and licences, open letters, board meetings, fests, repairs, purchase requests, budgets, payroll run totals, the admissions funnel, the organisation in numbers, newsroom posts and the campus right now.
+
+It cannot approve, file, pay, clear or decide anything in these modules, and it has no access to safeguarding cases, individual pay or the contents of background checks. Without an AI model key it answers from built-in question matching; with one, it understands freer phrasing. The full list is in `docs/MCP-TOOLS.md`.
+
+## Local development on Windows
+
+The frontend's server side now reaches the backend at `http://127.0.0.1:5000` by default. Before this, it used `localhost`, which Node resolves to IPv6 on Windows while the backend listens on IPv4, so sessions could not be renewed and people were signed out on reload. Set `API_URL` if your backend is elsewhere.

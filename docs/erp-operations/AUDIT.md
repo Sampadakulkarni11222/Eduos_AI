@@ -4,23 +4,29 @@ Branch `feat/education-erp-operations`, audited 2026-10-13. Companion documents:
 
 ## Verdict
 
-The server side is built and tested. The screens are built and compile, but **no screen has been clicked through in a browser against a running server**. That is the main thing to do before anyone relies on this branch. Nothing here files with a government portal, pays anyone or sends a real message.
+The server side is built and tested, and every new screen has now been opened in a real browser as every profile with no crash and no failed request. That is a smoke test: it proves each page loads with seeded data, not that every button on it has been pressed. Nothing here files with a government portal, pays anyone or sends a real message.
 
 ## Checks run
 
 | Check | Result |
 |---|---|
-| Backend tests, full suite | 4,033 tests in 138 files. 4,029 passed; 4 failed when the in-memory test database's connection timed out under load (`admin.writeAudit`, `askAi.routingDefects`). Both files pass when rerun on their own (246 tests). |
-| Backend tests added in this branch | 59 across 5 files: approvals (15), attendance drafts (7), administration (17), finance (10), community, marketing and campus (10) |
-| Frontend tests, full suite | 392 passed, 27 files |
+| Backend tests, full suite | 4,045 tests in 140 files, all passed |
+| Backend tests added in this branch | 72 across 7 files: approvals (16), attendance drafts (7), administration (18), finance (10), community, marketing and campus (10), scheduler (4), accreditation and credits (7) |
+| Frontend tests, full suite | 400 passed, 28 files |
 | Frontend typecheck (`tsc --noEmit`) | Clean |
 | Frontend lint (`next lint`) | No warnings or errors |
 | Frontend production build | Succeeds |
+| Browser smoke test | 169 page loads as 13 profiles (every home page and every operations page in each sidebar): no page errors and no failed requests, apart from the first request on some older dashboards, which is sent before the session token arrives and is retried |
+| Both seeders, on an empty database | Run cleanly, including the sample campus |
 | Dependency audit, backend | 4 findings (3 high, 1 moderate), all in packages already present on `main`; no backend dependency was added |
 | Dependency audit, frontend | 10 findings (7 high, 3 moderate), all in packages already present on `main`. The two packages added (`three`, `@types/three`, both 0.169.0) have none. |
-| Browser test of new screens | **Not done** |
+| Pressing every button on every screen | **Not done** |
 | Accessibility test with a screen reader | **Not done** |
 | Load or performance test of the API | **Not done** |
+
+### How the browser test was run
+
+A throwaway copy of the system was started: an in-memory database seeded by the two seed scripts, the backend on port 5050 and a production build of the frontend on port 3100. A headless Chrome signed in as each profile and opened that profile's home page and every operations page in its sidebar, recording page errors and any request that failed. The 3D campus was also screenshotted at campus, building and room level. The developer's own servers and database were not touched.
 
 ## Measured performance
 
@@ -78,28 +84,42 @@ The first full backend run found 24 failures in 12 files, all caused by this bra
 | The platform super admin no longer holds every permission. | Recorded on purpose: safeguarding case files and individual pay are withheld from the platform role (`PLATFORM_WITHHELD`). Tests updated to say so. |
 | The new permission keys have no assistant tools. | Recorded in the coverage ledger as "planned". |
 
+## Fixed in the second round
+
+| Problem | Fix |
+|---|---|
+| The 3D campus was reported as "nothing to see". | Three causes. A school with no buildings recorded got a one-line note instead of a map: the labelled sample campus is now created the first time anyone opens the map, and by the seed. The map opened in a dark dusk palette in the evening: it now opens in daylight. And it was one unremarkable sidebar item: every portal now has a Campus button in the top bar and a Campus World card on its home page. |
+| After a page reload, or 15 minutes, people were returned to the sign-in page. | On Windows the frontend server resolved `localhost` to IPv6 while the backend listens on IPv4, so the session could never be renewed. The frontend's server-side default is now `127.0.0.1`. This existed before this branch. |
+| Links between the new screens led to "not found". | They were missing the portal part of the address. One hook now builds every such link for the portal the reader is in. Found by the browser test; covered by a test. |
+| The 3D scene was rebuilt from scratch every minute. | A data refresh now updates the scene in place. |
+| Rooms could only be chosen by clicking the 3D canvas. | Each floor's rooms, and the outdoor spaces, are also buttons. A room's panel now links on to the related pages of the reader's own portal (timetable, attendance, library, transport and so on). |
+| No scheduler. | An in-process scheduler runs reminders, releases messages held for quiet hours, expires lapsed clearances and checks watched notice pages. Each job runs once per school per window even with several server processes. A repeated reminder no longer re-notifies in the app. |
+| The assistant could not see the new modules. | Sixteen read-only tools were added, and the assistant was turned on for HR, marketing, compliance, trustees and alumni. It reports; it cannot approve, file, pay, clear or decide. Safeguarding, individual pay and the contents of background checks are not available to it at all. |
+| Driver clearance was not shown on transport routes. | Transport managers see each named driver's background-check status. Families do not. |
+| College features were thin. | Subjects can carry credits, and the Compliance Centre has an accreditation tracker (NAAC, NBA, inspection or custom) with evidence items, owners and proof. |
+| The demo Marketing, Compliance, Trustee and Alumnus accounts shared phone numbers with seeded teachers. | They now use their own numbers. |
+
 ## Known limitations
 
-1. **Screens are unverified in a browser.** Expect layout and wiring defects.
-2. **No scheduler.** Reminders and the release of messages held for quiet hours run only when triggered (see `INTEGRATION-STATUS.md`).
-3. **Statutory payroll figures need professional sign-off.** The rules follow the research register, including the PF wage ceiling change on 17 September 2026 and the wage definition from 21 November 2025. They are not legal or tax advice.
-4. **The compliance catalogue is a starting list.** Every entry starts "Under review" and must be confirmed for the school's board and state.
-5. **Campus World uses a sample layout** until a school enters its own. It shows scheduled activity, not live positions.
-6. **Notice watching was not run against real sites.**
-7. **College features are thin**: terms and profile only.
-8. **Ask Agent cannot see the new modules.**
-9. **Few frontend tests** for the new views.
+1. **The browser test is a smoke test.** Every page loads; not every button has been pressed. Expect some defects in the forms.
+2. **Statutory payroll figures need professional sign-off.** The rules follow the research register, including the PF wage ceiling change on 17 September 2026 and the wage definition from 21 November 2025. They are not legal or tax advice.
+3. **The compliance catalogue is a starting list.** Every entry starts "Under review" and must be confirmed for the school's board and state.
+4. **Accreditation criteria are headings only**, from each agency's published structure as understood when written. A cycle says so until someone records that they checked it against the current manual. The institution adds its own metrics.
+5. **Campus World uses a sample layout** until a school enters its own. It shows scheduled activity, not live positions. Frame rate was measured only under software rendering in the test browser (4 to 12 frames a second), which says little about a real device.
+6. **Driver clearance is matched on the driver's name** as typed on the route, so a spelling difference reads as "no record".
+7. **The assistant's new tools answer through its built-in question matching** for the words listed in its vocabulary. Freer phrasing needs an AI model key to be configured.
+8. **Notice watching was not run against real sites.**
+9. **College academics stop at credits and accreditation evidence.** There is no credit-based grading, semester promotion or outcome mapping.
 10. **Videos in the newsroom are links**, because uploads carry no captions.
-11. **Pre-existing dependency findings** remain.
+11. **Pre-existing dependency findings** remain, and one pre-existing lint error in `tests/studyHelp.skillSync.test.js`.
 
 ## Recommended next work
 
-1. Start the app with seed data and walk each role through its pages; fix what breaks.
-2. Add a scheduler that calls the reminder and message-release routes, and runs expiry checks.
+1. Restart the running backend and frontend so they pick up this branch (see the handover note).
+2. Walk each role through its forms by hand, pressing the buttons the smoke test did not.
 3. Have an accountant check payroll output for two real months.
 4. Register the WhatsApp templates and test with one opted-in number.
-5. Add frontend tests for approvals, payroll and safeguarding screens.
-6. Give Ask Agent read-only tools for the new modules.
-7. Show driver clearance on transport routes.
-8. Plan the college track: credits, semesters, accreditation evidence.
-9. Update the dependencies with audit findings.
+5. Replace the sample campus with the real buildings and rooms.
+6. Check each accreditation template against the agency's current manual.
+7. Link drivers to verification records by person rather than by name.
+8. Update the dependencies with audit findings.

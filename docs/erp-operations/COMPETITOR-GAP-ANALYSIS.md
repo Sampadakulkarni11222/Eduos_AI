@@ -36,7 +36,7 @@ Researched 2026-10-13 by web search. **Confidence is low to medium.** The source
 |---|---|---|
 | Biometric and RFID attendance devices | Entab, MasterSoft | High for large schools |
 | GPS vehicle tracking | Entab | Medium |
-| Accreditation evidence (NAAC, NBA), outcome-based education, credit systems | MasterSoft and other college suites | High for colleges; the college side here is thin |
+| Outcome-based education and credit-based grading | MasterSoft and other college suites | High for colleges. Course credits and an accreditation evidence tracker are now built; grading and outcome mapping are not. |
 | Learning platform (courses, content, online classes) | Camu, Teachmint | Medium |
 | Native mobile apps | Most | High; this platform is a responsive web app |
 | Very large report libraries | Fedena | Low to medium |
@@ -45,7 +45,7 @@ Researched 2026-10-13 by web search. **Confidence is low to medium.** The source
 
 ## AI opportunities
 
-None of these is built in this branch. The rule for all of them: AI drafts, summarises and flags; a named person approves, files and decides. Every AI output must show what records it used.
+Item 1 is built: sixteen read-only tools, available to every school role. The rest are not built. The rule for all of them: AI drafts, summarises and flags; a named person approves, files and decides. Every AI output must show what records it used.
 
 | # | Opportunity | Uses | Risk | Suggested order |
 |---|---|---|---|---|

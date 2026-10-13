@@ -7,7 +7,7 @@ Branch `feat/education-erp-operations`. Last updated 2026-10-13.
 | Status | Meaning |
 |---|---|
 | **Tested** | Built, and its rules are covered by automated API tests that pass. |
-| **Built** | Built and passing typecheck, lint and production build, but with no automated test of its own. All screens are in this state: none has been clicked through in a browser against a running server yet. |
+| **Built** | Built and passing typecheck, lint and production build, and opened in a browser as every profile without error, but with no automated test of its own and not every button pressed. |
 | **Simulated** | The workflow works, but the outside step (sending, filing, paying) is recorded and not performed. The record says so. |
 | **Blocked** | Cannot be finished without something from outside (an account, a credential, a decision). |
 | **Planned** | Not built. |
@@ -45,10 +45,23 @@ Every API below is **Tested** unless noted; every screen is **Built**.
 | 25 | Research all roles; final audit; competitors; AI opportunities | `REFERENCE-ANALYSIS.md`, `docs/research/regulatory-source-register.md`, `COMPETITOR-GAP-ANALYSIS.md`, `AUDIT.md`. | — | — | AI opportunities are listed, **not implemented** (see below). |
 | 26 | Install a skill to read the videos | Frames were extracted locally with FFmpeg and read. | — | — | The MCPmarket installer link was invalid or expired and was not run. |
 
+## Added in the second round
+
+| # | Item | Status |
+|---|---|---|
+| 27 | Campus World visible to every profile from day one: sample campus created automatically, daylight view, top-bar button and home-page card on every portal, room buttons, links from a room to related pages | Tested (API) and checked in a browser as every profile |
+| 28 | Scheduler for reminders, held messages, expiry checks and notice watching | Tested |
+| 29 | Read-only assistant tools for the new modules; assistant turned on for the five new roles | Tested |
+| 30 | Driver background-check status on transport routes | Tested |
+| 31 | Course credits on subjects | Tested |
+| 32 | Accreditation evidence tracker (NAAC, NBA, inspection, custom) | Tested (API); screen built and loads |
+| 33 | Session no longer lost on reload (frontend could not reach the backend on Windows) | Checked in a browser |
+| 34 | Links between the new screens fixed | Tested and checked in a browser |
+| 35 | Browser smoke test of every new screen as every profile | Done |
+
 ## Not done
 
-- **AI in the new modules: Planned.** No AI feature was added to the new modules. The existing Ask Agent has no tools for them. Rule: AI may draft and summarise; it must never approve, file or decide.
-- **Browser testing of the new screens.** None was done.
-- **Frontend tests for the new views**, beyond the flashcard logic and the guide and role tests.
-- **Driver clearance on transport routes.**
-- **College academics** (credits, semesters, accreditation evidence).
+- **Pressing every button on every screen.** The browser test proves pages load; forms were not all exercised by hand.
+- **AI that drafts or summarises** (reply drafts, notice summaries, minutes). The assistant's new tools only read and report.
+- **College academics beyond credits and accreditation evidence**: credit-based grading, semester promotion, outcome mapping.
+- **Anything that needs an outside party**: filing on government portals, bank uploads, WhatsApp template approval, an accountant's sign-off.
