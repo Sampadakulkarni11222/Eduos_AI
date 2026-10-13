@@ -106,9 +106,13 @@ describe('the mock Google account chooser', () => {
     notFound.mockClear();
   });
 
-  it('is not found in a production build', () => {
+  it('is not found in a production build', async () => {
+    // The page decides when it is loaded, as the bundler does at build time,
+    // so it has to be loaded afresh with production already in place.
     vi.stubEnv('NODE_ENV', 'production');
-    expect(() => GoogleMockAuthPage()).toThrow('NEXT_NOT_FOUND');
+    vi.resetModules();
+    const { default: ProductionPage } = await import('@/app/(auth)/login/google-mock-auth/page');
+    expect(() => ProductionPage()).toThrow('NEXT_NOT_FOUND');
     expect(notFound).toHaveBeenCalledTimes(1);
   });
 

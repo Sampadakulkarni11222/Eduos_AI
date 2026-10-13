@@ -8,6 +8,7 @@ import { PERMISSION_CATALOG, SYSTEM_ROLES, SUPER_ADMIN_ONLY, AI_ASSISTANT_PERMIS
 import { buildPermissionMap } from '../src/utils/buildPermissionMap.js';
 import { requirePermission } from '../src/middleware/permission.js';
 import * as schools from '../src/modules/schools/school.service.js';
+import { RESERVED_SCHOOL_SLUGS } from '../src/modules/schools/school.slug.js';
 import * as roleService from '../src/modules/roles/role.service.js';
 
 /**
@@ -238,6 +239,29 @@ describe('school + School Admin management', () => {
     await expect(
       schools.createSchool({ tenantId: 'Bad Id!', tenantName: 'Nope', admin: { displayName: 'X', phone: '+919812345679' } }),
     ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  // A static portal route wins over /<school>, so a school with one of these
+  // ids would be created and then be unreachable at its own address.
+  it.each(RESERVED_SCHOOL_SLUGS)('refuses the portal’s own address "%s" as a school id', async (slug) => {
+    await expect(
+      schools.createSchool({ tenantId: slug, tenantName: 'Reserved', admin: { displayName: 'X', phone: '+919812345690' } }),
+    ).rejects.toMatchObject({ statusCode: 400, code: 'SCHOOL_SLUG_RESERVED' });
+    // Refused before anything is written: no school, and no stray admin.
+    expect(await School.exists({ slug })).toBeNull();
+    expect(await Profile.exists({ tenantId: slug })).toBeNull();
+  });
+
+  it('refuses a reserved id however it is cased, and still allows one that merely contains it', async () => {
+    await expect(
+      schools.createSchool({ tenantId: ' Login ', tenantName: 'Reserved', admin: { displayName: 'X', phone: '+919812345691' } }),
+    ).rejects.toMatchObject({ statusCode: 400, code: 'SCHOOL_SLUG_RESERVED' });
+
+    const { school } = await schools.createSchool({
+      tenantId: 'login-academy', tenantName: 'Login Academy',
+      admin: { displayName: 'Admin L', phone: '+919812345692' },
+    });
+    expect(school.slug).toBe('login-academy');
   });
 
   it('renames a school across all of its profiles', async () => {

@@ -23,6 +23,8 @@ The Android app is a **Trusted Web Activity (TWA)**: a small Android shell that 
 | `frontend/src/app/find-school/` and `components/find-school.tsx` | The school finder, which is the app's start page. |
 | `frontend/src/lib/school-lookup.ts` | School-code validation and lookup. |
 | `frontend/src/app/.well-known/assetlinks.json/route.ts` | Serves Digital Asset Links from environment variables. Answers 404 until configured. |
+| `frontend/security-headers.mjs` | Response headers for production, including the report-only content security policy. |
+| `backend/src/modules/schools/school.slug.js` | School slug rule and the route names a school may not take. |
 | `android/twa-manifest.template.json` | Decided values for the Android shell, with the undecided ones marked `REPLACE_`. |
 
 The generated Android project (`android/app`, Gradle files, `twa-manifest.json`), build outputs and every keystore are gitignored.
@@ -45,7 +47,7 @@ The finder is a lookup, not a search. There is no endpoint that lists schools or
 Two things to know:
 
 - **School custom domains.** On a school's own domain the middleware redirects `/find-school` to that school's sign-in, because only that school exists there. The app must be built against the platform host.
-- **Reserved slugs.** Static routes win over `/<school>`, so a school whose slug is `find-school`, `login`, `super-admin`, `select-profile`, `public`, `api` or `icons` could not be reached. The backend does not reserve these names today (`SLUG_RE` in `backend/src/modules/schools/school.service.js` accepts them). Recommended follow-up: refuse them when a school is created. Not done here, because it changes backend behaviour.
+- **Reserved slugs.** Static routes win over `/<school>`, so a school whose slug is `find-school`, `login`, `super-admin`, `select-profile`, `public`, `api` or `icons` could not be reached. The backend now refuses these when a school is created or renamed (`backend/src/modules/schools/school.slug.js`). A school that already has one of these names is not touched; whether any exists in production has not been checked.
 
 ## Values still to be supplied
 
@@ -74,17 +76,34 @@ They are read at request time, so setting them needs a restart of the frontend b
 
 ## Build requirements
 
+Bubblewrap 1.27.0 generates a project with `compileSdkVersion` and `targetSdkVersion` 36, which is what Play requires for new apps since 31 August 2026. It needs JDK 17 exactly and build-tools 36.1.0.
+
 | Tool | Requirement | This machine (13 Oct 2026) |
 | --- | --- | --- |
-| Node.js | 22 (`.nvmrc`) | 24 installed |
-| JDK | 17 | Present (`JAVA_HOME`); `java` on PATH is 23 |
-| Android SDK platform | API 36. Play has required new apps to target Android 16 (API 36) since 31 August 2026. | Only API 35 installed |
-| Android build-tools | Matching the platform | 35.0.0 and 35.0.1 only |
-| SDK command-line tools (`sdkmanager`) | Needed to install API 36 | Not installed |
-| Bubblewrap CLI | `npm i -g @bubblewrap/cli` | Not installed |
-| Emulator / device | For testing | One API 35 virtual device exists |
+| Node.js | 18 or newer for Bubblewrap; 22 for the project (`.nvmrc`) | 24 |
+| JDK | 17 exactly | Temurin 17.0.20.1 at `%USERPROFILE%.jdksjdk-17.0.20.1+1`. The system `JAVA_HOME` points at a JDK 17 folder that does not exist; JDK 21 and 23 are installed but Bubblewrap rejects them. |
+| Android SDK platform | API 36 | Installed (`platforms;android-36`) |
+| Android build-tools | 36.1.0 | Installed (also 36.0.0) |
+| SDK command-line tools | `sdkmanager` | Installed, version 22.0 |
+| Bubblewrap CLI | 1.27.0 | Installed for the current user |
+| Emulator | For testing | One API 35 virtual device. Enough to test on; an API 36 image is not installed. |
 
-Bubblewrap can download its own JDK and SDK on first run, which is the simplest way to satisfy the three missing rows.
+`bubblewrap doctor` passes. Two things were needed to get there, and both are per-user and reversible:
+
+- `%USERPROFILE%.bubblewrapconfig.json` names the JDK 17 and SDK paths above.
+- Bubblewrap looks for `sdkmanager` at `<sdk>	oolsin`, the old SDK layout. A directory junction `<sdk>	ools` → `<sdk>cmdline-toolslatest` satisfies it. Remove it with `rmdir "%LOCALAPPDATA%AndroidSdk	ools"`.
+
+To reproduce on another Windows machine:
+
+```powershell
+# SDK command-line tools: unzip Google's commandlinetools-win zip to <sdk>cmdline-toolslatest, then
+sdkmanager "platforms;android-36" "build-tools;36.1.0"
+cmd /c mklink /J "$env:LOCALAPPDATAAndroidSdk	ools" "$env:LOCALAPPDATAAndroidSdkcmdline-toolslatest"
+# JDK 17: unzip a Temurin 17 JDK anywhere, then
+npm i -g @bubblewrap/cli
+bubblewrap updateConfig --jdkPath <jdk-17-folder> --androidSdkPath "$env:LOCALAPPDATAAndroidSdk"
+bubblewrap doctor
+```
 
 ## Build steps
 
@@ -96,16 +115,15 @@ These have not been run. They are the documented Bubblewrap flow, adapted to thi
    curl -I https://<host>/manifest.webmanifest
    curl -I https://<host>/icons/icon-512.png
    ```
-3. Install Bubblewrap and generate the project:
+3. Generate the project:
    ```bash
-   npm i -g @bubblewrap/cli
    cd android
    bubblewrap init --manifest=https://<host>/manifest.webmanifest
    ```
    Answer its prompts with the values from `twa-manifest.template.json` and the table above. When it asks about a signing key, point it at the approved upload keystore, or let it create one **only with approval**, and keep that file outside the repository.
 4. Before building, open the generated `android/twa-manifest.json` and `android/app/build.gradle` and confirm:
    - `fallbackType` is `customtabs` (a WebView fallback breaks Google sign-in),
-   - `targetSdkVersion` is 36 or higher. If the installed Bubblewrap generates a lower value, update Bubblewrap; do not ship a lower target.
+   - `targetSdkVersion` is 36 or higher (Bubblewrap 1.27.0's template sets 36).
 5. Build:
    ```bash
    bubblewrap build
@@ -142,29 +160,46 @@ None of this has been verified. Each item is a place where the app could behave 
 | Layout | Small phones (360 px wide), tablets, landscape |
 | External links | Open outside the app and return |
 
-## Recommended, not implemented
+## Security headers
 
-### Security headers
+Set for every page in production by `frontend/security-headers.mjs`, through `headers()` in `next.config.mjs`.
 
-The frontend sets no security headers. Recommended addition to `frontend/next.config.mjs`, via `headers()`:
-
-| Header | Value | Note |
+| Header | Value | Enforced |
 | --- | --- | --- |
-| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | Production only. Check the reverse proxy does not already send it. |
-| `X-Content-Type-Options` | `nosniff` | |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` | |
-| `X-Frame-Options` | `DENY` | The app does not frame itself (no `<iframe>` in the source). |
-| `Permissions-Policy` | `camera=(), microphone=(self), geolocation=()` | Microphone is used by voice input. Photo upload goes through the system file picker and needs no camera grant. |
-| `Content-Security-Policy-Report-Only` | See below | Start report-only, then enforce. |
+| `X-Content-Type-Options` | `nosniff` | Yes |
+| `X-Frame-Options` | `DENY` | Yes. No page of the portal is framed by another (there is no `<iframe>` in the source). If a school embeds a portal page in its own website, that embed will stop working. |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Yes |
+| `Permissions-Policy` | `geolocation=()` | Yes. Microphone is left alone because voice input uses it. |
+| `Content-Security-Policy-Report-Only` | See the file | **No.** The browser logs violations and blocks nothing. |
 
-A content security policy needs care here, so it should be introduced in report-only mode and watched before it is enforced. It has to allow at least: the backend origin (API calls, uploaded images), `checkout.razorpay.com` and `api.razorpay.com` (scripts and frames), `fonts.googleapis.com` and `fonts.gstatic.com`, `blob:` and `data:` images, school logos at arbitrary `https:` URLs, and Next.js inline scripts (which need a nonce or `'unsafe-inline'`).
+The content security policy is report-only on purpose. A wrong policy breaks Razorpay Checkout or Google sign-in, and neither can be exercised without the live domain. Watch the browser console on production through a sign-in and a payment; when it stays quiet, rename the header to `Content-Security-Policy`.
 
-These were left out of this branch because a wrong value breaks payments or sign-in in production, and that cannot be tested without the live domain.
+`Strict-Transport-Security` is not set by the frontend. It belongs on the reverse proxy that terminates TLS.
+
+## Findings that need a decision or a device
+
+### Protected downloads
+
+Receipts, report cards and ID cards are fetched with the access token and opened with `window.open(blobUrl, '_blank')` (`openProtectedFile` in `lib/api.ts`). Two things can go wrong on Android, and neither can be settled from the source:
+
+- The `window.open` call runs after the download finishes. On a slow connection that can fall outside the tap that started it, and Chrome then treats it as a pop-up and blocks it.
+- A new tab holding a `blob:` PDF may open outside the app, or download with a generated file name, depending on the Chrome version.
+
+The robust alternative is to save the file with a real name (`<a download>`) on Android. That changes what desktop users see today, so it was not changed. Test on a device first.
+
+### Inactivity sign-out
+
+The limit is 10 minutes, set at build time by `NEXT_PUBLIC_INACTIVITY_MINUTES` (1 to 120). It can be lengthened without a code change. It was not changed.
+
+It does not behave as a strict limit on a phone, which matters for whichever value is chosen:
+
+- If Android closes the app in the background, reopening it signs the user straight back in from the refresh cookie, however long they were away. The idle clock lives in page memory and starts again.
+- If the app is only paused, returning to it fires both "tab is visible again" (which counts as activity) and the overdue idle timer. Which runs first is not guaranteed, so the same absence can end in either a sign-out or a renewed session.
+
+If the 10 minutes is a school security requirement, it needs a server-side idle limit to be reliable. If it is a convenience default, a longer value suits a phone better.
 
 ### Other
 
-- Reserve route names as school slugs in the backend (see above).
-- The demo account list still ships as an unreferenced JavaScript chunk in production builds. The page that used it now answers 404. The addresses are the seeded demo accounts already listed in the README.
 - A minimal service worker with an offline page would give a better no-connection experience. It is not required for a TWA.
 
 ## Google Play: requirements and open questions
