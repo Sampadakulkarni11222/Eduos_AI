@@ -1,4 +1,5 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
+import { APP_THEME_COLOR } from '@/lib/app-identity';
 import { AuthProvider } from '@/lib/auth';
 import { PermissionsProvider } from '@/lib/permissions';
 import NextAuthProvider from '@/lib/next-auth-provider';
@@ -14,6 +15,19 @@ export const metadata: Metadata = {
     template: '%s · EduOS AI',
   },
   description: 'The AI-native school operating system',
+  // Home-screen name and icon on iOS, which reads these rather than the
+  // manifest. The manifest link itself is added by app/manifest.ts.
+  appleWebApp: { capable: true, title: 'EduOS AI', statusBarStyle: 'default' },
+  icons: { apple: '/icons/apple-touch-icon.png' },
+};
+
+export const viewport: Viewport = {
+  // Next's defaults, stated so the mobile layout does not depend on them.
+  // Zoom is left enabled: disabling it fails WCAG 1.4.4.
+  width: 'device-width',
+  initialScale: 1,
+  // Colours the system bars of an installed app and the browser toolbar.
+  themeColor: APP_THEME_COLOR,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

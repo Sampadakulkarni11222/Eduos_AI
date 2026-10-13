@@ -29,7 +29,7 @@ export default function Index() {
           fontFamily: 'Newsreader, serif', fontWeight: 700, fontSize: 26, color: '#591620',
           boxShadow: '0 4px 16px rgba(89,22,32,.2)',
         }}>
-          O
+          E
         </div>
         <div className="spinner" style={{ borderTopColor: '#591620' }} />
         <span style={{ fontSize: 13, color: 'var(--text-faint)' }}>Loading EduOS AI…</span>

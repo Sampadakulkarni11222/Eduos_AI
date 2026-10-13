@@ -712,6 +712,15 @@ export function SignIn({ school: schoolProp }: { school?: PublicSchoolDto | null
               <p style={{ fontSize: 11.5, color: '#b0a090', lineHeight: 1.6 }}>
                 Use your school-issued credentials to sign in.
               </p>
+              {/* The way from either door to the other schools' doors: the
+                  platform sign-in admits nobody from a school, and a school's
+                  door admits nobody from another one. */}
+              <a
+                href={isPlatform ? '/find-school' : '/find-school?change=1'}
+                style={{ display: 'inline-block', marginTop: 8, padding: '6px 4px', fontSize: 12.5, fontWeight: 600, color: '#591620', textDecoration: 'underline' }}
+              >
+                {isPlatform ? 'With a school? Find your school' : 'Not your school? Choose a different one'}
+              </a>
             </div>
           </div>
 

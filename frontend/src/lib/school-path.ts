@@ -17,7 +17,7 @@ import type { RoleKey } from './types';
  */
 
 /** Paths that belong to no single school and must never be prefixed. */
-const UNSCOPED_PREFIXES = ['/super-admin', '/login', '/select-profile', '/public', '/api'];
+const UNSCOPED_PREFIXES = ['/super-admin', '/login', '/select-profile', '/find-school', '/public', '/api'];
 
 export const isUnscopedPath = (href: string) =>
   UNSCOPED_PREFIXES.some((p) => href === p || href.startsWith(`${p}/`));

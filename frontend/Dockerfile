@@ -24,9 +24,9 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/next.config.mjs ./
-# No `public/` copy: this app has no public directory — static assets live in
-# src/app (icon.svg) and are emitted into .next. Adding a COPY for a path that
-# does not exist would fail the build.
+# The launcher icons the web manifest points at (public/icons). `next start`
+# serves this directory from disk, so it is not part of .next.
+COPY --from=build /app/public ./public
 
 USER node
 EXPOSE 3000

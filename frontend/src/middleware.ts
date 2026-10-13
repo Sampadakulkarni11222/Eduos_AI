@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { isPlatformHost, normalizeHost, routeForSchoolHost } from '@/lib/domain-routing';
+import { isDevOnlyPath, isPlatformHost, normalizeHost, routeForSchoolHost } from '@/lib/domain-routing';
 
 /**
  * Serves a school at its own domain.
@@ -44,6 +44,13 @@ async function schoolForHost(hostname: string): Promise<string | null> {
 }
 
 export async function middleware(request: NextRequest) {
+  // The page refuses to render in production on its own (it calls notFound()),
+  // but by then the root loading boundary has already streamed a 200. Answering
+  // here is what makes it a real 404, on every host.
+  if (process.env.NODE_ENV === 'production' && isDevOnlyPath(request.nextUrl.pathname)) {
+    return new NextResponse('Not found', { status: 404, headers: { 'X-Robots-Tag': 'noindex' } });
+  }
+
   const host = request.headers.get('host') ?? '';
   if (isPlatformHost(host, process.env.PLATFORM_APP_HOSTS)) return NextResponse.next();
 

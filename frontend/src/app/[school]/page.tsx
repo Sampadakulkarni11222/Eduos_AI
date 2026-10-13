@@ -3,8 +3,9 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { SignIn } from '@/components/sign-in';
 import { Spinner } from '@/components/ui';
-import { api } from '@/lib/api';
+import { ApiError, api } from '@/lib/api';
 import { setActiveSchool } from '@/lib/school';
+import { forgetSchool } from '@/lib/school-lookup';
 import { themeStyle, useFavicon } from '@/lib/school-theme';
 import type { PublicSchoolDto } from '@/lib/types';
 
@@ -39,8 +40,13 @@ export default function SchoolEntryPage() {
         setActiveSchool(found);
         setSchool(found);
       })
-      .catch(() => {
-        if (!cancelled) setMissing(true);
+      .catch((x) => {
+        if (cancelled) return;
+        // If this is the school the finder remembered, stop sending the
+        // device back to a door that no longer opens — but only when the
+        // server said so, not because the network dropped for a moment.
+        if (x instanceof ApiError) forgetSchool(slug);
+        setMissing(true);
       });
 
     return () => { cancelled = true; };
@@ -67,6 +73,16 @@ export default function SchoolEntryPage() {
           }}
         >
           Go to sign in
+        </button>
+        <button
+          type="button"
+          onClick={() => router.replace('/find-school?change=1')}
+          style={{
+            border: 'none', background: 'none', cursor: 'pointer',
+            fontFamily: 'Newsreader, serif', fontSize: 15, color: '#591620', textDecoration: 'underline',
+          }}
+        >
+          Find your school
         </button>
       </div>
     );
