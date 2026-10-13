@@ -28,7 +28,7 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,63}$/;
  * rule alone would accept these, and looking one up would only produce a
  * confusing "no such school" for what is really a mistyped address.
  */
-const RESERVED = new Set(['login', 'select-profile', 'super-admin', 'public', 'api', 'find-school', 'icons']);
+export const RESERVED: ReadonlySet<string> = new Set(['login', 'select-profile', 'super-admin', 'public', 'api', 'find-school', 'icons']);
 
 export type SchoolCode = { ok: true; slug: string } | { ok: false; message: string };
 

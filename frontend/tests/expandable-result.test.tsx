@@ -25,6 +25,29 @@ const table = (n: number) => [
 
 const readMore = () => screen.queryByRole('button', { name: /read more/i });
 
+/**
+ * The drawn list items and table parts, for the tests with thousands of rows.
+ *
+ * `getAllByRole` works out the accessible role of every element it visits,
+ * which costs about a millisecond and a half each: one query over 2,500 items
+ * took 3.5 s of a 5 s test, while rendering them took 40 ms. So those tests
+ * timed out on a busy machine without the component being slow at all.
+ *
+ * An `li` directly inside an `ol`/`ul` is a listitem, a `tr` is a row and a
+ * `th` a columnheader — these select the same elements by what makes them so.
+ * The smaller tests above keep their role queries, which is what holds that
+ * equivalence in place.
+ */
+const listItems = () => Array.from(document.querySelectorAll<HTMLElement>('ol > li, ul > li'));
+const tableParts = () => {
+  const t = document.querySelector('table');
+  expect(t).not.toBeNull();
+  return {
+    headers: Array.from(t!.querySelectorAll('thead th')).map((th) => th.textContent),
+    rows: Array.from(t!.querySelectorAll('tr')),
+  };
+};
+
 describe('small results are shown whole', () => {
   it('a short list has every item and no Read more', () => {
     render(<ChatMarkdown text={'You have 3 subjects:\n\n1. **Mathematics** — Arjun Sharma\n2. **Science** — Priya Patel\n3. **English** — Amit Joshi'} />);
@@ -79,12 +102,12 @@ describe('large lists', () => {
   it('a very large list is revealed progressively, and every item is reachable', () => {
     const n = 1200;
     render(<ChatMarkdown text={numbered(n)} />);
-    expect(screen.getAllByRole('listitem')).toHaveLength(PREVIEW_COUNT);
+    expect(listItems()).toHaveLength(PREVIEW_COUNT);
     fireEvent.click(readMore()!);
-    expect(screen.getAllByRole('listitem')).toHaveLength(PREVIEW_COUNT + REVEAL_STEP);
+    expect(listItems()).toHaveLength(PREVIEW_COUNT + REVEAL_STEP);
     fireEvent.click(readMore()!);
     fireEvent.click(readMore()!);
-    const items = screen.getAllByRole('listitem');
+    const items = listItems();
     expect(items).toHaveLength(n);
     expect(items[n - 1]).toHaveTextContent(`Student ${n} — Class 6 A`);
     expect(readMore()).toBeNull();
@@ -119,10 +142,18 @@ describe('large tables', () => {
 });
 
 describe('every size: nothing lost, numbering unbroken, the UI stays usable', () => {
+  /**
+   * The Read more button, found among the buttons rather than by role: the
+   * role query visits every row on each call, and this is called once per
+   * click with thousands of rows already drawn.
+   */
+  const readMoreButton = () =>
+    Array.from(document.querySelectorAll('button')).find((b) => /read more/i.test(b.textContent ?? '')) ?? null;
+
   /** Clicks Read more until it is gone, counting clicks. */
   const expandFully = () => {
     let clicks = 0;
-    while (readMore() && clicks < 50) { fireEvent.click(readMore()!); clicks++; }
+    for (let b = readMoreButton(); b && clicks < 50; b = readMoreButton()) { fireEvent.click(b); clicks++; }
     return clicks;
   };
 
@@ -130,9 +161,9 @@ describe('every size: nothing lost, numbering unbroken, the UI stays usable', ()
     it(`${n} list items`, () => {
       const { unmount } = render(<ChatMarkdown text={numbered(n)} />);
       // Never more than PREVIEW_COUNT drawn at first for a long list.
-      expect(screen.getAllByRole('listitem')).toHaveLength(n > COLLAPSE_AFTER ? PREVIEW_COUNT : n);
+      expect(listItems()).toHaveLength(n > COLLAPSE_AFTER ? PREVIEW_COUNT : n);
       expandFully();
-      const items = screen.getAllByRole('listitem');
+      const items = listItems();
       expect(items).toHaveLength(n);
       // Ordered, no duplicate, no gap.
       expect(items[0]).toHaveTextContent('Student 1 — Class 6 A');
@@ -146,9 +177,9 @@ describe('every size: nothing lost, numbering unbroken, the UI stays usable', ()
     it(`${n} table rows keep their headers`, () => {
       const { unmount } = render(<ChatMarkdown text={table(n)} />);
       expandFully();
-      const t = screen.getByRole('table');
-      expect(within(t).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['Name', 'Class', 'Section', 'Status']);
-      expect(within(t).getAllByRole('row')).toHaveLength(n + 1);
+      const { headers, rows } = tableParts();
+      expect(headers).toEqual(['Name', 'Class', 'Section', 'Status']);
+      expect(rows).toHaveLength(n + 1);
       unmount();
     });
   }
