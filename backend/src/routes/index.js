@@ -51,6 +51,7 @@ import {
   correspondenceRouter, facilitiesRouter, eventsRouter, contractsRouter, verificationRouter,
   complianceRouter, safeguardingRouter, governanceRouter,
 } from '../modules/administration/administration.routes.js';
+import { payrollRouter, procurementRouter, budgetRouter } from '../modules/finance-ops/finance-ops.routes.js';
 import { auditLogger } from '../middleware/auditLogger.js';
 import { signUploadUrlsInResponses, unsignUploadUrlsInBody } from '../modules/uploads/signedUrls.js';
 
@@ -151,6 +152,9 @@ router.use('/verification', verificationRouter);
 router.use('/compliance', complianceRouter);
 router.use('/safeguarding', safeguardingRouter);
 router.use('/governance', governanceRouter);
+router.use('/payroll', payrollRouter);
+router.use('/procurement', procurementRouter);
+router.use('/budgets', budgetRouter);
 
 // NOTE — a public GET /admin-seed endpoint used to live here, gated only by a
 // hardcoded default secret ('eduos-seed-2026'). Anyone who could reach the API
