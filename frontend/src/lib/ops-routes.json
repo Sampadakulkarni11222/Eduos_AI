@@ -26,7 +26,7 @@
     "payslips": { "title": "My Payslips", "desc": "Your payslips for approved payroll.", "icon": "🧾", "permission": "payroll.read", "view": "PayslipsView", "group": "FINANCE_OPS" },
     "organization": { "title": "Organisation Map", "desc": "Departments, positions and people — built from appointments.", "icon": "⌘", "permission": "org.read", "view": "OrganizationView", "group": "PEOPLE_ORG" },
     "institution": { "title": "Institution Profile", "desc": "Legal entity, campuses, affiliations, terminology and public disclosures.", "icon": "🏛", "permission": "institution.read", "view": "InstitutionView", "group": "PEOPLE_ORG" },
-    "marketing": { "title": "Marketing & Admissions", "desc": "Funnel, campaigns, creative, seats and counselling.", "icon": "📣", "permission": "admissions.read", "view": "MarketingView", "group": "GROWTH" },
+    "marketing": { "title": "Marketing & Admissions", "desc": "Funnel, campaigns, creative, seats and counselling.", "icon": "📣", "permission": "marketing.read", "view": "MarketingView", "group": "GROWTH" },
     "newsroom": { "title": "Newsroom", "desc": "Stories, events, achievements, circles and mentoring.", "icon": "◉", "permission": "community.read", "view": "NewsroomView", "group": "COMMUNITY" },
     "mentoring": { "title": "Mentoring", "desc": "Seniors and alumni who help — always supervised for students.", "icon": "☍", "permission": "community.read", "view": "NewsroomView:mentoring", "group": "COMMUNITY" },
     "safeguarding": { "title": "Safeguarding", "desc": "Raise a concern. Child-protection reporting never waits for internal approval.", "icon": "♡", "permission": "safeguarding.report", "view": "SafeguardingView", "group": "SAFETY" },

@@ -273,6 +273,12 @@ export async function list(actor, scope, query = {}) {
 }
 
 /** Approve, reject or return the current stage. */
+/**
+ * Entity types whose final approval also needs a restricted permission, so a
+ * stage approver's role (or a delegation from them) is not enough on its own.
+ */
+const FINAL_APPROVAL_PERMISSION = { PayrollRun: 'payroll.approve' };
+
 export async function decide(actor, id, { action, comment } = {}) {
   requireProfile(actor);
   const act = oneOf(action, ACTIONS, 'action');
@@ -292,6 +298,10 @@ export async function decide(actor, id, { action, comment } = {}) {
     }
     const who = eligibility(req, stage, actor, delegations);
     if (!who) throw new AppError(`This stage (${stage.name}) is not yours to decide.`, 403, [], 'NOT_STAGE_APPROVER');
+    const finalPermission = FINAL_APPROVAL_PERMISSION[req.entityType];
+    if (act === 'APPROVE' && finalPermission && req.currentStage === req.stages.length - 1 && !actor.permissions?.[finalPermission]) {
+      throw new AppError(`Missing permission: ${finalPermission}`, 403, [], 'MISSING_PERMISSION');
+    }
 
     stage.decidedByProfileId = actor.profileId;
     stage.decidedByName = actor.displayName ?? null;

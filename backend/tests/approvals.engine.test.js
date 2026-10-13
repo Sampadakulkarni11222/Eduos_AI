@@ -3,6 +3,7 @@ import { seedRoles, seedPerson, inSchool, OAK, RIVER } from './support/mcpSchool
 import * as approvals from '../src/modules/approvals/approval.service.js';
 import { ApprovalRequest } from '../src/models/approval.model.js';
 import { MessageOutbox } from '../src/models/messaging.model.js';
+import * as messaging from '../src/modules/messaging/messaging.service.js';
 
 /**
  * The approval engine's invariants: stage planning by amount, maker-checker,
@@ -153,6 +154,27 @@ describe('records, notifications and isolation', () => {
     // Two principals in the school; none opted in, so nothing is sent.
     expect(rows).toHaveLength(2);
     expect(rows.every((m) => m.status === 'SKIPPED_NO_CONSENT')).toBe(true);
+  });
+
+  it('a message held for quiet hours is released once, when asked, and never sent twice', async () => {
+    const to = people.TEACHER.actor;
+    await inOak(() => messaging.updatePreferences(to, { whatsappOptIn: true }));
+    // 18:00 UTC is 23:30 in India: inside the default quiet hours.
+    const night = new Date('2026-10-13T18:00:00Z');
+    const [held] = await inOak(() => messaging.sendOperational({
+      templateKey: 'GENERAL_NOTICE', recipientProfileIds: [to.profileId], variables: { title: 'Staff meeting', body: 'At 9' },
+      idempotencyKey: 'quiet-1', now: night,
+    }));
+    expect(held.status).toBe('DEFERRED');
+
+    const early = await inOak(() => messaging.releaseDeferred(people.ADMIN.actor, { now: night }));
+    expect(early.released).toBe(0);
+    const morning = new Date('2026-10-14T03:00:00Z');
+    const out = await inOak(() => messaging.releaseDeferred(people.ADMIN.actor, { now: morning }));
+    // No WhatsApp credentials in tests, so the honest outcome is SIMULATED.
+    expect(out).toEqual({ released: 1, byStatus: { SIMULATED: 1 } });
+    const again = await inOak(() => messaging.releaseDeferred(people.ADMIN.actor, { now: morning }));
+    expect(again.released).toBe(0);
   });
 
   it('another school cannot see or decide the request', async () => {

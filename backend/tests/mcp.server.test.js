@@ -18,6 +18,9 @@ import { STUDENT_UPDATE_ALLOW_LIST } from '../src/modules/ai/mcp/tools/students.
 import { PERMISSION_CATALOG } from '../src/constants/permissions.js';
 import '../src/models/profile.model.js';
 
+/** Roles the assistant serves: those holding ai.copilot.use (see tests/mcp.roleCoverage.test.js). */
+const servedByAssistant = (key) => SYSTEM_ROLES.find((r) => r.key === key).grants.some((g) => g.key === 'ai.copilot.use');
+
 /**
  * The MCP server, exercised the way an AI agent reaches it.
  *
@@ -143,7 +146,7 @@ describe('tool discovery follows permissions, not role names', () => {
   it('gives each role that can use the assistant a usable, bounded toolset', () => {
     for (const role of SYSTEM_ROLES.map((r) => r.key)) {
       const tools = mcpToolsFor(actorFor(role));
-      if (role === 'SUPER_ADMIN') {
+      if (!servedByAssistant(role)) {
         // Excluded from the assistant by not holding ai.copilot.use, so it is
         // described no catalogue at all. See tests/ai.superAdminExcluded.test.js.
         expect(tools, 'SUPER_ADMIN was offered a catalogue').toEqual([]);

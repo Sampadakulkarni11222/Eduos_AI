@@ -21,9 +21,10 @@ import { DataNote, ErrorNote, Loadable, PromptModal, SectionCard, StatusPill, Ta
 type Tab = 'funnel' | 'campaigns' | 'assets' | 'seats' | 'appointments';
 const CHANNELS = ['SOCIAL', 'SEARCH', 'PRINT', 'OUTDOOR', 'RADIO', 'EVENT', 'REFERRAL', 'WHATSAPP', 'EMAIL', 'WEBSITE', 'OTHER'];
 
-function Funnel() {
+function Funnel({ canReadLeads }: { canReadLeads: boolean }) {
   const state = useLoad(() => opsApi.marketingAnalytics(), []);
-  const dups = useLoad(() => opsApi.duplicateLeads(), []);
+  // Enquiry details need admissions.read; without it only the aggregate figures load.
+  const dups = useLoad(() => (canReadLeads ? opsApi.duplicateLeads() : Promise.resolve([])), [canReadLeads]);
   const link = useSchoolHref();
   return (
     <Loadable state={state}>{(a) => (
@@ -163,8 +164,8 @@ function Assets({ canManage, canReview }: { canManage: boolean; canReview: boole
   );
 }
 
-function Seats({ canManage }: { canManage: boolean }) {
-  const state = useLoad(() => Promise.all([opsApi.capacity(), opsApi.offers()]), []);
+function Seats({ canManage, canReadLeads }: { canManage: boolean; canReadLeads: boolean }) {
+  const state = useLoad(() => Promise.all([opsApi.capacity(), canReadLeads ? opsApi.offers() : Promise.resolve([])]), [canReadLeads]);
   const [cap, setCap] = useState({ academicYear: '2027-28', gradeOrProgramme: '', capacity: '' });
   const [offer, setOffer] = useState({ leadId: '', academicYear: '2027-28', gradeOrProgramme: '' });
   const { run, busy, error } = useAction();
@@ -177,6 +178,7 @@ function Seats({ canManage }: { canManage: boolean }) {
           {caps.length > 0 && <div className="ops-table-wrap"><table className="ops-table"><thead><tr><th>Year</th><th>Class / programme</th><th className="num">Capacity</th><th className="num">Offered</th><th className="num">Accepted</th><th className="num">Available</th><th>Use</th></tr></thead><tbody>{caps.map((c) => <tr key={c.id}><td>{c.academicYear}</td><td>{c.gradeOrProgramme}</td><td className="num">{c.capacity}</td><td className="num">{c.offered}</td><td className="num">{c.accepted}</td><td className="num">{c.available}</td><td style={{ minWidth: 100 }}><div className="ops-bar"><span style={{ width: `${c.utilisationPct ?? 0}%` }} /></div></td></tr>)}</tbody></table></div>}
           {canManage && <div className="ops-inline"><input className="input" value={cap.academicYear} onChange={(e) => setCap({ ...cap, academicYear: e.target.value })} aria-label="Academic year" style={{ width: 100 }} /><input className="input" value={cap.gradeOrProgramme} onChange={(e) => setCap({ ...cap, gradeOrProgramme: e.target.value })} placeholder="Class 1 / B.Com" aria-label="Class or programme" /><input className="input" inputMode="numeric" value={cap.capacity} onChange={(e) => setCap({ ...cap, capacity: e.target.value })} placeholder="Seats" style={{ width: 90 }} aria-label="Seats" /><Button small disabled={busy || !cap.gradeOrProgramme || !cap.capacity} onClick={() => void run(async () => { await opsApi.setCapacity({ ...cap, capacity: Number(cap.capacity) }); await state.reload(); })}>Save capacity</Button></div>}
         </SectionCard>
+        {canReadLeads && (
         <SectionCard title="Offers & waitlist" sub="Application, offer, accepted, fee paid (checked against the fees module) and enrolled are separate steps.">
           {canManage && <div className="ops-inline"><input className="input" value={offer.leadId} onChange={(e) => setOffer({ ...offer, leadId: e.target.value })} placeholder="Enquiry ID (from the CRM)" aria-label="Enquiry ID" /><input className="input" value={offer.gradeOrProgramme} onChange={(e) => setOffer({ ...offer, gradeOrProgramme: e.target.value })} placeholder="Class / programme" aria-label="Class or programme" /><input className="input" value={offer.academicYear} onChange={(e) => setOffer({ ...offer, academicYear: e.target.value })} aria-label="Academic year" style={{ width: 100 }} /><Button small disabled={busy || !offer.leadId || !offer.gradeOrProgramme} onClick={() => void run(async () => { const o = await opsApi.offerSeat(offer); toast(o.status === 'OFFERED' ? 'Seat offered' : `No seat free — waitlisted #${o.waitlistPosition}`, 'info'); await state.reload(); })}>Offer a seat</Button></div>}
           {!offers.length ? <p className="ops-muted">No offers yet.</p> : <ul className="ops-list">{offers.map((o) => (
@@ -188,6 +190,7 @@ function Seats({ canManage }: { canManage: boolean }) {
             </li>
           ))}</ul>}
         </SectionCard>
+        )}
         <DataNote>Reservation categories (e.g. RTE 12(1)(c) where it applies to your school, or management quota) are configured by the school after checking they apply; EduOS does not assume any.</DataNote>
         <ErrorNote error={error} />
       </div>
@@ -214,17 +217,18 @@ export function MarketingView() {
   const { permissions } = usePermissions();
   const canManage = Boolean(permissions['marketing.manage']);
   const canAdmit = Boolean(permissions['admissions.manage']);
+  const canReadLeads = Boolean(permissions['admissions.read']);
   const canReview = Boolean(permissions['marketing.manage'] || permissions['community.moderate']);
   const link = useSchoolHref();
   const [tab, setTab] = useState<Tab>('funnel');
   return (
     <div className="ops-stack">
-      <div className="ops-inline"><Tabs tabs={[{ key: 'funnel', label: 'Enrolment funnel' }, { key: 'campaigns', label: 'Campaigns' }, { key: 'assets', label: 'Creative' }, { key: 'seats', label: 'Seats & offers' }, { key: 'appointments', label: 'Counselling' }]} value={tab} onChange={setTab} /><Link className="btn btn-soft btn-sm" href={link('/admin/admissions')}>Admission CRM</Link></div>
-      {tab === 'funnel' && <Funnel />}
+      <div className="ops-inline"><Tabs tabs={[{ key: 'funnel', label: 'Enrolment funnel' }, { key: 'campaigns', label: 'Campaigns' }, { key: 'assets', label: 'Creative' }, { key: 'seats', label: canReadLeads ? 'Seats & offers' : 'Seats' }, ...(canReadLeads ? [{ key: 'appointments' as const, label: 'Counselling' }] : [])]} value={tab} onChange={setTab} />{canReadLeads && <Link className="btn btn-soft btn-sm" href={link('/admin/admissions')}>Admission CRM</Link>}</div>
+      {tab === 'funnel' && <Funnel canReadLeads={canReadLeads} />}
       {tab === 'campaigns' && <Campaigns canManage={canManage} />}
       {tab === 'assets' && <Assets canManage={canManage} canReview={canReview} />}
-      {tab === 'seats' && <Seats canManage={canAdmit} />}
-      {tab === 'appointments' && <Appointments canManage={canAdmit} />}
+      {tab === 'seats' && <Seats canManage={canAdmit} canReadLeads={canReadLeads} />}
+      {tab === 'appointments' && canReadLeads && <Appointments canManage={canAdmit} />}
     </div>
   );
 }

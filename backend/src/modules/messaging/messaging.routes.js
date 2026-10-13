@@ -23,4 +23,7 @@ router.get('/channels', requirePermission('messaging.read'), asyncHandler(async 
 router.get('/outbox', requirePermission('messaging.read'), asyncHandler(async (req, res) =>
   sendSuccess(res, await service.listOutbox(req.actor, req.scope, req.query))));
 
+router.post('/outbox/release', requirePermission('messaging.manage'), asyncHandler(async (req, res) =>
+  sendSuccess(res, await service.releaseDeferred(req.actor), 'Deferred messages released')));
+
 export default router;

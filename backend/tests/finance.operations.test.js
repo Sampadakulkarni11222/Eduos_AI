@@ -117,6 +117,10 @@ describe('payroll run lifecycle', () => {
     // Finance cannot approve payroll; the principal does.
     expect(P.FINANCE.actor.permissions['payroll.approve']).toBeUndefined();
     await expect(inOak(() => payroll.bankFile(P.FINANCE.actor, run.id))).rejects.toMatchObject({ code: 'NOT_APPROVED' });
+    // Being the stage approver is not enough: the final approval needs payroll.approve itself.
+    const { 'payroll.approve': _withheld, ...withoutApprove } = P.PRINCIPAL.actor.permissions;
+    await expect(inOak(() => approvals.decide({ ...P.PRINCIPAL.actor, permissions: withoutApprove }, sent.approvalRequestId, { action: 'APPROVE' })))
+      .rejects.toMatchObject({ code: 'MISSING_PERMISSION' });
     await approveAll(sent.approvalRequestId);
     await expect(inOak(() => payroll.calculate(P.FINANCE.actor, run.id))).rejects.toMatchObject({ code: 'RUN_LOCKED' });
 

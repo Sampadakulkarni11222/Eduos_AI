@@ -206,9 +206,13 @@ export const attendanceTools = {
       // yesterday until 05:30 in India, so an early-morning "who is absent in
       // Class 5 A?" was answered from the previous day's register.
       const day = args.date ?? today();
-      const roster = await attendance.getRoster(ctx.actor, ctx.scope, section.sectionId, day, args.periodNo ?? null);
+      const full = await attendance.getRoster(ctx.actor, ctx.scope, section.sectionId, day, args.periodNo ?? null);
       // getRoster() returns its rows under `roster`, beside section and period details.
-      const rows = Array.isArray(roster) ? roster : (roster?.roster ?? []);
+      // The photo is for the marking screen's flashcards; an upload path is not
+      // something the assistant passes on.
+      const withoutPhoto = ({ photoUrl: _photoUrl, ...row }) => row;
+      const rows = (Array.isArray(full) ? full : (full?.roster ?? [])).map(withoutPhoto);
+      const roster = Array.isArray(full) ? rows : { ...full, roster: rows };
       const marked = rows.filter((r) => r.status).length;
       // The roster rows carry the name differently depending on how the service
       // populated them, so each shape is tried in turn. Parenthesised because

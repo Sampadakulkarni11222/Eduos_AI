@@ -219,6 +219,50 @@ export async function sendOperational({
   return results;
 }
 
+/**
+ * Sends the messages that were held for quiet hours and are now due. There is
+ * no scheduler in the app, so this runs when an administrator (or an external
+ * scheduler calling the route) asks for it; running it twice sends nothing
+ * twice, because a row leaves DEFERRED the first time.
+ */
+export async function releaseDeferred(actor, { now = new Date() } = {}) {
+  requireProfile(actor);
+  const due = await MessageOutbox.find({ status: 'DEFERRED', channel: 'WHATSAPP', scheduledFor: { $lte: now } }).limit(500);
+  const counts = {};
+  for (const row of due) {
+    /* eslint-disable no-await-in-loop -- sends are sequential per recipient */
+    const profile = await Profile.findById(row.recipientProfileId).select('accountId').lean();
+    const account = profile ? await Account.findById(profile.accountId).select('phoneE164').lean() : null;
+    const pref = await ContactPreference.findOne({ profileId: row.recipientProfileId }).lean();
+    const phone = account?.phoneE164;
+    let status;
+    let reason = null;
+    // Consent and contact details may have changed while the message waited.
+    if (!phone) { status = 'SKIPPED_NO_CONTACT'; reason = 'No phone number on the account'; }
+    else if (pref?.whatsappOptIn?.status !== 'OPTED_IN') { status = 'SKIPPED_NO_CONSENT'; reason = 'Recipient has not opted in to WhatsApp messages'; }
+    else if (!isWhatsappLive()) { status = 'SIMULATED'; reason = 'WhatsApp is not configured; nothing was sent'; }
+    else if (!templateName(row.templateKey)) { status = 'SKIPPED_TEMPLATE_NOT_CONFIGURED'; reason = `Set WA_TEMPLATE_${row.templateKey} to the approved template name`; }
+    else {
+      row.attempts = (row.attempts ?? 0) + 1;
+      try {
+        const out = await transport({ to: phone, template: templateName(row.templateKey), variables: row.variables, language: pref?.language });
+        if (out.ok) { status = 'SENT'; row.providerMessageId = out.providerMessageId; }
+        else { status = out.unknown ? 'UNKNOWN' : 'FAILED'; reason = out.error ?? null; }
+      } catch (err) {
+        status = err?.name === 'TimeoutError' ? 'UNKNOWN' : 'FAILED';
+        reason = err.message;
+      }
+    }
+    row.status = status;
+    row.statusReason = reason;
+    row.statusHistory.push({ status, at: new Date(), detail: reason ?? undefined });
+    await row.save();
+    /* eslint-enable no-await-in-loop */
+    counts[status] = (counts[status] ?? 0) + 1;
+  }
+  return { released: due.length, byStatus: counts };
+}
+
 const STATUS_RANK = { SENT: 1, DELIVERED: 2, READ: 3 };
 
 /**

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { SYSTEM_ROLES, PERMISSION_CATALOG } from '../src/constants/permissions.js';
+import { SYSTEM_ROLES, PERMISSION_CATALOG, PLATFORM_WITHHELD } from '../src/constants/permissions.js';
 import { buildPermissionMap } from '../src/utils/buildPermissionMap.js';
 import { MCP_TOOLS, mcpToolsFor, mutates } from '../src/modules/ai/mcp/registry.js';
 import { capabilitiesFor } from '../src/modules/ai/mcp/capabilities.js';
@@ -43,7 +43,14 @@ const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'sr
  * exclusion itself is asserted separately.
  */
 const ALL_ROLES = SYSTEM_ROLES.map((r) => r.key);
-const EXCLUDED_ROLES = ['SUPER_ADMIN'];
+/**
+ * The institution-operations roles (HR, marketing, compliance, trustees and
+ * alumni) are not served by the assistant yet: it has no tools for the pages
+ * they work in, so they hold no `ai.copilot.use`. The list is pinned below, so
+ * a role added later has to be placed on one side or the other on purpose.
+ */
+const NOT_YET_SERVED = ['HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'ALUMNUS'];
+const EXCLUDED_ROLES = ['SUPER_ADMIN', ...NOT_YET_SERVED];
 const ROLES = ALL_ROLES.filter((key) => !EXCLUDED_ROLES.includes(key));
 const actorFor = (roleKey) => ({
   roleKey,
@@ -69,8 +76,22 @@ function uncoveredFor(roleKey) {
  * C — blocked: either the service cannot be called safely as an actor, or the
  *     feature does not exist in the backend at all.
  * D — deliberately unavailable to the assistant.
+ * P — planned: the feature exists, but no assistant tool has been built for it.
  */
+/**
+ * Institution-operations permissions (approvals, administration, compliance,
+ * governance, payroll, procurement, budgets, marketing, community, campus and
+ * messaging). The pages and API exist; the assistant has no tool for them yet.
+ * Read-only tools for these are the first AI item in
+ * docs/erp-operations/COMPETITOR-GAP-ANALYSIS.md.
+ */
+const OPERATIONS_KEYS = PERMISSION_CATALOG.map((p) => p.key).filter((key) => /^(approvals|governance|institution|org|correspondence|compliance|contracts|verification|events|facilities|safeguarding|payroll|procurement|budget|funding|marketing|community|mentoring|campus|messaging)\./.test(key));
+const PLANNED_WHY = 'Institution-operations feature with its own pages and API; the assistant has no tool for it yet. Planned as read-only tools first, and never a tool that approves, files or decides.';
+
 const UNCOVERED = {
+  /* ── P. planned: the feature exists, the assistant tool does not ── */
+  ...Object.fromEntries(OPERATIONS_KEYS.map((key) => [key, { category: 'P', why: PLANNED_WHY }])),
+
   /* ── A. reachable under another permission key ─────────── */
   'reportcards.read': {
     category: 'A',
@@ -146,6 +167,11 @@ describe('every role the authorization system defines', () => {
     expect(ALL_ROLES.length).toBeGreaterThanOrEqual(9);
   });
 
+  it('serves exactly the roles that hold the assistant permission', () => {
+    const withoutAssistant = SYSTEM_ROLES.filter((r) => !r.grants.some((g) => g.key === 'ai.copilot.use')).map((r) => r.key);
+    expect(withoutAssistant.sort()).toEqual([...EXCLUDED_ROLES].sort());
+  });
+
   it('excludes SUPER_ADMIN from the assistant, by permission rather than by name', () => {
     const superAdmin = actorFor('SUPER_ADMIN');
     // The whole exclusion: it does not hold the assistant permission, which
@@ -159,7 +185,8 @@ describe('every role the authorization system defines', () => {
     // permission in the catalog, the platform-only ones included.
     const catalog = PERMISSION_CATALOG.map((p) => p.key);
     const held = Object.keys(superAdmin.permissions);
-    expect(held.sort()).toEqual(catalog.filter((k) => k !== 'ai.copilot.use').sort());
+    // Bar the keys the platform never holds: safeguarding cases and individual pay.
+    expect(held.sort()).toEqual(catalog.filter((k) => k !== 'ai.copilot.use' && !PLATFORM_WITHHELD.includes(k)).sort());
     expect(superAdmin.permissions['schools.manage']).toBe('ALL');
     expect(superAdmin.permissions['ai.insights.read']).toBe('ALL');
   });
@@ -216,7 +243,7 @@ describe('the authorized permission surface is covered by the capability surface
 
   it('records a category and a real reason for each', () => {
     for (const [key, entry] of Object.entries(UNCOVERED)) {
-      expect(['A', 'C', 'D'], `${key}`).toContain(entry.category);
+      expect(['A', 'C', 'D', 'P'], `${key}`).toContain(entry.category);
       expect(entry.why.length, `${key} has no real reason recorded`).toBeGreaterThan(40);
       // Category A claims a capability exists; it has to actually exist.
       if (entry.category === 'A') expect(MCP_TOOLS, `${key} claims ${entry.via}`).toHaveProperty(entry.via);

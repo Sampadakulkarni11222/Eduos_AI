@@ -15,6 +15,9 @@ import {
   seedSchool, seedPerson, actorForRole, mcp, proposeAndConfirm, inSchool, todayKey, OAK, RIVER,
 } from './support/mcpSchool.js';
 
+/** Roles the assistant serves: those holding ai.copilot.use (see tests/mcp.roleCoverage.test.js). */
+const servedByAssistant = (key) => SYSTEM_ROLES.find((r) => r.key === key).grants.some((g) => g.key === 'ai.copilot.use');
+
 /**
  * The security properties of the MCP layer, against a real school.
  *
@@ -69,7 +72,8 @@ describe('discovery and execution agree for every role', () => {
     // The matrix above is what proves the second half — hiding a tool is not
     // the same as refusing to run it, and this role still holds the permission
     // each tool names.
-    if (roleKey === 'SUPER_ADMIN') expect(visible).toBe(0);
+    // The same holds for the roles the assistant does not serve yet.
+    if (!servedByAssistant(roleKey)) expect(visible).toBe(0);
     else expect(visible).toBeGreaterThan(0);
   }, 60_000);
 

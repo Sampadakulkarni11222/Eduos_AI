@@ -62,7 +62,8 @@ const mRead = requirePermission('marketing.read');
 const mMan = requirePermission('marketing.manage');
 const aRead = requirePermission('admissions.read');
 const aMan = requirePermission('admissions.manage');
-marketingRouter.get('/analytics', aRead, ok((r) => marketing.analytics(r.query)));
+// Aggregate funnel and capacity figures carry no enquiry details, so marketing.read is enough.
+marketingRouter.get('/analytics', mRead, ok((r) => marketing.analytics(r.query)));
 marketingRouter.get('/campaigns', mRead, ok(() => marketing.listCampaigns()));
 marketingRouter.post('/campaigns', mMan, ok((r) => marketing.createCampaign(r.actor, r.body), 'Campaign created', 201));
 marketingRouter.patch('/campaigns/:id', mMan, ok((r) => marketing.updateCampaign(r.actor, r.params.id, r.body), 'Campaign updated'));
@@ -76,7 +77,7 @@ marketingRouter.patch('/assets/:id', mRead, ok((r) => {
 }, 'Asset updated'));
 marketingRouter.patch('/leads/:id', aMan, ok((r) => marketing.updateLeadMarketing(r.actor, r.params.id, r.body), 'Enquiry updated'));
 marketingRouter.get('/leads/duplicates', aRead, ok(() => marketing.duplicateLeads()));
-marketingRouter.get('/capacity', aRead, ok((r) => marketing.listCapacity(r.query)));
+marketingRouter.get('/capacity', mRead, ok((r) => marketing.listCapacity(r.query)));
 marketingRouter.put('/capacity', aMan, ok((r) => marketing.setCapacity(r.actor, r.body), 'Capacity saved'));
 marketingRouter.get('/offers', aRead, ok((r) => marketing.listOffers(r.query)));
 marketingRouter.post('/offers', aMan, ok((r) => marketing.offerSeat(r.actor, r.body), 'Offer recorded', 201));

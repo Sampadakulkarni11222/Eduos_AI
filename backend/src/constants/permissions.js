@@ -341,6 +341,13 @@ const merge = (...lists) => {
 const ALL_EXCEPT = (...excluded) =>
   PERMISSION_CATALOG.filter((p) => !excluded.includes(p.key)).map((p) => ({ key: p.key, scope: 'ALL' }));
 
+/**
+ * Keys the platform role does not hold even though it holds the rest of the
+ * catalogue: child-protection case files and individual salary and bank
+ * details belong to the school, not to the platform operator.
+ */
+export const PLATFORM_WITHHELD = ['safeguarding.manage', 'payroll.sensitive.read'];
+
 export const SYSTEM_ROLES = [
   {
     key: 'SUPER_ADMIN',
@@ -348,7 +355,7 @@ export const SYSTEM_ROLES = [
     description: 'Platform administrator — manages schools and their School Admin accounts',
     // Platform support does not get child-protection cases or payroll
     // internals by default either — see RESTRICTED_BY_DEFAULT.
-    grants: ALL_EXCEPT(AI_ASSISTANT_PERMISSION, 'safeguarding.manage', 'payroll.sensitive.read'),
+    grants: ALL_EXCEPT(AI_ASSISTANT_PERMISSION, ...PLATFORM_WITHHELD),
   },
   {
     key: 'ADMIN',
@@ -414,7 +421,6 @@ export const SYSTEM_ROLES = [
       ['procurement.read', 'ALL'],
       ['budget.read', 'ALL'],
       ['funding.read', 'ALL'],
-      ['admissions.read', 'ALL'],
       ['marketing.read', 'ALL'],
       ['community.read', 'ALL'],
       ['community.post', 'ALL'],
