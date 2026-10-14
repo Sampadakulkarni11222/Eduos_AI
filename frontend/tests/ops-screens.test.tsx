@@ -160,3 +160,19 @@ describe('dashboard links only go to pages the portal has', () => {
     expect(pageFor('/oakridge/teacher', '/approvals?id=9')).toBe('/oakridge/teacher/approvals?id=9');
   });
 });
+
+describe('signing in again goes back to the right door', () => {
+  it('names the school from the address, and the platform for platform pages', async () => {
+    const { schoolDoorOf, signInPathFor } = await import('@/lib/school-path');
+    expect(schoolDoorOf('/oakridge/principal/today')).toBe('oakridge');
+    expect(schoolDoorOf('/oakridge')).toBe('oakridge');
+    // Platform pages and bare portal paths belong to no school.
+    expect(schoolDoorOf('/login')).toBeNull();
+    expect(schoolDoorOf('/super-admin/schools')).toBeNull();
+    expect(schoolDoorOf('/admin/users')).toBeNull();
+    expect(schoolDoorOf('/')).toBeNull();
+    // A school's people never land on the platform sign-in, which admits platform administrators only.
+    expect(signInPathFor('oakridge')).toBe('/oakridge');
+    expect(signInPathFor(null)).toBe('/login');
+  });
+});

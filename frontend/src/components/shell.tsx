@@ -10,7 +10,7 @@ import { clearActingSchool, platformViewAllowed, setActingSchool, useActingSchoo
 import type { RoleKey, SchoolBrandingDto, SchoolSidebarConfigDto } from '@/lib/types';
 import { Spinner, cx } from './ui';
 import { usePermissions, getRequiredPermission } from '@/lib/permissions';
-import { portalHome, stripSchool, useSchoolSegment, withSchool } from '@/lib/school-path';
+import { portalHome, signInPathFor, stripSchool, useSchoolSegment, withSchool } from '@/lib/school-path';
 import { AskEduOS } from './ask-eduos';
 import { NotificationBell } from './notification-bell';
 import { ModalA11yBridge } from './modal-a11y-bridge';
@@ -137,8 +137,9 @@ export function PortalShell({
 
   useEffect(() => {
     if (loading) return;
-    if (!me) return router.replace('/login');
-    if (!me.profile?.id || !me.profile?.role) return router.replace('/login');
+    // Back to this school's own sign-in: the platform one admits platform administrators only.
+    if (!me) return router.replace(signInPathFor(school));
+    if (!me.profile?.id || !me.profile?.role) return router.replace(signInPathFor(school));
 
     // Two things can be wrong with this URL: the portal (a teacher on /admin)
     // and the school (an Oakridge account on /nvmp/admin). The profile's own

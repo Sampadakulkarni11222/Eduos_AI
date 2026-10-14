@@ -111,3 +111,23 @@ export function usePortalPage(): (href: string | null | undefined) => string | n
     return found ? withSchool(school, `/${portal}/${found}${found === page ? suffix : ''}`) : null;
   };
 }
+
+/**
+ * The school whose door a path belongs to: the first segment of
+ * `/oakridge/principal/fees`, or null for the platform's own pages
+ * (`/login`, `/super-admin/...`) and for portal paths with no school.
+ */
+export function schoolDoorOf(pathname: string | null | undefined): string | null {
+  const first = String(pathname ?? '').split('/')[1] ?? '';
+  if (!first || isUnscopedPath(`/${first}`) || PORTALS[first]) return null;
+  return first;
+}
+
+/**
+ * Where someone with no session should sign in. A school's people go back to
+ * their school's own door; sending them to the platform sign-in instead
+ * (`/login`) turned them away with "platform administrators only".
+ */
+export function signInPathFor(school: string | null | undefined): string {
+  return school ? `/${school}` : '/login';
+}

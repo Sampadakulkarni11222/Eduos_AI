@@ -4,7 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { SignIn } from '@/components/sign-in';
 import { Spinner } from '@/components/ui';
 import { api } from '@/lib/api';
-import { setActiveSchool } from '@/lib/school';
+import { rememberLastSchool, setActiveSchool } from '@/lib/school';
 import { themeStyle, useFavicon } from '@/lib/school-theme';
 import type { PublicSchoolDto } from '@/lib/types';
 
@@ -37,6 +37,7 @@ export default function SchoolEntryPage() {
       .then((found) => {
         if (cancelled) return;
         setActiveSchool(found);
+        rememberLastSchool(found);
         setSchool(found);
       })
       .catch(() => {

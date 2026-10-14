@@ -3,7 +3,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, api, setSession } from '@/lib/api';
 import { useAuth, stashLoginProfiles } from '@/lib/auth';
-import { clearActiveSchool } from '@/lib/school';
+import { clearActiveSchool, lastSchool } from '@/lib/school';
 import { checkDoor } from '@/lib/login-door';
 import { portalHome } from '@/lib/school-path';
 import { signIn, useSession } from 'next-auth/react';
@@ -337,6 +337,9 @@ export function SignIn({ school: schoolProp }: { school?: PublicSchoolDto | null
   const { data: session } = useSession();
 
   const isPlatform = !school;
+  // At the platform door, point someone who has used a school here before back to it.
+  const [rememberedSchool, setRememberedSchool] = useState<{ slug: string; name: string } | null>(null);
+  useEffect(() => { if (isPlatform) setRememberedSchool(lastSchool()); }, [isPlatform]);
   // The door this screen is: a school's slug, or null for the platform. It
   // travels with every credential so the server refuses an account that
   // belongs elsewhere before it ever issues a code or a session.
@@ -597,6 +600,13 @@ export function SignIn({ school: schoolProp }: { school?: PublicSchoolDto | null
                   ? 'For platform administrators. School staff, students and families sign in at their own school’s address.'
                   : `Sign in to your ${brandName} account`}
               </p>
+              {isPlatform && rememberedSchool && (
+                <p style={{ marginTop: 10, fontSize: 13.5 }}>
+                  <a href={`/${rememberedSchool.slug}`} style={{ fontWeight: 700, color: '#591620', textDecoration: 'underline' }}>
+                    Sign in to {rememberedSchool.name} →
+                  </a>
+                </p>
+              )}
             </div>
 
             {pageErr && <div style={{ marginBottom: 14 }}><ErrBanner msg={pageErr} /></div>}
