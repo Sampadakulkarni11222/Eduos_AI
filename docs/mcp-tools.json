@@ -1,18 +1,18 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 192,
+    "total": 180,
     "byOperation": {
-      "GET": 103,
+      "GET": 104,
       "CREATE": 33,
       "UPDATE": 15,
       "DELETE": 10,
-      "ACTION": 31
+      "ACTION": 18
     },
     "byRisk": {
-      "LOW": 109,
-      "HIGH": 30,
-      "MEDIUM": 52,
+      "LOW": 110,
+      "HIGH": 23,
+      "MEDIUM": 46,
       "CRITICAL": 1
     }
   },
@@ -1989,207 +1989,6 @@
       "wrapsAgentTool": null
     },
     {
-      "name": "record_payment",
-      "module": "Fees",
-      "operation": "ACTION",
-      "description": "Record a fee payment received against an invoice. Name the invoice by its number (e.g. \"INV-1042\") or id; the amount is in whole paise (₹500 is 50000). Staff only — a family cannot mark its own invoice paid and must use the online payment link. When the person recording cannot approve payments, the payment is saved pending admin approval. CHEQUE, DD and BANK payments need instrument details with a proof URL; CASH needs none. Money moves in the ledger, so this always needs confirmation.",
-      "input": {
-        "type": "object",
-        "properties": {
-          "invoiceId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$",
-            "description": "Preferred when known"
-          },
-          "invoiceNo": {
-            "type": "string",
-            "maxLength": 40,
-            "description": "Alternative to invoiceId"
-          },
-          "amountPaise": {
-            "type": "integer",
-            "minimum": 1,
-            "description": "Whole paise. ₹500 is 50000."
-          },
-          "mode": {
-            "type": "string",
-            "enum": [
-              "CASH",
-              "CHEQUE",
-              "DD",
-              "BANK"
-            ],
-            "description": "Cash unless another mode is named"
-          },
-          "paidOn": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-          },
-          "receiptNo": {
-            "type": "string",
-            "maxLength": 40
-          },
-          "notes": {
-            "type": "string",
-            "maxLength": 500
-          },
-          "instrument": {
-            "type": "object",
-            "description": "Required for CHEQUE, DD and BANK: number, bankName, instrumentDate and a proofUrl (image or PDF). Not used for CASH.",
-            "properties": {
-              "number": {
-                "type": "string",
-                "maxLength": 60,
-                "description": "Cheque, DD or transfer reference number"
-              },
-              "referenceNo": {
-                "type": "string",
-                "maxLength": 60
-              },
-              "bankName": {
-                "type": "string",
-                "maxLength": 120
-              },
-              "instrumentDate": {
-                "type": "string",
-                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-                "description": "Date on the cheque, DD or transfer"
-              },
-              "proofUrl": {
-                "type": "string",
-                "maxLength": 500,
-                "description": "Uploaded scan of the instrument"
-              },
-              "proofName": {
-                "type": "string",
-                "maxLength": 160
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "required": [
-          "amountPaise"
-        ],
-        "additionalProperties": false
-      },
-      "permission": "fees.pay",
-      "scope": "ALL",
-      "risk": "HIGH",
-      "confirmation": "REQUIRED",
-      "affectsOthers": true,
-      "readOnly": false,
-      "service": "fee.service.recordPayment()",
-      "status": "AVAILABLE",
-      "wrapsAgentTool": null
-    },
-    {
-      "name": "approve_payment",
-      "module": "Fees",
-      "operation": "ACTION",
-      "description": "Approve a payment that is pending admin approval, making it final and visible to the family. Requires the payment-approval permission, which Finance deliberately does not hold. Needs confirmation. A payment already approved cannot be approved again.",
-      "input": {
-        "type": "object",
-        "properties": {
-          "paymentId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
-          },
-          "invoiceNo": {
-            "type": "string",
-            "maxLength": 40,
-            "description": "The invoice the payment is on, e.g. \"INV-1042\". Alternative to paymentId."
-          },
-          "receiptNo": {
-            "type": "string",
-            "maxLength": 40,
-            "description": "The receipt number of the payment, when there is more than one on the invoice"
-          }
-        },
-        "additionalProperties": false
-      },
-      "permission": "fees.payments.approve",
-      "scope": "ALL",
-      "risk": "HIGH",
-      "confirmation": "REQUIRED",
-      "affectsOthers": true,
-      "readOnly": false,
-      "service": "fee.service.approvePayment()",
-      "status": "AVAILABLE",
-      "wrapsAgentTool": null
-    },
-    {
-      "name": "reject_payment",
-      "module": "Fees",
-      "operation": "ACTION",
-      "description": "Reject a payment awaiting approval. A reason is required and is recorded. Needs confirmation.",
-      "input": {
-        "type": "object",
-        "properties": {
-          "paymentId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
-          },
-          "invoiceNo": {
-            "type": "string",
-            "maxLength": 40,
-            "description": "The invoice the payment is on, e.g. \"INV-1042\". Alternative to paymentId."
-          },
-          "receiptNo": {
-            "type": "string",
-            "maxLength": 40,
-            "description": "The receipt number of the payment, when there is more than one on the invoice"
-          },
-          "reason": {
-            "type": "string",
-            "minLength": 3,
-            "maxLength": 500
-          }
-        },
-        "required": [
-          "reason"
-        ],
-        "additionalProperties": false
-      },
-      "permission": "fees.payments.approve",
-      "scope": "ALL",
-      "risk": "HIGH",
-      "confirmation": "REQUIRED",
-      "affectsOthers": true,
-      "readOnly": false,
-      "service": "fee.service.rejectPayment()",
-      "status": "AVAILABLE",
-      "wrapsAgentTool": null
-    },
-    {
-      "name": "refund_payment",
-      "module": "Fees",
-      "operation": "ACTION",
-      "description": "Refund a captured payment and deduct it from the invoice. Needs confirmation. The service refuses a second refund of the same payment, so a retry cannot deduct twice.",
-      "input": {
-        "type": "object",
-        "properties": {
-          "paymentId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
-          }
-        },
-        "required": [
-          "paymentId"
-        ],
-        "additionalProperties": false
-      },
-      "permission": "fees.payments.refund",
-      "scope": "ALL",
-      "risk": "HIGH",
-      "confirmation": "REQUIRED",
-      "affectsOthers": true,
-      "readOnly": false,
-      "service": "fee.service.refundPayment()",
-      "status": "AVAILABLE",
-      "wrapsAgentTool": null
-    },
-    {
       "name": "request_payment_change",
       "module": "Fees",
       "operation": "CREATE",
@@ -2248,51 +2047,10 @@
       "wrapsAgentTool": null
     },
     {
-      "name": "decide_payment_change_request",
-      "module": "Fees",
-      "operation": "ACTION",
-      "description": "Approve or reject a request to amend a finalised payment. Approving applies the requested change. A reason is needed to reject. Needs confirmation.",
-      "input": {
-        "type": "object",
-        "properties": {
-          "requestId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
-          },
-          "invoiceNo": {
-            "type": "string",
-            "maxLength": 40,
-            "description": "The invoice the payment is on, e.g. \"INV-1042\". Alternative to paymentId."
-          },
-          "approve": {
-            "type": "boolean"
-          },
-          "reason": {
-            "type": "string",
-            "maxLength": 500,
-            "description": "Required when rejecting"
-          }
-        },
-        "required": [
-          "approve"
-        ],
-        "additionalProperties": false
-      },
-      "permission": "fees.payments.approve",
-      "scope": "ALL",
-      "risk": "HIGH",
-      "confirmation": "REQUIRED",
-      "affectsOthers": true,
-      "readOnly": false,
-      "service": "fee.service.decidePaymentChangeRequest()",
-      "status": "AVAILABLE",
-      "wrapsAgentTool": null
-    },
-    {
       "name": "transition_fee_plan",
       "module": "Fees",
       "operation": "ACTION",
-      "description": "Move a fee plan along its approval workflow: submit (draft → finance review), review (finance reviewed), requestApproval (→ admin approval), approve, or reject. Each step needs its own permission — whoever drafts a plan is deliberately not whoever approves it. Rejecting needs a reason. Needs confirmation.",
+      "description": "Send a fee plan on along its workflow: submit (draft → finance review) or requestApproval (finance-reviewed → admin approval). Reviewing, approving, rejecting and publishing a plan are decisions a person makes on the fee plan screen, never through the assistant. Each step needs its own permission. Needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
@@ -2319,16 +2077,8 @@
             "type": "string",
             "enum": [
               "submit",
-              "review",
-              "requestApproval",
-              "approve",
-              "reject"
+              "requestApproval"
             ]
-          },
-          "reason": {
-            "type": "string",
-            "maxLength": 500,
-            "description": "Required for reject"
           },
           "note": {
             "type": "string",
@@ -2347,46 +2097,6 @@
       "affectsOthers": true,
       "readOnly": false,
       "service": "plan.service.transitionFeePlan()",
-      "status": "AVAILABLE",
-      "wrapsAgentTool": null
-    },
-    {
-      "name": "publish_fee_plan",
-      "module": "Fees",
-      "operation": "ACTION",
-      "description": "Publish an approved fee plan, which raises one invoice per installment — the point at which the family sees it. Requires the plan-approval permission. Installments that already have an invoice are skipped, so publishing twice bills nobody twice. Needs confirmation.",
-      "input": {
-        "type": "object",
-        "properties": {
-          "planId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$"
-          },
-          "studentId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$",
-            "description": "Preferred when known, e.g. from search_students"
-          },
-          "admissionNo": {
-            "type": "string",
-            "maxLength": 40,
-            "description": "Admission number, e.g. \"OAK-12\""
-          },
-          "studentName": {
-            "type": "string",
-            "maxLength": 80,
-            "description": "Full or partial name; an ambiguous match is refused, never guessed"
-          }
-        },
-        "additionalProperties": false
-      },
-      "permission": "fees.plan.approve",
-      "scope": "ALL",
-      "risk": "HIGH",
-      "confirmation": "REQUIRED",
-      "affectsOthers": true,
-      "readOnly": false,
-      "service": "plan.service.publishFeePlan()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -3534,47 +3244,6 @@
       "wrapsAgentTool": null
     },
     {
-      "name": "publish_marks",
-      "module": "Exams",
-      "operation": "ACTION",
-      "description": "Publish the marks for one exam subject, making them visible to students and parents. This is what families see, and it is hard to walk back, so it always needs confirmation.",
-      "input": {
-        "type": "object",
-        "properties": {
-          "examSubjectId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$",
-            "description": "The exam paper, when the id is already known"
-          },
-          "className": {
-            "type": "string",
-            "maxLength": 60,
-            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
-          },
-          "subject": {
-            "type": "string",
-            "maxLength": 80,
-            "description": "The subject of the paper, e.g. \"Mathematics\""
-          },
-          "exam": {
-            "type": "string",
-            "maxLength": 60,
-            "description": "The exam, e.g. \"Unit Test 2\""
-          }
-        },
-        "additionalProperties": false
-      },
-      "permission": "marks.publish",
-      "scope": "OWN or ALL",
-      "risk": "HIGH",
-      "confirmation": "REQUIRED",
-      "affectsOthers": true,
-      "readOnly": false,
-      "service": "exam.service.publishMarks()",
-      "status": "AVAILABLE",
-      "wrapsAgentTool": null
-    },
-    {
       "name": "get_assignments",
       "module": "Assignments",
       "operation": "GET",
@@ -4061,7 +3730,7 @@
       "name": "update_admission_lead",
       "module": "Admissions",
       "operation": "ACTION",
-      "description": "Move an admission enquiry to a new stage, or change its notes, assignee or next action date. Setting the stage to ENROLLED is how an admission is approved; LOST is how it is rejected. Each stage change is written to the interaction history. Needs confirmation.",
+      "description": "Move an admission enquiry along the pipeline (NEW, CONTACTED, TOUR_SCHEDULED, APPLICATION), or change its notes, assignee or next action date. Admitting (ENROLLED) or turning down (LOST) an applicant is a decision made on the admissions screen, never through the assistant. Each stage change is written to the interaction history. Needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
@@ -4080,11 +3749,8 @@
               "NEW",
               "CONTACTED",
               "TOUR_SCHEDULED",
-              "APPLICATION",
-              "ENROLLED",
-              "LOST"
-            ],
-            "description": "ENROLLED approves the admission; LOST rejects it"
+              "APPLICATION"
+            ]
           },
           "notes": {
             "type": "string",
@@ -5138,7 +4804,7 @@
       "name": "create_hostel_inquiry",
       "module": "Hostel",
       "operation": "CREATE",
-      "description": "Raise a hostel enquiry — a subject and optional description, optionally about one student. It is recorded as raised by the caller. Low impact, so it runs without confirmation.",
+      "description": "Raise a hostel enquiry — a subject and optional description, optionally about one student. It is recorded as raised by the caller. It is filed in the name of the caller, so it needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
@@ -5164,7 +4830,7 @@
       "permission": "hostel.read",
       "scope": "OWN or ALL",
       "risk": "MEDIUM",
-      "confirmation": "NOT_REQUIRED",
+      "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
       "service": "hostel.service.createInquiry()",
@@ -5711,56 +5377,6 @@
       "wrapsAgentTool": "apply_leave"
     },
     {
-      "name": "review_leave",
-      "module": "Leave",
-      "operation": "ACTION",
-      "description": "Approve or reject somebody's leave application, with optional remarks. Needs confirmation.",
-      "input": {
-        "type": "object",
-        "properties": {
-          "requestId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$",
-            "description": "From get_leave_requests. Omit it and name the student instead."
-          },
-          "studentName": {
-            "type": "string",
-            "maxLength": 80,
-            "description": "Who raised it, e.g. \"Rahul\". More than one pending match is refused, never guessed."
-          },
-          "leaveId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$",
-            "description": "Alternative to requestId"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "APPROVED",
-              "REJECTED"
-            ]
-          },
-          "remarks": {
-            "type": "string",
-            "maxLength": 500
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "additionalProperties": false
-      },
-      "permission": "leave.review",
-      "scope": "OWN or ALL",
-      "risk": "MEDIUM",
-      "confirmation": "REQUIRED",
-      "affectsOthers": true,
-      "readOnly": false,
-      "service": "leave.service.listForReview() + review()",
-      "status": "AVAILABLE",
-      "wrapsAgentTool": null
-    },
-    {
       "name": "get_registration_reviews",
       "module": "Registrations",
       "operation": "GET",
@@ -5882,56 +5498,6 @@
       "wrapsAgentTool": null
     },
     {
-      "name": "decide_registration",
-      "module": "Registrations",
-      "operation": "ACTION",
-      "description": "Approve or reject an elective subject registration. Needs confirmation.",
-      "input": {
-        "type": "object",
-        "properties": {
-          "requestId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$",
-            "description": "From get_registration_reviews. Omit it and name the student instead."
-          },
-          "studentName": {
-            "type": "string",
-            "maxLength": 80,
-            "description": "Who raised it, e.g. \"Rahul\". More than one pending match is refused, never guessed."
-          },
-          "registrationId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$",
-            "description": "Alternative to requestId"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "APPROVED",
-              "REJECTED"
-            ]
-          },
-          "note": {
-            "type": "string",
-            "maxLength": 500
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "additionalProperties": false
-      },
-      "permission": "registrations.review",
-      "scope": "OWN or ALL",
-      "risk": "MEDIUM",
-      "confirmation": "REQUIRED",
-      "affectsOthers": true,
-      "readOnly": false,
-      "service": "registration.service.listForReview() + decide()",
-      "status": "AVAILABLE",
-      "wrapsAgentTool": null
-    },
-    {
       "name": "get_student_requests",
       "module": "Student requests",
       "operation": "GET",
@@ -6019,7 +5585,7 @@
       "name": "request_cocurricular",
       "module": "Student requests",
       "operation": "CREATE",
-      "description": "Ask for a co-curricular activity or achievement to be added to the caller's own profile. The activity date cannot be in the future. It goes to the class teacher for review and changes nothing until approved, so it runs without confirmation.",
+      "description": "Ask for a co-curricular activity or achievement to be added to the caller's own profile. The activity date cannot be in the future. It goes to the class teacher for review and changes nothing until approved. It files a request in the name of the caller, so it needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
@@ -6080,55 +5646,10 @@
       "permission": "cocurricular.request",
       "scope": "OWN or ALL",
       "risk": "MEDIUM",
-      "confirmation": "NOT_REQUIRED",
+      "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
       "service": "cocurricular.service.request()",
-      "status": "AVAILABLE",
-      "wrapsAgentTool": null
-    },
-    {
-      "name": "decide_cocurricular",
-      "module": "Student requests",
-      "operation": "ACTION",
-      "description": "Approve or reject a co-curricular request. Approving adds it to the student's profile. A reason is expected when rejecting. Needs confirmation.",
-      "input": {
-        "type": "object",
-        "properties": {
-          "requestId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$",
-            "description": "From get_student_requests. Omit it and name the student instead."
-          },
-          "studentName": {
-            "type": "string",
-            "maxLength": 80,
-            "description": "Who raised it, e.g. \"Rahul\". More than one pending match is refused, never guessed."
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "APPROVED",
-              "REJECTED"
-            ]
-          },
-          "rejectionReason": {
-            "type": "string",
-            "maxLength": 500
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "additionalProperties": false
-      },
-      "permission": "cocurricular.review",
-      "scope": "OWN or ALL",
-      "risk": "MEDIUM",
-      "confirmation": "REQUIRED",
-      "affectsOthers": true,
-      "readOnly": false,
-      "service": "cocurricular.service.listForReview() + decide()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -6156,7 +5677,7 @@
       "name": "request_profile_edit",
       "module": "Student requests",
       "operation": "CREATE",
-      "description": "Ask for a correction to the caller's own profile. Only first name, last name, date of birth, gender and address can be corrected this way. Only one request may be pending at a time. Changes nothing until a class teacher approves, so it runs without confirmation.",
+      "description": "Ask for a correction to the caller's own profile. Only first name, last name, date of birth, gender and address can be corrected this way. Only one request may be pending at a time. Changes nothing until a class teacher approves. It files a request in the name of the caller, so it needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
@@ -6208,55 +5729,10 @@
       "permission": "profile.edit.request",
       "scope": "OWN or ALL",
       "risk": "MEDIUM",
-      "confirmation": "NOT_REQUIRED",
+      "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
       "service": "profileEdit.service.request()",
-      "status": "AVAILABLE",
-      "wrapsAgentTool": null
-    },
-    {
-      "name": "decide_profile_edit",
-      "module": "Student requests",
-      "operation": "ACTION",
-      "description": "Approve or reject a profile-correction request. Approving writes the new values to the student's record. Needs confirmation.",
-      "input": {
-        "type": "object",
-        "properties": {
-          "requestId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$",
-            "description": "From get_student_requests. Omit it and name the student instead."
-          },
-          "studentName": {
-            "type": "string",
-            "maxLength": 80,
-            "description": "Who raised it, e.g. \"Rahul\". More than one pending match is refused, never guessed."
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "APPROVED",
-              "REJECTED"
-            ]
-          },
-          "rejectionReason": {
-            "type": "string",
-            "maxLength": 500
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "additionalProperties": false
-      },
-      "permission": "profile.edit.review",
-      "scope": "OWN or ALL",
-      "risk": "MEDIUM",
-      "confirmation": "REQUIRED",
-      "affectsOthers": true,
-      "readOnly": false,
-      "service": "profileEdit.service.listForReview() + decide()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -6503,7 +5979,7 @@
       "name": "create_ticket",
       "module": "Tickets",
       "operation": "CREATE",
-      "description": "Raise a support ticket with a subject, routed to the admin office, warden, librarian or — for a question about a child — the class teacher. A ticket carries only a subject; add the details with reply_to_ticket. Low impact and reversible, so it runs without confirmation.",
+      "description": "Raise a support ticket with a subject, routed to the admin office, warden, librarian or — for a question about a child — the class teacher. A ticket carries only a subject; add the details with reply_to_ticket. It files a ticket in the name of the caller, so it needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
@@ -6539,7 +6015,7 @@
       "permission": "tickets.create",
       "scope": "OWN or ALL",
       "risk": "MEDIUM",
-      "confirmation": "NOT_REQUIRED",
+      "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
       "service": "ticket.service.create()",
@@ -6638,7 +6114,7 @@
       "name": "request_book",
       "module": "Library",
       "operation": "CREATE",
-      "description": "Ask the library to issue a book to the caller. Name it by title or by id. The book must be a physical copy in this school's catalogue — an online resource is read where it lives and cannot be issued. The request goes to the librarian and changes nothing until it is approved, so it runs without confirmation.",
+      "description": "Ask the library to issue a book to the caller. Name it by title or by id. The book must be a physical copy in this school's catalogue — an online resource is read where it lives and cannot be issued. The request goes to the librarian and changes nothing until it is approved. It files a request in the name of the caller, so it needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
@@ -6658,7 +6134,7 @@
       "permission": "library.request",
       "scope": "OWN or ALL",
       "risk": "LOW",
-      "confirmation": "NOT_REQUIRED",
+      "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
       "service": "library.service.listBooks() + requestBook()",
@@ -6723,62 +6199,6 @@
       "wrapsAgentTool": null
     },
     {
-      "name": "decide_book_request",
-      "module": "Library",
-      "operation": "ACTION",
-      "description": "Approve or reject a book request. Name the request by the student who made it, by the book, or by id. Approving issues the book to the student and takes a copy off the shelf; if no copy is free the approval is refused and the request stays waiting. Needs confirmation.",
-      "input": {
-        "type": "object",
-        "properties": {
-          "requestId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$",
-            "description": "From get_book_requests"
-          },
-          "studentName": {
-            "type": "string",
-            "maxLength": 80,
-            "description": "The student who asked, e.g. \"Rahul\". More than one pending request matching is refused, never guessed."
-          },
-          "title": {
-            "type": "string",
-            "maxLength": 300,
-            "description": "The book that was asked for"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "APPROVED",
-              "REJECTED"
-            ]
-          },
-          "note": {
-            "type": "string",
-            "maxLength": 500,
-            "description": "Shown to the student with the decision"
-          },
-          "dueAt": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "description": "When the book is due back; defaults to a fortnight from today"
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "additionalProperties": false
-      },
-      "permission": "library.manage",
-      "scope": "ALL",
-      "risk": "MEDIUM",
-      "confirmation": "REQUIRED",
-      "affectsOthers": true,
-      "readOnly": false,
-      "service": "library.service.listBookRequestsForReview() + decideBookRequest()",
-      "status": "AVAILABLE",
-      "wrapsAgentTool": null
-    },
-    {
       "name": "get_transport_routes",
       "module": "Transport",
       "operation": "GET",
@@ -6802,7 +6222,7 @@
       "name": "request_transport_route",
       "module": "Transport",
       "operation": "CREATE",
-      "description": "Ask for a place on a bus route, from a particular stop. Name the route the way it is written (\"Route 2\") and, where the route has more than one stop, name the stop too. The stop must be one on that route. The request goes to the school office and changes nothing until it is approved — the fare is only charged once a place is granted, so it runs without confirmation.",
+      "description": "Ask for a place on a bus route, from a particular stop. Name the route the way it is written (\"Route 2\") and, where the route has more than one stop, name the stop too. The stop must be one on that route. The request goes to the school office and changes nothing until it is approved — the fare is only charged once a place is granted. It files a request in the name of the caller, so it needs confirmation.",
       "input": {
         "type": "object",
         "properties": {
@@ -6841,7 +6261,7 @@
       "permission": "transport.request",
       "scope": "OWN or ALL",
       "risk": "LOW",
-      "confirmation": "NOT_REQUIRED",
+      "confirmation": "REQUIRED",
       "affectsOthers": false,
       "readOnly": false,
       "service": "transport.service.listRoutesForStudent() + requestRoute()",
@@ -6902,52 +6322,6 @@
       "affectsOthers": false,
       "readOnly": true,
       "service": "transport.service.listTransportRequestsForReview()",
-      "status": "AVAILABLE",
-      "wrapsAgentTool": null
-    },
-    {
-      "name": "decide_transport_request",
-      "module": "Transport",
-      "operation": "ACTION",
-      "description": "Approve or reject a request for a place on a bus route. Approving puts the student on the route and, when the route carries a fare, raises an invoice for it against their fees. Use get_transport_requests to find the request id. Needs confirmation.",
-      "input": {
-        "type": "object",
-        "properties": {
-          "requestId": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{24}$",
-            "description": "From get_transport_requests. Omit it and name the student instead."
-          },
-          "studentName": {
-            "type": "string",
-            "maxLength": 80,
-            "description": "Who raised it, e.g. \"Rahul\". More than one pending match is refused, never guessed."
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "APPROVED",
-              "REJECTED"
-            ]
-          },
-          "note": {
-            "type": "string",
-            "maxLength": 500,
-            "description": "Shown to the student with the decision"
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "additionalProperties": false
-      },
-      "permission": "transport.manage",
-      "scope": "ALL",
-      "risk": "MEDIUM",
-      "confirmation": "REQUIRED",
-      "affectsOthers": true,
-      "readOnly": false,
-      "service": "transport.service.listTransportRequestsForReview() + decideTransportRequest()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
     },
@@ -7195,7 +6569,7 @@
         "additionalProperties": false
       },
       "permission": "ai.insights.read",
-      "scope": "OWN or ALL",
+      "scope": "ALL",
       "risk": "LOW",
       "confirmation": "NOT_REQUIRED",
       "affectsOthers": false,
@@ -7789,6 +7163,26 @@
       "wrapsAgentTool": null
     },
     {
+      "name": "get_pending_items_for_me",
+      "module": "Approvals",
+      "operation": "GET",
+      "description": "Everything waiting on the caller to decide: payments and payment changes awaiting approval, fee plans, leave applications, elective registrations, co-curricular and profile-correction requests, book and transport requests, and the approvals inbox. Only the queues the caller is the decider for, each with how many are waiting and the screen to open. Read-only: every decision is made by the caller on that screen, never by the assistant.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "approvals.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "approval.service.inbox() + each review queue listForReview()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
       "name": "list_compliance_deadlines",
       "module": "Compliance",
       "operation": "GET",
@@ -8134,13 +7528,13 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 191,
-      "GET": 103,
+      "total": 180,
+      "GET": 104,
       "CREATE": 33,
       "UPDATE": 15,
-      "ACTION": 30,
+      "ACTION": 18,
       "DELETE": 10,
-      "highRiskActions": 30,
+      "highRiskActions": 24,
       "highRiskActionNames": [
         "add_guardian",
         "update_enrollment_status",
@@ -8153,15 +7547,9 @@
         "create_fee_plan",
         "update_fee_plan",
         "update_payment",
-        "record_payment",
-        "approve_payment",
-        "reject_payment",
-        "decide_payment_change_request",
         "transition_fee_plan",
-        "publish_fee_plan",
         "create_fee_structure",
         "enter_marks",
-        "publish_marks",
         "update_admission_lead",
         "create_announcement",
         "update_announcement",
@@ -8173,7 +7561,7 @@
         "delete_document",
         "request_extra_seats"
       ],
-      "confirmationRequired": 82,
+      "confirmationRequired": 76,
       "names": [
         "search_students",
         "get_student",
@@ -8214,13 +7602,8 @@
         "create_fee_plan",
         "update_fee_plan",
         "update_payment",
-        "record_payment",
-        "approve_payment",
-        "reject_payment",
         "request_payment_change",
-        "decide_payment_change_request",
         "transition_fee_plan",
-        "publish_fee_plan",
         "create_fee_head",
         "create_fee_structure",
         "list_classes",
@@ -8247,7 +7630,6 @@
         "create_exam",
         "create_exam_subject",
         "enter_marks",
-        "publish_marks",
         "get_assignments",
         "get_submissions",
         "create_assignment",
@@ -8297,19 +7679,15 @@
         "enroll_in_transport",
         "get_leave_requests",
         "apply_for_leave",
-        "review_leave",
         "get_registration_reviews",
         "get_my_electives",
         "register_for_elective",
         "withdraw_elective_registration",
-        "decide_registration",
         "get_student_requests",
         "list_cocurricular",
         "request_cocurricular",
-        "decide_cocurricular",
         "get_editable_fields",
         "request_profile_edit",
-        "decide_profile_edit",
         "get_medical_record",
         "upsert_medical_record",
         "remove_medical_record",
@@ -8321,12 +7699,10 @@
         "request_book",
         "get_my_book_requests",
         "get_book_requests",
-        "decide_book_request",
         "get_transport_routes",
         "request_transport_route",
         "get_my_transport_requests",
         "get_transport_requests",
-        "decide_transport_request",
         "cancel_book_request",
         "cancel_transport_request",
         "cancel_cocurricular_request",
@@ -8350,6 +7726,7 @@
         "get_school_domain",
         "get_my_day",
         "list_pending_approvals",
+        "get_pending_items_for_me",
         "list_compliance_deadlines",
         "list_licences",
         "list_open_correspondence",
@@ -8371,23 +7748,22 @@
     {
       "role": "PRINCIPAL",
       "custom": false,
-      "total": 96,
-      "GET": 72,
+      "total": 92,
+      "GET": 73,
       "CREATE": 8,
       "UPDATE": 6,
-      "ACTION": 9,
+      "ACTION": 4,
       "DELETE": 1,
-      "highRiskActions": 7,
+      "highRiskActions": 6,
       "highRiskActionNames": [
         "transition_fee_plan",
-        "publish_marks",
         "create_announcement",
         "update_announcement",
         "notify_users",
         "send_whatsapp_message",
         "delete_document"
       ],
-      "confirmationRequired": 24,
+      "confirmationRequired": 19,
       "names": [
         "search_students",
         "get_student",
@@ -8435,7 +7811,6 @@
         "list_exams",
         "get_performance_history",
         "get_performance",
-        "publish_marks",
         "get_assignments",
         "get_subjects",
         "get_announcements",
@@ -8446,13 +7821,9 @@
         "notify_users",
         "send_whatsapp_message",
         "get_leave_requests",
-        "review_leave",
         "get_registration_reviews",
-        "decide_registration",
         "get_student_requests",
         "list_cocurricular",
-        "decide_cocurricular",
-        "decide_profile_edit",
         "list_tickets",
         "get_ticket",
         "update_ticket",
@@ -8469,6 +7840,7 @@
         "get_my_profile",
         "get_my_day",
         "list_pending_approvals",
+        "get_pending_items_for_me",
         "list_compliance_deadlines",
         "list_licences",
         "list_open_correspondence",
@@ -8490,22 +7862,21 @@
     {
       "role": "TEACHER",
       "custom": false,
-      "total": 67,
-      "GET": 52,
+      "total": 63,
+      "GET": 53,
       "CREATE": 3,
       "UPDATE": 1,
-      "ACTION": 10,
+      "ACTION": 5,
       "DELETE": 1,
-      "highRiskActions": 6,
+      "highRiskActions": 5,
       "highRiskActionNames": [
         "mark_attendance",
         "bulk_mark_attendance",
         "enter_marks",
-        "publish_marks",
         "create_announcement",
         "delete_document"
       ],
-      "confirmationRequired": 15,
+      "confirmationRequired": 10,
       "names": [
         "search_students",
         "get_student",
@@ -8536,7 +7907,6 @@
         "get_performance_history",
         "get_performance",
         "enter_marks",
-        "publish_marks",
         "get_assignments",
         "get_submissions",
         "create_assignment",
@@ -8546,13 +7916,9 @@
         "create_announcement",
         "get_calendar_events",
         "get_leave_requests",
-        "review_leave",
         "get_registration_reviews",
-        "decide_registration",
         "get_student_requests",
         "list_cocurricular",
-        "decide_cocurricular",
-        "decide_profile_edit",
         "get_medical_record",
         "list_tickets",
         "get_ticket",
@@ -8566,6 +7932,7 @@
         "get_my_profile",
         "get_my_day",
         "list_pending_approvals",
+        "get_pending_items_for_me",
         "list_fest_plans",
         "list_maintenance_work",
         "list_purchase_requests",
@@ -8579,9 +7946,9 @@
     {
       "role": "PARENT",
       "custom": false,
-      "total": 49,
-      "GET": 46,
-      "CREATE": 1,
+      "total": 53,
+      "GET": 49,
+      "CREATE": 2,
       "UPDATE": 1,
       "ACTION": 0,
       "DELETE": 1,
@@ -8590,7 +7957,7 @@
         "upsert_medical_record",
         "remove_medical_record"
       ],
-      "confirmationRequired": 2,
+      "confirmationRequired": 4,
       "names": [
         "search_students",
         "get_student",
@@ -8625,7 +7992,11 @@
         "get_subjects",
         "get_announcements",
         "get_calendar_events",
+        "list_books",
+        "get_book",
+        "list_book_issues",
         "get_leave_requests",
+        "apply_for_leave",
         "get_medical_record",
         "upsert_medical_record",
         "remove_medical_record",
@@ -8654,7 +8025,7 @@
       "DELETE": 5,
       "highRiskActions": 0,
       "highRiskActionNames": [],
-      "confirmationRequired": 8,
+      "confirmationRequired": 13,
       "names": [
         "search_students",
         "get_student",
@@ -8730,24 +8101,22 @@
     {
       "role": "FINANCE",
       "custom": false,
-      "total": 43,
-      "GET": 33,
+      "total": 42,
+      "GET": 34,
       "CREATE": 5,
       "UPDATE": 1,
-      "ACTION": 4,
+      "ACTION": 2,
       "DELETE": 0,
-      "highRiskActions": 8,
+      "highRiskActions": 6,
       "highRiskActionNames": [
         "create_invoice",
         "generate_invoices",
         "create_fee_plan",
         "update_fee_plan",
-        "record_payment",
-        "refund_payment",
         "transition_fee_plan",
         "create_fee_structure"
       ],
-      "confirmationRequired": 10,
+      "confirmationRequired": 8,
       "names": [
         "search_students",
         "get_student",
@@ -8767,8 +8136,6 @@
         "generate_invoices",
         "create_fee_plan",
         "update_fee_plan",
-        "record_payment",
-        "refund_payment",
         "request_payment_change",
         "transition_fee_plan",
         "create_fee_head",
@@ -8782,6 +8149,7 @@
         "get_my_profile",
         "get_my_day",
         "list_pending_approvals",
+        "get_pending_items_for_me",
         "list_fest_plans",
         "list_maintenance_work",
         "get_verification_counts",
@@ -8798,16 +8166,16 @@
       "role": "LIBRARIAN",
       "custom": false,
       "total": 37,
-      "GET": 30,
+      "GET": 31,
       "CREATE": 1,
       "UPDATE": 1,
-      "ACTION": 4,
+      "ACTION": 3,
       "DELETE": 1,
       "highRiskActions": 1,
       "highRiskActionNames": [
         "delete_book"
       ],
-      "confirmationRequired": 7,
+      "confirmationRequired": 6,
       "names": [
         "search_students",
         "get_student",
@@ -8833,12 +8201,12 @@
         "get_ticket",
         "reply_to_ticket",
         "get_book_requests",
-        "decide_book_request",
         "get_dashboard",
         "list_notifications",
         "get_my_profile",
         "get_my_day",
         "list_pending_approvals",
+        "get_pending_items_for_me",
         "list_fest_plans",
         "list_maintenance_work",
         "list_purchase_requests",
@@ -8851,15 +8219,15 @@
     {
       "role": "WARDEN",
       "custom": false,
-      "total": 38,
-      "GET": 30,
+      "total": 39,
+      "GET": 31,
       "CREATE": 2,
       "UPDATE": 3,
       "ACTION": 3,
       "DELETE": 0,
       "highRiskActions": 0,
       "highRiskActionNames": [],
-      "confirmationRequired": 7,
+      "confirmationRequired": 8,
       "names": [
         "search_students",
         "get_student",
@@ -8892,6 +8260,7 @@
         "get_my_profile",
         "get_my_day",
         "list_pending_approvals",
+        "get_pending_items_for_me",
         "list_fest_plans",
         "list_maintenance_work",
         "list_purchase_requests",
@@ -8904,8 +8273,8 @@
     {
       "role": "HR",
       "custom": false,
-      "total": 18,
-      "GET": 18,
+      "total": 19,
+      "GET": 19,
       "CREATE": 0,
       "UPDATE": 0,
       "ACTION": 0,
@@ -8921,6 +8290,7 @@
         "get_my_profile",
         "get_my_day",
         "list_pending_approvals",
+        "get_pending_items_for_me",
         "list_compliance_deadlines",
         "list_licences",
         "list_fest_plans",
@@ -8937,8 +8307,8 @@
     {
       "role": "MARKETING",
       "custom": false,
-      "total": 21,
-      "GET": 19,
+      "total": 22,
+      "GET": 20,
       "CREATE": 1,
       "UPDATE": 0,
       "ACTION": 1,
@@ -8962,6 +8332,7 @@
         "get_my_profile",
         "get_my_day",
         "list_pending_approvals",
+        "get_pending_items_for_me",
         "list_fest_plans",
         "list_maintenance_work",
         "list_purchase_requests",
@@ -8975,8 +8346,8 @@
     {
       "role": "COMPLIANCE",
       "custom": false,
-      "total": 18,
-      "GET": 18,
+      "total": 19,
+      "GET": 19,
       "CREATE": 0,
       "UPDATE": 0,
       "ACTION": 0,
@@ -8992,6 +8363,7 @@
         "get_my_profile",
         "get_my_day",
         "list_pending_approvals",
+        "get_pending_items_for_me",
         "list_compliance_deadlines",
         "list_licences",
         "list_open_correspondence",
@@ -9008,8 +8380,8 @@
     {
       "role": "TRUSTEE",
       "custom": false,
-      "total": 14,
-      "GET": 14,
+      "total": 15,
+      "GET": 15,
       "CREATE": 0,
       "UPDATE": 0,
       "ACTION": 0,
@@ -9024,6 +8396,7 @@
         "get_my_profile",
         "get_my_day",
         "list_pending_approvals",
+        "get_pending_items_for_me",
         "list_compliance_deadlines",
         "list_licences",
         "list_board_meetings",
@@ -9096,19 +8469,13 @@
       "mcpTool": "apply_for_leave",
       "purpose": "Redeems a proposal the pre-MCP agent stored under the old name. No new proposal is ever stored under it.",
       "removableWhen": "No AgentAction row with tool \"apply_leave\" is PENDING or EXECUTING, and at least 10 minutes have passed since the first MCP deployment."
-    },
-    {
-      "legacyName": "record_fee_payment",
-      "mcpTool": "record_payment",
-      "purpose": "Redeems a proposal the pre-MCP agent stored under the old name. No new proposal is ever stored under it.",
-      "removableWhen": "No AgentAction row with tool \"record_fee_payment\" is PENDING or EXECUTING, and at least 10 minutes have passed since the first MCP deployment."
     }
   ],
   "deprecated": [
     {
       "name": "record_fee_payment",
       "where": "backend/src/modules/ai/agent/tools.js",
-      "status": "Not in the MCP catalog and not reachable from either channel. Replaced by the MCP tool record_payment. Kept only because agent.bulkAuthorization.test.js exercises its permission metadata; safe to delete together with those assertions."
+      "status": "Not in the MCP catalog and not reachable from either channel. Recording a payment is a decision made on the Payments screen; the assistant has no tool for it. Kept only because agent.bulkAuthorization.test.js exercises its permission metadata; safe to delete together with those assertions."
     }
   ],
   "blocked": [

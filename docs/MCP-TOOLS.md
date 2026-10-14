@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**192 tools** — 103 GET, 33 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION.
+**180 tools** — 104 GET, 33 CREATE, 15 UPDATE, 10 DELETE, 18 ACTION.
 
-Risk mix: 109 LOW, 30 HIGH, 52 MEDIUM, 1 CRITICAL.
+Risk mix: 110 LOW, 23 HIGH, 46 MEDIUM, 1 CRITICAL.
 
-Status: 190 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 178 AVAILABLE, 2 PARTIAL (see below). 1 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -28,18 +28,18 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
 | `SUPER_ADMIN` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `ADMIN` | 191 | 103 | 33 | 15 | 30 | 10 | 30 | 82 |
-| `PRINCIPAL` | 96 | 72 | 8 | 6 | 9 | 1 | 7 | 24 |
-| `TEACHER` | 67 | 52 | 3 | 1 | 10 | 1 | 6 | 15 |
-| `PARENT` | 49 | 46 | 1 | 1 | 0 | 1 | 2 | 2 |
-| `STUDENT` | 69 | 56 | 7 | 0 | 1 | 5 | 0 | 8 |
-| `FINANCE` | 43 | 33 | 5 | 1 | 4 | 0 | 8 | 10 |
-| `LIBRARIAN` | 37 | 30 | 1 | 1 | 4 | 1 | 1 | 7 |
-| `WARDEN` | 38 | 30 | 2 | 3 | 3 | 0 | 0 | 7 |
-| `HR` | 18 | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `MARKETING` | 21 | 19 | 1 | 0 | 1 | 0 | 1 | 2 |
-| `COMPLIANCE` | 18 | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `TRUSTEE` | 14 | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `ADMIN` | 180 | 104 | 33 | 15 | 18 | 10 | 24 | 76 |
+| `PRINCIPAL` | 92 | 73 | 8 | 6 | 4 | 1 | 6 | 19 |
+| `TEACHER` | 63 | 53 | 3 | 1 | 5 | 1 | 5 | 10 |
+| `PARENT` | 53 | 49 | 2 | 1 | 0 | 1 | 2 | 4 |
+| `STUDENT` | 69 | 56 | 7 | 0 | 1 | 5 | 0 | 13 |
+| `FINANCE` | 42 | 34 | 5 | 1 | 2 | 0 | 6 | 8 |
+| `LIBRARIAN` | 37 | 31 | 1 | 1 | 3 | 1 | 1 | 6 |
+| `WARDEN` | 39 | 31 | 2 | 3 | 3 | 0 | 0 | 8 |
+| `HR` | 19 | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `MARKETING` | 22 | 20 | 1 | 0 | 1 | 0 | 1 | 2 |
+| `COMPLIANCE` | 19 | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `TRUSTEE` | 15 | 15 | 0 | 0 | 0 | 0 | 0 | 0 |
 | `ALUMNUS` | 6 | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
 | `COUNSELLOR (custom, example)` | 19 | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
 
@@ -48,12 +48,12 @@ Custom roles are database rows, created per school, so none can be listed here i
 <details><summary>High-risk actions visible to each role</summary>
 
 - **SUPER_ADMIN** (0): _none_
-- **ADMIN** (30): `add_guardian`, `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `record_payment`, `approve_payment`, `reject_payment`, `decide_payment_change_request`, `transition_fee_plan`, `publish_fee_plan`, `create_fee_structure`, `enter_marks`, `publish_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`, `request_extra_seats`
-- **PRINCIPAL** (7): `transition_fee_plan`, `publish_marks`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_document`
-- **TEACHER** (6): `mark_attendance`, `bulk_mark_attendance`, `enter_marks`, `publish_marks`, `create_announcement`, `delete_document`
+- **ADMIN** (24): `add_guardian`, `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `transition_fee_plan`, `create_fee_structure`, `enter_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`, `request_extra_seats`
+- **PRINCIPAL** (6): `transition_fee_plan`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_document`
+- **TEACHER** (5): `mark_attendance`, `bulk_mark_attendance`, `enter_marks`, `create_announcement`, `delete_document`
 - **PARENT** (2): `upsert_medical_record`, `remove_medical_record`
 - **STUDENT** (0): _none_
-- **FINANCE** (8): `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `record_payment`, `refund_payment`, `transition_fee_plan`, `create_fee_structure`
+- **FINANCE** (6): `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `transition_fee_plan`, `create_fee_structure`
 - **LIBRARIAN** (1): `delete_book`
 - **WARDEN** (0): _none_
 - **HR** (0): _none_
@@ -73,7 +73,6 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `allocate_hostel_bed` | Hostel | ACTION | `hostel.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `anonymise_student` | Students | DELETE | `students.manage` | ALL | CRITICAL | REQUIRED | AVAILABLE |
 | `apply_for_leave` | Leave | CREATE | `leave.apply` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
-| `approve_payment` | Fees | ACTION | `fees.payments.approve` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `archive_student` | Students | DELETE | `students.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `assign_teacher_to_subject` | Academics | ACTION | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `bulk_mark_attendance` | Attendance | ACTION | `attendance.mark` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
@@ -94,22 +93,16 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `create_fee_plan` | Fees | CREATE | `fees.plan.request` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `create_fee_structure` | Fees | CREATE | `fees.structure.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `create_grade` | Academics | CREATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
-| `create_hostel_inquiry` | Hostel | CREATE | `hostel.read` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
+| `create_hostel_inquiry` | Hostel | CREATE | `hostel.read` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_hostel_room` | Hostel | CREATE | `hostel.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_invoice` | Fees | CREATE | `fees.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `create_section` | Academics | CREATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_student` | Students | CREATE | `students.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_subject` | Academics | CREATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_term` | Academics | CREATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
-| `create_ticket` | Tickets | CREATE | `tickets.create` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
+| `create_ticket` | Tickets | CREATE | `tickets.create` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_transport_route` | Transport | CREATE | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_transport_stop` | Transport | CREATE | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
-| `decide_book_request` | Library | ACTION | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
-| `decide_cocurricular` | Student requests | ACTION | `cocurricular.review` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
-| `decide_payment_change_request` | Fees | ACTION | `fees.payments.approve` | ALL | HIGH | REQUIRED | AVAILABLE |
-| `decide_profile_edit` | Student requests | ACTION | `profile.edit.review` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
-| `decide_registration` | Registrations | ACTION | `registrations.review` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
-| `decide_transport_request` | Transport | ACTION | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `delete_book` | Library | DELETE | `library.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `delete_document` | Documents | DELETE | `materials.manage` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `enroll_in_transport` | Transport | ACTION | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -141,7 +134,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_fee_statistics` | Fees | GET | `fees.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_fee_structures` | Fees | GET | `fees.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_fees` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
-| `get_growth_score` | Analytics | GET | `ai.insights.read` | OWN or ALL | LOW | NOT_REQUIRED | PARTIAL |
+| `get_growth_score` | Analytics | GET | `ai.insights.read` | ALL | LOW | NOT_REQUIRED | PARTIAL |
 | `get_hostel_residents` | Hostel | GET | `hostel.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_hostel_summary` | Hostel | GET | `hostel.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_invoice` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -165,6 +158,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_payment_history` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_payment_link` | Fees | GET | `fees.pay` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_pending_fees` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_pending_items_for_me` | Approvals | GET | `approvals.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_performance` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_performance_history` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_registration_reviews` | Registrations | GET | `registrations.review` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -222,22 +216,16 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `list_users` | Users | GET | `users.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `mark_attendance` | Attendance | ACTION | `attendance.mark` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `notify_users` | Communication | ACTION | `announcements.publish` | ALL | HIGH | REQUIRED | AVAILABLE |
-| `publish_fee_plan` | Fees | ACTION | `fees.plan.approve` | ALL | HIGH | REQUIRED | AVAILABLE |
-| `publish_marks` | Exams | ACTION | `marks.publish` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
-| `record_payment` | Fees | ACTION | `fees.pay` | ALL | HIGH | REQUIRED | AVAILABLE |
-| `refund_payment` | Fees | ACTION | `fees.payments.refund` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `register_for_elective` | Registrations | CREATE | `registrations.apply` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
-| `reject_payment` | Fees | ACTION | `fees.payments.approve` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `remove_medical_record` | Medical | DELETE | `medical.manage` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `reply_to_ticket` | Tickets | ACTION | `tickets.respond` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
-| `request_book` | Library | CREATE | `library.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
-| `request_cocurricular` | Student requests | CREATE | `cocurricular.request` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
+| `request_book` | Library | CREATE | `library.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
+| `request_cocurricular` | Student requests | CREATE | `cocurricular.request` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `request_extra_seats` | Seats | CREATE | `seats.request` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `request_payment_change` | Fees | CREATE | `fees.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
-| `request_profile_edit` | Student requests | CREATE | `profile.edit.request` | OWN or ALL | MEDIUM | NOT_REQUIRED | AVAILABLE |
-| `request_transport_route` | Transport | CREATE | `transport.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `request_profile_edit` | Student requests | CREATE | `profile.edit.request` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `request_transport_route` | Transport | CREATE | `transport.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `return_book` | Library | ACTION | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
-| `review_leave` | Leave | ACTION | `leave.review` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `search_students` | Students | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `send_whatsapp_message` | Communication | ACTION | `announcements.publish` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `submit_assignment` | Assignments | ACTION | `submissions.submit` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -272,11 +260,10 @@ Custom roles are database rows, created per school, so none can be listed here i
 | Legacy name | Redeemed by | Removable when |
 |---|---|---|
 | `apply_leave` | `apply_for_leave` | No AgentAction row with tool "apply_leave" is PENDING or EXECUTING, and at least 10 minutes have passed since the first MCP deployment. |
-| `record_fee_payment` | `record_payment` | No AgentAction row with tool "record_fee_payment" is PENDING or EXECUTING, and at least 10 minutes have passed since the first MCP deployment. |
 
 ## Deprecated
 
-- `record_fee_payment` (`backend/src/modules/ai/agent/tools.js`) — Not in the MCP catalog and not reachable from either channel. Replaced by the MCP tool record_payment. Kept only because agent.bulkAuthorization.test.js exercises its permission metadata; safe to delete together with those assertions.
+- `record_fee_payment` (`backend/src/modules/ai/agent/tools.js`) — Not in the MCP catalog and not reachable from either channel. Recording a payment is a decision made on the Payments screen; the assistant has no tool for it. Kept only because agent.bulkAuthorization.test.js exercises its permission metadata; safe to delete together with those assertions.
 
 ## Blocked — deliberately not exposed
 
@@ -686,7 +673,7 @@ Record a new admission enquiry. Needs confirmation.
 
 ### `update_admission_lead`
 
-Move an admission enquiry to a new stage, or change its notes, assignee or next action date. Setting the stage to ENROLLED is how an admission is approved; LOST is how it is rejected. Each stage change is written to the interaction history. Needs confirmation.
+Move an admission enquiry along the pipeline (NEW, CONTACTED, TOUR_SCHEDULED, APPLICATION), or change its notes, assignee or next action date. Admitting (ENROLLED) or turning down (LOST) an applicant is a decision made on the admissions screen, never through the assistant. Each stage change is written to the interaction history. Needs confirmation.
 
 | | |
 |---|---|
@@ -702,7 +689,7 @@ Move an admission enquiry to a new stage, or change its notes, assignee or next 
 
 **Input**
 
-`leadId`: string<br>`childName`: string — The applicant child as a person names them, e.g. "Kabir Kapoor". Alternative to leadId.<br>`stage`: string — one of: NEW, CONTACTED, TOUR_SCHEDULED, APPLICATION, ENROLLED, LOST — ENROLLED approves the admission; LOST rejects it<br>`notes`: string<br>`assigneeProfileId`: string<br>`nextActionAt`: string
+`leadId`: string<br>`childName`: string — The applicant child as a person names them, e.g. "Kabir Kapoor". Alternative to leadId.<br>`stage`: string — one of: NEW, CONTACTED, TOUR_SCHEDULED, APPLICATION<br>`notes`: string<br>`assigneeProfileId`: string<br>`nextActionAt`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -744,7 +731,7 @@ A student's growth score for a period, blending attendance, academics and partic
 | **Risk** | LOW |
 | **Confirmation** | NOT_REQUIRED |
 | **Permission** | `ai.insights.read` |
-| **Scope** | OWN or ALL |
+| **Scope** | ALL |
 | **Affects others** | No |
 | **EduOS service** | `growth.service.getScore()` |
 | **Status** | PARTIAL |
@@ -799,6 +786,30 @@ Approval requests waiting on the caller to decide right now. Read-only: decision
 | **EduOS service** | `approval.service.inbox()` |
 | **Status** | AVAILABLE |
 | **Audited** | Yes — `agent.list_pending_approvals` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `get_pending_items_for_me`
+
+Everything waiting on the caller to decide: payments and payment changes awaiting approval, fee plans, leave applications, elective registrations, co-curricular and profile-correction requests, book and transport requests, and the approvals inbox. Only the queues the caller is the decider for, each with how many are waiting and the screen to open. Read-only: every decision is made by the caller on that screen, never by the assistant.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `approvals.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `approval.service.inbox() + each review queue listForReview()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_pending_items_for_me` |
 
 **Input**
 
@@ -2010,30 +2021,6 @@ Record, enter, submit or update marks for students in one exam paper. Name the p
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
-### `publish_marks`
-
-Publish the marks for one exam subject, making them visible to students and parents. This is what families see, and it is hard to walk back, so it always needs confirmation.
-
-| | |
-|---|---|
-| **Operation** | ACTION |
-| **Risk** | HIGH |
-| **Confirmation** | REQUIRED |
-| **Permission** | `marks.publish` |
-| **Scope** | OWN or ALL |
-| **Affects others** | Yes |
-| **EduOS service** | `exam.service.publishMarks()` |
-| **Status** | AVAILABLE |
-| **Audited** | Yes — `agent.publish_marks` |
-
-**Input**
-
-`examSubjectId`: string — The exam paper, when the id is already known<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — The subject of the paper, e.g. "Mathematics"<br>`exam`: string — The exam, e.g. "Unit Test 2"
-
-**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
-
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
-
 ## Facilities
 
 ### `list_maintenance_work`
@@ -2398,102 +2385,6 @@ Correct a payment record: its mode, paid-on date, receipt number, notes or instr
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
-### `record_payment`
-
-Record a fee payment received against an invoice. Name the invoice by its number (e.g. "INV-1042") or id; the amount is in whole paise (₹500 is 50000). Staff only — a family cannot mark its own invoice paid and must use the online payment link. When the person recording cannot approve payments, the payment is saved pending admin approval. CHEQUE, DD and BANK payments need instrument details with a proof URL; CASH needs none. Money moves in the ledger, so this always needs confirmation.
-
-| | |
-|---|---|
-| **Operation** | ACTION |
-| **Risk** | HIGH |
-| **Confirmation** | REQUIRED |
-| **Permission** | `fees.pay` |
-| **Scope** | ALL |
-| **Affects others** | Yes |
-| **EduOS service** | `fee.service.recordPayment()` |
-| **Status** | AVAILABLE |
-| **Audited** | Yes — `agent.record_payment` |
-
-**Input**
-
-`invoiceId`: string — Preferred when known<br>`invoiceNo`: string — Alternative to invoiceId<br>`amountPaise`: integer **(required)** — Whole paise. ₹500 is 50000.<br>`mode`: string — one of: CASH, CHEQUE, DD, BANK — Cash unless another mode is named<br>`paidOn`: string<br>`receiptNo`: string<br>`notes`: string<br>`instrument`: object — Required for CHEQUE, DD and BANK: number, bankName, instrumentDate and a proofUrl (image or PDF). Not used for CASH.
-
-**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
-
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
-
-### `approve_payment`
-
-Approve a payment that is pending admin approval, making it final and visible to the family. Requires the payment-approval permission, which Finance deliberately does not hold. Needs confirmation. A payment already approved cannot be approved again.
-
-| | |
-|---|---|
-| **Operation** | ACTION |
-| **Risk** | HIGH |
-| **Confirmation** | REQUIRED |
-| **Permission** | `fees.payments.approve` |
-| **Scope** | ALL |
-| **Affects others** | Yes |
-| **EduOS service** | `fee.service.approvePayment()` |
-| **Status** | AVAILABLE |
-| **Audited** | Yes — `agent.approve_payment` |
-
-**Input**
-
-`paymentId`: string<br>`invoiceNo`: string — The invoice the payment is on, e.g. "INV-1042". Alternative to paymentId.<br>`receiptNo`: string — The receipt number of the payment, when there is more than one on the invoice
-
-**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
-
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
-
-### `reject_payment`
-
-Reject a payment awaiting approval. A reason is required and is recorded. Needs confirmation.
-
-| | |
-|---|---|
-| **Operation** | ACTION |
-| **Risk** | HIGH |
-| **Confirmation** | REQUIRED |
-| **Permission** | `fees.payments.approve` |
-| **Scope** | ALL |
-| **Affects others** | Yes |
-| **EduOS service** | `fee.service.rejectPayment()` |
-| **Status** | AVAILABLE |
-| **Audited** | Yes — `agent.reject_payment` |
-
-**Input**
-
-`paymentId`: string<br>`invoiceNo`: string — The invoice the payment is on, e.g. "INV-1042". Alternative to paymentId.<br>`receiptNo`: string — The receipt number of the payment, when there is more than one on the invoice<br>`reason`: string **(required)**
-
-**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
-
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
-
-### `refund_payment`
-
-Refund a captured payment and deduct it from the invoice. Needs confirmation. The service refuses a second refund of the same payment, so a retry cannot deduct twice.
-
-| | |
-|---|---|
-| **Operation** | ACTION |
-| **Risk** | HIGH |
-| **Confirmation** | REQUIRED |
-| **Permission** | `fees.payments.refund` |
-| **Scope** | ALL |
-| **Affects others** | Yes |
-| **EduOS service** | `fee.service.refundPayment()` |
-| **Status** | AVAILABLE |
-| **Audited** | Yes — `agent.refund_payment` |
-
-**Input**
-
-`paymentId`: string **(required)**
-
-**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
-
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
-
 ### `request_payment_change`
 
 Ask for a correction to a published (finalised) payment — one field, its new value and why. Nothing changes until someone with payment-approval rights approves it. Editable fields: amountPaise, mode, paidOn, receiptNo, notes and the instrument details. A payment still awaiting approval is corrected with update_payment instead. Needs confirmation.
@@ -2518,33 +2409,9 @@ Ask for a correction to a published (finalised) payment — one field, its new v
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
-### `decide_payment_change_request`
-
-Approve or reject a request to amend a finalised payment. Approving applies the requested change. A reason is needed to reject. Needs confirmation.
-
-| | |
-|---|---|
-| **Operation** | ACTION |
-| **Risk** | HIGH |
-| **Confirmation** | REQUIRED |
-| **Permission** | `fees.payments.approve` |
-| **Scope** | ALL |
-| **Affects others** | Yes |
-| **EduOS service** | `fee.service.decidePaymentChangeRequest()` |
-| **Status** | AVAILABLE |
-| **Audited** | Yes — `agent.decide_payment_change_request` |
-
-**Input**
-
-`requestId`: string<br>`invoiceNo`: string — The invoice the payment is on, e.g. "INV-1042". Alternative to paymentId.<br>`approve`: boolean **(required)**<br>`reason`: string — Required when rejecting
-
-**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
-
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
-
 ### `transition_fee_plan`
 
-Move a fee plan along its approval workflow: submit (draft → finance review), review (finance reviewed), requestApproval (→ admin approval), approve, or reject. Each step needs its own permission — whoever drafts a plan is deliberately not whoever approves it. Rejecting needs a reason. Needs confirmation.
+Send a fee plan on along its workflow: submit (draft → finance review) or requestApproval (finance-reviewed → admin approval). Reviewing, approving, rejecting and publishing a plan are decisions a person makes on the fee plan screen, never through the assistant. Each step needs its own permission. Needs confirmation.
 
 | | |
 |---|---|
@@ -2560,31 +2427,7 @@ Move a fee plan along its approval workflow: submit (draft → finance review), 
 
 **Input**
 
-`planId`: string<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`step`: string **(required)** — one of: submit, review, requestApproval, approve, reject<br>`reason`: string — Required for reject<br>`note`: string
-
-**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
-
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
-
-### `publish_fee_plan`
-
-Publish an approved fee plan, which raises one invoice per installment — the point at which the family sees it. Requires the plan-approval permission. Installments that already have an invoice are skipped, so publishing twice bills nobody twice. Needs confirmation.
-
-| | |
-|---|---|
-| **Operation** | ACTION |
-| **Risk** | HIGH |
-| **Confirmation** | REQUIRED |
-| **Permission** | `fees.plan.approve` |
-| **Scope** | ALL |
-| **Affects others** | Yes |
-| **EduOS service** | `plan.service.publishFeePlan()` |
-| **Status** | AVAILABLE |
-| **Audited** | Yes — `agent.publish_fee_plan` |
-
-**Input**
-
-`planId`: string<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed
+`planId`: string<br>`studentId`: string — Preferred when known, e.g. from search_students<br>`admissionNo`: string — Admission number, e.g. "OAK-12"<br>`studentName`: string — Full or partial name; an ambiguous match is refused, never guessed<br>`step`: string **(required)** — one of: submit, requestApproval<br>`note`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2836,13 +2679,13 @@ Change a hostel room's number, block, floor, capacity, type, status or amenities
 
 ### `create_hostel_inquiry`
 
-Raise a hostel enquiry — a subject and optional description, optionally about one student. It is recorded as raised by the caller. Low impact, so it runs without confirmation.
+Raise a hostel enquiry — a subject and optional description, optionally about one student. It is recorded as raised by the caller. It is filed in the name of the caller, so it needs confirmation.
 
 | | |
 |---|---|
 | **Operation** | CREATE |
 | **Risk** | MEDIUM |
-| **Confirmation** | NOT_REQUIRED |
+| **Confirmation** | REQUIRED |
 | **Permission** | `hostel.read` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
@@ -2856,7 +2699,7 @@ Raise a hostel enquiry — a subject and optional description, optionally about 
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
 ### `update_hostel_inquiry`
 
@@ -2975,30 +2818,6 @@ Submit a leave application for the caller, with a start date, end date and reaso
 **Input**
 
 `fromDate`: string<br>`toDate`: string<br>`reason`: string
-
-**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
-
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
-
-### `review_leave`
-
-Approve or reject somebody's leave application, with optional remarks. Needs confirmation.
-
-| | |
-|---|---|
-| **Operation** | ACTION |
-| **Risk** | MEDIUM |
-| **Confirmation** | REQUIRED |
-| **Permission** | `leave.review` |
-| **Scope** | OWN or ALL |
-| **Affects others** | Yes |
-| **EduOS service** | `leave.service.listForReview() + review()` |
-| **Status** | AVAILABLE |
-| **Audited** | Yes — `agent.review_leave` |
-
-**Input**
-
-`requestId`: string — From get_leave_requests. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`leaveId`: string — Alternative to requestId<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`remarks`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3274,13 +3093,13 @@ Record the return of a lent item. Name the item by title, and the borrower by na
 
 ### `request_book`
 
-Ask the library to issue a book to the caller. Name it by title or by id. The book must be a physical copy in this school's catalogue — an online resource is read where it lives and cannot be issued. The request goes to the librarian and changes nothing until it is approved, so it runs without confirmation.
+Ask the library to issue a book to the caller. Name it by title or by id. The book must be a physical copy in this school's catalogue — an online resource is read where it lives and cannot be issued. The request goes to the librarian and changes nothing until it is approved. It files a request in the name of the caller, so it needs confirmation.
 
 | | |
 |---|---|
 | **Operation** | CREATE |
 | **Risk** | LOW |
-| **Confirmation** | NOT_REQUIRED |
+| **Confirmation** | REQUIRED |
 | **Permission** | `library.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
@@ -3294,7 +3113,7 @@ Ask the library to issue a book to the caller. Name it by title or by id. The bo
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
 ### `get_my_book_requests`
 
@@ -3343,30 +3162,6 @@ Book requests waiting for the librarian to decide, with who asked and whether a 
 **Output** — `{ success: true, data: { … } }`.
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
-
-### `decide_book_request`
-
-Approve or reject a book request. Name the request by the student who made it, by the book, or by id. Approving issues the book to the student and takes a copy off the shelf; if no copy is free the approval is refused and the request stays waiting. Needs confirmation.
-
-| | |
-|---|---|
-| **Operation** | ACTION |
-| **Risk** | MEDIUM |
-| **Confirmation** | REQUIRED |
-| **Permission** | `library.manage` |
-| **Scope** | ALL |
-| **Affects others** | Yes |
-| **EduOS service** | `library.service.listBookRequestsForReview() + decideBookRequest()` |
-| **Status** | AVAILABLE |
-| **Audited** | Yes — `agent.decide_book_request` |
-
-**Input**
-
-`requestId`: string — From get_book_requests<br>`studentName`: string — The student who asked, e.g. "Rahul". More than one pending request matching is refused, never guessed.<br>`title`: string — The book that was asked for<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string — Shown to the student with the decision<br>`dueAt`: string — When the book is due back; defaults to a fortnight from today
-
-**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
-
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
 ### `cancel_book_request`
 
@@ -3772,30 +3567,6 @@ Withdraw the caller's own elective registration. Name the elective by its subjec
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
-### `decide_registration`
-
-Approve or reject an elective subject registration. Needs confirmation.
-
-| | |
-|---|---|
-| **Operation** | ACTION |
-| **Risk** | MEDIUM |
-| **Confirmation** | REQUIRED |
-| **Permission** | `registrations.review` |
-| **Scope** | OWN or ALL |
-| **Affects others** | Yes |
-| **EduOS service** | `registration.service.listForReview() + decide()` |
-| **Status** | AVAILABLE |
-| **Audited** | Yes — `agent.decide_registration` |
-
-**Input**
-
-`requestId`: string — From get_registration_reviews. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`registrationId`: string — Alternative to requestId<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string
-
-**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
-
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
-
 ## Seats
 
 ### `get_seat_summary`
@@ -3922,13 +3693,13 @@ Co-curricular activities and achievements on a student's record, in every state 
 
 ### `request_cocurricular`
 
-Ask for a co-curricular activity or achievement to be added to the caller's own profile. The activity date cannot be in the future. It goes to the class teacher for review and changes nothing until approved, so it runs without confirmation.
+Ask for a co-curricular activity or achievement to be added to the caller's own profile. The activity date cannot be in the future. It goes to the class teacher for review and changes nothing until approved. It files a request in the name of the caller, so it needs confirmation.
 
 | | |
 |---|---|
 | **Operation** | CREATE |
 | **Risk** | MEDIUM |
-| **Confirmation** | NOT_REQUIRED |
+| **Confirmation** | REQUIRED |
 | **Permission** | `cocurricular.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
@@ -3939,30 +3710,6 @@ Ask for a co-curricular activity or achievement to be added to the caller's own 
 **Input**
 
 `name`: string **(required)** — The activity, e.g. "Inter-school football tournament"<br>`activityDate`: string **(required)** — When it took place<br>`category`: string — one of: SPORTS, ARTS, MUSIC, DANCE, DRAMA, LITERARY, SCIENCE, SOCIAL_SERVICE, LEADERSHIP, CLUB, OTHER<br>`level`: string — one of: SCHOOL, INTER_SCHOOL, DISTRICT, STATE, NATIONAL, INTERNATIONAL, OTHER<br>`achievement`: string — e.g. "Runner-up"<br>`description`: string
-
-**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
-
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
-
-### `decide_cocurricular`
-
-Approve or reject a co-curricular request. Approving adds it to the student's profile. A reason is expected when rejecting. Needs confirmation.
-
-| | |
-|---|---|
-| **Operation** | ACTION |
-| **Risk** | MEDIUM |
-| **Confirmation** | REQUIRED |
-| **Permission** | `cocurricular.review` |
-| **Scope** | OWN or ALL |
-| **Affects others** | Yes |
-| **EduOS service** | `cocurricular.service.listForReview() + decide()` |
-| **Status** | AVAILABLE |
-| **Audited** | Yes — `agent.decide_cocurricular` |
-
-**Input**
-
-`requestId`: string — From get_student_requests. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`rejectionReason`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3994,13 +3741,13 @@ _(no arguments)_
 
 ### `request_profile_edit`
 
-Ask for a correction to the caller's own profile. Only first name, last name, date of birth, gender and address can be corrected this way. Only one request may be pending at a time. Changes nothing until a class teacher approves, so it runs without confirmation.
+Ask for a correction to the caller's own profile. Only first name, last name, date of birth, gender and address can be corrected this way. Only one request may be pending at a time. Changes nothing until a class teacher approves. It files a request in the name of the caller, so it needs confirmation.
 
 | | |
 |---|---|
 | **Operation** | CREATE |
 | **Risk** | MEDIUM |
-| **Confirmation** | NOT_REQUIRED |
+| **Confirmation** | REQUIRED |
 | **Permission** | `profile.edit.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
@@ -4011,30 +3758,6 @@ Ask for a correction to the caller's own profile. Only first name, last name, da
 **Input**
 
 `changes`: object — The corrected values<br>`field`: string — The field to correct, as a person names it, e.g. "address" or "date of birth"<br>`value`: string — The corrected value<br>`note`: string — Why the correction is needed
-
-**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
-
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
-
-### `decide_profile_edit`
-
-Approve or reject a profile-correction request. Approving writes the new values to the student's record. Needs confirmation.
-
-| | |
-|---|---|
-| **Operation** | ACTION |
-| **Risk** | MEDIUM |
-| **Confirmation** | REQUIRED |
-| **Permission** | `profile.edit.review` |
-| **Scope** | OWN or ALL |
-| **Affects others** | Yes |
-| **EduOS service** | `profileEdit.service.listForReview() + decide()` |
-| **Status** | AVAILABLE |
-| **Audited** | Yes — `agent.decide_profile_edit` |
-
-**Input**
-
-`requestId`: string — From get_student_requests. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`rejectionReason`: string
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -4480,13 +4203,13 @@ One support ticket with its full reply thread. Read-only.
 
 ### `create_ticket`
 
-Raise a support ticket with a subject, routed to the admin office, warden, librarian or — for a question about a child — the class teacher. A ticket carries only a subject; add the details with reply_to_ticket. Low impact and reversible, so it runs without confirmation.
+Raise a support ticket with a subject, routed to the admin office, warden, librarian or — for a question about a child — the class teacher. A ticket carries only a subject; add the details with reply_to_ticket. It files a ticket in the name of the caller, so it needs confirmation.
 
 | | |
 |---|---|
 | **Operation** | CREATE |
 | **Risk** | MEDIUM |
-| **Confirmation** | NOT_REQUIRED |
+| **Confirmation** | REQUIRED |
 | **Permission** | `tickets.create` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
@@ -4500,7 +4223,7 @@ Raise a support ticket with a subject, routed to the admin office, warden, libra
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
 ### `reply_to_ticket`
 
@@ -4820,13 +4543,13 @@ _(no arguments)_
 
 ### `request_transport_route`
 
-Ask for a place on a bus route, from a particular stop. Name the route the way it is written ("Route 2") and, where the route has more than one stop, name the stop too. The stop must be one on that route. The request goes to the school office and changes nothing until it is approved — the fare is only charged once a place is granted, so it runs without confirmation.
+Ask for a place on a bus route, from a particular stop. Name the route the way it is written ("Route 2") and, where the route has more than one stop, name the stop too. The stop must be one on that route. The request goes to the school office and changes nothing until it is approved — the fare is only charged once a place is granted. It files a request in the name of the caller, so it needs confirmation.
 
 | | |
 |---|---|
 | **Operation** | CREATE |
 | **Risk** | LOW |
-| **Confirmation** | NOT_REQUIRED |
+| **Confirmation** | REQUIRED |
 | **Permission** | `transport.request` |
 | **Scope** | OWN or ALL |
 | **Affects others** | No |
@@ -4840,7 +4563,7 @@ Ask for a place on a bus route, from a particular stop. Name the route the way i
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
 ### `get_my_transport_requests`
 
@@ -4889,30 +4612,6 @@ Transport requests waiting for a decision, with who asked, which route and stop,
 **Output** — `{ success: true, data: { … } }`.
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
-
-### `decide_transport_request`
-
-Approve or reject a request for a place on a bus route. Approving puts the student on the route and, when the route carries a fare, raises an invoice for it against their fees. Use get_transport_requests to find the request id. Needs confirmation.
-
-| | |
-|---|---|
-| **Operation** | ACTION |
-| **Risk** | MEDIUM |
-| **Confirmation** | REQUIRED |
-| **Permission** | `transport.manage` |
-| **Scope** | ALL |
-| **Affects others** | Yes |
-| **EduOS service** | `transport.service.listTransportRequestsForReview() + decideTransportRequest()` |
-| **Status** | AVAILABLE |
-| **Audited** | Yes — `agent.decide_transport_request` |
-
-**Input**
-
-`requestId`: string — From get_transport_requests. Omit it and name the student instead.<br>`studentName`: string — Who raised it, e.g. "Rahul". More than one pending match is refused, never guessed.<br>`status`: string **(required)** — one of: APPROVED, REJECTED<br>`note`: string — Shown to the student with the decision
-
-**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
-
-**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
 ### `cancel_transport_request`
 
@@ -4992,7 +4691,7 @@ _(no arguments)_
 
 ## Permission coverage
 
-82 of the 131 permissions in the catalog are reachable through MCP.
+77 of the 131 permissions in the catalog are reachable through MCP.
 
 Permissions **not** reachable through any tool:
 
@@ -5007,8 +4706,13 @@ Permissions **not** reachable through any tool:
 - `customization.manage` — Configure a school's theme, branding and dropdown values
 - `domains.manage` — Configure, verify and activate a school's subdomain or custom domain
 - `attendance.regularize` — Correct/regularize past attendance
+- `leave.review` — Approve or reject leave applications
+- `marks.publish` — Publish marks / report cards
 - `reportcards.read` — View report cards
+- `fees.payments.refund` — Refund a fee payment
 - `fees.plan.review` — Review a submitted installment plan and send it for admin approval
+- `fees.plan.approve` — Approve, reject and publish student installment plans
+- `profile.edit.review` — Approve or reject student profile edit requests
 - `analytics.school.read` — View school-wide analytics
 - `analytics.class.read` — View class-level analytics
 - `analytics.child.read` — View a child's analytics

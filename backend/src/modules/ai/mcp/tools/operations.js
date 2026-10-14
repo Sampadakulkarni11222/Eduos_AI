@@ -14,8 +14,18 @@ import * as community from '../../../community/community.service.js';
 import * as campus from '../../../campus/campus.service.js';
 import * as lectures from '../../../lectures/lecture.service.js';
 import * as syllabus from '../../../syllabus/syllabus.service.js';
+import * as fees from '../../../fees/fee.service.js';
+import * as feePlans from '../../../fees/plan.service.js';
+import * as leave from '../../../leave/leave.service.js';
+import * as registrations from '../../../registrations/registration.service.js';
+import * as cocurricular from '../../../studentRequests/cocurricular.service.js';
+import * as profileEdit from '../../../studentRequests/profileEdit.service.js';
+import * as library from '../../../library/library.service.js';
+import * as transport from '../../../transport/transport.service.js';
+import { logger } from '../../../../utils/logger.js';
 import { ok } from '../protocol.js';
-import { RISK, noArgs, rupees, shortDate, summarise } from './_shared.js';
+import { HUMAN_DECISIONS, decisionLink } from '../decisions.js';
+import { RISK, noArgs, rupees, shortDate, summarise, raisedBy } from './_shared.js';
 
 /**
  * Institution operations: approvals, compliance, correspondence, governance,
@@ -41,6 +51,96 @@ import { RISK, noArgs, rupees, shortDate, summarise } from './_shared.js';
 
 const rowsOf = (out) => (Array.isArray(out) ? out : out?.items ?? []);
 const day = (d) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+
+/**
+ * Every queue a person may be the decider for, and how to read it.
+ *
+ * `permission` is the one that makes them the decider, read at their own scope
+ * so each source returns exactly what their review screen would. `read` returns
+ * { count, rows } -- rows only to name a few examples.
+ */
+const PENDING_SOURCES = [
+  {
+    kind: 'approval', label: 'approval request(s)', permission: 'approvals.decide',
+    read: async (ctx) => {
+      const rows = rowsOf(await approvals.inbox(ctx.actor));
+      return { count: rows.length, rows: rows.map((r) => r.title) };
+    },
+  },
+  {
+    kind: 'payment', label: 'payment(s) awaiting approval', permission: 'fees.payments.approve', minScope: 'ALL',
+    read: async (ctx, scope) => {
+      const page = await fees.listPayments(ctx.actor, scope, { recordStatus: 'PENDING_ADMIN_APPROVAL', page: 1, pageSize: 3 });
+      const rows = rowsOf(page);
+      return { count: page?.total ?? rows.length, rows: rows.map((p) => `${p.studentName ?? p.receiptNo ?? 'payment'} ${rupees(p.amountPaise)}`) };
+    },
+  },
+  {
+    kind: 'payment', label: 'payment change request(s)', permission: 'fees.payments.approve', minScope: 'ALL',
+    read: async () => {
+      const rows = rowsOf(await fees.listPaymentChangeRequests({ status: 'PENDING' }));
+      return { count: rows.length, rows: rows.map((r) => `${r.field} on receipt ${r.receiptNo}`) };
+    },
+  },
+  {
+    kind: 'feePlan', label: 'fee plan(s) awaiting finance review', permission: 'fees.plan.review', minScope: 'ALL',
+    read: async (ctx, scope) => {
+      const rows = rowsOf(await feePlans.listFeePlans(ctx.actor, scope, { status: 'PENDING_FINANCE_REVIEW' }));
+      return { count: rows.length, rows: rows.map((p) => p.name) };
+    },
+  },
+  {
+    kind: 'feePlan', label: 'fee plan(s) awaiting approval', permission: 'fees.plan.approve', minScope: 'ALL',
+    read: async (ctx, scope) => {
+      const rows = rowsOf(await feePlans.listFeePlans(ctx.actor, scope, { status: 'PENDING_ADMIN_APPROVAL' }));
+      return { count: rows.length, rows: rows.map((p) => p.name) };
+    },
+  },
+  {
+    kind: 'leave', label: 'leave application(s)', permission: 'leave.review',
+    read: async (ctx, scope) => {
+      const rows = rowsOf(await leave.listForReview(ctx.actor, scope, { status: 'PENDING' }));
+      return { count: rows.length, rows: rows.map(raisedBy) };
+    },
+  },
+  {
+    kind: 'registration', label: 'elective registration(s)', permission: 'registrations.review',
+    read: async (ctx, scope) => {
+      const rows = rowsOf(await registrations.listForReview(ctx.actor, scope, { status: 'PENDING' }));
+      return { count: rows.length, rows: rows.map((r) => `${raisedBy(r) ?? '—'} → ${r.subjectName ?? '—'}`) };
+    },
+  },
+  {
+    kind: 'studentRequest', label: 'co-curricular request(s)', permission: 'cocurricular.review',
+    read: async (ctx, scope) => {
+      const rows = rowsOf(await cocurricular.listForReview(ctx.actor, scope, { status: 'PENDING' }));
+      return { count: rows.length, rows: rows.map(raisedBy) };
+    },
+  },
+  {
+    kind: 'studentRequest', label: 'profile correction request(s)', permission: 'profile.edit.review',
+    read: async (ctx, scope) => {
+      const rows = rowsOf(await profileEdit.listForReview(ctx.actor, scope, { status: 'PENDING' }));
+      return { count: rows.length, rows: rows.map(raisedBy) };
+    },
+  },
+  {
+    kind: 'bookRequest', label: 'book request(s)', permission: 'library.manage', minScope: 'ALL',
+    read: async (ctx, scope) => {
+      const page = await library.listBookRequestsForReview(ctx.actor, scope, { status: 'PENDING', page: 1, pageSize: 3 });
+      const rows = rowsOf(page);
+      return { count: page?.total ?? rows.length, rows: rows.map(raisedBy) };
+    },
+  },
+  {
+    kind: 'transportRequest', label: 'transport request(s)', permission: 'transport.manage', minScope: 'ALL',
+    read: async (ctx, scope) => {
+      const page = await transport.listTransportRequestsForReview(ctx.actor, scope, { status: 'PENDING', page: 1, pageSize: 3 });
+      const rows = rowsOf(page);
+      return { count: page?.total ?? rows.length, rows: rows.map(raisedBy) };
+    },
+  },
+];
 
 export const operationsTools = {
   get_my_day: {
@@ -86,6 +186,48 @@ export const operationsTools = {
         { approvals: rows, count: rows.length, overdue: rows.filter((r) => r.overdue).length },
         { speak: rows.length ? `${rows.length} request(s) are waiting on you: ${view.list}. Open Approvals to decide.` : 'No approvals are waiting on you.' },
       );
+    },
+  },
+
+  get_pending_items_for_me: {
+    module: 'Approvals',
+    operation: 'GET',
+    risk: RISK.LOW,
+    resultShape: 'LIST',
+    description:
+      'Everything waiting on the caller to decide: payments and payment changes awaiting approval, fee plans, leave applications, elective registrations, co-curricular and profile-correction requests, book and transport requests, and the approvals inbox. Only the queues the caller is the decider for, each with how many are waiting and the screen to open. Read-only: every decision is made by the caller on that screen, never by the assistant.',
+    inputSchema: noArgs,
+    permission: 'approvals.read',
+    service: 'approval.service.inbox() + each review queue listForReview()',
+    async run(ctx) {
+      const perms = ctx.actor?.permissions ?? {};
+      const mine = PENDING_SOURCES.filter((src) => perms[src.permission] && !(src.minScope === 'ALL' && perms[src.permission] !== 'ALL'));
+      const read = await Promise.all(mine.map(async (src) => {
+        try {
+          return { src, ...(await src.read(ctx, perms[src.permission])) };
+        } catch (err) {
+          // A queue that cannot be read is reported as unavailable; it does
+          // not take the others down with it.
+          logger.warn(`get_pending_items_for_me: ${src.label} unavailable: ${err.message}`);
+          return { src, count: null, rows: [] };
+        }
+      }));
+      const items = read
+        .filter((r) => r.count !== 0)
+        .map(({ src, count, rows }) => ({
+          kind: src.kind,
+          what: src.label,
+          count,
+          examples: (rows ?? []).filter(Boolean).slice(0, 3),
+          screen: HUMAN_DECISIONS[src.kind].screen,
+          link: decisionLink(ctx.actor, src.kind),
+        }));
+      const waiting = items.filter((i) => i.count);
+      const view = summarise(waiting, (i) => `${i.count} ${i.what} (${i.screen}${i.link ? `, ${i.link}` : ''})`);
+      let speak = 'You are not the one who decides any queue in this school.';
+      if (waiting.length) speak = `Waiting on you: ${view.list}. Open each screen to decide; I do not approve or reject anything.`;
+      else if (mine.length) speak = 'Nothing is waiting on you to decide right now.';
+      return ok({ items, total: waiting.reduce((sum, i) => sum + i.count, 0) }, { speak });
     },
   },
 

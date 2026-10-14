@@ -9,7 +9,7 @@ import { ok, action } from '../protocol.js';
 import { applyFieldAllowList } from '../validate.js';
 import {
   RISK, objectId, dateStr, noArgs, summarise, shortDate, resolveStudentId, studentIdentitySchema, wrapAgentTool,
-  decidableSchema, thePendingRequest, raisedBy, theNamed,
+  theNamed,
 } from './_shared.js';
 
 /**
@@ -62,8 +62,6 @@ function changesOf(args) {
  * ticket tools named fields their models do not have. Each of those tools
  * failed — or silently dropped what it was given — on every call.
  */
-
-const DECISIONS = ['APPROVED', 'REJECTED'];
 const asList = (rows) => (Array.isArray(rows) ? rows : (rows?.items ?? []));
 
 /** A value as the calendar day it falls on, on the same scale as a dateStr arg. */
@@ -225,49 +223,8 @@ export const welfareTools = {
     service: 'leave.service.apply()',
   }),
 
-  review_leave: {
-    module: 'Leave',
-    operation: 'ACTION',
-    risk: RISK.MEDIUM,
-    confirm: true,
-    description: "Approve or reject somebody's leave application, with optional remarks. Needs confirmation.",
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...decidableSchema('get_leave_requests'),
-        leaveId: objectId('Alternative to requestId'),
-        status: { type: 'string', enum: DECISIONS },
-        remarks: { type: 'string', maxLength: 500 },
-      },
-      required: ['status'],
-      additionalProperties: false,
-    },
-    permission: 'leave.review',
-    affectsOthers: true,
-    service: 'leave.service.listForReview() + review()',
-    summarise: (args, _actor, prepared) =>
-      `${args.status === 'APPROVED' ? 'Approve' : 'Reject'} the leave application ` +
-      `${prepared?.who ? `from ${prepared.who}` : `${prepared?.id ?? args.leaveId ?? args.requestId}`}`,
-    async prepare(ctx, args) {
-      const given = args.leaveId ?? args.requestId;
-      if (given) return { id: String(given) };
-      const chosen = thePendingRequest(
-        await leave.listForReview(ctx.actor, ctx.scope, { status: 'PENDING' }),
-        { studentName: args.studentName, label: 'leave application' },
-      );
-      return { id: String(chosen.id ?? chosen._id), who: raisedBy(chosen) };
-    },
-    async run(ctx, args, prepared) {
-      const plan = prepared ?? (await this.prepare(ctx, args));
-      const result = await leave.review(ctx.actor, ctx.scope, { id: plan.id, status: args.status, remarks: args.remarks });
-      return action({
-        type: args.status === 'APPROVED' ? 'leave_approved' : 'leave_rejected',
-        id: plan.id,
-        data: { leaveId: plan.id, status: result?.status ?? args.status },
-        speak: `The leave application has been ${args.status.toLowerCase()}.`,
-      });
-    },
-  },
+  // review_leave is deliberately absent: deciding is done by a person on the
+  // screen, never by the assistant. See HUMAN_DECISIONS in ../decisions.js.
 
   /* ── Elective registrations ──────────────────────────── */
   get_registration_reviews: {
@@ -428,49 +385,8 @@ export const welfareTools = {
     },
   },
 
-  decide_registration: {
-    module: 'Registrations',
-    operation: 'ACTION',
-    risk: RISK.MEDIUM,
-    confirm: true,
-    description: 'Approve or reject an elective subject registration. Needs confirmation.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...decidableSchema('get_registration_reviews'),
-        registrationId: objectId('Alternative to requestId'),
-        status: { type: 'string', enum: DECISIONS },
-        note: { type: 'string', maxLength: 500 },
-      },
-      required: ['status'],
-      additionalProperties: false,
-    },
-    permission: 'registrations.review',
-    affectsOthers: true,
-    service: 'registration.service.listForReview() + decide()',
-    summarise: (args, _actor, prepared) =>
-      `${args.status === 'APPROVED' ? 'Approve' : 'Reject'} the elective registration ` +
-      `${prepared?.who ? `from ${prepared.who}` : `${prepared?.id ?? args.registrationId ?? ''}`}`.trimEnd(),
-    async prepare(ctx, args) {
-      const given = args.registrationId ?? args.requestId;
-      if (given) return { id: String(given) };
-      const chosen = thePendingRequest(
-        await registrations.listForReview(ctx.actor, ctx.scope, { status: 'PENDING' }),
-        { studentName: args.studentName, label: 'elective registration' },
-      );
-      return { id: String(chosen.id ?? chosen._id), who: raisedBy(chosen) };
-    },
-    async run(ctx, args, prepared) {
-      const plan = prepared ?? (await this.prepare(ctx, args));
-      const result = await registrations.decide(ctx.actor, ctx.scope, plan.id, { status: args.status, note: args.note ?? null });
-      return action({
-        type: args.status === 'APPROVED' ? 'registration_approved' : 'registration_rejected',
-        id: plan.id,
-        data: result,
-        speak: `The elective registration has been ${args.status.toLowerCase()}.`,
-      });
-    },
-  },
+  // decide_registration is deliberately absent: deciding is done by a person on the
+  // screen, never by the assistant. See HUMAN_DECISIONS in ../decisions.js.
 
   /* ── Student requests ────────────────────────────────── */
   get_student_requests: {
@@ -553,8 +469,9 @@ export const welfareTools = {
     module: 'Student requests',
     operation: 'CREATE',
     risk: RISK.MEDIUM,
+    confirm: true,
     description:
-      "Ask for a co-curricular activity or achievement to be added to the caller's own profile. The activity date cannot be in the future. It goes to the class teacher for review and changes nothing until approved, so it runs without confirmation.",
+      "Ask for a co-curricular activity or achievement to be added to the caller's own profile. The activity date cannot be in the future. It goes to the class teacher for review and changes nothing until approved. It files a request in the name of the caller, so it needs confirmation.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -577,49 +494,8 @@ export const welfareTools = {
     },
   },
 
-  decide_cocurricular: {
-    module: 'Student requests',
-    operation: 'ACTION',
-    risk: RISK.MEDIUM,
-    confirm: true,
-    description: "Approve or reject a co-curricular request. Approving adds it to the student's profile. A reason is expected when rejecting. Needs confirmation.",
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...decidableSchema('get_student_requests'),
-        status: { type: 'string', enum: DECISIONS },
-        rejectionReason: { type: 'string', maxLength: 500 },
-      },
-      required: ['status'],
-      additionalProperties: false,
-    },
-    permission: 'cocurricular.review',
-    affectsOthers: true,
-    service: 'cocurricular.service.listForReview() + decide()',
-    summarise: (args, _actor, prepared) =>
-      `${args.status === 'APPROVED' ? 'Approve' : 'Reject'} the co-curricular request ` +
-      `${prepared?.who ? `from ${prepared.who}` : `${args.requestId ?? ''}`}`.trimEnd(),
-    async prepare(ctx, args) {
-      if (args.requestId) return { id: String(args.requestId) };
-      const chosen = thePendingRequest(
-        await cocurricular.listForReview(ctx.actor, ctx.scope, { status: 'PENDING' }),
-        { studentName: args.studentName, label: 'co-curricular request' },
-      );
-      return { id: String(chosen.id ?? chosen._id), who: raisedBy(chosen) };
-    },
-    async run(ctx, args, prepared) {
-      const plan = prepared ?? (await this.prepare(ctx, args));
-      const result = await cocurricular.decide(ctx.actor, ctx.scope, plan.id, {
-        status: args.status, rejectionReason: args.rejectionReason,
-      });
-      return action({
-        type: args.status === 'APPROVED' ? 'cocurricular_approved' : 'cocurricular_rejected',
-        id: plan.id,
-        data: result,
-        speak: `The co-curricular request has been ${args.status.toLowerCase()}.`,
-      });
-    },
-  },
+  // decide_cocurricular is deliberately absent: deciding is done by a person on the
+  // screen, never by the assistant. See HUMAN_DECISIONS in ../decisions.js.
 
   get_editable_fields: {
     module: 'Student requests',
@@ -639,8 +515,9 @@ export const welfareTools = {
     module: 'Student requests',
     operation: 'CREATE',
     risk: RISK.MEDIUM,
+    confirm: true,
     description:
-      "Ask for a correction to the caller's own profile. Only first name, last name, date of birth, gender and address can be corrected this way. Only one request may be pending at a time. Changes nothing until a class teacher approves, so it runs without confirmation.",
+      "Ask for a correction to the caller's own profile. Only first name, last name, date of birth, gender and address can be corrected this way. Only one request may be pending at a time. Changes nothing until a class teacher approves. It files a request in the name of the caller, so it needs confirmation.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -668,57 +545,24 @@ export const welfareTools = {
     },
     permission: 'profile.edit.request',
     service: 'profileEdit.service.request()',
-    summarise: (args) => `Request a correction to your ${Object.keys(changesOf(args)).join(', ') || args.field || 'profile'}`,
-    async run(ctx, args) {
-      const changes = changesOf(args);
+    summarise: (args, _actor, prepared) => `Request a correction to your ${Object.keys(prepared?.changes ?? {}).join(', ') || args.field || 'profile'}`,
+    /**
+     * The correction, read before anything is proposed: a field the workflow
+     * does not correct is refused in words now that the request is confirmed
+     * first, rather than throwing out of the confirmation summary.
+     */
+    async prepare(_ctx, args) {
+      return { changes: changesOf(args) };
+    },
+    async run(ctx, args, prepared) {
+      const changes = prepared?.changes ?? changesOf(args);
       const created = await profileEdit.request(ctx.actor, { changes, note: args.note });
       return action({ type: 'profile_edit_requested', id: created?.id, data: created, speak: 'Your correction request has been sent for review.' });
     },
   },
 
-  decide_profile_edit: {
-    module: 'Student requests',
-    operation: 'ACTION',
-    risk: RISK.MEDIUM,
-    confirm: true,
-    description: "Approve or reject a profile-correction request. Approving writes the new values to the student's record. Needs confirmation.",
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...decidableSchema('get_student_requests'),
-        status: { type: 'string', enum: DECISIONS },
-        rejectionReason: { type: 'string', maxLength: 500 },
-      },
-      required: ['status'],
-      additionalProperties: false,
-    },
-    permission: 'profile.edit.review',
-    affectsOthers: true,
-    service: 'profileEdit.service.listForReview() + decide()',
-    summarise: (args, _actor, prepared) =>
-      `${args.status === 'APPROVED' ? 'Approve' : 'Reject'} the profile-correction request ` +
-      `${prepared?.who ? `from ${prepared.who}` : `${args.requestId ?? ''}`}`.trimEnd(),
-    async prepare(ctx, args) {
-      if (args.requestId) return { id: String(args.requestId) };
-      const chosen = thePendingRequest(
-        await profileEdit.listForReview(ctx.actor, ctx.scope, { status: 'PENDING' }),
-        { studentName: args.studentName, label: 'profile-correction request' },
-      );
-      return { id: String(chosen.id ?? chosen._id), who: raisedBy(chosen) };
-    },
-    async run(ctx, args, prepared) {
-      const plan = prepared ?? (await this.prepare(ctx, args));
-      const result = await profileEdit.decide(ctx.actor, ctx.scope, plan.id, {
-        status: args.status, rejectionReason: args.rejectionReason,
-      });
-      return action({
-        type: args.status === 'APPROVED' ? 'profile_edit_approved' : 'profile_edit_rejected',
-        id: plan.id,
-        data: result,
-        speak: `The correction request has been ${args.status.toLowerCase()}.`,
-      });
-    },
-  },
+  // decide_profile_edit is deliberately absent: deciding is done by a person on the
+  // screen, never by the assistant. See HUMAN_DECISIONS in ../decisions.js.
 
   /* ── Medical ─────────────────────────────────────────── */
   get_medical_record: {
@@ -911,8 +755,9 @@ export const welfareTools = {
     module: 'Tickets',
     operation: 'CREATE',
     risk: RISK.MEDIUM,
+    confirm: true,
     description:
-      'Raise a support ticket with a subject, routed to the admin office, warden, librarian or — for a question about a child — the class teacher. A ticket carries only a subject; add the details with reply_to_ticket. Low impact and reversible, so it runs without confirmation.',
+      'Raise a support ticket with a subject, routed to the admin office, warden, librarian or — for a question about a child — the class teacher. A ticket carries only a subject; add the details with reply_to_ticket. It files a ticket in the name of the caller, so it needs confirmation.',
     inputSchema: {
       type: 'object',
       properties: {

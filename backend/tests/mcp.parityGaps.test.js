@@ -47,7 +47,8 @@ describe('a request made through the assistant can be withdrawn through it', () 
     const book = await inSchool(OAK, () => Book.create({
       title: 'Panchatantra', author: 'Vishnu Sharma', totalCopies: 2, availableCopies: 2,
     }));
-    const made = await mcp(OAK, student().actor, 'request_book', { bookId: String(book._id) });
+    // Filing is a CREATE, so it is proposed and confirmed like every other.
+    const { done: made } = await proposeAndConfirm(OAK, student().actor, 'request_book', { bookId: String(book._id) });
     expect(made.success, JSON.stringify(made.error ?? {})).toBe(true);
 
     const { proposal, done } = await proposeAndConfirm(
@@ -69,7 +70,7 @@ describe('a request made through the assistant can be withdrawn through it', () 
       const stop = await TransportStop.create({ routeId: r._id, name: 'Gate', sequenceNo: 1 });
       return { r, stop };
     });
-    const made = await mcp(OAK, student().actor, 'request_transport_route', {
+    const { done: made } = await proposeAndConfirm(OAK, student().actor, 'request_transport_route', {
       routeId: String(route.r._id), stopId: String(route.stop._id),
     });
     expect(made.success, JSON.stringify(made.error ?? {})).toBe(true);

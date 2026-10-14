@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import mongoose from 'mongoose';
+import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 
 /**
@@ -71,6 +72,10 @@ const numberedLines = (text) => String(text)
   .filter(Boolean)
   .map((m) => [Number(m[1]), m[2]]);
 
+
+/** The continuation key: derived from JWT_SECRET under its own label, never the access-token key itself. */
+const continueKey = () => crypto.createHmac('sha256', env.JWT_SECRET).update('eduos-ai-continuation-token-v1').digest();
+
 describe('website: "Show all students" in windows, then Load more until the end', () => {
   it('every student once, in order, numbering 1..N unbroken, with an honest range note', async () => {
     const first = await api.ask(school.people.ADMIN, 'Show all students');
@@ -139,9 +144,16 @@ describe('the continuation is a security boundary', () => {
     // A correctly signed token naming a write is still refused: continuing is read-only.
     const forged = jwt.sign(
       { t: 'mark_attendance', a: {}, w: { offset: 0 }, p: String(school.people.ADMIN.actor.profileId), s: OAK },
-      env.JWT_SECRET, { audience: 'eduos-ai-continue', expiresIn: '5m' },
+      continueKey(), { audience: 'eduos-ai-continue', expiresIn: '5m' },
     );
     expect((await api.post(school.people.ADMIN, '/ai/agent/continue', { continuationToken: forged })).status).toBe(400);
+
+    // Signed with the ACCESS-token key, the same claims are not a continuation.
+    const accessKeyed = jwt.sign(
+      { t: 'search_students', a: {}, w: { offset: 0 }, p: String(school.people.ADMIN.actor.profileId), s: OAK },
+      env.JWT_SECRET, { audience: 'eduos-ai-continue', expiresIn: '5m' },
+    );
+    expect((await api.post(school.people.ADMIN, '/ai/agent/continue', { continuationToken: accessKeyed })).status).toBe(410);
   }, 60_000);
 
   it('a student is still not shown anyone else, however the list is asked for', async () => {
@@ -202,7 +214,7 @@ describe('in-app WhatsApp simulator: the same continuation as a real phone', () 
   it('a token in the request is ignored: only the server\'s stored continuation is used', async () => {
     const forged = jwt.sign(
       { t: 'search_students', a: {}, w: { offset: 2000 }, p: String(school.people.ADMIN.actor.profileId), s: OAK },
-      env.JWT_SECRET, { audience: 'eduos-ai-continue', expiresIn: '5m' },
+      continueKey(), { audience: 'eduos-ai-continue', expiresIn: '5m' },
     );
     // Nothing listed yet in this thread, so there is nothing to continue,
     // whatever the request carries.
@@ -223,7 +235,7 @@ describe('in-app WhatsApp simulator: the same continuation as a real phone', () 
 
     const expired = jwt.sign(
       { t: 'search_students', a: {}, w: { offset: 1000 }, p: String(school.people.ADMIN.actor.profileId), s: OAK },
-      env.JWT_SECRET, { audience: 'eduos-ai-continue', expiresIn: -10 },
+      continueKey(), { audience: 'eduos-ai-continue', expiresIn: -10 },
     );
     const row = await latest();
     await WhatsappMessage.updateOne({ _id: row._id }, { $set: { 'metadata.continuationToken': expired } });

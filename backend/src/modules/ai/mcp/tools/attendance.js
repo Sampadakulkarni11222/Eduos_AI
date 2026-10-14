@@ -810,8 +810,22 @@ export const attendanceTools = {
     permission: 'attendance.mark',
     affectsOthers: true,
     service: 'attendance.service.markAttendanceBulk()',
-    summarise: (args) => `Mark attendance for ${args.rows.length} student(s) in section ${args.sectionId} on ${args.date ?? 'today'} in one go`,
-    async run(ctx, args) {
+    summarise: (args, _actor, prepared) =>
+      `Mark attendance for ${args.rows.length} student(s) in ${prepared?.label ?? `section ${args.sectionId}`} on ${args.date ?? 'today'} in one go`,
+    /**
+     * The section, resolved at the caller's own scope BEFORE anything is
+     * proposed -- as mark_attendance does. Without it a teacher was offered a
+     * proposal for a class they do not teach, and the service's answer on
+     * confirm told apart admission numbers that sit in that class from ones
+     * that do not.
+     */
+    async prepare(ctx, args) {
+      const section = await resolveSection(ctx, { sectionId: args.sectionId });
+      if (!section) throw new AppError('Which class should I mark?', 400, [], 'AGENT_NEEDS_INPUT');
+      return { sectionId: section.sectionId, label: section.label };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
       // markAttendanceBulk() takes rows as its CSV importer parses them —
       // lower-case keys, string values. It used to be handed the tool's own
       // shape ({ rollNo: 3 }), matched nothing, and refused every call with
@@ -822,7 +836,7 @@ export const attendanceTools = {
         status: r.status,
       }));
       const result = await attendance.markAttendanceBulk(ctx.actor, ctx.scope, {
-        sectionId: args.sectionId,
+        sectionId: plan.sectionId,
         date: args.date ?? today(),
         periodNo: args.periodNo ?? null,
         rows,

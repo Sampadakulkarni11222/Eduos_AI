@@ -49,10 +49,11 @@ describe('offered to exactly the roles whose web route admits them', () => {
 
 describe('the records they name must belong to this school', () => {
   it('a guardian profile from another school is not linked', async () => {
-    const { done } = await proposeAndConfirm(OAK, school.people.ADMIN.actor, 'add_guardian', {
+    // Refused before anything is proposed: the id is not a parent of this school.
+    const { proposal, done } = await proposeAndConfirm(OAK, school.people.ADMIN.actor, 'add_guardian', {
       admissionNo: 'OAK-3', guardianProfileId: school.people.RIVER_ADMIN.actor.profileId, relation: 'GUARDIAN',
     });
-    expect(done.success).toBe(false);
+    expect((done ?? proposal).success).toBe(false);
     expect(await inSchool(OAK, () => StudentGuardian.countDocuments({ studentId: school.aman.student._id }))).toBe(0);
   }, 60000);
 

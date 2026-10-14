@@ -39,6 +39,7 @@ vi.mock('../src/providers/ai.provider.js', async (importOriginal) => {
 const { AgentAction } = await import('../src/models/agentAction.model.js');
 const { AttendanceRecord } = await import('../src/models/attendanceRecord.model.js');
 const { Payment } = await import('../src/models/fee.model.js');
+const { Ticket } = await import('../src/models/ticket.model.js');
 const { resetMcpClient } = await import('../src/modules/ai/mcp/client.js');
 const { resetAgentThrottle } = await import('../src/modules/ai/agent/throttle.js');
 const { env } = await import('../src/config/env.js');
@@ -303,31 +304,44 @@ describe('WhatsApp with a model configured: one confirmation, one write', () => 
     return { status: res.status, body: await res.json() };
   }
 
+  // The write is a parent raising a ticket in their own name: low impact and on
+  // nobody else's record, so it is one WhatsApp may confirm. Changes on other
+  // people's records are confirmed on the website only (registry.js).
   it('a model-planned write is proposed, a redelivered YES and a second YES write once', async () => {
-    const teacher = school.people.TEACHER;
-    script.plans.set(VAGUE, [{ name: 'mark_attendance', args: { students: [{ studentName: 'Aman Gupta', status: 'ABSENT' }] } }]);
-    const proposal = await wa(teacher, VAGUE);
-    expect(proposal.reply).toMatch(/Aman Gupta → ABSENT/);
+    const parent = school.people.PARENT;
+    const message = 'kindly do the needful: Bus was late today';
+    script.plans.set(message, [{ name: 'create_ticket', args: { subject: 'Bus was late today' } }]);
+    const proposal = await wa(parent, message);
+    expect(proposal.reply).toMatch(/Bus was late today/);
     expect(proposal.reply).toMatch(/Reply YES to confirm or NO to cancel/);
-    expect(await recordsOf(school.aman)).toHaveLength(0);
+    expect(await count(Ticket)).toBe(0);
 
     const id = `wamid.model.${Date.now()}`;
-    await deliver(teacher, 'YES', id);
-    await deliver(teacher, 'YES', id);
-    await wa(teacher, 'YES');
-    const records = await recordsOf(school.aman);
-    expect(records).toHaveLength(1);
-    expect(records[0].status).toBe('ABSENT');
+    await deliver(parent, 'YES', id);
+    await deliver(parent, 'YES', id);
+    await wa(parent, 'YES');
+    expect(await count(Ticket, { subject: 'Bus was late today' })).toBe(1);
     expect(await count(AgentAction, { status: 'PENDING' })).toBe(0);
   }, 120_000);
 
   it('the same request delivered twice is proposed once', async () => {
-    const teacher = school.people.TEACHER;
+    const parent = school.people.PARENT;
+    script.plans.set('raise a ticket: bus was late', [{ name: 'create_ticket', args: { subject: 'Bus was late' } }]);
     const id = `wamid.dup.${Date.now()}`;
-    await deliver(teacher, 'Mark Aman Gupta absent today', id);
-    await deliver(teacher, 'Mark Aman Gupta absent today', id);
+    await deliver(parent, 'raise a ticket: bus was late', id);
+    await deliver(parent, 'raise a ticket: bus was late', id);
     expect(await count(AgentAction, { status: 'PENDING' })).toBe(1);
+    expect(await count(Ticket)).toBe(0);
+  }, 120_000);
+
+  it('a model-planned change to somebody else\'s record is sent to the website, not proposed', async () => {
+    const teacher = school.people.TEACHER;
+    script.plans.set(VAGUE, [{ name: 'mark_attendance', args: { students: [{ studentName: 'Aman Gupta', status: 'ABSENT' }] } }]);
+    const reply = await wa(teacher, VAGUE);
+    expect(reply.reply).toMatch(/EduOS website/);
+    await wa(teacher, 'YES');
     expect(await recordsOf(school.aman)).toHaveLength(0);
+    expect(await count(AgentAction)).toBe(0);
   }, 120_000);
 
   it('NO cancels a model-planned write; an unsigned webhook is rejected and runs nothing', async () => {

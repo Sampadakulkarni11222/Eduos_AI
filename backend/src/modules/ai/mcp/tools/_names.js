@@ -107,8 +107,13 @@ export async function resolveStaff(roleKey, { profileId, name } = {}, label = 't
   if (!role) throw new AppError(`This school has no ${label} role.`, 404, [], 'NOT_FOUND');
   const rows = await Profile.find({ ...tenantFilter(), roleId: role._id, deletedAt: null }).lean();
   if (profileId) {
+    // An id is held to the same rule as a name: it must be a profile of THIS
+    // role in this school. Passing it through unchecked let a student's (or a
+    // teacher's) profile id be given as a class teacher or a guardian -- a
+    // check the name path has always enforced.
     const found = rows.find((p) => idOf(p) === String(profileId));
-    return { id: String(profileId), name: found?.displayName };
+    if (!found) throw new AppError(`That ${label} is not in this school.`, 404, [], 'NOT_FOUND');
+    return { id: idOf(found), name: found.displayName };
   }
   if (!name) return null;
   const found = theNamed(rows, String(name).replace(/^(?:the|mr|mrs|ms|miss|dr)\.?\s+/i, ''), {

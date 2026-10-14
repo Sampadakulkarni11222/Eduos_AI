@@ -201,7 +201,9 @@ describe('a genuinely missing detail still asks, in the tool\'s own words', () =
     // payment through" reached the rules instead of the model and was answered
     // with the caller's outstanding balance, which tested nothing.
     const message = 'log what they handed over at the office';
-    script.plans.set(message, [{ name: 'record_payment', args: {} }]);
+    // record_payment is no longer an assistant tool (mcp/decisions.js); a
+    // correction request is a write with required arguments a sentence lacks.
+    script.plans.set(message, [{ name: 'request_payment_change', args: {} }]);
 
     const res = await api.ask(school.people.FINANCE, message);
     expect(res.status).toBe(200);

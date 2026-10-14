@@ -125,11 +125,18 @@ const UNCOVERED = {
 
   /* ── C. blocked ────────────────────────────────────────── */
   'attendance.regularize': {
-    category: 'C',
-    why: 'No regularization route, controller or service exists anywhere in src. The permission is granted to roles but enforced nowhere, so there is nothing to wrap.',
+    category: 'D',
+    why: 'Now enforced by attendance.service (assertMarkableDate): marking a date older than the back-dating window needs it. mark_attendance gates on attendance.mark and the service applies this finer key, so a holder regularizes through the same capability.',
   },
 
   /* ── D. deliberately unavailable ───────────────────────── */
+  // Deciding is done by a person on the screen, never by the assistant
+  // (mcp/decisions.js). These keys exist only to decide, so no capability
+  // holds them; get_pending_items_for_me tells their holders what is waiting.
+  ...Object.fromEntries(['fees.payments.refund', 'fees.plan.approve', 'leave.review', 'marks.publish', 'profile.edit.review'].map((key) => [key, {
+    category: 'D',
+    why: 'A decision (approve, reject, publish or refund). The assistant never decides: it lists what is waiting with get_pending_items_for_me and points to the screen where the holder decides.',
+  }])),
   'users.manage': {
     category: 'D',
     why: 'Creating and importing user accounts. Bulk import is a CSV upload and MCP has no file-upload channel, the same constraint that keeps attendance OCR unexposed; single creation mints credentials, which the assistant must not do. Reading the staff directory is available through list_users.',
@@ -314,7 +321,7 @@ describe('permissions granted but enforced nowhere in the backend', () => {
    */
   const DEAD = [
     'analytics.child.read', 'analytics.class.read', 'analytics.school.read',
-    'attendance.regularize', 'reportcards.read',
+    'reportcards.read',
   ];
 
   const sources = (() => {

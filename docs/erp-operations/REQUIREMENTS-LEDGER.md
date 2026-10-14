@@ -83,6 +83,16 @@ Every API below is **Tested** unless noted; every screen is **Built**.
 | 48 | Sample data for every section (`npm run seed:operations`, and part of `npm run demo`): 27 sections from the school profile to payroll, all written through the same services the screens use, all fictional | Run on an empty database; every section reports its result |
 | 49 | Assistant tool for syllabus progress (192 tools in the catalogue) | Tested |
 
+## Added in the fifth round
+
+| # | Item | Status |
+|---|---|---|
+| 50 | Reverse-engineering, ownership, load, query-plan and database-integrity testing, with the tools kept in the repo (`npm run qa:*`, `npm run db:audit`) | Run; results in QA-TESTING.md |
+| 51 | About 110 confirmed problems from seven role audits, fixed with regression tests (finance, payroll, newsroom, academics, library, hostel, marketing, compliance, governance, student and parent) | Tested |
+| 52 | The assistant no longer decides anything; confirmations bound to their channel; every filing confirmed | Tested |
+| 53 | Absence and late alerts to guardians from the day register | Tested |
+| 54 | Parents apply for leave and request certificates for their own children | Tested |
+
 ## Not done
 
 - **Pressing every button on every screen.** The browser test proves pages load; forms were not all exercised by hand.

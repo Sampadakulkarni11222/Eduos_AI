@@ -46,8 +46,11 @@ export const creditOrders = asyncHandler(async (req, res) => {
 });
 
 /* ── Agentic layer ──────────────────────────────────────────
-   Shared by the in-app assistant and WhatsApp; `source` only affects the
-   audit trail, never the authorization. */
+   Shared by the in-app assistant and WhatsApp. These routes are the WEBSITE:
+   the channel is fixed here and never read from the request body, so a web
+   user cannot have their actions recorded -- or confirmed -- as WhatsApp's.
+   Only whatsapp.agent.js passes WHATSAPP. */
+const WEB_CHANNEL = 'WEB';
 /* Recent turns only, and trimmed: the transcript is a routing aid, not a
    transport for arbitrary client-supplied text. */
 const MAX_HISTORY_TURNS = 10;
@@ -70,7 +73,7 @@ function sanitiseHistory(raw) {
 }
 
 export const agent = asyncHandler(async (req, res) => {
-  const { message, source, lang, history } = req.body;
+  const { message, lang, history } = req.body;
   if (!message) throw new AppError('message is required', 400);
   sendSuccess(
     res,
@@ -79,7 +82,7 @@ export const agent = asyncHandler(async (req, res) => {
     await agentCore.runAgentSafely({
       message,
       actor: req.actor,
-      source: source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB',
+      source: WEB_CHANNEL,
       lang,
       // Without this the website had no conversation at all: every turn was a
       // first turn, so a follow-up that named nobody was answered by asking
@@ -97,14 +100,14 @@ export const agent = asyncHandler(async (req, res) => {
  * caller, authorized and audited like the first.
  */
 export const agentContinue = asyncHandler(async (req, res) => {
-  const { continuationToken, source, lang } = req.body;
+  const { continuationToken, lang } = req.body;
   if (!continuationToken) throw new AppError('continuationToken is required', 400);
   sendSuccess(
     res,
     await agentCore.continueAnswer({
       token: continuationToken,
       actor: req.actor,
-      source: source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB',
+      source: WEB_CHANNEL,
       lang,
     }),
     'Agent response continued'
@@ -112,14 +115,14 @@ export const agentContinue = asyncHandler(async (req, res) => {
 });
 
 export const agentConfirm = asyncHandler(async (req, res) => {
-  const { confirmToken, accept, source, lang } = req.body;
+  const { confirmToken, accept, lang } = req.body;
   sendSuccess(
     res,
     await agentCore.confirmAction({
       confirmToken,
       actor: req.actor,
       accept: accept !== false,
-      source: source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB',
+      source: WEB_CHANNEL,
       lang,
     }),
     'Agent action processed'

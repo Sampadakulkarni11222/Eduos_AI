@@ -6,7 +6,7 @@ import * as timetable from '../../../timetable/timetable.service.js';
 import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
 import {
-  RISK, objectId, dateStr, noArgs, summarise, shortDate, wrapAgentTool, resolveEnrollmentId, resolveEnrollmentIdOrAsk,
+  RISK, objectId, dateStr, summarise, shortDate, wrapAgentTool, resolveEnrollmentId, resolveEnrollmentIdOrAsk,
   studentIdentitySchema, resolveSection, classIdentitySchema, theNamed, resolveStudentId, resolveStudentEnrollment,
 } from './_shared.js';
 import { classKey } from '../../../../utils/classNames.js';
@@ -886,7 +886,7 @@ export const academicTools = {
       const subjects = args.examId ? await exams.listExamSubjects(ctx.actor, ctx.scope, args.examId) : [];
       return ok(
         {
-          exams: list.map((e) => ({ examId: String(e._id), name: e.name, startsOn: e.startsOn })),
+          exams: list.map((e) => ({ examId: String(e.id ?? e._id), name: e.name, startsOn: e.startsOn })),
           examSubjects: subjects.map((s) => ({
             examSubjectId: String(s._id ?? s.id),
             subject: s.subjectId?.name ?? s.subject ?? null,
@@ -1142,34 +1142,8 @@ export const academicTools = {
     },
   },
 
-  publish_marks: {
-    module: 'Exams',
-    operation: 'ACTION',
-    risk: RISK.HIGH,
-    confirm: true,
-    description:
-      'Publish the marks for one exam subject, making them visible to students and parents. This is what families see, and it is hard to walk back, so it always needs confirmation.',
-    inputSchema: {
-      type: 'object',
-      properties: { examSubjectId: objectId('The exam paper, when the id is already known'), ...examPaperSchema },
-      additionalProperties: false,
-    },
-    permission: 'marks.publish',
-    affectsOthers: true,
-    service: 'exam.service.publishMarks()',
-    summarise: (args, _actor, prepared) =>
-      `Publish the marks for ${prepared?.label ?? `exam subject ${prepared?.examSubjectId ?? args.examSubjectId}`} to students and parents`,
-    /** Which paper, resolved before the proposal so the confirmation names it. */
-    async prepare(ctx, args) {
-      const paper = await resolveExamPaper(ctx, args);
-      return { examSubjectId: paper.id, label: paper.label };
-    },
-    async run(ctx, args, prepared) {
-      const plan = prepared ?? (await this.prepare(ctx, args));
-      const result = await exams.publishMarks(ctx.actor, ctx.scope, plan.examSubjectId);
-      return action({ type: 'marks_published', id: plan.examSubjectId, data: result, speak: 'The marks are now published and visible to families.' });
-    },
-  },
+  // publish_marks is deliberately absent: deciding is done by a person on the
+  // screen, never by the assistant. See HUMAN_DECISIONS in ../decisions.js.
 
   /* ── Assignments ─────────────────────────────────────── */
   get_assignments: {

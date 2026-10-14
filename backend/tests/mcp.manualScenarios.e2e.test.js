@@ -48,6 +48,17 @@ const say = async (role, message, opts = {}) => {
   return { step, result };
 };
 
+/**
+ * Files a request directly, the way the screen does, and confirms it: every
+ * CREATE is proposed first and waits for a yes (registry.js). Returns the
+ * executed result.
+ */
+const fileAs = async (role, tool, args) => {
+  const proposal = await mcp(OAK, actorOf(role), tool, args);
+  expect(proposal.action?.status, JSON.stringify(proposal.error ?? {})).toBe('confirmation_required');
+  return mcp(OAK, actorOf(role), tool, {}, { confirmationToken: proposal.action.confirmationToken });
+};
+
 /** Routes a sentence, then confirms the proposal it produced. */
 const sayAndConfirm = async (role, message) => {
   const { step, result } = await say(role, message);
@@ -148,46 +159,27 @@ describe('LIBRARIAN — the library writes the report found unreachable', () => 
   }, 60000);
 });
 
-describe('LIBRARIAN — approving a request runs the approval workflow', () => {
-  it("5.9, 5.10 — \"Approve Rahul's book request\" approves it AND issues the book", async () => {
-    // The request is made the way a student makes one, through the same
-    // capability their own screen calls, so what is approved here is a real
-    // row in the real queue rather than a fixture shaped like one.
+describe('LIBRARIAN — approving a request is handed back to the Library requests screen', () => {
+  it("5.9, 5.10 — \"Approve Priya's book request\" reaches no deciding capability, and nothing is decided", async () => {
     const book = await inSchool(OAK, () => Book.create({
       title: 'Panchatantra', author: 'Vishnu Sharma', totalCopies: 2, availableCopies: 2,
     }));
-    const asked = await mcp(OAK, actorOf('STUDENT'), 'request_book', { bookId: String(book._id) });
+    const asked = await fileAs('STUDENT', 'request_book', { bookId: String(book._id) });
     expect(asked.success, JSON.stringify(asked.error ?? {})).toBe(true);
 
-    // The student profile in the fixture is Priya's, so that is whose request
-    // the librarian approves by name.
-    const { step, proposal, done } = await sayAndConfirm('LIBRARIAN', "Approve Priya's book request.");
-    expect(step.tool).toBe('decide_book_request');
-    expect(step.args.status).toBe('APPROVED');
-    expect(step.args.requestId, 'an id was invented from the sentence').toBeUndefined();
-    // The confirmation names whose request and which book, both resolved from
-    // the queue rather than supplied.
-    expect(proposal.action.summary).toMatch(/Panchatantra/);
-    expect(done.success, JSON.stringify(done.error ?? {})).toBe(true);
+    // The assistant never decides: there is no capability to run, and the
+    // decision tool itself does not exist.
+    const decided = await mcp(OAK, actorOf('LIBRARIAN'), 'decide_book_request', { studentName: 'Priya', status: 'APPROVED' });
+    expect(decided.error.code).toBe('UNKNOWN_TOOL');
 
     const request = await inSchool(OAK, () => BookRequest.findById(asked.data.id).lean());
-    expect(request.status).toBe('APPROVED');
+    expect(request.status).toBe('PENDING');
+    expect(await inSchool(OAK, () => BookIssue.countDocuments({ bookId: book._id }))).toBe(0);
 
-    // Approving issues the book: that is the workflow, and the whole point of
-    // reusing it rather than writing a status change.
-    const issues = await inSchool(OAK, () => BookIssue.find({ bookId: book._id }).lean());
-    expect(issues, 'approval did not issue the book').toHaveLength(1);
-    const after = await inSchool(OAK, () => Book.findById(book._id).lean());
-    expect(after.availableCopies, 'a copy was not taken off the shelf').toBe(1);
-    expect(await auditFor('decide_book_request')).not.toHaveLength(0);
-  }, 60000);
-
-  it('a request that does not exist is refused, and nothing is decided', async () => {
-    const result = await mcp(OAK, actorOf('LIBRARIAN'), 'decide_book_request', {
-      studentName: 'Aman Gupta', status: 'APPROVED',
-    });
-    expect(result.success).toBe(false);
-    expect(result.error.message).toMatch(/could not find/i);
+    // What the librarian CAN do is see the queue the decision is made from.
+    const queue = await mcp(OAK, actorOf('LIBRARIAN'), 'get_pending_items_for_me', {});
+    expect(queue.success).toBe(true);
+    expect(queue.data.items.find((i) => i.kind === 'bookRequest')?.count).toBe(1);
   }, 60000);
 });
 
@@ -276,7 +268,7 @@ describe('STUDENT — "cancel my request" cancels the right one', () => {
     const book = await inSchool(OAK, () => Book.create({
       title: 'Panchatantra', author: 'Vishnu Sharma', totalCopies: 2, availableCopies: 2,
     }));
-    const made = await mcp(OAK, actorOf('STUDENT'), 'request_book', { bookId: String(book._id) });
+    const made = await fileAs('STUDENT', 'request_book', { bookId: String(book._id) });
     expect(made.success, JSON.stringify(made.error ?? {})).toBe(true);
 
     const { step, proposal, done } = await sayAndConfirm('STUDENT', 'Cancel my pending book request.');
@@ -301,7 +293,7 @@ describe('STUDENT — "cancel my request" cancels the right one', () => {
     ]));
     for (const book of books) {
       // eslint-disable-next-line no-await-in-loop -- two, in order
-      await mcp(OAK, actorOf('STUDENT'), 'request_book', { bookId: String(book._id) });
+      await fileAs('STUDENT', 'request_book', { bookId: String(book._id) });
     }
 
     const result = await mcp(OAK, actorOf('STUDENT'), 'cancel_book_request', {});
@@ -327,7 +319,7 @@ describe('PARENT — the parent capabilities the report found failing', () => {
   }, 60000);
 
   it('Create support ticket creates a support ticket', async () => {
-    const { step, result } = await say('PARENT', 'Create support ticket');
+    const { step, done: result } = await sayAndConfirm('PARENT', 'Create support ticket');
     expect(step.tool).toBe('create_ticket');
     expect(result.success).toBe(true);
     expect(result.action?.type).toBe('ticket_created');

@@ -53,10 +53,6 @@ const WRITE_REQUEST_LEAD = /^\s*(?:please\s+)?(?:mark|record|set|update|change|e
  */
 const PAPER_NOISE = /^(?:the|an?|this|that|my|in|for|of|marks?|results?|scores?|publish\w*|enter\w*|record\w*|submit\w*|update\w*)$/i;
 
-function examPaperFrom(msg) {
-  return readMarksHead(msg).paper;
-}
-
 /**
  * The part of a marks request before any sheet: which paper, and -- when the
  * request is about one pupil -- who, and how many marks.
@@ -879,41 +875,7 @@ const RULES = [
       };
     },
   },
-  {
-    tool: 'record_payment',
-    patterns: [/\brecord\b.*\bpayment\b/i, /\bmark\b.*\bpaid\b/i, /\bhas paid\b/i, /\bpaid (the )?fees?\b/i],
-    args: (msg) => {
-      const invoiceId = msg.match(/\b([a-f0-9]{24})\b/i)?.[1];
-      // The invoice is usually named by its number ("INV-1042"). It is taken
-      // out of the text before the amount is looked for, so the digits inside
-      // an invoice number can never be mistaken for the sum being recorded.
-      const invoiceNo = invoiceId
-        ? null
-        // `no\b` so the "NO" at the start of an invoice number like "NOPE-999"
-        // is not eaten as the abbreviation "no.".
-        : msg.match(/\binvoice\s*(?:no\b\.?|number\b|#)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9/-]{2,})/i)?.[1] ?? null;
-      const rest = invoiceNo ? msg.replace(invoiceNo, ' ') : msg;
-      const amount = (
-        rest.match(/(?:₹|rs\.?|inr)\s*(\d[\d,]*(?:\.\d{1,2})?)/i)?.[1] ??
-        rest.match(/(\d[\d,]*(?:\.\d{1,2})?)\s*(?:rs|rupees|inr|₹)/i)?.[1] ??
-        rest.match(/\b(?:of|for|amount)\s+(\d[\d,]*(?:\.\d{1,2})?)\b/i)?.[1] ??
-        null
-      )?.replace(/,/g, '');
-      const MODES = {
-        cash: 'CASH', cheque: 'CHEQUE', check: 'CHEQUE', dd: 'DD', 'demand draft': 'DD',
-        'bank transfer': 'BANK', neft: 'BANK', rtgs: 'BANK', bank: 'BANK',
-      };
-      const mode = msg.match(/\b(cash|cheque|check|dd|demand draft|bank transfer|neft|rtgs|bank)\b/i)?.[1]?.toLowerCase();
-      return {
-        ...(invoiceId && { invoiceId }),
-        ...(invoiceNo && { invoiceNo }),
-        ...(amount && { amountPaise: Math.round(Number(amount) * 100) }),
-        // Shown in the confirmation summary, so a default the user did not
-        // intend is visible before anything is recorded.
-        mode: MODES[mode] ?? 'CASH',
-      };
-    },
-  },
+  // record_payment: deliberately no rule. Deciding is done on the screen (mcp/decisions.js).
   {
     tool: 'create_announcement',
     // "Announce that ..." is the same act as "create an announcement that ...":
@@ -938,12 +900,7 @@ const RULES = [
       return title ? { title, content: title } : {};
     },
   },
-  {
-    tool: 'publish_marks',
-    patterns: [/\bpublish\w{0,3}\b.*\b(?:marks|results|scores)\b/i],
-    weight: 3,
-    args: (msg) => examPaperFrom(msg),
-  },
+  // publish_marks: deliberately no rule. Deciding is done on the screen (mcp/decisions.js).
   {
     tool: 'enter_marks',
     patterns: [

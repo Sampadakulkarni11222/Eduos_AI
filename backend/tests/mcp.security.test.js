@@ -169,8 +169,11 @@ describe('a school cannot reach another school', () => {
     const read = await mcp(OAK, admin, 'get_student', { studentId: String(school.river.student._id) });
     expect(read.error.code).toBe('NOT_FOUND');
 
-    const pay = await mcp(OAK, admin, 'record_payment', { invoiceId: String(school.river.invoice._id), amountPaise: 100, mode: 'CASH' });
-    expect(pay.error.code).toBe('NOT_FOUND');
+    const invoice = await mcp(OAK, admin, 'get_invoice', { invoiceId: String(school.river.invoice._id) });
+    expect(invoice.success).toBe(false);
+    const archive = await mcp(OAK, admin, 'archive_student', { studentId: String(school.river.student._id) });
+    expect(archive.success).toBe(false);
+    expect(await inSchool(RIVER, () => Student.countDocuments({ deletedAt: { $ne: null } }))).toBe(0);
     expect(await inSchool(RIVER, () => Payment.countDocuments())).toBe(0);
   });
 
@@ -236,12 +239,9 @@ describe('high-impact actions are proposed by the server, never performed on the
   const CASES = [
     ['DELETE', 'archive_student', () => ({ admissionNo: 'OAK-3' })],
     ['IRREVERSIBLE', 'anonymise_student', () => ({ admissionNo: 'OAK-3', reason: 'Erasure request' })],
-    ['FINANCIAL', 'record_payment', () => ({ invoiceNo: 'INV-1001', amountPaise: 50000, mode: 'CASH' })],
-    // A real captured payment: refunding needs something to refund.
-    ['FINANCIAL', 'refund_payment', async () => {
-      const paid = await inSchool(OAK, () => Payment.create({ invoiceId: school.inv1._id, amountPaise: 100000, mode: 'CASH' }));
-      return { paymentId: String(paid._id) };
-    }],
+    // Recording, approving and refunding money are not assistant acts at all
+    // (mcp/decisions.js); billing is the financial write that remains.
+    ['FINANCIAL', 'create_invoice', () => ({ enrollmentId: String(school.priya.enrollment._id), invoiceNo: 'INV-2001', dueOn: '2026-12-01', lines: [{ description: 'Lab fee', amountPaise: 150000 }] })],
     ['BULK', 'bulk_mark_attendance', () => ({ sectionId: String(school.sectionA._id), rows: [{ rollNo: 3, status: 'PRESENT' }] })],
     ['BULK', 'generate_invoices', () => ({ academicYearId: String(school.year._id) })],
     ['EXTERNAL', 'send_whatsapp_message', () => ({ to: '+919999900001', text: 'Hello' })],
@@ -251,7 +251,7 @@ describe('high-impact actions are proposed by the server, never performed on the
   it.each(CASES)('%s — %s waits for a person', async (_category, tool, args) => {
     // Each case runs as a role that holds the permission: Finance records and
     // refunds (an administrator deliberately cannot refund), Admin the rest.
-    const actor = ['record_payment', 'refund_payment'].includes(tool) ? school.people.FINANCE.actor : school.people.ADMIN.actor;
+    const actor = school.people.ADMIN.actor;
     const input = await args();
     const before = await inSchool(OAK, () => Promise.all([
       Student.countDocuments({ deletedAt: null }), Payment.countDocuments(), Invoice.countDocuments(), AttendanceRecord.countDocuments(),
@@ -286,11 +286,15 @@ describe('high-impact actions are proposed by the server, never performed on the
   });
 
   it('refuses payment actions to roles without the permission', async () => {
-    const teacherPays = await mcp(OAK, school.people.TEACHER.actor, 'record_payment', { invoiceNo: 'INV-1001', amountPaise: 100, mode: 'CASH' });
-    expect(teacherPays.error.code).toBe('FORBIDDEN');
-    // Finance may record but deliberately may not approve.
-    const financeApproves = await mcp(OAK, school.people.FINANCE.actor, 'approve_payment', { paymentId: String(school.inv1._id) });
-    expect(financeApproves.error.code).toBe('FORBIDDEN');
+    const teacherBills = await mcp(OAK, school.people.TEACHER.actor, 'create_invoice', { enrollmentId: String(school.priya.enrollment._id), invoiceNo: 'INV-2001', dueOn: '2026-12-01', lines: [{ description: 'Lab fee', amountPaise: 150000 }] });
+    expect(teacherBills.error.code).toBe('FORBIDDEN');
+    // Finance deliberately may not amend a payment record awaiting approval.
+    const financeAmends = await mcp(OAK, school.people.FINANCE.actor, 'update_payment', { paymentId: String(school.inv1._id), notes: 'x' });
+    expect(financeAmends.error.code).toBe('FORBIDDEN');
+    // And nobody is offered a way to record or approve one.
+    for (const name of ['record_payment', 'approve_payment']) {
+      expect((await mcp(OAK, school.people.ADMIN.actor, name, {})).error.code).toBe('UNKNOWN_TOOL');
+    }
     const teacherErases = await mcp(OAK, school.people.TEACHER.actor, 'anonymise_student', { admissionNo: 'OAK-1', reason: 'x' });
     expect(teacherErases.error.code).toBe('FORBIDDEN');
   });
@@ -329,21 +333,11 @@ describe('MCP actions are audited', () => {
     expect(entry.after.state.rows).toEqual([{ enrollmentId: String(school.rahul.enrollment._id), status: 'PRESENT' }]);
   });
 
-  it('record_payment by finance, then approve_payment by an admin, are each audited', async () => {
-    const finance = school.people.FINANCE.actor;
-    const { done } = await proposeAndConfirm(OAK, finance, 'record_payment', { invoiceNo: 'INV-1001', amountPaise: 250000, mode: 'CASH' });
-    expect(done.data.recordStatus).toBe('PENDING_ADMIN_APPROVAL');
-    const recorded = await auditFor('record_payment');
-    expectCompleteEntry(recorded, finance);
-    expect(recorded.before.invoiceNo).toBe('INV-1001');
-
+  it('create_invoice is audited with who billed whom', async () => {
     const admin = school.people.ADMIN.actor;
-    const approved = await proposeAndConfirm(OAK, admin, 'approve_payment', { paymentId: done.data.paymentId });
-    expect(approved.done, `proposal was: ${JSON.stringify(approved.proposal)}`).not.toBeNull();
-    expect(approved.done.success, JSON.stringify(approved.done.error)).toBe(true);
-    const payment = await inSchool(OAK, () => Payment.findById(done.data.paymentId).lean());
-    expect(payment.recordStatus).toBe('PUBLISHED');
-    expectCompleteEntry(await auditFor('approve_payment'), admin);
+    const { done } = await proposeAndConfirm(OAK, admin, 'create_invoice', { enrollmentId: String(school.priya.enrollment._id), invoiceNo: 'INV-2001', dueOn: '2026-12-01', lines: [{ description: 'Lab fee', amountPaise: 150000 }] });
+    expect(done.success, JSON.stringify(done.error)).toBe(true);
+    expectCompleteEntry(await auditFor('create_invoice'), admin);
   });
 
   it('archive_student records what the record was before it was deactivated', async () => {
@@ -400,17 +394,17 @@ describe('MCP actions are audited', () => {
 /* ── Duplicate execution ──────────────────────────────────── */
 
 describe('a retried or doubled action cannot run twice', () => {
-  it('two simultaneous confirmations of one payment record it once', async () => {
-    const finance = school.people.FINANCE.actor;
-    const proposal = await mcp(OAK, finance, 'record_payment', { invoiceNo: 'INV-1001', amountPaise: 100000, mode: 'CASH' });
+  it('two simultaneous confirmations of one invoice raise it once', async () => {
+    const admin = school.people.ADMIN.actor;
+    const proposal = await mcp(OAK, admin, 'create_invoice', { enrollmentId: String(school.priya.enrollment._id), invoiceNo: 'INV-2001', dueOn: '2026-12-01', lines: [{ description: 'Lab fee', amountPaise: 150000 }] });
     const token = proposal.action.confirmationToken;
 
     const [a, b] = await Promise.all([
-      mcp(OAK, finance, 'record_payment', {}, { confirmationToken: token }),
-      mcp(OAK, finance, 'record_payment', {}, { confirmationToken: token }),
+      mcp(OAK, admin, 'create_invoice', {}, { confirmationToken: token }),
+      mcp(OAK, admin, 'create_invoice', {}, { confirmationToken: token }),
     ]);
     expect([a.success, b.success].filter(Boolean)).toHaveLength(1);
-    expect(await inSchool(OAK, () => Payment.countDocuments({ invoiceId: school.inv1._id }))).toBe(1);
+    expect(await inSchool(OAK, () => Invoice.countDocuments({ invoiceNo: 'INV-2001' }))).toBe(1);
   });
 
   it('marking the same student twice leaves one register entry', async () => {

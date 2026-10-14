@@ -141,16 +141,20 @@ describe('every new action is an MCP action', () => {
 
   it('stores a legacy tool name under its MCP name, so no new legacy row can be created', async () => {
     const { actionId } = await inSchool(OAK, () => proposeAction({
-      actor: school.people.FINANCE.actor, tool: 'record_fee_payment', args: {}, summary: 'x',
+      actor: school.people.STUDENT.actor, tool: 'apply_leave', args: {}, summary: 'x',
     }));
     const row = await inSchool(OAK, () => AgentAction.findById(actionId).lean());
-    expect(row.tool).toBe('record_payment');
+    expect(row.tool).toBe('apply_for_leave');
     expect(canonicalToolName('apply_leave')).toBe('apply_for_leave');
-    expect(Object.keys(LEGACY_TOOL_ALIASES).sort()).toEqual(['apply_leave', 'record_fee_payment']);
+    // record_fee_payment is no longer an alias: recording money is a decision
+    // made on the Payments screen, and no MCP tool performs it.
+    expect(Object.keys(LEGACY_TOOL_ALIASES).sort()).toEqual(['apply_leave']);
+    await expect(inSchool(OAK, () => proposeAction({
+      actor: school.people.FINANCE.actor, tool: 'record_fee_payment', args: {}, summary: 'x',
+    }))).rejects.toThrow(/not an MCP tool/);
   });
 
-  it('redeems a proposal written by the pre-MCP code through the MCP tool, not a second path', async () => {
-    // A row exactly as the old agent wrote it: legacy tool name, raw args.
+  it('a pre-MCP payment proposal can no longer be redeemed: it is closed, and no money moves', async () => {
     const finance = school.people.FINANCE.actor;
     const row = await inSchool(OAK, () => AgentAction.create({
       actorProfileId: finance.profileId,
@@ -163,13 +167,9 @@ describe('every new action is an MCP action', () => {
     }));
     const token = await inSchool(OAK, () => reissueToken(row));
 
-    const result = await inSchool(OAK, () => confirmAction({ confirmToken: token, actor: finance, source: 'WEB' }));
-    expect(result.executed).toBe(true);
-    expect(result.via).toBe('MCP');
-
-    expect(await inSchool(OAK, () => Payment.countDocuments({ invoiceId: school.inv1._id }))).toBe(1);
-    const audit = await inSchool(OAK, () => AuditLog.findOne({ action: 'agent.record_payment', 'after.status': 'EXECUTED' }).lean());
-    expect(audit.after.via).toBe('MCP');
-    expect(audit.after.confirmed).toBe(true);
+    await expect(inSchool(OAK, () => confirmAction({ confirmToken: token, actor: finance, source: 'WEB' })))
+      .rejects.toThrow(/no longer available/);
+    expect(await inSchool(OAK, () => Payment.countDocuments({ invoiceId: school.inv1._id }))).toBe(0);
+    expect((await inSchool(OAK, () => AgentAction.findById(row._id).lean())).status).toBe('FAILED');
   });
 });

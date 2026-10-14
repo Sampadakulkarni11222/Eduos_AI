@@ -260,22 +260,18 @@ describe('website: the question is answered and the instruction is proposed', ()
 /* ── WhatsApp ─────────────────────────────────────────────── */
 
 describe('WhatsApp: the same sentence, the same two halves', () => {
-  it('sends the register and the YES/NO question in one message, then writes once on YES', async () => {
+  it('answers the register, and sends the write to the website: a YES writes nothing', async () => {
+    // Marking somebody else's attendance is not confirmed over WhatsApp
+    // (registry.js confirmableOn): the question is still answered.
     const first = await wa(teacher(), SENTENCE);
     expect(first.reply).toMatch(REGISTER);
-    expect(first.reply).toMatch(PROPOSAL);
-    expect(first.reply).toMatch(/Reply YES to confirm or NO to cancel/);
-    expect(first.reply.search(REGISTER)).toBeLessThan(first.reply.search(/Reply YES/));
+    expect(first.reply).toMatch(/EduOS website/);
+    expect(first.reply).not.toMatch(/Reply YES to confirm/);
     expectNoLeak(first.reply);
     expect(await amansRecords()).toHaveLength(0);
 
-    const yes = await wa(teacher(), 'YES');
-    expect(yes.reply).toMatch(/Aman Gupta → ABSENT/);
-    expect(await amansRecords()).toHaveLength(1);
-
-    // A second YES has nothing to confirm.
     await wa(teacher(), 'YES');
-    expect(await amansRecords()).toHaveLength(1);
+    expect(await amansRecords()).toHaveLength(0);
   }, 120_000);
 
   it('writes nothing on NO, and a later YES confirms nothing', async () => {
@@ -292,7 +288,8 @@ describe('WhatsApp: the same sentence, the same two halves', () => {
     const phone = await wa(teacher(), SENTENCE);
     const register = REGISTER.exec(web.reply)[0];
     expect(phone.reply).toContain(register);
-    expect(phone.reply).toMatch(PROPOSAL);
+    expect(web.reply).toMatch(PROPOSAL);
+    expect(phone.reply).toMatch(/EduOS website/);
   }, 120_000);
 });
 

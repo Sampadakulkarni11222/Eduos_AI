@@ -21,6 +21,8 @@ import { peekConfirmation, rejectConfirmation, markFailed, canonicalToolName } f
 import { asksSchoolWideFees, asksLeaveWithoutPermission } from './directIntents.js';
 import { impossibleDatesIn } from '../../../utils/naturalDates.js';
 import { entitiesFor, entitiesInTextByPosition } from '../mcp/capabilities.js';
+import { decisionAskedFor, humanDecisionReply } from '../mcp/decisions.js';
+import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { env } from '../../../config/env.js';
 
@@ -35,6 +37,18 @@ import { env } from '../../../config/env.js';
    the tenant), for a write (read tools only), or after it expires. */
 const CONTINUE_AUDIENCE = 'eduos-ai-continue';
 const CONTINUE_TTL = '30m';
+const CONTINUE_ALGORITHM = 'HS256';
+
+/**
+ * The key continuation tokens are signed with: derived from JWT_SECRET under a
+ * fixed label, so it is never the key access tokens are signed with. A
+ * continuation can then never be presented as an access token (or the
+ * reverse), whatever either verifier checks. Derived per call, so a rotated
+ * JWT_SECRET takes effect without a restart, as it does for access tokens.
+ */
+function continueKey() {
+  return crypto.createHmac('sha256', env.JWT_SECRET).update('eduos-ai-continuation-token-v1').digest();
+}
 
 function continuationFor(step, result, actor) {
   const range = result?.range;
@@ -43,8 +57,8 @@ function continuationFor(step, result, actor) {
   if (!tool || tool.operation !== 'GET') return null;
   const token = jwt.sign(
     { t: step.tool, a: step.args ?? {}, w: range.next, p: String(actor.profileId), s: currentTenantId() ?? null },
-    env.JWT_SECRET,
-    { audience: CONTINUE_AUDIENCE, expiresIn: CONTINUE_TTL },
+    continueKey(),
+    { audience: CONTINUE_AUDIENCE, expiresIn: CONTINUE_TTL, algorithm: CONTINUE_ALGORITHM },
   );
   const size = range.to - range.from + 1;
   const nextTo = range.total != null ? Math.min(range.total, range.to + size) : range.to + size;
@@ -66,7 +80,7 @@ export async function continueAnswer({ token, actor, source = 'WEB', lang = 'en'
   if (!actor?.profileId) throw new AppError('Select a profile first', 403);
   let claim;
   try {
-    claim = jwt.verify(String(token ?? ''), env.JWT_SECRET, { audience: CONTINUE_AUDIENCE });
+    claim = jwt.verify(String(token ?? ''), continueKey(), { audience: CONTINUE_AUDIENCE, algorithms: [CONTINUE_ALGORITHM] });
   } catch {
     throw new AppError('That list has expired. Please ask again.', 410, [], 'AGENT_CONTINUATION_EXPIRED');
   }
@@ -715,6 +729,17 @@ async function routeTurn({ mcpSession, message: rawMessage, actor, source, lang,
     };
   }
 
+  // A DECISION -- approve, reject, publish marks, record or refund a payment.
+  // The assistant never takes one, whoever asks: the person who decides does
+  // it on the screen, and is told which screen. Read before anything chooses a
+  // capability, so the nearest thing the caller CAN do is never offered in its
+  // place. See mcp/decisions.js.
+  const decision = decisionAskedFor(message);
+  if (decision) {
+    const answer = humanDecisionReply(actor, decision, { channel: source });
+    return { reply: answer.reply, lang, action: null, refused: answer.refused, ...(answer.link && { link: answer.link }) };
+  }
+
   // An act the caller cannot perform. Read BEFORE routing, acted on after it:
   // see declineSwappedAct().
   const unavailable = unavailableAction(message, actor);
@@ -1156,6 +1181,11 @@ async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
     if (result?.error?.details?.reason === 'STUDENT_OUT_OF_SCOPE') {
       return { reply: err.message, lang, action: null, tool, refused: 'OUT_OF_SCOPE', via: 'MCP' };
     }
+    // A decision the person makes on the screen, or a change WhatsApp cannot
+    // confirm: the server's sentence says where to go, and is the answer.
+    if (['HUMAN_DECISION', 'CONFIRM_ON_WEB'].includes(result?.error?.details?.reason)) {
+      return { reply: err.message, lang, action: null, tool, refused: result.error.details.reason, via: 'MCP' };
+    }
     // A timeout is neither a refusal nor a failure: the operation may still be
     // running. Saying it failed would be as wrong as saying it worked, so the
     // server's own words — which say exactly that — are what the person hears.
@@ -1423,6 +1453,14 @@ export async function confirmAction({ confirmToken, actor, source = 'WEB', accep
 
   const pending = await peekConfirmation({ confirmationToken: confirmToken, actor });
   const toolName = canonicalToolName(pending.tool);
+
+  // Confirmed on the channel it was proposed on, never another: a WhatsApp
+  // "yes" (or "no") does not act on a proposal made on the website. The MCP
+  // server enforces the same binding when the token is redeemed.
+  const channel = source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB';
+  if ((pending.source ?? 'WEB') !== channel) {
+    throw new AppError('That change has to be confirmed where it was asked for. Please confirm it on the EduOS website.', 409, [], 'AGENT_CONFIRM_ON_WEB');
+  }
 
   if (!accept) {
     await rejectConfirmation(pending);

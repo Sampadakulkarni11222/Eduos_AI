@@ -33,6 +33,14 @@ import { seedAskAiSchool, INTERNAL_LEAKS } from './support/askAiSchool.js';
  *                                 → proposed the announcement "Monday"
  *      "Yes"                      → a reply about Samsung and iPhone phones,
  *                                   then "The announcement has been posted."
+ *
+ * Both writes land on other people (a class's homework, a class's notice), and
+ * such a change is no longer confirmed over WhatsApp: a bare "yes" from a phone
+ * is not enough for it (registry.js confirmableOn). WhatsApp now sends the
+ * teacher to the website, and the conversations themselves are replayed on the
+ * website, turn by turn, with the same words -- `site()` below keeps the
+ * transcript and answers "yes"/"no" with the confirm button, as ask-eduos.tsx
+ * does.
  */
 
 let api;
@@ -43,6 +51,7 @@ afterAll(async () => { await api.close(); await resetMcpClient(); });
 
 beforeEach(async () => {
   resetAgentThrottle();
+  sessions.clear();
   school = await seedAskAiSchool();
 });
 afterEach(() => { vi.restoreAllMocks(); });
@@ -88,6 +97,39 @@ async function web(person, turns) {
   return replies;
 }
 
+/**
+ * A website conversation, a turn at a time: the transcript is kept as the
+ * page keeps it, and "yes" / "no" press the confirm button on the newest
+ * proposal -- the website's equivalent of the WhatsApp turns these tests were
+ * first written as.
+ */
+const sessions = new Map();
+const YES_NO = /^\s*(yes|y|no|n)\s*[.!]?\s*$/i;
+async function site(person, text) {
+  resetAgentThrottle();
+  const key = String(person.actor.profileId);
+  const state = sessions.get(key) ?? { history: [], token: null };
+  sessions.set(key, state);
+  let out;
+  if (YES_NO.test(text)) {
+    if (!state.token) {
+      out = { status: 200, reply: "There's nothing waiting for your confirmation right now." };
+    } else {
+      const res = await api.confirm(person, state.token, /^\s*y/i.test(text));
+      state.token = null;
+      out = { ...res, reply: res.reply ?? res.body?.message ?? '' };
+    }
+  } else {
+    const res = await api.post(person, '/ai/agent', { message: text, source: 'WEB', history: [...state.history] });
+    const data = res.body.data ?? {};
+    state.token = data.action?.confirmToken ?? null;
+    out = { status: res.status, ...data, reply: data.reply ?? res.body.message ?? '' };
+  }
+  state.history.push({ role: 'user', text }, { role: 'assistant', text: String(out.reply ?? '') });
+  return out;
+}
+const ASKS_TO_CONFIRM = /Shall I go ahead\?|Reply YES/i;
+
 const nextFriday = () => weekdayDateIn('Friday', new Date(), { prefer: 'future' }).iso;
 const science6B = () => String(school.offerings.s6b._id);
 const assignmentsFor6B = () => inSchool(OAK, () => Assignment.find({ subjectOfferingId: school.offerings.s6b._id }).lean());
@@ -100,30 +142,30 @@ const outboundAfter = async (person, since) => {
    1. ASSIGNMENT CREATION
    ════════════════════════════════════════════════════════════ */
 
-describe('WhatsApp — creating an assignment (the reported conversation)', () => {
+describe('Website — creating an assignment (the reported conversation)', () => {
   const REQUEST = 'Create an assignment for class 6th b science chapter 4 questions due Friday';
 
   it('asks only for the title, then proposes the assignment the teacher described', async () => {
-    const first = await wa(teacher(), REQUEST);
+    const first = await site(teacher(), REQUEST);
     // The class, the subject and the due date were all in the request: the
     // one thing missing is the title, and that is the one thing asked for.
     expect(first.reply).toMatch(/Tell me a title/);
     expect(first.reply).not.toMatch(/which class|due date/i);
 
-    const second = await wa(teacher(), 'Title: Assignment 5');
+    const second = await site(teacher(), 'Title: Assignment 5');
     // Never the class question again -- the loop the screenshot shows.
     expect(second.reply).not.toMatch(/Which class did you mean/i);
     expect(second.reply).toContain(`Set "Assignment 5" (Science) for Class 6 B, due ${nextFriday()}`);
     expect(second.reply).toMatch(/Science chapter 4 questions/);
-    expect(second.reply).toMatch(/Reply YES/i);
+    expect(second.reply).toMatch(ASKS_TO_CONFIRM);
     // A proposal, not a write.
     expect(await assignmentsFor6B()).toHaveLength(0);
   }, 90_000);
 
   it('creates exactly that assignment on YES, and says what was created', async () => {
-    await wa(teacher(), REQUEST);
-    await wa(teacher(), 'Title: Assignment 5');
-    const done = await wa(teacher(), 'Yes');
+    await site(teacher(), REQUEST);
+    await site(teacher(), 'Title: Assignment 5');
+    const done = await site(teacher(), 'Yes');
 
     const created = await assignmentsFor6B();
     expect(created).toHaveLength(1);
@@ -137,7 +179,7 @@ describe('WhatsApp — creating an assignment (the reported conversation)', () =
     expect(done.reply).toBe('"Assignment 5" has been set for Class 6 B Science.');
     const audited = await inSchool(OAK, () => AuditLog.findOne({ action: 'agent.create_assignment', 'after.status': 'EXECUTED' }).lean());
     expect(audited?.after?.confirmed).toBe(true);
-    expect(audited?.channel).toBe('WHATSAPP');
+    expect(audited?.channel).toBe('WEB');
   }, 120_000);
 
   it.each([
@@ -147,16 +189,16 @@ describe('WhatsApp — creating an assignment (the reported conversation)', () =
     ['6th B Science'],
     ['class 6b science'],
   ])('"%s" answers the class question the first time it is given', async (answer) => {
-    await wa(teacher(), 'Create an assignment due Friday');
-    const asked = await wa(teacher(), 'Assignment 5');
+    await site(teacher(), 'Create an assignment due Friday');
+    const asked = await site(teacher(), 'Assignment 5');
     // No class or subject yet: this is where the question belongs, once.
     expect(asked.reply).toMatch(/Which class and subject did you mean\? You teach: /);
     expect(asked.reply).toMatch(/Science — Class 6 B/);
 
-    const answered = await wa(teacher(), answer);
+    const answered = await site(teacher(), answer);
     expect(answered.reply, answer).not.toMatch(/Which class/i);
     expect(answered.reply, answer).toContain(`Set "Assignment 5" (Science) for Class 6 B, due ${nextFriday()}`);
-    await wa(teacher(), 'yes');
+    await site(teacher(), 'yes');
     expect(await assignmentsFor6B()).toHaveLength(1);
   }, 120_000);
 
@@ -194,80 +236,80 @@ describe('WhatsApp — creating an assignment (the reported conversation)', () =
 
   it('refuses a class-subject pair the teacher does not teach, clearly, and proposes nothing', async () => {
     // Mathematics is not this teacher's subject in 6 B (Science is).
-    const invalid = await wa(teacher(), 'Create a Maths assignment for Class 6 B titled Test due tomorrow');
+    const invalid = await site(teacher(), 'Create a Maths assignment for Class 6 B titled Test due tomorrow');
     expect(invalid.reply).toMatch(/You do not teach Maths for Class 6 B\. You teach: /);
     // Class 9 B is somebody else's class altogether -- same refusal, nothing about it disclosed.
-    const unauthorized = await wa(teacher(), 'Create a Science assignment for Class 9 B titled Test due tomorrow');
+    const unauthorized = await site(teacher(), 'Create a Science assignment for Class 9 B titled Test due tomorrow');
     expect(unauthorized.reply).toMatch(/You do not teach Science for Class 9 B/);
     expect(unauthorized.reply).not.toMatch(/Ishaan|UNRELATED/);
 
     expect(await count(AgentAction, { status: 'PENDING' })).toBe(0);
-    const yes = await wa(teacher(), 'yes');
+    const yes = await site(teacher(), 'yes');
     expect(yes.reply).not.toMatch(/has been set/);
     expect(await count(Assignment, { title: 'Test' })).toBe(0);
   }, 120_000);
 
   it('a role that may not set work is refused, on both channels', async () => {
     const student = school.people.STUDENT;
-    const onWa = await wa(student, 'Create a Science assignment for Class 6 B titled Test due tomorrow');
+    const onWa = await site(student, 'Create a Science assignment for Class 6 B titled Test due tomorrow');
     const [onWeb] = await web(student, ['Create a Science assignment for Class 6 B titled Test due tomorrow']);
-    expect(onWa.reply).not.toMatch(/Reply YES/i);
+    expect(onWa.reply).not.toMatch(ASKS_TO_CONFIRM);
     expect(onWeb.action ?? null).toBeNull();
     expect(await count(AgentAction, {})).toBe(0);
     expect(await count(Assignment, { title: 'Test' })).toBe(0);
   }, 90_000);
 
   it('NO cancels: nothing is created, and a later YES has nothing to run', async () => {
-    await wa(teacher(), REQUEST);
-    await wa(teacher(), 'Title: Assignment 5');
-    const cancelled = await wa(teacher(), 'No');
+    await site(teacher(), REQUEST);
+    await site(teacher(), 'Title: Assignment 5');
+    const cancelled = await site(teacher(), 'No');
     expect(cancelled.reply).toMatch(/not made any changes/i);
-    const late = await wa(teacher(), 'Yes');
+    const late = await site(teacher(), 'Yes');
     expect(late.reply).not.toMatch(/has been set/);
     expect(await assignmentsFor6B()).toHaveLength(0);
     expect(await count(AgentAction, { status: 'REJECTED' })).toBe(1);
   }, 120_000);
 
   it('an expired confirmation is rejected and creates nothing', async () => {
-    await wa(teacher(), REQUEST);
-    await wa(teacher(), 'Title: Assignment 5');
+    await site(teacher(), REQUEST);
+    await site(teacher(), 'Title: Assignment 5');
     await inSchool(OAK, () => AgentAction.updateMany({ status: 'PENDING' }, { $set: { expiresAt: new Date(Date.now() - 60_000) } }));
-    const late = await wa(teacher(), 'Yes');
+    const late = await site(teacher(), 'Yes');
     expect(late.reply).not.toMatch(/has been set/);
     expect(await assignmentsFor6B()).toHaveLength(0);
   }, 120_000);
 
-  it('a redelivered YES, and a second YES, create the assignment once', async () => {
-    await wa(teacher(), REQUEST);
-    await wa(teacher(), 'Title: Assignment 5');
-    const id = `wamid.yes.${Date.now()}`;
-    const first = await deliver(teacher(), 'Yes', id);
-    const replay = await deliver(teacher(), 'Yes', id);
-    expect(first.reply).toMatch(/has been set/);
-    expect(replay.skipped).toBe('DUPLICATE');
-    // A fresh "yes" the teacher types again finds nothing left to confirm.
-    const again = await wa(teacher(), 'Yes');
-    expect(again.reply).not.toMatch(/has been set/);
+  it('two confirmations of one proposal create the assignment once', async () => {
+    await site(teacher(), REQUEST);
+    const proposal = await site(teacher(), 'Title: Assignment 5');
+    const [a, b] = await Promise.all([
+      api.confirm(teacher(), proposal.action.confirmToken),
+      api.confirm(teacher(), proposal.action.confirmToken),
+    ]);
+    expect([a.status, b.status].filter((st) => st === 200)).toHaveLength(1);
     expect(await assignmentsFor6B()).toHaveLength(1);
   }, 120_000);
 
-  it('a redelivered request is processed once and leaves one proposal', async () => {
+  it('on WhatsApp the assignment is sent to the website: a redelivered request proposes nothing, and YES writes nothing', async () => {
     const id = `wamid.req.${Date.now()}`;
     const request = 'Create a Science assignment for Class 6 B titled Unit 4 due Friday';
     const first = await deliver(teacher(), request, id);
     const replay = await deliver(teacher(), request, id);
-    expect(first.reply).toMatch(/Reply YES/i);
+    expect(first.reply).toMatch(/EduOS website/);
+    expect(first.reply).not.toMatch(/Reply YES/i);
     expect(replay.skipped).toBe('DUPLICATE');
-    expect(await count(AgentAction, { status: 'PENDING' })).toBe(1);
+    expect((await wa(teacher(), 'yes')).reply).not.toMatch(/has been set/);
+    expect(await count(AgentAction, {})).toBe(0);
+    expect(await count(Assignment, { title: 'Unit 4' })).toBe(0);
   }, 90_000);
 
   it('does not claim success when the write fails', async () => {
-    await wa(teacher(), REQUEST);
-    await wa(teacher(), 'Title: Assignment 5');
+    await site(teacher(), REQUEST);
+    await site(teacher(), 'Title: Assignment 5');
     vi.spyOn(Assignment, 'create').mockRejectedValueOnce(
       new Error('E11000 duplicate key error collection: eduos.assignments at C:\\app\\src\\modules\\assignments\\assignment.service.js:88:19'),
     );
-    const failed = await wa(teacher(), 'Yes');
+    const failed = await site(teacher(), 'Yes');
     expect(failed.reply).not.toMatch(/has been set/);
     expect(failed.reply).toMatch(/went wrong|could not|not be completed/i);
     expectNoLeak(failed.reply);
@@ -275,28 +317,27 @@ describe('WhatsApp — creating an assignment (the reported conversation)', () =
     expect(await assignmentsFor6B()).toHaveLength(0);
     expect(await count(AgentAction, { status: 'FAILED' })).toBe(1);
     // The failed proposal is closed: a second YES cannot run it after all.
-    const retry = await wa(teacher(), 'Yes');
+    const retry = await site(teacher(), 'Yes');
     expect(retry.reply).not.toMatch(/has been set/);
     expect(await assignmentsFor6B()).toHaveLength(0);
   }, 120_000);
 
-  it('the website has the same conversation, and the same result', async () => {
+  it('the website conversation reads the same whichever way it is driven, and a newer proposal retires the older', async () => {
     const replies = await web(teacher(), [REQUEST, 'Title: Assignment 5']);
     expect(replies[0].reply).toMatch(/Tell me a title/);
     expect(replies[1].action?.tool).toBe('create_assignment');
     expect(replies[1].action.summary).toContain(`Set "Assignment 5" (Science) for Class 6 B, due ${nextFriday()}`);
 
-    // The WhatsApp proposal for the same words reads the same.
-    await wa(teacher(), REQUEST);
-    const onWa = await wa(teacher(), 'Title: Assignment 5');
-    expect(onWa.reply).toContain(replies[1].action.summary);
+    await site(teacher(), REQUEST);
+    const again = await site(teacher(), 'Title: Assignment 5');
+    expect(again.reply).toContain(replies[1].action.summary);
 
-    // That WhatsApp proposal superseded the website's: its token is dead, and
-    // only the newest proposal can be confirmed.
+    // The second proposal superseded the first: its token is dead, and only
+    // the newest proposal can be confirmed.
     const stale = await api.confirm(teacher(), replies[1].action.confirmToken);
     expect(stale.status).toBeGreaterThanOrEqual(400);
     expect(await assignmentsFor6B()).toHaveLength(0);
-    await wa(teacher(), 'yes');
+    await site(teacher(), 'yes');
     expect(await assignmentsFor6B()).toHaveLength(1);
   }, 150_000);
 });
@@ -305,15 +346,15 @@ describe('WhatsApp — creating an assignment (the reported conversation)', () =
    2. ANNOUNCEMENT POSTING
    ════════════════════════════════════════════════════════════ */
 
-describe('WhatsApp — posting an announcement (the reported conversation)', () => {
+describe('Website — posting an announcement (the reported conversation)', () => {
   const REQUEST = 'Post an announcement for class 6b science practical on Monday';
   const announcements = () => inSchool(OAK, () => Announcement.find({ createdByProfileId: teacher().profile._id }).lean());
 
   it('proposes the whole announcement to the class named -- not the word "Monday"', async () => {
-    const proposed = await wa(teacher(), REQUEST);
+    const proposed = await site(teacher(), REQUEST);
     expect(proposed.reply).toContain('Post the announcement "Science practical on Monday" to Class 6 B');
     expect(proposed.reply).not.toContain('"Monday"');
-    expect(proposed.reply).toMatch(/Reply YES/i);
+    expect(proposed.reply).toMatch(ASKS_TO_CONFIRM);
     expect(await announcements()).toHaveLength(0);
     const pending = await inSchool(OAK, () => AgentAction.findOne({ status: 'PENDING' }).lean());
     expect(pending.args).toMatchObject({ title: 'Science practical on Monday', content: 'Science practical on Monday' });
@@ -321,10 +362,9 @@ describe('WhatsApp — posting an announcement (the reported conversation)', () 
     expect(pending.prepared.audience.sectionIds.map(String)).toEqual([String(school.sectionB._id)]);
   }, 90_000);
 
-  it('YES posts that announcement to that class, and answers ONCE with what was posted', async () => {
-    await wa(teacher(), REQUEST);
-    const since = new Date();
-    const done = await wa(teacher(), 'Yes');
+  it('YES posts that announcement to that class, and answers with what was posted', async () => {
+    await site(teacher(), REQUEST);
+    const done = await site(teacher(), 'Yes');
 
     // The record, read back: the right words, the right class, written once.
     const posted = await announcements();
@@ -335,21 +375,25 @@ describe('WhatsApp — posting an announcement (the reported conversation)', () 
 
     // The reply states the announcement and the class that the record holds.
     expect(done.reply).toBe('The announcement "Science practical on Monday" has been posted to Class 6 B.');
+    expect(done.reply).not.toMatch(/Samsung|Galaxy|iPhone|I cannot help with class announcements/i);
+  }, 120_000);
 
-    // EduOS sent exactly ONE message in answer to the YES, and nothing in it
-    // is about anything but the announcement. (The phone-shop reply in the
-    // screenshot is not text EduOS contains: see docs/WHATSAPP-CHATFLOW.md.)
+  it('on WhatsApp the announcement is sent to the website, exactly ONE message is sent, and nothing is posted', async () => {
+    const since = new Date();
+    const asked = await wa(teacher(), REQUEST);
+    expect(asked.reply).toMatch(/EduOS website/);
     const sent = await outboundAfter(teacher(), since);
     expect(sent).toHaveLength(1);
-    expect(sent[0].text).toBe(done.reply);
-    expect(done.reply).not.toMatch(/Samsung|Galaxy|iPhone|I cannot help with class announcements/i);
-    expect(done.body.data.replies).toHaveLength(1);
+    expect(asked.body.data.replies).toHaveLength(1);
+    await wa(teacher(), 'Yes');
+    expect(await announcements()).toHaveLength(0);
+    expect(await count(AgentAction, {})).toBe(0);
   }, 120_000);
 
   it('the success sentence is built from the record, and a failed post is reported as a failure', async () => {
-    await wa(teacher(), REQUEST);
+    await site(teacher(), REQUEST);
     vi.spyOn(Announcement, 'create').mockRejectedValueOnce(new Error('connect ECONNREFUSED 10.1.2.3:27017 at node_modules/mongodb/lib/cmap/connect.js:379:20'));
-    const failed = await wa(teacher(), 'Yes');
+    const failed = await site(teacher(), 'Yes');
     // Accepting the confirmation is not success: nothing was written, so
     // nothing is said to have been posted.
     expect(failed.reply).not.toMatch(/has been posted/);
@@ -363,25 +407,22 @@ describe('WhatsApp — posting an announcement (the reported conversation)', () 
   }, 120_000);
 
   it('NO cancels; an expired proposal is refused; neither posts anything', async () => {
-    await wa(teacher(), REQUEST);
-    expect((await wa(teacher(), 'no')).reply).toMatch(/not made any changes/i);
-    expect((await wa(teacher(), 'yes')).reply).not.toMatch(/has been posted/);
+    await site(teacher(), REQUEST);
+    expect((await site(teacher(), 'no')).reply).toMatch(/not made any changes/i);
+    expect((await site(teacher(), 'yes')).reply).not.toMatch(/has been posted/);
 
-    await wa(teacher(), REQUEST);
+    await site(teacher(), REQUEST);
     await inSchool(OAK, () => AgentAction.updateMany({ status: 'PENDING' }, { $set: { expiresAt: new Date(Date.now() - 1000) } }));
-    expect((await wa(teacher(), 'yes')).reply).not.toMatch(/has been posted/);
+    expect((await site(teacher(), 'yes')).reply).not.toMatch(/has been posted/);
     expect(await announcements()).toHaveLength(0);
   }, 150_000);
 
-  it('a duplicate confirmation and a redelivered webhook post it once', async () => {
-    await wa(teacher(), REQUEST);
-    const id = `wamid.ann.${Date.now()}`;
-    const first = await deliver(teacher(), 'YES', id);
-    const replay = await deliver(teacher(), 'YES', id);
-    const typedAgain = await wa(teacher(), 'yes');
+  it('a duplicate confirmation posts it once', async () => {
+    const proposal = await site(teacher(), REQUEST);
+    const first = await api.confirm(teacher(), proposal.action.confirmToken);
+    const again = await api.confirm(teacher(), proposal.action.confirmToken);
     expect(first.reply).toMatch(/has been posted to Class 6 B/);
-    expect(replay.skipped).toBe('DUPLICATE');
-    expect(typedAgain.reply).not.toMatch(/has been posted/);
+    expect(again.status).toBeGreaterThanOrEqual(400);
     expect(await announcements()).toHaveLength(1);
     expect(await inSchool(OAK, () => AuditLog.countDocuments({ action: 'agent.create_announcement', 'after.status': 'EXECUTED' }))).toBe(1);
   }, 120_000);
@@ -421,29 +462,29 @@ describe('WhatsApp — posting an announcement (the reported conversation)', () 
   }, 120_000);
 
   it('a newer proposal replaces the older one: YES runs only what was last shown', async () => {
-    await wa(teacher(), REQUEST);
-    const newer = await wa(teacher(), 'Post an announcement to Class 5 A: Bring your atlas tomorrow');
+    await site(teacher(), REQUEST);
+    const newer = await site(teacher(), 'Post an announcement to Class 5 A: Bring your atlas tomorrow');
     expect(newer.reply).toMatch(/"Bring your atlas tomorrow" to Class 5 A/);
-    await wa(teacher(), 'yes');
+    await site(teacher(), 'yes');
     const posted = await announcements();
     expect(posted.map((p) => p.title)).toEqual(['Bring your atlas tomorrow']);
     expect(posted[0].audience.sectionIds.map(String)).toEqual([String(school.c5a._id)]);
   }, 120_000);
 
   it('refuses a class the teacher does not teach, before anything is offered', async () => {
-    const refused = await wa(teacher(), 'Post an announcement for class 9 B test tomorrow');
+    const refused = await site(teacher(), 'Post an announcement for class 9 B test tomorrow');
     expect(refused.reply).toMatch(/Class 9 B is not one of your classes/);
-    expect(refused.reply).not.toMatch(/Reply YES/i);
+    expect(refused.reply).not.toMatch(ASKS_TO_CONFIRM);
     expect(await count(AgentAction, {})).toBe(0);
-    expect((await wa(teacher(), 'yes')).reply).not.toMatch(/has been posted/);
+    expect((await site(teacher(), 'yes')).reply).not.toMatch(/has been posted/);
     expect(await announcements()).toHaveLength(0);
   }, 90_000);
 
   it('a user who may not publish is refused, on both channels', async () => {
     for (const role of ['STUDENT', 'PARENT', 'LIBRARIAN']) {
       const person = school.people[role];
-      const onWa = await wa(person, REQUEST);
-      expect(onWa.reply, role).not.toMatch(/Reply YES/i);
+      const onWa = await site(person, REQUEST);
+      expect(onWa.reply, role).not.toMatch(ASKS_TO_CONFIRM);
       const [onWeb] = await web(person, [REQUEST]);
       expect(onWeb.action ?? null, role).toBeNull();
     }
@@ -453,14 +494,14 @@ describe('WhatsApp — posting an announcement (the reported conversation)', () 
 
   it('asks what to say when the request has no words for the notice, instead of inventing them', async () => {
     for (const request of ['Post an announcement', 'Post an announcement for Class 6 B', 'Send an announcement to my class']) {
-      const reply = await wa(teacher(), request);
+      const reply = await site(teacher(), request);
       expect(reply.reply, request).toMatch(/Tell me a title|what (?:should|would)/i);
-      expect(reply.reply, request).not.toMatch(/Reply YES/i);
+      expect(reply.reply, request).not.toMatch(ASKS_TO_CONFIRM);
     }
     expect(await count(AgentAction, {})).toBe(0);
     // ...and the answer to that question becomes the announcement, to the class named first.
-    await wa(teacher(), 'Post an announcement for Class 6 B');
-    const proposed = await wa(teacher(), 'Lab coats are required on Thursday');
+    await site(teacher(), 'Post an announcement for Class 6 B');
+    const proposed = await site(teacher(), 'Lab coats are required on Thursday');
     expect(proposed.reply).toContain('"Lab coats are required on Thursday" to Class 6 B');
   }, 150_000);
 
@@ -480,11 +521,11 @@ describe('WhatsApp — posting an announcement (the reported conversation)', () 
     }
   }, 150_000);
 
-  it('the website posts the same announcement the same way', async () => {
+  it('the website posts the announcement it proposed, the same way however it is driven', async () => {
     const [proposal] = await web(teacher(), [REQUEST]);
     expect(proposal.action.summary).toBe('Post the announcement "Science practical on Monday" to Class 6 B');
-    const onWa = await wa(teacher(), REQUEST);
-    expect(onWa.reply).toContain(proposal.action.summary);
+    const again = await site(teacher(), REQUEST);
+    expect(again.reply).toContain(proposal.action.summary);
 
     const [fresh] = await web(teacher(), [REQUEST]);
     const done = await api.confirm(teacher(), fresh.action.confirmToken);

@@ -64,7 +64,7 @@ const DEPRECATED = [
   {
     name: 'record_fee_payment',
     where: 'backend/src/modules/ai/agent/tools.js',
-    status: 'Not in the MCP catalog and not reachable from either channel. Replaced by the MCP tool record_payment. Kept only because agent.bulkAuthorization.test.js exercises its permission metadata; safe to delete together with those assertions.',
+    status: 'Not in the MCP catalog and not reachable from either channel. Recording a payment is a decision made on the Payments screen; the assistant has no tool for it. Kept only because agent.bulkAuthorization.test.js exercises its permission metadata; safe to delete together with those assertions.',
   },
 ];
 

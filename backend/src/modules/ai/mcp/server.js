@@ -1,6 +1,6 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { getMcpTool, mcpToolsFor, mutates, requiresConfirmation } from './registry.js';
+import { getMcpTool, mcpToolsFor, mutates, requiresConfirmation, confirmableOn } from './registry.js';
 import { resolveSession, STRIPPED_ARGS } from './session.js';
 import { validateArgs } from './validate.js';
 import { ok, fail, failFromError, needsConfirmation, MCP_ERROR } from './protocol.js';
@@ -378,6 +378,25 @@ export async function executeToolCall({ sessionId, name, args, confirmationToken
         await audit({ session, tool: name, args, status: 'CONFIRMATION_MISMATCH', code: MCP_ERROR.CONFIRMATION_INVALID });
         return fail(MCP_ERROR.CONFIRMATION_INVALID, 'That confirmation was for a different action.');
       }
+      // A proposal is confirmed on the channel it was made on. A "yes" on
+      // WhatsApp never redeems what was proposed on the website, and the
+      // reverse; nor is a change too weighty for WhatsApp confirmed there.
+      const channel = session.channel === 'WHATSAPP' ? 'WHATSAPP' : 'WEB';
+      if ((peeked.source ?? 'WEB') !== channel || !confirmableOn(tool, channel)) {
+        logger.warn(`MCP confirmation for "${name}" proposed on ${peeked.source ?? 'WEB'} presented on ${channel}`);
+        // A proposal made on this channel that this channel may not confirm
+        // can never be confirmed anywhere, so it is closed rather than left
+        // waiting. One made on the other channel is left for that channel.
+        if ((peeked.source ?? 'WEB') === channel) {
+          await runInTenantState(session.tenant, () => markFailed(peeked, new Error('Not confirmable on this channel')));
+        }
+        await audit({ session, tool: name, args, status: 'CONFIRMATION_CHANNEL_MISMATCH', code: MCP_ERROR.CONFIRMATION_INVALID });
+        return fail(
+          MCP_ERROR.CONFIRMATION_INVALID,
+          'That change has to be confirmed where it was asked for. Please confirm it on the EduOS website.',
+          { reason: 'CONFIRM_ON_WEB' },
+        );
+      }
       pending = await runInTenantState(session.tenant, () => claimConfirmation({ confirmationToken, actor }));
     } catch (err) {
       const result = failFromError(err);
@@ -456,6 +475,20 @@ export async function executeToolCall({ sessionId, name, args, confirmationToken
       logger.warn(`MCP prepare failed for ${name}: ${err?.message}`);
       await audit({ session, tool: name, args: toolArgs, status: 'PREPARE_FAILED', code: result.error.code });
       return result;
+    }
+
+    // A change WhatsApp may not confirm is not proposed there. Checked here,
+    // once the request is complete and prepared, so a missing detail or an
+    // ambiguous name is still asked about exactly as on the website; only the
+    // proposal itself is sent to the website.
+    if (!confirmableOn(tool, session.channel)) {
+      await audit({ session, tool: name, args: toolArgs, status: 'CONFIRM_ON_WEB', code: MCP_ERROR.FORBIDDEN });
+      return fail(
+        MCP_ERROR.FORBIDDEN,
+        'That change affects other people or carries real risk, so it can only be confirmed on the EduOS website, '
+          + 'not over WhatsApp. Please ask for it there.',
+        { reason: 'CONFIRM_ON_WEB' },
+      );
     }
 
     const summary = tool.summarise(toolArgs, actor, prepared);

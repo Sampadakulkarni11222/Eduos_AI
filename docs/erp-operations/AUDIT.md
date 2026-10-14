@@ -122,8 +122,32 @@ The first full backend run found 24 failures in 12 files, all caused by this bra
 | Backend tests, full suite | 4,081 tests in 145 files, all passed (53 minutes). This round adds 13: module tracking (5) and the live campus map (8). |
 | Frontend tests, full suite | 410 passed, 29 files; typecheck and lint clean; production build succeeds. |
 
+## Fifth round: testing as an outsider
+
+Full method, figures and fixes: `QA-TESTING.md`. In short:
+
+- **Reverse-engineering sweep** of all 622 routes, as 13 roles and as nobody, with hostile ids, queries and bodies. One critical leak was found and fixed: a student or parent could read every invoice with a query operator. One crash was fixed. Nothing else crashed or leaked.
+- **Ownership sweep** of every read route as a student and a parent: no child's data reaches another family.
+- **Load test** at 10–100 users: throughput rose from 13–18 to 61–68 requests a second at 10–50 users, and the 95th percentile at 100 users from 64 s to about 4 s. This came from school-first compound indexes, a batched campus map, a short sign-in cache, and brief caching of the live boards and role dashboards.
+- **Database audit:** sign-in audit entries now carry their school; no dangling or cross-school references; no money in fractions. Re-runnable with `npm run db:audit` and `npm run qa:plans`.
+- **Seven role audits** found about 110 confirmed problems; they are fixed with regression tests.
+
+The assistant (MCP):
+- **No longer carries out decisions.** It does not approve, reject, refund, publish marks or fee plans, decide leave or requests, record payments or enrol leads. It answers with the screen where a person decides, and a registry check fails the build if a deciding tool is added. A new read-only tool lists what is waiting for the caller's decision.
+- **Confirmations are bound to their channel.** A WhatsApp "yes" can no longer confirm a proposal made on the website. Changes that affect other people, or carry high risk, are confirmed on the website only; the assistant still asks for missing details first.
+- **Every filing it prepares needs confirmation.**
+- **Smaller fixes:**
+  - Six routing collisions fixed.
+  - The web channel can no longer be labelled WhatsApp in the audit trail.
+  - Continue tokens use their own key.
+  - Staff lookups refuse a profile of the wrong role.
+  - Fee history answers are paged.
+  - Record text is fenced as untrusted when the answer is composed.
+- **The catalogue now has 180 tools.**
+
 ## Known limitations
 
+0. **The load figures come from one Node process on a developer laptop** that was also running test suites. Run several processes (cluster mode) for a large school.
 1. **The browser test is a smoke test.** Every page loads; not every button has been pressed. Expect some defects in the forms.
 2. **Statutory payroll figures need professional sign-off.** The rules follow the research register, including the PF wage ceiling change on 17 September 2026 and the wage definition from 21 November 2025. They are not legal or tax advice.
 3. **The compliance catalogue is a starting list.** Every entry starts "Under review" and must be confirmed for the school's board and state.

@@ -169,6 +169,10 @@ export const analyticsTools = {
       additionalProperties: false,
     },
     permission: 'ai.insights.read',
+    // growth.getScore() takes no actor and resolveEnrollmentId() passes a raw
+    // id through, so nothing below narrows the student to the caller's own.
+    // School-wide holders only, as get_at_risk_students.
+    minScope: 'ALL',
     service: 'growth.service.getScore()',
     async run(ctx, args) {
       const enrollmentId = await resolveEnrollmentId(ctx, args);

@@ -170,17 +170,19 @@ describe('tool discovery follows permissions, not role names', () => {
   it('shows finance the fee tools and not the attendance register', () => {
     const names = mcpToolsFor(actorFor('FINANCE')).map((t) => t.name);
     expect(names).toContain('get_pending_fees');
-    expect(names).toContain('record_payment');
+    expect(names).toContain('get_pending_items_for_me');
+    expect(names).not.toContain('record_payment');
     expect(names).not.toContain('mark_attendance');
     expect(names).not.toContain('publish_marks');
   });
 
-  it('withholds payment approval from finance, who may record but not approve', () => {
-    // The separation of duties the fee module encodes: Finance holds
-    // fees.plan.request and .review, and deliberately not .approve.
-    const names = mcpToolsFor(actorFor('FINANCE')).map((t) => t.name);
-    expect(names).toContain('record_payment');
-    expect(names).not.toContain('approve_payment');
+  it('offers nobody a way to record, approve or refund a payment: people do that on the screen', () => {
+    for (const role of ['FINANCE', 'ADMIN', 'PRINCIPAL']) {
+      const names = mcpToolsFor(actorFor(role)).map((t) => t.name);
+      for (const deciding of ['record_payment', 'approve_payment', 'reject_payment', 'refund_payment']) {
+        expect(names, `${role} was offered ${deciding}`).not.toContain(deciding);
+      }
+    }
   });
 
   it('works for a custom role built from grants alone', () => {
@@ -328,18 +330,14 @@ describe('authorization comes from the permission map', () => {
     expect(res.success).toBe(true);
   });
 
-  it('refuses a parent a payment they may not record', async () => {
-    const res = await call(OAK, actorFor('PARENT'), 'record_payment', {
-      invoiceId: String(new mongoose.Types.ObjectId()), amountPaise: 50000, mode: 'CASH',
-    });
+  it('refuses a parent the school-wide fee figures their own-scope grant does not reach', async () => {
+    const res = await call(OAK, actorFor('PARENT'), 'get_fee_statistics', {});
     expect(res.success).toBe(false);
     expect(res.error.code).toBe('FORBIDDEN_SCOPE');
   });
 
   it('refuses a teacher a finance-only operation', async () => {
-    const res = await call(OAK, actorFor('TEACHER'), 'approve_payment', {
-      paymentId: String(new mongoose.Types.ObjectId()),
-    });
+    const res = await call(OAK, actorFor('TEACHER'), 'generate_invoices', {});
     expect(res.success).toBe(false);
     expect(res.error.code).toBe('FORBIDDEN');
   });
@@ -699,16 +697,14 @@ describe('business actions run through the existing services', () => {
     }
   });
 
-  it('refuses a payment against an invoice that does not exist before asking anyone to confirm it', async () => {
-    // The invoice is resolved in prepare(), ahead of the confirmation prompt,
-    // so a person is never asked to approve a payment that cannot be recorded.
+  it('refuses a write on a record that does not exist before asking anyone to confirm it', async () => {
+    // The student is resolved in prepare(), ahead of the confirmation prompt,
+    // so a person is never asked to approve a change that cannot be made.
     const actor = actorFor('ADMIN');
-    const proposal = await call(OAK, actor, 'record_payment', {
-      invoiceId: String(new mongoose.Types.ObjectId()), amountPaise: 50000, mode: 'CASH',
-    });
+    const proposal = await call(OAK, actor, 'archive_student', { admissionNo: 'NOPE-999' });
     expect(proposal.success).toBe(false);
     expect(proposal.error.code).toBe('NOT_FOUND');
-    expect(await inOak(() => AgentAction.countDocuments({ tool: 'record_payment' }))).toBe(0);
+    expect(await inOak(() => AgentAction.countDocuments({ tool: 'archive_student' }))).toBe(0);
   });
 });
 
@@ -760,8 +756,8 @@ describe('every call is auditable', () => {
   });
 
   it('records a refusal, so an attempt leaves a trace', async () => {
-    await call(OAK, actorFor('TEACHER'), 'approve_payment', { paymentId: String(new mongoose.Types.ObjectId()) });
-    const entry = await inOak(() => AuditLog.findOne({ action: 'agent.approve_payment' }).lean());
+    await call(OAK, actorFor('TEACHER'), 'generate_invoices', {});
+    const entry = await inOak(() => AuditLog.findOne({ action: 'agent.generate_invoices' }).lean());
     expect(entry).not.toBeNull();
     expect(entry.after.code).toBe('FORBIDDEN');
   });

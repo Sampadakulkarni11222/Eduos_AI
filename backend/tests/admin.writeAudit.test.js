@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Grade, Section, Subject, SubjectOffering, Term } from '../src/models/academics.model.js';
 import { Student, Enrollment, StudentGuardian } from '../src/models/student.model.js';
 import { Exam, ExamSubject } from '../src/models/exam.model.js';
-import { FeeHead, FeeStructure, FeePlan, Payment, PaymentChangeRequest } from '../src/models/fee.model.js';
+import { FeeHead, FeeStructure, FeePlan, Payment } from '../src/models/fee.model.js';
 import { Lead } from '../src/models/lead.model.js';
 import { Ticket } from '../src/models/ticket.model.js';
 import { HostelRoom, HostelInquiry } from '../src/models/hostel.model.js';
@@ -13,6 +13,8 @@ import { Notification } from '../src/models/notification.model.js';
 import { MedicalRecord } from '../src/models/medicalRecord.model.js';
 import { TimetableSlot } from '../src/models/timetableSlot.model.js';
 import { AuditLog } from '../src/models/auditLog.model.js';
+import { AgentAction } from '../src/models/agentAction.model.js';
+import { decisionAskedFor } from '../src/modules/ai/mcp/decisions.js';
 import * as fees from '../src/modules/fees/fee.service.js';
 import * as library from '../src/modules/library/library.service.js';
 import * as transport from '../src/modules/transport/transport.service.js';
@@ -145,11 +147,12 @@ describe('0. the no-model fallback path', () => {
     expect(isLlmEnabled()).toBe(false);
   });
 
-  it('Admin is offered 190 capabilities, 88 of them writes', () => {
+  it('Admin is offered 180 capabilities, 76 of them writes -- and none that decides', () => {
     const offered = mcpToolsFor(actorForRole('ADMIN')).map((t) => t.name);
     const writes = offered.filter((n) => index()[n].operation !== 'GET');
-    expect(offered).toHaveLength(191);
-    expect(writes).toHaveLength(88);
+    expect(offered).toHaveLength(180);
+    expect(writes).toHaveLength(76);
+    expect(offered.filter((n) => /^(?:approve|reject|decide|review|publish|refund)_|^record_payment$/.test(n))).toEqual([]);
   });
 });
 
@@ -160,7 +163,6 @@ describe('1. requests that reached the wrong capability now reach the right one'
     ['Create grade Class 7 at level 7.', 'create_grade', { name: 'Class 7', level: 7 }, 'enter_marks'],
     ['Add a Mathematics paper for Class 6-A to Half Yearly with 80 marks.', 'create_exam_subject',
       { subject: 'Mathematics', className: 'Class 6-A', exam: 'Half Yearly', maxMarks: 80 }, 'enter_marks'],
-    ['Approve the pending payment for INV-1001.', 'approve_payment', { invoiceNo: 'INV-1001' }, 'record_payment'],
     ['Change the capacity of room A-101 to 4.', 'update_hostel_room', { roomNo: 'A-101', capacity: 4 }, 'allocate_hostel_bed'],
     ['Add a stop Market to Route 7 at sequence 2.', 'create_transport_stop', { name: 'Market', routeName: '7', sequenceNo: 2 }, 'request_transport_route'],
     ['Enroll Rahul Sharma on Route 7 at the Market stop.', 'enroll_in_transport',
@@ -188,7 +190,6 @@ describe('1. requests that reached the wrong capability now reach the right one'
     ['Put Science in period 3 for Class 6-A on Tuesday from 11:00 to 11:45.', 'upsert_timetable_slot'],
     ['Timetable Mathematics for Class 6-A on Friday period 1 from 09:00 to 09:45.', 'upsert_timetable_slot'],
     ["Update Rahul Sharma's blood group to B+.", 'upsert_medical_record'],
-    ['Reject the pending payment for INV-1001 because the cheque bounced.', 'reject_payment'],
     ['Change the capacity of room A-101 to 3.', 'update_hostel_room'],
     ["Move Kabir Kapoor's admission lead to the application stage.", 'update_admission_lead'],
   ];
@@ -208,14 +209,10 @@ describe('2. requests that were not understood now reach an existing capability'
       { name: 'Lab Fee', academicYear: '2026-27', grade: 'Class 6', amountPaise: 200000, dueOn: '2026-10-31' }],
     ['Create an invoice for Aman Gupta for ₹1500 lab fee due 15 October 2026.', 'create_invoice', { studentName: 'Aman Gupta', dueOn: '2026-10-15' }],
     ['Generate invoices for 2026-27.', 'generate_invoices', { academicYear: '2026-27' }],
-    ['Reject the pending payment for INV-1001 because the cheque bounced.', 'reject_payment', { invoiceNo: 'INV-1001', reason: 'the cheque bounced' }],
     ['Change the receipt number of the payment for INV-1001 to R-778.', 'update_payment', { invoiceNo: 'INV-1001', receiptNo: 'R-778' }],
     ['Request a change to the notes of the payment for INV-1001.', 'request_payment_change', { invoiceNo: 'INV-1001', field: 'notes' }],
-    ['Approve the payment change request.', 'decide_payment_change_request', { approve: true }],
     ['Create an installment plan for Aman Gupta of ₹5000 in 2 installments.', 'create_fee_plan', { studentName: 'Aman Gupta', mode: 'INSTALLMENT', totalPaise: 500000 }],
     ["Change Aman Gupta's fee plan to 3 installments.", 'update_fee_plan', { studentName: 'Aman Gupta' }],
-    ["Publish Aman Gupta's fee plan.", 'publish_fee_plan', { studentName: 'Aman Gupta' }],
-    ["Approve Aman Gupta's fee plan.", 'transition_fee_plan', { studentName: 'Aman Gupta', step: 'approve' }],
     // Academics
     ['Create Term 2 for 2026-27 from 1 October 2026 to 31 March 2027.', 'create_term',
       { name: 'Term 2', academicYear: '2026-27', startsOn: '2026-10-01', endsOn: '2027-03-31' }],
@@ -259,27 +256,47 @@ describe('2. requests that were not understood now reach an existing capability'
     });
   }
 
-  it('recording, approving, rejecting, correcting and requesting a change to a payment stay five acts', () => {
+  it('correcting a payment and requesting a change to one stay two separate acts', () => {
     const acts = {
-      'Record a payment of ₹5000 in cash for invoice INV-1001.': 'record_payment',
-      'Approve the pending payment for INV-1001.': 'approve_payment',
-      'Reject the pending payment for INV-1001 because the cheque bounced.': 'reject_payment',
       'Change the receipt number of the payment for INV-1001 to R-778.': 'update_payment',
       'Request a change to the notes of the payment for INV-1001.': 'request_payment_change',
-      'Approve the payment change request.': 'decide_payment_change_request',
     };
     for (const [message, tool] of Object.entries(acts)) expect(routed(message)?.tool, message).toBe(tool);
   });
 
-  it('a fee plan is created, amended, approved and published as four acts', () => {
+  it('a fee plan is created and amended here; approving and publishing it are decisions made on the screen', () => {
     const acts = {
       'Create an installment plan for Aman Gupta of ₹5000 in 2 installments.': 'create_fee_plan',
       "Change Aman Gupta's fee plan to 3 installments.": 'update_fee_plan',
-      "Approve Aman Gupta's fee plan.": 'transition_fee_plan',
-      "Publish Aman Gupta's fee plan.": 'publish_fee_plan',
     };
     for (const [message, tool] of Object.entries(acts)) expect(routed(message)?.tool, message).toBe(tool);
+    expect(decisionAskedFor("Approve Aman Gupta's fee plan.")).toBe('feePlan');
+    expect(decisionAskedFor("Publish Aman Gupta's fee plan.")).toBe('feePlan');
   });
+});
+
+/* ── 2b. Decisions are handed back ────────────────────────── */
+
+describe('2b. a decision is handed back to the screen where a person makes it, and nothing runs', () => {
+  const DECISIONS = [
+    ['Record a payment of ₹5000 in cash for invoice INV-1001.', 'payment'],
+    ['Approve the pending payment for INV-1001.', 'payment'],
+    ['Reject the pending payment for INV-1001 because the cheque bounced.', 'payment'],
+    ['Approve the payment change request.', 'payment'],
+    ["Approve Aman Gupta's fee plan.", 'feePlan'],
+    ["Publish Aman Gupta's fee plan.", 'feePlan'],
+  ];
+  for (const [message, kind] of DECISIONS) {
+    it(`"${message}"`, async () => {
+      expect(decisionAskedFor(message)).toBe(kind);
+      resetAgentThrottle();
+      const res = await api.ask(admin(), message);
+      expect(res.status).toBe(200);
+      expect(res.action ?? null).toBeNull();
+      expect(res.refused).toBe('HUMAN_DECISION');
+      expect(await inSchool(OAK, () => AgentAction.countDocuments())).toBe(0);
+    }, 60000);
+  }
 });
 
 /* ── 3. Reads stay reads; writes stay writes ──────────────── */
@@ -320,7 +337,7 @@ describe('3. a read never resolves to a write, and a write never to a read', () 
   it('every write request resolves to a capability that writes', () => {
     const writes = [
       'Close the Bus timing ticket.', "Move Kabir Kapoor's admission lead to the tour scheduled stage.",
-      'Change the capacity of room A-101 to 4.', 'Approve the pending payment for INV-1001.',
+      'Change the capacity of room A-101 to 4.',
       "Set Rahul Sharma's blood group to O+.", 'Mark the Fan not working hostel inquiry as resolved.',
     ];
     for (const message of writes) {
@@ -348,14 +365,7 @@ describe('4. each write is proposed, written only on "yes", and audited', () => 
       async () => { const o = await byId(SubjectOffering, world.artA._id); return [o.isElective, o.capacity]; }, [true, 25]],
     ['Schedule Mathematics for Class 6-A on Monday period 2 from 10:00 to 10:45.', 'upsert_timetable_slot',
       () => count(TimetableSlot, { sectionId: school.sectionA._id, dayOfWeek: 1, periodNo: 2, subjectOfferingId: world.mathsA._id }), 1],
-    ['Approve the pending payment for INV-1001.', 'approve_payment', async () => (await byId(Payment, world.pending._id)).recordStatus, 'PUBLISHED'],
-    ['Reject the pending payment for INV-1001 because the cheque bounced.', 'reject_payment',
-      async () => { const p = await byId(Payment, world.pending._id); return [p.recordStatus, p.rejectionReason]; }, ['REJECTED', 'the cheque bounced']],
     ['Change the receipt number of the payment for INV-1001 to R-778.', 'update_payment', async () => (await byId(Payment, world.pending._id)).receiptNo, 'R-778'],
-    ['Approve the payment change request.', 'decide_payment_change_request',
-      async () => (await byId(PaymentChangeRequest, world.change._id)).status, 'APPROVED'],
-    ["Approve Aman Gupta's fee plan.", 'transition_fee_plan', async () => (await byId(FeePlan, world.waitingPlan._id)).status, 'APPROVED'],
-    ["Publish Aman Gupta's fee plan.", 'publish_fee_plan', async () => (await byId(FeePlan, world.approvedPlan._id)).status, 'PUBLISHED'],
     ['Create a fee structure Lab Fee 2026-27 of ₹2000 due 31 October 2026 for Class 6.', 'create_fee_structure',
       () => count(FeeStructure, { name: 'Lab Fee', amountPaise: 200000 }), 1],
     ['Enroll Kabir Mehta in Class 6-A.', 'enroll_student', () => count(Enrollment, { studentId: world.kabir._id, sectionId: school.sectionA._id }), 1],
@@ -412,10 +422,11 @@ describe('4. each write is proposed, written only on "yes", and audited', () => 
   }, 60000);
 
   it('a proposal declined with "no" writes nothing', async () => {
-    const res = await api.ask(admin(), 'Approve the pending payment for INV-1001.');
+    const res = await api.ask(admin(), 'Change the capacity of room A-101 to 4.');
+    const before = (await byId(HostelRoom, world.room._id)).capacity;
     const declined = await api.confirm(admin(), res.action.confirmToken, false);
     expect(declined.executed).toBe(false);
-    expect((await byId(Payment, world.pending._id)).recordStatus).toBe('PENDING_ADMIN_APPROVAL');
+    expect((await byId(HostelRoom, world.room._id)).capacity).toBe(before);
   }, 60000);
 
   it('WhatsApp proposes the same write in the same words, and YES writes it', async () => {

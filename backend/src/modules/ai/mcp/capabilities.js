@@ -102,6 +102,8 @@ const ENTITY_OF_TOOL = {
   // about something the sentence never mentions.
   get_at_risk_students: 'student',
   list_notifications: 'notification',
+  // Everything waiting on the caller to decide, across every queue.
+  get_pending_items_for_me: 'approval',
 };
 
 /** Argument names that name WHAT the request is about. */
@@ -329,22 +331,34 @@ export function entitiesFor(actor) {
  * drew. Stems and plurals are matched, so inflections need no new entries.
  */
 export const ENTITY_VOCABULARY = [
-  ['attendance', /\battendance\b|\babsent|\bpresent\b|\bregister\b|\broll\s*call\b|उपस्थिति/i],
+  // "Register" is the attendance register, not the verb: "register me for
+  // the robotics elective" is an elective registration, and reading it as
+  // attendance answered with a register nobody asked for.
+  ['attendance', /\battendance\b|\babsent|\bpresent\b|\b(?:the|attendance|class|daily|today'?s)\s+register\b|\bregister\b(?!\s+(?:me|myself|him|her|them|us|my|for|to|in|on|with)\b)|\broll\s*call\b|उपस्थिति/i],
   // One stem for the whole family: score, scores, scored, scorer, scorers,
   // scoring. Listing the inflections one at a time is how "the highest
   // Mathematics SCORERS in Class 5-A" fell out of the marks vocabulary
   // altogether and was answered with a list of classes.
-  ['marks', /\bmarks?\b|\bresults?\b|\bgrades?\b|\bscor(?:e|es|ed|er|ers|ing)\b|\breport\s*card\b|\bgpa\b|\bexams?\b|\bexamination|अंक|परिणाम/i],
+  //
+  // Not "class grades" / "school grades" (the grade LEVELS, a class question),
+  // and not an exam's schedule or dates (the calendar): "show the exam
+  // schedule" was answered with marks.
+  ['marks', /\bmarks?\b|\bresults?\b|(?<!\b(?:class|classes|school)\s+)\bgrades?\b|\bscor(?:e|es|ed|er|ers|ing)\b|\breport\s*card\b|\bgpa\b|\bexams?\b(?!\s+(?:schedules?|dates?|calendar|time.?table|datesheet)\b)|\bexamination|अंक|परिणाम/i],
   // "Task", "pending work", "submitted work": what a teacher calls homework
   // without the word. Bare "work" is not here -- "does the bus work today?" is
   // no question about homework -- only work qualified by a state homework is in.
   ['homework', /\bhomework\b|\bassignments?\b|\bworksheets?\b|\bsubmissions?\b|\btasks?\b|\bclasswork\b|\b(?:pending|submitted|unsubmitted|overdue|completed)\s+work\b|गृहकार्य|होमवर्क/i],
   // "Notify" is announcing to named people: the verb is the entity's own word.
   ['announcement', /\bannouncement|\bnotice|\bcircular|\bnews\b|\bnotify(?:ing)?\b/i],
+  // "Document" stays here: list_documents answers report cards, certificates
+  // and letters as well as course material, so "which documents are due" is
+  // rightly its question. (Generating an official document has no tool.)
   ['material', /\bmaterial|\bcourse\s*material|\bnotes\b|\bhandout|\bdocument|\bresource/i],
   // "What class do I have next?" asks for a period -- which is the timetable,
   // not the caller's section.
-  ['timetable', /\btime.?table\b|\bperiods?\b|\bschedule\b|\blesson|\bnext\s+(?:class|lecture)\b|\bclass\b[^?.]*\b(?:next|right\s+now)\b/i],
+  // Not bare "schedule": that is the calendar's word ("the exam schedule",
+  // "what is scheduled for Friday"). A CLASS schedule is the timetable.
+  ['timetable', /\btime.?table\b|\bperiods?\b|\bclass\s+schedules?\b|\blesson|\bnext\s+(?:class|lecture)\b|\bclass\b[^?.]*\b(?:next|right\s+now)\b/i],
   ['leave', /\bleave\b|\bday\s*off\b|\bchutti\b|छुट्टी/i],
   ['elective', /\belective|\bsubject\s*registration|\bregistration/i],
   ['studentRequest', /\bco.?curricular|\bachievement|\bactivit(y|ies)\b|\bprofile[\s-]*(?:correction|edit|change)|\bstudent\s*request|\beditable\b|\bfields?\b[^?.]*\bcan\s+i\s+(?:change|edit|correct)/i],
@@ -382,7 +396,10 @@ export const ENTITY_VOCABULARY = [
   // payment" is still a fee, "the event on Friday" is still the calendar,
   // "attendance summary" is still analytics.
   ['myDay', /\bmy\s+day\b|\bwaiting\s+(?:on|for)\s+me\b|\bneeds?\s+me\s+today\b|\bbrief\s+me\b/i],
-  ['approval', /\bapprovals\b|\bapproval\s+(?:inbox|requests?)\b/i],
+  // Singular too: "what is pending my approval" named no entity at all.
+  // "Pending for me" / "waiting for my decision" are the same question.
+  // ("payments pending approval" stays a fee question: only MY approval is.)
+  ['approval', /\bapprovals\b|\b(?:my|your)\s+approval\b|\bapproval\s+(?:inbox|requests?)\b|\bpending\s+(?:for|on)\s+me\b|\bmy\s+decision\b/i],
   ['compliance', /\bcompliance\b|\blicen[cs]es?\b|\bregulatory\s+returns?\b/i],
   ['correspondence', /\bcorrespondence\b|\bofficial\s+letters?\b/i],
   ['governance', /\bboard\s+meetings?\b|\btrustee\s+meetings?\b|\bgoverning\s+body\b|\bcommittee\s+meetings?\b/i],
@@ -396,7 +413,9 @@ export const ENTITY_VOCABULARY = [
   ['organisation', /\borgani[sz]ation\b|\bvacanc(?:y|ies)\b/i],
   ['newsroom', /\bnewsroom\b/i],
   ['campus', /\bcampus\b/i],
-  ['syllabus', /syllabus|module\s+(?:plan|progress)|portion\s+(?:covered|completed)/i],
+  // Word boundaries written as \b: the pattern used to hold literal
+  // backspace characters, so "syllabus progress" matched nothing at all.
+  ['syllabus', /\bsyllabus\b|\bmodule\s+(?:plan|progress)\b|\bportion\s+(?:covered|completed)\b/i],
   ['digitalLecture', /\bdigital\s+lectures?\b|\bonline\s+class(?:es)?\b|\blive\s+class(?:es)?\b|\bwebinars?\b/i],
 ];
 

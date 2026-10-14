@@ -60,6 +60,7 @@
  * there is no branch, table or constant here naming a phrase, a role or a tool.
  */
 
+import { DECIDING_VERBS } from '../mcp/decisions.js';
 import { capabilitiesFor, capabilityIndex, entitiesInText, subjectEntityOf, namesARecord } from '../mcp/capabilities.js';
 import { classFromText } from '../../../utils/classNames.js';
 import { monthFromText, writtenDatesIn } from '../../../utils/naturalDates.js';
@@ -246,6 +247,13 @@ function verbIndex() {
       if (!verb) continue;
       if (!verbsByOperation.has(verb)) verbsByOperation.set(verb, new Set());
       verbsByOperation.get(verb).add(c.operation);
+    }
+    // The verbs of DECIDING (approve, reject, publish, record, refund ...) name
+    // acts even though no capability performs them any more (mcp/decisions.js):
+    // "Record Rahul as present" is still an instruction, not a question, and
+    // "approve the leave" must never be read as a request to list it.
+    for (const verb of DECIDING_VERBS) {
+      if (!verbsByOperation.has(verb)) verbsByOperation.set(verb, new Set(['ACTION']));
     }
   }
   return verbsByOperation;

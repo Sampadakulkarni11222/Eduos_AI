@@ -120,7 +120,9 @@ describe('the new capabilities are shared, read-only and permission-gated', () =
     expect(gate('ADMIN', 'get_overdue_books')).toBe('ALLOW');
     // Holds no library.read at all, so the refusal is the plain one.
     expect(gate('WARDEN', 'get_overdue_books')).toBe('AGENT_FORBIDDEN');
-    expect(gate('PARENT', 'get_library_summary')).toBe('AGENT_FORBIDDEN');
+    // A parent holds library.read at OWN (their children's borrowings), so the
+    // school-wide summary is refused for scope.
+    expect(gate('PARENT', 'get_library_summary')).toBe('AGENT_FORBIDDEN_SCOPE');
 
     // A student is refused both, but *which* refusal depends on the permission
     // catalogue: where students hold library.read at OWN (so they can see their

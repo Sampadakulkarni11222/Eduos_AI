@@ -14,6 +14,7 @@ import { customizationTools } from './tools/customization.js';
 import { domainTools } from './tools/domains.js';
 import { operationsTools } from './tools/operations.js';
 import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
+import { isDecidingToolName } from './decisions.js';
 
 /**
  * The EduOS MCP tool catalog.
@@ -48,7 +49,7 @@ import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
  *   run          (ctx, args, prepared) → a protocol envelope
  */
 
-export const MCP_TOOLS = {
+const ASSEMBLED = {
   ...studentTools,
   ...attendanceTools,
   ...feeTools,
@@ -64,6 +65,19 @@ export const MCP_TOOLS = {
   ...domainTools,
   ...operationsTools,
 };
+
+/**
+ * The catalogue, less anything that would DECIDE.
+ *
+ * The assistant never approves, rejects, publishes, refunds or records money:
+ * a person does that on the screen (see decisions.js). The tool files no longer
+ * declare such tools, and validateMcpRegistry() fails the boot if one comes
+ * back; this filter is the second lock, so a deciding tool added by mistake is
+ * neither shown to the model nor executable while somebody reads the boot log.
+ */
+export const MCP_TOOLS = Object.freeze(Object.fromEntries(
+  Object.entries(ASSEMBLED).filter(([name]) => !isDecidingToolName(name)),
+));
 
 export function getMcpTool(name) {
   return Object.hasOwn(MCP_TOOLS, name) ? MCP_TOOLS[name] : null;
@@ -86,6 +100,20 @@ export function requiresConfirmation(tool, args) {
   if (!tool || !mutates(tool)) return false;
   if (typeof tool.confirmWhen === 'function') return Boolean(tool.confirmWhen(args ?? {}));
   return Boolean(tool.confirm);
+}
+
+/**
+ * Whether a write may be proposed and confirmed on this channel.
+ *
+ * WhatsApp's confirmation is a bare "yes" from whoever holds the phone (a lent
+ * handset, a swapped SIM). That is acceptable for a person's own low-impact
+ * filing; it is not for a change that is HIGH or CRITICAL risk or that lands
+ * on somebody else's record. Those are confirmed on the website, where the
+ * session is the person's own sign-in.
+ */
+export function confirmableOn(tool, channel) {
+  if (channel !== 'WHATSAPP') return true;
+  return !(tool?.affectsOthers || tool?.risk === 'HIGH' || tool?.risk === 'CRITICAL');
 }
 
 /**
@@ -163,7 +191,19 @@ export function mcpCatalogStats() {
  */
 export function validateMcpRegistry() {
   const problems = [];
+  for (const name of Object.keys(ASSEMBLED)) {
+    if (isDecidingToolName(name)) {
+      problems.push(`${name} is a deciding tool; decisions are made by a person on the screen, never by the assistant`);
+    }
+  }
   for (const [name, tool] of Object.entries(MCP_TOOLS)) {
+    // Every CREATE files something in somebody's name -- a ticket, a request,
+    // an enquiry -- so a person confirms it first. A plan can be steered by
+    // text the model read earlier in the conversation; an unconfirmed filing
+    // would be a write nobody asked for.
+    if (tool.operation === 'CREATE' && !tool.confirm && typeof tool.confirmWhen !== 'function') {
+      problems.push(`${name} creates a record without asking for confirmation`);
+    }
     if (!tool.operation) problems.push(`${name} declares no operation`);
     if (!tool.risk) problems.push(`${name} declares no risk level`);
     if (!tool.permission) problems.push(`${name} declares no permission`);

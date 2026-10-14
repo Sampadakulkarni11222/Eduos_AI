@@ -327,37 +327,13 @@ const CASES = [
     args: (_s, c) => ({ planId: idOf(c.plan), notes: 'Adjusted after meeting' }),
     footprint: (_s, c) => field(FeePlan, c.plan._id, 'notes'),
     changed: (b, a) => { expect(b ?? null).toBeNull(); expect(a).toBe('Adjusted after meeting'); } },
-  { tool: 'transition_fee_plan', role: 'ADMIN',
-    setup: async (w) => ({ plan: await w.plan('PENDING_ADMIN_APPROVAL') }),
-    args: (_s, c) => ({ planId: idOf(c.plan), step: 'approve' }),
+  // Passes a plan on (submit). Reviewing, approving and rejecting it are
+  // decisions made on the screen, and the step enum no longer offers them.
+  { tool: 'transition_fee_plan', role: 'FINANCE',
+    setup: async (w) => ({ plan: await w.plan('DRAFT') }),
+    args: (_s, c) => ({ planId: idOf(c.plan), step: 'submit' }),
     footprint: (_s, c) => field(FeePlan, c.plan._id, 'status'),
-    changed: (b, a) => { expect([b, a]).toEqual(['PENDING_ADMIN_APPROVAL', 'APPROVED']); },
-    wrongScope: { actor: (s) => s.people.FINANCE.actor, codes: ['FORBIDDEN'] } },
-  { tool: 'publish_fee_plan', role: 'ADMIN',
-    setup: async (w) => ({ plan: await w.plan('APPROVED') }),
-    args: (_s, c) => ({ planId: idOf(c.plan) }),
-    footprint: async (_s, c) => `${await field(FeePlan, c.plan._id, 'status')}:${await count(Invoice)}`,
-    changed: (b, a) => { expect(b).toBe('APPROVED:2'); expect(a).toBe('PUBLISHED:4'); } },
-  { tool: 'record_payment', role: 'FINANCE',
-    args: () => ({ invoiceNo: 'INV-1001', amountPaise: 100000, mode: 'CASH' }),
-    footprint: (s) => count(Payment, { invoiceId: s.inv1._id }),
-    changed: (b, a) => { expect([b, a]).toEqual([0, 1]); },
-    wrongScope: { actor: (s) => s.people.PARENT.actor, codes: ['FORBIDDEN_SCOPE'] } },
-  { tool: 'approve_payment', role: 'ADMIN',
-    setup: async (w) => ({ payment: await w.pendingPayment() }),
-    args: (_s, c) => ({ paymentId: idOf(c.payment) }),
-    footprint: (_s, c) => field(Payment, c.payment._id, 'recordStatus'),
-    changed: (b, a) => { expect([b, a]).toEqual(['PENDING_ADMIN_APPROVAL', 'PUBLISHED']); } },
-  { tool: 'reject_payment', role: 'ADMIN',
-    setup: async (w) => ({ payment: await w.pendingPayment() }),
-    args: (_s, c) => ({ paymentId: idOf(c.payment), reason: 'Cheque bounced' }),
-    footprint: (_s, c) => field(Payment, c.payment._id, 'recordStatus'),
-    changed: (b, a) => { expect([b, a]).toEqual(['PENDING_ADMIN_APPROVAL', 'REJECTED']); } },
-  { tool: 'refund_payment', role: 'FINANCE',
-    setup: async (w) => ({ payment: await w.publishedPayment() }),
-    args: (_s, c) => ({ paymentId: idOf(c.payment) }),
-    footprint: (_s, c) => field(Payment, c.payment._id, 'status'),
-    changed: (b, a) => { expect([b, a]).toEqual(['SUCCESS', 'REFUNDED']); } },
+    changed: (b, a) => { expect([b, a]).toEqual(['DRAFT', 'PENDING_FINANCE_REVIEW']); } },
   { tool: 'update_payment', role: 'ADMIN',
     setup: async (w) => ({ payment: await w.publishedPayment() }),
     args: (_s, c) => ({ paymentId: idOf(c.payment), notes: 'Receipt reissued', reason: 'Typo on receipt' }),
@@ -368,11 +344,6 @@ const CASES = [
     args: (_s, c) => ({ paymentId: idOf(c.payment), field: 'receiptNo', requestedValue: 'R-2044', reason: 'Wrong book used' }),
     footprint: (_s, c) => count(PaymentChangeRequest, { paymentId: c.payment._id }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
-  { tool: 'decide_payment_change_request', role: 'ADMIN',
-    setup: async (w) => ({ request: await w.changeRequest(), payment: await w.publishedPayment() }),
-    args: (_s, c) => ({ requestId: idOf(c.request), approve: true }),
-    footprint: async (_s, c) => `${await field(PaymentChangeRequest, c.request._id, 'status')}:${await field(Payment, c.payment._id, 'notes')}`,
-    changed: (b, a) => { expect(b).toBe('PENDING_ADMIN_APPROVAL:null'); expect(a).toBe('APPROVED:Corrected by finance'); } },
 
   /* Academics */
   { tool: 'create_section', role: 'ADMIN',
@@ -430,12 +401,6 @@ const CASES = [
     footprint: (s, c) => read(() => Mark.findOne({ examSubjectId: c.examSubject._id, enrollmentId: s.rahul.enrollment._id }).lean()).then((m) => (m ? `${m.marks}:${m.status}` : null)),
     changed: (b, a) => { expect([b, a]).toEqual([null, '42:DRAFT']); },
     wrongScope: { actor: async (_s, w) => (await w.secondTeacher()).actor, codes: ['FORBIDDEN', 'NOT_FOUND'] } },
-  { tool: 'publish_marks', role: 'TEACHER',
-    setup: async (w) => ({ examSubject: await w.examSubject(), mark: await w.draftMark() }),
-    args: (_s, c) => ({ examSubjectId: idOf(c.examSubject) }),
-    footprint: (_s, c) => field(Mark, c.mark._id, 'status'),
-    changed: (b, a) => { expect([b, a]).toEqual(['DRAFT', 'PUBLISHED']); },
-    wrongScope: { actor: async (_s, w) => (await w.secondTeacher()).actor, codes: ['FORBIDDEN', 'NOT_FOUND'] } },
   { tool: 'create_assignment', role: 'TEACHER',
     setup: async (w) => ({ offering: await w.offering() }),
     args: (_s, c) => ({ subjectOfferingId: idOf(c.offering), title: 'Algebra practice', dueAt: ymd(days(10)) }),
@@ -468,16 +433,13 @@ const CASES = [
     args: () => ({ childName: 'Meera Nair', guardianName: 'Mrs Nair', phone: '+919000044444', gradeApplying: 'Class 1' }),
     footprint: () => count(Lead, { childName: 'Meera Nair' }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
-  { tool: 'update_admission_lead', label: 'update_admission_lead — approve (ENROLLED)', role: 'ADMIN',
+  // Moves an enquiry along the pipeline. Admitting (ENROLLED) or turning down
+  // (LOST) is a decision made on the admissions screen, not offered here.
+  { tool: 'update_admission_lead', label: 'update_admission_lead — contacted', role: 'ADMIN',
     setup: async (w) => ({ lead: await w.lead() }),
-    args: (_s, c) => ({ leadId: idOf(c.lead), stage: 'ENROLLED' }),
+    args: (_s, c) => ({ leadId: idOf(c.lead), stage: 'CONTACTED' }),
     footprint: async (_s, c) => `${await field(Lead, c.lead._id, 'stage')}:${await count(LeadInteraction, { leadId: c.lead._id })}`,
-    changed: (b, a) => { expect([b, a]).toEqual(['NEW:0', 'ENROLLED:1']); } },
-  { tool: 'update_admission_lead', label: 'update_admission_lead — reject (LOST)', role: 'ADMIN', battery: false,
-    setup: async (w) => ({ lead: await w.lead() }),
-    args: (_s, c) => ({ leadId: idOf(c.lead), stage: 'LOST', notes: 'Chose another school' }),
-    footprint: (_s, c) => field(Lead, c.lead._id, 'stage'),
-    changed: (b, a) => { expect([b, a]).toEqual(['NEW', 'LOST']); } },
+    changed: (b, a) => { expect([b, a]).toEqual(['NEW:0', 'CONTACTED:1']); } },
 
   /* Communication */
   { tool: 'create_announcement', role: 'ADMIN', tenant: false,
@@ -545,13 +507,6 @@ const CASES = [
     args: (_s, c) => ({ bookId: idOf(c.book) }),
     footprint: (_s, c) => count(BookRequest, { bookId: idOf(c.book) }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
-  { tool: 'decide_book_request', role: 'LIBRARIAN',
-    setup: async (w) => ({ request: await w.bookRequest(), book: await w.book() }),
-    args: (_s, c) => ({ requestId: idOf(c.request), status: 'APPROVED' }),
-    // Approving is what issues the book, so the footprint is both the decision
-    // and the copy leaving the shelf.
-    footprint: async (_s, c) => `${await field(BookRequest, idOf(c.request), 'status')}:${await field(Book, idOf(c.book), 'availableCopies')}`,
-    changed: (b, a) => { expect([b, a]).toEqual(['PENDING:2', 'APPROVED:1']); } },
 
   /* Hostel */
   { tool: 'create_hostel_room', role: 'WARDEN', tenant: false,
@@ -626,12 +581,6 @@ const CASES = [
     args: (_s, c) => ({ routeId: idOf(c.route), stopId: idOf(c.stop) }),
     footprint: (s) => count(TransportRequest, { studentId: s.priya.student._id }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
-  { tool: 'decide_transport_request', role: 'ADMIN',
-    setup: async (w) => ({ request: await w.transportRequest() }),
-    args: (_s, c) => ({ requestId: idOf(c.request), status: 'APPROVED' }),
-    // Approving grants the place as well as recording the decision.
-    footprint: async (_s, c) => `${await field(TransportRequest, idOf(c.request), 'status')}:${await count(BusEnrollment)}`,
-    changed: (b, a) => { expect([b, a]).toEqual(['PENDING:0', 'APPROVED:1']); } },
 
   /* Documents */
   { tool: 'delete_document', role: 'ADMIN',
@@ -667,17 +616,6 @@ const CASES = [
     args: () => ({ fromDate: ymd(days(15)), toDate: ymd(days(16)), reason: 'Family function' }),
     footprint: (s) => count(LeaveApplication, { enrollmentId: s.priya.enrollment._id }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
-  { tool: 'review_leave', role: 'TEACHER',
-    setup: async (w) => ({ leave: await w.leave() }),
-    args: (_s, c) => ({ leaveId: idOf(c.leave), status: 'APPROVED' }),
-    footprint: (_s, c) => field(LeaveApplication, c.leave._id, 'status'),
-    changed: (b, a) => { expect([b, a]).toEqual(['PENDING', 'APPROVED']); },
-    wrongScope: {
-      actor: (s) => s.people.TEACHER.actor,
-      args: (_s, c) => ({ leaveId: idOf(c.otherLeave), status: 'APPROVED' }),
-      setup: async (w, s) => ({ otherLeave: await w.leave(s.riya) }),
-      codes: ['FORBIDDEN'],
-    } },
   { tool: 'register_for_elective', role: 'STUDENT',
     setup: async (w) => ({ offering: await w.elective() }),
     args: (_s, c) => ({ subjectOfferingId: idOf(c.offering) }),
@@ -688,12 +626,6 @@ const CASES = [
     args: (_s, c) => ({ registrationId: idOf(c.registration) }),
     footprint: (_s, c) => field(SubjectRegistration, idOf(c.registration), 'status'),
     changed: (b, a) => { expect([b, a]).toEqual(['PENDING', 'WITHDRAWN']); } },
-  { tool: 'decide_registration', role: 'TEACHER',
-    setup: async (w) => ({ registration: await w.registration() }),
-    args: (_s, c) => ({ registrationId: idOf(c.registration), status: 'APPROVED' }),
-    footprint: (_s, c) => field(SubjectRegistration, idOf(c.registration), 'status'),
-    changed: (b, a) => { expect([b, a]).toEqual(['PENDING', 'APPROVED']); },
-    wrongScope: { actor: async (_s, w) => (await w.secondTeacher()).actor, codes: ['FORBIDDEN'] } },
   { tool: 'request_cocurricular', role: 'STUDENT', tenant: false,
     args: () => ({ name: 'Inter-school quiz', activityDate: '2026-08-15', category: 'LITERARY' }),
     footprint: (s) => count(CoCurricularActivity, { studentId: s.priya.student._id }),
@@ -703,22 +635,10 @@ const CASES = [
     args: (_s, c) => ({ requestId: idOf(c.request) }),
     footprint: (s) => count(CoCurricularActivity, { studentId: s.priya.student._id }),
     changed: (b, a) => { expect([b, a]).toEqual([1, 0]); } },
-  { tool: 'decide_cocurricular', role: 'TEACHER',
-    setup: async (w) => ({ request: await w.cocurricular() }),
-    args: (_s, c) => ({ requestId: idOf(c.request), status: 'APPROVED' }),
-    footprint: (_s, c) => field(CoCurricularActivity, idOf(c.request), 'status'),
-    changed: (b, a) => { expect([b, a]).toEqual(['PENDING', 'APPROVED']); },
-    wrongScope: { actor: async (_s, w) => (await w.secondTeacher()).actor, codes: ['FORBIDDEN', 'NOT_FOUND'] } },
   { tool: 'request_profile_edit', role: 'STUDENT', tenant: false,
     args: () => ({ changes: { address: '14 New Colony' }, note: 'We moved' }),
     footprint: (s) => count(ProfileEditRequest, { studentId: s.priya.student._id }),
     changed: (b, a) => { expect([b, a]).toEqual([0, 1]); } },
-  { tool: 'decide_profile_edit', role: 'TEACHER',
-    setup: async (w) => ({ request: await w.profileEdit() }),
-    args: (_s, c) => ({ requestId: idOf(c.request), status: 'APPROVED' }),
-    footprint: (s) => field(Student, s.priya.student._id, 'address'),
-    changed: (b, a) => { expect(b ?? null).toBeNull(); expect(a).toBe('22 Lake Road'); },
-    wrongScope: { actor: async (_s, w) => (await w.secondTeacher()).actor, codes: ['FORBIDDEN', 'NOT_FOUND'] } },
 
   /* Medical */
   { tool: 'upsert_medical_record', role: 'ADMIN',
@@ -729,7 +649,8 @@ const CASES = [
   { tool: 'remove_medical_record', role: 'ADMIN',
     setup: async (w) => ({ record: await w.medical() }),
     args: () => ({ admissionNo: 'OAK-1' }),
-    footprint: (s) => count(MedicalRecord, { studentId: s.rahul.student._id }),
+    // Removal is a soft delete: the row survives with deletedAt set.
+    footprint: (s) => count(MedicalRecord, { studentId: s.rahul.student._id, deletedAt: null }),
     changed: (b, a) => { expect([b, a]).toEqual([1, 0]); },
     wrongScope: { actor: (s) => s.people.PARENT.actor, args: () => ({ admissionNo: 'OAK-3' }), codes: ['NOT_FOUND', 'FORBIDDEN'] } },
 
@@ -786,9 +707,9 @@ async function attempt(tenant, actor, name, args) {
 /* ── Coverage is complete ─────────────────────────────────── */
 
 describe('the write-tool matrix', () => {
-  it('has a case for every one of the 89 write tools', () => {
+  it('has a case for every one of the 76 write tools', () => {
     const writeTools = Object.entries(MCP_TOOLS).filter(([, t]) => mutates(t)).map(([n]) => n).sort();
-    expect(writeTools).toHaveLength(89);
+    expect(writeTools).toHaveLength(76);
     expect([...new Set(CASES.map((c) => c.tool))].sort()).toEqual(writeTools);
   });
 });

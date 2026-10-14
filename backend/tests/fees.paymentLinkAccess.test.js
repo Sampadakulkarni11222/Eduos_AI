@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll, beforeEach } from 'vitest';
-import { MCP_TOOLS, mcpToolsFor } from '../src/modules/ai/mcp/registry.js';
+import { MCP_TOOLS, mcpToolsFor, getMcpTool } from '../src/modules/ai/mcp/registry.js';
 import { resetMcpClient } from '../src/modules/ai/mcp/client.js';
 import { seedSchool, mcp, OAK } from './support/mcpSchool.js';
 
@@ -38,9 +38,11 @@ describe('the payment capability a family can reach', () => {
   it('is a read, and the ledger write stays with finance', () => {
     expect(MCP_TOOLS.get_payment_link.operation).toBe('GET');
     expect(MCP_TOOLS.get_payment_link.permission).toBe('fees.pay');
-    // record_payment is the counter-payment ledger write. A family holds
-    // fees.pay at OWN and must still never reach it.
-    expect(MCP_TOOLS.record_payment.minScope).toBe('ALL');
+    // Recording a payment is the counter-payment ledger write, made by finance
+    // on the Payments screen. It is not an assistant tool at all, so nobody --
+    // a family holding fees.pay at OWN included -- can reach it through chat.
+    expect(MCP_TOOLS.record_payment).toBeUndefined();
+    expect(getMcpTool('record_payment')).toBeNull();
     for (const role of ['STUDENT', 'PARENT']) {
       const names = mcpToolsFor(school.people[role].actor).map((t) => t.name);
       expect(names, `${role}`).toContain('get_payment_link');

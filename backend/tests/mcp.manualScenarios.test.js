@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { decisionAskedFor } from '../src/modules/ai/mcp/decisions.js';
 import { parseIntent, parsePlan } from '../src/modules/ai/agent/intent.js';
 import { AI_ASSISTANT_PERMISSION } from '../src/constants/permissions.js';
-import { resolveCapability, dimensionsOf, operationsAskedFor } from '../src/modules/ai/agent/capabilityResolver.js';
+import { resolveCapability, dimensionsOf } from '../src/modules/ai/agent/capabilityResolver.js';
 import { capabilitiesFor } from '../src/modules/ai/mcp/capabilities.js';
 import { getMcpTool } from '../src/modules/ai/mcp/registry.js';
 import { resetMcpClient } from '../src/modules/ai/mcp/client.js';
@@ -615,27 +616,14 @@ describe('7, 15 — a request the Web has no screen for is declined, never broad
 
 /* ── The catalogue's verbs are the catalogue's, not the caller's ── */
 
-describe('5.9 — an approval reaches the capability that decides, for the role that holds it', () => {
-  it('"Approve Rahul\'s book request" resolves to the decision, with the decision in it', () => {
-    const step = reaches('LIBRARIAN', "Approve Rahul's book request.", 'decide_book_request');
-    expect(step.args.studentName).toBe('Rahul');
-    expect(step.args.status).toBe('APPROVED');
-    expect(step.args.requestId, 'an id must not be invented').toBeUndefined();
-  });
-
-  it('the verb is understood although no capability the librarian holds is named after it', () => {
-    // The point of the fix. "approve" is the verb of `approve_payment`, which a
-    // librarian does not hold; deriving the vocabulary from the caller's own
-    // slice meant the word carried no meaning for them, so the request read as
-    // a question and was answered with the pending list.
+describe('5.9 — an approval is handed back to the person who decides, on their screen', () => {
+  it('approving Rahul’s book request is read as a decision, and no capability decides it', () => {
     const librarian = actorForRole('LIBRARIAN');
-    expect(capabilitiesFor(librarian).some((c) => c.name === 'approve_payment')).toBe(false);
-    expect(operationsAskedFor("Approve Rahul's book request.", librarian).has('ACTION')).toBe(true);
-  });
-
-  it('rejecting is a different decision, and reaches the same capability', () => {
-    const step = reaches('LIBRARIAN', "Reject Rahul's book request.", 'decide_book_request');
-    expect(step.args.status).toBe('REJECTED');
+    expect(decisionAskedFor("Approve Rahul's book request.")).toBe('bookRequest');
+    expect(decisionAskedFor("Reject Rahul's book request.")).toBe('bookRequest');
+    expect(capabilitiesFor(librarian).some((c) => /^(?:approve|reject|decide)_/.test(c.name))).toBe(false);
+    // The librarian still reads the queue the decision is made from.
+    expect(capabilitiesFor(librarian).some((c) => c.name === 'get_book_requests')).toBe(true);
   });
 });
 

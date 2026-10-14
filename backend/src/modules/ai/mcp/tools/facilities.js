@@ -785,8 +785,9 @@ export const facilityTools = {
     module: 'Hostel',
     operation: 'CREATE',
     risk: RISK.MEDIUM,
+    confirm: true,
     description:
-      'Raise a hostel enquiry — a subject and optional description, optionally about one student. It is recorded as raised by the caller. Low impact, so it runs without confirmation.',
+      'Raise a hostel enquiry — a subject and optional description, optionally about one student. It is recorded as raised by the caller. It is filed in the name of the caller, so it needs confirmation.',
     inputSchema: {
       type: 'object',
       properties: {

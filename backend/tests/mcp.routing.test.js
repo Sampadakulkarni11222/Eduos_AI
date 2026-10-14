@@ -164,3 +164,29 @@ describe('the same question from other roles keeps their own scope', () => {
     expect((await lastCall('WEB')).tool).toBe((await lastCall('WHATSAPP')).tool);
   });
 });
+
+/*
+ * Vocabulary collisions (audit F4). Pure reads of the entity vocabulary: each
+ * sentence used to be filed under the wrong entity, and so answered by the
+ * wrong capability.
+ */
+describe('entity vocabulary does not collide', () => {
+  it.each([
+    ['register me for the robotics elective', 'elective'],
+    ['what is pending my approval', 'approval'],
+    ['list class grades', 'class'],
+    ['show the exam schedule', 'calendar'],
+    // A document is list_documents' question (report cards, letters, material).
+    ['which documents are due', 'material'],
+    // ...and the readings they were taken from still hold.
+    ['show the register for class 6 A', 'attendance'],
+    ['show my grades', 'marks'],
+    ['show exam results', 'marks'],
+    ['what is my class schedule', 'timetable'],
+    ['show course material for maths', 'material'],
+    ['show the syllabus progress', 'syllabus'],
+  ])('"%s" is about %s', async (message, entity) => {
+    const { subjectEntityOf } = await import('../src/modules/ai/mcp/capabilities.js');
+    expect(subjectEntityOf(message)).toBe(entity);
+  });
+});
