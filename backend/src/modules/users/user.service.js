@@ -1,3 +1,4 @@
+import { forgetIdentity } from '../../middleware/auth.js';
 import { Account } from '../../models/account.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { Role } from '../../models/role.model.js';
@@ -443,5 +444,7 @@ export async function updateUser(id, { status }) {
 
   if (status) account.status = status;
   await account.save();
+  // A suspension takes effect on the next request, not after the sign-in cache expires.
+  forgetIdentity(String(account._id));
   return getUserById(id);
 }

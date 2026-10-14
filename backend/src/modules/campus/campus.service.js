@@ -4,7 +4,7 @@ import { InstitutionProfile } from '../../models/institution.model.js';
 import { AttendanceRecord } from '../../models/attendanceRecord.model.js';
 import { Enrollment } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
-import { presentFacility, scheduledSlots, createSampleCampus } from '../administration/facility.service.js';
+import { presentFacility, scheduledSlots, scheduledSlotsForMany, createSampleCampus } from '../administration/facility.service.js';
 import { assertObjectId, startOfDayUtc } from '../ops/common.js';
 import { liveBySection, departments as departmentsLive } from './live.service.js';
 import { currentFor as currentModules } from '../syllabus/syllabus.service.js';
@@ -117,11 +117,9 @@ export async function campusMap(actor, { campusCode, at = null, now: realNow = n
   // The timetable for every room, read once: who is in which room now, and next.
   const roomSlots = new Map();
   if (layers.schedule) {
-    for (const f of facilities) {
-      if (!ROOMLIKE.has(f.kind) || f.kind === 'SERVER_ROOM' || (f.restricted && !layers.restricted)) continue;
-      // eslint-disable-next-line no-await-in-loop
-      roomSlots.set(String(f._id), (await scheduledSlots(f, dow)).filter((s) => s.subjectOfferingId));
-    }
+    // One query for the whole campus, not one per room.
+    const rooms = facilities.filter((f) => ROOMLIKE.has(f.kind) && f.kind !== 'SERVER_ROOM' && !(f.restricted && !layers.restricted));
+    for (const [id, slots] of await scheduledSlotsForMany(rooms, dow)) roomSlots.set(id, slots.filter((s) => s.subjectOfferingId));
   }
   const currentOf = (f) => (roomSlots.get(String(f._id)) ?? []).find((s) => toMin(s.startTime) <= minutes && toMin(s.endTime) > minutes) ?? null;
   // Headcount and exams for every class that has a room or is in one now.

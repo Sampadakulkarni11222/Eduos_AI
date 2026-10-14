@@ -1,3 +1,4 @@
+import { forgetIdentity } from '../../middleware/auth.js';
 import bcrypt from 'bcryptjs';
 import { createHash } from 'node:crypto';
 import { Account } from '../../models/account.model.js';
@@ -551,6 +552,7 @@ export async function refresh(refreshTokenValue, opts) {
 }
 
 export async function logout(actor, refreshTokenValue) {
+  forgetIdentity(actor.accountId);
   if (refreshTokenValue) {
     await RefreshToken.updateOne(
       { tokenHash: hashRefreshToken(refreshTokenValue), accountId: actor.accountId },

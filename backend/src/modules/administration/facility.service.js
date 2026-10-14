@@ -115,6 +115,40 @@ export async function scheduledSlots(facility, dayOfWeek) {
     .lean();
 }
 
+/**
+ * The same as scheduledSlots, for many rooms at once: one query (and one set
+ * of populates) for the whole campus instead of one per room, which is what
+ * the campus map needs. Returns a Map of facility id → slots by start time.
+ */
+export async function scheduledSlotsForMany(facilities, dayOfWeek) {
+  const out = new Map(facilities.map((f) => [String(f._id), []]));
+  if (!facilities.length) return out;
+  const names = [...new Set(facilities.flatMap((f) => [f.code, f.name]).filter(Boolean))];
+  const homeSections = facilities.filter((f) => f.sectionId).map((f) => f.sectionId);
+  const or = [{ room: { $in: names } }];
+  if (homeSections.length) or.push({ sectionId: { $in: homeSections }, $or: [{ room: null }, { room: '' }] });
+  const slots = await TimetableSlot.find({ dayOfWeek, $or: or })
+    .populate({ path: 'sectionId', select: 'name gradeId', populate: { path: 'gradeId', select: 'name' } })
+    .populate({ path: 'subjectOfferingId', select: 'subjectId teacherId', populate: [{ path: 'subjectId', select: 'name' }, { path: 'teacherId', select: 'displayName' }] })
+    .sort({ startTime: 1 })
+    .lean();
+  const byName = new Map();
+  for (const f of facilities) {
+    for (const n of new Set([f.code, f.name].filter(Boolean))) {
+      if (!byName.has(n)) byName.set(n, []);
+      byName.get(n).push(f);
+    }
+  }
+  const byHomeSection = new Map(facilities.filter((f) => f.sectionId).map((f) => [String(f.sectionId), f]));
+  for (const s of slots) {
+    const targets = new Set();
+    if (s.room) for (const f of byName.get(s.room) ?? []) targets.add(String(f._id));
+    else if (s.sectionId?._id && byHomeSection.has(String(s.sectionId._id))) targets.add(String(byHomeSection.get(String(s.sectionId._id))._id));
+    for (const id of targets) out.get(id)?.push(s);
+  }
+  return out;
+}
+
 async function conflictsFor(facilityId, startsAt, endsAt, excludeBookingId = null) {
   const f = await Facility.findById(facilityId).lean();
   const bookings = await FacilityBooking.find({

@@ -6,7 +6,8 @@ import { getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 
 export async function list(actor, scope, query = {}) {
   const filter = {};
-  if (query.status) filter.status = query.status;
+  // A plain string only: `?status[$ne]=x` would otherwise become a query operator.
+  if (typeof query.status === 'string' && query.status) filter.status = query.status;
 
   if (scope === 'OWN') {
     filter.$or = [{ raisedByProfileId: actor.profileId }, { assigneeProfileId: actor.profileId }];

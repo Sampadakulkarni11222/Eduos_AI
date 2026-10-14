@@ -308,12 +308,15 @@ export async function getPaymentLinks(actor, scope, { invoiceId } = {}) {
  */
 export async function listInvoices(actor, scope, query = {}) {
   const filter = {};
-  if (query.enrollmentId) filter.enrollmentId = query.enrollmentId;
-  if (query.status) filter.status = query.status;
+  const wantedEnrollment = typeof query.enrollmentId === 'string' && query.enrollmentId ? query.enrollmentId : null;
+  if (wantedEnrollment) filter.enrollmentId = wantedEnrollment;
+  if (typeof query.status === 'string' && query.status) filter.status = query.status;
 
   if (scope === 'OWN') {
-    const ids = await resolveEnrollmentIdsForOwn(actor);
-    filter.enrollmentId = query.enrollmentId ?? { $in: ids };
+    // A student or parent sees only their own enrolments, whatever enrolment
+    // they ask for: asking for someone else's returns nothing.
+    const ids = (await resolveEnrollmentIdsForOwn(actor)).map(String);
+    filter.enrollmentId = wantedEnrollment ? (ids.includes(wantedEnrollment) ? wantedEnrollment : { $in: [] }) : { $in: ids };
   }
 
   // Student/section/grade/year live on the enrollment, so narrowing by them

@@ -87,6 +87,7 @@ import { connectDB } from './config/db.js';
 import { swaggerSpec } from './config/swagger.js';
 import { logger } from './utils/logger.js';
 import { requestLogger } from './middleware/requestLogger.js';
+import { stripOperators } from './middleware/stripOperators.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { sendError } from './utils/response.js';
@@ -179,6 +180,8 @@ app.use(
   })
 );
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Query operators such as ?id[$ne]=x never reach a handler (see the middleware).
+app.use(stripOperators);
 
 // ─── Request Logging ──────────────────────────────────────
 app.use(requestLogger);

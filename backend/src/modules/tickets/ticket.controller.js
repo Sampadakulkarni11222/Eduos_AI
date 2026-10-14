@@ -1,10 +1,12 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
 import * as service from './ticket.service.js';
+import { mapPage } from '../../utils/paginate.js';
 
 export const list = asyncHandler(async (req, res) => {
   const rows = await service.list(req.actor, req.scope, req.query);
-  const dtos = rows.map(({ ticket: t, messageCount }) => ({
+  // A caller passing pageSize gets a page envelope, everyone else the array.
+  const dtos = mapPage(rows, ({ ticket: t, messageCount }) => ({
     id: t._id,
     subject: t.subject,
     status: t.status,

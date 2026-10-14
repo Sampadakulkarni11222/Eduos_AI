@@ -267,3 +267,17 @@ describe('only configured payment methods are advertised', () => {
     }
   });
 });
+
+describe('a family asking for someone else\'s invoices', () => {
+  it('gets nothing, whether it names another enrolment or sends a query operator', async () => {
+    const family = actorFor('PARENT');
+    const named = await inOak(() => fees.listInvoices(family, 'OWN', { enrollmentId: String(oakInvoice.enrollmentId) }));
+    expect(named).toEqual([]);
+    // An operator that survived to the service (the request guard removes it first) is ignored.
+    const operator = await inOak(() => fees.listInvoices(family, 'OWN', { enrollmentId: { $ne: '000000000000000000000000' } }));
+    expect(operator).toEqual([]);
+    // Staff still filter by enrolment.
+    const staff = await inOak(() => fees.listInvoices(actorFor('FINANCE'), 'ALL', { enrollmentId: String(oakInvoice.enrollmentId) }));
+    expect(staff.map((i) => String(i._id ?? i.id))).toEqual([String(oakInvoice._id)]);
+  });
+});
