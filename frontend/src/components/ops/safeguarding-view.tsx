@@ -69,7 +69,7 @@ function CaseDetail({ id, onClose, onChanged }: { id: string; onClose: () => voi
         <>
           <div className="ops-inline"><StatusPill status={c.status === 'REPORTED' ? 'RECEIVED' : c.status} /><StatusPill status={c.urgency === 'STANDARD' ? 'DRAFT' : 'REJECTED'} label={humanize(c.urgency)} />{c.statutoryReportPending && <span className="ops-flag-overdue">STATUTORY REPORT NOT RECORDED</span>}</div>
           {c.guidance && <div className="ops-callout is-danger">{c.guidance}</div>}
-          <KeyValues rows={[['Reported', fmtDateTime(c.reportedAt)], ['Occurred', fmtDate(c.occurredOn)], ['Reporter role', humanize(c.reporterRole)], ['Reporter', c.anonymousToStaff ? 'Withheld at reporter’s request' : 'Recorded']]} />
+          <KeyValues rows={[['Reported', fmtDateTime(c.reportedAt)], ['Occurred', fmtDate(c.occurredOn)], ['Reporter role', c.anonymousToStaff ? 'Withheld' : humanize(c.reporterRole)], ['Reporter', c.anonymousToStaff ? 'Withheld at reporter’s request' : 'Recorded']]} />
           <SectionCard title="Report"><p style={{ whiteSpace: 'pre-wrap' }}>{c.description}</p></SectionCard>
           <SectionCard title="Statutory report" sub="Record the report made to the authority (or why none is required). This never waits for an internal approval.">
             <div className="ops-form-grid">
@@ -119,7 +119,7 @@ export function SafeguardingView() {
           {!rows.length ? <EmptyState icon="✓" title="No cases" sub="Reports raised by staff, students and parents appear here." /> : (
             <ul className="ops-list">{rows.map((c) => (
               <li key={c.id} className="ops-row">
-                <div className="ops-row-main"><button type="button" className="ops-row-link" onClick={() => setOpen(c.id)}><div className="ops-row-title">{c.refNo} · {humanize(c.category)}</div><div className="ops-row-sub">{fmtDateTime(c.reportedAt)} · reported by {humanize(c.reporterRole)}</div></button></div>
+                <div className="ops-row-main"><button type="button" className="ops-row-link" onClick={() => setOpen(c.id)}><div className="ops-row-title">{c.refNo} · {humanize(c.category)}</div><div className="ops-row-sub">{fmtDateTime(c.reportedAt)} · {c.anonymousToStaff || !c.reporterRole ? 'anonymous report' : `reported by ${humanize(c.reporterRole)}`}</div></button></div>
                 {c.statutoryReportPending && <span className="ops-flag-overdue">STATUTORY REPORT?</span>}
                 {c.urgency !== 'STANDARD' && <StatusPill status="REJECTED" label={humanize(c.urgency)} />}
                 <StatusPill status={c.status === 'REPORTED' ? 'RECEIVED' : c.status} />

@@ -4,6 +4,9 @@ import { encrypt } from '../../utils/crypto.js';
 import { runInAmbientTransaction } from '../../utils/transaction.js';
 import { createRequest, registerApprovalHandler } from '../approvals/approval.service.js';
 import { notify } from '../notifications/notification.service.js';
+import { nextSequence } from '../../utils/sequence.js';
+import { currentTenantId } from '../../tenancy/tenantContext.js';
+import { inr } from './format.js';
 import {
   nextRef, requireProfile, assertObjectId, assertTransition, pushHistory, cleanAttachments, asPaise,
   parseDate, requireText, optionalText, oneOf, dto, pageArgs, profilesWithRoles,
@@ -105,6 +108,46 @@ export async function listVendors(actor) {
 
 // ── Purchase requests ────────────────────────────────────────────────────
 
+/**
+ * The unit price of each item at the selected quote (or PO).
+ *
+ * A quote may carry its own `unitPrices`; otherwise its total is apportioned
+ * across the items by their estimated value (qty × estimated unit price), so a
+ * ₹50,000 projector and ten ₹100 cables keep their relative worth. The old
+ * match spread the PO total evenly over UNITS — 11 units, so each cable was
+ * "worth" ₹4,545 and a near-full invoice matched one for ₹1,000 of cables.
+ */
+export function unitPricesFor(items, { amountPaise, unitPrices } = {}) {
+  if (Array.isArray(unitPrices) && unitPrices.length === items.length) return unitPrices.map((u) => Number(u) || 0);
+  const estValues = items.map((i) => i.qty * i.estUnitPaise);
+  const estTotal = estValues.reduce((n, v) => n + v, 0);
+  const totalQty = items.reduce((n, i) => n + i.qty, 0);
+  return items.map((i, k) => {
+    if (!i.qty) return 0;
+    const lineValue = estTotal > 0 ? (amountPaise * estValues[k]) / estTotal : (amountPaise * i.qty) / (totalQty || 1);
+    return lineValue / i.qty;
+  });
+}
+
+/** Value of goods accepted so far (received − rejected), at the PO's unit prices. */
+export function acceptedValuePaise(items, unitPrices) {
+  return Math.round(items.reduce((n, i, k) => n + Math.max(0, (i.receivedQty ?? 0) - (i.rejectedQty ?? 0)) * (unitPrices[k] ?? 0), 0));
+}
+
+/** Next asset tag from a per-school counter — unique, unlike count()+1. */
+async function nextAssetTag() {
+  const tenant = currentTenantId() ?? 'platform';
+  const n = await nextSequence(`asset:${tenant}`, {
+    // Carry on from tags already in the register, so the first counter-issued
+    // tag never collides with one numbered the old way.
+    seedWith: async () => {
+      const rows = await Asset.find({ tag: /^AST-\d+$/ }).select('tag').lean();
+      return rows.reduce((max, r) => Math.max(max, Number(r.tag.slice(4)) || 0), 0);
+    },
+  });
+  return `AST-${String(n).padStart(5, '0')}`;
+}
+
 function presentPr(pr, actor) {
   const out = dto(pr);
   const received = (pr.items ?? []).reduce((n, i) => n + (i.receivedQty ?? 0), 0);
@@ -165,7 +208,17 @@ export async function setQuotes(actor, scope, id, body = {}) {
     const v = byId.get(String(q.vendorId));
     if (!v) throw new AppError('Quote vendor not found', 404);
     if (v.status === 'BLOCKED') throw new AppError(`${v.name} is blocked`, 409, [], 'VENDOR_BLOCKED');
-    return { vendorId: v._id, vendorName: v.name, amountPaise: asPaise(q.amountPaise, 'quote amount'), validTill: parseDate(q.validTill, 'validTill'), url: optionalText(q.url, { max: 1000 }) || null, selected: q.selected === true };
+    let unitPrices;
+    if (Array.isArray(q.unitPrices)) {
+      if (q.unitPrices.length !== pr.items.length) throw new AppError('unitPrices must give one price per item, in item order', 400);
+      unitPrices = q.unitPrices.map((u) => asPaise(u, 'unit price'));
+    }
+    const amountPaise = asPaise(q.amountPaise, 'quote amount');
+    if (unitPrices) {
+      const sum = pr.items.reduce((n, i, k) => n + Math.round(i.qty * unitPrices[k]), 0);
+      if (Math.abs(sum - amountPaise) > 100) throw new AppError(`${v.name}: unit prices add up to ${inr(sum)}, not the quoted ${inr(amountPaise)}`, 400, [], 'QUOTE_LINES_MISMATCH');
+    }
+    return { vendorId: v._id, vendorName: v.name, amountPaise, ...(unitPrices && { unitPrices }), validTill: parseDate(q.validTill, 'validTill'), url: optionalText(q.url, { max: 1000 }) || null, selected: q.selected === true };
   });
   if (pr.quotes.filter((q) => q.selected).length > 1) throw new AppError('Select one quote', 400);
   const sel = pr.quotes.find((q) => q.selected);
@@ -186,12 +239,12 @@ export async function runChecks(pr) {
   const amount = sel?.amountPaise ?? pr.estimatedTotalPaise;
   if (amount >= QUOTE_THRESHOLD_PAISE && pr.quotes.length < 3) {
     if (pr.emergency) checks.push({ level: 'WARNING', code: 'EMERGENCY_FEWER_QUOTES', message: `Emergency purchase with ${pr.quotes.length} quote(s): ${pr.emergencyReason}` });
-    else checks.push({ level: 'BLOCKER', code: 'QUOTES_REQUIRED', message: `Purchases of ₹${QUOTE_THRESHOLD_PAISE / 100} or more need three quotes (${pr.quotes.length} attached).` });
+    else checks.push({ level: 'BLOCKER', code: 'QUOTES_REQUIRED', message: `Purchases of ${inr(QUOTE_THRESHOLD_PAISE)} or more need three quotes (${pr.quotes.length} attached).` });
   }
   if (pr.quotes.length && !sel) checks.push({ level: 'BLOCKER', code: 'NO_QUOTE_SELECTED', message: 'Select the quote to proceed with.' });
   if (sel) {
     const v = await Vendor.findById(sel.vendorId).lean();
-    if (v?.status !== 'ACTIVE') checks.push({ level: 'WARNING', code: 'VENDOR_NOT_VETTED', message: `${sel.vendorName} has not completed due diligence.` });
+    if (v?.status !== 'ACTIVE') checks.push({ level: 'WARNING', code: 'VENDOR_NOT_VETTED', message: `${sel.vendorName} has not completed due diligence; the purchase order cannot be issued until it does (or is overridden with a recorded reason).` });
     if (v?.conflicts?.length) checks.push({ level: 'WARNING', code: 'VENDOR_CONFLICT', message: `${v.conflicts.length} staff member(s) declared a relationship with ${sel.vendorName}; they must not approve this.` });
   }
   if (pr.budgetId && pr.budgetLineCode) {
@@ -201,7 +254,7 @@ export async function runChecks(pr) {
     else if (b.status !== 'APPROVED') checks.push({ level: 'WARNING', code: 'BUDGET_NOT_APPROVED', message: `Budget ${b.name} is not approved.` });
     else {
       const available = line.plannedPaise - line.committedPaise - line.actualPaise;
-      if (amount > available) checks.push({ level: 'WARNING', code: 'OVER_BUDGET', message: `Exceeds the available budget on ${line.head} by ₹${((amount - available) / 100).toFixed(2)}.` });
+      if (amount > available) checks.push({ level: 'WARNING', code: 'OVER_BUDGET', message: `Exceeds the available budget on ${line.head} by ${inr(amount - available)}.` });
     }
   } else checks.push({ level: 'WARNING', code: 'NO_BUDGET_LINE', message: 'Not linked to a budget line.' });
   // Split purchase: same requester, last 30 days, each below threshold but together above it.
@@ -209,7 +262,7 @@ export async function runChecks(pr) {
     const since = new Date(Date.now() - 30 * 86_400_000);
     const recent = await PurchaseRequest.find({ _id: { $ne: pr._id }, requesterProfileId: pr.requesterProfileId, createdAt: { $gte: since }, status: { $nin: ['DRAFT', 'CANCELLED', 'REJECTED'] }, estimatedTotalPaise: { $lt: QUOTE_THRESHOLD_PAISE } }).select('refNo estimatedTotalPaise').lean();
     const sum = recent.reduce((n, r) => n + r.estimatedTotalPaise, 0) + amount;
-    if (recent.length && sum >= QUOTE_THRESHOLD_PAISE) checks.push({ level: 'WARNING', code: 'POSSIBLE_SPLIT', message: `Together with ${recent.map((r) => r.refNo).join(', ')} this totals ₹${(sum / 100).toFixed(2)} in 30 days — check it is not a split purchase.` });
+    if (recent.length && sum >= QUOTE_THRESHOLD_PAISE) checks.push({ level: 'WARNING', code: 'POSSIBLE_SPLIT', message: `Together with ${recent.map((r) => r.refNo).join(', ')} this totals ${inr(sum)} in 30 days — check it is not a split purchase.` });
   }
   return checks;
 }
@@ -227,7 +280,7 @@ export async function submit(actor, scope, id) {
     category: pr.kind === 'CAPEX' ? 'CAPEX' : 'PROCUREMENT',
     title: `${pr.refNo} ${pr.title}`, amountPaise: sel?.amountPaise ?? pr.estimatedTotalPaise, department: pr.department,
     summary: [
-      `${pr.items.length} item(s). ${sel ? `Selected: ${sel.vendorName} ₹${(sel.amountPaise / 100).toFixed(2)} of ${pr.quotes.length} quote(s).` : 'No quotes (below threshold).'}`,
+      `${pr.items.length} item(s). ${sel ? `Selected: ${sel.vendorName} ${inr(sel.amountPaise)} of ${pr.quotes.length} quote(s).` : 'No quotes (below threshold).'}`,
       pr.selectionNote ? `Selection note: ${pr.selectionNote}` : '',
       pr.justification ? `Justification: ${pr.justification}` : '',
       ...pr.checks.map((c) => `⚠ ${c.message}`),
@@ -273,12 +326,39 @@ registerApprovalHandler('PurchaseRequest', {
   async onReturned(req, actor) { const pr = await PurchaseRequest.findById(req.entityId); if (!pr) return; move(pr, actor, 'DRAFT', req.stages[req.currentStage]?.comment); pr.approvalRequestId = null; await pr.save(); },
 });
 
-export async function issuePo(actor, scope, id) {
+/**
+ * Issues the purchase order. The vendor must have completed due diligence: a
+ * PO is the school committing money to them, so vetting is a gate here, not a
+ * warning travelling with the request. A BLOCKED vendor is always refused; one
+ * still PENDING_DUE_DILIGENCE can be issued only with an explicit override and
+ * a reason, which is recorded on the PO and in its history.
+ */
+export async function issuePo(actor, scope, id, body = {}) {
   const pr = await load(id, actor, scope);
   const sel = pr.quotes.find((q) => q.selected);
   if (!sel) throw new AppError('No vendor selected.', 409);
-  move(pr, actor, 'PO_ISSUED');
-  pr.po = { number: await nextRef('PO'), issuedAt: new Date(), issuedByProfileId: actor.profileId, vendorId: sel.vendorId, vendorName: sel.vendorName, amountPaise: sel.amountPaise };
+  const vendor = await Vendor.findById(sel.vendorId).lean();
+  if (!vendor) throw new AppError('The selected vendor no longer exists.', 409);
+  if (vendor.status === 'BLOCKED') throw new AppError(`${vendor.name} is blocked; a purchase order cannot be issued to them.`, 409, [], 'VENDOR_BLOCKED');
+  let override = null;
+  if (vendor.status !== 'ACTIVE') {
+    if (body.overrideDueDiligence !== true) {
+      throw new AppError(
+        `${vendor.name} has not completed due diligence. Complete it first, or issue the PO with overrideDueDiligence and a reason.`,
+        409, [], 'VENDOR_NOT_VETTED'
+      );
+    }
+    override = {
+      reason: requireText(body.overrideReason, 'overrideReason (why the PO is issued before due diligence)', { max: 1000 }),
+      byProfileId: actor.profileId, byName: actor.displayName ?? null, at: new Date(), vendorStatus: vendor.status,
+    };
+  }
+  move(pr, actor, 'PO_ISSUED', override ? `Due diligence overridden: ${override.reason}` : undefined);
+  pr.po = {
+    number: await nextRef('PO'), issuedAt: new Date(), issuedByProfileId: actor.profileId, vendorId: sel.vendorId, vendorName: sel.vendorName, amountPaise: sel.amountPaise,
+    unitPrices: unitPricesFor(pr.items, sel),
+    ...(override && { dueDiligenceOverride: override }),
+  };
   await pr.save();
   return presentPr(pr.toObject(), actor);
 }
@@ -309,17 +389,19 @@ export async function addInvoice(actor, scope, id, body = {}) {
   const dup = await PurchaseRequest.findOne({ 'po.vendorId': pr.po.vendorId, 'invoices.vendorInvoiceNo': invoiceNo }).select('refNo').lean();
   if (dup) throw new AppError(`Invoice ${invoiceNo} from this vendor is already booked on ${dup.refNo}.`, 409, [], 'DUPLICATE_INVOICE');
   const amount = asPaise(body.amountPaise, 'amountPaise');
-  // Three-way match: value of accepted goods at PO prices vs invoice.
+  // Three-way match: VALUE of accepted goods at the PO's unit prices vs the
+  // invoice — per line, accepted qty × quoted unit price.
+  const prices = pr.po.unitPrices?.length === pr.items.length ? pr.po.unitPrices : unitPricesFor(pr.items, pr.po);
   const ordered = pr.items.reduce((n, i) => n + i.qty, 0);
   const accepted = pr.items.reduce((n, i) => n + Math.max(0, i.receivedQty - i.rejectedQty), 0);
-  const expected = Math.round((pr.po.amountPaise * accepted) / (ordered || 1));
+  const expected = acceptedValuePaise(pr.items, prices);
   const tolerance = Math.round((expected * MATCH_TOLERANCE_BP) / 10000);
   const matched = Math.abs(amount - expected) <= tolerance;
   pr.invoices.push({
     vendorInvoiceNo: invoiceNo, invoiceDate: parseDate(body.invoiceDate, 'invoiceDate') ?? new Date(), amountPaise: amount,
     taxPaise: asPaise(body.taxPaise ?? 0, 'taxPaise'), url: optionalText(body.url, { max: 1000 }) || null,
     matchStatus: matched ? 'MATCHED' : 'MISMATCH',
-    matchNote: matched ? null : `Expected ₹${(expected / 100).toFixed(2)} for ${accepted}/${ordered} accepted units; invoiced ₹${(amount / 100).toFixed(2)}.`,
+    matchNote: matched ? null : `Expected ${inr(expected)} for the accepted goods (${accepted} of ${ordered} units, valued per line at the quoted unit price); invoiced ${inr(amount)}.`,
   });
   move(pr, actor, 'INVOICED');
   await pr.save();
@@ -387,14 +469,17 @@ export async function confirmPayment(actor, scope, id, body = {}) {
     pr.markModified('payment');
     await pr.save();
     await moveBudget(pr, { committed: -(pr.po?.amountPaise ?? 0), actual: pr.payment.amountPaise ?? 0 });
-    // Accepted asset items become register entries with tags.
-    let n = await Asset.countDocuments({});
-    for (const item of pr.items.filter((i) => i.isAsset)) {
+    // Accepted asset items become register entries, each costed at its own
+    // line's quoted unit price and tagged from a counter.
+    const prices = pr.po?.unitPrices?.length === pr.items.length ? pr.po.unitPrices : unitPricesFor(pr.items, pr.po ?? {});
+    for (const [index, item] of pr.items.entries()) {
+      if (!item.isAsset) continue;
       const units = Math.max(0, Math.floor(item.receivedQty - item.rejectedQty));
       for (let k = 0; k < units && k < 500; k++) {
-        n += 1;
         // eslint-disable-next-line no-await-in-loop
-        await Asset.create({ tag: `AST-${String(n).padStart(5, '0')}`, description: item.description, costPaise: Math.round((pr.po.amountPaise / pr.items.reduce((m, i) => m + i.qty, 0))), acquiredOn: pr.payment.confirmedAt, vendorName: pr.po.vendorName, purchaseRequestId: pr._id });
+        const tag = await nextAssetTag();
+        // eslint-disable-next-line no-await-in-loop
+        await Asset.create({ tag, description: item.description, costPaise: Math.round(prices[index] ?? 0), acquiredOn: pr.payment.confirmedAt, vendorName: pr.po.vendorName, purchaseRequestId: pr._id });
       }
     }
     return presentPr(pr.toObject(), actor);
@@ -479,7 +564,7 @@ export async function submitBudget(actor, id) {
   pushHistory(b, actor, 'IN_APPROVAL');
   await b.save();
   const total = b.lines.reduce((n, l) => n + l.plannedPaise, 0);
-  const req = await createRequest(actor, { category: 'BUDGET', title: `Budget ${b.fiscalYear}: ${b.name}`, amountPaise: total, summary: b.lines.map((l) => `${l.code} ${l.head}: ₹${(l.plannedPaise / 100).toFixed(2)}`).join('\n').slice(0, 5000) }, { entityType: 'Budget', entityId: b._id });
+  const req = await createRequest(actor, { category: 'BUDGET', title: `Budget ${b.fiscalYear}: ${b.name}`, amountPaise: total, summary: b.lines.map((l) => `${l.code} ${l.head}: ${inr(l.plannedPaise)}`).join('\n').slice(0, 5000) }, { entityType: 'Budget', entityId: b._id });
   b.approvalRequestId = req.id;
   await b.save();
   return presentBudget(b.toObject());
@@ -546,7 +631,7 @@ export async function submitFunding(actor, id) {
   f.status = 'IN_APPROVAL';
   pushHistory(f, actor, 'IN_APPROVAL');
   await f.save();
-  const cmp = [...f.offers].sort((a, b) => a.totalCostPaise - b.totalCostPaise).map((o) => `${o.provider}: EMI ₹${(o.emiPaise / 100).toFixed(2)} × ${o.tenureMonths}, total cost ₹${(o.totalCostPaise / 100).toFixed(2)}${o.selected ? ' (selected)' : ''}`);
+  const cmp = [...f.offers].sort((a, b) => a.totalCostPaise - b.totalCostPaise).map((o) => `${o.provider}: EMI ${inr(o.emiPaise)} × ${o.tenureMonths}, total cost ${inr(o.totalCostPaise)}${o.selected ? ' (selected)' : ''}`);
   const req = await createRequest(actor, { category: 'FUNDING', title: `${f.kind}: ${f.title}`, amountPaise: f.amountRequestedPaise, summary: [f.purpose, ...cmp, sel?.covenants ? `Covenants: ${sel.covenants}` : ''].filter(Boolean).join('\n').slice(0, 5000) }, { entityType: 'FundingProposal', entityId: f._id });
   f.approvalRequestId = req.id;
   await f.save();

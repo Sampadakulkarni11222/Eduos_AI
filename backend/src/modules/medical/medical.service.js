@@ -3,7 +3,15 @@ import { Enrollment } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { encrypt, decrypt } from '../../utils/crypto.js';
 import { getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
-import { recordPiiRead } from '../../utils/auditTrail.js';
+import { recordPiiRead, recordAudit } from '../../utils/auditTrail.js';
+
+/**
+ * Soft delete. A medical record is something the school relies on in an
+ * emergency (the asthma inhaler, the allergy), so removing one never destroys
+ * it: the row is kept with deletedAt/deletedByProfileId set and an audit entry
+ * is written. Reads treat a soft-deleted record as absent.
+ */
+const LIVE = { deletedAt: null };
 
 // Named for the audit trail so a privacy review can see which sensitive fields
 // a given read actually disclosed, without the log holding the values.
@@ -95,7 +103,7 @@ export async function assertCanAccess(actor, scope, studentId, { via = 'medical.
  */
 export async function getByStudentId(actor, scope, studentId, { via = 'medical.api' } = {}) {
   await assertCanAccess(actor, scope, studentId, { via });
-  const record = await MedicalRecord.findOne({ studentId });
+  const record = await MedicalRecord.findOne({ studentId, ...LIVE });
   if (!record) throw new AppError('Medical record not found', 404);
 
   const dto = toPlain(record);
@@ -138,6 +146,9 @@ export async function upsert(actor, scope, studentId, data) {
     bloodGroup: data.bloodGroup,
     heightCm: data.heightCm,
     weightKg: data.weightKg,
+    // Saving a record that was removed brings it back.
+    deletedAt: null,
+    deletedByProfileId: null,
   };
   if (data.emergencyContact !== undefined) update.emergencyContactEnc = encrypt(data.emergencyContact);
   if (data.allergies !== undefined) update.allergiesEnc = encrypt(data.allergies);
@@ -145,18 +156,60 @@ export async function upsert(actor, scope, studentId, data) {
   if (data.history !== undefined) update.historyEnc = encrypt(data.history);
   if (data.attachments !== undefined) update.attachmentsEnc = encrypt(data.attachments);
 
+  // Who changed what. Names of the fields whose value actually changed, never
+  // the values: the audit log must not become an unencrypted copy of the
+  // health data. A parent's edit is recorded the same way as a nurse's, with
+  // the role, so the school can see that a parent changed the allergy list.
+  const before = await MedicalRecord.findOne({ studentId }).lean();
+  const beforeDto = before && !before.deletedAt ? toPlain(before) : null;
+
   const record = await MedicalRecord.findOneAndUpdate(
     { studentId },
     { $set: update },
     { upsert: true, new: true }
   );
-  return toPlain(record);
+  const afterDto = toPlain(record);
+  const changedFields = ['bloodGroup', 'heightCm', 'weightKg', 'emergencyContact', 'allergies', 'medications', 'history', 'attachments']
+    .filter((f) => JSON.stringify(beforeDto?.[f] ?? null) !== JSON.stringify(afterDto[f] ?? null));
+  await recordAudit({
+    actor,
+    action: beforeDto ? 'medical.update' : 'medical.create',
+    entityType: 'MedicalRecord',
+    entityId: studentId,
+    after: { changedFields, byRole: actor?.roleKey ?? null, restored: Boolean(before?.deletedAt) },
+  });
+  return afterDto;
 }
 
+/**
+ * Removes a medical record — softly, and only for school staff.
+ *
+ * A parent holds medical.manage (OWN) so they can keep their child's record
+ * up to date, but deleting it outright is not theirs to do: it is the record
+ * the school uses in an emergency. Staff removals keep the row (deletedAt,
+ * deletedByProfileId) and are audited, so a mistaken removal can be undone by
+ * saving the record again or by restoring the row.
+ */
 export async function remove(actor, scope, studentId) {
+  if (actor?.roleKey === 'PARENT' || actor?.roleKey === 'STUDENT') {
+    throw new AppError(
+      'Medical records cannot be deleted from a family account. Edit the record, or ask the school office to remove it.',
+      403, [], 'MEDICAL_DELETE_NOT_ALLOWED',
+    );
+  }
   await assertCanAccess(actor, scope, studentId);
-  const result = await MedicalRecord.deleteOne({ studentId });
-  if (result.deletedCount === 0) {
+  const result = await MedicalRecord.updateOne(
+    { studentId, ...LIVE },
+    { $set: { deletedAt: new Date(), deletedByProfileId: actor?.profileId ?? null } },
+  );
+  if (result.matchedCount === 0) {
     throw new AppError('Medical record not found', 404);
   }
+  await recordAudit({
+    actor,
+    action: 'medical.delete',
+    entityType: 'MedicalRecord',
+    entityId: studentId,
+    after: { soft: true, byRole: actor?.roleKey ?? null },
+  });
 }

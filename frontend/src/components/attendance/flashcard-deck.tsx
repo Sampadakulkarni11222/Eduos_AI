@@ -61,11 +61,13 @@ function writeLocal(key: string, v: LocalCopy | null) {
 
 const STATUS_LABEL: Record<string, string> = { PRESENT: 'Present', ABSENT: 'Absent', LATE: 'Late', EXCUSED: 'Excused' };
 
-export function FlashcardDeck({ data, date, periodNo, onSubmitted }: {
+export function FlashcardDeck({ data, date, periodNo, onSubmitted, onCounts }: {
   data: AttendanceRoster;
   date: string;
   periodNo: number | null;
   onSubmitted: (roster: AttendanceRoster) => void;
+  /** The deck's own tallies, so the page's summary can show what the deck shows. */
+  onCounts?: (c: { present: number; absent: number; late: number; excused: number }) => void;
 }) {
   const students: DeckStudent[] = useMemo(() => data.roster.map((r) => ({
     enrollmentId: r.enrollmentId, rollNo: r.rollNo, studentName: r.studentName,
@@ -163,6 +165,9 @@ export function FlashcardDeck({ data, date, periodNo, onSubmitted }: {
   }, [sync, load]);
 
   const c = counts(state);
+  useEffect(() => {
+    onCounts?.({ present: c.present, absent: c.absent, late: c.late, excused: c.excused });
+  }, [onCounts, c.present, c.absent, c.late, c.excused]);
   const current = state.students[state.index];
   const currentEntry = current ? entryOf(state, current.enrollmentId) : null;
   const matches = useMemo(() => search(state, query), [state, query]);

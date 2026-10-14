@@ -19,9 +19,18 @@ const mediaSchema = new Schema(
     studentIds: [{ type: Schema.Types.ObjectId, ref: 'Student' }],
     // Set when the uploader confirms location/EXIF metadata was stripped.
     metadataStripped: { type: Boolean, default: false },
+    // The uploader's explicit statement that no student can be identified in
+    // this item. Every image needs either this or tagged students.
+    noIdentifiableStudents: { type: Boolean, default: false },
+    // Hidden while a consent report on the post is reviewed. Moderators still see it.
     hidden: { type: Boolean, default: false },
   },
   { _id: true }
+);
+
+const reactionCountsSchema = new Schema(
+  { CLAP: { type: Number, default: 0 }, HEART: { type: Number, default: 0 }, CELEBRATE: { type: Number, default: 0 }, INSPIRED: { type: Number, default: 0 } },
+  { _id: false }
 );
 
 const postSchema = new Schema(
@@ -39,7 +48,7 @@ const postSchema = new Schema(
     authorProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', required: true },
     authorName: { type: String, default: null },
     authorRole: { type: String, default: null },
-    status: { type: String, enum: ['DRAFT', 'PENDING_REVIEW', 'PUBLISHED', 'REJECTED', 'ARCHIVED', 'TAKEN_DOWN'], default: 'DRAFT' },
+    status: { type: String, enum: ['DRAFT', 'PENDING_REVIEW', 'PUBLISHED', 'REJECTED', 'ARCHIVED', 'TAKEN_DOWN', 'WITHDRAWN'], default: 'DRAFT' },
     moderation: {
       byProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
       at: { type: Date, default: null },
@@ -47,9 +56,17 @@ const postSchema = new Schema(
     },
     publishedAt: { type: Date, default: null },
     commentsEnabled: { type: Boolean, default: true },
+    // Who may comment and whether comments wait for a moderator. OFF closes
+    // comments; STAFF_ONLY lets only staff reply; PRE_MODERATED holds every
+    // comment that is not a moderator's; OPEN still holds students' comments
+    // and adults' comments where students are in the audience.
+    commentPolicy: { type: String, enum: ['OFF', 'STAFF_ONLY', 'PRE_MODERATED', 'OPEN'], default: 'OPEN' },
     pinned: { type: Boolean, default: false },
     reactions: [{ profileId: { type: Schema.Types.ObjectId, ref: 'Profile' }, type: { type: String, enum: ['CLAP', 'HEART', 'CELEBRATE', 'INSPIRED'] } }],
     bookmarks: [{ type: Schema.Types.ObjectId, ref: 'Profile' }],
+    // Kept in step with `reactions` by atomic $inc, so feeds never ship the array.
+    // Absent on posts written before the counters existed; those are counted once from the array.
+    reactionCounts: { type: reactionCountsSchema, default: () => ({}) },
     history: [historyEntry],
   },
   { timestamps: true }
@@ -64,8 +81,10 @@ const commentSchema = new Schema(
     authorProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', required: true },
     authorName: { type: String, default: null },
     body: { type: String, required: true },
-    status: { type: String, enum: ['VISIBLE', 'PENDING', 'HIDDEN'], default: 'VISIBLE' },
+    authorRole: { type: String, default: null },
+    status: { type: String, enum: ['VISIBLE', 'PENDING', 'HIDDEN', 'DELETED'], default: 'VISIBLE' },
     hiddenReason: { type: String, default: null },
+    editedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
@@ -81,12 +100,15 @@ const circleSchema = new Schema(
     // adults-only circles (alumni, parents) refuse student members.
     allowedRoles: [{ type: String }],
     adultsOnly: { type: Boolean, default: false },
+    // A school circle that may include invited outside adults (alumni, parents).
+    // They join only by a staff member's invitation, never by themselves.
+    adultsWelcome: { type: Boolean, default: false },
     moderatorProfileIds: [{ type: Schema.Types.ObjectId, ref: 'Profile' }],
     members: [{
       profileId: { type: Schema.Types.ObjectId, ref: 'Profile' },
       name: String,
       roleKey: String,
-      status: { type: String, enum: ['ACTIVE', 'PENDING', 'REMOVED', 'BLOCKED'], default: 'ACTIVE' },
+      status: { type: String, enum: ['ACTIVE', 'PENDING', 'REMOVED', 'BLOCKED', 'LEFT'], default: 'ACTIVE' },
       joinedAt: { type: Date, default: Date.now },
     }],
     archived: { type: Boolean, default: false },
@@ -107,6 +129,9 @@ const mediaConsentSchema = new Schema(
     level: { type: String, enum: ['NONE', 'INTERNAL', 'PUBLIC'], required: true },
     grantedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', required: true },
     grantedByRole: { type: String, default: null },
+    // Staff recording a paper form cite it (reference and, optionally, the scanned file).
+    evidence: { type: String, default: null },
+    evidenceFileUrl: { type: String, default: null },
     at: { type: Date, default: Date.now },
     withdrawnAt: { type: Date, default: null },
   },
@@ -144,9 +169,14 @@ const mentorshipRequestSchema = new Schema(
     supervisorProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
     status: { type: String, enum: ['REQUESTED', 'ACCEPTED', 'DECLINED', 'SCHEDULED', 'COMPLETED', 'CANCELLED'], default: 'REQUESTED' },
     sessions: [{ at: Date, mode: String, link: String, feedback: String, rating: Number }],
+    // Feedback given when the mentoring is closed, separate from any one session.
+    feedback: { type: String, default: null },
+    history: [historyEntry],
   },
   { timestamps: true }
 );
+
+mentorshipRequestSchema.index({ mentorProfileId: 1, menteeProfileId: 1, status: 1 });
 
 const reportSchema = new Schema(
   {
@@ -156,11 +186,16 @@ const reportSchema = new Schema(
     detail: { type: String, default: null },
     reporterProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', required: true },
     status: { type: String, enum: ['OPEN', 'ACTIONED', 'DISMISSED', 'ESCALATED'], default: 'OPEN' },
+    // True when this report hid the post's media while it is reviewed.
+    hidMedia: { type: Boolean, default: false },
     resolution: { type: String, default: null },
     resolvedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
   },
   { timestamps: true }
 );
+
+reportSchema.index({ targetType: 1, targetId: 1, status: 1 });
+reportSchema.index({ reporterProfileId: 1, createdAt: -1 });
 
 for (const s of [postSchema, commentSchema, circleSchema, mediaConsentSchema, mentorProfileSchema, mentorshipRequestSchema, reportSchema]) s.plugin(tenantScoped);
 export const CommunityPost = model('CommunityPost', postSchema);

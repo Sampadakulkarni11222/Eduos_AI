@@ -181,6 +181,24 @@ export async function duplicateLeads() {
 
 // ── Capacity & seat offers ───────────────────────────────────────────────
 
+/**
+ * How many seats (offered + accepted) a category may fill: the capacity less
+ * the seats reserved for every OTHER category. RTE/EWS/SC/ST reservations are
+ * held for those applicants; a general applicant cannot take one, whether by a
+ * fresh offer or by promotion from the waitlist.
+ */
+function seatLimitFor(cap, category) {
+  const reservedForOthers = (cap?.reserved ?? []).filter((r) => r.category !== category).reduce((n, r) => n + r.seats, 0);
+  return (cap?.capacity ?? 0) - reservedForOthers;
+}
+
+/** "Thu 15 Oct, 10:00 am" in the school's time (IST), for notifications. */
+export function istDateTime(d) {
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true,
+  }).format(new Date(d));
+}
+
 export async function setCapacity(actor, body = {}) {
   const academicYear = requireText(body.academicYear, 'academicYear', { max: 9 });
   const gradeOrProgramme = requireText(body.gradeOrProgramme, 'gradeOrProgramme', { max: 80 });
@@ -216,10 +234,9 @@ export async function offerSeat(actor, body = {}) {
     if (await SeatOffer.exists({ leadId, academicYear, status: { $nin: ['DECLINED', 'EXPIRED', 'WITHDRAWN'] } })) throw new AppError('This applicant already has an offer or waitlist place for that year.', 409, [], 'DUPLICATE_OFFER');
     const cap = await IntakeCapacity.findOne({ academicYear, gradeOrProgramme }).lean();
     if (!cap) throw new AppError('Set the intake capacity for this class/programme first.', 409, [], 'NO_CAPACITY');
-    const reservedForOthers = cap.reserved.filter((r) => r.category !== category).reduce((n, r) => n + r.seats, 0);
     const reservedMine = cap.reserved.find((r) => r.category === category)?.seats ?? 0;
     // Seats reserved for other categories are not available to this one.
-    const limit = cap.capacity - reservedForOthers;
+    const limit = seatLimitFor(cap, category);
     const won = await IntakeCapacity.findOneAndUpdate(
       { _id: cap._id, $expr: { $lt: [{ $add: ['$offered', '$accepted'] }, limit] } },
       { $inc: { offered: 1 } }, { new: true },
@@ -255,8 +272,17 @@ export async function moveOffer(actor, id, body = {}) {
     const capFilter = { academicYear: o.academicYear, gradeOrProgramme: o.gradeOrProgramme };
     if (to === 'OFFERED') {
       const cap = await IntakeCapacity.findOne(capFilter).lean();
-      const won = await IntakeCapacity.findOneAndUpdate({ ...capFilter, $expr: { $lt: [{ $add: ['$offered', '$accepted'] }, cap?.capacity ?? 0] } }, { $inc: { offered: 1 } }, { new: true });
-      if (!won) throw new AppError('No seat is free.', 409, [], 'NO_SEAT');
+      // The same per-category limit offerSeat() applies. Promoting a general
+      // waitlistee used to cap at the raw capacity and so took the RTE seat.
+      const limit = seatLimitFor(cap, o.category || 'GENERAL');
+      const won = await IntakeCapacity.findOneAndUpdate({ ...capFilter, $expr: { $lt: [{ $add: ['$offered', '$accepted'] }, limit] } }, { $inc: { offered: 1 } }, { new: true });
+      if (!won) {
+        const reservedLeft = (cap?.capacity ?? 0) - (cap?.offered ?? 0) - (cap?.accepted ?? 0) > 0;
+        throw new AppError(
+          reservedLeft ? `The seats still free are reserved for other categories, not ${o.category || 'GENERAL'}.` : 'No seat is free.',
+          409, [], 'NO_SEAT',
+        );
+      }
       o.waitlistPosition = null;
       o.offerExpiresOn = new Date(Date.now() + 7 * 86_400_000);
     }
@@ -265,12 +291,29 @@ export async function moveOffer(actor, id, body = {}) {
     if (to === 'WITHDRAWN' && ['ACCEPTED', 'FEE_PAID'].includes(o.status)) await IntakeCapacity.updateOne(capFilter, { $inc: { accepted: -1 } });
     if (to === 'FEE_PAID') {
       const { Invoice } = await import('../../models/fee.model.js');
-      const inv = await Invoice.findById(assertObjectId(body.invoiceId, 'invoiceId')).lean();
+      // By id, or by the invoice number printed on the receipt -- a counsellor
+      // sees the number, never the database id.
+      const inv = body.invoiceNo && !body.invoiceId
+        ? await Invoice.findOne({ invoiceNo: requireText(body.invoiceNo, 'invoiceNo', { max: 60 }) }).lean()
+        : await Invoice.findById(assertObjectId(body.invoiceId, 'invoiceId')).lean();
       if (!inv) throw new AppError('Invoice not found', 404);
       if (!['PAID'].includes(inv.status)) throw new AppError('That invoice is not paid in the fees module.', 409, [], 'NOT_PAID');
       o.invoiceId = inv._id;
     }
-    if (to === 'ENROLLED') o.studentId = assertObjectId(body.studentId, 'studentId');
+    if (to === 'ENROLLED') {
+      // The student record: named by id or admission number, or else the one
+      // created from this enquiry when it was enrolled in the CRM.
+      const { Student } = await import('../../models/student.model.js');
+      const student = body.studentId
+        ? await Student.findById(assertObjectId(body.studentId, 'studentId')).lean()
+        : body.admissionNo
+          ? await Student.findOne({ admissionNo: requireText(body.admissionNo, 'admissionNo', { max: 60 }) }).lean()
+          : await Student.findOne({ leadId: o.leadId }).lean();
+      if (!student || student.deletedAt) {
+        throw new AppError('No student record found. Enter the admission number, or create the student first.', 404, [], 'STUDENT_NOT_FOUND');
+      }
+      o.studentId = student._id;
+    }
     pushHistory(o, actor, to, { from: o.status, to, note: body.note });
     o.status = to;
     await o.save();
@@ -278,6 +321,63 @@ export async function moveOffer(actor, id, body = {}) {
     if (to === 'DECLINED' || to === 'WITHDRAWN') await Lead.updateOne({ _id: o.leadId }, { $set: { stage: 'LOST', lostReason: optionalText(body.note, { max: 500 }) || to.toLowerCase() } });
     return dto(o);
   });
+}
+
+/**
+ * Expires seat offers whose acceptance window has passed.
+ *
+ * An offer is open until the end of its offerExpiresOn day (IST); from the
+ * next day it is EXPIRED, its seat goes back to the pool (offered - 1), the
+ * enquiry's history says so, and the counsellors are told how many applicants
+ * are waiting for the freed seats. Nobody on the waitlist is promoted
+ * automatically: offering a seat stays a counsellor's decision.
+ *
+ * Meant to run once a day from the scheduler (jobs/scheduler.js), per school,
+ * e.g. `await runWithTenant(school, () => marketing.expireOffers())` at 00:15
+ * IST. Safe to run repeatedly: each offer is claimed with a conditional
+ * update, so overlapping runs expire it once.
+ */
+export async function expireOffers({ now = new Date(), actor = null } = {}) {
+  const IST = 330 * 60_000;
+  const startOfTodayIst = new Date(Math.floor((now.getTime() + IST) / 86_400_000) * 86_400_000 - IST);
+  const due = await SeatOffer.find({ status: 'OFFERED', offerExpiresOn: { $ne: null, $lt: startOfTodayIst } }).select('_id').lean();
+  const expired = [];
+  for (const { _id } of due) {
+    const o = await SeatOffer.findOneAndUpdate({ _id, status: 'OFFERED' }, { $set: { status: 'EXPIRED' } }, { new: true });
+    if (!o) continue; // expired, accepted or withdrawn in the meantime
+    await IntakeCapacity.updateOne({ academicYear: o.academicYear, gradeOrProgramme: o.gradeOrProgramme, offered: { $gt: 0 } }, { $inc: { offered: -1 } });
+    pushHistory(o, actor ?? { profileId: null, displayName: 'System' }, 'EXPIRED', { from: 'OFFERED', to: 'EXPIRED', note: 'Offer not accepted in time' });
+    await o.save();
+    await LeadInteraction.create({ leadId: o.leadId, type: 'STAGE_CHANGE', body: `Seat offer expired (${o.gradeOrProgramme}, ${o.academicYear})`, authorProfileId: null });
+    expired.push({ id: String(o._id), leadId: String(o.leadId), academicYear: o.academicYear, gradeOrProgramme: o.gradeOrProgramme });
+  }
+
+  // Who should hear about the freed seats: the counsellors of those enquiries.
+  const byClass = new Map();
+  for (const e of expired) {
+    const k = `${e.academicYear}|${e.gradeOrProgramme}`;
+    byClass.set(k, (byClass.get(k) ?? 0) + 1);
+  }
+  const waiting = [];
+  for (const [k, freed] of byClass) {
+    const [academicYear, gradeOrProgramme] = k.split('|');
+    const waitlisted = await SeatOffer.countDocuments({ academicYear, gradeOrProgramme, status: 'WAITLISTED' });
+    waiting.push({ academicYear, gradeOrProgramme, freed, waitlisted });
+  }
+  if (expired.length) {
+    const leads = await Lead.find({ _id: { $in: expired.map((e) => e.leadId) }, assigneeProfileId: { $ne: null } }).select('assigneeProfileId').lean();
+    const recipients = [...new Set(leads.map((l) => String(l.assigneeProfileId)))];
+    if (recipients.length) {
+      await notify({
+        recipientProfileIds: recipients,
+        type: 'SYSTEM',
+        title: `${expired.length} seat offer${expired.length === 1 ? '' : 's'} expired`,
+        body: waiting.map((w) => `${w.gradeOrProgramme}: ${w.freed} seat${w.freed === 1 ? '' : 's'} freed, ${w.waitlisted} on the waitlist`).join('; '),
+        link: '/marketing?tab=seats',
+      });
+    }
+  }
+  return { expired: expired.length, offers: expired, waiting };
 }
 
 export async function listOffers(query = {}) {
@@ -300,7 +400,7 @@ export async function bookAppointment(actor, body = {}) {
   const a = await CounsellingAppointment.create({ leadId: assertObjectId(body.leadId, 'leadId'), counsellorProfileId, kind: oneOf(body.kind, ['CALL', 'CAMPUS_TOUR', 'COUNSELLING', 'INTERVIEW', 'ENTRANCE_TEST', 'DOCUMENT_CHECK'], 'kind'), at, durationMinutes });
   await Lead.updateOne({ _id: a.leadId, firstResponseAt: null }, { $set: { firstResponseAt: new Date() } });
   if (a.kind === 'CAMPUS_TOUR') await Lead.updateOne({ _id: a.leadId, stage: { $in: ['NEW', 'CONTACTED'] } }, { $set: { stage: 'TOUR_SCHEDULED' } });
-  if (String(counsellorProfileId) !== String(actor.profileId)) await notify({ recipientProfileIds: [String(counsellorProfileId)], type: 'SYSTEM', title: `New ${a.kind.toLowerCase().replace('_', ' ')}`, body: at.toISOString().slice(0, 16).replace('T', ' ') + ' UTC', link: '/marketing?tab=appointments' });
+  if (String(counsellorProfileId) !== String(actor.profileId)) await notify({ recipientProfileIds: [String(counsellorProfileId)], type: 'SYSTEM', title: `New ${a.kind.toLowerCase().replace('_', ' ')}`, body: istDateTime(at), link: '/marketing?tab=appointments' });
   return dto(a);
 }
 

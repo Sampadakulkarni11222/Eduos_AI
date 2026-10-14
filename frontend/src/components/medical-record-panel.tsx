@@ -42,7 +42,11 @@ function recToEdit(rec: MedicalDto | null): EditState {
  * (e.g. teacher, warden) is handled by those pages calling GET /medical
  * directly — this component is only mounted where canManage is meaningful.
  */
-export function MedicalRecordPanel({ studentId, canManage = true }: { studentId: string | undefined; canManage?: boolean }) {
+/**
+ * `canDelete` is separate from `canManage`: a parent may update their child's
+ * record but only the school office may remove one (the API refuses parents).
+ */
+export function MedicalRecordPanel({ studentId, canManage = true, canDelete = canManage }: { studentId: string | undefined; canManage?: boolean; canDelete?: boolean }) {
   const [rec, setRec] = useState<MedicalDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -156,7 +160,7 @@ export function MedicalRecordPanel({ studentId, canManage = true }: { studentId:
             </>
           ) : (
             <>
-              {rec && <Button variant="soft" small onClick={() => void handleDelete()} disabled={deleting} style={{ color: 'var(--red)' }}>Delete record</Button>}
+              {rec && canDelete && <Button variant="soft" small onClick={() => void handleDelete()} disabled={deleting} style={{ color: 'var(--red)' }}>Delete record</Button>}
               <Button small onClick={() => { setEditing(true); setSuccessMsg(''); setSaveErr(null); }}>{rec ? 'Edit record' : 'Setup record'}</Button>
             </>
           )}

@@ -50,6 +50,10 @@ export const enterMarks = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.enterMarks(req.actor, req.scope, req.body), 'Marks entered', 201);
 });
 
+export const unpublishMarks = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.unpublishMarks(req.actor, req.scope, req.body), 'Marks reopened for correction');
+});
+
 export const publishMarks = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.publishMarks(req.actor, req.scope, req.body.examSubjectId), 'Marks published');
 });

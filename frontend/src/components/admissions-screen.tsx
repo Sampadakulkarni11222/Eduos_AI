@@ -33,6 +33,10 @@ const normalizeStage = (s: string): string => {
 const STAGES = ['NEW', 'CONTACTED', 'TOUR_SCHEDULED', 'APPLICATION', 'ENROLLED', 'LOST'];
 
 /** The admission CRM, rendered in whichever portal hosts it (admin, marketing). */
+/** How each enquiry source reads on a card ("WALK_IN" → "Walk-in"). */
+const SOURCE_LABELS: Record<string, string> = { WALK_IN: 'Walk-in', WHATSAPP: 'WhatsApp', WEB: 'Website', WEBSITE: 'Website', REFERRAL: 'Referral', PHONE: 'Phone', EVENT: 'Event', SOCIAL: 'Social media', ADS: 'Ads', OTHER: 'Other' };
+const sourceLabel = (s?: string | null) => (s ? SOURCE_LABELS[s] ?? s.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase()) : '—');
+
 export function AdmissionsScreen({ portal = 'admin' }: { portal?: string }) {
   const [pipeline, setPipeline] = useState<any>(null);
   const [pipelineErr, setPipelineErr] = useState(false);
@@ -245,7 +249,7 @@ function KanbanBoard({
                       <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-1)' }}>{lead.childName}</div>
                       <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>{lead.guardianName} · {lead.gradeApplying ?? '—'}</div>
                       <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Pill tone={SOURCE_TONE[lead.source] ?? 'gray'}>{(lead.source || '').toLowerCase()}</Pill>
+                        <Pill tone={SOURCE_TONE[lead.source] ?? 'gray'}>{sourceLabel(lead.source)}</Pill>
                       </div>
                     </button>
                     {next && canAssign && (
@@ -358,7 +362,7 @@ function LeadDetailDrawer({
             {lead && (
               <div style={{ fontSize: 12.5, color: 'var(--text-faint)', marginTop: 3, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 <Pill tone={STAGE_TONE[lead.stage] ?? 'gray'}>{STAGE_LABEL[lead.stage] ?? lead.stage}</Pill>
-                <Pill tone={SOURCE_TONE[lead.source] ?? 'gray'}>{(lead.source || '').toLowerCase()}</Pill>
+                <Pill tone={SOURCE_TONE[lead.source] ?? 'gray'}>{sourceLabel(lead.source)}</Pill>
               </div>
             )}
           </div>

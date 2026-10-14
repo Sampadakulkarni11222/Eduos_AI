@@ -66,7 +66,11 @@ export async function report(actor, body = {}) {
     occurredOn: parseDate(body.occurredOn, 'occurredOn'),
     descriptionEnc: encrypt(description),
   });
-  pushHistory(c, { profileId: actor.profileId, displayName: c.anonymousToStaff ? 'Reporter' : actor.displayName }, 'REPORTED', { to: 'REPORTED' });
+  // An anonymous report keeps its reporter only in reportedByProfileId -- the
+  // sealed field the reporter's own "my reports" view and the self-handling
+  // guard use, which no officer-facing view returns. The history used to carry
+  // the reporter's profile id too, and officers read it.
+  pushHistory(c, c.anonymousToStaff ? { profileId: null, displayName: 'Reporter' } : { profileId: actor.profileId, displayName: actor.displayName }, 'REPORTED', { to: 'REPORTED' });
   await c.save();
   const ids = (await officers()).map((p) => String(p._id)).filter((x) => x !== String(actor.profileId));
   if (ids.length) {
@@ -89,10 +93,26 @@ export async function mine(actor) {
   return rows.map((r) => ({ id: String(r._id), refNo: r.refNo, category: r.category, status: r.status, reportedAt: r.createdAt }));
 }
 
+/** Most urgent first: an explicit rank, since the enum values sort alphabetically as IMMEDIATE, STANDARD, URGENT. */
+export const URGENCY_RANK = { IMMEDIATE_DANGER: 0, URGENT: 1, STANDARD: 2 };
+
+/** History safe to show officers: an anonymous reporter's own entries carry no profile id. */
+function safeHistory(c) {
+  return (c.history ?? []).map((h) => {
+    const entry = h?.toObject ? h.toObject() : { ...h };
+    if (c.anonymousToStaff && c.reportedByProfileId && String(entry.actorProfileId) === String(c.reportedByProfileId)) {
+      return { ...entry, actorProfileId: null, actorName: 'Reporter' };
+    }
+    return entry;
+  });
+}
+
 function present(c, { withContent = false } = {}) {
   const out = {
     id: String(c._id), refNo: c.refNo, category: c.category, urgency: c.urgency, status: c.status,
-    reportedAt: c.createdAt, occurredOn: c.occurredOn, reporterRole: c.reporterRole,
+    // The role alone identifies anyone who is the only person in it (the
+    // school's one librarian), so an anonymous report names no role either.
+    reportedAt: c.createdAt, occurredOn: c.occurredOn, reporterRole: c.anonymousToStaff ? null : c.reporterRole,
     reportedByProfileId: c.anonymousToStaff ? null : String(c.reportedByProfileId),
     anonymousToStaff: c.anonymousToStaff,
     assignedOfficerProfileId: c.assignedOfficerProfileId ? String(c.assignedOfficerProfileId) : null,
@@ -103,7 +123,7 @@ function present(c, { withContent = false } = {}) {
   if (withContent) {
     out.description = decrypt(c.descriptionEnc);
     out.notes = (c.notesEnc ?? []).map((n) => ({ at: n.at, byProfileId: String(n.byProfileId), text: decrypt(n.textEnc) }));
-    out.history = c.history;
+    out.history = safeHistory(c);
     out.guidance = STATUTORY_GUIDANCE[c.category] ?? null;
   }
   return out;
@@ -113,7 +133,13 @@ export async function list(actor, query = {}) {
   requireProfile(actor);
   const filter = {};
   if (query.status) filter.status = String(query.status).toUpperCase();
-  const rows = await SafeguardingCase.find(filter).sort({ urgency: 1, createdAt: -1 }).limit(500).select('-descriptionEnc -notesEnc -history').lean();
+  const rows = await SafeguardingCase.aggregate([
+    { $match: filter },
+    { $addFields: { _rank: { $switch: { branches: Object.entries(URGENCY_RANK).map(([k, v]) => ({ case: { $eq: ['$urgency', k] }, then: v })), default: 9 } } } },
+    { $sort: { _rank: 1, createdAt: -1 } },
+    { $limit: 500 },
+    { $project: { descriptionEnc: 0, notesEnc: 0, history: 0, _rank: 0 } },
+  ]);
   return rows.map((r) => present(r));
 }
 
@@ -130,11 +156,25 @@ export async function update(actor, id, body = {}) {
   requireProfile(actor);
   const c = await SafeguardingCase.findById(assertObjectId(id));
   if (!c) throw new AppError('Case not found', 404);
-  if (String(c.reportedByProfileId) === String(actor.profileId) && body.status) {
+  // An officer who reported a case does not handle it in any way -- not its
+  // status, notes, assignment or statutory report. Only status was blocked.
+  if (String(c.reportedByProfileId) === String(actor.profileId)) {
     throw new AppError('A reporter cannot handle their own report; another designated officer must.', 403, [], 'SELF_HANDLING');
   }
   if (body.assignedOfficerProfileId !== undefined) {
-    c.assignedOfficerProfileId = body.assignedOfficerProfileId ? assertObjectId(body.assignedOfficerProfileId) : null;
+    if (body.assignedOfficerProfileId) {
+      const officerId = assertObjectId(body.assignedOfficerProfileId, 'assignedOfficerProfileId');
+      // Only a designated officer of this school can be given a case, and
+      // never its own reporter.
+      const isOfficer = (await officers()).some((p) => String(p._id) === String(officerId));
+      if (!isOfficer) throw new AppError('Assign the case to a designated safeguarding officer.', 400, [], 'INVALID_ASSIGNEE');
+      if (String(officerId) === String(c.reportedByProfileId)) {
+        throw new AppError('The person who reported a case cannot be assigned to handle it.', 409, [], 'SELF_HANDLING');
+      }
+      c.assignedOfficerProfileId = officerId;
+    } else {
+      c.assignedOfficerProfileId = null;
+    }
     pushHistory(c, actor, 'ASSIGNED');
   }
   if (body.note) {

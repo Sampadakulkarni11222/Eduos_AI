@@ -85,7 +85,7 @@ describe('payroll arithmetic', () => {
 
   it('net = gross + arrears + adjustments − deductions, exactly', () => {
     const l = payroll.computeLine(comp(), rules(), { period: '2026-10', arrearsPaise: 100_000, adjustments: [{ name: 'Advance recovery', amountPaise: -50_000, reason: 'x' }] }).line;
-    expect(l.netPaise).toBe(l.grossPaise + 100_000 - 50_000 - l.totalDeductionsPaise);
+    expect(l.netPaise).toBe(l.grossPaise + 100_000 - 50_000 - l.totalDeductionsPaise + l.roundingPaise);
   });
 });
 
@@ -110,7 +110,9 @@ describe('payroll run lifecycle', () => {
     await inOak(() => payroll.setInputs(P.FINANCE.actor, run.id, { inputs: [{ profileId: P.TEACHER.actor.profileId, lopDays: 1 }] }));
     const calc = await inOak(() => payroll.calculate(P.FINANCE.actor, run.id));
     expect(calc.totals.headcount).toBe(2);
-    expect(calc.totals.grossPaise - calc.totals.deductionsPaise).toBe(calc.totals.netPaise);
+    // Net is paid in whole rupees; the rounding is carried as its own figure.
+    expect(calc.totals.grossPaise - calc.totals.deductionsPaise + calc.totals.roundingPaise).toBe(calc.totals.netPaise);
+    expect(calc.totals.netPaise % 100).toBe(0);
     expect(calc.warnings.join(' ')).toMatch(/No bank account/);
     await expect(inOak(() => payroll.submitRun(P.FINANCE.actor, run.id))).rejects.toMatchObject({ code: 'UNVERIFIED_RULES' });
     const sent = await inOak(() => payroll.submitRun(P.FINANCE.actor, run.id, { acknowledgeUnverifiedRules: true }));

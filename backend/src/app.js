@@ -98,10 +98,11 @@ import { startScheduler } from './jobs/scheduler.js';
 
 const app = express();
 
-// Render/any reverse proxy terminates TLS and forwards the real client IP in
-// X-Forwarded-For. Without this, req.ip is the proxy's address, so every user
-// shares a single rate-limit bucket (one noisy client locks out the school).
-app.set('trust proxy', 1);
+// Behind a reverse proxy (Render, a load balancer) the real client IP arrives
+// in X-Forwarded-For, and TRUST_PROXY=1 (one proxy hop) makes req.ip use it.
+// Off by default: trusting that header with no proxy in front lets a client
+// forge it and dodge every per-IP rate limit. See TRUST_PROXY in config/env.js.
+app.set('trust proxy', env.TRUST_PROXY);
 
 // ─── Security headers ─────────────────────────────────────
 // Must be mounted BEFORE any static handler, or uploaded files and the status

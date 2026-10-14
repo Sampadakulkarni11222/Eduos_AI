@@ -55,8 +55,10 @@ export default function LibrarianBooks() {
     e.preventDefault();
     if (!issueForm.studentId || !issueForm.bookId || !issueForm.dueAt) return;
     try {
-      const dueIso = new Date(issueForm.dueAt).toISOString();
-      await api.issueBook({ ...issueForm, dueAt: dueIso });
+      // Sent as the calendar day ('YYYY-MM-DD'), not an instant: the library
+      // treats a loan as due until the end of that day, school time. Turning it
+      // into UTC midnight made a same-day return look a day late.
+      await api.issueBook({ ...issueForm, dueAt: issueForm.dueAt });
       setShowIssueModal(false);
       setIssueForm({ studentId: '', bookId: '', dueAt: '' });
       toast('Book issued.');

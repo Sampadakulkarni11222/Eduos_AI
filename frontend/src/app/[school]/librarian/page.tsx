@@ -38,7 +38,7 @@ export default function LibrarianDashboard() {
       <PulseBoard />
 
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
-        <StatCard label="Total Catalog Books" value={data ? data.totalCopies : '—'} delta={data ? `${data.totalBooks} unique titles` : undefined} deltaDir="flat" />
+        <StatCard label="Copies in Catalog" value={data ? data.totalCopies : '—'} delta={data ? `across ${data.totalBooks} ${data.totalBooks === 1 ? 'title' : 'titles'}` : undefined} deltaDir="flat" />
         <StatCard label="Active Book Issues" value={data ? data.issuedBooks : '—'} delta={data ? 'in circulation' : undefined} deltaDir="flat" />
         <StatCard
           label="Overdue Returns"

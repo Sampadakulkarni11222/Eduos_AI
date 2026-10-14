@@ -4,7 +4,9 @@ import {
 import { Ticket } from '../../models/ticket.model.js';
 import { Student } from '../../models/student.model.js';
 import { MedicalRecord } from '../../models/medicalRecord.model.js';
+import mongoose from 'mongoose';
 import { AppError } from '../../utils/AppError.js';
+import { runInAmbientTransaction } from '../../utils/transaction.js';
 import { decrypt } from '../../utils/crypto.js';
 import { recordPiiRead } from '../../utils/auditTrail.js';
 import { assertCanAccess as assertCanAccessMedical } from '../medical/medical.service.js';
@@ -229,10 +231,64 @@ export async function bulkAllocate(rows) {
   return results;
 }
 
-export async function updateRoom(id, updates) {
+/** Room fields an edit may change. */
+const ROOM_EDITABLE = ['roomNo', 'block', 'floor', 'capacity', 'type', 'status', 'amenities'];
+
+/**
+ * The gender a student record names, as MALE / FEMALE, or null when it names
+ * neither (blank, OTHER, or something unrecognised).
+ */
+export function studentGender(value) {
+  const g = String(value ?? '').trim().toUpperCase();
+  if (['MALE', 'M', 'BOY'].includes(g)) return 'MALE';
+  if (['FEMALE', 'F', 'GIRL'].includes(g)) return 'FEMALE';
+  return null;
+}
+
+const ROOM_GENDER = { BOYS: 'MALE', GIRLS: 'FEMALE' };
+
+/**
+ * Throws 409 when a student may not live in a room of this type: a BOYS room
+ * takes male students only and a GIRLS room female students only. A student
+ * whose gender is not recorded cannot be placed in either until it is.
+ */
+function assertGenderFits(roomType, student) {
+  const needed = ROOM_GENDER[roomType];
+  if (!needed) return; // GENERAL and STAFF rooms are not gendered
+  const name = [student.firstName, student.lastName].filter(Boolean).join(' ') || 'This student';
+  const gender = studentGender(student.gender);
+  if (!gender) {
+    throw new AppError(`${name} has no gender on record, so cannot be placed in a ${roomType.toLowerCase()} room. Update the student record first.`, 409, [], 'ROOM_GENDER_MISMATCH');
+  }
+  if (gender !== needed) {
+    throw new AppError(`${name} cannot be placed in a ${roomType.toLowerCase()} room.`, 409, [], 'ROOM_GENDER_MISMATCH');
+  }
+}
+
+export async function updateRoom(id, updates = {}) {
   const room = await HostelRoom.findById(id);
   if (!room) throw new AppError('Room not found', 404);
-  Object.assign(room, updates, checkRoomFields(updates, { partial: true }));
+  const checked = checkRoomFields(updates, { partial: true });
+  for (const key of ROOM_EDITABLE) {
+    if (updates[key] !== undefined) room[key] = key in checked ? checked[key] : updates[key];
+  }
+
+  // Residents are not moved by editing a room: it cannot shrink below them,
+  // close on them, or change to a type they cannot live in. (The room page
+  // showed "available -2" after a 3-bed room with 3 residents went to 1 bed.)
+  const residents = await HostelAllocation.find({ roomId: room._id, status: 'ACTIVE' })
+    .populate('studentId', 'firstName lastName gender').lean();
+  if (residents.length) {
+    if (room.capacity < residents.length) {
+      throw new AppError(`${residents.length} students live in this room, so it cannot have fewer than ${residents.length} beds. Move or vacate residents first.`, 409, [], 'ROOM_OCCUPIED');
+    }
+    if (room.status === 'CLOSED') {
+      throw new AppError(`${residents.length} ${residents.length === 1 ? 'student lives' : 'students live'} in this room. Move or vacate them before closing it.`, 409, [], 'ROOM_OCCUPIED');
+    }
+    if (room.isModified('type')) {
+      for (const r of residents) if (r.studentId) assertGenderFits(room.type, r.studentId);
+    }
+  }
   await room.save();
   return room;
 }
@@ -248,26 +304,49 @@ export async function listAllocations({ roomId, status = 'ACTIVE' } = {}) {
 }
 
 export async function allocate({ roomId, studentId, allottedAt, academicYearId }) {
-  const room = await HostelRoom.findById(roomId);
-  if (!room) throw new AppError('Room not found', 404);
+  if (!mongoose.isValidObjectId(roomId)) throw new AppError('Room not found', 404);
+  if (!mongoose.isValidObjectId(studentId)) throw new AppError('Student not found', 404);
 
-  const student = await Student.findById(studentId);
-  if (!student) throw new AppError('Student not found', 404);
+  // One transaction per allotment, and its first write touches the room. Two
+  // allotments to the same room therefore conflict on that write, and the
+  // loser is retried after the winner commits -- so it counts the winner's
+  // bed. Count-then-create on its own let two requests both take the last bed.
+  return runInAmbientTransaction(async () => {
+    const room = await HostelRoom.findOneAndUpdate({ _id: roomId }, { $set: { updatedAt: new Date() } }, { new: true });
+    if (!room) throw new AppError('Room not found', 404);
+    if (room.status !== 'ACTIVE') {
+      throw new AppError(`Room ${room.roomNo} is ${room.status.toLowerCase()} and cannot take residents.`, 409, [], 'ROOM_NOT_ACTIVE');
+    }
 
-  // Check if already allocated
-  const existing = await HostelAllocation.findOne({ studentId, status: 'ACTIVE' });
-  if (existing) throw new AppError('Student already has an active hostel allocation', 409);
+    const student = await Student.findById(studentId);
+    if (!student || student.deletedAt) throw new AppError('Student not found', 404);
+    assertGenderFits(room.type, student);
 
-  // Check room capacity
-  const occupied = await HostelAllocation.countDocuments({ roomId, status: 'ACTIVE' });
-  if (occupied >= room.capacity) throw new AppError('Room is at full capacity', 409);
+    // Check if already allocated
+    const existing = await HostelAllocation.findOne({ studentId, status: 'ACTIVE' });
+    if (existing) throw new AppError('Student already has an active hostel allocation', 409);
 
-  return HostelAllocation.create({
-    roomId,
-    studentId,
-    allottedAt: allottedAt ? new Date(allottedAt) : new Date(),
-    academicYearId: academicYearId ?? null,
-    status: 'ACTIVE',
+    // Check room capacity
+    const occupied = await HostelAllocation.countDocuments({ roomId, status: 'ACTIVE' });
+    if (occupied >= room.capacity) throw new AppError('Room is at full capacity', 409);
+
+    const [allocation] = await HostelAllocation.create([{
+      roomId,
+      studentId,
+      allottedAt: allottedAt ? new Date(allottedAt) : new Date(),
+      academicYearId: academicYearId ?? null,
+      status: 'ACTIVE',
+    }]);
+
+    // Belt and braces for a server without transactions (a standalone mongod,
+    // where runInAmbientTransaction runs this unprotected): if a parallel
+    // allotment slipped in, give the bed back rather than over-fill the room.
+    const after = await HostelAllocation.countDocuments({ roomId, status: 'ACTIVE' });
+    if (after > room.capacity) {
+      await HostelAllocation.deleteOne({ _id: allocation._id });
+      throw new AppError('Room is at full capacity', 409);
+    }
+    return allocation;
   });
 }
 
@@ -283,10 +362,17 @@ export async function vacate(allocationId) {
 
 // ─── Hostel Students Directory ────────────────────────────────
 export async function listHostelStudents() {
-  return HostelAllocation.find({ status: 'ACTIVE' })
+  const rows = await HostelAllocation.find({ status: 'ACTIVE' })
     .populate('roomId', 'roomNo block floor type')
-    .populate('studentId', 'firstName lastName admissionNo gender dob photoUrl')
-    .sort({ 'studentId.lastName': 1 });
+    .populate('studentId', 'firstName lastName admissionNo gender dob photoUrl');
+  // Sorted here, after populate: a sort on 'studentId.lastName' in the query is
+  // on a path the allocation does not have, so Mongo silently ignored it.
+  const key = (r) => [r.studentId?.lastName ?? '', r.studentId?.firstName ?? ''].map((x) => String(x).toLowerCase());
+  return rows.sort((a, b) => {
+    const [al, af] = key(a);
+    const [bl, bf] = key(b);
+    return al.localeCompare(bl) || af.localeCompare(bf);
+  });
 }
 
 // ─── Emergency Medical Lookup ─────────────────────────────────
@@ -309,7 +395,8 @@ export async function getMedicalRecord(actor, scope, studentId) {
   const allocation = await HostelAllocation.findOne({ studentId, status: 'ACTIVE' });
   if (!allocation) throw new AppError('Student is not a current hostel resident', 404);
 
-  const record = await MedicalRecord.findOne({ studentId });
+  // A record the office removed reads as absent here too (it is kept for the audit, not shown).
+  const record = await MedicalRecord.findOne({ studentId, deletedAt: null });
   if (!record) {
     // Still an access attempt against a named resident, so it belongs in the
     // trail even though nothing was disclosed.
@@ -368,8 +455,22 @@ export async function listInquiries({ status } = {}) {
     .sort({ createdAt: -1 });
 }
 
-export async function createInquiry(data) {
-  return HostelInquiry.create(data);
+/**
+ * A new inquiry, always OPEN and always raised by whoever is signed in. The
+ * body used to be stored as sent, so a caller could file one as somebody else
+ * or as already RESOLVED. `actor` is the signed-in person; a trusted internal
+ * caller with no actor may name raisedByProfileId itself.
+ */
+export async function createInquiry(data = {}, actor = null) {
+  if (data.studentId && !mongoose.isValidObjectId(data.studentId)) throw new AppError('studentId is not a valid id', 400);
+  return HostelInquiry.create({
+    studentId: data.studentId || null,
+    subject: data.subject,
+    description: data.description,
+    raisedByProfileId: actor?.profileId ?? data.raisedByProfileId ?? null,
+    status: 'OPEN',
+    resolvedAt: null,
+  });
 }
 
 export async function updateInquiry(id, { status }) {

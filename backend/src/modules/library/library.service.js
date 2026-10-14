@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Book, BookIssue } from '../../models/library.model.js';
 import { BookRequest } from '../../models/bookRequest.model.js';
 // Registered, not assumed: the catalogue populates the uploader's profile, and
@@ -24,6 +25,73 @@ function toCalendarDay(value) {
   const [, y, mo, d] = m.map(Number);
   const date = new Date(Date.UTC(y, mo - 1, d));
   return date.getUTCMonth() === mo - 1 && date.getUTCDate() === d ? date : null;
+}
+
+/*
+ * ─── The library's calendar: days in India Standard Time ─────
+ *
+ * A due date is a day, not an instant. The lending screen used to send
+ * `new Date('YYYY-MM-DD').toISOString()`, i.e. UTC midnight = 05:30 IST, and
+ * every check compared instants: a book returned at 10:00 on its due date was
+ * fined ₹5 and showed OVERDUE all day. Loans are now due at the END of their
+ * day in IST, and fines/overdue compare IST calendar days, so rows stored
+ * either way (old 05:30 rows and new 23:59:59 rows) read correctly.
+ */
+const DAY_MS = 24 * 60 * 60 * 1000;
+const IST_OFFSET_MS = 330 * 60 * 1000; // UTC+05:30, no daylight saving
+const FINE_PER_DAY_RUPEES = 5;
+
+/** Days since the epoch of the IST calendar day `d` falls on. */
+export function istDayNumber(d) {
+  return Math.floor((new Date(d).getTime() + IST_OFFSET_MS) / DAY_MS);
+}
+
+/** The instant today (IST) began; a loan due before it is overdue. */
+export function startOfIstToday(now = new Date()) {
+  return new Date(istDayNumber(now) * DAY_MS - IST_OFFSET_MS);
+}
+
+/** Whole IST days a loan is late on `now` (0 on or before its due day). */
+export function overdueDays(dueDate, now = new Date()) {
+  return Math.max(0, istDayNumber(now) - istDayNumber(dueDate));
+}
+
+/**
+ * The stored due instant for whatever the caller sent: the last millisecond
+ * of that IST calendar day. A bare 'YYYY-MM-DD', or the UTC midnight the old
+ * screen produced from one, names that calendar day; any other instant is
+ * read as the IST day it falls on. Null for something that is not a date.
+ */
+export function dueDateEndOfDay(value) {
+  let day;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    day = istDayNumber(value);
+  } else {
+    const text = String(value ?? '').trim();
+    if (!text) return null;
+    const m = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:T00:00(?::00(?:\.0+)?)?(?:Z|\+00:00))?$/);
+    if (m) {
+      const [, y, mo, d] = m.map(Number);
+      const utc = Date.UTC(y, mo - 1, d);
+      const check = new Date(utc);
+      if (check.getUTCMonth() !== mo - 1 || check.getUTCDate() !== d) return null;
+      day = Math.floor(utc / DAY_MS);
+    } else {
+      const at = new Date(text);
+      if (Number.isNaN(at.getTime())) return null;
+      day = istDayNumber(at);
+    }
+  }
+  return new Date((day + 1) * DAY_MS - IST_OFFSET_MS - 1);
+}
+
+/** Marks every loan whose due day has passed (in IST) as OVERDUE. */
+async function markOverdueLoans() {
+  await BookIssue.updateMany(
+    { status: 'ACTIVE', dueDate: { $lt: startOfIstToday() } },
+    { $set: { status: 'OVERDUE' } },
+  );
 }
 
 // ─── Helper: map a raw BookIssue doc to BookIssueDto ───────
@@ -55,10 +123,7 @@ export async function getSummary() {
   // did not, so a loan that fell due overnight was still "on loan" here while
   // the dashboard already showed it overdue -- two screens, two answers to
   // "how many books are overdue?", until somebody happened to open the list.
-  await BookIssue.updateMany(
-    { status: 'ACTIVE', dueDate: { $lt: new Date() } },
-    { $set: { status: 'OVERDUE' } },
-  );
+  await markOverdueLoans();
 
   const [totalBooks, activeIssues, overdueReturns, copyAgg] = await Promise.all([
     Book.countDocuments({ deletedAt: null }),
@@ -86,7 +151,9 @@ export async function getSummary() {
     availableCopies: copies.availableCopies,
     uniqueTitles: uniqueShelfItems[0]?.count ?? totalBooks,
     activeBookIssues: activeIssues,
-    inCirculation: activeIssues,
+    // Every copy out of the building, late or not: an overdue book is still
+    // in circulation, it is just also overdue.
+    inCirculation: activeIssues + overdueReturns,
     overdueReturns,
     itemsNeedingAttention: overdueReturns,
   };
@@ -390,14 +457,66 @@ export async function bulkIssueBooks(rows) {
   return results;
 }
 
-export async function updateBook(id, updates) {
+/** Catalogue fields an edit may change. Stock, deletion and ownership are not among them. */
+const BOOK_EDITABLE = [
+  'title', 'author', 'isbn', 'category', 'resourceType', 'resourceUrl', 'publisher', 'publishedYear',
+  'coverUrl', 'resourceKind', 'subjectId', 'gradeId', 'academicYearId', 'examType', 'body',
+];
+
+/** Copies of a title that are out right now (on loan or overdue). */
+const copiesOnLoan = (bookId) => BookIssue.countDocuments({ bookId, status: { $in: ['ACTIVE', 'OVERDUE'] } });
+
+const onLoanPhrase = (n) => `${n} ${n === 1 ? 'copy is' : 'copies are'}`;
+
+export async function updateBook(id, updates = {}) {
   const book = await Book.findOne({ _id: id, deletedAt: null });
   if (!book) throw new AppError('Book not found', 404);
+  if (updates.resourceKind !== undefined && !RESOURCE_KINDS.includes(updates.resourceKind)) {
+    throw new AppError(`resourceKind must be one of: ${RESOURCE_KINDS.join(', ')}`, 400, [], 'INVALID_RESOURCE_KIND');
+  }
+  // Whitelisted: this used to Object.assign the whole body, so availableCopies,
+  // deletedAt or uploadedByProfileId could be set by the client.
+  for (const key of BOOK_EDITABLE) {
+    if (updates[key] !== undefined) book[key] = updates[key];
+  }
   // The API field is `language`; the stored one is `resourceLanguage` (see the
   // model for why), so an edit has to be translated the same way a create is.
-  const { language, ...rest } = updates;
-  Object.assign(book, rest);
-  if (language !== undefined) book.resourceLanguage = language;
+  if (updates.language !== undefined) book.resourceLanguage = updates.language;
+
+  // A change of total copies moves the shelf count by the same amount: adding
+  // two copies puts two more on the shelf, and the copies out on loan stay out.
+  // Setting totalCopies alone used to leave "10 available of 1".
+  let delta = 0;
+  if (updates.totalCopies !== undefined) {
+    const raw = updates.totalCopies;
+    const total = Number(raw);
+    if (raw === null || raw === '' || typeof raw === 'boolean' || !Number.isInteger(total) || total < 0) {
+      throw new AppError('totalCopies must be a whole number, 0 or more', 400, [], 'INVALID_TOTAL_COPIES');
+    }
+    const onLoan = await copiesOnLoan(book._id);
+    if (total < onLoan) {
+      throw new AppError(
+        `${onLoanPhrase(onLoan)} on loan, so the total cannot be less than ${onLoan}. Record the returns first.`,
+        409, [], 'COPIES_ON_LOAN',
+      );
+    }
+    delta = total - book.totalCopies;
+  }
+  // Checked before any count moves, so a bad edit changes nothing.
+  const invalid = book.validateSync();
+  if (invalid) throw invalid;
+  if (delta !== 0) {
+    // Conditional on enough copies being on the shelf, so a loan issued in
+    // between can never drive the shelf count below 0.
+    const moved = await Book.updateOne(
+      { _id: book._id, deletedAt: null, availableCopies: { $gte: Math.max(0, -delta) } },
+      { $inc: { totalCopies: delta, availableCopies: delta } },
+    );
+    if (!moved.modifiedCount) {
+      throw new AppError('Too few copies are on the shelf to remove that many. Record the returns first.', 409, [], 'COPIES_ON_LOAN');
+    }
+  }
+  // save() writes only the paths changed above; the counts were moved by $inc.
   await book.save();
   return getBookById(book._id);
 }
@@ -405,6 +524,15 @@ export async function updateBook(id, updates) {
 export async function deleteBook(id) {
   const book = await Book.findOne({ _id: id, deletedAt: null });
   if (!book) throw new AppError('Book not found', 404);
+  // A title with copies still out cannot be removed: the loans would point at
+  // a deleted book and the returns would restock nothing.
+  const onLoan = await copiesOnLoan(book._id);
+  if (onLoan > 0) {
+    throw new AppError(
+      `${onLoanPhrase(onLoan)} still on loan. Record the returns before removing this title.`,
+      409, [], 'COPIES_ON_LOAN',
+    );
+  }
   book.deletedAt = new Date();
   await book.save();
 }
@@ -439,12 +567,27 @@ async function resolveOwnBorrowerIds(actor) {
   return ids;
 }
 
+/** Every id a student's loans may be filed under: their Student id and their Profile id. */
+async function borrowerKeysFor(id) {
+  if (!mongoose.isValidObjectId(id)) throw new AppError('studentId is not a valid id', 400, [], 'INVALID_ID');
+  const keys = new Set([String(id)]);
+  const student = await Student.findOne({ $or: [{ _id: id }, { profileId: id }] }, { _id: 1, profileId: 1 }).lean();
+  if (student) {
+    keys.add(String(student._id));
+    if (student.profileId) keys.add(String(student.profileId));
+  }
+  return [...keys];
+}
+
 export async function listIssues(actor, scope, { status, bookId, studentId, from, to, resourceType } = {}) {
   const filter = {};
   if (status && status !== 'ALL') filter.status = status;
   if (bookId) filter.bookId = bookId;
   // Only a school-wide caller may ask about somebody else.
-  if (scope === 'ALL' && studentId) filter.borrowerProfileId = studentId;
+  // borrowerProfileId holds a Student id for loans made at the desk and a
+  // Profile id for some older rows, so "this student's loans" has to match
+  // both; comparing the Student id alone missed the profile-keyed ones.
+  if (scope === 'ALL' && studentId) filter.borrowerProfileId = { $in: await borrowerKeysFor(studentId) };
 
   if (scope !== 'ALL') {
     const ownIds = await resolveOwnBorrowerIds(actor);
@@ -463,11 +606,8 @@ export async function listIssues(actor, scope, { status, bookId, studentId, from
   if (toDate) dueRange.$lte = new Date(toDate.getTime() + 24 * 60 * 60 * 1000 - 1);
   if (Object.keys(dueRange).length) filter.dueDate = dueRange;
 
-  // Auto-mark overdue issues
-  await BookIssue.updateMany(
-    { status: 'ACTIVE', dueDate: { $lt: new Date() } },
-    { status: 'OVERDUE' }
-  );
+  // Auto-mark overdue issues (only once their due day is over, in IST)
+  await markOverdueLoans();
 
   const issues = await BookIssue.find(filter)
     .populate('bookId', 'title author isbn category resourceType resourceUrl')
@@ -481,8 +621,21 @@ export async function listIssues(actor, scope, { status, bookId, studentId, from
 
 // Frontend sends: { bookId, studentId, dueAt }
 export async function issueBook({ bookId, studentId, borrowerProfileId, dueAt, dueDate, borrowerName }) {
-  const resolvedDueDate = dueAt ? new Date(dueAt) : dueDate ? new Date(dueDate) : null;
-  if (!resolvedDueDate) throw new AppError('dueAt is required', 400);
+  const rawDue = dueAt ?? dueDate ?? null;
+  if (rawDue === null || rawDue === '') throw new AppError('dueAt is required', 400);
+  const resolvedDueDate = dueDateEndOfDay(rawDue);
+  if (!resolvedDueDate) throw new AppError('dueAt is not a valid date', 400, [], 'INVALID_DUE_DATE');
+
+  // The borrower has to exist before a copy leaves the shelf. An unknown id
+  // used to be issued anyway, shown as "Unknown", with the copy taken off stock.
+  const resolvedStudentId = studentId ?? borrowerProfileId;
+  if (!resolvedStudentId) throw new AppError('studentId is required', 400, [], 'STUDENT_REQUIRED');
+  if (!mongoose.isValidObjectId(resolvedStudentId)) throw new AppError('studentId is not a valid id', 400, [], 'INVALID_ID');
+  const student = studentId
+    ? await Student.findById(studentId).lean()
+    : await Student.findOne({ $or: [{ _id: borrowerProfileId }, { profileId: borrowerProfileId }] }).lean();
+  if (!student || student.deletedAt) throw new AppError('No student with that id in this school', 404, [], 'STUDENT_NOT_FOUND');
+  const resolvedName = borrowerName ?? ([student.firstName, student.lastName].filter(Boolean).join(' ') || null);
 
   // Atomically claim a copy: the filter's availableCopies check and the $inc
   // happen as one DB operation, so two concurrent requests can't both pass.
@@ -497,20 +650,9 @@ export async function issueBook({ bookId, studentId, borrowerProfileId, dueAt, d
     throw new AppError('No copies available', 409);
   }
 
-  // Resolve student — frontend passes studentId (Student._id)
-  const resolvedStudentId = studentId ?? borrowerProfileId;
-  let resolvedName = borrowerName ?? null;
-
-  if (resolvedStudentId && !resolvedName) {
-    const student = await Student.findById(resolvedStudentId).lean();
-    if (student) {
-      resolvedName = [student.firstName, student.lastName].filter(Boolean).join(' ');
-    }
-  }
-
   const issue = await BookIssue.create({
     bookId,
-    borrowerProfileId: resolvedStudentId ?? null,
+    borrowerProfileId: resolvedStudentId,
     borrowerName: resolvedName,
     dueDate: resolvedDueDate,
     status: 'ACTIVE',
@@ -526,15 +668,16 @@ export async function returnBook(issueId) {
   if (issue.status === 'RETURNED') throw new AppError('Already returned', 409);
 
   const now = new Date();
-  issue.returnedAt = now;
-  issue.status = 'RETURNED';
+  // ₹5 for each whole IST day after the due day; nothing on the due day itself.
+  const fine = overdueDays(issue.dueDate, now) * FINE_PER_DAY_RUPEES;
 
-  // Calculate fine: ₹5 per day overdue
-  if (now > issue.dueDate) {
-    const daysOverdue = Math.ceil((now - issue.dueDate) / (1000 * 60 * 60 * 24));
-    issue.fineAmount = daysOverdue * 5;
-  }
-  await issue.save();
+  // Claimed atomically, so a double-clicked return restocks the copy once.
+  const claimed = await BookIssue.findOneAndUpdate(
+    { _id: issue._id, status: { $ne: 'RETURNED' } },
+    { $set: { status: 'RETURNED', returnedAt: now, ...(fine > 0 ? { fineAmount: fine } : {}) } },
+    { new: true },
+  );
+  if (!claimed) throw new AppError('Already returned', 409);
 
   // Restore available copy
   await Book.findByIdAndUpdate(issue.bookId, { $inc: { availableCopies: 1 } });

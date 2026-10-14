@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
 import mongoose from 'mongoose';
 import { Student, Enrollment } from '../src/models/student.model.js';
 import { Grade, Section, Subject, SubjectOffering, AcademicYear, Term } from '../src/models/academics.model.js';
@@ -8,6 +8,16 @@ import { SYSTEM_ROLES } from '../src/constants/permissions.js';
 import { buildPermissionMap } from '../src/utils/buildPermissionMap.js';
 import { runWithTenant } from '../src/tenancy/tenantContext.js';
 import * as attendance from '../src/modules/attendance/attendance.service.js';
+
+// These tests are about who may mark, not when: they mark a fixed past Tuesday,
+// so the back-dating window (attendance.dateWindow.test.js) is opened wide here.
+const savedBackdate = process.env.ATTENDANCE_BACKDATE_DAYS;
+beforeAll(() => { process.env.ATTENDANCE_BACKDATE_DAYS = '100000'; });
+afterAll(() => {
+  if (savedBackdate === undefined) delete process.env.ATTENDANCE_BACKDATE_DAYS;
+  else process.env.ATTENDANCE_BACKDATE_DAYS = savedBackdate;
+});
+
 
 /**
  * ISSUE-05 — a teacher who merely teaches *some* subject in a section used to
@@ -44,7 +54,7 @@ beforeEach(async () => {
       academicYearId: new mongoose.Types.ObjectId(), status: 'ACTIVE',
     });
 
-    const year = await AcademicYear.create({ name: '2026-27', startsOn: new Date(), endsOn: new Date(), isCurrent: true });
+    const year = await AcademicYear.create({ name: '2026-27', startsOn: new Date('2026-01-01'), endsOn: new Date('2026-12-31'), isCurrent: true });
     const term = await Term.create({ academicYearId: year._id, name: 'Term 1', startsOn: new Date(), endsOn: new Date() });
     const math = await Subject.create({ name: 'Math' });
     const science = await Subject.create({ name: 'Science' });

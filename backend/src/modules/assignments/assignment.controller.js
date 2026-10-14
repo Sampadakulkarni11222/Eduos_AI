@@ -7,7 +7,15 @@ export const list = asyncHandler(async (req, res) => {
 });
 
 export const create = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.create(req.actor, req.scope, req.body), 'Assignment created', 201);
+  sendSuccess(res, service.toView(await service.create(req.actor, req.scope, req.body)), 'Assignment created', 201);
+});
+
+export const update = asyncHandler(async (req, res) => {
+  sendSuccess(res, service.toView(await service.update(req.actor, req.scope, req.params.id, req.body)), 'Assignment updated');
+});
+
+export const remove = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.remove(req.actor, req.scope, req.params.id), 'Assignment withdrawn');
 });
 
 export const grade = asyncHandler(async (req, res) => {

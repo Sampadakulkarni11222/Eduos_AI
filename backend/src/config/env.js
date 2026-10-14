@@ -46,6 +46,18 @@ if (process.env.SCHOOL_TIMEZONE && !process.env.TZ) {
  * Anything non-numeric or negative falls back, since those are typos rather
  * than intent.
  */
+/**
+ * TRUST_PROXY as Express wants it: false when unset/'false'/'0', a hop count
+ * for a number, true for 'true', otherwise the string (an IP/subnet list).
+ */
+export function parseTrustProxy(raw) {
+  const v = String(raw ?? '').trim();
+  if (v === '' || /^(false|off|no|0)$/i.test(v)) return false;
+  if (/^true$/i.test(v)) return true;
+  if (/^\d+$/.test(v)) return Number(v);
+  return v;
+}
+
 export function numFromEnv(name, fallback) {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return fallback;
@@ -122,6 +134,16 @@ export const env = {
   RATE_LIMIT_MAX: Number(process.env.RATE_LIMIT_MAX) || 2000,
   // Stricter limit for credential endpoints (login / OTP request+verify).
   RATE_LIMIT_AUTH_MAX: Number(process.env.RATE_LIMIT_AUTH_MAX) || 30,
+  // Credential requests are limited per address + email/phone (the limit
+  // above); this is the looser ceiling for one address across all accounts,
+  // sized for a whole staff room behind one school NAT signing in at once.
+  RATE_LIMIT_AUTH_IP_MAX: numFromEnv('RATE_LIMIT_AUTH_IP_MAX', 300),
+  // Express 'trust proxy'. Off by default: with it on and no proxy in front,
+  // a client can forge X-Forwarded-For and get a fresh rate-limit bucket per
+  // request. A deployment behind exactly one reverse proxy (Render, a load
+  // balancer, nginx) sets TRUST_PROXY=1; behind two, 2; or a subnet/IP list
+  // such as 'loopback, 10.0.0.0/8'. 'true'/'false' are accepted as well.
+  TRUST_PROXY: parseTrustProxy(process.env.TRUST_PROXY),
   // Defaults to the local frontend rather than '*' so development exercises the
   // same cross-origin rules as production — a wildcard default hides CORS
   // mistakes until deploy, where the boot check then refuses to start on them.

@@ -85,4 +85,23 @@ router.post('/submit', requirePermission('submissions.submit'), controller.submi
  */
 router.get('/:id/submissions', requirePermission('submissions.grade'), controller.listSubmissions);
 
+/**
+ * @swagger
+ * /assignments/{id}:
+ *   patch:
+ *     summary: Edit homework (the teacher who set it, or school-wide staff)
+ *     tags: [Assignments]
+ *     responses:
+ *       200:
+ *         description: Assignment updated
+ *   delete:
+ *     summary: Withdraw homework (soft delete)
+ *     tags: [Assignments]
+ *     responses:
+ *       200:
+ *         description: Assignment withdrawn
+ */
+router.patch('/:id', requirePermission('assignments.manage'), controller.update);
+router.delete('/:id', requirePermission('assignments.manage'), controller.remove);
+
 export default router;

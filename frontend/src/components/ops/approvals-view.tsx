@@ -19,20 +19,56 @@ import {
  */
 type Tab = 'inbox' | 'mine' | 'all' | 'delegation' | 'rules';
 
+/**
+ * Approve is never one click. It opens a confirmation that restates what is
+ * being approved -- reference, amount, summary, documents -- with an optional
+ * note, and only "Confirm approval" sends the decision. A payroll run of
+ * Rs 10.6 lakh used to be approved by a single tap in a list.
+ */
 export function ApprovalDecisionButtons({ req, onDone, compact }: { req: ApprovalDto; onDone: (r: ApprovalDto) => void; compact?: boolean }) {
   const toast = useToast();
   const { run, busy, error } = useAction();
   const [prompt, setPrompt] = useState<null | 'REJECT' | 'RETURN'>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [note, setNote] = useState('');
   if (!req.canDecide) return null;
-  const approve = () => run(async () => { const r = await opsApi.decide(req.id, 'APPROVE'); toast(`Approved: ${req.title}`, 'success'); onDone(r); });
+  const approve = () => run(async () => {
+    const comment = note.trim();
+    const r = comment ? await opsApi.decide(req.id, 'APPROVE', comment) : await opsApi.decide(req.id, 'APPROVE');
+    toast(`Approved: ${req.title}`, 'success');
+    setConfirming(false); setNote('');
+    onDone(r);
+  });
+  const docs = req.attachments?.length ?? 0;
   return (
     <>
       <div className="ops-decision-actions">
-        <Button small={compact} onClick={() => void approve()} disabled={busy}>Approve</Button>
+        <Button small={compact} onClick={() => setConfirming(true)} disabled={busy}>Approve</Button>
         <Button small={compact} variant="soft" onClick={() => setPrompt('RETURN')} disabled={busy}>Return</Button>
         <Button small={compact} variant="ghost" onClick={() => setPrompt('REJECT')} disabled={busy}>Reject</Button>
       </div>
-      <ErrorNote error={error} />
+      {!confirming && <ErrorNote error={error} />}
+      {confirming && (
+        <Modal title={`Approve "${req.title}"?`} onClose={() => { if (!busy) setConfirming(false); }} footer={<>
+          <Button variant="soft" onClick={() => setConfirming(false)} disabled={busy}>Cancel</Button>
+          <Button onClick={() => void approve()} disabled={busy}>{busy ? 'Approving…' : 'Confirm approval'}</Button>
+        </>}>
+          <KeyValues rows={[
+            ['Reference', req.refNo ?? '—'],
+            ['Category', req.category ? humanize(req.category) : '—'],
+            ['Requested by', req.requesterName ?? '—'],
+            ['Amount', req.amountPaise ? money(req.amountPaise) : '—'],
+            ['Due', req.dueAt ? fmtDate(req.dueAt) : '—'],
+            ['Documents', docs ? `${docs} attached` : 'None attached'],
+          ]} />
+          {req.summary && <div className="ops-callout" style={{ whiteSpace: 'pre-wrap', maxHeight: 180, overflowY: 'auto' }}>{req.summary}</div>}
+          {docs > 0 && <Attachments items={req.attachments} />}
+          <Field label="Note (optional)" hint="Recorded with your approval; the requester sees it.">
+            <textarea className="input" rows={3} value={note} onChange={(e) => setNote(e.target.value)} style={{ width: '100%' }} />
+          </Field>
+          <ErrorNote error={error} />
+        </Modal>
+      )}
       {prompt && (
         <PromptModal
           title={prompt === 'REJECT' ? `Reject "${req.title}"` : `Return "${req.title}" for changes`}
@@ -109,7 +145,7 @@ function ApprovalDetail({ id, onClose, onChanged }: { id: string; onClose: () =>
   );
 }
 
-function ApprovalList({ items, onOpen, onChanged, showDecide }: { items: ApprovalDto[]; onOpen: (id: string) => void; onChanged: () => void; showDecide?: boolean }) {
+function ApprovalList({ items, onOpen, showDecide }: { items: ApprovalDto[]; onOpen: (id: string) => void; onChanged?: () => void; showDecide?: boolean }) {
   if (!items.length) return <EmptyState title="Nothing here" sub="Requests will appear here as they come in." icon="✓" />;
   return (
     <ul className="ops-list">
@@ -122,8 +158,10 @@ function ApprovalList({ items, onOpen, onChanged, showDecide }: { items: Approva
             </button>
           </div>
           {r.isOverdue && <span className="ops-flag-overdue">OVERDUE</span>}
+          {(r.priority === 'URGENT' || r.priority === 'HIGH') && <StatusPill status={r.priority} label={humanize(r.priority)} />}
           <StatusPill status={r.status} />
-          {showDecide && <ApprovalDecisionButtons req={r} compact onDone={onChanged} />}
+          {/* Deciding happens in the detail drawer, with the summary and documents in view. */}
+          {showDecide && r.canDecide && <Button small variant="soft" onClick={() => onOpen(r.id)}>Review</Button>}
         </li>
       ))}
     </ul>
@@ -225,7 +263,7 @@ export function ApprovalsView() {
   return (
     <div className="ops-stack">
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
-      {tab === 'inbox' && <Loadable state={inbox}>{(d) => <SectionCard title="Decisions waiting on you" sub="Overdue first. You cannot decide a request you raised, and conflicts remove you from a request."><ApprovalList items={d} onOpen={setSelected} onChanged={refresh} showDecide /></SectionCard>}</Loadable>}
+      {tab === 'inbox' && <Loadable state={inbox}>{(d) => <SectionCard title="Decisions waiting on you" sub="Urgent and high priority first, then overdue, then by due date. Open a request to review it before deciding. You cannot decide a request you raised, and conflicts remove you from a request."><ApprovalList items={d} onOpen={setSelected} onChanged={refresh} showDecide /></SectionCard>}</Loadable>}
       {(tab === 'mine' || tab === 'all') && <Loadable state={list}>{(d) => <SectionCard title={tab === 'mine' ? 'Requests I raised' : 'All approval requests'}><ApprovalList items={d?.items ?? []} onOpen={setSelected} onChanged={refresh} /></SectionCard>}</Loadable>}
       {tab === 'delegation' && <DelegationPanel />}
       {tab === 'rules' && <Loadable state={policies}>{(d) => (

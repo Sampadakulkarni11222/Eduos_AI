@@ -157,4 +157,29 @@ export function tenantScoped(schema) {
     }
     next();
   });
+  addSchoolFirstIndexes(schema);
+}
+
+/**
+ * Every lookup by a linked record — the guardians of a profile, the marks of
+ * an enrolment, the invoices of a student — also carries the school filter
+ * the hooks above add. With only the single-field index on tenantId, the
+ * query planner often answers such a lookup from that index and reads every
+ * document the school owns (720 to find one guardian link in a 720-student
+ * school; 6,000 marks to return 5), which grows with the school. A compound
+ * index with the school first serves both the school filter and the lookup.
+ *
+ * Added for every top-level path that references another model, unless an
+ * index starting with the same fields is already declared.
+ */
+export function addSchoolFirstIndexes(schema) {
+  const declared = new Set(schema.indexes().map(([fields]) => Object.keys(fields).join(',')));
+  schema.eachPath((path, type) => {
+    const ref = type.options?.ref ?? type.caster?.options?.ref;
+    if (!ref || path === '_id' || path === 'tenantId' || path.includes('.')) return;
+    const key = `tenantId,${path}`;
+    if (declared.has(key)) return;
+    schema.index({ tenantId: 1, [path]: 1 });
+    declared.add(key);
+  });
 }

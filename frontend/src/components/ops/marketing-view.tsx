@@ -1,14 +1,14 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button, EmptyState, Field, Modal, useToast } from '@/components/ui';
-import { fileHref } from '@/lib/api';
+import { api, fileHref } from '@/lib/api';
 import { opsApi } from '@/lib/ops-api';
 import { usePermissions } from '@/lib/permissions';
 import { usePortalHref } from '@/lib/school-path';
 import type { CreativeAssetDto } from '@/lib/ops-types';
 import { AttachUpload } from './attach';
-import { DataNote, ErrorNote, Loadable, PromptModal, SectionCard, StatusPill, Tabs, Tile, fmtDate, fmtDateTime, humanize, money, rupeesToPaise, useAction, useLoad } from './kit';
+import { DataNote, ErrorNote, Loadable, PromptModal, SectionCard, StatusPill, Tabs, Tile, fmtDate, fmtDateTime, humanize, money, rupeesToPaise, useAction, useLoad, useQueryParam } from './kit';
 
 /**
  * Marketing & Admissions: enquiry funnel and response time, campaigns with
@@ -19,6 +19,54 @@ import { DataNote, ErrorNote, Loadable, PromptModal, SectionCard, StatusPill, Ta
  * performance, health or welfare data.
  */
 type Tab = 'funnel' | 'campaigns' | 'assets' | 'seats' | 'appointments';
+const TABS: Tab[] = ['funnel', 'campaigns', 'assets', 'seats', 'appointments'];
+/** Older links and the insights KPI say "offers" for the seats tab. */
+const TAB_ALIASES: Record<string, Tab> = { offers: 'seats', waitlist: 'seats', counselling: 'appointments' };
+
+/** Enquiry sources and channels as people write them, not as stored. */
+const LABELS: Record<string, string> = {
+  WALK_IN: 'Walk-in', WHATSAPP: 'WhatsApp', WEB: 'Website', WEBSITE: 'Website', REFERRAL: 'Referral',
+  SOCIAL: 'Social media', EMAIL: 'Email', UNKNOWN: 'Not recorded', RTE: 'RTE', EWS: 'EWS', SC: 'SC', ST: 'ST', OBC: 'OBC',
+};
+const label = (s: string | null | undefined) => (s ? LABELS[s.toUpperCase()] ?? humanize(s) : '—');
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** "6 h" up to two days, then "4 days". */
+const responseTime = (h: number) => (h > 48 ? `${Math.round(h / 24)} days` : `${h} h`);
+
+type LeadOption = { id: string; childName: string; guardianName: string; phone: string | null; stage: string };
+
+/**
+ * Picks an enquiry by child, guardian or phone, instead of asking for its
+ * database id (which counsellors never see). Lost and enrolled enquiries are
+ * left out unless `includeClosed`.
+ */
+function LeadPicker({ value, onChange, includeClosed = false }: { value: string; onChange: (id: string) => void; includeClosed?: boolean }) {
+  const state = useLoad(() => api.pipeline(), []);
+  const [q, setQ] = useState('');
+  const leads = useMemo<LeadOption[]>(() => {
+    const p = state.data;
+    if (!p) return [];
+    return p.stages
+      .filter((st) => includeClosed || (st !== 'LOST' && st !== 'ENROLLED'))
+      .flatMap((st) => (p.byStage[st] ?? []).map((l) => ({ id: String(l.id), childName: l.childName, guardianName: l.guardianName, phone: (l as typeof l & { phone?: string | null }).phone ?? null, stage: st })));
+  }, [state.data, includeClosed]);
+  const needle = q.trim().toLowerCase();
+  const needleDigits = needle.replace(/[^0-9]/g, '');
+  const shown = needle
+    ? leads.filter((l) => `${l.childName} ${l.guardianName} ${l.phone ?? ''}`.toLowerCase().includes(needle)
+      || (needleDigits.length >= 3 && (l.phone ?? '').replace(/[^0-9]/g, '').includes(needleDigits)))
+    : leads;
+  return (
+    <span className="ops-inline" style={{ gap: 6 }}>
+      <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search child, parent or phone" aria-label="Search enquiries" style={{ width: 190 }} />
+      <select className="input" value={value} onChange={(e) => onChange(e.target.value)} aria-label="Enquiry" style={{ maxWidth: 260 }} disabled={state.loading && !state.data}>
+        <option value="">{state.loading && !state.data ? 'Loading enquiries…' : `Choose an enquiry (${shown.length})`}</option>
+        {shown.slice(0, 200).map((l) => <option key={l.id} value={l.id}>{l.childName} — {l.guardianName}{l.phone ? ` · ${l.phone}` : ''} · {humanize(l.stage)}</option>)}
+      </select>
+    </span>
+  );
+}
+
 const CHANNELS = ['SOCIAL', 'SEARCH', 'PRINT', 'OUTDOOR', 'RADIO', 'EVENT', 'REFERRAL', 'WHATSAPP', 'EMAIL', 'WEBSITE', 'OTHER'];
 
 function Funnel({ canReadLeads }: { canReadLeads: boolean }) {
@@ -32,7 +80,7 @@ function Funnel({ canReadLeads }: { canReadLeads: boolean }) {
         <div className="kpi-grid">
           <Tile label="Enquiries" value={a.enquiries} />
           <Tile label="Enquiry → enrolment" value={a.conversionPct === null ? 'No data' : `${a.conversionPct}%`} />
-          <Tile label="Median first response" value={a.response.medianHours === null ? 'No data' : `${a.response.medianHours} h`} />
+          <Tile label="Median first response" value={a.response.medianHours === null ? 'No data' : responseTime(a.response.medianHours)} />
           <Tile label="Without a response" value={a.response.unresponded} tone={a.response.unresponded ? 'warn' : 'good'} />
           <Tile label="Lost" value={a.lost} />
         </div>
@@ -41,12 +89,12 @@ function Funnel({ canReadLeads }: { canReadLeads: boolean }) {
             {a.funnel.map((f) => { const max = Math.max(1, ...a.funnel.map((x) => x.count)); return <div key={f.stage} className="ops-inline" style={{ marginBottom: 8 }}><span style={{ width: 130 }}>{humanize(f.stage)}</span><div className="ops-bar" style={{ flex: 1 }}><span style={{ width: `${(f.count / max) * 100}%` }} /></div><b style={{ width: 40, textAlign: 'right' }}>{f.count}</b></div>; })}
           </SectionCard>
           <SectionCard title="By source">
-            {!a.bySource.length ? <p className="ops-muted">No enquiries.</p> : <table className="ops-table"><thead><tr><th>Source</th><th className="num">Enquiries</th><th className="num">Enrolled</th></tr></thead><tbody>{a.bySource.map((s) => <tr key={s.source}><td>{humanize(s.source)}</td><td className="num">{s.enquiries}</td><td className="num">{s.enrolled}</td></tr>)}</tbody></table>}
+            {!a.bySource.length ? <p className="ops-muted">No enquiries.</p> : <table className="ops-table"><thead><tr><th>Source</th><th className="num">Enquiries</th><th className="num">Enrolled</th></tr></thead><tbody>{a.bySource.map((s) => <tr key={s.source}><td>{label(s.source)}</td><td className="num">{s.enquiries}</td><td className="num">{s.enrolled}</td></tr>)}</tbody></table>}
           </SectionCard>
         </div>
         <DataNote>{a.response.definition}{a.dataNotes.length ? ` ${a.dataNotes.join(' ')}` : ''}</DataNote>
         <Loadable state={dups}>{(groups) => groups.length ? (
-          <SectionCard title={`${groups.length} possible duplicate enquiries`} sub="Same phone number. Review and merge by hand in the Admission CRM.">
+          <SectionCard title={`${plural(groups.length, 'possible duplicate enquiry', 'possible duplicate enquiries')}`} sub="Same phone number. Review and merge by hand in the Admission CRM.">
             <ul className="ops-list">{groups.map((g, i) => <li key={i} className="ops-row"><div className="ops-row-main">{g.map((l) => `${l.childName} (${l.guardianName}, ${humanize(l.stage)})`).join(' · ')}</div></li>)}</ul>
             <Link className="btn btn-soft btn-sm" href={link('/admin/admissions')}>Open Admission CRM</Link>
           </SectionCard>
@@ -67,7 +115,7 @@ function Campaigns({ canManage }: { canManage: boolean }) {
       <SectionCard title="Campaigns" sub="Cost per enquiry and per enrolment use the campaign recorded on each enquiry (last touch)." actions={canManage ? <Button small onClick={() => setCreating(true)}>+ Campaign</Button> : undefined}>
         {!rows.length ? <EmptyState title="No campaigns" sub="Plan an admissions campaign with its budget and channels." /> : (
           <div className="ops-table-wrap"><table className="ops-table"><thead><tr><th>Campaign</th><th>Dates</th><th className="num">Budget</th><th className="num">Spent</th><th className="num">Enquiries</th><th className="num">Enrolled</th><th className="num">Per enquiry</th><th className="num">Per enrolment</th><th /></tr></thead><tbody>
-            {rows.map((c) => <tr key={c.id}><td><b>{c.name}</b><div className="ops-muted">{c.code} · {c.channels.map(humanize).join(', ')}</div></td><td>{fmtDate(c.startsOn)} – {fmtDate(c.endsOn)}</td><td className="num">{money(c.budgetPaise)}</td><td className="num">{money(c.spentPaise)}</td><td className="num">{c.enquiries}</td><td className="num">{c.enrolments}</td><td className="num">{c.costPerEnquiryPaise === null ? '—' : money(c.costPerEnquiryPaise)}</td><td className="num">{c.costPerEnrolmentPaise === null ? '—' : money(c.costPerEnrolmentPaise)}</td><td><StatusPill status={c.status} />{canManage && <Button small variant="ghost" onClick={() => setSpend(c.id)}>Spend</Button>}</td></tr>)}
+            {rows.map((c) => <tr key={c.id}><td><b>{c.name}</b><div className="ops-muted">{c.code} · {c.channels.map(label).join(', ')}</div></td><td>{fmtDate(c.startsOn)} – {fmtDate(c.endsOn)}</td><td className="num">{money(c.budgetPaise)}</td><td className="num">{money(c.spentPaise)}</td><td className="num">{c.enquiries}</td><td className="num">{c.enrolments}</td><td className="num">{c.costPerEnquiryPaise === null ? '—' : money(c.costPerEnquiryPaise)}</td><td className="num">{c.costPerEnrolmentPaise === null ? '—' : money(c.costPerEnrolmentPaise)}</td><td><StatusPill status={c.status} />{canManage && <Button small variant="ghost" onClick={() => setSpend(c.id)}>Spend</Button>}</td></tr>)}
           </tbody></table></div>
         )}
         {creating && (
@@ -80,7 +128,7 @@ function Campaigns({ canManage }: { canManage: boolean }) {
               <Field label="Ends" required><input type="date" className="input" value={f.endsOn} onChange={(e) => setF({ ...f, endsOn: e.target.value })} /></Field>
               <Field label="Budget (₹)"><input className="input" inputMode="decimal" value={f.budget} onChange={(e) => setF({ ...f, budget: e.target.value })} /></Field>
             </div>
-            <fieldset style={{ border: 'none' }}><legend className="field-label">Channels</legend><div className="ops-inline">{CHANNELS.map((c) => <label key={c} className="ops-chip"><input type="checkbox" checked={f.channels.includes(c)} onChange={(e) => setF({ ...f, channels: e.target.checked ? [...f.channels, c] : f.channels.filter((x) => x !== c) })} />{humanize(c)}</label>)}</div></fieldset>
+            <fieldset style={{ border: 'none' }}><legend className="field-label">Channels</legend><div className="ops-inline">{CHANNELS.map((c) => <label key={c} className="ops-chip"><input type="checkbox" checked={f.channels.includes(c)} onChange={(e) => setF({ ...f, channels: e.target.checked ? [...f.channels, c] : f.channels.filter((x) => x !== c) })} />{label(c)}</label>)}</div></fieldset>
             <Field label="Audience (description)" hint="Describe who it is for. Do not target children or use sensitive personal data."><input className="input" value={f.audience} onChange={(e) => setF({ ...f, audience: e.target.value })} style={{ width: '100%' }} /></Field>
             <ErrorNote error={error} />
           </Modal>
@@ -167,7 +215,9 @@ function Assets({ canManage, canReview }: { canManage: boolean; canReview: boole
 function Seats({ canManage, canReadLeads }: { canManage: boolean; canReadLeads: boolean }) {
   const state = useLoad(() => Promise.all([opsApi.capacity(), canReadLeads ? opsApi.offers() : Promise.resolve([])]), [canReadLeads]);
   const [cap, setCap] = useState({ academicYear: '2027-28', gradeOrProgramme: '', capacity: '' });
-  const [offer, setOffer] = useState({ leadId: '', academicYear: '2027-28', gradeOrProgramme: '' });
+  const [offer, setOffer] = useState({ leadId: '', academicYear: '2027-28', gradeOrProgramme: '', category: '' });
+  const [feeFor, setFeeFor] = useState<string | null>(null);
+  const [enrolFor, setEnrolFor] = useState<string | null>(null);
   const { run, busy, error } = useAction();
   const toast = useToast();
   const move = (id: string, to: string, extra: Record<string, unknown> = {}) => run(async () => { await opsApi.moveOffer(id, { to, ...extra }); toast(humanize(to), 'success'); await state.reload(); });
@@ -180,17 +230,19 @@ function Seats({ canManage, canReadLeads }: { canManage: boolean; canReadLeads: 
         </SectionCard>
         {canReadLeads && (
         <SectionCard title="Offers & waitlist" sub="Application, offer, accepted, fee paid (checked against the fees module) and enrolled are separate steps.">
-          {canManage && <div className="ops-inline"><input className="input" value={offer.leadId} onChange={(e) => setOffer({ ...offer, leadId: e.target.value })} placeholder="Enquiry ID (from the CRM)" aria-label="Enquiry ID" /><input className="input" value={offer.gradeOrProgramme} onChange={(e) => setOffer({ ...offer, gradeOrProgramme: e.target.value })} placeholder="Class / programme" aria-label="Class or programme" /><input className="input" value={offer.academicYear} onChange={(e) => setOffer({ ...offer, academicYear: e.target.value })} aria-label="Academic year" style={{ width: 100 }} /><Button small disabled={busy || !offer.leadId || !offer.gradeOrProgramme} onClick={() => void run(async () => { const o = await opsApi.offerSeat(offer); toast(o.status === 'OFFERED' ? 'Seat offered' : `No seat free — waitlisted #${o.waitlistPosition}`, 'info'); await state.reload(); })}>Offer a seat</Button></div>}
+          {canManage && <div className="ops-inline"><LeadPicker value={offer.leadId} onChange={(leadId) => setOffer({ ...offer, leadId })} /><select className="input" value={offer.category} onChange={(e) => setOffer({ ...offer, category: e.target.value })} aria-label="Category" style={{ width: 130 }}><option value="">General</option>{[...new Set(caps.flatMap((c) => (c.reserved ?? []).map((r) => r.category)))].map((cat) => <option key={cat} value={cat}>{label(cat)}</option>)}</select><input className="input" value={offer.gradeOrProgramme} onChange={(e) => setOffer({ ...offer, gradeOrProgramme: e.target.value })} placeholder="Class / programme" aria-label="Class or programme" /><input className="input" value={offer.academicYear} onChange={(e) => setOffer({ ...offer, academicYear: e.target.value })} aria-label="Academic year" style={{ width: 100 }} /><Button small disabled={busy || !offer.leadId || !offer.gradeOrProgramme} onClick={() => void run(async () => { const o = await opsApi.offerSeat({ ...offer, category: offer.category || undefined }); toast(o.status === 'OFFERED' ? 'Seat offered' : `No seat free — waitlisted #${o.waitlistPosition}`, 'info'); await state.reload(); })}>Offer a seat</Button></div>}
           {!offers.length ? <p className="ops-muted">No offers yet.</p> : <ul className="ops-list">{offers.map((o) => (
             <li key={o.id} className="ops-row"><div className="ops-row-main"><div className="ops-row-title">{o.childName}</div><div className="ops-row-sub">{o.guardianName} · {o.gradeOrProgramme} · {o.academicYear}{o.waitlistPosition ? ` · waitlist #${o.waitlistPosition}` : ''}{o.offerExpiresOn ? ` · offer valid till ${fmtDate(o.offerExpiresOn)}` : ''}</div></div><StatusPill status={o.status} />
               {canManage && o.status === 'WAITLISTED' && <Button small variant="soft" onClick={() => void move(o.id, 'OFFERED')}>Offer</Button>}
               {canManage && o.status === 'OFFERED' && <><Button small variant="soft" onClick={() => void move(o.id, 'ACCEPTED')}>Accepted</Button><Button small variant="ghost" onClick={() => void move(o.id, 'DECLINED', { note: 'Declined by family' })}>Declined</Button></>}
-              {canManage && o.status === 'ACCEPTED' && <Button small variant="soft" onClick={() => { const inv = window.prompt('Invoice ID of the paid admission fee'); if (inv) void move(o.id, 'FEE_PAID', { invoiceId: inv }); }}>Fee paid</Button>}
-              {canManage && o.status === 'FEE_PAID' && <Button small onClick={() => { const sid = window.prompt('Student record ID created at enrolment'); if (sid) void move(o.id, 'ENROLLED', { studentId: sid }); }}>Enrolled</Button>}
+              {canManage && o.status === 'ACCEPTED' && <Button small variant="soft" onClick={() => setFeeFor(o.id)}>Fee paid</Button>}
+              {canManage && o.status === 'FEE_PAID' && <Button small onClick={() => setEnrolFor(o.id)}>Enrolled</Button>}
             </li>
           ))}</ul>}
         </SectionCard>
         )}
+        {feeFor && <PromptModal title="Admission fee paid" label="Invoice number" hint="As printed on the fee receipt, e.g. INV-1042. It must be paid in the Fees module." multiline={false} onClose={() => setFeeFor(null)} onSubmit={async (v) => { await opsApi.moveOffer(feeFor, { to: 'FEE_PAID', invoiceNo: v }); toast('Fee paid', 'success'); await state.reload(); }} />}
+        {enrolFor && <PromptModal title="Mark enrolled" label="Admission number" required={false} hint="Leave blank to use the student record created when this enquiry was enrolled in the Admission CRM." multiline={false} onClose={() => setEnrolFor(null)} onSubmit={async (v) => { await opsApi.moveOffer(enrolFor, { to: 'ENROLLED', ...(v ? { admissionNo: v } : {}) }); toast('Enrolled', 'success'); await state.reload(); }} />}
         <DataNote>Reservation categories (e.g. RTE 12(1)(c) where it applies to your school, or management quota) are configured by the school after checking they apply; EduOS does not assume any.</DataNote>
         <ErrorNote error={error} />
       </div>
@@ -205,7 +257,7 @@ function Appointments({ canManage }: { canManage: boolean }) {
   return (
     <Loadable state={state}>{(rows) => (
       <SectionCard title="Counselling, tours & interviews" sub="Admissions counsellors (not wellbeing counsellors). Booking a tour moves the enquiry to Tour scheduled and records the first response.">
-        {canManage && <div className="ops-inline"><input className="input" value={f.leadId} onChange={(e) => setF({ ...f, leadId: e.target.value })} placeholder="Enquiry ID" aria-label="Enquiry ID" /><select className="input" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} aria-label="Kind">{['CALL', 'CAMPUS_TOUR', 'COUNSELLING', 'INTERVIEW', 'ENTRANCE_TEST', 'DOCUMENT_CHECK'].map((k) => <option key={k} value={k}>{humanize(k)}</option>)}</select><input type="datetime-local" className="input" value={f.at} onChange={(e) => setF({ ...f, at: e.target.value })} aria-label="When" /><Button small disabled={busy || !f.leadId || !f.at} onClick={() => void run(async () => { await opsApi.bookAppointment({ ...f, at: new Date(f.at).toISOString(), durationMinutes: Number(f.durationMinutes) }); await state.reload(); })}>Book</Button></div>}
+        {canManage && <div className="ops-inline"><LeadPicker value={f.leadId} onChange={(leadId) => setF({ ...f, leadId })} /><select className="input" value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} aria-label="Kind">{['CALL', 'CAMPUS_TOUR', 'COUNSELLING', 'INTERVIEW', 'ENTRANCE_TEST', 'DOCUMENT_CHECK'].map((k) => <option key={k} value={k}>{humanize(k)}</option>)}</select><input type="datetime-local" className="input" value={f.at} onChange={(e) => setF({ ...f, at: e.target.value })} aria-label="When" /><Button small disabled={busy || !f.leadId || !f.at} onClick={() => void run(async () => { await opsApi.bookAppointment({ ...f, at: new Date(f.at).toISOString(), durationMinutes: Number(f.durationMinutes) }); await state.reload(); })}>Book</Button></div>}
         {!rows.length ? <p className="ops-muted">Nothing upcoming.</p> : <ul className="ops-list">{rows.map((a) => <li key={a.id} className="ops-row"><div className="ops-row-main"><div className="ops-row-title">{humanize(a.kind)} · {a.childName}</div><div className="ops-row-sub">{fmtDateTime(a.at)} · {a.guardianName}</div></div><StatusPill status={a.status} />{canManage && a.status === 'SCHEDULED' && <><Button small variant="soft" onClick={() => void run(async () => { await opsApi.updateAppointment(a.id, { status: 'DONE' }); await state.reload(); })}>Done</Button><Button small variant="ghost" onClick={() => void run(async () => { await opsApi.updateAppointment(a.id, { status: 'NO_SHOW' }); await state.reload(); })}>No show</Button></>}</li>)}</ul>}
         <ErrorNote error={error} />
       </SectionCard>
@@ -220,7 +272,9 @@ export function MarketingView() {
   const canReadLeads = Boolean(permissions['admissions.read']);
   const canReview = Boolean(permissions['marketing.manage'] || permissions['community.moderate']);
   const link = usePortalHref();
-  const [tab, setTab] = useState<Tab>('funnel');
+  const queryTab = useQueryParam('tab');
+  const fromQuery = queryTab ? (TAB_ALIASES[queryTab] ?? (TABS.includes(queryTab as Tab) ? (queryTab as Tab) : null)) : null;
+  const [tab, setTab] = useState<Tab>(fromQuery && (fromQuery !== 'appointments' || canReadLeads) ? fromQuery : 'funnel');
   return (
     <div className="ops-stack">
       <div className="ops-inline"><Tabs tabs={[{ key: 'funnel', label: 'Enrolment funnel' }, { key: 'campaigns', label: 'Campaigns' }, { key: 'assets', label: 'Creative' }, { key: 'seats', label: canReadLeads ? 'Seats & offers' : 'Seats' }, ...(canReadLeads ? [{ key: 'appointments' as const, label: 'Counselling' }] : [])]} value={tab} onChange={setTab} />{canReadLeads && <Link className="btn btn-soft btn-sm" href={link('/admin/admissions')}>Admission CRM</Link>}</div>

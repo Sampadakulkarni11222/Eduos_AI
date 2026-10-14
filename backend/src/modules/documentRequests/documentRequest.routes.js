@@ -15,7 +15,10 @@ import * as controller from './documentRequest.controller.js';
  * official document is refused before any service code runs.
  */
 
-const student = [requirePermission('students.read'), requireRole('STUDENT')];
+// Students for themselves, and parents for a child linked to them. The child
+// a parent names is checked against their StudentGuardian links in the
+// service (studentContext); students.read is held at OWN by both roles.
+const student = [requirePermission('students.read'), requireRole('STUDENT', 'PARENT')];
 const office = requirePermission('students.manage', 'ALL');
 const configure = requirePermission('settings.manage');
 

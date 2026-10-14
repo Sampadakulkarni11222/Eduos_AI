@@ -27,6 +27,10 @@ const markSchema = new Schema(
     examSubjectId: { type: Schema.Types.ObjectId, ref: 'ExamSubject', required: true },
     enrollmentId: { type: Schema.Types.ObjectId, ref: 'Enrollment', required: true },
     marks: { type: Number },
+    // Why there is no score: AB (absent) or ML (medical leave). Kept apart
+    // from `marks` so "not entered yet" (both null) is never mistaken for an
+    // absence, and an absence is never counted as zero in any total.
+    absence: { type: String, enum: ['AB', 'ML', null], default: null },
     gradeLabel: { type: String },
     remarks: { type: String },
     status: { type: String, enum: ['DRAFT', 'REVIEW', 'PUBLISHED'], default: 'DRAFT' },

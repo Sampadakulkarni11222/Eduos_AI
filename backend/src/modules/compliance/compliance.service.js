@@ -13,6 +13,7 @@ import { Role } from '../../models/role.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { currentTenantId } from '../../tenancy/tenantContext.js';
 import { AppError } from '../../utils/AppError.js';
+import { buildPermissionMap } from '../../utils/buildPermissionMap.js';
 import { logger } from '../../utils/logger.js';
 import { createRequest, registerApprovalHandler } from '../approvals/approval.service.js';
 import { notify } from '../notifications/notification.service.js';
@@ -296,12 +297,28 @@ export async function editReturnData(actor, id, body = {}) {
   return presentReturn(r.toObject());
 }
 
+/**
+ * A reviewer has to be able to review: an active person in this school who
+ * holds compliance.manage, and not the preparer. Naming anyone else used to
+ * park the return with somebody who could never act on it.
+ */
+async function assertReviewer(profileId, r) {
+  const id = assertObjectId(profileId, 'reviewerProfileId');
+  if (String(id) === String(r.preparerProfileId)) throw new AppError('The preparer cannot review their own return.', 403, [], 'SELF_REVIEW');
+  const tenantId = currentTenantId();
+  const profile = await Profile.findOne({ _id: id, status: 'ACTIVE', deletedAt: null, ...(tenantId ? { tenantId } : {}) }).populate('roleId');
+  if (!profile || !buildPermissionMap(profile.roleId)['compliance.manage']) {
+    throw new AppError('The reviewer must be a member of staff who manages compliance.', 400, [], 'INVALID_REVIEWER');
+  }
+  return id;
+}
+
 export async function sendReturnForReview(actor, id, body = {}) {
   const r = await loadReturn(id);
   if (r.validation.some((v) => v.level === 'ERROR') && body.acknowledgeErrors !== true) {
     throw new AppError('This return has validation errors. Fix them, or acknowledge them explicitly.', 409, [], 'RETURN_HAS_ERRORS');
   }
-  r.reviewerProfileId = body.reviewerProfileId ? assertObjectId(body.reviewerProfileId) : r.reviewerProfileId;
+  r.reviewerProfileId = body.reviewerProfileId ? await assertReviewer(body.reviewerProfileId, r) : r.reviewerProfileId;
   moveReturn(r, actor, 'IN_REVIEW', body.note);
   await r.save();
   if (r.reviewerProfileId) await notify({ recipientProfileIds: [String(r.reviewerProfileId)], type: 'SYSTEM', title: `Return to review: ${r.title}`, body: r.refNo, link: `/compliance?tab=returns&id=${r._id}` });
@@ -313,6 +330,12 @@ export async function reviewReturn(actor, id, body = {}) {
   const r = await loadReturn(id);
   if (r.status !== 'IN_REVIEW') throw new AppError('This return is not in review.', 409);
   if (String(r.preparerProfileId) === String(actor.profileId)) throw new AppError('The preparer cannot review their own return.', 403, [], 'SELF_REVIEW');
+  // The route needs compliance.manage (it used to need only compliance.read,
+  // so a trustee could push a return to the principal). When a reviewer was
+  // named, only that person reviews.
+  if (r.reviewerProfileId && String(r.reviewerProfileId) !== String(actor.profileId)) {
+    throw new AppError('Only the reviewer this return was sent to can review it.', 403, [], 'NOT_THE_REVIEWER');
+  }
   const decision = oneOf(body.decision, ['RETURN', 'REQUEST_APPROVAL'], 'decision');
   if (decision === 'RETURN') {
     moveReturn(r, actor, 'DRAFT', requireText(body.note, 'note', { max: 1000 }));
@@ -625,6 +648,13 @@ function presentTraining(t) {
   return out;
 }
 
+/** "Tue 15 Dec, 10:00 am" in the school's time (IST), for notifications. */
+export function istDateTime(d) {
+  return new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true,
+  }).format(new Date(d));
+}
+
 export async function scheduleTraining(actor, body = {}) {
   const audience = oneOf(body.audience, Object.keys(AUDIENCE_TO_ROLES), 'audience');
   const t = new TrainingSession({
@@ -652,7 +682,7 @@ export async function scheduleTraining(actor, body = {}) {
   pushHistory(t, actor, 'SCHEDULED');
   await t.save();
   if (t.participants.length) {
-    await notify({ recipientProfileIds: t.participants.map((p) => String(p.profileId)), type: 'SYSTEM', title: `${t.mandatory ? 'Mandatory training' : 'Training'}: ${t.title}`, body: t.scheduledAt.toISOString().slice(0, 16).replace('T', ' ') + ' UTC', link: '/trainings' });
+    await notify({ recipientProfileIds: t.participants.map((p) => String(p.profileId)), type: 'SYSTEM', title: `${t.mandatory ? 'Mandatory training' : 'Training'}: ${t.title}`, body: istDateTime(t.scheduledAt), link: '/trainings' });
   }
   return presentTraining(t.toObject());
 }
@@ -661,7 +691,18 @@ export async function recordTrainingAttendance(actor, id, body = {}) {
   const t = await TrainingSession.findById(assertObjectId(id));
   if (!t) throw new AppError('Training not found', 404);
   if (t.status === 'CANCELLED') throw new AppError('This training was cancelled.', 409);
-  for (const row of Array.isArray(body.attendance) ? body.attendance : []) {
+  // A completed training is a record of what happened: it cannot then be
+  // cancelled, which used to erase it from coverage.
+  if (body.cancel === true && t.status === 'COMPLETED') {
+    throw new AppError('A completed training cannot be cancelled.', 409, [], 'TRAINING_COMPLETED');
+  }
+  // Nobody attends, misses or completes a session that has not started yet.
+  const notYetHeld = t.scheduledAt && t.scheduledAt.getTime() > Date.now();
+  const attendanceRows = Array.isArray(body.attendance) ? body.attendance : [];
+  if (notYetHeld && (body.complete === true || attendanceRows.some((row) => ['ATTENDED', 'ABSENT'].includes(String(row?.status).toUpperCase())))) {
+    throw new AppError(`This training is scheduled for ${istDateTime(t.scheduledAt)}; record attendance or complete it after it has been held.`, 409, [], 'TRAINING_NOT_HELD');
+  }
+  for (const row of attendanceRows) {
     const p = t.participants.find((x) => String(x.profileId) === String(row.profileId));
     if (!p) continue;
     p.status = oneOf(row.status, ['INVITED', 'ATTENDED', 'ABSENT', 'EXEMPT'], 'status');

@@ -4,10 +4,12 @@ import { PortalShell } from '@/components/shell';
 import { Card, DateField, EmptyState, SkeletonRows } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { AttendanceRoster, SectionDto } from '@/lib/types';
+import { isoDay } from '@/components/ops/kit';
 
 /** Admin sees attendance read-only across all sections. */
 export default function AdminAttendance() {
-  const today = new Date().toISOString().slice(0, 10);
+  // India-time calendar day; toISOString() is UTC and showed yesterday before 05:30 IST.
+  const today = isoDay();
   const [sections, setSections] = useState<SectionDto[] | null>(null);
   const [sectionId, setSectionId] = useState('');
   const [date, setDate] = useState(today);

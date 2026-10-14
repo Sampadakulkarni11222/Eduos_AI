@@ -92,10 +92,16 @@ const payLineSchema = new Schema(
     deductions: [{ code: String, name: String, amountPaise: Number }],
     employerContributions: [{ code: String, name: String, amountPaise: Number }],
     arrearsPaise: { type: Number, default: 0 },
-    adjustments: [{ name: String, amountPaise: Number, reason: String }],
+    adjustments: [{ name: String, amountPaise: Number, reason: String, byProfileId: { type: Schema.Types.ObjectId, ref: 'Profile' }, byName: String }],
     statutoryWagePaise: Number,
+    // Wages as the EPF ECR reports them: EPS/EDLI capped at their ceilings.
+    epfWagePaise: Number,
+    epsWagePaise: Number,
+    edliWagePaise: Number,
     grossPaise: Number,
     totalDeductionsPaise: Number,
+    // Net is paid in whole rupees; this is the difference from the exact figure.
+    roundingPaise: { type: Number, default: 0 },
     netPaise: Number,
     bankReady: Boolean,
     warnings: [String],
@@ -114,7 +120,13 @@ const payrollRunSchema = new Schema(
       profileId: { type: Schema.Types.ObjectId, ref: 'Profile' },
       lopDays: { type: Number, default: 0 },
       arrearsPaise: { type: Number, default: 0 },
-      adjustments: [{ name: String, amountPaise: Number, reason: String }],
+      adjustments: [{ name: String, amountPaise: Number, reason: String, byProfileId: { type: Schema.Types.ObjectId, ref: 'Profile' }, byName: String }],
+      // Who last put money (arrears/adjustments) on this line, and who last edited it.
+      moneyByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
+      moneyByName: { type: String, default: null },
+      updatedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
+      updatedByName: { type: String, default: null },
+      updatedAt: { type: Date, default: null },
     }],
     lines: [payLineSchema],
     rulesApplied: [{ ruleId: String, code: String, verified: Boolean, effectiveFrom: Date }],
@@ -122,6 +134,7 @@ const payrollRunSchema = new Schema(
       grossPaise: { type: Number, default: 0 },
       deductionsPaise: { type: Number, default: 0 },
       netPaise: { type: Number, default: 0 },
+      roundingPaise: { type: Number, default: 0 },
       employerContributionsPaise: { type: Number, default: 0 },
       headcount: { type: Number, default: 0 },
     },
@@ -200,6 +213,9 @@ const purchaseRequestSchema = new Schema(
       vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor', required: true },
       vendorName: String,
       amountPaise: { type: Number, required: true, min: 0 },
+      // Optional unit price per item (same order as `items`). When absent the
+      // quote total is apportioned by estimated line value (procurement.service.js).
+      unitPrices: { type: [Number], default: undefined },
       validTill: Date,
       url: String,
       selected: { type: Boolean, default: false },
@@ -211,6 +227,13 @@ const purchaseRequestSchema = new Schema(
     po: {
       number: String, issuedAt: Date, issuedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile' },
       vendorId: { type: Schema.Types.ObjectId, ref: 'Vendor' }, vendorName: String, amountPaise: Number,
+      // Quoted unit price per item at PO time — what receipt, invoice match and
+      // asset cost are valued at.
+      unitPrices: { type: [Number], default: undefined },
+      // Issued to a vendor whose due diligence was not complete: who decided and why.
+      dueDiligenceOverride: {
+        reason: String, byProfileId: { type: Schema.Types.ObjectId, ref: 'Profile' }, byName: String, at: Date, vendorStatus: String,
+      },
     },
     receipts: [{
       at: { type: Date, default: Date.now }, byProfileId: { type: Schema.Types.ObjectId, ref: 'Profile' }, byName: String,

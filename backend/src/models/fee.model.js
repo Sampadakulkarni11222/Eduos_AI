@@ -84,7 +84,9 @@ const paymentSchema = new Schema(
   {
     invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice', required: true },
     amountPaise: { type: Number, required: true },
-    mode: { type: String, enum: ['GATEWAY', 'CASH', 'CHEQUE', 'DD', 'BANK'], required: true },
+    // UPI is its own mode: a counter QR payment is identified by its 12-digit
+    // UTR, and filing it as BANK hid how most families actually pay.
+    mode: { type: String, enum: ['GATEWAY', 'CASH', 'CHEQUE', 'DD', 'BANK', 'UPI'], required: true },
     gatewayRef: { type: String },
     // The gateway's *order* id, kept separately from gatewayRef (which ends up
     // holding the payment id once captured). Webhooks identify the payment by
@@ -92,8 +94,41 @@ const paymentSchema = new Schema(
     // webhook delivery looks it up.
     gatewayOrderRef: { type: String, index: true },
     status: { type: String, enum: ['INITIATED', 'SUCCESS', 'FAILED', 'REFUNDED'], default: 'SUCCESS' },
+    // The school's own receipt series, RCPT/<FY>/<000123>, minted from a
+    // counter when the money is credited (fee.service.js nextReceiptNo). Unique
+    // per school — see the index below. A number the office wrote on a paper
+    // counterfoil is kept separately in `counterfoilNo`, never as the receipt.
     receiptNo: { type: String },
+    counterfoilNo: { type: String, trim: true, default: null },
     reconciledAt: { type: Date },
+
+    // ── Refunds ──────────────────────────────────────────────────────────
+    // A refund is requested against a credited payment and only moves money
+    // once the FEE_REFUND approval is granted. `refundPendingPaise` reserves
+    // the amount while it waits so two requests cannot together exceed what
+    // was paid; `refundedPaise` is what has actually gone back.
+    refundedPaise: { type: Number, default: 0, min: 0 },
+    refundPendingPaise: { type: Number, default: 0, min: 0 },
+    refunds: [{
+      amountPaise: { type: Number, required: true, min: 1 },
+      reason: { type: String, required: true, trim: true },
+      mode: { type: String, enum: ['CASH', 'CHEQUE', 'BANK', 'UPI', 'GATEWAY'], required: true },
+      reference: { type: String, trim: true, default: null },
+      status: { type: String, enum: ['PENDING_APPROVAL', 'COMPLETED', 'REJECTED'], default: 'PENDING_APPROVAL' },
+      voucherNo: { type: String, default: null },
+      approvalRequestId: { type: Schema.Types.ObjectId, ref: 'ApprovalRequest', default: null },
+      requestedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
+      requestedByName: { type: String, default: null },
+      requestedAt: { type: Date, default: Date.now },
+      decidedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
+      decidedAt: { type: Date, default: null },
+      decisionNote: { type: String, default: null },
+    }],
+
+    // Compliance warnings raised when the payment was recorded (e.g. the
+    // Income-tax Act s.269ST cash limit). Kept on the row so the warning is
+    // still visible when the payment is reviewed or audited later.
+    warnings: { type: [String], default: [] },
 
     // ── Approval state ───────────────────────────────────────────────────
     // PUBLISHED is the default so that every payment written before this field
@@ -131,6 +166,13 @@ const paymentSchema = new Schema(
 );
 // What the admin approval queue reads.
 paymentSchema.index({ recordStatus: 1, createdAt: -1 });
+// A receipt number identifies one payment in one school. Partial, because a
+// payment awaiting approval (and every row written before the series existed)
+// has no number yet.
+paymentSchema.index(
+  { tenantId: 1, receiptNo: 1 },
+  { unique: true, partialFilterExpression: { receiptNo: { $type: 'string' } } }
+);
 
 /**
  * A student's fee plan for one academic year: what the total is, and how the

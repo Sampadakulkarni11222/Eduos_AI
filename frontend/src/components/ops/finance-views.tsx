@@ -55,6 +55,8 @@ function RunDetail({ id, onClose, onChanged }: { id: string; onClose: () => void
                 })}
               </tbody></table></div>
               <div className="ops-inline">
+                {/* Only the edited rows are sent; the server merges them by employee, so
+                    other employees' saved LOP and arrears are kept. */}
                 <Button small variant="soft" disabled={busy || !Object.keys(inputs).length} onClick={() => void run(async () => { await opsApi.payrollInputs(id, Object.entries(inputs).map(([profileId, v]) => ({ profileId, lopDays: Number(v.lopDays || 0), arrearsPaise: rupeesToPaise(v.arrears || '0') }))); setInputs({}); toast('Inputs saved — recalculate', 'info'); await reload(); })}>Save inputs</Button>
                 <Button small disabled={busy} onClick={() => void act('calculate', {}, 'Calculated')}>Calculate</Button>
                 {d.status === 'CALCULATED' && <Button small disabled={busy} onClick={() => void act('submit', { acknowledgeUnverifiedRules: d.unverifiedRules.length ? window.confirm('Some statutory rules are unverified. Send for approval anyway? The approver will see this.') : undefined }, 'Sent to the principal for approval')}>Send for approval</Button>}
@@ -86,7 +88,7 @@ function RunDetail({ id, onClose, onChanged }: { id: string; onClose: () => void
               <div className="ops-table-wrap"><table className="ops-table"><thead><tr><th>Filing</th><th>Working file</th><th>Submitted</th><th /></tr></thead><tbody>
                 {['EPF_ECR', 'ESI', 'PT', 'TDS_24Q'].map((code) => {
                   const s = d.statutory.find((x) => x.code === code);
-                  return <tr key={code}><td>{humanize(code)}</td><td>{s?.exportedAt ? fmtDateTime(s.exportedAt) : '—'}</td><td>{s?.submittedAt ? `${fmtDate(s.submittedAt)} · ${s.acknowledgementNo ?? s.challanNo}` : '—'}</td><td className="ops-inline"><Button small variant="soft" onClick={() => void run(async () => { await downloadCsv(`/payroll/runs/${id}/statutory/${code}.csv`, `${code}-${d.period}.csv`); await reload(); })}>Download</Button>{s?.exportedAt && !s.submittedAt && <Button small variant="ghost" onClick={() => { setStat({ code, acknowledgementNo: '', challanNo: '' }); setPrompt('statutory'); }}>Record submission</Button>}</td></tr>;
+                  return <tr key={code}><td>{humanize(code)}</td><td>{s?.exportedAt ? fmtDateTime(s.exportedAt) : '—'}</td><td>{s?.submittedAt ? `${fmtDate(s.submittedAt)} · ${s.acknowledgementNo ?? s.challanNo}` : '—'}</td><td className="ops-inline"><Button small variant="soft" onClick={() => void run(async () => { await downloadCsv(`/payroll/runs/${id}/statutory/${code}.csv`, `${code}-${d.period}.csv`); await reload(); })}>Download</Button>{code === 'EPF_ECR' && <Button small variant="ghost" onClick={() => void run(async () => { await downloadCsv(`/payroll/runs/${id}/statutory/EPF_ECR.txt`, `ECR-${d.period}.txt`); await reload(); })}>ECR text (#~#)</Button>}{s?.exportedAt && !s.submittedAt && <Button small variant="ghost" onClick={() => { setStat({ code, acknowledgementNo: '', challanNo: '' }); setPrompt('statutory'); }}>Record submission</Button>}</td></tr>;
                 })}
               </tbody></table></div>
             </SectionCard>
@@ -238,7 +240,7 @@ function PrDetail({ id, onClose, onChanged }: { id: string; onClose: () => void;
   const [selectionNote, setSelectionNote] = useState('');
   const [receipt, setReceipt] = useState<Record<number, { received: string; rejected: string }>>({});
   const [inv, setInv] = useState({ vendorInvoiceNo: '', amount: '', url: '' });
-  const [prompt, setPrompt] = useState<null | 'cancel' | 'pay-mismatch' | 'initiate' | 'confirm'>(null);
+  const [prompt, setPrompt] = useState<null | 'cancel' | 'pay-mismatch' | 'initiate' | 'confirm' | 'po-override'>(null);
   const { run, busy, error } = useAction();
   const toast = useToast();
   const reload = async () => { await state.reload(); onChanged(); };
@@ -277,7 +279,15 @@ function PrDetail({ id, onClose, onChanged }: { id: string; onClose: () => void;
             {p.selectionNote && <p className="ops-muted">Selection: {p.selectionNote}</p>}
           </SectionCard>
 
-          {canManage && p.status === 'APPROVED' && <Button disabled={busy} onClick={() => void act('po', {}, 'Purchase order issued')}>Issue purchase order</Button>}
+          {canManage && p.status === 'APPROVED' && (() => {
+            // A PO needs a vetted vendor. One still pending due diligence can be
+            // ordered from only with an explicit override and a recorded reason.
+            const vendor = (vendors.data ?? []).find((v) => v.id === String(p.quotes.find((q) => q.selected)?.vendorId ?? ''));
+            const vetted = !vendor || vendor.status === 'ACTIVE';
+            return vetted
+              ? <Button disabled={busy} onClick={() => void act('po', {}, 'Purchase order issued')}>Issue purchase order</Button>
+              : <><div className="ops-callout is-warn">{vendor?.name} has not completed due diligence. Complete it first, or issue the PO with a recorded reason.</div><Button variant="soft" disabled={busy} onClick={() => setPrompt('po-override')}>Issue PO with override…</Button></>;
+          })()}
           {p.po && <KeyValues rows={[['PO', `${p.po.number} · ${fmtDate(p.po.issuedAt)}`], ['Vendor', p.po.vendorName], ['PO amount', money(p.po.amountPaise)]]} />}
 
           {canManage && ['PO_ISSUED', 'PARTIALLY_RECEIVED'].includes(p.status) && (
@@ -310,6 +320,7 @@ function PrDetail({ id, onClose, onChanged }: { id: string; onClose: () => void;
           <Timeline items={p.history} />
         </>
       )}</Loadable>
+ {prompt === 'po-override' && <PromptModal title="Issue PO before due diligence" label="Why the order cannot wait for vetting" hint="Recorded on the purchase order and in its history." onClose={() => setPrompt(null)} onSubmit={(v) => opsApi.prAction(id, 'po', { overrideDueDiligence: true, overrideReason: v }).then(reload)} />}
       {prompt === 'cancel' && <PromptModal title="Cancel purchase request" label="Reason" danger onClose={() => setPrompt(null)} onSubmit={(v) => opsApi.prAction(id, 'cancel', { reason: v }).then(reload)} />}
       {prompt === 'pay-mismatch' && <PromptModal title="Pay despite invoice mismatch" label="Why it should be paid" hint="This goes to the approvers with the mismatch details." onClose={() => setPrompt(null)} onSubmit={(v) => opsApi.prAction(id, 'approve-payment', { reason: v }).then(reload)} />}
       {prompt === 'initiate' && <PromptModal title="Payment initiated" label="Reference (NEFT batch / cheque no.)" multiline={false} onClose={() => setPrompt(null)} onSubmit={(v) => opsApi.prAction(id, 'payment-initiated', { reference: v }).then(reload)} />}

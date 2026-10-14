@@ -76,9 +76,10 @@ describe('recordPayment — happy path', () => {
     expect((await Invoice.findById(invoice._id).lean()).status).toBe('PAID');
   });
 
-  it('generates a receipt number when none is supplied', async () => {
+  it("issues the next number in the school's receipt series for the financial year", async () => {
+    // Was a random hex RCPT-XXXXXXXX; now a gap-free series per FY (fees.receipts.test.js).
     const res = await pay(invoice._id, 1_000);
-    expect(res.receiptNo).toMatch(/^RCPT-[0-9A-F]{8}$/);
+    expect(res.receiptNo).toMatch(/^RCPT\/\d{4}-\d{2}\/\d{6}$/);
   });
 });
 

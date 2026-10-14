@@ -9,6 +9,7 @@ import * as verification from '../modules/administration/verification.service.js
 import * as governance from '../modules/governance/governance.service.js';
 import * as compliance from '../modules/compliance/compliance.service.js';
 import * as lectures from '../modules/lectures/lecture.service.js';
+import * as marketing from '../modules/marketing/marketing.service.js';
 
 /**
  * The in-process scheduler for the operations modules.
@@ -31,6 +32,8 @@ export const JOBS = [
   // Every five minutes with a twenty-minute look-ahead: each class is reminded once, 15 to 20 minutes before it starts.
   { key: 'lectures.reminders', everyMinutes: 5, run: (now) => lectures.sendReminders(SYSTEM, { now }) },
   { key: 'verification.expire', everyMinutes: 60, run: (now) => verification.expireLapsed(now) },
+  // A seat offer past its last day frees the seat; nobody is offered it automatically.
+  { key: 'marketing.offers.expire', everyMinutes: 60, run: (now) => marketing.expireOffers({ now }) },
   { key: 'governance.reminders', everyMinutes: 60, run: () => governance.sendReminders(SYSTEM, { hours: 48 }) },
   { key: 'correspondence.reminders', everyMinutes: 24 * 60, run: (now) => correspondence.sendDueReminders(SYSTEM, { withinDays: 3, now }) },
   { key: 'compliance.reminders', everyMinutes: 24 * 60, run: (now) => compliance.sendDeadlineReminders(SYSTEM, { withinDays: 14, now }) },

@@ -38,7 +38,7 @@ export default function WardenDashboard() {
       <PulseBoard />
 
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
-        <StatCard label="Total Rooms" value={data ? data.occupiedRooms + data.vacantBeds : '—'} delta={data ? `${data.totalCapacity} beds` : undefined} deltaDir="flat" />
+        <StatCard label="Total Rooms" value={data ? data.totalRooms : '—'} delta={data ? `${data.occupiedRooms} occupied · ${data.totalCapacity} beds` : undefined} deltaDir="flat" />
         <StatCard
           label="Occupied Beds"
           value={data ? `${data.hostelStudents} / ${data.totalCapacity}` : '—'}

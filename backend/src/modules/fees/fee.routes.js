@@ -217,7 +217,7 @@ router.get('/summary', requirePermission('fees.read'), controller.getSummary);
  *             properties:
  *               invoiceId: { type: string }
  *               amountPaise: { type: integer }
- *               mode: { type: string, enum: [GATEWAY, CASH, CHEQUE, BANK] }
+ *               mode: { type: string, enum: [GATEWAY, CASH, CHEQUE, DD, BANK, UPI], description: "UPI needs instrument.number = the 12-digit UTR" }
  *               gatewayRef: { type: string }
  *               receiptNo: { type: string }
  *     responses:
@@ -470,7 +470,7 @@ router.post('/payments/:id/change-request', requirePermission('fees.manage', 'AL
  * @swagger
  * /fees/payments/{id}/refund:
  *   post:
- *     summary: Refund a payment
+ *     summary: Request a refund of a credited payment (maker); applied only when the FEE_REFUND approval is granted (checker)
  *     tags: [Fees]
  *     parameters:
  *       - in: path
@@ -478,9 +478,23 @@ router.post('/payments/:id/change-request', requirePermission('fees.manage', 'AL
  *         required: true
  *         schema:
  *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [amountPaise, reason, mode]
+ *             properties:
+ *               amountPaise: { type: integer, description: 'Partial refunds allowed; never more than the unrefunded amount' }
+ *               reason: { type: string }
+ *               mode: { type: string, enum: [CASH, CHEQUE, BANK, UPI, GATEWAY] }
+ *               reference: { type: string, description: 'Cheque no. / UTR / gateway refund id; required unless CASH' }
  *     responses:
- *       200:
- *         description: Payment refunded
+ *       202:
+ *         description: Refund requested and sent for approval
+ *       409:
+ *         description: The payment was never credited, is already refunded, or the amount exceeds what is unrefunded
  */
 router.post('/payments/:id/refund', requirePermission('fees.payments.refund'), controller.refundPayment);
 

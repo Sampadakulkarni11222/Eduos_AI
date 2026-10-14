@@ -48,12 +48,16 @@ correspondenceRouter.get('/:id', cRead, ok((r) => correspondence.get(r.actor, r.
 correspondenceRouter.get('/:id/suggest', cRead, ok((r) => correspondence.suggest(r.actor, r.scope, r.params.id)));
 correspondenceRouter.post('/:id/assign', cManage, ok((r) => correspondence.assign(r.actor, r.scope, r.params.id, r.body), 'Assigned'));
 correspondenceRouter.post('/:id/verify-source', cRead, ok((r) => correspondence.verifySource(r.actor, r.scope, r.params.id, r.body), 'Source verified'));
-correspondenceRouter.post('/:id/transition', cRead, ok((r) => correspondence.transition(r.actor, r.scope, r.params.id, r.body), 'Updated'));
+// Moving a letter's status (incl. closing it as NO_ACTION) and closing it are
+// register-keeping decisions: correspondence.manage, not read. Drafting a reply,
+// submitting it, verifying the source and setting a reminder stay open to the
+// letter's owner or assignee (checked in the service) as well as managers.
+correspondenceRouter.post('/:id/transition', cManage, ok((r) => correspondence.transition(r.actor, r.scope, r.params.id, r.body), 'Updated'));
 correspondenceRouter.post('/:id/draft', cRead, ok((r) => correspondence.saveDraft(r.actor, r.scope, r.params.id, r.body), 'Draft saved'));
 correspondenceRouter.post('/:id/submit', cRead, ok((r) => correspondence.submitForApproval(r.actor, r.scope, r.params.id, r.body), 'Sent for approval'));
 correspondenceRouter.post('/:id/dispatch', cManage, ok((r) => correspondence.dispatch(r.actor, r.scope, r.params.id, r.body), 'Dispatched'));
 correspondenceRouter.post('/:id/acknowledgement', cManage, ok((r) => correspondence.recordAcknowledgement(r.actor, r.scope, r.params.id, r.body), 'Acknowledgement recorded'));
-correspondenceRouter.post('/:id/close', cRead, ok((r) => correspondence.close(r.actor, r.scope, r.params.id, r.body), 'Closed'));
+correspondenceRouter.post('/:id/close', cManage, ok((r) => correspondence.close(r.actor, r.scope, r.params.id, r.body), 'Closed'));
 correspondenceRouter.post('/:id/reminders', cRead, ok((r) => correspondence.addReminder(r.actor, r.scope, r.params.id, r.body), 'Reminder set'));
 correspondenceRouter.post('/:id/legal-hold', cManage, ok((r) => correspondence.setLegalHold(r.actor, r.scope, r.params.id, r.body), 'Legal hold updated'));
 
@@ -151,7 +155,9 @@ complianceRouter.get('/returns/:id/document', kRead, ok((r) => documents.returnD
 complianceRouter.post('/returns/:id/regenerate', kManage, ok((r) => compliance.regenerateReturn(r.actor, r.params.id), 'Regenerated'));
 complianceRouter.post('/returns/:id/data', kManage, ok((r) => compliance.editReturnData(r.actor, r.params.id, r.body), 'Figures updated'));
 complianceRouter.post('/returns/:id/review', kManage, ok((r) => compliance.sendReturnForReview(r.actor, r.params.id, r.body), 'Sent for review'));
-complianceRouter.post('/returns/:id/reviewed', kRead, ok((r) => compliance.reviewReturn(r.actor, r.params.id, r.body), 'Review recorded'));
+// Reviewing moves a return towards submission, so it needs compliance.manage;
+// compliance.read (held by trustees and HR) let them push it to the principal.
+complianceRouter.post('/returns/:id/reviewed', kManage, ok((r) => compliance.reviewReturn(r.actor, r.params.id, r.body), 'Review recorded'));
 complianceRouter.post('/returns/:id/submission', kManage, ok((r) => compliance.recordSubmission(r.actor, r.params.id, r.body), 'Submission recorded'));
 complianceRouter.post('/returns/:id/outcome', kManage, ok((r) => compliance.recordOutcome(r.actor, r.params.id, r.body), 'Outcome recorded'));
 complianceRouter.post('/returns/:id/reopen', kManage, ok((r) => compliance.reopenForResubmission(r.actor, r.params.id), 'Reopened'));

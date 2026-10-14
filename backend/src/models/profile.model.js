@@ -32,5 +32,7 @@ profileSchema.index({ accountId: 1, roleId: 1 }, { unique: true });
 // page. `deletedAt` trails it because every one of those reads excludes
 // soft-deleted rows.
 profileSchema.index({ tenantId: 1, deletedAt: 1 });
+// Staff and family lists look people up by school and role ("every teacher in this school").
+profileSchema.index({ tenantId: 1, roleId: 1, deletedAt: 1 });
 
 export const Profile = model('Profile', profileSchema);

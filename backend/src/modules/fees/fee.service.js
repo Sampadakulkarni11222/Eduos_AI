@@ -1,9 +1,8 @@
-import crypto from 'crypto';
 import mongoose from 'mongoose';
 import {
   FeeHead, FeeStructure, Invoice, InvoiceLine, Payment, PaymentChangeRequest,
 } from '../../models/fee.model.js';
-import { Student, Enrollment } from '../../models/student.model.js';
+import { Student, Enrollment, StudentGuardian } from '../../models/student.model.js';
 // Registered here rather than relied on: payment rows populate the profiles
 // that recorded and verified them, and populate needs the model present even
 // when a caller has imported only the fee module.
@@ -23,9 +22,38 @@ import {
 import { logger } from '../../utils/logger.js';
 import { runInTransaction } from '../../utils/transaction.js';
 import { rowError } from '../../utils/csvImport.js';
+import { nextSequence } from '../../utils/sequence.js';
+import { currentTenantId } from '../../tenancy/tenantContext.js';
+import { createRequest, registerApprovalHandler } from '../approvals/approval.service.js';
+import { inr, financialYear, istDayBounds } from '../finance-ops/format.js';
 
 // Mirrors the enum on paymentSchema in models/fee.model.js.
-const PAYMENT_MODES = ['GATEWAY', 'CASH', 'CHEQUE', 'DD', 'BANK'];
+const PAYMENT_MODES = ['GATEWAY', 'CASH', 'CHEQUE', 'DD', 'BANK', 'UPI'];
+
+/**
+ * Income-tax Act s.269ST: no person may receive ₹2,00,000 or more in cash
+ * from one person in a day. The cashier is warned (and the warning is kept on
+ * the payment and in the audit trail) rather than blocked, because the office
+ * may need to record what physically happened — but nobody can say later that
+ * the limit went unnoticed.
+ */
+export const CASH_LIMIT_269ST_PAISE = 200_000 * 100;
+
+/**
+ * The next receipt number in this school's gap-free series for the financial
+ * year the receipt is issued in: `RCPT/2026-27/000123`.
+ *
+ * Minted only when money is actually credited (a direct publish, an admin's
+ * approval, a settled gateway payment), so a payment that is queued and then
+ * rejected never consumes a number. Pass the transaction's session where there
+ * is one: an aborted transaction then gives its number back.
+ */
+export async function nextReceiptNo({ session = null, at = new Date() } = {}) {
+  const fy = financialYear(at);
+  const tenant = currentTenantId() ?? 'platform';
+  const n = await nextSequence(`receipt:${tenant}:${fy}`, { session });
+  return `RCPT/${fy}/${String(n).padStart(6, '0')}`;
+}
 
 /**
  * What each manual payment mode has to carry.
@@ -52,6 +80,9 @@ const INSTRUMENT_RULES = {
   },
 };
 
+/** A UPI transaction is identified by its 12-digit UTR (RRN). */
+const UPI_UTR = /^\d{12}$/;
+
 // Proof is an image of a physical instrument or a bank receipt. Anything
 // executable or unopenable is refused: the extension list is intentionally
 // narrower than the upload endpoint's, because this is evidence someone will
@@ -76,6 +107,32 @@ export function canPublishPayments(actor) {
  * subdocument to store. Throws with the specific missing fields named.
  */
 export function buildInstrument(mode, instrument = {}) {
+  if (mode === 'UPI') {
+    // A counter UPI payment carries one thing worth reconciling against: the
+    // UTR the bank settles under. A screenshot is welcome but not demanded —
+    // the UTR is what a bank statement can be searched by.
+    const utr = String(instrument?.number ?? instrument?.referenceNo ?? '').replace(/\s+/g, '');
+    if (!UPI_UTR.test(utr)) {
+      throw new AppError('UPI payments require the 12-digit UTR / transaction reference', 400, ['UPI UTR'], 'PAYMENT_DETAILS_INCOMPLETE');
+    }
+    const proofUrl = instrument?.proofUrl ? String(instrument.proofUrl).trim() : null;
+    if (proofUrl) {
+      const ext = proofUrl.split('?')[0].split('.').pop()?.toLowerCase();
+      if (!ext || !PROOF_EXTENSIONS.includes(ext)) {
+        throw new AppError(`UPI proof must be one of: ${PROOF_EXTENSIONS.join(', ')}`, 400, [], 'PAYMENT_PROOF_INVALID');
+      }
+    }
+    const instrumentDate = instrument?.instrumentDate ? new Date(instrument.instrumentDate) : null;
+    return {
+      number: utr,
+      referenceNo: utr,
+      bankName: instrument?.bankName ? String(instrument.bankName).trim() : null,
+      instrumentDate: instrumentDate && !Number.isNaN(instrumentDate.getTime()) ? instrumentDate : null,
+      proofUrl,
+      proofName: instrument?.proofName ? String(instrument.proofName).trim() : null,
+    };
+  }
+
   const rules = INSTRUMENT_RULES[mode];
   if (!rules) return null; // CASH and GATEWAY carry no instrument of their own.
 
@@ -540,6 +597,53 @@ async function assertInvoiceOwnership(actor, invoice) {
 }
 
 /**
+ * The s.269ST check for a cash payment: how much cash this payer has already
+ * handed over today (India time), across every child of the family, and a
+ * warning if this payment takes it to ₹2,00,000 or more.
+ *
+ * "Payer" is resolved as the student's family — the student plus any sibling
+ * sharing a guardian — because the person at the counter is the parent, and a
+ * parent paying for two children is one payer, not two.
+ */
+export async function cashLimitWarnings({ invoiceId, amountPaise, paidOn = new Date() }) {
+  const invoice = await Invoice.findById(invoiceId).select('enrollmentId').lean();
+  if (!invoice) return [];
+  const enrollment = await Enrollment.findById(invoice.enrollmentId).select('studentId').lean();
+  let enrollmentIds = [invoice.enrollmentId];
+  if (enrollment?.studentId) {
+    const guardians = await StudentGuardian.find({ studentId: enrollment.studentId }).select('guardianProfileId').lean();
+    const siblings = guardians.length
+      ? await StudentGuardian.find({ guardianProfileId: { $in: guardians.map((g) => g.guardianProfileId) } }).select('studentId').lean()
+      : [];
+    const studentIds = [enrollment.studentId, ...siblings.map((g) => g.studentId)];
+    const enrs = await Enrollment.find({ studentId: { $in: studentIds } }).select('_id').lean();
+    if (enrs.length) enrollmentIds = enrs.map((e) => e._id);
+  }
+  const invoices = await Invoice.find({ enrollmentId: { $in: enrollmentIds } }).select('_id').lean();
+  const [from, to] = istDayBounds(paidOn);
+  const [agg] = await Payment.aggregate([
+    {
+      $match: {
+        invoiceId: { $in: invoices.map((i) => i._id) },
+        mode: 'CASH',
+        recordStatus: { $ne: 'REJECTED' },
+        status: { $nin: ['FAILED', 'REFUNDED'] },
+        $or: [{ paidOn: { $gte: from, $lt: to } }, { paidOn: null, createdAt: { $gte: from, $lt: to } }],
+      },
+    },
+    { $group: { _id: null, total: { $sum: '$amountPaise' } } },
+  ]);
+  const already = agg?.total ?? 0;
+  const total = already + amountPaise;
+  if (total < CASH_LIMIT_269ST_PAISE) return [];
+  return [
+    `CASH_LIMIT_269ST: cash received from this family today totals ${inr(total)}`
+    + `${already ? ` (${inr(already)} earlier today + ${inr(amountPaise)} now)` : ''}, at or above the ${inr(CASH_LIMIT_269ST_PAISE)} limit in s.269ST of the Income-tax Act. `
+    + 'Ask for a cheque, DD, UPI or bank transfer for the balance; a penalty equal to the amount may apply to the school.',
+  ];
+}
+
+/**
  * Registers a payment on the ledger.
  *
  * Two outcomes, decided by `fees.payments.approve`:
@@ -590,6 +694,16 @@ export async function recordPayment(actor, scope, {
 
   const publishes = canPublishPayments(actor);
 
+  // The receipt number is the school's series, never a value from the form. A
+  // number the office already wrote on a paper counterfoil is still worth
+  // keeping, so it is stored beside the receipt rather than as it.
+  const counterfoilNo = receiptNo ? String(receiptNo).trim().slice(0, 60) || null : null;
+
+  // s.269ST: warn, and keep the warning with the payment.
+  const warnings = mode === 'CASH'
+    ? await cashLimitWarnings({ invoiceId, amountPaise: amount, paidOn: paidOnDate })
+    : [];
+
   if (!publishes) {
     return submitPaymentForApproval(actor, {
       invoiceId,
@@ -600,7 +714,8 @@ export async function recordPayment(actor, scope, {
       notes,
       planId,
       installmentSeq,
-      receiptNo,
+      counterfoilNo,
+      warnings,
     });
   }
 
@@ -646,13 +761,16 @@ export async function recordPayment(actor, scope, {
     }
 
     try {
+      const issuedReceiptNo = await nextReceiptNo({ session });
       const [payment] = await Payment.create(
         [{
           invoiceId,
           amountPaise: amount,
           mode,
           gatewayRef,
-          receiptNo: receiptNo ?? `RCPT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+          receiptNo: issuedReceiptNo,
+          counterfoilNo,
+          warnings,
           instrument: storedInstrument,
           paidOn: paidOnDate,
           notes: notes ?? null,
@@ -678,6 +796,9 @@ export async function recordPayment(actor, scope, {
           mode,
           recordStatus: 'PUBLISHED',
           direct: true,
+          receiptNo: payment.receiptNo,
+          ...(counterfoilNo && { counterfoilNo }),
+          ...(warnings.length && { warnings }),
         },
       });
 
@@ -688,6 +809,7 @@ export async function recordPayment(actor, scope, {
         status: invoice.status,
         recordStatus: 'PUBLISHED',
         paidPaise: invoice.paidPaise,
+        warnings,
       };
     } catch (err) {
       // Inside a transaction the throw rolls the increment back for us. On a
@@ -750,7 +872,7 @@ async function pendingCreditPaise(invoiceId) {
  * the second would only fail at approval time, long after the payer left.
  */
 async function submitPaymentForApproval(actor, {
-  invoiceId, amount, mode, instrument, paidOn, notes, planId, installmentSeq, receiptNo,
+  invoiceId, amount, mode, instrument, paidOn, notes, planId, installmentSeq, counterfoilNo = null, warnings = [],
 }) {
   const invoice = await Invoice.findById(invoiceId).lean();
   if (!invoice) throw new AppError('Invoice not found', 404);
@@ -780,7 +902,10 @@ async function submitPaymentForApproval(actor, {
     notes: notes ?? null,
     planId: planId ?? null,
     installmentSeq: installmentSeq ?? null,
-    receiptNo: receiptNo ?? `RCPT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+    // No receipt number yet: the series is issued when an admin approves, so
+    // a rejected payment never leaves a gap in it.
+    counterfoilNo,
+    warnings,
     recordStatus: 'PENDING_ADMIN_APPROVAL',
     createdByProfileId: actor?.profileId ?? null,
     createdByRole: actor?.roleKey ?? null,
@@ -797,17 +922,19 @@ async function submitPaymentForApproval(actor, {
       mode,
       recordStatus: 'PENDING_ADMIN_APPROVAL',
       hasProof: Boolean(instrument?.proofUrl),
+      ...(warnings.length && { warnings }),
     },
   });
 
   return {
     payment,
-    receiptNo: payment.receiptNo,
+    receiptNo: null,
     recordStatus: 'PENDING_ADMIN_APPROVAL',
     status: invoice.status,
     paidPaise: invoice.paidPaise,
     awaitingApproval: true,
-    message: 'Payment recorded and sent for admin approval. It is not counted against the invoice until approved.',
+    warnings,
+    message: 'Payment recorded and sent for admin approval. It is not counted against the invoice until approved; the receipt number is issued on approval.',
   };
 }
 
@@ -820,8 +947,16 @@ async function submitPaymentForApproval(actor, {
  * direct path uses, because the balance can have moved since submission.
  */
 export async function approvePayment(actor, paymentId) {
+  // Only a live, uncredited payment can be approved. `status` matters as much
+  // as `recordStatus`: a refunded or failed row must never be credited, even if
+  // it somehow still reads as pending.
   const claimed = await Payment.findOneAndUpdate(
-    { _id: paymentId, recordStatus: 'PENDING_ADMIN_APPROVAL' },
+    {
+      _id: paymentId,
+      recordStatus: 'PENDING_ADMIN_APPROVAL',
+      status: { $nin: ['REFUNDED', 'FAILED', 'INITIATED'] },
+      refundedPaise: { $in: [0, null] },
+    },
     {
       $set: {
         recordStatus: 'PUBLISHED',
@@ -836,8 +971,16 @@ export async function approvePayment(actor, paymentId) {
   );
 
   if (!claimed) {
-    const existing = await Payment.findById(paymentId).select('recordStatus').lean();
+    const existing = await Payment.findById(paymentId).select('recordStatus status').lean();
     if (!existing) throw new AppError('Payment not found', 404);
+    if (['REFUNDED', 'FAILED', 'INITIATED'].includes(existing.status)) {
+      throw new AppError(
+        `This payment is ${existing.status.toLowerCase()} and cannot be approved or credited.`,
+        409,
+        [],
+        'PAYMENT_NOT_APPROVABLE'
+      );
+    }
     throw new AppError(
       `This payment is already ${(existing.recordStatus ?? 'PUBLISHED').toLowerCase().replace(/_/g, ' ')}`,
       409,
@@ -874,6 +1017,12 @@ export async function approvePayment(actor, paymentId) {
     );
   }
 
+  // The money is now on the invoice, so this is the moment the receipt exists.
+  if (!claimed.receiptNo) {
+    claimed.receiptNo = await nextReceiptNo();
+    await Payment.updateOne({ _id: claimed._id }, { $set: { receiptNo: claimed.receiptNo } });
+  }
+
   await recordAudit({
     actor,
     action: 'fees.payment.approve',
@@ -882,6 +1031,7 @@ export async function approvePayment(actor, paymentId) {
     before: { recordStatus: 'PENDING_ADMIN_APPROVAL' },
     after: {
       recordStatus: 'PUBLISHED',
+      receiptNo: claimed.receiptNo,
       amountPaise: claimed.amountPaise,
       invoiceId: String(claimed.invoiceId),
       invoiceStatus: invoice.status,
@@ -990,6 +1140,16 @@ async function applyPaymentFieldChange(actor, payment, field, rawValue, { action
   const before = readPaymentField(payment, field);
   const value = coercePaymentField(field, rawValue);
 
+  // Money already refunded (or reserved for a refund awaiting approval) cannot
+  // be edited out of existence by shrinking the payment under it.
+  const refundCommitted = (payment.refundedPaise ?? 0) + (payment.refundPendingPaise ?? 0);
+  if (field === 'amountPaise' && value < refundCommitted) {
+    throw new AppError(
+      `This payment has ${inr(refundCommitted)} refunded or awaiting refund; it cannot be made smaller than that.`,
+      409, [], 'PAYMENT_HAS_REFUNDS'
+    );
+  }
+
   if (field === 'amountPaise' && payment.recordStatus !== 'REJECTED') {
     const delta = value - payment.amountPaise;
     if (delta !== 0 && (payment.recordStatus ?? 'PUBLISHED') === 'PUBLISHED') {
@@ -1037,7 +1197,14 @@ async function applyPaymentFieldChange(actor, payment, field, rawValue, { action
   } else {
     payment[field] = value;
   }
-  await payment.save();
+  try {
+    await payment.save();
+  } catch (err) {
+    if (err?.code === 11000) {
+      throw new AppError('That receipt number is already used by another payment in this school.', 409, [], 'RECEIPT_NO_TAKEN');
+    }
+    throw err;
+  }
 
   await recordAudit({
     actor,
@@ -1339,7 +1506,7 @@ export async function payOnline(actor, scope, { invoiceId, amountPaise }) {
     amountPaise: amount,
     mode: 'GATEWAY',
     gatewayRef: charge.gatewayRef,
-    receiptNo: `RCPT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+    receiptNo: await nextReceiptNo(),
   });
 
   invoice.paidPaise += amount;
@@ -1428,7 +1595,6 @@ export async function settleGatewayPayment({ event, orderId, gatewayPaymentId, a
         status: 'SUCCESS',
         gatewayRef: gatewayPaymentId ?? intent.gatewayRef,
         gatewayOrderRef: orderId,
-        receiptNo: intent.receiptNo ?? `RCPT-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
         reconciledAt: new Date(),
       },
     },
@@ -1437,6 +1603,11 @@ export async function settleGatewayPayment({ event, orderId, gatewayPaymentId, a
 
   if (!claimed) {
     return { handled: true, idempotent: true, paymentId: intent._id, reason: 'Concurrent delivery already settled this payment' };
+  }
+  // Minted after the claim, so a duplicate delivery never burns a number.
+  if (!claimed.receiptNo) {
+    claimed.receiptNo = await nextReceiptNo();
+    await Payment.updateOne({ _id: claimed._id }, { $set: { receiptNo: claimed.receiptNo } });
   }
 
   await Invoice.updateOne({ _id: claimed.invoiceId }, { $inc: { paidPaise: claimed.amountPaise } });
@@ -1863,18 +2034,28 @@ export async function getInvoiceDetail(actor, scope, invoiceId) {
   };
 }
 
-/** Single payment receipt, ownership-checked — backs the receipt PDF download. */
+/**
+ * Single payment receipt, ownership-checked — backs the receipt PDF download.
+ *
+ * Carries what an Indian school fee receipt has to show: the school's receipt
+ * number, the instrument's own reference (UTR, cheque no., gateway id — not the
+ * receipt number again), the fee heads billed, what is still due, the
+ * academic year, the admission number and who received the money.
+ */
 export async function getPaymentReceipt(actor, scope, paymentId) {
   const payment = await Payment.findById(paymentId)
+    .populate({ path: 'createdByProfileId', select: 'displayName' })
+    .populate({ path: 'approvedByProfileId', select: 'displayName' })
     .populate({
       path: 'invoiceId',
-      select: 'invoiceNo enrollmentId',
+      select: 'invoiceNo enrollmentId totalPaise paidPaise status dueOn',
       populate: {
         path: 'enrollmentId',
-        select: 'studentId sectionId',
+        select: 'studentId sectionId academicYearId',
         populate: [
-          { path: 'studentId', select: 'firstName lastName' },
+          { path: 'studentId', select: 'firstName lastName admissionNo' },
           { path: 'sectionId', select: 'name', populate: { path: 'gradeId', select: 'name' } },
+          { path: 'academicYearId', select: 'name' },
         ],
       },
     })
@@ -1887,51 +2068,312 @@ export async function getPaymentReceipt(actor, scope, paymentId) {
     if (!enrollmentId || !ids.includes(enrollmentId)) {
       throw new AppError('This payment does not belong to your account', 403);
     }
+    // A family's receipt exists only for money that was actually credited.
+    if (['PENDING_ADMIN_APPROVAL', 'REJECTED'].includes(payment.recordStatus)) {
+      throw new AppError('This payment has not been confirmed yet', 404);
+    }
   }
 
   const inv = payment.invoiceId;
   const enrollment = inv?.enrollmentId;
   const student = enrollment?.studentId;
   const section = enrollment?.sectionId;
+  const lines = inv?._id ? await InvoiceLine.find({ invoiceId: inv._id }).sort({ createdAt: 1 }).lean() : [];
+  const instrument = payment.instrument ?? null;
+  // The transaction's own identifier, by mode. Never the receipt number.
+  const transactionRef = payment.mode === 'GATEWAY'
+    ? payment.gatewayRef ?? payment.gatewayOrderRef ?? null
+    : payment.mode === 'BANK' || payment.mode === 'UPI'
+      ? instrument?.referenceNo ?? instrument?.number ?? null
+      : instrument?.number ?? null;
+
   return {
     receiptNo: payment.receiptNo ?? '—',
+    counterfoilNo: payment.counterfoilNo ?? null,
     invoiceNo: inv?.invoiceNo ?? '—',
     studentName: student ? `${student.firstName} ${student.lastName ?? ''}`.trim() : '—',
+    admissionNo: student?.admissionNo ?? null,
     class: section ? [section.gradeId?.name, section.name].filter(Boolean).join(' - ') : '—',
+    academicYear: enrollment?.academicYearId?.name ?? null,
     amountPaise: payment.amountPaise,
+    refundedPaise: payment.refundedPaise ?? 0,
     mode: payment.mode,
     status: payment.status ?? 'SUCCESS',
+    recordStatus: payment.recordStatus ?? 'PUBLISHED',
+    transactionRef,
+    instrument: instrument ? {
+      number: instrument.number ?? null,
+      referenceNo: instrument.referenceNo ?? null,
+      bankName: instrument.bankName ?? null,
+      instrumentDate: instrument.instrumentDate ?? null,
+    } : null,
+    paidOn: payment.paidOn ?? payment.createdAt,
     createdAt: payment.createdAt,
+    feeHeads: lines.map((l) => ({
+      description: l.description,
+      amountPaise: l.amountPaise,
+      concessionPaise: l.concessionPaise ?? 0,
+    })),
+    invoiceTotalPaise: inv?.totalPaise ?? null,
+    invoicePaidPaise: inv?.paidPaise ?? null,
+    balanceDuePaise: inv ? Math.max(0, (inv.totalPaise ?? 0) - (inv.paidPaise ?? 0)) : null,
+    receivedBy: payment.mode === 'GATEWAY' ? null : (payment.createdByProfileId?.displayName ?? null),
+    verifiedBy: payment.approvedByProfileId?.displayName ?? null,
   };
 }
 
-export async function refundPayment(paymentId) {
-  // Atomically flip status only if it isn't already REFUNDED — the DB-level
-  // condition ensures two concurrent refund requests can't both "win" the
-  // check and double-deduct the invoice below.
-  const payment = await Payment.findOneAndUpdate(
-    { _id: paymentId, status: { $ne: 'REFUNDED' } },
-    { $set: { status: 'REFUNDED' } },
-    { new: true }
-  );
-  if (!payment) {
-    const exists = await Payment.exists({ _id: paymentId });
-    throw new AppError(exists ? 'Payment already refunded' : 'Payment not found', exists ? 409 : 404);
+/* ── Refunds ─────────────────────────────────────────────────────────────
+ *
+ * A refund gives back money that was actually credited, so it is refused for
+ * anything else: a payment still awaiting approval (nothing was credited — the
+ * old code debited the invoice anyway, which is how a ledger went negative),
+ * a rejected or failed one, or more than is still unrefunded.
+ *
+ * It is two steps, maker and checker. The person holding
+ * `fees.payments.refund` REQUESTS it — with the amount (partial is fine), the
+ * reason, and how the money goes back — and the amount is reserved on the
+ * payment at once. Nothing moves until the FEE_REFUND approval (the principal,
+ * by default policy) is granted; the approval engine refuses to let the
+ * requester decide their own request. Approval is what debits the invoice,
+ * issues the refund voucher number and writes the audit entry.
+ */
+
+const REFUND_MODES = ['CASH', 'CHEQUE', 'BANK', 'UPI', 'GATEWAY'];
+
+export async function requestRefund(actor, paymentId, body = {}) {
+  if (!actor?.profileId) throw new AppError('Select a profile first', 403);
+  if (!mongoose.isValidObjectId(String(paymentId))) throw new AppError('Payment not found', 404);
+
+  const reason = String(body.reason ?? '').trim();
+  if (!reason) throw new AppError('A reason is required to refund a payment', 400, [], 'REASON_REQUIRED');
+  const amount = Number(body.amountPaise);
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new AppError('amountPaise must be a positive whole number of paise', 400, [], 'INVALID_AMOUNT');
+  }
+  const mode = String(body.mode ?? '').toUpperCase();
+  if (!REFUND_MODES.includes(mode)) {
+    throw new AppError(`Say how the refund is paid: mode must be one of ${REFUND_MODES.join(', ')}`, 400, [], 'REFUND_MODE_REQUIRED');
+  }
+  const reference = body.reference ? String(body.reference).trim().slice(0, 120) : null;
+  if (mode !== 'CASH' && !reference) {
+    throw new AppError('A non-cash refund needs its reference (cheque no., UTR or gateway refund id)', 400, [], 'REFUND_REFERENCE_REQUIRED');
   }
 
-  // $inc is atomic, so concurrent refunds of different payments on the same
-  // invoice can't clobber each other's paidPaise update either.
-  const invoice = await Invoice.findByIdAndUpdate(
-    payment.invoiceId,
-    { $inc: { paidPaise: -payment.amountPaise } },
+  // Reserve the amount atomically: only a credited, successful payment with
+  // enough left unrefunded (counting refunds already awaiting approval) matches.
+  const payment = await Payment.findOneAndUpdate(
+    {
+      _id: paymentId,
+      recordStatus: { $nin: ['PENDING_ADMIN_APPROVAL', 'REJECTED'] },
+      status: { $in: ['SUCCESS', null] },
+      $expr: {
+        $lte: [
+          { $add: [{ $ifNull: ['$refundedPaise', 0] }, { $ifNull: ['$refundPendingPaise', 0] }, amount] },
+          '$amountPaise',
+        ],
+      },
+    },
+    {
+      $inc: { refundPendingPaise: amount },
+      $push: {
+        refunds: {
+          amountPaise: amount, reason, mode, reference, status: 'PENDING_APPROVAL',
+          requestedByProfileId: actor.profileId, requestedByName: actor.displayName ?? null, requestedAt: new Date(),
+        },
+      },
+    },
     { new: true }
   );
-  invoice.paidPaise = Math.max(0, invoice.paidPaise);
-  invoice.status = invoice.paidPaise === 0 ? 'PENDING' : 'PARTIAL';
-  await invoice.save();
 
-  return { payment, invoice };
+  if (!payment) {
+    const existing = await Payment.findById(paymentId).lean();
+    if (!existing) throw new AppError('Payment not found', 404);
+    if (['PENDING_ADMIN_APPROVAL', 'REJECTED'].includes(existing.recordStatus)) {
+      throw new AppError(
+        'Only a credited payment can be refunded — this one was never counted against the invoice.',
+        409, [], 'PAYMENT_NOT_CREDITED'
+      );
+    }
+    if (existing.status && existing.status !== 'SUCCESS') {
+      throw new AppError(`This payment is ${existing.status.toLowerCase()} and cannot be refunded.`, 409, [], 'PAYMENT_NOT_REFUNDABLE');
+    }
+    const left = existing.amountPaise - (existing.refundedPaise ?? 0) - (existing.refundPendingPaise ?? 0);
+    throw new AppError(
+      left <= 0
+        ? 'This payment has already been refunded in full (or the rest is awaiting a refund approval).'
+        : `A refund of ${inr(amount)} is more than the ${inr(left)} still unrefunded on this payment.`,
+      409, [], 'REFUND_EXCEEDS_PAYMENT'
+    );
+  }
+
+  const entry = payment.refunds.at(-1);
+  let approval;
+  try {
+    const invoice = await Invoice.findById(payment.invoiceId).select('invoiceNo').lean();
+    approval = await createRequest(actor, {
+      category: 'FEE_REFUND',
+      title: `Refund ${inr(amount)} on receipt ${payment.receiptNo ?? String(payment._id)}`.slice(0, 200),
+      amountPaise: amount,
+      summary: [
+        `Invoice ${invoice?.invoiceNo ?? '—'}, receipt ${payment.receiptNo ?? '—'}: paid ${inr(payment.amountPaise)} by ${payment.mode}.`,
+        `Refund ${inr(amount)} by ${mode}${reference ? ` (ref ${reference})` : ''}.`,
+        payment.refundedPaise ? `Already refunded: ${inr(payment.refundedPaise)}.` : '',
+        `Reason: ${reason}`,
+      ].filter(Boolean).join('\n'),
+      priority: 'HIGH',
+    }, { entityType: 'PaymentRefund', entityId: payment._id });
+  } catch (err) {
+    // Give the reservation back: no approval, no pending refund.
+    await Payment.updateOne(
+      { _id: payment._id },
+      { $inc: { refundPendingPaise: -amount }, $pull: { refunds: { _id: entry._id } } }
+    );
+    throw err;
+  }
+
+  await Payment.updateOne(
+    { _id: payment._id, 'refunds._id': entry._id },
+    { $set: { 'refunds.$.approvalRequestId': approval.id } }
+  );
+
+  await recordAudit({
+    actor,
+    action: 'fees.payment.refund.request',
+    entityType: 'Payment',
+    entityId: payment._id,
+    after: {
+      amountPaise: amount, mode, reference, reason,
+      approvalRequestId: String(approval.id), invoiceId: String(payment.invoiceId),
+    },
+  });
+
+  return {
+    paymentId: String(payment._id),
+    receiptNo: payment.receiptNo ?? null,
+    refund: { id: String(entry._id), amountPaise: amount, mode, reference, reason, status: 'PENDING_APPROVAL' },
+    approvalRequestId: String(approval.id),
+    approvalRefNo: approval.refNo,
+    awaitingApproval: true,
+    message: 'Refund requested. Nothing is paid back or taken off the invoice until it is approved.',
+  };
 }
+
+/** Kept for callers of the old name; a refund is always a request now. */
+export const refundPayment = requestRefund;
+
+async function nextRefundVoucherNo() {
+  const fy = financialYear();
+  const tenant = currentTenantId() ?? 'platform';
+  const n = await nextSequence(`refund:${tenant}:${fy}`);
+  return `RFND/${fy}/${String(n).padStart(6, '0')}`;
+}
+
+function pendingRefundFor(payment, req) {
+  return (payment?.refunds ?? []).find(
+    (r) => String(r.approvalRequestId) === String(req._id ?? req.id) && r.status === 'PENDING_APPROVAL'
+  );
+}
+
+registerApprovalHandler('PaymentRefund', {
+  async onApproved(req, actor) {
+    const payment = await Payment.findById(req.entityId);
+    const entry = pendingRefundFor(payment, req);
+    if (!entry) throw new AppError('The refund this approval refers to is no longer pending.', 409, [], 'REFUND_NOT_PENDING');
+    const amount = entry.amountPaise;
+    const voucherNo = await nextRefundVoucherNo();
+
+    const updated = await Payment.findOneAndUpdate(
+      {
+        _id: payment._id,
+        status: { $in: ['SUCCESS', null] },
+        refunds: { $elemMatch: { _id: entry._id, status: 'PENDING_APPROVAL' } },
+        $expr: { $lte: [{ $add: [{ $ifNull: ['$refundedPaise', 0] }, amount] }, '$amountPaise'] },
+      },
+      {
+        $inc: { refundedPaise: amount, refundPendingPaise: -amount },
+        $set: {
+          'refunds.$.status': 'COMPLETED',
+          'refunds.$.voucherNo': voucherNo,
+          'refunds.$.decidedByProfileId': actor?.profileId ?? null,
+          'refunds.$.decidedAt': new Date(),
+        },
+      },
+      { new: true }
+    );
+    if (!updated) throw new AppError('This refund no longer fits the payment.', 409, [], 'REFUND_EXCEEDS_PAYMENT');
+    const fullyRefunded = updated.refundedPaise >= updated.amountPaise;
+    if (fullyRefunded) await Payment.updateOne({ _id: updated._id }, { $set: { status: 'REFUNDED' } });
+
+    // The invoice gives back exactly what was refunded. Its status is derived
+    // from the new figure — a cancelled invoice stays cancelled, and an unpaid
+    // one past its due date reads overdue rather than being forced to PENDING.
+    const invoice = await Invoice.findOneAndUpdate(
+      { _id: updated.invoiceId },
+      [
+        { $set: { paidPaise: { $max: [0, { $subtract: ['$paidPaise', amount] }] } } },
+        {
+          $set: {
+            status: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ['$status', 'CANCELLED'] }, then: 'CANCELLED' },
+                  { case: { $gte: ['$paidPaise', '$totalPaise'] }, then: 'PAID' },
+                  { case: { $gt: ['$paidPaise', 0] }, then: 'PARTIAL' },
+                  { case: { $lt: ['$dueOn', '$$NOW'] }, then: 'OVERDUE' },
+                ],
+                default: 'PENDING',
+              },
+            },
+          },
+        },
+      ],
+      { new: true }
+    );
+
+    await recordAudit({
+      actor,
+      action: 'fees.payment.refund',
+      entityType: 'Payment',
+      entityId: updated._id,
+      before: { refundedPaise: payment.refundedPaise ?? 0, status: payment.status ?? 'SUCCESS' },
+      after: {
+        refundedPaise: updated.refundedPaise,
+        status: fullyRefunded ? 'REFUNDED' : (updated.status ?? 'SUCCESS'),
+        amountPaise: amount, voucherNo, mode: entry.mode, reference: entry.reference, reason: entry.reason,
+        requestedBy: entry.requestedByName ?? String(entry.requestedByProfileId ?? ''),
+        approvalRequestId: String(req._id ?? req.id),
+        invoiceId: String(updated.invoiceId),
+        invoicePaidPaise: invoice?.paidPaise ?? null,
+        invoiceStatus: invoice?.status ?? null,
+      },
+    });
+  },
+  async onRejected(req, actor) {
+    const payment = await Payment.findById(req.entityId);
+    const entry = pendingRefundFor(payment, req);
+    if (!entry) return;
+    await Payment.updateOne(
+      { _id: payment._id, refunds: { $elemMatch: { _id: entry._id, status: 'PENDING_APPROVAL' } } },
+      {
+        $inc: { refundPendingPaise: -entry.amountPaise },
+        $set: {
+          'refunds.$.status': 'REJECTED',
+          'refunds.$.decidedByProfileId': actor?.profileId ?? null,
+          'refunds.$.decidedAt': new Date(),
+          'refunds.$.decisionNote': req.stages?.[req.currentStage]?.comment ?? null,
+        },
+      }
+    );
+    await recordAudit({
+      actor,
+      action: 'fees.payment.refund.reject',
+      entityType: 'Payment',
+      entityId: payment._id,
+      after: { amountPaise: entry.amountPaise, approvalRequestId: String(req._id ?? req.id) },
+    });
+  },
+  // A returned request stays pending: the requester answers and resubmits it.
+});
 
 export async function getSummary(actor, scope, query = {}) {
   // Aggregation pipelines do not auto-cast strings → ObjectIds, so cast here.
@@ -1957,8 +2399,11 @@ export async function getSummary(actor, scope, query = {}) {
 
   // Aggregate in the DB instead of loading every invoice into memory.
   const now = new Date();
+  // A cancelled invoice bills nobody: counting it made the collection rate
+  // look worse and the unpaid count larger than they are.
+  filter.status = { $ne: 'CANCELLED' };
   const [agg] = await Invoice.aggregate([
-    { $match: Object.keys(filter).length ? filter : {} },
+    { $match: filter },
     {
       $group: {
         _id: null,

@@ -2,6 +2,7 @@
 // Seeds a complete, realistic, multi-role school dataset (students, parents, teachers, wardens, admins,
 // academic terms, subjects, subject offerings, timetables, attendance, exams, marks, assignments, submissions, invoices).
 
+import { nextReceiptNo } from '../modules/fees/fee.service.js';
 import 'dotenv/config';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
@@ -23,6 +24,7 @@ import { AttendanceRecord } from '../models/attendanceRecord.model.js';
 import { MedicalRecord } from '../models/medicalRecord.model.js';
 import { encrypt } from '../utils/crypto.js';
 import { Exam, ExamSubject, Mark } from '../models/exam.model.js';
+import { gradeForPercentage, percentage } from '../utils/grading.js';
 import { Assignment, Submission } from '../models/assignment.model.js';
 import { Invoice, InvoiceLine, Payment } from '../models/fee.model.js';
 import { TimetableSlot } from '../models/timetableSlot.model.js';
@@ -41,6 +43,8 @@ const DEMO_PASSWORD = 'ChangeMe@123!';
  * written with no school would be invisible to every portal. The demo data is
  * Oakridge's; override with SEED_SCHOOL_SLUG / SEED_SCHOOL_NAME.
  */
+const FATHER_NAMES = ['Rajesh', 'Amit', 'Suresh', 'Vikram', 'Prakash', 'Manoj', 'Sanjay', 'Ashok'];
+const MOTHER_NAMES = ['Sunita', 'Kavita', 'Anita', 'Meena', 'Lata', 'Rekha', 'Pooja', 'Neeta'];
 const SEED_SCHOOL_SLUG = (process.env.SEED_SCHOOL_SLUG || 'oakridge').toLowerCase();
 const SEED_SCHOOL_NAME = process.env.SEED_SCHOOL_NAME || 'Oakridge Academy';
 
@@ -377,7 +381,7 @@ async function seedSchool() {
         _id: sProfId,
         accountId: sAccId,
         roleId: roleMap.get('STUDENT'),
-        displayName: `${displayName} (${gradeLabel}–${section.name} #${i})`,
+        displayName,
         // Without this the profile falls back to the schema default
         // ('eduos-demo-tenant') while this student's Student, Enrollment and
         // AttendanceRecord rows are all stamped with the seed school. The
@@ -421,6 +425,10 @@ async function seedSchool() {
       const pProfId = new mongoose.Types.ObjectId();
 
       const pPhone = `+910000004${String(count).padStart(3, '0')}`;
+      // A fictional guardian with the family's surname, not "Parent of Diya".
+      // The relation below is FATHER for even i, MOTHER for odd: the name follows it.
+      const guardianPool = i % 2 === 0 ? FATHER_NAMES : MOTHER_NAMES;
+      const guardianName = `${guardianPool[count % guardianPool.length]} ${last}`;
       const pEmail = `parent.${count}@schoolerp.com`;
 
       accountsToInsert.push({
@@ -437,7 +445,7 @@ async function seedSchool() {
         _id: pProfId,
         accountId: pAccId,
         roleId: roleMap.get('PARENT'),
-        displayName: `Parent of ${first}`,
+        displayName: guardianName,
         tenantId: SEED_SCHOOL_SLUG,
         tenantName: SEED_SCHOOL_NAME,
         createdAt: new Date(),
@@ -475,7 +483,7 @@ async function seedSchool() {
         bloodGroup: bloodGroups[Math.floor(Math.random() * bloodGroups.length)],
         heightCm,
         weightKg,
-        emergencyContactEnc: encrypt({ name: `Parent of ${first}`, phone: pPhone, relation }),
+        emergencyContactEnc: encrypt({ name: guardianName, phone: pPhone, relation }),
         // allergies/medications are always string[] (never null) per MedicalDto —
         // the panel does rec.medications.length unconditionally, matching how
         // the normal save flow always sends an array (possibly empty).
@@ -618,6 +626,8 @@ async function seedSchool() {
       await Payment.create({
         invoiceId: invoice._id,
         amountPaise: paidPaise,
+        // From the school's receipt series, as a real collection would have.
+        receiptNo: await nextReceiptNo(),
         mode: 'BANK',
         gatewayRef: `TXN-${Math.floor(Math.random() * 100000000)}`,
         status: 'SUCCESS',
@@ -651,9 +661,9 @@ async function seedSchool() {
     const secEnrollments = enrollments.filter(e => e.sectionId.toString() === offering.sectionId.toString());
     for (const e of secEnrollments) {
       const marks = Math.floor(Math.random() * 35) + 65; // Generate realistic grades 65 - 100
-      let gradeLabel = 'A';
-      if (marks < 75) gradeLabel = 'C';
-      else if (marks < 90) gradeLabel = 'B';
+      // The same CBSE scale the report card and enterMarks use (A1..E), so a
+      // dashboard and a report card never name the same score differently.
+      const gradeLabel = gradeForPercentage(percentage(marks, 100))?.label ?? null;
 
       await Mark.create({
         examSubjectId: examSubject._id,
@@ -695,7 +705,7 @@ async function seedSchool() {
         examSubjectId: examSubject._id,
         enrollmentId: e._id,
         marks,
-        gradeLabel: marks >= 45 ? 'A' : marks >= 38 ? 'B' : 'C',
+        gradeLabel: gradeForPercentage(percentage(marks, 50))?.label ?? null,
         remarks: 'Good effort',
         status: 'DRAFT',
         enteredByProfileId: offering.teacherId || teacherProfiles[0]._id,

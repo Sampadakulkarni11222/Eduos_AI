@@ -539,13 +539,21 @@ describe('security', () => {
     expect((await call(people.ADMIN, 'GET', `/document-requests/${req.id}`)).body.data.status).toBe('PENDING');
   });
 
-  it('teachers, parents and principals reach neither side', async () => {
+  it('teachers and principals reach neither side; parents reach only the family side', async () => {
     const req = await makeRequest(people.STUDENT, await makeType());
     for (const person of [people.TEACHER, people.PARENT, people.PRINCIPAL]) {
       expect((await call(person, 'GET', '/document-requests')).status).toBe(403);
       expect((await call(person, 'POST', `/document-requests/${req.id}/approve`)).status).toBe(403);
+    }
+    for (const person of [people.TEACHER, people.PRINCIPAL]) {
       expect((await call(person, 'GET', '/document-requests/mine')).status).toBe(403);
     }
+    // A parent may request for a linked child (tests/parent.actForChild.test.js),
+    // but never sees another family's request.
+    const parentList = await call(people.PARENT, 'GET', '/document-requests/mine');
+    expect(parentList.status).toBe(200);
+    expect(parentList.body.data.map((r) => r.id)).not.toContain(req.id);
+    expect((await call(people.PARENT, 'GET', `/document-requests/mine/${req.id}`)).status).toBe(404);
   });
 
   it('a Super Admin must choose a school before acting', async () => {

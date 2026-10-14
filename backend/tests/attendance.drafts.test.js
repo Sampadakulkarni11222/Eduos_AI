@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest';
 import mongoose from 'mongoose';
 import { Student, Enrollment } from '../src/models/student.model.js';
 import { Grade, Section } from '../src/models/academics.model.js';
@@ -8,6 +8,16 @@ import { buildPermissionMap } from '../src/utils/buildPermissionMap.js';
 import { runWithTenant } from '../src/tenancy/tenantContext.js';
 import * as drafts from '../src/modules/attendance/draft.service.js';
 import * as attendance from '../src/modules/attendance/attendance.service.js';
+
+// These tests are about who may mark, not when: they mark a fixed past Tuesday,
+// so the back-dating window (attendance.dateWindow.test.js) is opened wide here.
+const savedBackdate = process.env.ATTENDANCE_BACKDATE_DAYS;
+beforeAll(() => { process.env.ATTENDANCE_BACKDATE_DAYS = '100000'; });
+afterAll(() => {
+  if (savedBackdate === undefined) delete process.env.ATTENDANCE_BACKDATE_DAYS;
+  else process.env.ATTENDANCE_BACKDATE_DAYS = savedBackdate;
+});
+
 
 /**
  * Flashcard drafts: same authorization as marking, optimistic concurrency

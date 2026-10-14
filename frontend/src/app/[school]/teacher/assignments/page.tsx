@@ -2,12 +2,27 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, DateField, EmptyState, Pill, SkeletonRows, divisionLabel, useToast } from '@/components/ui';
-import { api, ApiError, fileHref, fileNameOf } from '@/lib/api';
+import { api, ApiError, fileHref, fileNameOf, request } from '@/lib/api';
 import type { AssignmentDto, OfferingDto, SubmissionRoster, SubmissionRow } from '@/lib/types';
 
 const SUB_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'gray'> = {
   PENDING: 'gray', SUBMITTED: 'blue', LATE: 'amber', GRADED: 'green', EXEMPT: 'gray',
 };
+
+/** The server's own reason when it gives one; the fallback only when it does not. */
+function serverMessage(e: unknown, fallback: string): string {
+  return e instanceof ApiError && e.message && e.message !== e.code ? e.message : fallback;
+}
+
+type AssignmentBody = {
+  subjectOfferingId?: string; title: string; type?: string; chapter?: string | null;
+  dueAt: string; maxMarks?: number | null; description?: string; attachments?: string[];
+};
+// Edit and withdraw go straight through the shared request helper.
+const updateAssignment = (id: string, body: Partial<AssignmentBody>) =>
+  request<{ id: string }>(`/assignments/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(body) });
+const withdrawAssignment = (id: string) =>
+  request<{ id: string; deleted: boolean }>(`/assignments/${encodeURIComponent(id)}`, { method: 'DELETE' });
 
 const emptyFilters = { sectionId: '', subject: '', chapter: '', dateFrom: '', dateTo: '' };
 const CHAPTER_OPTIONS = Array.from({ length: 20 }, (_, i) => `Chapter ${i + 1}`);
@@ -17,7 +32,20 @@ export default function AssignmentsPage() {
   const [offerings, setOfferings] = useState<OfferingDto[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [editing, setEditing] = useState<AssignmentDto | null>(null);
   const [filters, setFilters] = useState(emptyFilters);
+  const toast = useToast();
+
+  const withdraw = async (a: AssignmentDto) => {
+    if (!window.confirm(`Withdraw "${a.title}"? Students will no longer see it.`)) return;
+    try {
+      await withdrawAssignment(a.id);
+      toast(`Withdrew "${a.title}".`);
+      void reload();
+    } catch (e) {
+      toast(serverMessage(e, 'Could not withdraw the assignment.'), 'error');
+    }
+  };
 
   const reload = () => api.assignments().then(setItems).catch(() => setItems([]));
   useEffect(() => { void reload(); api.myOfferings().then(setOfferings).catch(() => {}); }, []);
@@ -53,7 +81,16 @@ export default function AssignmentsPage() {
       title: 'Assignments', desc: 'Homework, projects and worksheets for your classes.',
       actions: <Button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Close' : '+ New assignment'}</Button>,
     }}>
-      {showForm && <NewAssignment offerings={offerings} onCreated={() => { setShowForm(false); void reload(); }} />}
+      {showForm && !editing && <NewAssignment offerings={offerings} onCreated={() => { setShowForm(false); void reload(); }} />}
+      {editing && (
+        <NewAssignment
+          key={editing.id}
+          offerings={offerings}
+          initial={editing}
+          onCreated={() => { setEditing(null); void reload(); }}
+          onCancel={() => setEditing(null)}
+        />
+      )}
 
       {items && items.length > 0 && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -102,7 +139,11 @@ export default function AssignmentsPage() {
                   <td data-label="Type"><Pill tone="blue">{a.type.toLowerCase()}</Pill></td>
                   <td data-label="Submitted">{a.submissionCount}</td>
                   <td data-label="Actions">
-                    <Button variant="soft" small onClick={() => setOpenId(a.id)}>Submissions</Button>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <Button variant="soft" small onClick={() => setOpenId(a.id)}>Submissions</Button>
+                      <Button variant="ghost" small onClick={() => { setShowForm(false); setEditing(a); }}>Edit</Button>
+                      <Button variant="ghost" small onClick={() => void withdraw(a)}>Withdraw</Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -251,18 +292,35 @@ function GradeForm({ row, maxMarks, onSave, onCancel }: {
   );
 }
 
-function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onCreated: () => void }) {
-  const [offeringId, setOfferingId] = useState(offerings[0]?.id ?? '');
-  const [title, setTitle] = useState('');
-  const [type, setType] = useState('HOMEWORK');
-  const [chapter, setChapter] = useState('');
-  const [dueAt, setDueAt] = useState('');
-  const [maxMarks, setMaxMarks] = useState('20');
-  const [attachments, setAttachments] = useState<string[]>([]);
+/** `datetime-local` value for an ISO instant, in the viewer's local time. */
+function toLocalInput(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function NewAssignment({ offerings, onCreated, initial, onCancel }: {
+  offerings: OfferingDto[];
+  onCreated: () => void;
+  /** When given, the form edits this assignment instead of creating one. */
+  initial?: AssignmentDto;
+  onCancel?: () => void;
+}) {
+  const editingId = initial?.id ?? null;
+  const [offeringId, setOfferingId] = useState(initial?.subjectOfferingId ?? offerings[0]?.id ?? '');
+  const [title, setTitle] = useState(initial?.title ?? '');
+  const [type, setType] = useState(initial?.type ?? 'HOMEWORK');
+  const [chapter, setChapter] = useState(initial?.chapter ?? '');
+  const [dueAt, setDueAt] = useState(toLocalInput(initial?.dueAt));
+  const [maxMarks, setMaxMarks] = useState(initial ? (initial.maxMarks != null ? String(initial.maxMarks) : '') : '20');
+  const [attachments, setAttachments] = useState<string[]>(initial?.attachments ?? []);
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => { if (!offeringId && offerings[0]) setOfferingId(offerings[0].id); }, [offerings, offeringId]);
+
 
   const addFile = async (file: File | undefined) => {
     if (!file) return;
@@ -276,13 +334,25 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setBusy(true); setErr(null);
     try {
-      await api.createAssignment({
-        subjectOfferingId: offeringId, title, type, chapter: chapter || undefined,
-        dueAt: new Date(dueAt).toISOString(), maxMarks: maxMarks ? parseInt(maxMarks, 10) : undefined,
-        attachments: attachments.length > 0 ? attachments : undefined,
-      });
+      if (editingId) {
+        await updateAssignment(editingId, {
+          title, type, chapter: chapter || null,
+          dueAt: new Date(dueAt).toISOString(), maxMarks: maxMarks ? Number(maxMarks) : null,
+          attachments,
+        });
+      } else {
+        await api.createAssignment({
+          subjectOfferingId: offeringId, title, type, chapter: chapter || undefined,
+          dueAt: new Date(dueAt).toISOString(), maxMarks: maxMarks ? Number(maxMarks) : undefined,
+          attachments: attachments.length > 0 ? attachments : undefined,
+        });
+      }
       onCreated();
-    } catch { setErr('Could not create. Check the fields and try again.'); } finally { setBusy(false); }
+    } catch (e2) {
+      // The server says which field is wrong ("The due date cannot be in the
+      // past", "Max marks must be greater than 0"); show that, not a guess.
+      setErr(serverMessage(e2, editingId ? 'Could not save the changes. Check the fields and try again.' : 'Could not create. Check the fields and try again.'));
+    } finally { setBusy(false); }
   };
 
   return (
@@ -295,18 +365,27 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
           </div>
           <div>
             <div className="field-label">Class &amp; subject</div>
-            <select className="field-input" value={offeringId} onChange={(e) => setOfferingId(e.target.value)} required>
+            <select className="field-input" value={offeringId} onChange={(e) => setOfferingId(e.target.value)} required disabled={!!editingId}>
               {offerings.map((o) => <option key={o.id} value={o.id}>{divisionLabel(o.gradeName, o.sectionName)} · {o.subject}</option>)}
             </select>
           </div>
           <div>
             <div className="field-label">Due</div>
-            <input className="field-input" type="datetime-local" value={dueAt} onChange={(e) => setDueAt(e.target.value)} required />
+            <input className="field-input" type="datetime-local" value={dueAt} min={toLocalInput(new Date(new Date().setHours(0, 0, 0, 0)).toISOString())} onChange={(e) => setDueAt(e.target.value)} required />
           </div>
           <div>
             <div className="field-label">Max marks</div>
             <input className="field-input" type="number" min={1} value={maxMarks} onChange={(e) => setMaxMarks(e.target.value)} />
           </div>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <div className="field-label">Type</div>
+          <select className="field-input" value={type} onChange={(e) => setType(e.target.value)} aria-label="Type">
+            <option value="HOMEWORK">Homework</option>
+            <option value="WORKSHEET">Worksheet</option>
+            <option value="PROJECT">Project</option>
+            <option value="LAB">Lab</option>
+          </select>
         </div>
         <div style={{ marginTop: 12 }}>
           <div className="field-label">Chapter (optional)</div>
@@ -335,8 +414,13 @@ function NewAssignment({ offerings, onCreated }: { offerings: OfferingDto[]; onC
             </ul>
           )}
         </div>
-        {err && <p style={{ color: 'var(--red)', fontSize: 13, marginTop: 8, marginBottom: 8 }}>{err}</p>}
-        <Button type="submit" disabled={busy || !offeringId || uploading} style={{ marginTop: 12 }}>{busy ? 'Creating…' : 'Create assignment'}</Button>
+        {err && <p role="alert" style={{ color: 'var(--red)', fontSize: 13, marginTop: 8, marginBottom: 8 }}>{err}</p>}
+        <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+          <Button type="submit" disabled={busy || !offeringId || uploading}>
+            {editingId ? (busy ? 'Saving…' : 'Save changes') : (busy ? 'Creating…' : 'Create assignment')}
+          </Button>
+          {onCancel && <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>}
+        </div>
       </form>
     </Card>
   );

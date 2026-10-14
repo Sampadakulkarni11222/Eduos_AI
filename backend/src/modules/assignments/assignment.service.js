@@ -121,8 +121,131 @@ export async function create(actor, scope, data) {
     throw new AppError('You do not teach this class', 403, [], 'NOT_YOUR_CLASS');
   }
 
-  if (data.attachments !== undefined) assertSafeAttachments(data.attachments);
-  return Assignment.create({ ...data, createdByProfileId: actor.profileId });
+  // Only the fields a teacher sets, checked; never the body as a whole. Copying
+  // `{...data}` let a caller write deletedAt (homework saved as already
+  // deleted, invisible to everyone), createdByProfileId or tenant fields.
+  const fields = cleanAssignmentFields(data, { creating: true });
+  return Assignment.create({ ...fields, subjectOfferingId: offering._id, createdByProfileId: actor.profileId });
+}
+
+export const ASSIGNMENT_TYPES = ['HOMEWORK', 'PROJECT', 'WORKSHEET', 'LAB'];
+const EDITABLE_FIELDS = ['title', 'description', 'type', 'chapter', 'dueAt', 'maxMarks', 'attachments'];
+
+/** Start of today's calendar day (process-local, see config/env.js) as a UTC instant. */
+function startOfToday(now = new Date()) {
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
+/**
+ * The whitelisted, validated fields of a create or edit. On an edit only the
+ * fields present are checked and returned.
+ */
+function cleanAssignmentFields(data = {}, { creating = false } = {}) {
+  const out = {};
+  for (const key of EDITABLE_FIELDS) {
+    if (data?.[key] !== undefined) out[key] = data[key];
+  }
+
+  if (creating || out.title !== undefined) {
+    const title = typeof out.title === 'string' ? out.title.trim() : '';
+    if (!title) throw new AppError('A title is required', 400, [], 'ASSIGNMENT_TITLE_REQUIRED');
+    if (title.length > 200) throw new AppError('The title is too long (200 characters at most)', 400);
+    out.title = title;
+  }
+  if (out.description !== undefined && out.description !== null && typeof out.description !== 'string') {
+    throw new AppError('The description must be text', 400);
+  }
+  if (out.chapter !== undefined && out.chapter !== null && typeof out.chapter !== 'string') {
+    throw new AppError('The chapter must be text', 400);
+  }
+
+  if (creating || out.type !== undefined) {
+    const type = String(out.type ?? 'HOMEWORK').trim().toUpperCase();
+    if (!ASSIGNMENT_TYPES.includes(type)) {
+      throw new AppError(`Type must be one of: ${ASSIGNMENT_TYPES.join(', ')}`, 400, [], 'ASSIGNMENT_TYPE_INVALID');
+    }
+    out.type = type;
+  }
+
+  if (creating || out.dueAt !== undefined) {
+    const due = out.dueAt ? new Date(out.dueAt) : null;
+    if (!due || Number.isNaN(due.getTime())) {
+      throw new AppError('A valid due date is required', 400, [], 'ASSIGNMENT_DUE_INVALID');
+    }
+    if (due.getTime() < startOfToday().getTime()) {
+      throw new AppError('The due date cannot be in the past', 400, [], 'ASSIGNMENT_DUE_PAST');
+    }
+    out.dueAt = due;
+  }
+
+  if (out.maxMarks === '' || out.maxMarks === null) {
+    out.maxMarks = null;
+  } else if (out.maxMarks !== undefined) {
+    const max = Number(out.maxMarks);
+    if (!Number.isFinite(max) || max <= 0) {
+      throw new AppError('Max marks must be greater than 0', 400, [], 'ASSIGNMENT_MAX_MARKS_INVALID');
+    }
+    out.maxMarks = max;
+  }
+
+  if (out.attachments !== undefined) {
+    assertSafeAttachments(out.attachments);
+    out.attachments = (Array.isArray(out.attachments) ? out.attachments : [out.attachments])
+      .map((a) => (typeof a === 'string' ? a.trim() : a?.fileUrl?.trim?.() ?? ''))
+      .filter(Boolean);
+  }
+  return out;
+}
+
+/** The assignment, if this actor may change it: school-wide, or the teacher who set it / teaches the class. */
+async function loadOwnedAssignment(actor, scope, id) {
+  if (!id || !/^[a-f0-9]{24}$/i.test(String(id))) throw new AppError('Assignment not found', 404);
+  const assignment = await Assignment.findOne({ _id: id, deletedAt: null });
+  if (!assignment) throw new AppError('Assignment not found', 404);
+  if (scope === 'ALL') return assignment;
+
+  const offering = await SubjectOffering.findById(assignment.subjectOfferingId).select('teacherId').lean();
+  const mine = String(assignment.createdByProfileId ?? '') === String(actor.profileId)
+    || String(offering?.teacherId ?? '') === String(actor.profileId);
+  if (!mine) throw new AppError('You can only change homework you set', 403, [], 'NOT_YOUR_ASSIGNMENT');
+  return assignment;
+}
+
+/** Edit homework: the same whitelist and checks as creating it; the class cannot be changed. */
+export async function update(actor, scope, id, data = {}) {
+  const assignment = await loadOwnedAssignment(actor, scope, id);
+  if (data?.subjectOfferingId !== undefined && String(data.subjectOfferingId) !== String(assignment.subjectOfferingId)) {
+    throw new AppError('Homework cannot be moved to another class; withdraw it and set it again', 400);
+  }
+  const fields = cleanAssignmentFields(data);
+  if (Object.keys(fields).length === 0) throw new AppError('Nothing to update', 400);
+  Object.assign(assignment, fields);
+  await assignment.save();
+  return assignment;
+}
+
+/** Withdraw homework (soft delete): it leaves every list; submissions are kept. */
+export async function remove(actor, scope, id) {
+  const assignment = await loadOwnedAssignment(actor, scope, id);
+  assignment.deletedAt = new Date();
+  await assignment.save();
+  return { id: String(assignment._id), deleted: true };
+}
+
+/** What the API returns for one assignment -- never the raw document. */
+export function toView(a) {
+  return {
+    id: String(a._id),
+    subjectOfferingId: String(a.subjectOfferingId),
+    title: a.title,
+    description: a.description ?? null,
+    type: a.type,
+    chapter: a.chapter ?? null,
+    dueAt: a.dueAt?.toISOString?.() ?? null,
+    maxMarks: a.maxMarks ?? null,
+    attachments: a.attachments ?? [],
+    seededSubmissions: 0,
+  };
 }
 
 /**

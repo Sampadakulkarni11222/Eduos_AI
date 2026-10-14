@@ -92,7 +92,7 @@ describe('Scenario: enquiry → counselling → application → offer → fee �
 
 describe('Newsroom and circles', () => {
   it('student posts wait for review; consent decides which photos appear where; withdrawal hides at once', async () => {
-    const draft = await inOak(() => community.createPost(P.STUDENT.actor, { body: 'Our robotics win!', audience: 'INSTITUTION', submit: true, media: [{ url: '/uploads/robot.jpg', altText: 'Robot on stage' }] }));
+    const draft = await inOak(() => community.createPost(P.STUDENT.actor, { body: 'Our robotics win!', audience: 'INSTITUTION', submit: true, media: [{ url: '/uploads/robot.jpg', altText: 'Robot on stage', metadataStripped: true, noIdentifiableStudents: true }] }));
     expect(draft.status).toBe('PENDING_REVIEW');
     expect((await inOak(() => community.feed(P.PARENT.actor, {}))).items).toHaveLength(0);
     await inOak(() => community.moderatePost(P.PRINCIPAL.actor, draft.id, { decision: 'PUBLISH' }));

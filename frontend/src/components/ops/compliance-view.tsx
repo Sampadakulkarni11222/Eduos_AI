@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Button, EmptyState, Field, Modal, useToast } from '@/components/ui';
 import { opsApi, downloadCsv } from '@/lib/ops-api';
 import { usePermissions } from '@/lib/permissions';
-import { usePortalHref } from '@/lib/school-path';
+import { usePortalPage } from '@/lib/school-path';
 import { printHref } from './print-link';
 import { AccreditationTab } from './accreditation-view';
 import type { LicenceDto, NoticeDto, ObligationDto, PolicyDto, ReturnDto, TrainingDto } from '@/lib/ops-types';
@@ -25,7 +25,9 @@ import {
 type Tab = 'calendar' | 'obligations' | 'returns' | 'licences' | 'policies' | 'trainings' | 'notices' | 'accreditation';
 
 function CalendarTab() {
-  const link = usePortalHref();
+  // Only pages this portal has: a trustee's calendar lists correspondence
+  // deadlines, but the trustee portal has no correspondence page (it was a 404).
+  const page = usePortalPage();
   const state = useLoad(() => Promise.all([opsApi.complianceOverview(), opsApi.complianceCalendar(120)]), []);
   return (
     <Loadable state={state}>{([o, items]) => (
@@ -53,7 +55,7 @@ function CalendarTab() {
           {!items.length ? <p className="ops-muted">Nothing scheduled.</p> : (
             <ul className="ops-list">{items.map((i) => (
               <li key={`${i.kind}-${i.id}`} className="ops-row">
-                <div className="ops-row-main"><Link href={link(i.link)} className="ops-row-title">{i.title}</Link><div className="ops-row-sub">{humanize(i.kind)} · {fmtDate(i.renewBy ?? i.date)}{i.renewBy ? ` (expires ${fmtDate(i.date)})` : ''}</div></div>
+                <div className="ops-row-main">{(() => { const href = page(i.link); return href ? <Link href={href} className="ops-row-title">{i.title}</Link> : <span className="ops-row-title">{i.title}</span>; })()}<div className="ops-row-sub">{humanize(i.kind)} · {fmtDate(i.renewBy ?? i.date)}{i.renewBy ? ` (expires ${fmtDate(i.date)})` : ''}</div></div>
                 {i.overdue ? <span className="ops-flag-overdue">OVERDUE</span> : <StatusPill status={i.status} />}
               </li>
             ))}</ul>

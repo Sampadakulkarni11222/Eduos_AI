@@ -69,12 +69,24 @@ describe('deciding an approval', () => {
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
   });
 
-  it('sends one APPROVE for one press, and hands back the updated request', async () => {
+  it('Approve asks for confirmation, restating the amount, before anything is sent', async () => {
+    inApp(<ApprovalDecisionButtons req={request({ refNo: 'APR/2026/0004', amountPaise: 106488001, summary: 'September payroll' } as Partial<ApprovalDto>)} onDone={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(await screen.findByText('Approve "Lab equipment"?')).toBeTruthy();
+    expect(screen.getByText('APR/2026/0004')).toBeTruthy();
+    expect(screen.getByText('September payroll')).toBeTruthy();
+    expect(opsApi.decide).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(opsApi.decide).not.toHaveBeenCalled();
+  });
+
+  it('sends one APPROVE once confirmed, and hands back the updated request', async () => {
     const updated = request({ status: 'APPROVED' } as Partial<ApprovalDto>);
     opsApi.decide.mockResolvedValue(updated);
     const onDone = vi.fn();
     inApp(<ApprovalDecisionButtons req={request()} onDone={onDone} />);
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm approval' }));
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(updated));
     expect(opsApi.decide).toHaveBeenCalledTimes(1);
     expect(opsApi.decide).toHaveBeenCalledWith('a1', 'APPROVE');
@@ -93,6 +105,7 @@ describe('deciding an approval', () => {
     const onDone = vi.fn();
     inApp(<ApprovalDecisionButtons req={request()} onDone={onDone} />);
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm approval' }));
     expect((await screen.findByRole('alert')).textContent).toContain('You cannot decide a request you raised.');
     expect(onDone).not.toHaveBeenCalled();
   });

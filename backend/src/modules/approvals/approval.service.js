@@ -239,6 +239,22 @@ export async function getRequest(actor, scope, id) {
   return present(req.toObject(), actor, delegations);
 }
 
+/** Priority as a number. The enum is a string, so sorting it directly ordered U > N > L > H. */
+export const PRIORITY_RANK = { URGENT: 3, HIGH: 2, NORMAL: 1, LOW: 0 };
+
+const dueTime = (r) => (r.dueAt ? new Date(r.dueAt).getTime() : Number.POSITIVE_INFINITY);
+
+/**
+ * Inbox order: URGENT, then HIGH, then the rest (by rank); within a rank,
+ * overdue first; then the soonest due (undated last); then the oldest.
+ */
+export function compareInbox(a, b) {
+  return ((PRIORITY_RANK[b.priority] ?? 1) - (PRIORITY_RANK[a.priority] ?? 1))
+    || (Number(Boolean(b.isOverdue)) - Number(Boolean(a.isOverdue)))
+    || (dueTime(a) - dueTime(b))
+    || (new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime());
+}
+
 /** Requests waiting on the caller right now. */
 export async function inbox(actor) {
   requireProfile(actor);
@@ -248,11 +264,11 @@ export async function inbox(actor) {
     status: 'PENDING',
     requesterProfileId: { $ne: actor.profileId },
     $or: [{ 'stages.approverRole': { $in: roles } }, { 'stages.approverProfileId': actor.profileId }],
-  }).sort({ priority: -1, dueAt: 1 }).limit(500).lean();
+  }).sort({ dueAt: 1, createdAt: 1 }).limit(500).lean();
   return candidates
     .filter((r) => eligibility(r, r.stages[r.currentStage], actor, delegations))
     .map((r) => present(r, actor, delegations))
-    .sort((a, b) => Number(b.isOverdue) - Number(a.isOverdue) || new Date(a.dueAt ?? 0) - new Date(b.dueAt ?? 0));
+    .sort(compareInbox);
 }
 
 export async function list(actor, scope, query = {}) {

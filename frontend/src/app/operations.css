@@ -83,6 +83,8 @@ a.kpi-main:focus-visible{outline:2px solid var(--gold);outline-offset:4px;border
 .ops-drawer-title{font-size:17px;font-weight:800}
 .ops-drawer-sub{font-size:12px;color:var(--text-2);margin-top:2px}
 .ops-drawer-body{flex:1;overflow:auto;padding:18px 20px;display:flex;flex-direction:column;gap:16px}
+/* Children keep their natural height and the body scrolls; with the default flex-shrink:1 cards were squashed and clipped. */
+.ops-drawer-body>*{flex-shrink:0}
 .ops-drawer-foot{padding:14px 20px;border-top:1px solid var(--hairline-2);display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 @media (prefers-reduced-motion:reduce){.ops-drawer{animation:none}}
 

@@ -1250,6 +1250,8 @@ export interface ParentDashboardDto {
 }
 export interface WardenDashboardDto {
   hostelStudents: number; occupiedRooms: number; vacantBeds: number; totalCapacity: number; occupancyRate: number;
+  /** Rooms that are not closed, and beds taken by active allotments. */
+  totalRooms: number; occupiedBeds: number;
   maintenanceRooms: number; maintenanceRequests: number; openInquiries: number;
   openTickets: Array<{ id: string; subject: string; status: string; priority: string | null; raisedBy: string | null; createdAt: string }>;
   pendingLeaveCount: number;

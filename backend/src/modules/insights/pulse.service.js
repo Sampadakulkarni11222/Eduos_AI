@@ -29,8 +29,12 @@ const can = (actor, key, scope = null) => {
   return Boolean(held) && (!scope || held === scope);
 };
 const ist = (d) => new Date(new Date(d).getTime() + 330 * 60_000);
-const dayLabel = (d) => new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' }).format(new Date(d));
-const monthLabel = (d) => new Intl.DateTimeFormat('en-IN', { month: 'short', year: '2-digit', timeZone: 'Asia/Kolkata' }).format(new Date(d));
+// Formatters are built once: constructing one costs far more than using it, and these run per chart point.
+const DAY_FMT = new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
+const MONTH_FMT = new Intl.DateTimeFormat('en-IN', { month: 'short', year: '2-digit', timeZone: 'Asia/Kolkata' });
+const WEEKDAY_FMT = new Intl.DateTimeFormat('en-IN', { weekday: 'short', timeZone: 'Asia/Kolkata' });
+const dayLabel = (d) => DAY_FMT.format(new Date(d));
+const monthLabel = (d) => MONTH_FMT.format(new Date(d));
 
 async function attempt(name, fn) {
   try {
@@ -132,7 +136,7 @@ async function classesAhead(actor) {
       const t = ist(day);
       return d.getUTCFullYear() === t.getUTCFullYear() && d.getUTCMonth() === t.getUTCMonth() && d.getUTCDate() === t.getUTCDate();
     });
-    return { label: i === 0 ? 'Today' : new Intl.DateTimeFormat('en-IN', { weekday: 'short', timeZone: 'Asia/Kolkata' }).format(day), value: n.length, detail: n.map((c) => c.title).slice(0, 3).join(', ') || 'Nothing' };
+    return { label: i === 0 ? 'Today' : WEEKDAY_FMT.format(day), value: n.length, detail: n.map((c) => c.title).slice(0, 3).join(', ') || 'Nothing' };
   });
   return chart('classes', 'Online classes this week', 'bar', points, { link: '/lectures', definition: 'Online classes and meetings you host or are invited to, by day.', empty: 'No online classes this week.' });
 }

@@ -1,5 +1,5 @@
 import { CourseModule } from '../../models/courseModule.model.js';
-import { SubjectOffering } from '../../models/academics.model.js';
+import { SubjectOffering, Term, AcademicYear } from '../../models/academics.model.js';
 import { Enrollment } from '../../models/student.model.js';
 import { ExamSubject, Mark } from '../../models/exam.model.js';
 import { Profile } from '../../models/profile.model.js';
@@ -142,6 +142,28 @@ export async function updateModule(actor, id, body = {}) {
   return present(m.toObject());
 }
 
+/** How far ahead of its planned start a module may be begun. */
+const EARLY_START_DAYS = 7;
+
+/**
+ * The first day a lesson may be recorded against a module: a week before its
+ * planned start, and never before the academic year (the offering's term's
+ * year, else the current year) began.
+ */
+async function earliestLessonDate(m) {
+  let earliest = startOfDayUtc(new Date(new Date(m.plannedStart).getTime() - EARLY_START_DAYS * DAY));
+  const offering = await SubjectOffering.findById(m.subjectOfferingId).select('termId').lean();
+  const term = offering?.termId ? await Term.findById(offering.termId).select('academicYearId').lean() : null;
+  const year = term?.academicYearId
+    ? await AcademicYear.findById(term.academicYearId).select('startsOn').lean()
+    : await AcademicYear.findOne({ isCurrent: true }).select('startsOn').lean();
+  if (year?.startsOn) {
+    const yearStart = startOfDayUtc(new Date(year.startsOn));
+    if (yearStart.getTime() > earliest.getTime()) earliest = yearStart;
+  }
+  return earliest;
+}
+
 /**
  * The teacher's record of a lesson: which topics were covered, a note, and
  * homework. Ticking the last topic completes the module; the first record
@@ -152,6 +174,15 @@ export async function recordProgress(actor, id, body = {}) {
   const now = new Date();
   const taughtOn = parseDate(body.taughtOn, 'taughtOn') ?? startOfDayUtc(now);
   if (taughtOn.getTime() > now.getTime() + DAY) throw new AppError('A lesson cannot be recorded for a future date.', 400, [], 'FUTURE_LESSON');
+  // Nor for a date long before the module was due to start or before the
+  // academic year began: 2019-10-14 used to be accepted for this year's unit.
+  const earliest = await earliestLessonDate(m);
+  if (taughtOn.getTime() < earliest.getTime()) {
+    throw new AppError(
+      `A lesson for this module can be recorded from ${earliest.toISOString().slice(0, 10)} onwards.`,
+      400, [], 'LESSON_TOO_EARLY',
+    );
+  }
   const ids = new Set((Array.isArray(body.topicIds) ? body.topicIds : []).map(String));
   const covered = [];
   for (const t of m.topics) {

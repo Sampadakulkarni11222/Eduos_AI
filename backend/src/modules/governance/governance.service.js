@@ -34,6 +34,11 @@ function present(m, actor) {
   out.accepted = (m.members ?? []).filter((x) => x.rsvp === 'ACCEPTED').length;
   out.openActions = (m.actions ?? []).filter((a) => a.status === 'OPEN').length;
   out.isMember = actor ? isMember(m, actor) : false;
+  // Whether this viewer may approve the minutes (the chair, or the
+  // principal), so the screen offers the button only to them.
+  const chair = (m.members ?? []).find((x) => x.role === 'CHAIR');
+  out.isChair = Boolean(actor && chair && String(chair.profileId ?? '') === String(actor.profileId));
+  out.canApproveMinutes = Boolean(actor && (out.isChair || actor.roleKey === 'PRINCIPAL'));
   return out;
 }
 
@@ -143,10 +148,31 @@ export async function rsvp(actor, scope, id, body = {}) {
   return present(m.toObject(), actor);
 }
 
+/**
+ * Throws unless the meeting has actually taken place: it is SCHEDULED or HELD
+ * and its time has come. A PLANNING meeting proposed for December accepted
+ * attendance, minutes and a PASSED resolution, which the chair then approved.
+ */
+function assertHeld(m, what) {
+  const started = m.scheduledAt && new Date(m.scheduledAt).getTime() <= Date.now();
+  if (!['SCHEDULED', 'HELD'].includes(m.status) || !started) {
+    const when = m.scheduledAt ? `It is scheduled for ${fmt(m.scheduledAt)}.` : 'It has no date yet.';
+    throw new AppError(`${what} can be recorded only once the meeting has been held. ${when}`, 409, [], 'MEETING_NOT_HELD');
+  }
+}
+
 /** Attendance, minutes, resolutions and actions — recorded by the secretary/organiser. */
 export async function record(actor, scope, id, body = {}) {
   const m = await load(id, actor, scope);
   if (m.status === 'CANCELLED') throw new AppError('This meeting was cancelled.', 409);
+  const touches = Array.isArray(body.attendance) || body.minutes !== undefined || Array.isArray(body.resolutions) || Array.isArray(body.actions);
+  // Once the minutes are approved the record is closed: attendance,
+  // resolutions and actions are part of it, not only the minutes text. (Action
+  // progress is still tracked through updateAction.)
+  if (touches && m.minutes?.status === 'APPROVED') {
+    throw new AppError('The minutes of this meeting are approved; its record can no longer be changed.', 409, [], 'MINUTES_LOCKED');
+  }
+  if (touches) assertHeld(m, 'Attendance, minutes and resolutions');
   if (Array.isArray(body.attendance)) {
     for (const a of body.attendance) {
       const mem = m.members.id(a.memberId);
@@ -163,9 +189,16 @@ export async function record(actor, scope, id, body = {}) {
     if (m.quorum && m.members.filter((x) => x.attended && x.voting).length < m.quorum) {
       throw new AppError('Quorum was not met; resolutions cannot be recorded as passed.', 409, [], 'NO_QUORUM');
     }
+    // Votes come from the voting members recorded present; 40 "for" on a
+    // two-member board was accepted.
+    const presentVoting = m.members.filter((x) => x.attended && x.voting).length;
     m.resolutions = body.resolutions.slice(0, 50).map((r, i) => {
       const forV = Math.max(0, Number(r.votesFor) || 0);
       const against = Math.max(0, Number(r.votesAgainst) || 0);
+      const abstain = Math.max(0, Number(r.abstentions) || 0);
+      if (forV + against + abstain > presentVoting) {
+        throw new AppError(`Resolution ${i + 1} records ${forV + against + abstain} votes, but only ${presentVoting} voting ${presentVoting === 1 ? 'member was' : 'members were'} present.`, 400, [], 'VOTES_EXCEED_PRESENT');
+      }
       const outcome = oneOf(r.outcome, ['PASSED', 'FAILED', 'DEFERRED', 'WITHDRAWN'], 'outcome', forV > against ? 'PASSED' : 'FAILED');
       if (outcome === 'PASSED' && forV <= against) throw new AppError(`Resolution ${i + 1} cannot pass with ${forV} for and ${against} against.`, 400);
       return { number: optionalText(r.number, { max: 30 }) || `${m.refNo}/R${i + 1}`, agendaOrder: r.agendaOrder ? Number(r.agendaOrder) : null, text: requireText(r.text, 'resolution text', { max: 4000 }), proposer: optionalText(r.proposer, { max: 120 }) || null, seconder: optionalText(r.seconder, { max: 120 }) || null, votesFor: forV, votesAgainst: against, abstentions: Math.max(0, Number(r.abstentions) || 0), outcome };
@@ -184,6 +217,7 @@ export async function record(actor, scope, id, body = {}) {
 export async function approveMinutes(actor, scope, id) {
   const m = await load(id, actor, scope);
   if (m.minutes.status !== 'DRAFT') throw new AppError('There are no draft minutes to approve.', 409);
+  assertHeld(m, 'Minutes');
   const chair = m.members.find((x) => x.role === 'CHAIR');
   const isChair = chair && String(chair.profileId ?? '') === String(actor.profileId);
   if (!isChair && actor.roleKey !== 'PRINCIPAL') throw new AppError('The chair or the principal approves minutes.', 403);

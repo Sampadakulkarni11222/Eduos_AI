@@ -24,6 +24,8 @@ import { Campaign } from '../models/marketing.model.js';
 import { CommunityPost } from '../models/community.model.js';
 import { OnlineClass } from '../models/onlineClass.model.js';
 import { CourseModule } from '../models/courseModule.model.js';
+import { Notification } from '../models/notification.model.js';
+import { MessageOutbox } from '../models/messaging.model.js';
 import * as financeModels from '../models/finance.model.js';
 import * as complianceModels from '../models/compliance.model.js';
 import * as marketingModels from '../models/marketing.model.js';
@@ -46,6 +48,13 @@ import * as marketing from '../modules/marketing/marketing.service.js';
 import * as community from '../modules/community/community.service.js';
 import * as lectures from '../modules/lectures/lecture.service.js';
 import * as syllabus from '../modules/syllabus/syllabus.service.js';
+// Student and parent sample data (sections appended at the end of the run).
+import { Student, StudentGuardian } from '../models/student.model.js';
+import { Book, BookIssue } from '../models/library.model.js';
+import { Announcement } from '../models/announcement.model.js';
+import { DocumentType } from '../models/documentRequest.model.js';
+import { Assignment } from '../models/assignment.model.js';
+import * as documentTypes from '../modules/documentRequests/documentType.service.js';
 
 /**
  * Sample data for every operations screen, so each one has something to look
@@ -110,6 +119,8 @@ async function seedOperations() {
     const models = [
       ...[financeModels, complianceModels, marketingModels, communityModels, institutionModels].flatMap((m) => Object.values(m)),
       CourseModule, OnlineClass, Correspondence, Contract, InstitutionEvent, AccreditationCycle, VerificationCase, BoardMeeting, Lead, ApprovalRequest, FacilityBooking, WorkOrder,
+      // Notifications and outbox messages addressed to the people the old sample records named.
+      Notification, MessageOutbox,
     ].filter((m) => typeof m?.deleteMany === 'function');
     for (const m of models) {
       // eslint-disable-next-line no-await-in-loop
@@ -542,6 +553,93 @@ async function seedOperations() {
       await attempt('mentor', () => community.upsertMentorProfile(who.ALUMNUS.actor, { headline: 'Class of 2018 · software engineer (sample)', topics: ['Engineering entrance', 'Careers in software'], bio: 'Happy to talk to students about engineering. (Sample profile.)' }));
     }
     return `${n} stories (one waiting for moderation) and three circles`;
+  });
+
+  // ── Students and parents ─────────────────────────────────────────────────
+  // The demo student and the demo parent's children, so their screens have
+  // something real to show.
+  const demoStudentIds = new Set();
+  if (who.STUDENT) {
+    const own = await Student.findOne({ profileId: who.STUDENT.profile._id }).select('_id').lean();
+    if (own) demoStudentIds.add(String(own._id));
+  }
+  if (who.PARENT) {
+    const links = await StudentGuardian.find({ guardianProfileId: who.PARENT.profile._id }).select('studentId').lean();
+    for (const l of links) demoStudentIds.add(String(l.studentId));
+  }
+
+  await section('Certificate types', DocumentType, async () => {
+    // The school's suggested set: Bonafide, Study, Character, Fee, Leaving,
+    // Transfer and Enrollment certificates, through the same service the
+    // admin's "add suggested types" button uses.
+    const out = await documentTypes.addSuggested(ADMIN.actor);
+    const created = Array.isArray(out?.created) ? out.created.length : (Array.isArray(out) ? out.length : null);
+    return created == null ? 'suggested types added' : `${created} certificate types`;
+  });
+
+  await section('Library loans', null, async () => {
+    const students = await Student.find({ _id: { $in: [...demoStudentIds] } }).select('_id firstName lastName').lean();
+    if (!students.length) return 'skipped (no demo student)';
+    if (await BookIssue.exists({ borrowerProfileId: { $in: students.map((s) => s._id) } })) return 'kept (demo students already have loans)';
+    const books = await Book.find({ deletedAt: null, resourceKind: { $in: ['BOOK', null] }, availableCopies: { $gt: 0 } }).sort({ title: 1 }).limit(4).lean();
+    if (books.length < 2) return 'skipped (fewer than two books with copies on the shelf)';
+    // borrowerProfileId holds the Student id, as the lending screen writes it.
+    const plan = [];
+    students.forEach((s, i) => {
+      const name = `${s.firstName} ${s.lastName ?? ''}`.trim();
+      plan.push({ book: books[(i * 2) % books.length], s, name, issued: -25, due: -11, status: 'OVERDUE', fine: 22 });
+      plan.push({ book: books[(i * 2 + 1) % books.length], s, name, issued: -3, due: 11, status: 'ACTIVE', fine: 0 });
+    });
+    for (const p of plan) {
+      // eslint-disable-next-line no-await-in-loop
+      await BookIssue.create({
+        bookId: p.book._id, borrowerProfileId: p.s._id, borrowerName: p.name,
+        issuedAt: inDays(p.issued), dueDate: inDays(p.due), status: p.status, fineAmount: p.fine,
+      });
+      // eslint-disable-next-line no-await-in-loop
+      await Book.updateOne({ _id: p.book._id, availableCopies: { $gt: 0 } }, { $inc: { availableCopies: -1 } });
+    }
+    return `${plan.length} loans for ${students.length} students, ${plan.filter((p) => p.status === 'OVERDUE').length} overdue with a ₹22 fine`;
+  });
+
+  await section('Announcements', Announcement, async () => {
+    const notices = [
+      { title: 'Unit Test 1 timetable published', content: 'Unit Test 1 runs from next week. The subject-wise timetable is on the Calendar. Please check the syllabus with your class teacher. (Sample notice.)', at: -1 },
+      { title: 'Parent-teacher meeting on Saturday', content: 'Class teachers will meet parents from 9:30 AM to 12:30 PM in the classrooms. Please bring the report card. (Sample notice.)', at: -3 },
+      { title: 'Winter uniform from 1 November', content: 'Students should wear the winter uniform (navy sweater and blazer) from 1 November. (Sample notice.)', at: -6 },
+    ];
+    for (const n of notices) {
+      // eslint-disable-next-line no-await-in-loop
+      await Announcement.create({
+        title: n.title, content: n.content, audience: { all: true },
+        publishedAt: inDays(n.at), createdByProfileId: ADMIN.profile._id,
+      });
+    }
+    return `${notices.length} notices for everyone`;
+  });
+
+  await section('Upcoming homework', null, async () => {
+    const enrolments = await Enrollment.find({ studentId: { $in: [...demoStudentIds] }, status: 'ACTIVE' }).select('sectionId').lean();
+    const sectionIds = [...new Set(enrolments.map((e) => String(e.sectionId)))];
+    let n = 0;
+    for (const sectionId of sectionIds) {
+      // eslint-disable-next-line no-await-in-loop
+      const offerings = await SubjectOffering.find({ sectionId }).populate('subjectId', 'name').limit(2).lean();
+      // eslint-disable-next-line no-await-in-loop
+      if (!offerings.length || await Assignment.exists({ subjectOfferingId: { $in: offerings.map((o) => o._id) }, dueAt: { $gte: startOfDayUtc(now) }, deletedAt: null })) continue;
+      for (const [i, o] of offerings.entries()) {
+        // eslint-disable-next-line no-await-in-loop
+        await Assignment.create({
+          subjectOfferingId: o._id,
+          title: `${o.subjectId?.name ?? 'Subject'}: practice worksheet ${i + 1} (sample)`,
+          description: 'Complete the worksheet in your notebook and submit a photo. (Sample homework.)',
+          type: 'WORKSHEET', dueAt: startOfDayUtc(inDays(3 + i * 4)), maxMarks: 20,
+          createdByProfileId: o.teacherId ?? TEACHER.profile._id,
+        });
+        n += 1;
+      }
+    }
+    return `${n} assignments due in the next week`;
   });
 
   // ── What came out ────────────────────────────────────────────────────────

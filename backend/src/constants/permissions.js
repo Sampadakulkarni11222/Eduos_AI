@@ -308,6 +308,9 @@ export const AI_ASSISTANT_PERMISSION = 'ai.copilot.use';
  */
 export const RESTRICTED_BY_DEFAULT = [
   'payroll.approve',
+  // Preparing pay (structures, inputs, adjustments) belongs to finance and HR. An administrator
+  // holding it could add an adjustment to their own line and send the run for approval.
+  'payroll.prepare',
   'payroll.sensitive.read',
   'safeguarding.manage',
   'verification.decide',
@@ -497,6 +500,9 @@ export const SYSTEM_ROLES = [
       ['syllabus.read', 'OWN'],
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
+      // A parent applies for leave and sees borrowed books for their own children only.
+      ['leave.apply', 'OWN'],
+      ['library.read', 'OWN'],
       ['leave.read', 'OWN'],
       ['assignments.read', 'OWN'],
       ['marks.read', 'OWN'],
@@ -674,6 +680,9 @@ export const SYSTEM_ROLES = [
       ['compliance.read', 'ALL'],
       ['compliance.manage', 'ALL'],
       ['safeguarding.manage', 'ALL'],
+      // Newsroom reports and photo-consent flags are sent to the safeguarding
+      // officer, who must be able to act on them.
+      ['community.moderate', 'ALL'],
       ['correspondence.read', 'ALL'],
       ['contracts.read', 'ALL'],
       ['verification.read', 'ALL'],
@@ -701,6 +710,8 @@ export const SYSTEM_ROLES = [
       ['announcements.read', 'ALL'],
       ['calendar.read', 'ALL'],
       ['ai.copilot.use', 'OWN'],
+      // Every adult in the school can raise a concern; they see only their own reports.
+      ['safeguarding.report', 'OWN'],
     ]),
   },
   {

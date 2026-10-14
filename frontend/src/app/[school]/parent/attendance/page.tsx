@@ -4,6 +4,8 @@ import { PortalShell } from '@/components/shell';
 import { Card, EmptyState, SkeletonRows, StatCard } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { StudentListItem } from '@/lib/types';
+import { humanizeLabel } from '../../student/_lib/format';
+import { ChildLeave } from '../_components/child-leave';
 
 interface Summary {
   enrollmentId: string; yearMonth: string;
@@ -43,7 +45,7 @@ export default function ParentAttendance() {
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {kids.map((k, i) => (
             <button key={k.id} onClick={() => setActive(i)} className="chip-tab"
-              style={{ background: i === active ? 'var(--accent)' : '#fff', color: i === active ? 'var(--on-accent)' : 'var(--text-2)', borderColor: i === active ? 'var(--accent)' : 'var(--input-border)' }}>
+              style={{ background: i === active ? 'var(--accent)' : 'var(--card-bg)', color: i === active ? 'var(--on-accent)' : 'var(--text-2)', borderColor: i === active ? 'var(--accent)' : 'var(--input-border)' }}>
               {k.name.split(' ')[0]}
             </button>
           ))}
@@ -77,12 +79,12 @@ export default function ParentAttendance() {
               {(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY'] as const).map((s) => (
                 <div key={s}>
                   <div style={{ fontSize: 24, fontWeight: 700, color: statusColor(s) }}>{summary[s]}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>{s.replace('_', ' ')}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>{humanizeLabel(s)}</div>
                 </div>
               ))}
             </div>
             {summary.pctPresent != null && summary.pctPresent < 75 && (
-              <div style={{ marginTop: 16, padding: '10px 14px', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, fontSize: 13, color: '#b91c1c' }}>
+              <div role="status" style={{ marginTop: 16, padding: '10px 14px', border: '1px solid var(--red)', borderRadius: 8, fontSize: 13, color: 'var(--red)' }}>
                 Attendance is below 75%. Please ensure regular attendance to avoid academic disruption.
               </div>
             )}
@@ -92,6 +94,9 @@ export default function ParentAttendance() {
       {!loading && kid?.enrollment && !summary && (
         <EmptyState title="No records" sub="No attendance records found for this month." />
       )}
+
+      {/* Parents apply for their child's leave; the class teacher reviews it. */}
+      {kid?.enrollment && <ChildLeave studentId={kid.id} childName={kid.name.split(' ')[0]} />}
     </PortalShell>
   );
 }

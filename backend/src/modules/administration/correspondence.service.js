@@ -65,6 +65,18 @@ function present(doc) {
   return out;
 }
 
+/**
+ * Writes on a letter need correspondence.manage, or being the letter's owner or
+ * an assignee. Read access alone (a compliance officer browsing the register,
+ * say) used to be enough to draft, submit or close any visible letter.
+ */
+function assertCanWrite(doc, actor) {
+  if (actor?.permissions?.['correspondence.manage']) return;
+  const me = String(actor?.profileId ?? '');
+  const isParty = me && (String(doc.ownerProfileId ?? '') === me || (doc.assigneeProfileIds ?? []).some((x) => String(x) === me));
+  if (!isParty) throw new AppError("Only the letter's owner, an assignee or a correspondence manager can change it.", 403, [], 'NOT_CORRESPONDENCE_PARTY');
+}
+
 async function load(id, actor, scope) {
   const doc = await Correspondence.findById(assertObjectId(id));
   if (!doc || !canSee(doc, actor, scope)) throw new AppError('Correspondence not found', 404);
@@ -160,6 +172,7 @@ export async function assign(actor, scope, id, body = {}) {
 
 export async function verifySource(actor, scope, id, body = {}) {
   const doc = await load(id, actor, scope);
+  assertCanWrite(doc, actor);
   doc.source = { verified: true, method: requireText(body.method, 'method', { max: 80 }), note: optionalText(body.note, { max: 500 }) || null, verifiedByProfileId: actor.profileId };
   pushHistory(doc, actor, 'SOURCE_VERIFIED', { note: `${doc.source.method}${doc.source.note ? `: ${doc.source.note}` : ''}` });
   await doc.save();
@@ -168,6 +181,7 @@ export async function verifySource(actor, scope, id, body = {}) {
 
 export async function transition(actor, scope, id, { to, note } = {}) {
   const doc = await load(id, actor, scope);
+  assertCanWrite(doc, actor);
   const target = oneOf(to, ['ACKNOWLEDGED', 'IN_PROGRESS', 'NO_ACTION'], 'to');
   if (target === 'NO_ACTION' && !optionalText(note)) throw new AppError('Say why no action is needed.', 400, [], 'REASON_REQUIRED');
   move(doc, actor, target, note);
@@ -179,6 +193,7 @@ export async function transition(actor, scope, id, { to, note } = {}) {
 /** Save a new version of the reply (inward) or the letter (outward). */
 export async function saveDraft(actor, scope, id, body = {}) {
   const doc = await load(id, actor, scope);
+  assertCanWrite(doc, actor);
   const text = requireText(body.body, 'body', { max: 20000 });
   const next = doc.direction === 'INWARD' ? 'REPLY_DRAFTED' : 'DRAFT';
   if (doc.status === 'AWAITING_APPROVAL') throw new AppError('This reply is with the approver. Wait for a decision before editing it.', 409, [], 'IN_APPROVAL');
@@ -192,6 +207,7 @@ export async function saveDraft(actor, scope, id, body = {}) {
 
 export async function submitForApproval(actor, scope, id, body = {}) {
   const doc = await load(id, actor, scope);
+  assertCanWrite(doc, actor);
   if (!doc.drafts.length) throw new AppError('Write the reply before sending it for approval.', 400);
   move(doc, actor, 'AWAITING_APPROVAL');
   await doc.save();
@@ -265,6 +281,7 @@ export async function recordAcknowledgement(actor, scope, id, body = {}) {
 
 export async function close(actor, scope, id, body = {}) {
   const doc = await load(id, actor, scope);
+  assertCanWrite(doc, actor);
   const resolution = requireText(body.resolution, 'resolution', { max: 2000 });
   if (doc.status === 'DISPATCHED' && !doc.dispatch?.acknowledgement && body.withoutAcknowledgement !== true) {
     throw new AppError('No delivery acknowledgement is recorded. Record it, or confirm closing without one.', 409, [], 'NO_ACKNOWLEDGEMENT');
@@ -277,6 +294,7 @@ export async function close(actor, scope, id, body = {}) {
 
 export async function addReminder(actor, scope, id, body = {}) {
   const doc = await load(id, actor, scope);
+  assertCanWrite(doc, actor);
   const at = parseDate(body.at, 'at', { required: true });
   doc.reminders.push({ at, note: optionalText(body.note, { max: 300 }) || null });
   pushHistory(doc, actor, 'REMINDER_SET', { note: at.toISOString().slice(0, 10) });

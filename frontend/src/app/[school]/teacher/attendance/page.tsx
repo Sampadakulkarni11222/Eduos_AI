@@ -6,6 +6,7 @@ import { BulkUploadModal } from '@/components/bulk-upload-modal';
 import { FlashcardDeck } from '@/components/attendance/flashcard-deck';
 import { api, errorMessage } from '@/lib/api';
 import type { AttStatus, AttendanceRoster, SectionDto } from '@/lib/types';
+import { countStatuses, toolbarSummary, type DeckCounts } from './summary';
 
 const STATUSES: { key: AttStatus; label: string; tone: string }[] = [
   { key: 'PRESENT', label: 'P', tone: 'var(--green)' },
@@ -34,6 +35,11 @@ export default function AttendancePage() {
   const [saved, setSaved] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
   const [showBulk, setShowBulk] = useState(false);
+  // Why the roster could not be loaded. A failed load used to blank the page.
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  // The flashcard deck keeps its own marks; its tallies are lifted here so the
+  // filter-row summary matches the deck instead of reading 0 present.
+  const [deckCounts, setDeckCounts] = useState<DeckCounts | null>(null);
   // null = whole day. Marking a period is what produces genuine per-subject
   // attendance; without it every record is day-level and subject breakdowns
   // can only be inferred from the timetable.
@@ -59,7 +65,7 @@ export default function AttendancePage() {
   const load = useCallback(async (sid: string, d: string, p: number | null) => {
     if (!sid) return;
     const seq = ++loadSeq.current;
-    setLoading(true); setSaved(false); setSaveErr(null);
+    setLoading(true); setSaved(false); setSaveErr(null); setLoadErr(null); setDeckCounts(null);
     try {
       const r = await api.attendanceRoster(sid, d, p ?? undefined);
       if (seq !== loadSeq.current) return;
@@ -67,8 +73,11 @@ export default function AttendancePage() {
       const initial: Record<string, AttStatus> = {};
       r.roster.forEach((row) => { if (row.status) initial[row.enrollmentId] = row.status; });
       setMarks(initial);
-    } catch {
-      if (seq === loadSeq.current) setData(null);
+    } catch (err: unknown) {
+      if (seq === loadSeq.current) {
+        setData(null);
+        setLoadErr(errorMessage(err, 'Could not load this register. Check your connection and try again.'));
+      }
     } finally {
       if (seq === loadSeq.current) setLoading(false);
     }
@@ -133,6 +142,7 @@ export default function AttendancePage() {
   };
 
   const summary = data ? countStatuses(data, marks) : null;
+  const shown = toolbarSummary(mode, summary, deckCounts);
   // Only students with a status contribute an entry to the save payload, so
   // this is exactly what the Save button would submit.
   const markedCount = data ? data.roster.filter((r) => marks[r.enrollmentId] !== undefined).length : 0;
@@ -182,9 +192,9 @@ export default function AttendancePage() {
           <button type="button" aria-pressed={mode === 'cards'} className={cx('seg-btn', mode === 'cards' && 'is-on')} onClick={() => setMode('cards')}>▭ Flashcards</button>
         </div>
         {mode === 'list' && data && data.roster.length > 0 && <Button variant="soft" small onClick={allPresent} disabled={saving}>Mark all present</Button>}
-        {summary && (
+        {shown && (
           <span style={{ marginLeft: 'auto', fontSize: 12.5, color: 'var(--text-2)' }}>
-            {summary.PRESENT} present · {summary.ABSENT} absent · {summary.LATE} late
+            {shown.present} present · {shown.absent} absent · {shown.late} late
           </span>
         )}
       </div>
@@ -223,6 +233,15 @@ export default function AttendancePage() {
       {sections === null && <Card><SkeletonRows rows={5} /></Card>}
       {sections?.length === 0 && <EmptyState title="No sections assigned" sub="You'll mark attendance here once classes are linked to you." />}
       {loading && <Card><SkeletonRows rows={6} /></Card>}
+      {!loading && loadErr && !data && (
+        <div role="alert">
+          <EmptyState
+            title="Couldn't load the register"
+            sub={loadErr}
+            action={<Button variant="soft" onClick={() => void load(sectionId, date, periodNo)}>Try again</Button>}
+          />
+        </div>
+      )}
       {!loading && data && data.roster.length === 0 && <EmptyState title="No students in this section" sub="Add enrollments to begin marking attendance." />}
       {!loading && data && data.roster.length > 0 && mode === 'cards' && (
         <FlashcardDeck
@@ -230,6 +249,7 @@ export default function AttendancePage() {
           data={data}
           date={date}
           periodNo={periodNo}
+          onCounts={setDeckCounts}
           onSubmitted={(updated) => {
             setData(updated);
             const next: Record<string, AttStatus> = {};
@@ -314,13 +334,4 @@ export default function AttendancePage() {
       )}
     </PortalShell>
   );
-}
-
-function countStatuses(data: AttendanceRoster, marks: Record<string, AttStatus>) {
-  const c = { PRESENT: 0, ABSENT: 0, LATE: 0, EXCUSED: 0, HALF_DAY: 0 };
-  data.roster.forEach((r) => {
-    const s = marks[r.enrollmentId] ?? null;
-    if (s) c[s] += 1;
-  });
-  return c;
 }

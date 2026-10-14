@@ -45,6 +45,14 @@ payrollRouter.get('/runs/:id/bank-file.csv', pSens, pPrep, csv((r) => payroll.ba
 payrollRouter.post('/runs/:id/payment-initiated', pPrep, ok((r) => payroll.markPaymentInitiated(r.actor, r.params.id, r.body), 'Payment initiation recorded'));
 payrollRouter.post('/runs/:id/payment-confirmed', pPrep, ok((r) => payroll.confirmPayment(r.actor, r.params.id, r.body), 'Payment confirmed'));
 payrollRouter.get('/runs/:id/statutory/:code.csv', pSens, pPrep, csv((r) => payroll.statutoryExport(r.actor, r.params.id, r.params.code), (r) => `${r.params.code}-${r.params.id}.csv`));
+// The EPFO ECR 2.0 upload file itself (#~#-separated text), beside the CSV working file.
+payrollRouter.get('/runs/:id/statutory/EPF_ECR.txt', pSens, pPrep, asyncHandler(async (req, res) => {
+  const out = await payroll.statutoryExport(req.actor, req.params.id, 'EPF_ECR');
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="ECR-${req.params.id}.txt"`);
+  res.setHeader('Cache-Control', 'no-store');
+  res.send(out.ecr ?? '');
+}));
 payrollRouter.post('/runs/:id/statutory', pPrep, ok((r) => payroll.recordStatutorySubmission(r.actor, r.params.id, r.body), 'Submission recorded'));
 payrollRouter.post('/runs/:id/close', pPrep, ok((r) => payroll.closeRun(r.actor, r.params.id), 'Closed'));
 
@@ -64,7 +72,7 @@ procurementRouter.get('/requests/:id', qRead, ok((r) => procurement.getRequestBy
 procurementRouter.put('/requests/:id/quotes', qReq, ok((r) => procurement.setQuotes(r.actor, r.actor.permissions['procurement.manage'] ? 'ALL' : 'OWN', r.params.id, r.body), 'Quotes saved'));
 procurementRouter.post('/requests/:id/submit', qReq, ok((r) => procurement.submit(r.actor, 'OWN', r.params.id), 'Sent for approval'));
 procurementRouter.post('/requests/:id/cancel', qReq, ok((r) => procurement.cancel(r.actor, r.actor.permissions['procurement.manage'] ? 'ALL' : 'OWN', r.params.id, r.body), 'Cancelled'));
-procurementRouter.post('/requests/:id/po', qMan, ok((r) => procurement.issuePo(r.actor, 'ALL', r.params.id), 'PO issued'));
+procurementRouter.post('/requests/:id/po', qMan, ok((r) => procurement.issuePo(r.actor, 'ALL', r.params.id, r.body ?? {}), 'PO issued'));
 procurementRouter.post('/requests/:id/receive', qMan, ok((r) => procurement.receive(r.actor, 'ALL', r.params.id, r.body), 'Receipt recorded'));
 procurementRouter.post('/requests/:id/invoice', qMan, ok((r) => procurement.addInvoice(r.actor, 'ALL', r.params.id, r.body), 'Invoice booked'));
 procurementRouter.post('/requests/:id/approve-payment', qMan, ok((r) => procurement.approvePayment(r.actor, 'ALL', r.params.id, r.body), 'Payment approval recorded'));

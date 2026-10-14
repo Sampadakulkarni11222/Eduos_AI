@@ -1,4 +1,6 @@
 import { AuditLog } from '../models/auditLog.model.js';
+import { Profile } from '../models/profile.model.js';
+import { currentTenantId } from '../tenancy/tenantContext.js';
 
 // The audit trail stores request bodies verbatim, so credential-bearing fields
 // would otherwise be written to the database in plaintext (POST /auth/login
@@ -220,7 +222,18 @@ export const auditLogger = (req, res, next) => {
             ? MEDICAL_PAYLOAD_WITHHELD
             : isRestrictedPayloadPath(req.originalUrl || req.url) ? RESTRICTED_PAYLOAD_WITHHELD : redact(req.body);
 
+          // A sign-in runs before any school is chosen, so the entry would carry
+          // no school and never appear in that school's audit log. It belongs
+          // to the school of the profile that signed in.
+          let tenantId;
+          if (!currentTenantId() && actorProfileId) {
+            tenantId = resData?.profile?.tenantId
+              ?? (await Profile.findById(actorProfileId).select('tenantId').lean().catch(() => null))?.tenantId
+              ?? undefined;
+          }
+
           await AuditLog.create({
+            ...(tenantId ? { tenantId } : {}),
             actorProfileId,
             action,
             entityType,

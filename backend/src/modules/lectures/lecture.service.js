@@ -7,9 +7,13 @@ import { currentTenantId } from '../../tenancy/tenantContext.js';
 import { AppError } from '../../utils/AppError.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 import { sendOperational } from '../messaging/messaging.service.js';
+
 import {
   nextRef, requireProfile, assertObjectId, pushHistory, cleanAttachments, parseDate, requireText, optionalText, oneOf, dto, profilesWithRoles,
 } from '../ops/common.js';
+
+// Built once: a formatter is expensive to construct and this runs for every class listed.
+const WHEN_FMT = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
 
 /**
  * Digital lectures and online meetings.
@@ -42,7 +46,7 @@ const jitsiBase = () => String(process.env.JITSI_BASE_URL || 'https://meet.jit.s
 
 /** India time, as a person reads it: "Tue 14 Oct, 10:30 am". */
 export function whenText(at) {
-  return new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(at));
+  return WHEN_FMT.format(new Date(at));
 }
 
 function meetingLink(provider, given) {

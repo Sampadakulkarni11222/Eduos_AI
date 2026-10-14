@@ -71,7 +71,7 @@ export const listInquiries = asyncHandler(async (req, res) => {
 });
 
 export const createInquiry = asyncHandler(async (req, res) => {
-  const inquiry = await service.createInquiry(req.body);
+  const inquiry = await service.createInquiry(req.body, req.actor);
   sendSuccess(res, inquiry, 'Inquiry created', 201);
 });
 

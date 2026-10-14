@@ -29,6 +29,15 @@ export const DEFAULT_CHECKS = {
 };
 const CLEARED = ['CLEARED', 'CLEARED_WITH_CONDITIONS'];
 
+/**
+ * Checks that can never be waived for a kind of person. A school bus driver
+ * without police verification or a valid driving licence is exactly the risk
+ * the process exists to stop, so neither can be "waived with a note".
+ */
+export const NON_WAIVABLE_CHECKS = {
+  DRIVER: ['POLICE', 'DRIVING_LICENCE'],
+};
+
 /** Status-only projection for anyone without verification.manage. */
 export function statusOnly(c) {
   return {
@@ -70,10 +79,20 @@ export async function initiate(actor, body = {}) {
     subjectName: requireText(body.subjectName, 'subjectName', { max: 160 }),
     positionTitle: optionalText(body.positionTitle, { max: 120 }) || null,
     linkedEntity: optionalText(body.linkedEntity, { max: 120 }) || null,
-    checks: (Array.isArray(body.checks) && body.checks.length ? body.checks.map((t) => oneOf(t, CHECK_TYPES, 'check type')) : DEFAULT_CHECKS[subjectType]).map((type) => ({ type, required: true })),
+    // A custom check list cannot leave out a non-waivable check.
+    checks: [...new Set([
+      ...(Array.isArray(body.checks) && body.checks.length ? body.checks.map((t) => oneOf(t, CHECK_TYPES, 'check type')) : DEFAULT_CHECKS[subjectType]),
+      ...(NON_WAIVABLE_CHECKS[subjectType] ?? []),
+    ])].map((type) => ({ type, required: true })),
   });
   if (body.consent?.obtained) {
-    c.consent = { obtained: true, at: parseDate(body.consent.at, 'consent.at') ?? new Date(), evidenceUrl: optionalText(body.consent.evidenceUrl, { max: 1000 }) || null };
+    // Same rule as recordConsent(): consent is the signed form, not a tick.
+    // Checks run on it (DPDP Act 2023), so it cannot be recorded without it.
+    c.consent = {
+      obtained: true,
+      at: parseDate(body.consent.at, 'consent.at') ?? new Date(),
+      evidenceUrl: requireText(body.consent.evidenceUrl, 'consent.evidenceUrl (signed consent form)', { max: 1000 }),
+    };
   }
   if (subjectType === 'DRIVER' && body.driver) {
     c.driver = {
@@ -107,6 +126,9 @@ export async function recordCheck(actor, id, checkId, body = {}) {
     check.verifiedByProfileId = actor.profileId;
   }
   if (body.waive === true) {
+    if ((NON_WAIVABLE_CHECKS[c.subjectType] ?? []).includes(check.type)) {
+      throw new AppError(`The ${check.type.replace(/_/g, ' ').toLowerCase()} check cannot be waived for a ${c.subjectType.toLowerCase()}.`, 409, [], 'CHECK_NOT_WAIVABLE');
+    }
     check.required = false;
     check.note = requireText(body.note, 'note (why this check is waived)', { max: 2000 });
   }

@@ -17,6 +17,7 @@ import { CalendarEvent } from '../src/models/calendarEvent.model.js';
 import { SafeguardingCase } from '../src/models/compliance.model.js';
 import { Notification } from '../src/models/notification.model.js';
 import { MessageOutbox } from '../src/models/messaging.model.js';
+import { BoardMeeting } from '../src/models/governance.model.js';
 
 /**
  * End-to-end administration scenarios, run against the real services, models,
@@ -262,6 +263,9 @@ describe('Scenario: a trustee meeting produces agenda, notifications, minutes, r
     expect(await inOak(() => MessageOutbox.countDocuments({ relatedEntityId: m.id, templateKey: 'MEETING_SCHEDULED' }))).toBe(1);
     await inOak(() => governance.setAgenda(P.PRINCIPAL.actor, 'ALL', m.id, { items: [{ title: 'Approve annual budget', decisionNeeded: true }] }));
     await inOak(() => governance.setAgenda(P.PRINCIPAL.actor, 'ALL', m.id, { status: 'CIRCULATED' }));
+    // Minutes are recorded only after the meeting has happened: move it into the past.
+    await expect(inOak(() => governance.record(P.PRINCIPAL.actor, 'ALL', m.id, { minutes: 'too early' }))).rejects.toMatchObject({ code: 'MEETING_NOT_HELD' });
+    await inOak(() => BoardMeeting.updateOne({ _id: m.id }, { $set: { scheduledAt: new Date(Date.now() - 2 * 3_600_000) } }));
     const full = await inOak(() => governance.get(P.PRINCIPAL.actor, 'ALL', m.id));
     const [trustee, principal] = full.members;
     await expect(inOak(() => governance.record(P.PRINCIPAL.actor, 'ALL', m.id, { attendance: [{ memberId: trustee._id, attended: true }], resolutions: [{ text: 'Budget approved', votesFor: 1 }] })))

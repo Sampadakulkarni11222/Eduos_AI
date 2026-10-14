@@ -15,6 +15,7 @@ import { HostelRoom, HostelAllocation, HostelInquiry } from '../../models/hostel
 import { Document } from '../../models/document.model.js';
 import { CalendarEvent } from '../../models/calendarEvent.model.js';
 import { LeaveApplication } from '../../models/leaveApplication.model.js';
+import { gradeForPercentage, percentage } from '../../utils/grading.js';
 import {
   getTeacherSectionIds,
   getGuardianStudentIds,
@@ -33,6 +34,30 @@ const toRs = (paise) => Math.round((paise ?? 0)) / 100;
 function todayDow() {
   const d = new Date().getDay(); // 0=Sun
   return d === 0 ? 7 : d;
+}
+
+/** Submission states that mean the work is no longer owed. */
+const DONE_SUBMISSION_STATUSES = ['SUBMITTED', 'LATE', 'GRADED', 'EXEMPT'];
+
+/**
+ * Assignments one enrollment still owes: the section's live assignments due on
+ * or after `from` (a calendar day at UTC midnight, the way due dates are
+ * stored), minus those with a submission that is handed in, graded or exempt.
+ */
+export async function countPendingAssignments({ enrollmentId, offeringIds, from }) {
+  if (!enrollmentId || !offeringIds?.length) return 0;
+  const due = await Assignment.find({
+    subjectOfferingId: { $in: offeringIds },
+    deletedAt: null,
+    dueAt: { $gte: from },
+  }).select('_id').lean();
+  if (due.length === 0) return 0;
+  const done = await Submission.countDocuments({
+    enrollmentId,
+    assignmentId: { $in: due.map((a) => a._id) },
+    status: { $in: DONE_SUBMISSION_STATUSES },
+  });
+  return Math.max(0, due.length - done);
 }
 
 /** Get recent N announcements (for everyone) */
@@ -460,17 +485,17 @@ export async function getStudentDashboard(profileId) {
         .lean()
     : [];
 
-  // 3. Pending assignments
-  const pendingAssignments = await Submission.countDocuments({
-    enrollmentId,
-    status: 'PENDING',
-  });
-
-  // 4. Upcoming exams
-  const now = new Date();
+  // 3. Pending assignments: homework set for this section that is still due
+  // and not yet handed in. This used to count Submission rows with status
+  // PENDING, which missed any assignment the student had not opened, because
+  // no Submission row exists until they do.
   const offeringIds = sectionId
     ? (await SubjectOffering.find({ sectionId }).select('_id').lean()).map((o) => o._id)
     : [];
+  const pendingAssignments = await countPendingAssignments({ enrollmentId, offeringIds, from: dayStart });
+
+  // 4. Upcoming exams
+  const now = new Date();
 
   const examSchedule =
     offeringIds.length > 0
@@ -502,8 +527,10 @@ export async function getStudentDashboard(profileId) {
   const feeData = feeAgg[0] ?? { totalPaise: 0, paidPaise: 0, pendingCount: 0 };
 
   // 6. Borrowed library books
+  // borrowerProfileId holds either the student's Profile id or (as the
+  // lending screen writes it) their Student id; both are this student.
   const borrowedBooks = await BookIssue.find({
-    borrowerProfileId: profileId,
+    borrowerProfileId: { $in: [profileId, student._id] },
     status: { $in: ['ACTIVE', 'OVERDUE'] },
   })
     .populate('bookId', 'title author')
@@ -616,6 +643,9 @@ export async function getParentDashboard(profileId) {
   );
 
   const enrollmentIds = enrollments.map((e) => e._id);
+  // enrollmentId -> studentId, so family-wide lists can be tagged per child and
+  // the dashboard can show the child the parent has selected.
+  const studentByEnrollment = new Map(enrollments.map((e) => [String(e._id), String(e.studentId)]));
 
   // Children's attendance (aggregate per student)
   const attAgg =
@@ -664,15 +694,22 @@ export async function getParentDashboard(profileId) {
           { $match: { enrollmentId: { $in: enrollmentIds } } },
           {
             $group: {
-              _id: null,
+              _id: '$enrollmentId',
               totalPaise: { $sum: '$totalPaise' },
               paidPaise: { $sum: '$paidPaise' },
             },
           },
         ])
       : [];
-  const totalPaise = feeAgg[0]?.totalPaise ?? 0;
-  const paidPaise = feeAgg[0]?.paidPaise ?? 0;
+  const totalPaise = feeAgg.reduce((sum, f) => sum + (f.totalPaise ?? 0), 0);
+  const paidPaise = feeAgg.reduce((sum, f) => sum + (f.paidPaise ?? 0), 0);
+  // Outstanding per child, so the tile can follow the child being viewed.
+  const pendingPaiseByStudent = new Map();
+  for (const f of feeAgg) {
+    const sid = studentByEnrollment.get(String(f._id));
+    if (!sid) continue;
+    pendingPaiseByStudent.set(sid, (pendingPaiseByStudent.get(sid) ?? 0) + (f.totalPaise ?? 0) - (f.paidPaise ?? 0));
+  }
 
   // Recent invoices
   const recentInvoices =
@@ -703,9 +740,33 @@ export async function getParentDashboard(profileId) {
           .populate('examId', 'name')
           .populate({ path: 'subjectOfferingId', populate: { path: 'subjectId', select: 'name' } })
           .sort({ examDate: 1 })
-          .limit(5)
+          // Five per child, so filtering to the selected child still leaves five.
+          .limit(5 * Math.max(1, sectionIds.length))
           .lean()
       : [];
+
+  // Assignments each child still owes, per child (the same count the student
+  // dashboard shows).
+  const todayKey = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const offeringsBySection = new Map();
+  if (sectionIds.length > 0) {
+    const offerings = await SubjectOffering.find({ sectionId: { $in: sectionIds } }).select('_id sectionId').lean();
+    for (const o of offerings) {
+      const key = String(o.sectionId);
+      if (!offeringsBySection.has(key)) offeringsBySection.set(key, []);
+      offeringsBySection.get(key).push(o._id);
+    }
+  }
+  const pendingAssignmentsByStudent = new Map(
+    await Promise.all(enrollments.map(async (e) => [
+      String(e.studentId),
+      await countPendingAssignments({
+        enrollmentId: e._id,
+        offeringIds: offeringsBySection.get(String(e.sectionId?._id ?? e.sectionId)) ?? [],
+        from: todayKey,
+      }),
+    ]))
+  );
 
   // Today's timetable for children
   const dow = todayDow();
@@ -743,6 +804,10 @@ export async function getParentDashboard(profileId) {
         admissionNo: c.admissionNo,
         gender: c.gender,
         attendance: attendanceMap[c._id.toString()] ?? { total: 0, present: 0, percentage: 0 },
+        enrollmentId: e?._id ? String(e._id) : null,
+        sectionId: sec?._id ? String(sec._id) : null,
+        pendingFeesPaise: pendingPaiseByStudent.get(c._id.toString()) ?? 0,
+        pendingAssignments: pendingAssignmentsByStudent.get(c._id.toString()) ?? 0,
         classTeacher: t ? {
           name: t.displayName ?? 'Unknown',
           phone: t.accountId?.phoneE164 ?? null,
@@ -762,11 +827,13 @@ export async function getParentDashboard(profileId) {
       paid: toRs(inv.paidPaise),
       due: toRs(inv.totalPaise - inv.paidPaise),
       dueOn: inv.dueOn,
+      studentId: studentByEnrollment.get(String(inv.enrollmentId)) ?? null,
     })),
     upcomingExams: upcomingExams.map((es) => ({
       examName: es.examId?.name ?? '--',
       subject: es.subjectOfferingId?.subjectId?.name ?? '--',
       examDate: es.examDate,
+      sectionId: es.subjectOfferingId?.sectionId ? String(es.subjectOfferingId.sectionId) : null,
     })),
     timetable: timetable.map((s) => ({
       periodNo: s.periodNo,
@@ -781,7 +848,11 @@ export async function getParentDashboard(profileId) {
       subject: m.examSubjectId?.subjectOfferingId?.subjectId?.name ?? '--',
       marks: m.marks ?? 0,
       maxMarks: m.examSubjectId?.maxMarks ?? 0,
-      grade: m.gradeLabel ?? '--',
+      // Worked out on the school's grading scale (the one the report card
+      // uses) rather than trusting a stored label, so the dashboard and the
+      // report card never disagree about the same marks.
+      grade: gradeForPercentage(percentage(m.marks, m.examSubjectId?.maxMarks))?.label ?? m.gradeLabel ?? '--',
+      studentId: studentByEnrollment.get(String(m.enrollmentId)) ?? null,
     })),
     announcements: announcementsArr,
   };
@@ -825,6 +896,7 @@ export async function getWardenDashboard() {
     openTickets,
     pendingLeave,
     pendingLeaveCount,
+    occupiedRoomIds,
   ] = await Promise.all([
     HostelRoom.countDocuments({ status: { $ne: 'CLOSED' } }),
     HostelAllocation.countDocuments({ status: 'ACTIVE' }),
@@ -888,6 +960,11 @@ export async function getWardenDashboard() {
     // rows has no way to tell whether that is all of them or the first ten of
     // forty — which is the difference between "nothing to do" and a backlog.
     LeaveApplication.countDocuments(residentPendingLeave),
+
+    // Rooms with at least one resident. occupiedRooms used to repeat the
+    // occupied-bed count, and the warden tile added vacant *beds* to it, so a
+    // 50-room hostel was shown as "Total Rooms 200".
+    HostelAllocation.distinct('roomId', { status: 'ACTIVE' }),
   ]);
 
   const capacityData = vacantCount[0] ?? { totalCapacity: 0, totalOccupied: 0 };
@@ -895,7 +972,10 @@ export async function getWardenDashboard() {
 
   return {
     hostelStudents: occupiedBeds,
-    occupiedRooms: occupiedBeds,
+    // Rooms in use (not closed), counted as rooms. Read this for "Total Rooms".
+    totalRooms,
+    occupiedRooms: occupiedRoomIds.length,
+    occupiedBeds,
     vacantBeds: totalVacantBeds,
     totalCapacity: capacityData.totalCapacity,
     occupancyRate: pct(occupiedBeds, capacityData.totalCapacity),

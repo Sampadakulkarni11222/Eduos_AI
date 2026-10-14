@@ -81,6 +81,14 @@ export const TEMPLATES = {
     category: 'UTILITY',
     text: (v) => `${v.title}. Please check EduOS for details.`,
   },
+  // Sent to a student's guardians when the day's register marks them absent or
+  // late (modules/attendance-alerts). States only what the register says; the
+  // school may still correct a mark, so the wording does not claim more.
+  ATTENDANCE_ALERT: {
+    category: 'UTILITY',
+    subject: (v) => `${v.studentName} marked ${v.statusLabel} on ${v.date}`,
+    text: (v) => `${v.studentName} was marked ${v.statusLabel} in today's register (${v.date}). If this is unexpected, please contact the class teacher. You can apply for leave in EduOS.`,
+  },
 };
 
 const IST_OFFSET_MIN = 330;
