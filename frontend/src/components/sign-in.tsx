@@ -6,6 +6,7 @@ import { useAuth, stashLoginProfiles } from '@/lib/auth';
 import { clearActiveSchool } from '@/lib/school';
 import { checkDoor } from '@/lib/login-door';
 import { portalHome } from '@/lib/school-path';
+import { InstallAppPrompt } from './pwa';
 import { signIn, signOut as endGoogleSession, useSession } from 'next-auth/react';
 import type { ProfileSummary, PublicSchoolDto } from '@/lib/types';
 
@@ -738,6 +739,8 @@ export function SignIn({ school: schoolProp }: { school?: PublicSchoolDto | null
               >
                 {isPlatform ? 'With a school? Find your school' : 'Not your school? Choose a different one'}
               </a>
+              {/* School users are who installs the app; the platform door is for Super Admins. */}
+              {!isPlatform && <div><InstallAppPrompt /></div>}
             </div>
           </div>
 

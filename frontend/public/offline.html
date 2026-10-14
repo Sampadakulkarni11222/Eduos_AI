@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#591620">
+  <meta name="robots" content="noindex">
+  <title>You're offline · EduOS AI</title>
+  <!-- Shown by sw.js when a page cannot load. Self-contained on purpose: when
+       this is on screen nothing else can be fetched, so no fonts, scripts or
+       stylesheets from elsewhere. -->
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; min-height: 100dvh;
+      display: flex; align-items: center; justify-content: center; padding: 24px 20px;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #1a0a0d;
+      background: radial-gradient(160% 120% at 80% -10%, #f5ece0 0%, #ede3d2 35%, #e0d4be 70%, #d5c8ae 100%);
+    }
+    main { width: 100%; max-width: 380px; text-align: center; }
+    img { width: 64px; height: 64px; border-radius: 16px; box-shadow: 0 6px 24px rgba(89,22,32,.2); }
+    h1 { font-family: Georgia, "Times New Roman", serif; font-size: 24px; margin: 18px 0 8px; }
+    p { font-size: 14.5px; line-height: 1.6; color: #6b5a50; margin: 0 0 22px; }
+    button {
+      width: 100%; min-height: 48px; border: 0; border-radius: 12px; cursor: pointer;
+      font: 700 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff;
+      background: linear-gradient(135deg, #6b1a28 0%, #591620 60%, #3d0f15 100%);
+    }
+    button:focus-visible { outline: 3px solid #c9a23f; outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/icons/icon-192.png" alt="" width="64" height="64">
+    <h1>You're offline</h1>
+    <p>EduOS AI needs an internet connection. Check your Wi-Fi or mobile data, then try again. This page reloads by itself when you are back online.</p>
+    <button type="button" onclick="location.reload()">Try again</button>
+  </main>
+  <script>
+    // Back online: carry on to the page that failed to load.
+    window.addEventListener('online', function () { location.reload(); });
+  </script>
+</body>
+</html>

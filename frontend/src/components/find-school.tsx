@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth';
 import { portalHome } from '@/lib/school-path';
 import { forgetSchool, lookupSchool, parseSchoolCode, recallSchool, rememberSchool } from '@/lib/school-lookup';
 import { Spinner } from './ui';
+import { InstallAppPrompt } from './pwa';
 
 /**
  * "Which school are you with?" — the installed app's first screen.
@@ -191,6 +192,9 @@ export function FindSchool() {
           <p style={{ fontSize: 12.5, color: '#9a8a7a', lineHeight: 1.6, textAlign: 'center', margin: '20px 0 0' }}>
             Don&apos;t know your code? Ask your school office or administrator.
           </p>
+          <div style={{ textAlign: 'center' }}>
+            <InstallAppPrompt />
+          </div>
         </div>
 
         <p style={{ textAlign: 'center', fontSize: 12.5, marginTop: 20 }}>
