@@ -38,7 +38,7 @@ describe('scheduler', () => {
 
     // Sixteen minutes on, only the jobs with a window of fifteen minutes or less are due again.
     const later = await tick(new Date(now.getTime() + 16 * 60_000));
-    expect([...new Set(later.map((r) => r.job))].sort()).toEqual(['lectures.reminders', 'messaging.release']);
+    expect([...new Set(later.map((r) => r.job))].sort()).toEqual(JOBS.filter((j) => j.everyMinutes <= 15).map((j) => j.key).sort());
   });
 
   it('releases a message held for quiet hours without anyone asking', async () => {
@@ -61,7 +61,8 @@ describe('scheduler', () => {
     await inOak(() => Licence.create({ title: 'Fire safety certificate', kind: 'CERTIFICATE', expiresOn: soon, renewalLeadDays: 60 }));
     const day1 = new Date();
     await tick(day1);
-    const mine = () => inOak(() => Notification.countDocuments({ recipientProfileId: people.COMPLIANCE.actor.profileId }));
+    // Only the licence reminder; the same tick may also deliver other jobs' notices (e.g. a quarterly report).
+    const mine = () => inOak(() => Notification.countDocuments({ recipientProfileId: people.COMPLIANCE.actor.profileId, $or: [{ title: /Fire safety/ }, { body: /Fire safety/ }] }));
     expect(await mine()).toBe(1);
     // Next day, same week of the reminder cycle: the outbox row exists, so no second announcement.
     const key = (await inOak(() => MessageOutbox.findOne({ relatedEntityType: 'LICENCE' }).lean())).idempotencyKey;

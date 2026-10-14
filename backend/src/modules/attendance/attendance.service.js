@@ -11,6 +11,8 @@ import { TimetableSlot } from '../../models/timetableSlot.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 import { rowError } from '../../utils/csvImport.js';
+// A confirmed substitute may take one period's register (modules/staff cover).
+import { hasConfirmedCover } from '../staff/coverAccess.js';
 
 /** Every status a register can hold. Anything else is not a mark and is not counted. */
 export const ATTENDANCE_STATUSES = ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY'];
@@ -71,7 +73,7 @@ export function parseDateToMidnight(dateStr) {
  * /attendance/summary, /calendar and /trend, which resolve the enrollment
  * from the caller's identity (see resolveSummaryEnrollmentIds).
  */
-async function assertSectionAccess(actor, scope, sectionId) {
+async function assertSectionAccess(actor, scope, sectionId, cover = null) {
   // Only an explicit school-wide grant is unrestricted. Testing `!== 'OWN'`
   // meant any other value — including an absent scope, which is what a role
   // holding no attendance.mark at all resolves to — read as unrestricted and
@@ -81,6 +83,8 @@ async function assertSectionAccess(actor, scope, sectionId) {
   if (actor.roleKey === 'TEACHER') {
     const sectionIds = await getTeacherSectionIds(actor.profileId);
     if (!sectionIds.includes(String(sectionId))) {
+      // A substitute confirmed for this period may open this period's roster only.
+      if (cover && await hasConfirmedCover(actor.profileId, sectionId, cover.day, cover.periodNo)) return;
       throw new AppError('You do not teach this section', 403);
     }
     return;
@@ -113,7 +117,10 @@ export async function getRoster(actor, scope, sectionId, date, periodNo = null) 
   const period = periodNo === null || periodNo === undefined || periodNo === '' ? null : Number(periodNo);
   if (period !== null && !Number.isInteger(period)) throw new AppError('periodNo must be a whole number', 400);
 
-  await assertSectionAccess(actor, scope, sectionId);
+  await assertSectionAccess(actor, scope, sectionId, period === null ? null : { day, periodNo: period });
+  const covering = period !== null && actor?.roleKey === 'TEACHER' && scope !== 'ALL'
+    ? await hasConfirmedCover(actor.profileId, sectionId, day, period)
+    : false;
 
   const section = await Section.findById(sectionId).populate('gradeId').populate('classTeacherId', 'displayName');
   if (!section) throw new AppError('Section not found', 404);
@@ -152,7 +159,7 @@ export async function getRoster(actor, scope, sectionId, date, periodNo = null) 
         subjectTeacher: teacher?.displayName ?? null,
         startTime: s.startTime ?? null,
         endTime: s.endTime ?? null,
-        canMark: scope === 'ALL' || mine || isClassTeacher,
+        canMark: scope === 'ALL' || mine || isClassTeacher || (covering && s.periodNo === period),
       };
     });
 
@@ -221,6 +228,14 @@ export async function assertMarkAccess(actor, scope, sectionId, periodNo, day) {
 
   if (actor?.roleKey !== 'TEACHER') {
     throw new AppError('You are not allowed to mark this register', 403);
+  }
+
+  // A confirmed cover assignment lets the substitute mark exactly that period
+  // of that class on that day. It never opens the whole-day register, another
+  // period, or another day; every other check below is unchanged.
+  if (periodNo !== null && periodNo !== undefined && day && await hasConfirmedCover(actor.profileId, sectionId, day, periodNo)) {
+    const dowCover = day.getUTCDay() === 0 ? 7 : day.getUTCDay();
+    if (await TimetableSlot.exists({ sectionId, dayOfWeek: dowCover, periodNo })) return;
   }
 
   const sectionIds = await getTeacherSectionIds(actor.profileId);

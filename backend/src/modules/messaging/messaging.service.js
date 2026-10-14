@@ -92,6 +92,86 @@ export const TEMPLATES = {
     category: 'UTILITY',
     text: (v) => `Overdue ${v.days} day(s): ${v.title} (${v.department}). It needs an owner's action; see the exceptions list in EduOS.`,
   },
+  // Quarterly decision report ready (modules/analytics/quarterly.service.js). Says only that it exists; the figures stay behind sign-in.
+  QUARTERLY_REPORT_READY: {
+    category: 'UTILITY',
+    subject: (v) => `Quarterly report ready: ${v.quarter}`,
+    text: (v) => `The quarterly report for ${v.quarter} (version ${v.version}) is ready. Open Quarterly Reports in EduOS to read or download it.`,
+  },
+  // Transport and safety (modules/fleet, modules/safety, hostel out-pass).
+  // Short and factual: the record in EduOS carries the detail.
+  SAFETY_ALERT: {
+    category: 'UTILITY',
+    subject: (v) => `Safety alert: ${String(v.title).slice(0, 80)}`,
+    text: (v) => `${v.title}. Open EduOS to see and act on it.`,
+  },
+  TRIP_UPDATE: {
+    category: 'UTILITY',
+    text: (v) => `${v.studentName}: ${v.update}. See "My bus today" in EduOS.`,
+  },
+  OUTPASS_UPDATE: {
+    category: 'UTILITY',
+    text: (v) => `Hostel out-pass ${v.refNo} for ${v.studentName}: ${v.update}. Open EduOS for details.`,
+  },
+  VISITOR_UPDATE: {
+    category: 'UTILITY',
+    text: (v) => `Visitor ${v.name} (${v.purpose}): ${v.update}. Open EduOS to respond.`,
+  },
+  // Content-free on purpose: camera observations are restricted.
+  CAMERA_REVIEW_PENDING: {
+    category: 'UTILITY',
+    text: () => 'A camera observation is waiting for human review. Open EduOS (Camera review) to decide.',
+  },
+  // PTM, review calls, conversations, staff leave/cover and report cards
+  // (modules/ptm, modules/staff, modules/reportcards). Say that something
+  // happened and link to the page; never the detail.
+  PTM_BOOKED: {
+    category: 'UTILITY',
+    subject: (v) => `PTM booked: ${v.when}`,
+    text: (v) => `PTM booked with ${v.teacher} for ${v.student} on ${v.when}${v.venue ? ` (${v.venue})` : ''}. Details in EduOS.`,
+  },
+  PTM_REMINDER: {
+    category: 'UTILITY',
+    subject: (v) => `PTM reminder: ${v.when}`,
+    text: (v) => `Reminder: your PTM with ${v.teacher} for ${v.student} is ${v.lead} (${v.when}). Details in EduOS.`,
+  },
+  PTM_CANCELLED: {
+    category: 'UTILITY',
+    subject: (v) => `PTM cancelled: ${v.when}`,
+    text: (v) => `The PTM with ${v.teacher} for ${v.student} on ${v.when} was cancelled${v.reason ? `: ${v.reason}` : ''}. You can book another time in EduOS.`,
+  },
+  PTM_SLOT_OFFERED: {
+    category: 'UTILITY',
+    subject: (v) => `A PTM slot is free: ${v.when}`,
+    text: (v) => `A PTM slot with ${v.teacher} on ${v.when} is held for you until ${v.until}. Accept it in EduOS.`,
+  },
+  REVIEW_CALL_ASSIGNED: {
+    category: 'UTILITY',
+    text: (v) => `A parent review call (${v.ref}) is assigned to you. Open EduOS to see the case.`,
+  },
+  CONVERSATION_MESSAGE: {
+    category: 'UTILITY',
+    subject: (v) => `New message about ${v.student}`,
+    text: (v) => `${v.from} sent you a message about ${v.student}. Read and reply in EduOS.`,
+  },
+  STAFF_LEAVE_REQUESTED: {
+    category: 'UTILITY',
+    text: (v) => `${v.name} applied for ${v.days} day(s) of leave from ${v.from}. Review it in EduOS.`,
+  },
+  STAFF_LEAVE_DECIDED: {
+    category: 'UTILITY',
+    text: (v) => `Your leave from ${v.from} (${v.days} day(s)) was ${String(v.decision).toLowerCase()}. Details in EduOS.`,
+  },
+  COVER_ASSIGNED: {
+    category: 'UTILITY',
+    subject: (v) => `Cover: ${v.className} period ${v.period} on ${v.date}`,
+    text: (v) => `Cover arranged for ${v.className}, period ${v.period} (${v.time}) on ${v.date}: ${v.substitute} takes the lesson in place of ${v.absent}.`,
+  },
+  REPORT_CARD_PUBLISHED: {
+    category: 'UTILITY',
+    subject: (v) => `Report card: ${v.term}`,
+    text: (v) => `The ${v.term} report card for ${v.student} is published${v.version > 1 ? ` (corrected version ${v.version})` : ''}. View and download it in EduOS.`,
+  },
   ATTENDANCE_ALERT: {
     category: 'UTILITY',
     subject: (v) => `${v.studentName} marked ${v.statusLabel} on ${v.date}`,

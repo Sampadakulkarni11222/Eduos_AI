@@ -119,7 +119,7 @@ const UNCOVERED = {
   'reportcards.read': {
     category: 'A',
     via: 'get_report_card',
-    why: 'Report cards are served by exam.service.getReportCard(); the tool gates on marks.read, the same key the exams report-card route requires.',
+    why: 'Per-exam report cards are served by exam.service.getReportCard(); the tool gates on marks.read, the same key the exams report-card route requires. CBSE term cards (modules/reportcards, read by families with reportcards.read) are read on the Report Cards page; an assistant capability follows with the platform slice.',
   },
   'fees.plan.review': {
     category: 'A',
@@ -340,7 +340,6 @@ describe('permissions granted but enforced nowhere in the backend', () => {
    */
   const DEAD = [
     'analytics.child.read', 'analytics.class.read', 'analytics.school.read',
-    'reportcards.read',
   ];
 
   const sources = (() => {

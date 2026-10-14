@@ -34,6 +34,30 @@ const VIEWS = {
   SyllabusView: ["import { SyllabusView } from '@/components/ops/syllabus-view';", '<SyllabusView />'],
   LecturesView: ["import { LecturesView } from '@/components/ops/lectures-view';", '<LecturesView />'],
   MessagingView: ["import { MessagingView } from '@/components/ops/my-space-view';", '<MessagingView />'],
+  // Transport and safety.
+  FleetView: ["import { FleetView } from '@/components/ops/fleet-view';", '<FleetView />'],
+  'FleetView:duty': ["import { FleetView } from '@/components/ops/fleet-view';", '<FleetView mode="duty" />'],
+  BusTodayView: ["import { BusTodayView } from '@/components/ops/fleet-view';", '<BusTodayView />'],
+  GateView: ["import { GateView } from '@/components/ops/gate-view';", '<GateView />'],
+  PickupView: ["import { PickupView } from '@/components/ops/gate-view';", '<PickupView />'],
+  OutpassView: ["import { OutpassView } from '@/components/ops/outpass-view';", '<OutpassView />'],
+  'OutpassView:mine': ["import { OutpassView } from '@/components/ops/outpass-view';", '<OutpassView mode="mine" />'],
+  CameraView: ["import { CameraView } from '@/components/ops/camera-view';", '<CameraView />'],
+  CheckInView: ["import { CheckInView } from '@/components/ops/camera-view';", '<CheckInView />'],
+  AnalyticsView: ["import { AnalyticsView } from '@/components/ops/analytics-view';", '<AnalyticsView />'],
+  QuarterlyReportsView: ["import { QuarterlyReportsView } from '@/components/ops/analytics-view';", '<QuarterlyReportsView />'],
+  TasksView: ["import { TasksView } from '@/components/ops/tasks-view';", '<TasksView />'],
+  LabsView: ["import { LabsView } from '@/components/ops/labs-view';", '<LabsView />'],
+  BillsView: ["import { BillsView } from '@/components/ops/bills-view';", '<BillsView />'],
+  ConcessionsView: ["import { ConcessionsView } from '@/components/ops/bills-view';", '<ConcessionsView />'],
+  AccountsExportView: ["import { AccountsExportView } from '@/components/ops/bills-view';", '<AccountsExportView />'],
+  // PTM, review calls, conversations, staff leave/cover, term report cards.
+  PtmView: ["import { PtmView } from '@/components/ops/ptm-view';", '<PtmView />'],
+  ReviewCallsView: ["import { ReviewCallsView } from '@/components/ops/review-calls-view';", '<ReviewCallsView />'],
+  ConversationsView: ["import { ConversationsView } from '@/components/ops/conversations-view';", '<ConversationsView />'],
+  StaffLeaveView: ["import { StaffLeaveView } from '@/components/ops/staff-views';", '<StaffLeaveView />'],
+  CoverView: ["import { CoverView } from '@/components/ops/staff-views';", '<CoverView />'],
+  TermReportCardsView: ["import { TermReportCardsView } from '@/components/ops/term-report-cards-view';", '<TermReportCardsView />'],
 };
 
 const page = (portal, title, desc, view) => {

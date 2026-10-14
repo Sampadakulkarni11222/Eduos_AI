@@ -12,6 +12,16 @@ import * as compliance from '../modules/compliance/compliance.service.js';
 import * as lectures from '../modules/lectures/lecture.service.js';
 import * as marketing from '../modules/marketing/marketing.service.js';
 import * as tasks from '../modules/tasks/tasks.service.js';
+import * as fleetTrips from '../modules/fleet/trips.service.js';
+import * as visitorsSvc from '../modules/safety/visitors.service.js';
+import * as pickupSvc from '../modules/safety/pickup.service.js';
+import * as outpassSvc from '../modules/hostel/outpass.service.js';
+import * as cameraSvc from '../modules/safety/camera.service.js';
+import * as ptm from '../modules/ptm/ptm.service.js';
+import * as quarterlyReports from '../modules/analytics/quarterly.service.js';
+import { runLabsDue } from '../modules/labs/labs.due.js';
+import { runBillsDue } from '../modules/bills/bills.service.js';
+import { syncRenewals } from '../modules/bills/renewals.service.js';
 
 /**
  * The in-process scheduler for the operations modules.
@@ -35,7 +45,22 @@ export const JOBS = [
   { key: 'lectures.reminders', everyMinutes: 5, run: (now) => lectures.sendReminders(SYSTEM, { now }) },
   { key: 'verification.expire', everyMinutes: 60, run: (now) => verification.expireLapsed(now) },
   // Reminders at each lead time, escalation of overdue items, and items whose owner left.
+  // Transport and safety: trip delay / GPS-health alerts, visitor overstays and expired delegations,
+  // late out-pass returns, camera evidence past retention.
+  { key: 'fleet.alerts', everyMinutes: 5, feature: 'fleet', run: (now) => fleetTrips.runAlerts({ now }) },
+  { key: 'visitors.overstay', everyMinutes: 15, feature: 'visitors', run: async (now) => ({ ...(await visitorsSvc.alertOverstays({ now })), ...(await pickupSvc.expireDelegations(now)) }) },
+  { key: 'hostel.outpass.late', everyMinutes: 15, feature: 'hostelOutpass', run: (now) => outpassSvc.alertLate({ now }) },
+  // Not feature-gated: evidence past retention is purged even after a school switches cameras off.
+  { key: 'camera.retention', everyMinutes: 24 * 60, run: (now) => cameraSvc.purgeEvidence({ now }) },
   { key: 'tasks.reminders', everyMinutes: 60, feature: 'tasks', run: (now) => tasks.runReminders({ now }) },
+  // PTM: day-before and hour-before reminders to families (once each), and waiting-list offers that ran out passed on.
+  { key: 'ptm.reminders', everyMinutes: 15, feature: 'ptm', run: (now) => ptm.runReminders({ now }) },
+  // The previous quarter's report, once per school (quarter + version is unique), then its deliveries; a rerun only retries what failed.
+  { key: 'reports.quarterly', everyMinutes: 6 * 60, feature: 'analytics', leaseMinutes: 45, run: (now) => quarterlyReports.generateScheduled({ now }) },
+  // Lab expiries, calibrations, warranty/AMC ends, licence renewals and low stock into the tasks queue.
+  { key: 'labs.due', everyMinutes: 24 * 60, feature: 'labs', run: (now) => runLabsDue({ now }) },
+  // Unpaid bills, expected bills, AMC visits and the renewals list (licences, agreements, warranties) into the tasks queue.
+  { key: 'bills.due', everyMinutes: 24 * 60, feature: 'bills', run: async (now) => ({ bills: await runBillsDue(), renewals: await syncRenewals({ now }) }) },
   // A seat offer past its last day frees the seat; nobody is offered it automatically.
   { key: 'marketing.offers.expire', everyMinutes: 60, run: (now) => marketing.expireOffers({ now }) },
   { key: 'governance.reminders', everyMinutes: 60, run: () => governance.sendReminders(SYSTEM, { hours: 48 }) },

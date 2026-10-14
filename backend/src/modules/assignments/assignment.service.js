@@ -1,3 +1,4 @@
+import { localDate, localMidnight } from '../../utils/periods.js';
 import { Assignment, Submission } from '../../models/assignment.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { isSafeLinkUrl } from '../../utils/validators.js';
@@ -132,8 +133,10 @@ export const ASSIGNMENT_TYPES = ['HOMEWORK', 'PROJECT', 'WORKSHEET', 'LAB'];
 const EDITABLE_FIELDS = ['title', 'description', 'type', 'chapter', 'dueAt', 'maxMarks', 'attachments'];
 
 /** Start of today's calendar day (process-local, see config/env.js) as a UTC instant. */
+/** Local midnight today in the school's time zone (not UTC midnight, which is 05:30 in India). */
 function startOfToday(now = new Date()) {
-  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  const { y, m, d } = localDate(now);
+  return localMidnight(y, m, d);
 }
 
 /**

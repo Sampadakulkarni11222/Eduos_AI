@@ -30,7 +30,7 @@ export function isMedicalAuditEntry({ entityType, action } = {}) {
  * and pay structures / bank details. The action is still logged; the payload
  * is replaced, for the same reason as medical records above.
  */
-const RESTRICTED_PAYLOAD_PATHS = /^\/?(api\/v1\/)?(safeguarding|verification|payroll\/compensation|payroll\/employees)(\/|$|\?)/;
+const RESTRICTED_PAYLOAD_PATHS = /^\/?(api\/v1\/)?(safeguarding|verification|camera|pickup|class-check-ins|payroll\/compensation|payroll\/employees)(\/|$|\?)/;
 export function isRestrictedPayloadPath(url) {
   return RESTRICTED_PAYLOAD_PATHS.test(String(url ?? '').replace(/^\/+/, ''));
 }

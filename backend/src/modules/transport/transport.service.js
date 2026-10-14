@@ -174,14 +174,16 @@ export async function getRoute(routeId) {
   return { id: String(route._id), name: route.name, vehicleNo: route.vehicleNo ?? null, status: route.status };
 }
 
-export async function createStop({ routeId, name, sequenceNo, etaMinutesFromStart } = {}) {
+export async function createStop({ routeId, name, sequenceNo, etaMinutesFromStart, lat, lng } = {}) {
   if (!routeId || !name || sequenceNo === undefined) {
     throw new AppError('routeId, name, and sequenceNo are required', 400);
   }
   // A stop used to be created against whatever routeId arrived, so a stop could
   // point at another school's route, or at none. The route must exist here.
   await getRoute(routeId);
-  return TransportStop.create({ routeId, name, sequenceNo, etaMinutesFromStart: etaMinutesFromStart || 0 });
+  // Optional coordinates (used by trips for arrival, off-route and ETA estimates).
+  const coord = (v, max) => (v === undefined || v === null || v === '' || !Number.isFinite(Number(v)) || Math.abs(Number(v)) > max ? null : Number(v));
+  return TransportStop.create({ routeId, name, sequenceNo, etaMinutesFromStart: etaMinutesFromStart || 0, lat: coord(lat, 90), lng: coord(lng, 180) });
 }
 
 /**

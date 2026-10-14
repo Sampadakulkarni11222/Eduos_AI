@@ -251,6 +251,293 @@ const CONTENT: Record<string, OpsContent> = {
       { label: 'Honest status', text: '"Simulated" means no messaging provider is connected yet, so nothing left the system. "No consent" means the person has not agreed to that channel. Quiet hours hold messages until morning.' },
     ],
   },
+  analytics: {
+    category: 'Command Centre',
+    summary: 'The school figures for any period, compared with an earlier one: students and admissions, academics, finance, procurement, people, facilities, engagement and services. You only see the departments your role runs.',
+    highlights: [
+      { label: 'Defined numbers', text: 'Tap "i" on a card for exactly what it counts, from which records and on which date. Cash is counted on the payment date, billing on the invoice date.' },
+      { label: 'Honest comparisons', text: '"Not available" means the records do not cover that period; "not comparable" means the comparison is missing or zero. Neither is shown as 0.' },
+    ],
+    steps: [
+      'Choose a period (this month, quarter, academic or financial year, or your own dates) and what to compare it with.',
+      'Start on Overview, then open a department tab for every figure, its trend and its breakdown. "Show table" gives the numbers of a chart as a table.',
+      'Open the records behind a figure with its link. Export CSV or Print for the same figures you see.',
+    ],
+  },
+  reports: {
+    title: 'Quarterly reports',
+    category: 'Command Centre',
+    summary: 'A report for each quarter, generated automatically after it ends: figures with the prior quarter and the same quarter last year, budget variance, renewals coming up, achievements and decisions waiting.',
+    steps: ['Open a version to read it, or download it as PDF or CSV.', 'If figures were corrected, generate a new version with a reason. Earlier versions are kept unchanged.'],
+    tips: ['Department heads see their own section; the principal and administrator see the whole report.'],
+  },
+  tasks: {
+    title: 'My tasks',
+    category: 'My Work',
+    summary: 'Everything that is due — bills, licence renewals, services, inspections, follow-ups — with its owner, due date, reminders and the evidence that closed it.',
+    workflow: ['Due', 'Acknowledged', 'Completed (with evidence)'],
+    steps: [
+      'Mine lists what you own or are the delegate for. Exceptions lists what is overdue or critical.',
+      'Acknowledge a task to show you have it, snooze it with a reason, or complete it with a note and evidence.',
+      'Add a task for anything with a due date; a repeating task creates the next one when you complete it.',
+    ],
+    tips: ['Overdue tasks are escalated to the department lead after a day and to the principal after a week.'],
+  },
+  // PTM, review calls, conversations, staff leave and cover, term report cards.
+  ptm: {
+    category: 'Parents & PTM',
+    summary: 'Parent–teacher meetings. The principal opens a round; teachers give their available times; families book a slot for each child with each teacher; teachers meet with a short child briefing and record what was agreed.',
+    workflow: ['Round opened', 'Teachers add times', 'Families book', 'Meeting held', 'Outcome and actions'],
+    steps: [
+      'Principal or administration: New round, with the dates, classes, mode (in person, online or both), slot length, buffer and how late families may change.',
+      'Teachers: Add availability for a day and time window. Slots of the round\'s length are made inside it; block any you cannot keep.',
+      'Families: each child is listed with their teachers. Pick a time for each. A time that overlaps one you already booked is refused, so book back-to-back instead.',
+      'All slots gone? Join the waiting list. If someone cancels, the slot is held for you and you are told; accept it in time.',
+      'On the day the teacher checks the family in (or marks a no-show), opens the child briefing and records a summary, agreed actions and the next follow-up. Staff actions become tasks with reminders.',
+    ],
+    tips: [
+      'Families are reminded the day before and an hour before. Online meetings use a private room, joined from Digital Lectures. Meetings are never recorded.',
+      'Fees appear in the briefing only for people allowed to see the child\'s fees. Safeguarding concerns are never written in PTM notes: use Report a safeguarding concern.',
+      'Families can say which language they prefer, ask for an interpreter or note access needs when booking.',
+    ],
+  },
+  'review-calls': {
+    category: 'Parents & PTM',
+    summary: 'Follow-up calls with a family about attendance, progress, behaviour support, well-being or (for those allowed) fees: each attempt, private notes, agreed actions and the next follow-up, until the case is closed.',
+    workflow: ['Opened', 'Scheduled', 'Reached', 'Actions agreed', 'Closed'],
+    steps: [
+      'Open a review call for a pupil you teach, with a reason and a follow-up date.',
+      'Log every attempt: the channel and whether the family was reached. After three failed tries the page suggests another channel.',
+      'Keep private notes. Only you, the class teacher and the principal see them.',
+      'Agree actions with an owner and a due date: staff actions become tasks and escalate when overdue.',
+      'Close the case with an outcome and a note; reopen it if needed.',
+    ],
+    tips: ['Calls are never recorded.', 'The child briefing shows attendance, marks, syllabus progress, homework and activities.'],
+  },
+  conversations: {
+    title: 'Parent messages',
+    category: 'Parents & PTM',
+    summary: 'Messages about a child between a family and the child\'s teachers or the principal, with attachments and read receipts.',
+    steps: [
+      'New message: choose the child and the teacher (families) or the pupil and the parent (teachers), then write.',
+      'A tick shows when the other person has read your message.',
+      'Teachers: messages from families waiting more than 48 hours are on the Unanswered tab. Set your office hours so families know when you reply.',
+      'A teacher or the principal can close a conversation when it is resolved.',
+    ],
+    tips: [
+      'Phone numbers are removed from messages and never shown: the school\'s platform is the channel. For an emergency, call the school office.',
+      'The principal can read any conversation for oversight; each such read is logged.',
+    ],
+  },
+  'staff-leave': {
+    category: 'Organisation',
+    summary: 'Apply for leave and see your balance for the leave year (April to March). HR and the principal approve, set leave policies and export loss-of-pay days for payroll.',
+    workflow: ['Applied', 'Approved / Rejected', 'Cancelled (balance restored)'],
+    steps: [
+      'Apply for leave: choose the type, the dates (or a half day where allowed) and a reason. Sundays and school holidays are not counted.',
+      'Your balance changes only when the leave is approved. Cancelling an approved leave restores the days.',
+      'HR and principal: approve or reject on All staff; set entitlement and carry-forward on Policies & LOP; set up the year\'s balances once at the start of the year.',
+      'Loss-of-pay days (leave without pay and absences marked as loss of pay) are listed per person for payroll.',
+    ],
+    tips: ['You cannot approve your own leave.', 'Lessons you are covering for absent colleagues are listed on My leave.'],
+  },
+  cover: {
+    category: 'Organisation',
+    summary: 'Substitute cover for absent teachers: who is away today, which lessons that affects, who is free to take them, and the confirmed cover plan.',
+    workflow: ['Absence (leave or marked)', 'Lessons affected', 'Substitute confirmed', 'Everyone told'],
+    steps: [
+      'Teachers on approved leave appear automatically. Use Mark someone absent for an unplanned absence.',
+      'For each affected lesson choose Find a substitute: teachers free in that period and within the cover limits are listed, same subject first.',
+      'Confirm one. The absent teacher, the substitute and the class are told once, and the substitute can mark that period\'s register.',
+      'Cancel cover if plans change; the period shows as uncovered again.',
+    ],
+    tips: ['A period can be covered once, and nobody covers two classes at the same time.', 'Going over the daily or weekly cover limit needs a reason.'],
+  },
+  'report-cards': {
+    category: 'Learning',
+    summary: 'Term report cards with scholastic marks (periodic test, notebook, subject enrichment, half-yearly or annual exam), co-scholastic grades, discipline, attendance, remarks and the result, published to families as a PDF.',
+    workflow: ['Prepared from published marks', 'Class teacher approves', 'Principal approves', 'Published'],
+    steps: [
+      'Class teachers: choose the class and term, then Prepare from published marks. Marks not yet published show as pending.',
+      'Subject teachers enter the hand-marked components (notebook, subject enrichment) for their subjects.',
+      'The class teacher adds co-scholastic grades (A/B/C), discipline and remarks, and approves.',
+      'The principal approves and publishes. Families and students see the card and can download the PDF.',
+      'A correction after publishing sends the card back through approval and publishes a new version; the earlier version is kept.',
+    ],
+    tips: ['The structure is a template: the default follows a CBSE-style term card, and a school can use its own components and weightings.'],
+  },
+  // ── Transport and safety ────────────────────────────────────────────────
+  fleet: {
+    category: 'Transport & Safety',
+    summary: 'Vehicles with their lawful seating and papers, today\'s trips with seats, boarding and safe handover, a live board of where each vehicle last reported, and transport alerts.',
+    workflow: ['Planned', 'Seats allocated', 'On the way', 'Reconciled', 'Completed'],
+    steps: [
+      'Vehicles: add each bus with its lawful seating, usable seats and the expiry of its permit, insurance, fitness and pollution certificates. Every date becomes a reminder in Tasks.',
+      'Trips: "Plan the day\'s trips" creates a morning pickup and afternoon drop for each route with a registered vehicle and seats the enrolled students, never more than the usable seats.',
+      'Open a trip to record boarding (or let the bus card reader do it), mark no-shows, and at a drop hand each child only to an adult the screen lists as authorised. If nobody authorised is there, keep the child with the school.',
+      'Reconcile at the end: anyone allocated but not accounted for is named and alerted. A trip with an unmatched student needs a note to close.',
+      'If a bus breaks down, record the breakdown and use "Substitute vehicle"; the new vehicle must seat everyone already allocated.',
+    ],
+    tips: [
+      'A vehicle with expired papers, in service or broken down cannot run a trip.',
+      'Arrival times are estimates from distance and speed; a stale or offline GPS is labelled as such. Manual boarding always works.',
+      'Drivers and attendants without a current background clearance are blocked or flagged, as the school has chosen.',
+    ],
+  },
+  'bus-duty': {
+    category: 'Transport & Safety',
+    summary: 'The trips where you are the attendant: the students with a seat, boarding, handover at each stop and the end-of-trip check.',
+    steps: [
+      'Open today\'s trip and start it when the bus leaves.',
+      'Tap Boarded as each child gets on (a card reader may do this for you), or No-show if they were not at the stop.',
+      'At a drop, choose Hand over and pick the adult from the list after checking their ID. A restricted adult is shown as "Do not release".',
+      'If nobody authorised is at the stop, choose "keep with school". The family and the transport office are told.',
+      'Reconcile and complete the trip when every child is accounted for.',
+    ],
+    tips: ['You only see trips you are assigned to.'],
+  },
+  'bus-today': {
+    category: 'Transport & Safety',
+    summary: 'Today\'s bus for your child: whether the trip has started, their stop, whether they boarded, an estimated arrival and who received them.',
+    steps: ['Open the page during the trip and press Refresh for the latest status.', 'The arrival time is an estimate; the school messages you about real delays or changes.'],
+    tips: ['You see only your own child\'s trip, never other children or the driver\'s other trips.'],
+  },
+  gate: {
+    category: 'Transport & Safety',
+    summary: 'The front gate: visitors and contractors with host approval and badges, child pickup and release, ID card checkpoints and the emergency roster.',
+    workflow: ['Pre-registered', 'Host approved', 'Checked in', 'Checked out'],
+    steps: [
+      'Visitors: pre-register a visit; the host approves it in EduOS. At arrival check their photo ID, record its type and last four characters, and issue a badge with an expiry.',
+      'Pickup & release: find the student to see every guardian, authorised adult, delegate and custody restriction, then record the release to the adult who is here.',
+      'Checkpoints: see today\'s gate, bus, lab and library scans; refused cards and flagged departures stand out. Staff can record a scan by hand.',
+      'ID cards: issue a card, mark it lost or revoked (scans are then refused and alerted), or replace it; the old card\'s history stays linked.',
+      'Emergency roster: who is on the register today and not released, plus visitors on site. Download the CSV to print a copy.',
+    ],
+    tips: [
+      'A checkpoint scan shows that a card was presented at a place and time. It is not proof of where anyone is now.',
+      'A child leaving through the gate with no recorded release or out-pass is flagged.',
+      'Gate scans can suggest attendance to class teachers but never change the register.',
+    ],
+  },
+  pickup: {
+    category: 'Transport & Safety',
+    summary: 'Who may collect your child. Add someone for a limited time, confirmed with a code sent to your phone, and see today\'s gate and bus checkpoints.',
+    steps: [
+      'Choose "Let someone collect", enter their name, relationship and until when, and confirm with the code sent to your phone.',
+      'Withdraw a delegate at any time. Recent handovers show who received your child, where and when.',
+    ],
+    tips: ['The person must show photo ID. If nobody authorised comes, your child stays safely with the school and you are called.'],
+  },
+  outpass: {
+    category: 'Transport & Safety',
+    summary: 'Hostel out-passes: requests from residents and guardians, your approval, the exit and return at the gate, and late returns.',
+    workflow: ['Guardian confirms', 'Warden approves', 'Out', 'Returned'],
+    steps: [
+      'A student\'s own request first waits for their guardian to confirm in the app; a guardian\'s request comes straight to you.',
+      'Approve or decline (with a reason). Record the exit and the return, or let a gate card scan record them.',
+      'A resident not back by the expected time plus the grace period raises one alert to the wardens and the guardians.',
+    ],
+  },
+  'my-outpass': {
+    category: 'Transport & Safety',
+    summary: 'Ask for a hostel out-pass, confirm your child\'s request, and follow it until the return.',
+    steps: [
+      'Choose "Request out-pass", give the dates, reason, destination and escort.',
+      'Guardians: when your child asks, open the request and choose "I confirm" or "I do not agree".',
+      'You are told when the warden decides, when your child leaves and returns, and if the return is late.',
+    ],
+  },
+  camera: {
+    category: 'Transport & Safety',
+    summary: 'Optional pilot, switched off by default. Approved cameras report observations (a possibly unattended room, a possible aggression, a camera offline), which stay unverified until a trained reviewer decides.',
+    workflow: ['Unverified', 'Reviewed', 'Referred to safeguarding if needed'],
+    steps: [
+      'Open an observation: an unattended-room observation is shown next to the timetable, the teacher\'s check-in, cover and leave.',
+      'Record your decision with notes. Changing an earlier decision needs a reason; both are kept.',
+      'A confirmed or follow-up aggression observation can be referred to the safeguarding officer as a new case.',
+      'Pilot measures show the false-alert rate and the time to review, for the school\'s evaluation.',
+    ],
+    tips: [
+      'No face identification, emotion inference, behaviour scores or live streams to parents. Cameras are never allowed in toilets, washrooms or changing rooms.',
+      'Observations never appear in feeds, the campus map, ordinary analytics or parent views.',
+    ],
+  },
+  'class-check-in': {
+    category: 'Transport & Safety',
+    summary: 'Mark yourself in class at the start of each period you teach or cover. It is the school\'s record that the class was attended.',
+    steps: ['Choose the period and Check in. If you are covering for a colleague, give their staff id.'],
+    tips: ['A check-in is never used to judge teaching.'],
+  },
+  labs: {
+    category: 'Learning',
+    summary: 'Science and computer labs in one place: chemicals and consumables in batches with expiry badges, every receipt, issue, return, use, breakage, disposal and stocktake in a ledger, instruments and their calibration, computers and software seats, practical sessions with a readiness check, and incidents.',
+    workflow: ['Plan practical', 'Prepare', 'Readiness check', 'Safety checks', 'Supervised session', 'Complete'],
+    highlights: [
+      { label: 'Scan or type', text: 'Every batch, instrument and computer has a code (LB-, LE-, LD-). Scan the label into the box, or type the code, tag, serial or lot number when it will not scan.' },
+      { label: 'Never below zero', text: 'Two people issuing from the same bottle at once cannot take it below zero, and an expired or quarantined batch cannot be issued at all.' },
+      { label: 'First expiry first', text: 'When you issue, the batch that expires first is suggested, with how much is short.' },
+      { label: 'Safe handling', text: 'Hazardous items are issued to the supervising teacher, never to a student. Disposal is done by staff with evidence attached.' },
+    ],
+    steps: [
+      'Labs: set up a lab on a LAB room, with its in-charge, assistant and safety checklist.',
+      'Stock: Receive new stock with its expiry date; open an item to issue, record use or damage, dispose, quarantine or release a batch. Reorder drafts a purchase request in Procurement.',
+      'Stocktake: enter what is on the shelf; differences are recorded as adjustments with your reason. The ledger is never edited.',
+      'Instruments: record a calibration with its certificate, log a repair (it goes out of service) and close it when fixed.',
+      'Computers & software: register devices by tag, log repairs, decommission with the e-waste recycler\'s handover note, and assign software seats.',
+      'Practicals: plan one with its materials and instruments, send it to the lab assistant, check readiness, tick the safety checks to start, mark attendance and complete it.',
+      'Incidents: report a spill, breakage or injury; raise a work order for the room if needed. A child-welfare concern goes to Safeguarding.',
+    ],
+    tips: [
+      'Units convert within mass (mg, g, kg) or volume (mL, L) only; the system never assumes a density.',
+      'Expiries, calibrations, warranty and AMC ends, software renewals and low stock become tasks in My Tasks for the lab in-charge.',
+      'Licence keys and passwords are never stored here; keep them in the school\'s password manager.',
+    ],
+  },
+  bills: {
+    category: 'Finance',
+    summary: 'Recurring bills and service contracts — electricity, water, internet, AMCs, software, rent, security, housekeeping, waste, insurance — with payments confirmed against the bank, service visits, one renewals list, a review queue and the cost dashboard.',
+    workflow: ['Bill recorded', 'Payment recorded', 'Confirmed by a second person', 'Paid'],
+    highlights: [
+      { label: 'Recorded is not paid', text: 'A payment counts as settling a bill only when someone other than the person who recorded it confirms it against the bank statement.' },
+      { label: 'Renewals', text: 'Licences, agreements (with their notice deadline), warranties, AMCs, lab calibrations and software licences, sorted by when a decision is needed, with cost, owner and what happens if nothing is done.' },
+      { label: 'Review queue', text: 'Bills well above their usual amount, possible duplicates, consumption jumps, overdue bills, payments without evidence and supplier invoices that did not match. Each flag states its rule and numbers; it is a prompt to check, not a finding.' },
+    ],
+    steps: [
+      'Services & contracts: add each recurring service with its provider, account number, cycle, usual amount, owner and contract dates.',
+      'Bills: record a bill when it arrives (attach it); record a payment with its receipt; a colleague confirms it with the bank reference.',
+      'Snooze a bill reminder with a reason, or dispute a wrong bill. A revised bill keeps the old amount in its history.',
+      'Services: close an AMC visit with the service report; the next visit is scheduled automatically.',
+      'Cost dashboard: compare any period with last year or the previous period, by category and month.',
+    ],
+    tips: ['Every unpaid bill, expected bill, service visit and renewal is a task in My Tasks, and escalates when overdue.'],
+  },
+  concessions: {
+    category: 'Finance',
+    summary: 'Fee concession schemes (sibling, staff ward, merit, RTE, need-based) and concessions, credit notes and voids on issued invoices — each one approved before it changes anything.',
+    workflow: ['Requested', 'Approved by the principal', 'Applied to the invoice'],
+    steps: [
+      'Add the schemes the school offers: a percentage, a fixed amount, or decided per case for need-based support.',
+      'New request: find the invoice, choose a concession (or, with fee rights, a credit note or void), give the reason and attach any proof.',
+      'The request goes to the approvals inbox. Once approved the invoice total goes down; the issued amount stays on record.',
+    ],
+    tips: [
+      'An invoice cannot be reduced below what has already been paid — that is a refund, with its own approval.',
+      'A void keeps the invoice as cancelled with the reason; nothing is deleted.',
+    ],
+  },
+  'accounts-export': {
+    category: 'Finance',
+    summary: 'Everything the accountant needs for a date range: vouchers as a Tally import file (XML) or CSV, and a GST summary of fee lines the school has marked taxable.',
+    steps: [
+      'Choose the dates and Show to see the voucher counts and totals.',
+      'Download Tally XML and import it in Tally (Gateway → Import → Vouchers). Create or map the ledger names first.',
+      'Set the HSN/SAC code and GST rate on any taxable fee head (transport, uniforms, events). New invoices carry it; issued ones keep what they were issued with.',
+    ],
+    tips: [
+      'Tuition is commonly exempt, but the school\'s accountant decides rates and exemptions; the system does not.',
+      'Every voucher is checked to balance before the file is produced.',
+    ],
+  },
 };
 
 const PAGES = opsRoutes.pages as Record<string, { title: string; icon: string; hidden?: boolean }>;

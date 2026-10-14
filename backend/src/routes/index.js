@@ -59,6 +59,19 @@ import { signUploadUrlsInResponses, unsignUploadUrlsInBody } from '../modules/up
 import lectureRoutes from '../modules/lectures/lecture.routes.js';
 import syllabusRoutes from '../modules/syllabus/syllabus.routes.js';
 import tasksRoutes from '../modules/tasks/tasks.routes.js';
+// Transport fleet/trips/GPS, ID checkpoints, visitors and pickup, hostel out-pass, optional camera review.
+import fleetRoutes from '../modules/fleet/fleet.routes.js';
+import outpassRoutes from '../modules/hostel/outpass.routes.js';
+import { checkpointsRouter, visitorsRouter, pickupRouter, cameraRouter, classCheckInRouter, safetyRouter } from '../modules/safety/safety.routes.js';
+// PTM, review calls, conversations, staff leave/cover, term report cards.
+import { ptmRouter, reviewCallsRouter } from '../modules/ptm/ptm.routes.js';
+import conversationRoutes from '../modules/conversations/conversations.routes.js';
+import staffRoutes from '../modules/staff/staff.routes.js';
+import reportCardRoutes from '../modules/reportcards/reportcards.routes.js';
+import analyticsRoutes from '../modules/analytics/analytics.routes.js';
+import labsRoutes from '../modules/labs/labs.routes.js';
+import billsRoutes from '../modules/bills/bills.routes.js';
+import { feeAdjustmentsRouter, accountsExportRouter } from '../modules/fees/finance-extras.routes.js';
 
 const router = Router();
 
@@ -163,6 +176,24 @@ router.use('/budgets', budgetRouter);
 router.use('/lectures', lectureRoutes);
 router.use('/syllabus', syllabusRoutes);
 router.use('/tasks', tasksRoutes);
+router.use('/fleet', fleetRoutes);
+router.use('/checkpoints', checkpointsRouter);
+router.use('/visitors', visitorsRouter);
+router.use('/pickup', pickupRouter);
+router.use('/outpass', outpassRoutes);
+router.use('/camera', cameraRouter);
+router.use('/class-check-ins', classCheckInRouter);
+router.use('/safety', safetyRouter);
+router.use('/ptm', ptmRouter);
+router.use('/review-calls', reviewCallsRouter);
+router.use('/conversations', conversationRoutes);
+router.use('/staff', staffRoutes);
+router.use('/report-cards', reportCardRoutes);
+router.use('/analytics', analyticsRoutes);
+router.use('/labs', labsRoutes);
+router.use('/bills', billsRoutes);
+router.use('/fee-adjustments', feeAdjustmentsRouter);
+router.use('/accounts-export', accountsExportRouter);
 router.use('/community', communityRouter);
 router.use('/marketing', marketingRouter);
 router.use('/campus', campusRouter);

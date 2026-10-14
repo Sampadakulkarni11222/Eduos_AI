@@ -5,6 +5,11 @@ const feeHeadSchema = new Schema(
   {
     name: { type: String, required: true, trim: true }, // "Tuition", "Transport" — unique per school
     category: { type: String, default: 'TUITION' },
+    // Optional tax set-up for a taxable head (transport, uniforms, events...).
+    // Tuition is commonly exempt; the school's accountant decides, the ERP
+    // does not assume a rate. Basis points: 1800 = 18%.
+    hsnSac: { type: String, default: null, trim: true },
+    gstRateBp: { type: Number, default: null, min: 0, max: 10000 },
   },
   { timestamps: true }
 );
@@ -24,7 +29,8 @@ const feeStructureSchema = new Schema(
 const invoiceSchema = new Schema(
   {
     enrollmentId: { type: Schema.Types.ObjectId, ref: 'Enrollment', required: true },
-    invoiceNo: { type: String, required: true, unique: true },
+    // Unique per school (index below); series INV/<FY>/<000123> unless typed.
+    invoiceNo: { type: String, required: true },
     status: { type: String, enum: ['PENDING', 'PARTIAL', 'PAID', 'OVERDUE', 'CANCELLED'], default: 'PENDING' },
     totalPaise: { type: Number, required: true },
     paidPaise: { type: Number, default: 0 },
@@ -34,9 +40,17 @@ const invoiceSchema = new Schema(
     // everywhere they are read.
     planId: { type: Schema.Types.ObjectId, ref: 'FeePlan', default: null },
     installmentSeq: { type: Number, default: null },
+    // Controlled adjustments (fees/adjustment.service.js): what was issued
+    // stays in grossTotalPaise; totalPaise is what is now payable. A void
+    // keeps the invoice, marks it CANCELLED and records why.
+    grossTotalPaise: { type: Number, default: null },
+    adjustedPaise: { type: Number, default: 0 },
+    voidedAt: { type: Date, default: null },
+    voidReason: { type: String, default: null },
   },
   { timestamps: true }
 );
+invoiceSchema.index({ tenantId: 1, invoiceNo: 1 }, { unique: true });
 feeHeadSchema.index({ tenantId: 1, name: 1 }, { unique: true });
 invoiceSchema.index({ status: 1, dueOn: 1 });
 
@@ -47,6 +61,9 @@ const invoiceLineSchema = new Schema(
     description: { type: String, required: true },
     amountPaise: { type: Number, required: true },
     concessionPaise: { type: Number, default: 0 },
+    hsnSac: { type: String, default: null },
+    gstRateBp: { type: Number, default: null },
+    taxPaise: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

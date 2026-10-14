@@ -55,6 +55,19 @@ export async function nextReceiptNo({ session = null, at = new Date() } = {}) {
 }
 
 /**
+ * The next invoice number in this school's series for the financial year the
+ * invoice is raised in: `INV/2026-27/000123`. Used whenever an invoice is
+ * raised without a number of its own (generation, a CSV row left blank, the
+ * single-invoice form). A number the office typed is kept as typed.
+ */
+export async function nextInvoiceNo({ session = null, at = new Date() } = {}) {
+  const fy = financialYear(at);
+  const tenant = currentTenantId() ?? 'platform';
+  const n = await nextSequence(`invoice:${tenant}:${fy}`, { session });
+  return `INV/${fy}/${String(n).padStart(6, '0')}`;
+}
+
+/**
  * What each manual payment mode has to carry.
  *
  * This table is the backend half of requirement 12: the form asks for these
@@ -193,7 +206,7 @@ export function listFeeStructures({ academicYearId, gradeId } = {}) {
   // must include those as well as the ones targeted at this grade.
   if (gradeId) filter.$or = [{ gradeId }, { gradeId: null }];
   return FeeStructure.find(filter)
-    .populate('feeHeadId', 'name category')
+    .populate('feeHeadId', 'name category hsnSac gstRateBp')
     .populate('gradeId', 'name')
     .sort({ dueOn: 1 })
     .lean();
@@ -249,7 +262,6 @@ export async function generateInvoices({ academicYearId, gradeId = null, dueOn, 
   );
 
   const result = { generated: 0, skipped: 0, totalPaise: 0, dryRun, invoices: [] };
-  const stamp = Date.now();
 
   for (const enrollment of enrollments) {
     const due = structures.filter((s) => !alreadyBilled.has(`${enrollment._id}:${s._id}`));
@@ -258,12 +270,21 @@ export async function generateInvoices({ academicYearId, gradeId = null, dueOn, 
       continue;
     }
 
-    const lines = due.map((s) => ({
-      feeStructureId: s._id,
-      description: `${s.feeHeadId?.name ?? 'Fee'} — ${s.name}`,
-      amountPaise: s.amountPaise,
-    }));
-    const totalPaise = lines.reduce((sum, l) => sum + l.amountPaise, 0);
+    // A fee head the school has marked taxable carries its HSN/SAC code and
+    // GST rate onto the line, and the tax is added to the fee. Heads with no
+    // rate (tuition, usually exempt) bill exactly as before.
+    const lines = due.map((s) => {
+      const rateBp = s.feeHeadId?.gstRateBp ?? null;
+      return {
+        feeStructureId: s._id,
+        description: `${s.feeHeadId?.name ?? 'Fee'} — ${s.name}`,
+        amountPaise: s.amountPaise,
+        hsnSac: s.feeHeadId?.hsnSac ?? null,
+        gstRateBp: rateBp,
+        taxPaise: rateBp ? Math.round((s.amountPaise * rateBp) / 10000) : 0,
+      };
+    });
+    const totalPaise = lines.reduce((sum, l) => sum + l.amountPaise + l.taxPaise, 0);
 
     result.generated++;
     result.totalPaise += totalPaise;
@@ -277,7 +298,7 @@ export async function generateInvoices({ academicYearId, gradeId = null, dueOn, 
 
     const invoice = await createInvoice({
       enrollmentId: enrollment._id,
-      invoiceNo: `INV-${stamp}-${result.generated}`,
+      invoiceNo: await nextInvoiceNo(),
       dueOn: invoiceDueOn,
       lines,
     });
@@ -483,8 +504,9 @@ export async function createInvoice({ enrollmentId, invoiceNo, dueOn, lines }) {
   const enrollment = await Enrollment.findById(enrollmentId);
   if (!enrollment) throw new AppError('Enrollment not found', 404);
 
-  const totalPaise = lines.reduce((sum, l) => sum + l.amountPaise - (l.concessionPaise ?? 0), 0);
-  const invoice = await Invoice.create({ enrollmentId, invoiceNo, dueOn, totalPaise });
+  const totalPaise = lines.reduce((sum, l) => sum + l.amountPaise + (l.taxPaise ?? 0) - (l.concessionPaise ?? 0), 0);
+  // No number given: the school's invoice series supplies one.
+  const invoice = await Invoice.create({ enrollmentId, invoiceNo: invoiceNo || await nextInvoiceNo(), dueOn, totalPaise });
   await InvoiceLine.insertMany(lines.map((l) => ({ ...l, invoiceId: invoice._id })));
   return invoice;
 }
@@ -561,7 +583,8 @@ export async function bulkCreateInvoices(rows) {
       continue;
     }
 
-    const invoiceNo = row.invoiceno?.trim() || `INV-${Date.now()}-${rowNo}`;
+    // eslint-disable-next-line no-await-in-loop
+    const invoiceNo = row.invoiceno?.trim() || await nextInvoiceNo();
 
     try {
       await createInvoice({

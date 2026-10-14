@@ -431,3 +431,35 @@ export async function stats(actor) {
   ]);
   return { next24Hours: today, liveNow: live, next7Days: week };
 }
+
+/**
+ * For the PTM module: a private online parent meeting with one teacher, in a
+ * fresh Jitsi room. The family is the only invitee, so the room is joined
+ * through join() like any other class (the link is never listed). PTM sends
+ * its own day-before and hour-before reminders, so this class is marked as
+ * reminded to avoid a second notice. Nothing is announced here either: the
+ * booking confirmation says it all. Calls are never recorded.
+ */
+export async function createParentMeeting({ hostProfileId, hostName = null, parentProfileId, title, startsAt, endsAt, description = null, actor = null }) {
+  const cls = new OnlineClass({
+    refNo: await nextRef('CLS'), kind: 'PARENT_MEETING', title: String(title).slice(0, 200),
+    description: description ? String(description).slice(0, 4000) : null,
+    hostProfileId, hostName, sectionIds: [], inviteeProfileIds: [parentProfileId], inviteeRoles: [], includeGuardians: false,
+    startsAt, endsAt, provider: 'JITSI', joinUrl: meetingLink('JITSI'), reminderSentAt: new Date(), history: [],
+  });
+  pushHistory(cls, actor, 'SCHEDULED', { to: 'SCHEDULED', note: 'PTM booking' });
+  await cls.save();
+  return cls;
+}
+
+/** For the PTM module: cancels the online room of a cancelled or moved booking (quietly; PTM tells the family). */
+export async function cancelParentMeeting(id, { reason = 'PTM booking cancelled', actor = null } = {}) {
+  if (!id) return null;
+  const cls = await OnlineClass.findById(id);
+  if (!cls || !['SCHEDULED', 'LIVE'].includes(cls.status)) return null;
+  const from = cls.status;
+  cls.status = 'CANCELLED'; cls.cancelReason = String(reason).slice(0, 300);
+  pushHistory(cls, actor, 'CANCELLED', { from, to: 'CANCELLED', note: cls.cancelReason });
+  await cls.save();
+  return cls;
+}
