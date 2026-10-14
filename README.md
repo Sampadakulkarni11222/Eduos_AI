@@ -411,6 +411,7 @@ Every portal home is powered by a single role-scoped `GET /api/v1/dashboard/:rol
 - **Server is the source of truth.** `/auth/me` returns the profile's resolved permission map (e.g. `fees.read: ALL`, `attendance.mark: OWN`); the same keys are enforced by `requirePermission` middleware on every API route. The frontend only mirrors that map for menu/page gating — nothing client-side grants data access.
 - **Scopes**: `ALL` = whole school; `OWN` = the teacher's own sections, the parent's own children, the student's own record — resolved server-side per request.
 - **Access & Permissions** is a live editor over the `roles` × `permissions` collections; toggles persist via the roles API and take effect immediately.
+- **Per-role, per-tab access** is a headline feature of the ERP: every tab in all nine portals is gated by role, permission key and scope. See [docs/ACCESS-AND-PERMISSIONS.md](docs/ACCESS-AND-PERMISSIONS.md) for the full tab-by-tab matrix.
 - **Ownership checks**: parents can only pay their own invoices; students always submit assignments as themselves (enrollment resolved from the session, never trusted from the client); the manual payment ledger is staff-only.
 - Sessions: 15-min access tokens + rotating refresh tokens (revocable per device or account-wide on logout). Credential endpoints have a strict rate limit (30/15 min) separate from the general API limit (2000/15 min).
 - Medical records are encrypted at rest (`MEDICAL_ENCRYPTION_KEY`).
