@@ -15,6 +15,14 @@
 /** Top-level paths every host serves, because sign-in and the session need them. */
 const SHARED_PREFIXES = ['login', 'select-profile', 'api', 'public', '_next'];
 
+/** Pages that exist for development only and are not served by a production build. */
+const DEV_ONLY_PATHS = ['/login/google-mock-auth'];
+
+export function isDevOnlyPath(pathname: string): boolean {
+  const path = pathname.toLowerCase().replace(/\/+$/, '');
+  return DEV_ONLY_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
+}
+
 /** Hosts that are the platform itself and never a school's domain. */
 export function isPlatformHost(host: string, configured: string | undefined): boolean {
   const hostname = normalizeHost(host);

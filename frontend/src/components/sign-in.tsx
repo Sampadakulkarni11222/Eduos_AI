@@ -1,12 +1,13 @@
 'use client';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ApiError, api, setSession } from '@/lib/api';
 import { useAuth, stashLoginProfiles } from '@/lib/auth';
 import { clearActiveSchool } from '@/lib/school';
 import { checkDoor } from '@/lib/login-door';
 import { portalHome } from '@/lib/school-path';
-import { signIn, useSession } from 'next-auth/react';
+import { InstallAppPrompt } from './pwa';
+import { signIn, signOut as endGoogleSession, useSession } from 'next-auth/react';
 import type { ProfileSummary, PublicSchoolDto } from '@/lib/types';
 
 /* ── types ────────────────────────────────────────────────────── */
@@ -358,24 +359,41 @@ export function SignIn({ school: schoolProp }: { school?: PublicSchoolDto | null
     }
   }, [loading, me, router]);
 
-  // Handle NextAuth real Google Sign-In redirect callback
+  // Handle NextAuth real Google Sign-In redirect callback.
+  //
+  // The NextAuth session exists to carry the result of the Google round trip
+  // back to this screen, and for nothing else — so it is read once and then
+  // ended. Left in place it outlived the sign-in by the life of its cookie:
+  // this effect ran again on every later visit and signed in with the same
+  // tokens, which undid a sign-out for as long as the access token was good,
+  // and wrote the first refresh token back over whichever one rotation had
+  // since replaced it.
+  const googleResultHandled = useRef(false);
   useEffect(() => {
-    if (session) {
-      const sess = session as any;
-      if (sess.eduosAccessToken) {
-        void complete({
-          accessToken: sess.eduosAccessToken,
-          refreshToken: sess.eduosRefreshToken,
-          profiles: sess.eduosProfiles,
-          requiresProfileSelection: sess.eduosRequiresProfileSelection,
-        });
-      } else if (sess.eduosError === 'WRONG_DOOR') {
-        setPageErr(sess.eduosErrorMessage ?? 'This account is not part of this school.');
-      } else if (sess.eduosError === 'USER_NOT_FOUND') {
-        setPageErr('No EduOS account is linked to this Google account. Ask your school admin to add your email.');
-      } else if (sess.eduosError) {
-        setPageErr('Google sign-in could not be completed. Please try again.');
-      }
+    if (!session || googleResultHandled.current) return;
+    const sess = session as any;
+    if (!sess.eduosAccessToken && !sess.eduosError) return;
+    googleResultHandled.current = true;
+
+    // Best-effort: failing to clear it must not stop the sign-in it carried.
+    void endGoogleSession({ redirect: false }).catch(() => {});
+
+    if (sess.eduosAccessToken) {
+      complete({
+        accessToken: sess.eduosAccessToken,
+        refreshToken: sess.eduosRefreshToken,
+        profiles: sess.eduosProfiles,
+        requiresProfileSelection: sess.eduosRequiresProfileSelection,
+      }).catch((x) => {
+        setWrongDoor(x instanceof WrongDoorError ? x.goTo ?? null : null);
+        setPageErr(x instanceof WrongDoorError ? x.message : 'Google sign-in could not be completed. Please try again.');
+      });
+    } else if (sess.eduosError === 'WRONG_DOOR') {
+      setPageErr(sess.eduosErrorMessage ?? 'This account is not part of this school.');
+    } else if (sess.eduosError === 'USER_NOT_FOUND') {
+      setPageErr('No EduOS account is linked to this Google account. Ask your school admin to add your email.');
+    } else {
+      setPageErr('Google sign-in could not be completed. Please try again.');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
@@ -712,6 +730,17 @@ export function SignIn({ school: schoolProp }: { school?: PublicSchoolDto | null
               <p style={{ fontSize: 11.5, color: '#b0a090', lineHeight: 1.6 }}>
                 Use your school-issued credentials to sign in.
               </p>
+              {/* The way from either door to the other schools' doors: the
+                  platform sign-in admits nobody from a school, and a school's
+                  door admits nobody from another one. */}
+              <a
+                href={isPlatform ? '/find-school' : '/find-school?change=1'}
+                style={{ display: 'inline-block', marginTop: 8, padding: '6px 4px', fontSize: 12.5, fontWeight: 600, color: '#591620', textDecoration: 'underline' }}
+              >
+                {isPlatform ? 'With a school? Find your school' : 'Not your school? Choose a different one'}
+              </a>
+              {/* School users are who installs the app; the platform door is for Super Admins. */}
+              {!isPlatform && <div><InstallAppPrompt /></div>}
             </div>
           </div>
 

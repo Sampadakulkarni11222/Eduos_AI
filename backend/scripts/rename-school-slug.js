@@ -23,6 +23,7 @@ import { env } from '../src/config/env.js';
 import { logger } from '../src/utils/logger.js';
 import { School } from '../src/models/school.model.js';
 import { Profile } from '../src/models/profile.model.js';
+import { SCHOOL_SLUG_RE, isReservedSchoolSlug } from '../src/modules/schools/school.slug.js';
 
 // Same set the migration stamps, so a rename can never miss a collection.
 const SCHOOL_OWNED = [
@@ -57,7 +58,7 @@ const SCHOOL_OWNED = [
 // migration is about to drop.
 mongoose.set('autoIndex', false);
 
-const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,63}$/;
+const SLUG_RE = SCHOOL_SLUG_RE;
 const APPLY = process.argv.includes('--apply');
 
 function arg(name) {
@@ -77,6 +78,10 @@ async function main() {
   }
   if (!SLUG_RE.test(to)) {
     logger.error('The new slug must be 2-64 lowercase letters, digits or hyphens.');
+    process.exit(1);
+  }
+  if (isReservedSchoolSlug(to)) {
+    logger.error(`"${to}" is an address the portal uses itself; a school renamed to it could not be reached.`);
     process.exit(1);
   }
   if (from === to) {

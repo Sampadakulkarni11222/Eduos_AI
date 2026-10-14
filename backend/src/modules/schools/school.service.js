@@ -12,6 +12,7 @@ import { detectProfileDomainChange } from '../domains/domain.service.js';
 import { normalizeWebsite } from '../domains/domain.hostname.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
+import { SCHOOL_SLUG_RE, isReservedSchoolSlug } from './school.slug.js';
 
 /**
  * A School Admin's website as it will be stored: trimmed and as entered, or
@@ -51,7 +52,7 @@ async function syncProfileDomain(actor, slug, previousWebsite) {
  */
 
 const SCHOOL_ADMIN_ROLE_KEY = 'ADMIN';
-const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,63}$/;
+const SLUG_RE = SCHOOL_SLUG_RE;
 
 async function schoolAdminRole() {
   const role = await Role.findOne({ key: SCHOOL_ADMIN_ROLE_KEY }).select('_id key name').lean();
@@ -215,6 +216,11 @@ export async function createSchool({ tenantId, slug, tenantName, name, admin, se
 
   if (!SLUG_RE.test(id)) {
     throw new AppError('School id must be 2-64 lowercase letters, digits or hyphens', 400);
+  }
+  // Checked on creation only: a school that already has one of these names is
+  // left as it is (see scripts/rename-school-slug.js to move it).
+  if (isReservedSchoolSlug(id)) {
+    throw new AppError(`"${id}" is an address the portal uses itself and cannot be a school id`, 400, [], 'SCHOOL_SLUG_RESERVED');
   }
   if (displayName.length < 2 || displayName.length > 120) {
     throw new AppError('School name must be between 2 and 120 characters', 400);
