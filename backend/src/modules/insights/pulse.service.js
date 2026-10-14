@@ -1,3 +1,4 @@
+import { plural, countLabel } from '../../utils/plural.js';
 import { AttendanceRecord } from '../../models/attendanceRecord.model.js';
 import { Enrollment } from '../../models/student.model.js';
 import { Payment, Invoice } from '../../models/fee.model.js';
@@ -87,7 +88,7 @@ async function feeCollection(actor) {
   const points = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + i, 1));
     const r = rows.find((x) => x._id.y === d.getUTCFullYear() && x._id.m === d.getUTCMonth() + 1);
-    return { label: monthLabel(d), value: r ? r.paise : 0, detail: r ? `${r.n} payment(s)` : 'No payments' };
+    return { label: monthLabel(d), value: r ? r.paise : 0, detail: r ? plural(r.n, 'payment') : 'No payments' };
   });
   const overdue = await Invoice.countDocuments({ dueOn: { $lt: now }, $expr: { $lt: ['$paidPaise', '$totalPaise'] }, status: { $ne: 'CANCELLED' } });
   return { ...chart('fees', 'Fees collected, last six months', 'bar', points, { unit: 'paise', link: '/fees', definition: 'Successful, published payments by the month they were recorded.' }), footnote: `${overdue} invoice(s) overdue` };
@@ -283,7 +284,9 @@ export async function pulse(actor, { decisions = 0 } = {}) {
     attempt('repairs', () => repairAgeing(actor)),
   ])).filter(Boolean);
   const [feed, tiles] = await Promise.all([attempt('activity', () => activity(actor)), attempt('departments', () => departments(actor))]);
-  const out = { charts, activity: feed ?? [], departments: tiles ?? [], asOf: new Date().toISOString() };
+  // Each tile line reads in the right number ("1 open letter", "2 open letters").
+  const worded = (tiles ?? []).map((t) => ({ ...t, lines: (t.lines ?? []).map(([n, label]) => [n, countLabel(n, label)]) }));
+  const out = { charts, activity: feed ?? [], departments: worded, asOf: new Date().toISOString() };
   out.briefing = briefing(actor, { ...out, decisions });
   return out;
 }

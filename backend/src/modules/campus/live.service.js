@@ -1,3 +1,4 @@
+import { countLabel } from '../../utils/plural.js';
 import { AttendanceRecord } from '../../models/attendanceRecord.model.js';
 import { Enrollment } from '../../models/student.model.js';
 import { Exam, ExamSubject } from '../../models/exam.model.js';
@@ -113,7 +114,7 @@ const DEPARTMENTS = [
 
 async function metricsFor(code, actor, now) {
   const lines = [];
-  const add = (value, label, tone = 'neutral') => lines.push({ value, label, tone });
+  const add = (value, label, tone = 'neutral') => lines.push({ value, label: typeof value === 'number' ? countLabel(value, label) : label, tone });
   if (code === 'LEADERSHIP' && can(actor, 'approvals.read', 'ALL')) {
     add(await ApprovalRequest.countDocuments({ status: 'PENDING' }), 'approvals in progress');
   }

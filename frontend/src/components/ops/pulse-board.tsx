@@ -35,11 +35,22 @@ function MaybeLink({ href, className, children, role, plain }: { href: string | 
   return <Link href={href} className={className} role={role}>{children}{!plain && <span aria-hidden="true"> →</span>}</Link>;
 }
 
+/** Splits an axis label into at most two lines that fit the column. */
+function axisLines(label: string, max: number): string[] {
+  if (label.length <= max) return [label];
+  const words = label.split(/\s+/);
+  const first: string[] = [];
+  while (words.length && [...first, words[0]].join(' ').length <= max) first.push(words.shift() as string);
+  if (!first.length) return [`${label.slice(0, max - 1)}…`];
+  const rest = words.join(' ');
+  return rest ? [first.join(' '), rest.length > max ? `${rest.slice(0, max - 1)}…` : rest] : [first.join(' ')];
+}
+
 /** A chart drawn in SVG: hover or focus a point for its detail, click the chart to open the records. */
 function Chart({ c }: { c: PulseChartDto }) {
   const page = usePortalPage();
   const [hover, setHover] = useState<number | null>(null);
-  const W = 320; const H = 150; const P = { l: 8, r: 8, t: 14, b: 26 };
+  const W = 320; const H = 156; const P = { l: 8, r: 8, t: 14, b: 32 };
   const values = c.points.map((p) => p.value ?? 0);
   const max = Math.max(1, ...values) * (c.unit === 'percent' ? 1 : 1.1);
   const top = c.unit === 'percent' ? 100 : max;
@@ -60,7 +71,9 @@ function Chart({ c }: { c: PulseChartDto }) {
       {c.type !== 'line' && c.points.map((p, i) => {
         const cx = P.l + ((i + 0.5) * (W - P.l - P.r)) / c.points.length;
         const v = p.value ?? 0;
-        const w = c.type === 'funnel' ? Math.max(14, (bw + 30) * (v / Math.max(1, values[0]))) : bw;
+        // Every bar stays inside its own column. A funnel's narrowing is drawn by
+        // height alone; scaling the width too pushed the first bar into its neighbour.
+        const w = bw;
         return (
           <g key={i} tabIndex={0} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onFocus={() => setHover(i)} onBlur={() => setHover(null)}>
             <rect x={cx - w / 2} y={y(v)} width={w} height={Math.max(1, y(0) - y(v))} rx={4} fill={TONE[p.tone ?? 'neutral']} opacity={hover === null || hover === i ? 0.9 : 0.4} className="pb-bar" />
@@ -71,7 +84,13 @@ function Chart({ c }: { c: PulseChartDto }) {
       {c.points.map((p, i) => {
         if (c.type === 'line' && c.points.length > 7 && i % 2) return null;
         const cx = c.type === 'line' ? x(i) : P.l + ((i + 0.5) * (W - P.l - P.r)) / c.points.length;
-        return <text key={`l${i}`} x={cx} y={H - 8} className="pb-axis" textAnchor="middle">{p.label.length > 12 ? `${p.label.slice(0, 11)}…` : p.label}</text>;
+        // Long labels ("Tour scheduled") wrap onto a second line instead of being cut.
+        const lines = axisLines(p.label, Math.max(6, Math.floor(((W - P.l - P.r) / c.points.length) / 5.6)));
+        return (
+          <text key={`l${i}`} x={cx} y={H - (lines.length > 1 ? 14 : 8)} className="pb-axis" textAnchor="middle">
+            {lines.map((line, k) => <tspan key={k} x={cx} dy={k ? 10 : 0}>{line}</tspan>)}
+          </text>
+        );
       })}
     </svg>
   );

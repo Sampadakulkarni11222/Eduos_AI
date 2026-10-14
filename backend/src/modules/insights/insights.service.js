@@ -1,3 +1,4 @@
+import { plural } from '../../utils/plural.js';
 import { Invoice } from '../../models/fee.model.js';
 import { AttendanceRecord } from '../../models/attendanceRecord.model.js';
 import { Section } from '../../models/academics.model.js';
@@ -116,15 +117,15 @@ async function principalHome(actor) {
   const deadlines = (await compliance.calendar({ days: 14 })).slice(0, 12);
   return {
     role: 'PRINCIPAL',
-    greeting: `${inbox.length} decision${inbox.length === 1 ? '' : 's'} waiting${deadlines.filter((d) => d.overdue).length ? `, ${deadlines.filter((d) => d.overdue).length} overdue item(s)` : ''}.`,
+    greeting: `${inbox.length} decision${inbox.length === 1 ? '' : 's'} waiting${deadlines.filter((d) => d.overdue).length ? `, ${plural(deadlines.filter((d) => d.overdue).length, 'overdue item')}` : ''}.`,
     kpis,
     decisions: inbox.slice(0, 8),
     deadlines,
     exceptions: [
-      ...(sg.statutoryPending ? [{ severity: 'HIGH', text: `${sg.statutoryPending} child-protection case(s) have no statutory report recorded.`, link: null }] : []),
-      ...(comp.noticesToReview ? [{ severity: 'MEDIUM', text: `${comp.noticesToReview} official notice(s) awaiting applicability review.`, link: '/compliance?tab=notices' }] : []),
-      ...(att.sections && att.sectionsMarked < att.sections ? [{ severity: 'LOW', text: `${att.sections - att.sectionsMarked} section(s) have not marked whole-day attendance today.`, link: '/principal/attendance' }] : []),
-      ...(chart?.stats?.unplaced ? [{ severity: 'LOW', text: `${chart.stats.unplaced} staff member(s) are not placed in the organisation structure.`, link: '/organization' }] : []),
+      ...(sg.statutoryPending ? [{ severity: 'HIGH', text: `${plural(sg.statutoryPending, 'child-protection case')} ${sg.statutoryPending === 1 ? 'has' : 'have'} no statutory report recorded.`, link: null }] : []),
+      ...(comp.noticesToReview ? [{ severity: 'MEDIUM', text: `${plural(comp.noticesToReview, 'official notice')} awaiting applicability review.`, link: '/compliance?tab=notices' }] : []),
+      ...(att.sections && att.sectionsMarked < att.sections ? [{ severity: 'LOW', text: `${plural(att.sections - att.sectionsMarked, 'section')} ${att.sections - att.sectionsMarked === 1 ? 'has' : 'have'} not marked whole-day attendance today.`, link: '/principal/attendance' }] : []),
+      ...(chart?.stats?.unplaced ? [{ severity: 'LOW', text: `${plural(chart.stats.unplaced, 'staff member')} ${chart.stats.unplaced === 1 ? 'is' : 'are'} not placed in the organisation structure.`, link: '/organization' }] : []),
       ...govActions.filter((a) => a.overdue).slice(0, 3).map((a) => ({ severity: 'MEDIUM', text: `Board action overdue: ${a.title}`, link: `/governance?id=${a.meetingId}` })),
     ],
     upcomingEvents: events7.map((e) => ({ id: String(e._id), title: e.title, startsAt: e.startsAt, status: e.status, readiness: e.tasks?.length ? Math.round((e.tasks.filter((t) => t.status === 'DONE').length / e.tasks.length) * 100) : null })),

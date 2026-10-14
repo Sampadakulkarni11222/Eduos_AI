@@ -406,7 +406,7 @@ body.role-alumnus{--accent:#4d3416;--accent-2:#6b4a22;--sidebar-text:#EFE3CF;--s
 .pb-axis{font-size:10px;fill:var(--text-faint,#6b645a)}
 .pb-empty{padding:28px 8px;text-align:center;color:var(--text-faint,#6b645a);font-size:13px}
 .pb-def{font-size:11px;color:var(--text-faint,#6b645a)}
-.pb-feed{padding:12px 14px;position:sticky;top:12px;max-height:620px;overflow:auto}
+.pb-feed{padding:12px 14px;position:sticky;top:12px;align-self:start;max-height:calc(100vh - 140px);overflow:auto}
 .pb-feed-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
 .pb-live{font-size:11px;color:#2E7D32;font-weight:700;animation:pb-blink 2s ease-in-out infinite}
 @keyframes pb-blink{50%{opacity:.35}}
