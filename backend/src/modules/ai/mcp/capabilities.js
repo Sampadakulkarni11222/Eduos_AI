@@ -70,6 +70,7 @@ const ENTITY_OF_MODULE = {
   Organisation: 'organisation',
   Newsroom: 'newsroom',
   Campus: 'campus',
+  Lectures: 'digitalLecture',
 };
 
 /**
@@ -394,6 +395,7 @@ export const ENTITY_VOCABULARY = [
   ['organisation', /\borgani[sz]ation\b|\bvacanc(?:y|ies)\b/i],
   ['newsroom', /\bnewsroom\b/i],
   ['campus', /\bcampus\b/i],
+  ['digitalLecture', /\bdigital\s+lectures?\b|\bonline\s+class(?:es)?\b|\blive\s+class(?:es)?\b|\bwebinars?\b/i],
 ];
 
 /**

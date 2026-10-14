@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**190 tools** — 101 GET, 33 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION.
+**191 tools** — 102 GET, 33 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION.
 
-Risk mix: 107 LOW, 30 HIGH, 52 MEDIUM, 1 CRITICAL.
+Risk mix: 108 LOW, 30 HIGH, 52 MEDIUM, 1 CRITICAL.
 
-Status: 188 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 189 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -28,19 +28,19 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
 | `SUPER_ADMIN` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `ADMIN` | 189 | 101 | 33 | 15 | 30 | 10 | 30 | 82 |
-| `PRINCIPAL` | 94 | 70 | 8 | 6 | 9 | 1 | 7 | 24 |
-| `TEACHER` | 65 | 50 | 3 | 1 | 10 | 1 | 6 | 15 |
-| `PARENT` | 47 | 44 | 1 | 1 | 0 | 1 | 2 | 2 |
-| `STUDENT` | 67 | 54 | 7 | 0 | 1 | 5 | 0 | 8 |
-| `FINANCE` | 42 | 32 | 5 | 1 | 4 | 0 | 8 | 10 |
-| `LIBRARIAN` | 36 | 29 | 1 | 1 | 4 | 1 | 1 | 7 |
-| `WARDEN` | 37 | 29 | 2 | 3 | 3 | 0 | 0 | 7 |
-| `HR` | 17 | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `MARKETING` | 20 | 18 | 1 | 0 | 1 | 0 | 1 | 2 |
-| `COMPLIANCE` | 17 | 17 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `TRUSTEE` | 13 | 13 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `ALUMNUS` | 5 | 5 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `ADMIN` | 190 | 102 | 33 | 15 | 30 | 10 | 30 | 82 |
+| `PRINCIPAL` | 95 | 71 | 8 | 6 | 9 | 1 | 7 | 24 |
+| `TEACHER` | 66 | 51 | 3 | 1 | 10 | 1 | 6 | 15 |
+| `PARENT` | 48 | 45 | 1 | 1 | 0 | 1 | 2 | 2 |
+| `STUDENT` | 68 | 55 | 7 | 0 | 1 | 5 | 0 | 8 |
+| `FINANCE` | 43 | 33 | 5 | 1 | 4 | 0 | 8 | 10 |
+| `LIBRARIAN` | 37 | 30 | 1 | 1 | 4 | 1 | 1 | 7 |
+| `WARDEN` | 38 | 30 | 2 | 3 | 3 | 0 | 0 | 7 |
+| `HR` | 18 | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `MARKETING` | 21 | 19 | 1 | 0 | 1 | 0 | 1 | 2 |
+| `COMPLIANCE` | 18 | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `TRUSTEE` | 14 | 14 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `ALUMNUS` | 6 | 6 | 0 | 0 | 0 | 0 | 0 | 0 |
 | `COUNSELLOR (custom, example)` | 19 | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 Custom roles are database rows, created per school, so none can be listed here in advance. The COUNSELLOR row is the custom role the test suites create; any custom role is computed exactly this way from its own grants.
@@ -197,6 +197,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `list_classes` | Academics | GET | `academics.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_cocurricular` | Student requests | GET | `cocurricular.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_compliance_deadlines` | Compliance | GET | `compliance.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `list_digital_lectures` | Lectures | GET | `lectures.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_documents` | Documents | GET | `materials.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_enrollments` | Students | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_exams` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -3002,6 +3003,32 @@ Approve or reject somebody's leave application, with optional remarks. Needs con
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+## Lectures
+
+### `list_digital_lectures`
+
+Upcoming digital lectures and online meetings the caller hosts or is invited to, with their time and host. The join link is not included: a class is joined from its page. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `lectures.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `lecture.service.list()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.list_digital_lectures` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
 ## Library
 
 ### `get_library_summary`
@@ -4938,7 +4965,7 @@ _(no arguments)_
 
 ## Permission coverage
 
-80 of the 127 permissions in the catalog are reachable through MCP.
+81 of the 129 permissions in the catalog are reachable through MCP.
 
 Permissions **not** reachable through any tool:
 
@@ -4987,6 +5014,7 @@ Permissions **not** reachable through any tool:
 - `community.post` — Draft newsroom stories and post in circles
 - `community.moderate` — Review, publish, hide and take down posts and comments
 - `mentoring.participate` — Offer or request mentoring from seniors and alumni
+- `lectures.manage` — Schedule, change and cancel online classes and meetings (OWN: the ones you host)
 - `messaging.read` — View the outbound message log and delivery states
 - `messaging.manage` — Configure message templates and send operational notifications
 

@@ -88,3 +88,26 @@ export function usePortalHref(): (href: string) => string {
     return withSchool(school, href);
   };
 }
+
+/** The same page under the name another portal gives it. */
+const PAGE_ALIASES: Record<string, string[]> = { fees: ['payments', 'reports'], payments: ['fees'] };
+
+/**
+ * Like usePortalHref, but only for pages the reader's portal really has: it
+ * returns null when the portal has no such page (under its own name or an
+ * alias), so a shared dashboard never links to "not found".
+ */
+export function usePortalPage(): (href: string | null | undefined) => string | null {
+  const school = useSchoolSegment();
+  const pathname = usePathname() ?? '';
+  const portal = stripSchool(pathname, school).split('/')[1] ?? '';
+  return (href) => {
+    if (!href || !PORTALS[portal]) return null;
+    const [path, suffix = ''] = href.split(/(?=[?#])/, 2);
+    const page = path.replace(/^\//, '');
+    const has = (name: string) => PORTALS[portal].nav.some((g) => g.items.some((i) => i.href === `/${portal}/${name}`));
+    const found = [page, ...(PAGE_ALIASES[page] ?? [])].find(has);
+    // An alias is a different page, so the original page's query does not carry over.
+    return found ? withSchool(school, `/${portal}/${found}${found === page ? suffix : ''}`) : null;
+  };
+}

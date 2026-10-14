@@ -7,12 +7,14 @@
     "PEOPLE_ORG": "ORGANISATION",
     "GROWTH": "MARKETING & ADMISSIONS",
     "COMMUNITY": "COMMUNITY",
-    "SAFETY": "SAFETY & POLICIES"
+    "SAFETY": "SAFETY & POLICIES",
+    "LEARNING": "LEARNING"
   },
   "pages": {
     "today": { "title": "Today", "desc": "What needs you now, with the numbers that matter.", "icon": "☀", "permission": null, "view": "RoleHome", "group": "COMMAND" },
     "approvals": { "title": "Approvals", "desc": "Decisions waiting on you, requests you raised, delegation and approval rules.", "icon": "✓", "permission": "approvals.read", "view": "ApprovalsView", "group": "COMMAND" },
     "campus": { "title": "Campus World", "desc": "Your campus in 3D: rooms, what is scheduled, bookings, maintenance and events.", "icon": "◈", "permission": "campus.map.read", "view": "CampusWorldView", "group": "COMMAND" },
+    "lectures": { "title": "Digital Lectures", "desc": "Online classes and meetings: schedule, join, recordings and material.", "icon": "▶", "permission": "lectures.read", "view": "LecturesView", "group": "LEARNING" },
     "correspondence": { "title": "Correspondence", "desc": "Letters and circulars from the board, government, university and district office — reply, approve, dispatch, close with evidence.", "icon": "✉", "permission": "correspondence.read", "view": "CorrespondenceView", "group": "ADMINISTRATION" },
     "compliance": { "title": "Compliance Centre", "desc": "Obligations, regulatory returns, licences, policies, trainings and official notices.", "icon": "⚖", "permission": "compliance.read", "view": "ComplianceView", "group": "ADMINISTRATION" },
     "verification": { "title": "Background Verification", "desc": "Staff, teacher, driver and vendor checks with the principal's final decision.", "icon": "⛨", "permission": "verification.read", "view": "VerificationView", "group": "ADMINISTRATION" },
@@ -35,18 +37,18 @@
     "messaging": { "title": "Messages Sent", "desc": "WhatsApp/SMS/email notifications with their real delivery status.", "icon": "✆", "permission": "messaging.read", "view": "MessagingView", "group": "SAFETY" }
   },
   "portals": {
-    "principal": ["today", "approvals", "campus", "correspondence", "compliance", "verification", "events", "facilities", "contracts", "governance", "payroll", "procurement", "budgets", "organization", "institution", "marketing", "newsroom", "mentoring", "safeguarding", "policies", "trainings", "payslips", "messaging"],
-    "admin": ["today", "approvals", "campus", "correspondence", "compliance", "verification", "events", "facilities", "contracts", "governance", "procurement", "budgets", "organization", "institution", "marketing", "newsroom", "mentoring", "safeguarding", "policies", "trainings", "messaging"],
-    "teacher": ["today", "approvals", "campus", "events", "facilities", "procurement", "payslips", "organization", "newsroom", "mentoring", "safeguarding", "policies", "trainings"],
-    "finance": ["today", "approvals", "campus", "events", "facilities", "contracts", "verification", "payroll", "procurement", "budgets", "payslips", "organization", "newsroom", "safeguarding", "policies", "trainings"],
-    "librarian": ["today", "approvals", "campus", "events", "facilities", "procurement", "payslips", "newsroom", "safeguarding", "policies", "trainings"],
-    "warden": ["today", "approvals", "campus", "events", "facilities", "procurement", "payslips", "newsroom", "safeguarding", "policies", "trainings"],
-    "parent": ["newsroom", "campus", "safeguarding", "policies"],
-    "student": ["newsroom", "mentoring", "campus", "safeguarding", "policies"],
-    "hr": ["today", "approvals", "campus", "verification", "payroll", "payslips", "organization", "compliance", "events", "facilities", "procurement", "newsroom", "mentoring", "safeguarding", "policies", "trainings"],
-    "marketing": ["today", "marketing", "approvals", "campus", "events", "facilities", "procurement", "payslips", "organization", "newsroom", "mentoring", "safeguarding", "policies", "trainings"],
-    "compliance": ["today", "safeguarding", "compliance", "verification", "correspondence", "approvals", "campus", "contracts", "events", "facilities", "procurement", "payslips", "organization", "newsroom", "policies", "trainings"],
-    "trustee": ["today", "approvals", "governance", "budgets", "compliance", "institution", "organization", "campus", "newsroom", "safeguarding"],
-    "alumnus": ["newsroom", "mentoring", "campus", "safeguarding", "policies"]
+    "principal": ["today", "approvals", "campus", "lectures", "correspondence", "compliance", "verification", "events", "facilities", "contracts", "governance", "payroll", "procurement", "budgets", "organization", "institution", "marketing", "newsroom", "mentoring", "safeguarding", "policies", "trainings", "payslips", "messaging"],
+    "admin": ["today", "approvals", "campus", "lectures", "correspondence", "compliance", "verification", "events", "facilities", "contracts", "governance", "procurement", "budgets", "organization", "institution", "marketing", "newsroom", "mentoring", "safeguarding", "policies", "trainings", "messaging"],
+    "teacher": ["today", "approvals", "campus", "lectures", "events", "facilities", "procurement", "payslips", "organization", "newsroom", "mentoring", "safeguarding", "policies", "trainings"],
+    "finance": ["today", "approvals", "campus", "lectures", "events", "facilities", "contracts", "verification", "payroll", "procurement", "budgets", "payslips", "organization", "newsroom", "safeguarding", "policies", "trainings"],
+    "librarian": ["today", "approvals", "campus", "lectures", "events", "facilities", "procurement", "payslips", "newsroom", "safeguarding", "policies", "trainings"],
+    "warden": ["today", "approvals", "campus", "lectures", "events", "facilities", "procurement", "payslips", "newsroom", "safeguarding", "policies", "trainings"],
+    "parent": ["newsroom", "campus", "lectures", "safeguarding", "policies"],
+    "student": ["newsroom", "mentoring", "campus", "lectures", "safeguarding", "policies"],
+    "hr": ["today", "approvals", "campus", "lectures", "verification", "payroll", "payslips", "organization", "compliance", "events", "facilities", "procurement", "newsroom", "mentoring", "safeguarding", "policies", "trainings"],
+    "marketing": ["today", "marketing", "approvals", "campus", "lectures", "events", "facilities", "procurement", "payslips", "organization", "newsroom", "mentoring", "safeguarding", "policies", "trainings"],
+    "compliance": ["today", "safeguarding", "compliance", "verification", "correspondence", "approvals", "campus", "lectures", "contracts", "events", "facilities", "procurement", "payslips", "organization", "newsroom", "policies", "trainings"],
+    "trustee": ["today", "approvals", "governance", "budgets", "compliance", "institution", "organization", "campus", "lectures", "newsroom", "safeguarding"],
+    "alumnus": ["newsroom", "mentoring", "campus", "lectures", "safeguarding", "policies"]
   }
 }

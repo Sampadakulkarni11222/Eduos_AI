@@ -4,6 +4,7 @@ import { Button, EmptyState } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { opsApi } from '@/lib/ops-api';
 import { usePortalHref } from '@/lib/school-path';
+import { PulseBoard } from './pulse-board';
 import type { HomeDto } from '@/lib/ops-types';
 import { ApprovalDecisionButtons } from './approvals-view';
 import { DataNote, KpiGrid, Loadable, SectionCard, StatusPill, fmtDate, fmtDateTime, humanize, money, useLoad } from './kit';
@@ -50,11 +51,7 @@ export function RoleHome({ title = 'Today' }: { title?: string }) {
     <Loadable state={state}>{(home) => (
       <div className="ops-stack">
         <Greeting home={home} />
-        <Link className="ops-campus-card" href={link('/campus')}>
-          <span className="ops-campus-card-icon" aria-hidden="true">◈</span>
-          <span><b>Campus World</b><span className="ops-muted"> — walk your campus in 3D: buildings, rooms, what is scheduled, bookings and repairs.</span></span>
-          <span className="btn btn-accent btn-sm">Open map</span>
-        </Link>
+        <PulseBoard greet={false} />
         {home.role === 'PRINCIPAL' || home.decisions ? (
           <div className="ops-grid-main">
             <div className="ops-stack">

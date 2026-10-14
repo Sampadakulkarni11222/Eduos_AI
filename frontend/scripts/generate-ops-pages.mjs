@@ -31,6 +31,7 @@ const VIEWS = {
   'NewsroomView:mentoring': ["import { NewsroomView } from '@/components/ops/newsroom-view';", '<NewsroomView initialTab="mentoring" />'],
   SafeguardingView: ["import { SafeguardingView } from '@/components/ops/safeguarding-view';", '<SafeguardingView />'],
   MySpaceView: ["import { MySpaceView } from '@/components/ops/my-space-view';", '<MySpaceView />'],
+  LecturesView: ["import { LecturesView } from '@/components/ops/lectures-view';", '<LecturesView />'],
   MessagingView: ["import { MessagingView } from '@/components/ops/my-space-view';", '<MessagingView />'],
 };
 

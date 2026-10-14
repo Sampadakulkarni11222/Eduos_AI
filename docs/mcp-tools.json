@@ -1,16 +1,16 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 190,
+    "total": 191,
     "byOperation": {
-      "GET": 101,
+      "GET": 102,
       "CREATE": 33,
       "UPDATE": 15,
       "DELETE": 10,
       "ACTION": 31
     },
     "byRisk": {
-      "LOW": 107,
+      "LOW": 108,
       "HIGH": 30,
       "MEDIUM": 52,
       "CRITICAL": 1
@@ -8056,6 +8056,26 @@
       "wrapsAgentTool": null
     },
     {
+      "name": "list_digital_lectures",
+      "module": "Lectures",
+      "operation": "GET",
+      "description": "Upcoming digital lectures and online meetings the caller hosts or is invited to, with their time and host. The join link is not included: a class is joined from its page. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "lectures.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "lecture.service.list()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
       "name": "get_campus_status",
       "module": "Campus",
       "operation": "GET",
@@ -8094,8 +8114,8 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 189,
-      "GET": 101,
+      "total": 190,
+      "GET": 102,
       "CREATE": 33,
       "UPDATE": 15,
       "ACTION": 30,
@@ -8323,14 +8343,15 @@
         "get_marketing_funnel",
         "get_organisation_structure",
         "list_newsroom_posts",
+        "list_digital_lectures",
         "get_campus_status"
       ]
     },
     {
       "role": "PRINCIPAL",
       "custom": false,
-      "total": 94,
-      "GET": 70,
+      "total": 95,
+      "GET": 71,
       "CREATE": 8,
       "UPDATE": 6,
       "ACTION": 9,
@@ -8440,14 +8461,15 @@
         "get_marketing_funnel",
         "get_organisation_structure",
         "list_newsroom_posts",
+        "list_digital_lectures",
         "get_campus_status"
       ]
     },
     {
       "role": "TEACHER",
       "custom": false,
-      "total": 65,
-      "GET": 50,
+      "total": 66,
+      "GET": 51,
       "CREATE": 3,
       "UPDATE": 1,
       "ACTION": 10,
@@ -8527,14 +8549,15 @@
         "list_purchase_requests",
         "get_organisation_structure",
         "list_newsroom_posts",
+        "list_digital_lectures",
         "get_campus_status"
       ]
     },
     {
       "role": "PARENT",
       "custom": false,
-      "total": 47,
-      "GET": 44,
+      "total": 48,
+      "GET": 45,
       "CREATE": 1,
       "UPDATE": 1,
       "ACTION": 0,
@@ -8592,14 +8615,15 @@
         "get_my_profile",
         "get_my_day",
         "list_newsroom_posts",
+        "list_digital_lectures",
         "get_campus_status"
       ]
     },
     {
       "role": "STUDENT",
       "custom": false,
-      "total": 67,
-      "GET": 54,
+      "total": 68,
+      "GET": 55,
       "CREATE": 7,
       "UPDATE": 0,
       "ACTION": 1,
@@ -8674,14 +8698,15 @@
         "get_my_profile",
         "get_my_day",
         "list_newsroom_posts",
+        "list_digital_lectures",
         "get_campus_status"
       ]
     },
     {
       "role": "FINANCE",
       "custom": false,
-      "total": 42,
-      "GET": 32,
+      "total": 43,
+      "GET": 33,
       "CREATE": 5,
       "UPDATE": 1,
       "ACTION": 4,
@@ -8740,14 +8765,15 @@
         "list_payroll_runs",
         "get_organisation_structure",
         "list_newsroom_posts",
+        "list_digital_lectures",
         "get_campus_status"
       ]
     },
     {
       "role": "LIBRARIAN",
       "custom": false,
-      "total": 36,
-      "GET": 29,
+      "total": 37,
+      "GET": 30,
       "CREATE": 1,
       "UPDATE": 1,
       "ACTION": 4,
@@ -8793,14 +8819,15 @@
         "list_purchase_requests",
         "get_organisation_structure",
         "list_newsroom_posts",
+        "list_digital_lectures",
         "get_campus_status"
       ]
     },
     {
       "role": "WARDEN",
       "custom": false,
-      "total": 37,
-      "GET": 29,
+      "total": 38,
+      "GET": 30,
       "CREATE": 2,
       "UPDATE": 3,
       "ACTION": 3,
@@ -8845,14 +8872,15 @@
         "list_purchase_requests",
         "get_organisation_structure",
         "list_newsroom_posts",
+        "list_digital_lectures",
         "get_campus_status"
       ]
     },
     {
       "role": "HR",
       "custom": false,
-      "total": 17,
-      "GET": 17,
+      "total": 18,
+      "GET": 18,
       "CREATE": 0,
       "UPDATE": 0,
       "ACTION": 0,
@@ -8877,14 +8905,15 @@
         "list_payroll_runs",
         "get_organisation_structure",
         "list_newsroom_posts",
+        "list_digital_lectures",
         "get_campus_status"
       ]
     },
     {
       "role": "MARKETING",
       "custom": false,
-      "total": 20,
-      "GET": 18,
+      "total": 21,
+      "GET": 19,
       "CREATE": 1,
       "UPDATE": 0,
       "ACTION": 1,
@@ -8914,14 +8943,15 @@
         "get_marketing_funnel",
         "get_organisation_structure",
         "list_newsroom_posts",
+        "list_digital_lectures",
         "get_campus_status"
       ]
     },
     {
       "role": "COMPLIANCE",
       "custom": false,
-      "total": 17,
-      "GET": 17,
+      "total": 18,
+      "GET": 18,
       "CREATE": 0,
       "UPDATE": 0,
       "ACTION": 0,
@@ -8946,14 +8976,15 @@
         "list_purchase_requests",
         "get_organisation_structure",
         "list_newsroom_posts",
+        "list_digital_lectures",
         "get_campus_status"
       ]
     },
     {
       "role": "TRUSTEE",
       "custom": false,
-      "total": 13,
-      "GET": 13,
+      "total": 14,
+      "GET": 14,
       "CREATE": 0,
       "UPDATE": 0,
       "ACTION": 0,
@@ -8974,14 +9005,15 @@
         "get_budget_position",
         "get_organisation_structure",
         "list_newsroom_posts",
+        "list_digital_lectures",
         "get_campus_status"
       ]
     },
     {
       "role": "ALUMNUS",
       "custom": false,
-      "total": 5,
-      "GET": 5,
+      "total": 6,
+      "GET": 6,
       "CREATE": 0,
       "UPDATE": 0,
       "ACTION": 0,
@@ -8994,6 +9026,7 @@
         "get_my_profile",
         "get_my_day",
         "list_newsroom_posts",
+        "list_digital_lectures",
         "get_campus_status"
       ]
     },

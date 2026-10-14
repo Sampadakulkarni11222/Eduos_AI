@@ -19,7 +19,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
-const opsApi = vi.hoisted(() => ({ decide: vi.fn(), home: vi.fn() }));
+const opsApi = vi.hoisted(() => ({ decide: vi.fn(), home: vi.fn(), pulse: vi.fn(), campusMap: vi.fn() }));
 vi.mock('@/lib/ops-api', () => ({ opsApi }));
 vi.mock('@/lib/auth', () => ({ useAuth: () => ({ me: { profile: { id: 'p1', role: 'TEACHER', displayName: 'Asha Rao' } } }) }));
 vi.mock('@/lib/permissions', () => ({ usePermissions: () => ({ permissions: {}, hasAccess: () => true }) }));
@@ -99,7 +99,7 @@ describe('deciding an approval', () => {
 });
 
 describe('the role home', () => {
-  it('shows a figure with no data as unavailable rather than as zero, and links the campus map', async () => {
+  it('shows a figure with no data as unavailable rather than as zero, beside the interactive board', async () => {
     opsApi.home.mockResolvedValue({
       role: 'TEACHER',
       kpis: [
@@ -108,12 +108,55 @@ describe('the role home', () => {
       ],
       tasks: [],
     });
+    opsApi.pulse.mockResolvedValue({ charts: [], activity: [], departments: [], briefing: ['Good morning.'], asOf: new Date().toISOString() });
     inApp(<RoleHome />);
     expect(await screen.findByText('Open repairs')).toBeTruthy();
     expect(screen.getByText('3')).toBeTruthy();
     const unavailable = screen.getByText('Cost per student').closest('.kpi') as HTMLElement;
     expect(unavailable.textContent).not.toMatch(/\b0\b/);
-    expect(screen.getByRole('link', { name: /Campus World/ }).getAttribute('href')).toBe('/oakridge/teacher/campus');
     expect(screen.getByRole('link', { name: /Open repairs/ }).getAttribute('href')).toBe('/oakridge/teacher/facilities');
+  });
+});
+
+describe('the interactive board', () => {
+  it("links every department tile and chart to its records, inside the reader's portal", async () => {
+    const { PulseBoard } = await import('@/components/ops/pulse-board');
+    opsApi.pulse.mockResolvedValue({
+      briefing: ['Good morning, Asha.', '2 decisions are waiting on you.'],
+      departments: [{ key: 'finance', name: 'Finance', link: '/fees', lines: [[4, 'overdue invoices']], attention: true }],
+      charts: [{ key: 'attendance', title: 'Attendance in my classes', type: 'line', unit: 'percent', link: '/attendance', definition: 'Present ÷ marked.', status: 'OK', emptyText: '', points: [{ label: '13 Oct', value: 92.5, detail: '37 of 40 present' }, { label: '14 Oct', value: 95, detail: '38 of 40 present' }] }],
+      activity: [{ at: new Date().toISOString(), kind: 'approved', text: '"Lab kit" was approved', link: '/approvals?id=9' }],
+      asOf: new Date().toISOString(),
+    });
+    inApp(<PulseBoard />);
+    expect(await screen.findByText('Good morning, Asha.')).toBeTruthy();
+    // A teacher's portal has no fees page, so the Finance tile is shown without a link rather than leading to "not found".
+    expect(screen.getByText('Finance').closest('a')).toBeNull();
+    expect(screen.getByText(/Attendance in my classes/).closest('a')!.getAttribute('href')).toBe('/oakridge/teacher/attendance');
+    expect(screen.getByText('"Lab kit" was approved').closest('a')!.getAttribute('href')).toBe('/oakridge/teacher/approvals?id=9');
+    // The chart describes itself for people who cannot see it.
+    expect(screen.getByRole('img', { name: /Attendance in my classes: 13 Oct 92.5%, 14 Oct 95%/ })).toBeTruthy();
+  });
+
+  it('says a chart is empty instead of drawing it', async () => {
+    const { PulseBoard } = await import('@/components/ops/pulse-board');
+    opsApi.pulse.mockResolvedValue({ briefing: ['Hello.'], departments: [], activity: [], asOf: new Date().toISOString(),
+      charts: [{ key: 'repairs', title: 'Open repairs by age', type: 'ageing', unit: 'count', link: '/facilities', definition: 'd', status: 'EMPTY', emptyText: 'No open repairs.', points: [{ label: 'Under 3 days', value: 0 }] }] });
+    inApp(<PulseBoard />);
+    expect(await screen.findByText('No open repairs.')).toBeTruthy();
+    expect(screen.queryByRole('img', { name: /Open repairs by age/ })).toBeNull();
+  });
+});
+
+describe('dashboard links only go to pages the portal has', () => {
+  it('uses the portal\'s own name for the page, and gives no link when there is none', async () => {
+    const { usePortalPage } = await import('@/lib/school-path');
+    const pageFor = (pathname: string, href: string) => { nav.pathname = pathname; return renderHook(() => usePortalPage()).result.current(href); };
+    expect(pageFor('/oakridge/principal', '/fees')).toBe('/oakridge/principal/fees');
+    // Finance and admin call the same records "Payments".
+    expect(pageFor('/oakridge/finance', '/fees')).toBe('/oakridge/finance/payments');
+    expect(pageFor('/oakridge/admin', '/fees')).toBe('/oakridge/admin/payments');
+    expect(pageFor('/oakridge/teacher', '/fees')).toBeNull();
+    expect(pageFor('/oakridge/teacher', '/approvals?id=9')).toBe('/oakridge/teacher/approvals?id=9');
   });
 });

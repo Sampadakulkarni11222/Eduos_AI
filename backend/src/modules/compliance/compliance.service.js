@@ -17,6 +17,7 @@ import { logger } from '../../utils/logger.js';
 import { createRequest, registerApprovalHandler } from '../approvals/approval.service.js';
 import { notify } from '../notifications/notification.service.js';
 import { sendOperational } from '../messaging/messaging.service.js';
+import { candidateListData, disclosureData } from './documents.service.js';
 import {
   nextRef, requireProfile, assertObjectId, assertTransition, pushHistory, cleanAttachments, asPaise,
   parseDate, requireText, optionalText, oneOf, dto, pageArgs, startOfDayUtc, profilesWithRoles,
@@ -122,6 +123,8 @@ export const RETURN_TEMPLATES = {
   AISHE_PROFILE: { title: 'AISHE institution profile figures', authority: 'Ministry of Education (AISHE)' },
   MONTHLY_ATTENDANCE: { title: 'Monthly attendance return', authority: 'As required by board / department' },
   STAFF_STRENGTH: { title: 'Staff strength statement', authority: 'As required by board / department' },
+  BOARD_CANDIDATE_LIST: { title: 'List of candidates for the board examination', authority: 'Examining board (e.g. CBSE, CISCE, State Board)' },
+  MANDATORY_DISCLOSURE: { title: 'Mandatory public disclosure', authority: 'Affiliating board (published on the school website)' },
   CUSTOM: { title: 'Custom return', authority: 'Specify' },
 };
 
@@ -221,6 +224,8 @@ export async function generateData(template, period) {
     for (const t of table) if (t.workingDaysMarked < maxDays) validation.push({ level: 'WARNING', field: t.section, message: `${t.section}: ${t.workingDaysMarked} of ${maxDays} days marked.` });
     return { data: { period, sections: table, sources: { attendance: 'Whole-day attendance records (period-level excluded)' } }, validation };
   }
+  if (template === 'BOARD_CANDIDATE_LIST') return candidateListData(period);
+  if (template === 'MANDATORY_DISCLOSURE') return disclosureData();
   if (template === 'STAFF_STRENGTH') {
     const staff = await staffCounts();
     return { data: { period, byRole: staff, total: Object.values(staff).reduce((a, b) => a + b, 0), sources: { staff: 'Active staff profiles by role' } }, validation };
@@ -390,7 +395,7 @@ export async function getReturn(id) {
 /** CSV of a return's tabular figures, for assisted manual entry on a portal. */
 export async function exportReturnCsv(id) {
   const r = await loadReturn(id);
-  const table = r.data?.enrolment ?? r.data?.sections ?? (r.data?.byRole ? Object.entries(r.data.byRole).map(([role, count]) => ({ role, count })) : []);
+  const table = r.data?.candidates ?? r.data?.enrolment ?? r.data?.sections ?? (r.data?.byRole ? Object.entries(r.data.byRole).map(([role, count]) => ({ role, count })) : []);
   if (!table.length) return `refNo,period\n${r.refNo},${r.period}\n`;
   const cols = Object.keys(table[0]);
   const esc = (v) => { const s = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };

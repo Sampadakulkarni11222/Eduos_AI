@@ -81,7 +81,7 @@ function uncoveredFor(roleKey) {
  *   - the reads withheld from a chat transcript altogether: individual pay,
  *     and anything to do with a safeguarding case.
  */
-const OPERATIONS_PREFIX = /^(approvals|governance|institution|org|correspondence|compliance|contracts|verification|events|facilities|safeguarding|payroll|procurement|budget|funding|marketing|community|mentoring|campus|messaging)\./;
+const OPERATIONS_PREFIX = /^(approvals|governance|institution|org|correspondence|compliance|contracts|verification|events|facilities|safeguarding|payroll|procurement|budget|funding|marketing|community|mentoring|campus|messaging|lectures)\./;
 const DECLARED_BY_A_TOOL = new Set(Object.values(MCP_TOOLS).map((t) => t.permission));
 const OPERATIONS_KEYS = PERMISSION_CATALOG.map((p) => p.key).filter((key) => OPERATIONS_PREFIX.test(key) && !DECLARED_BY_A_TOOL.has(key));
 const OPERATIONS_WHY = 'Institution-operations act or restricted read. The assistant reports on operations through read-only tools and never approves, files, pays, clears or decides; safeguarding and individual pay are kept out of chat altogether.';

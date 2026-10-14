@@ -244,6 +244,10 @@ export const PERMISSION_CATALOG = [
   // Campus world.
   { key: 'campus.map.read', group: 'campus', description: 'Open the campus map (layers are limited by your other permissions)' },
 
+  // Digital lectures and online meetings.
+  { key: 'lectures.read', group: 'academics', description: 'See and join online classes and meetings you are invited to (ALL: every one in the school)' },
+  { key: 'lectures.manage', group: 'academics', description: 'Schedule, change and cancel online classes and meetings (OWN: the ones you host)' },
+
   // Outbound messaging (WhatsApp/SMS/email) log and preferences.
   { key: 'messaging.read', group: 'communication', description: 'View the outbound message log and delivery states' },
   { key: 'messaging.manage', group: 'communication', description: 'Configure message templates and send operational notifications' },
@@ -321,6 +325,8 @@ const STAFF_OPERATIONS = [
   ['community.read', 'ALL'],
   ['community.post', 'OWN'],
   ['campus.map.read', 'ALL'],
+  ['lectures.read', 'OWN'],
+  ['lectures.manage', 'OWN'],
 ];
 
 /** Keys a student, parent or alumnus holds for the community surfaces. */
@@ -329,6 +335,7 @@ const FAMILY_COMMUNITY = [
   ['community.read', 'OWN'],
   ['campus.map.read', 'OWN'],
   ['safeguarding.report', 'OWN'],
+  ['lectures.read', 'OWN'],
 ];
 
 /** Later grants of the same key replace earlier ones. */
@@ -426,6 +433,8 @@ export const SYSTEM_ROLES = [
       ['community.post', 'ALL'],
       ['community.moderate', 'ALL'],
       ['messaging.read', 'ALL'],
+      ['lectures.read', 'ALL'],
+      ['lectures.manage', 'ALL'],
     ]),
   },
   {
@@ -668,6 +677,7 @@ export const SYSTEM_ROLES = [
     name: 'Trustee / Governing Body Member',
     description: 'Governance: meetings, resolutions, board-level approvals and institution health',
     grants: grants([
+      ['lectures.read', 'OWN'],
       ['governance.read', 'OWN'],
       ['approvals.read', 'OWN'],
       ['approvals.decide', 'OWN'],

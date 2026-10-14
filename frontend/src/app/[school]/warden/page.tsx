@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { useSchoolHref } from '@/lib/school-path';
 import { formatCalendarDate } from '@/lib/timetable-dates';
 import type { WardenDashboardDto } from '@/lib/types';
+import { PulseBoard } from '@/components/ops/pulse-board';
 
 export default function WardenDashboard() {
   // Links are written school-less; this adds the school in the URL.
@@ -33,6 +34,9 @@ export default function WardenDashboard() {
         desc: 'Hostel facilities, student welfare & room allocations.',
       }}
     >
+      {/* The interactive board: briefing, departments, campus, charts and live activity. */}
+      <PulseBoard />
+
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
         <StatCard label="Total Rooms" value={data ? data.occupiedRooms + data.vacantBeds : '—'} delta={data ? `${data.totalCapacity} beds` : undefined} deltaDir="flat" />
         <StatCard

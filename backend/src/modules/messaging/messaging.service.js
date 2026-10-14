@@ -3,6 +3,7 @@ import { Profile } from '../../models/profile.model.js';
 import { Account } from '../../models/account.model.js';
 import { env, isWhatsappLive } from '../../config/env.js';
 import { notify } from '../notifications/notification.service.js';
+import { sendEmail, isEmailLive } from '../../providers/notification.provider.js';
 import { logger } from '../../utils/logger.js';
 import { AppError } from '../../utils/AppError.js';
 import { dto, pageArgs, pageOf, requireProfile } from '../ops/common.js';
@@ -56,6 +57,26 @@ export const TEMPLATES = {
     category: 'UTILITY',
     text: (v) => `A fee payment is due${v.dueOn ? ` on ${v.dueOn}` : ''}. Please check the Payments page in EduOS.`,
   },
+  CLASS_SCHEDULED: {
+    category: 'UTILITY',
+    subject: (v) => `Online class: ${v.title}`,
+    text: (v) => `Online class "${v.title}" is scheduled for ${v.when}${v.host ? ` with ${v.host}` : ''}. Join from EduOS.`,
+  },
+  CLASS_REMINDER: {
+    category: 'UTILITY',
+    subject: (v) => `Starting soon: ${v.title}`,
+    text: (v) => `Reminder: online class "${v.title}" starts at ${v.when}. Join from EduOS.`,
+  },
+  CLASS_CHANGED: {
+    category: 'UTILITY',
+    subject: (v) => `Changed: ${v.title}`,
+    text: (v) => `Online class "${v.title}" has moved to ${v.when}. Join from EduOS.`,
+  },
+  CLASS_CANCELLED: {
+    category: 'UTILITY',
+    subject: (v) => `Cancelled: ${v.title}`,
+    text: (v) => `Online class "${v.title}" on ${v.when} is cancelled${v.reason ? `: ${v.reason}` : ''}.`,
+  },
   GENERAL_NOTICE: {
     category: 'UTILITY',
     text: (v) => `${v.title}. Please check EduOS for details.`,
@@ -91,6 +112,8 @@ function mask(phone) {
   const s = String(phone);
   return s.length <= 4 ? '••••' : `${s.slice(0, 3)}••••${s.slice(-3)}`;
 }
+
+const maskEmail = (email) => (email ? String(email).replace(/^(.).*(@.*)$/, '$1***$2') : null);
 
 function templateName(key) {
   return String(process.env[`WA_TEMPLATE_${key}`] ?? '').trim() || null;
@@ -159,8 +182,9 @@ export async function sendOperational({
     Profile.find({ _id: { $in: recipients } }).select('_id accountId').lean(),
     ContactPreference.find({ profileId: { $in: recipients } }).lean(),
   ]);
-  const accounts = await Account.find({ _id: { $in: profiles.map((p) => p.accountId) } }).select('_id phoneE164').lean();
+  const accounts = await Account.find({ _id: { $in: profiles.map((p) => p.accountId) } }).select('_id phoneE164 email').lean();
   const phoneByAccount = new Map(accounts.map((a) => [String(a._id), a.phoneE164]));
+  const emailByAccount = new Map(accounts.map((a) => [String(a._id), a.email ?? null]));
   const prefByProfile = new Map(prefs.map((p) => [String(p.profileId), p]));
 
   const results = [];
@@ -173,16 +197,30 @@ export async function sendOperational({
       const existing = await MessageOutbox.findOne({ idempotencyKey, recipientProfileId: pid, channel }).lean();
       if (existing) { results.push({ recipientProfileId: pid, status: existing.status, duplicate: true }); continue; }
 
+      const email = emailByAccount.get(String(profile.accountId));
       const row = {
         channel, templateKey, category: template.category, recipientProfileId: pid,
-        recipientMasked: mask(phone), variables, preview, link, urgency, idempotencyKey,
+        recipientMasked: channel === 'EMAIL' ? maskEmail(email) : mask(phone), variables, preview, link, urgency, idempotencyKey,
         relatedEntityType, relatedEntityId: relatedEntityId ? String(relatedEntityId) : null,
         requestedByProfileId: requestedBy, status: 'QUEUED', statusHistory: [{ status: 'QUEUED', at: now }],
       };
 
       let status;
       let reason = null;
-      if (!phone) { status = 'SKIPPED_NO_CONTACT'; reason = 'No phone number on the account'; }
+      if (channel === 'EMAIL') {
+        // Email: no template approval and no quiet hours, but the same honesty
+        // about whether anything actually left the server.
+        if (!email) { status = 'SKIPPED_NO_CONTACT'; reason = 'No email address on the account'; }
+        else if (pref?.emailOptOut) { status = 'SKIPPED_NO_CONSENT'; reason = 'Recipient has turned off email messages'; }
+        else {
+          row.attempts = 1;
+          // eslint-disable-next-line no-await-in-loop -- sends are sequential per recipient
+          const out = await sendEmail({ to: email, subject: (template.subject ? template.subject(variables) : preview).slice(0, 150), text: `${preview}${link ? `\n\nOpen EduOS to see the details.` : ''}` });
+          if (out.sent) { status = 'SENT'; row.providerMessageId = out.id ?? null; }
+          else if (out.simulated) { status = 'SIMULATED'; reason = 'Email is not configured; nothing was sent'; }
+          else { status = out.unknown ? 'UNKNOWN' : 'FAILED'; reason = out.error ?? null; }
+        }
+      } else if (!phone) { status = 'SKIPPED_NO_CONTACT'; reason = 'No phone number on the account'; }
       else if (pref?.whatsappOptIn?.status !== 'OPTED_IN') { status = 'SKIPPED_NO_CONSENT'; reason = 'Recipient has not opted in to WhatsApp messages'; }
       else if (urgency !== 'URGENT' && inQuietHours(now, pref?.quietHours ?? { enabled: true, startHour: 21, endHour: 7 })) {
         status = 'DEFERRED'; reason = 'Quiet hours'; row.scheduledFor = quietEnds(now, pref?.quietHours);
@@ -314,7 +352,7 @@ export async function listOutbox(actor, scope, query = {}) {
 export async function getPreferences(actor) {
   requireProfile(actor);
   const pref = await ContactPreference.findOne({ profileId: actor.profileId }).lean();
-  return pref ? dto(pref) : { profileId: actor.profileId, whatsappOptIn: { status: 'UNKNOWN' }, language: 'en', quietHours: { enabled: true, startHour: 21, endHour: 7 } };
+  return pref ? dto(pref) : { profileId: actor.profileId, whatsappOptIn: { status: 'UNKNOWN' }, emailOptOut: false, language: 'en', quietHours: { enabled: true, startHour: 21, endHour: 7 } };
 }
 
 /** A person records their own opt-in or opt-out; nobody can do it for them. */
@@ -325,6 +363,7 @@ export async function updatePreferences(actor, body = {}) {
     const status = body.whatsappOptIn ? 'OPTED_IN' : 'OPTED_OUT';
     set.whatsappOptIn = { status, at: new Date(), source: 'portal' };
   }
+  if (typeof body.emailOptOut === 'boolean') set.emailOptOut = body.emailOptOut;
   if (typeof body.language === 'string') set.language = body.language.slice(0, 10);
   if (body.quietHours && typeof body.quietHours === 'object') {
     const s = Number(body.quietHours.startHour);
@@ -350,6 +389,6 @@ export function channelStatus() {
       templates: Object.keys(TEMPLATES).map((key) => ({ key, category: TEMPLATES[key].category, configuredName: templateName(key) })),
     },
     sms: { mode: 'NOT_CONFIGURED' },
-    email: { mode: 'NOT_CONFIGURED' },
+    email: { mode: isEmailLive() ? 'LIVE' : 'SIMULATION' },
   };
 }

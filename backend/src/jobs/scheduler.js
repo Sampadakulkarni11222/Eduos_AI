@@ -8,6 +8,7 @@ import * as correspondence from '../modules/administration/correspondence.servic
 import * as verification from '../modules/administration/verification.service.js';
 import * as governance from '../modules/governance/governance.service.js';
 import * as compliance from '../modules/compliance/compliance.service.js';
+import * as lectures from '../modules/lectures/lecture.service.js';
 
 /**
  * The in-process scheduler for the operations modules.
@@ -27,6 +28,8 @@ const SYSTEM = { system: true, profileId: null, displayName: 'Scheduler', roleKe
 
 export const JOBS = [
   { key: 'messaging.release', everyMinutes: 15, run: (now) => messaging.releaseDeferred(SYSTEM, { now }) },
+  // Every five minutes with a twenty-minute look-ahead: each class is reminded once, 15 to 20 minutes before it starts.
+  { key: 'lectures.reminders', everyMinutes: 5, run: (now) => lectures.sendReminders(SYSTEM, { now }) },
   { key: 'verification.expire', everyMinutes: 60, run: (now) => verification.expireLapsed(now) },
   { key: 'governance.reminders', everyMinutes: 60, run: () => governance.sendReminders(SYSTEM, { hours: 48 }) },
   { key: 'correspondence.reminders', everyMinutes: 24 * 60, run: (now) => correspondence.sendDueReminders(SYSTEM, { withinDays: 3, now }) },

@@ -10,6 +10,7 @@ import { useSchoolHref } from '@/lib/school-path';
 import { useAuth } from '@/lib/auth';
 import { rupees } from '@/components/ui';
 import type { CalendarEventDto, ParentDashboardDto, StudentListItem } from '@/lib/types';
+import { PulseBoard } from '@/components/ops/pulse-board';
 
 export default function ParentDashboard() {
   // Links are written school-less; this adds the school in the URL.
@@ -58,6 +59,9 @@ export default function ParentDashboard() {
 
   return (
     <PortalShell expectedSlug="parent" topbar={{ title: 'My Children', desc: "Your family's school life in one place" }}>
+      {/* The interactive board: briefing, departments, campus, charts and live activity. */}
+      <PulseBoard />
+
       {kids === null && !err && <Card><SkeletonRows rows={3} /></Card>}
       {err && <EmptyState title="Couldn't load your children" sub="Check your connection and reload the page." />}
       {kids && kids.length === 0 && <EmptyState title="No children linked yet" sub="Ask the school office to link your wards to this phone number." />}

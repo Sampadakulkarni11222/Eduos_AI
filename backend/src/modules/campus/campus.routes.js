@@ -5,6 +5,8 @@ import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
 import * as campus from './campus.service.js';
 import * as insights from '../insights/insights.service.js';
+import { pulse } from '../insights/pulse.service.js';
+import { inbox as approvalInbox } from '../approvals/approval.service.js';
 
 /**
  * @swagger
@@ -22,3 +24,8 @@ campusRouter.get('/facilities/:id', requirePermission('campus.map.read'), asyncH
 export const insightsRouter = Router();
 insightsRouter.use(authenticate);
 insightsRouter.get('/home', asyncHandler(async (req, res) => sendSuccess(res, await insights.home(req.actor))));
+// Charts, activity, department tiles and a briefing, each limited to what the caller may read.
+insightsRouter.get('/pulse', asyncHandler(async (req, res) => {
+  const decisions = req.actor.permissions?.['approvals.read'] ? (await approvalInbox(req.actor).catch(() => [])).length : 0;
+  sendSuccess(res, await pulse(req.actor, { decisions }));
+}));

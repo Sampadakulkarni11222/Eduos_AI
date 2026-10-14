@@ -7,6 +7,7 @@ import { Button, Card, EmptyState, Pill, SkeletonRows } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useSchoolHref } from '@/lib/school-path';
 import type { AdminDashboardDto } from '@/lib/types';
+import { PulseBoard } from '@/components/ops/pulse-board';
 
 export default function AdminDashboard() {
   // Links are written school-less; this adds the school in the URL.
@@ -44,6 +45,9 @@ export default function AdminDashboard() {
         desc: 'School operations at a glance — ' + today(),
       }}
     >
+      {/* The interactive board: briefing, departments, campus, charts and live activity. */}
+      <PulseBoard />
+
       {err && <EmptyState title="Couldn't load the dashboard" sub="The server didn't respond. Reload to try again." />}
 
       {!err && (

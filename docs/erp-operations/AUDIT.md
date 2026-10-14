@@ -99,19 +99,31 @@ The first full backend run found 24 failures in 12 files, all caused by this bra
 | College features were thin. | Subjects can carry credits, and the Compliance Centre has an accreditation tracker (NAAC, NBA, inspection or custom) with evidence items, owners and proof. |
 | The demo Marketing, Compliance, Trustee and Alumnus accounts shared phone numbers with seeded teachers. | They now use their own numbers. |
 
+## Third round
+
+| Item | Result |
+|---|---|
+| Campus World | Rebuilt to the reference videos' layout and look; screenshots checked at campus, building and room level. |
+| Interactive dashboard | On every home page; each chart, tile and feed entry links to its records; tested per role. |
+| Digital lectures | Scheduling, clash checks, join window, join record, recordings; announcements by app, email and WhatsApp; 11 tests. |
+| Official documents | Returns and letters print on letterhead for signature; DRAFT until approved; exports recorded; 5 tests. |
+| Board submission APIs | Researched; none public. Recorded in docs/research/board-submission-channels.md. |
+
 ## Known limitations
 
 1. **The browser test is a smoke test.** Every page loads; not every button has been pressed. Expect some defects in the forms.
 2. **Statutory payroll figures need professional sign-off.** The rules follow the research register, including the PF wage ceiling change on 17 September 2026 and the wage definition from 21 November 2025. They are not legal or tax advice.
 3. **The compliance catalogue is a starting list.** Every entry starts "Under review" and must be confirmed for the school's board and state.
-4. **Accreditation criteria are headings only**, from each agency's published structure as understood when written. A cycle says so until someone records that they checked it against the current manual. The institution adds its own metrics.
-5. **Campus World uses a sample layout** until a school enters its own. It shows scheduled activity, not live positions. Frame rate was measured only under software rendering in the test browser (4 to 12 frames a second), which says little about a real device.
-6. **Driver clearance is matched on the driver's name** as typed on the route, so a spelling difference reads as "no record".
-7. **The assistant's new tools answer through its built-in question matching** for the words listed in its vocabulary. Freer phrasing needs an AI model key to be configured.
-8. **Notice watching was not run against real sites.**
-9. **College academics stop at credits and accreditation evidence.** There is no credit-based grading, semester promotion or outcome mapping.
-10. **Videos in the newsroom are links**, because uploads carry no captions.
-11. **Pre-existing dependency findings** remain, and one pre-existing lint error in `tests/studyHelp.skillSync.test.js`.
+4. **Online classes run on a meeting service.** The default Jitsi server is public: anyone with a room's link can enter. Use the institution's own server for privacy. Attendance means the link was opened, not time spent.
+5. **Official documents depend on the Institution profile** for the letterhead; a missing name, address or code is called out on the page.
+6. **Accreditation criteria are headings only**, from each agency's published structure as understood when written. A cycle says so until someone records that they checked it against the current manual. The institution adds its own metrics.
+7. **Campus World uses a sample layout** until a school enters its own. It shows scheduled activity, not live positions. Frame rate was measured only under software rendering in the test browser (4 to 12 frames a second), which says little about a real device.
+8. **Driver clearance is matched on the driver's name** as typed on the route, so a spelling difference reads as "no record".
+9. **The assistant's new tools answer through its built-in question matching** for the words listed in its vocabulary. Freer phrasing needs an AI model key to be configured.
+10. **Notice watching was not run against real sites.**
+11. **College academics stop at credits and accreditation evidence.** There is no credit-based grading, semester promotion or outcome mapping.
+12. **Videos in the newsroom are links**, because uploads carry no captions.
+13. **Pre-existing dependency findings** remain, and one pre-existing lint error in `tests/studyHelp.skillSync.test.js`.
 
 ## Recommended next work
 

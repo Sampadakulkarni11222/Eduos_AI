@@ -56,6 +56,7 @@ import { communityRouter, marketingRouter } from '../modules/community/community
 import { campusRouter, insightsRouter } from '../modules/campus/campus.routes.js';
 import { auditLogger } from '../middleware/auditLogger.js';
 import { signUploadUrlsInResponses, unsignUploadUrlsInBody } from '../modules/uploads/signedUrls.js';
+import lectureRoutes from '../modules/lectures/lecture.routes.js';
 
 const router = Router();
 
@@ -157,6 +158,7 @@ router.use('/governance', governanceRouter);
 router.use('/payroll', payrollRouter);
 router.use('/procurement', procurementRouter);
 router.use('/budgets', budgetRouter);
+router.use('/lectures', lectureRoutes);
 router.use('/community', communityRouter);
 router.use('/marketing', marketingRouter);
 router.use('/campus', campusRouter);

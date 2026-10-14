@@ -59,9 +59,22 @@ Every API below is **Tested** unless noted; every screen is **Built**.
 | 34 | Links between the new screens fixed | Tested and checked in a browser |
 | 35 | Browser smoke test of every new screen as every profile | Done |
 
+## Added in the third round
+
+| # | Item | Status |
+|---|---|---|
+| 36 | Campus World rebuilt to the reference videos' standard: bright model-style campus, road loop with traffic and a school bus calling at its bay, coloured roofs and glazed facades, playground goals and court hoops, furnished interiors (desks, chairs, boards, lab benches, shelves, auditorium seating), map pins over live places, search, live clock, icon KPI cards, a timetable step tracker for the selected room, and an In use / Repairs / Events table | Built, checked in a browser |
+| 37 | Interactive dashboard on every home page: briefing with read-aloud, department tiles, a live mini campus, hover-and-click charts (attendance, fees, approvals, online classes, compliance, admissions funnel, repair ageing) and a live activity feed, each limited to what the role may read | Tested (API, frontend) and checked in a browser |
+| 38 | Digital lectures and online meetings in every portal: scheduling for one's own classes (or anyone, for the principal and administration), weekly repeats, built-in Jitsi rooms or pasted Google Meet/Zoom/Teams links, clash checks, join window, join record, recordings, notes and material | Tested (11) and checked in a browser |
+| 39 | Email channel for notifications, beside in-app and WhatsApp, with the same honest status and an email opt-out | Tested |
+| 40 | Class announcements, reminders, changes and cancellations by app, email and WhatsApp | Tested |
+| 41 | Board and government submissions: researched; no public filing API found. Every return and letter prints as an official document on letterhead with declaration, signature and seal blocks and a DRAFT mark until approved; new board candidate list and mandatory disclosure templates | Tested (5) and checked in a browser |
+
 ## Not done
 
 - **Pressing every button on every screen.** The browser test proves pages load; forms were not all exercised by hand.
-- **AI that drafts or summarises** (reply drafts, notice summaries, minutes). The assistant's new tools only read and report.
+- **AI that drafts or summarises** (reply drafts, notice summaries, minutes). The assistant's tools only read and report.
+- **Direct filing with boards or government**: no public API exists (see docs/research/board-submission-channels.md).
+- **Meeting-service integration**: EduOS does not create meetings inside Google Meet, Zoom or Teams, or read their attendance; the host pastes the link.
 - **College academics beyond credits and accreditation evidence**: credit-based grading, semester promotion, outcome mapping.
 - **Anything that needs an outside party**: filing on government portals, bank uploads, WhatsApp template approval, an accountant's sign-off.

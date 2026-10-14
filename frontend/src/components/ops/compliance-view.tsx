@@ -5,6 +5,7 @@ import { Button, EmptyState, Field, Modal, useToast } from '@/components/ui';
 import { opsApi, downloadCsv } from '@/lib/ops-api';
 import { usePermissions } from '@/lib/permissions';
 import { usePortalHref } from '@/lib/school-path';
+import { printHref } from './print-link';
 import { AccreditationTab } from './accreditation-view';
 import type { LicenceDto, NoticeDto, ObligationDto, PolicyDto, ReturnDto, TrainingDto } from '@/lib/ops-types';
 import { AttachUpload } from './attach';
@@ -125,7 +126,7 @@ function ReturnDetail({ id, onClose, onChanged }: { id: string; onClose: () => v
               <ul>{d.validation.map((v, i) => <li key={i}>{v.level === 'ERROR' ? '✖' : '⚠'} {v.message}</li>)}</ul>
             </div>
           )}
-          <SectionCard title="Figures" sub="Generated from ERP records. Download the CSV to key into, or upload to, the authority's portal." actions={<Button small variant="soft" onClick={() => void downloadCsv(`/compliance/returns/${d.id}/export.csv`, `${d.refNo.replace(/\//g, '-')}.csv`)}>Download CSV</Button>}>
+          <SectionCard title="Figures" sub="Generated from ERP records. Download the CSV to key into, or upload to, the authority's portal." actions={<><Button small onClick={() => window.open(printHref('return', d.id), '_blank', 'noopener')}>Print document</Button><Button small variant="soft" onClick={() => void downloadCsv(`/compliance/returns/${d.id}/export.csv`, `${d.refNo.replace(/\//g, '-')}.csv`)}>Download CSV</Button></>}>
             <pre style={{ fontSize: 12, whiteSpace: 'pre-wrap', maxHeight: 280, overflow: 'auto', background: 'var(--hairline)', padding: 10, borderRadius: 8 }}>{JSON.stringify(d.data, null, 2)}</pre>
           </SectionCard>
           {d.status === 'DRAFT' && (
@@ -194,11 +195,11 @@ function ReturnsTab({ canManage }: { canManage: boolean }) {
           <Modal title="New return" onClose={() => setCreating(false)} footer={<><Button variant="soft" onClick={() => setCreating(false)}>Cancel</Button><Button disabled={busy || !form.period} onClick={() => void run(async () => { const r = await opsApi.createReturn({ ...form, dueOn: form.dueOn || undefined }); setCreating(false); await state.reload(); setSelected(r.id); })}>Generate</Button></>}>
             <Field label="Template"><select className="input" value={form.template} onChange={(e) => setForm({ ...form, template: e.target.value })}>
               <option value="UDISE_PLUS_PROFILE">UDISE+ school figures</option><option value="AISHE_PROFILE">AISHE institution figures</option>
-              <option value="MONTHLY_ATTENDANCE">Monthly attendance return</option><option value="STAFF_STRENGTH">Staff strength statement</option><option value="CUSTOM">Custom (manual figures)</option>
+              <option value="MONTHLY_ATTENDANCE">Monthly attendance return</option><option value="STAFF_STRENGTH">Staff strength statement</option><option value="BOARD_CANDIDATE_LIST">Board list of candidates</option><option value="MANDATORY_DISCLOSURE">Mandatory public disclosure</option><option value="CUSTOM">Custom (manual figures)</option>
             </select></Field>
-            <Field label="Period" hint={form.template === 'MONTHLY_ATTENDANCE' ? 'YYYY-MM, e.g. 2026-09' : 'e.g. 2026-27'} required><input className="input" value={form.period} onChange={(e) => setForm({ ...form, period: e.target.value })} /></Field>
+            <Field label="Period" hint={form.template === 'MONTHLY_ATTENDANCE' ? 'YYYY-MM, e.g. 2026-09' : form.template === 'BOARD_CANDIDATE_LIST' ? 'The class, exactly as named in Academics, e.g. Class 10' : 'e.g. 2026-27'} required><input className="input" value={form.period} onChange={(e) => setForm({ ...form, period: e.target.value })} /></Field>
             <Field label="Due on"><input type="date" className="input" value={form.dueOn} onChange={(e) => setForm({ ...form, dueOn: e.target.value })} /></Field>
-            <DataNote>No authority portal is integrated. EduOS prepares and checks the figures; a person submits them and records the acknowledgement.</DataNote>
+            <DataNote>No board or department offers schools an API to file with, so EduOS prepares and checks the figures and prints them as a signed document; a person submits them on the authority&apos;s portal or at its office and records the acknowledgement.</DataNote>
             <ErrorNote error={error} />
           </Modal>
         )}

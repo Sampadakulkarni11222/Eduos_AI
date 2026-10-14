@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Button, EmptyState, Field, Modal, SearchInput, useToast } from '@/components/ui';
 import { AttachUpload } from './attach';
 import { opsApi } from '@/lib/ops-api';
+import { printHref } from './print-link';
 import { usePermissions } from '@/lib/permissions';
 import type { CorrespondenceDto, ExtractDto } from '@/lib/ops-types';
 import { Drawer } from './drawer';
@@ -110,6 +111,7 @@ function LetterDetail({ id, onClose, onChanged, canManage }: { id: string; onClo
               <textarea className="input" rows={8} style={{ width: '100%' }} value={draft ?? d.latestDraft?.body ?? ''} onChange={(e) => setDraft(e.target.value)} placeholder="Write the reply here." />
               <div className="ops-inline">
                 <Button small variant="soft" disabled={busy || !(draft ?? '').trim()} onClick={() => void run(async () => { await opsApi.letterAction(id, 'draft', { body: draft }); setDraft(null); toast('Draft saved', 'success'); await reload(); })}>Save draft</Button>
+                {d.latestDraft && <Button small variant="ghost" onClick={() => window.open(printHref('letter', id), '_blank', 'noopener')}>Print on letterhead</Button>}
                 {d.status !== 'APPROVED' && <Button small disabled={busy || (!d.latestDraft && !(draft ?? '').trim())} onClick={() => void run(async () => { if (draft) await opsApi.letterAction(id, 'draft', { body: draft }); await opsApi.letterAction(id, 'submit'); setDraft(null); toast('Sent to the principal for approval', 'success'); await reload(); })}>Send for approval</Button>}
               </div>
             </SectionCard>

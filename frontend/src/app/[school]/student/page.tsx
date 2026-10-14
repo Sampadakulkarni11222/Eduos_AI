@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { useSchoolHref } from '@/lib/school-path';
 import { useAuth } from '@/lib/auth';
 import type { StudentDashboardDto, StudentListItem } from '@/lib/types';
+import { PulseBoard } from '@/components/ops/pulse-board';
 
 export default function StudentDashboard() {
   // Links are written school-less; this adds the school in the URL.
@@ -30,6 +31,9 @@ export default function StudentDashboard() {
 
   return (
     <PortalShell expectedSlug="student" topbar={{ title: 'Student Portal', desc: 'Your school day at a glance' }}>
+      {/* The interactive board: briefing, departments, campus, charts and live activity. */}
+      <PulseBoard />
+
       {loading && <Card><SkeletonRows rows={4} /></Card>}
       {!loading && !student && (
         <EmptyState title="No student record linked" sub="Contact the administration office to link your student profile." />

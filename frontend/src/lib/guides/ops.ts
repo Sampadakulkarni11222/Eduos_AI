@@ -44,6 +44,18 @@ const CONTENT: Record<string, OpsContent> = {
     ],
     tips: ['You only see the spaces your role is allowed to see. Restricted areas are hidden or shown without detail.'],
   },
+  lectures: {
+    category: 'Learning',
+    summary: 'Online classes and meetings: lectures, doubt sessions, parent meetings and staff meetings. Join from here, and find recordings, notes and material afterwards.',
+    steps: [
+      'Upcoming lists the classes you host or are invited to. Join opens 15 minutes before the start.',
+      'Teachers schedule for the classes they teach; the principal and administration can invite anyone, including whole staff roles. A class can repeat weekly.',
+      'Choose a built-in room (no account needed) or paste a Google Meet, Zoom or Teams link.',
+      'Everyone invited is told in EduOS, by email and on WhatsApp where they agreed to it, and reminded shortly before the start.',
+      'After the class, add the recording link, notes and material. Past & recordings keeps them for the class.',
+    ],
+    tips: ['The host sees who opened the link from EduOS. How long someone stayed is known only to the meeting service.'],
+  },
   correspondence: {
     category: 'Administration',
     summary: 'Letters and circulars from the board, government, university and district office: log them, assign an owner, draft a reply, get it approved, dispatch it and close it with proof.',

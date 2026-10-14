@@ -12,6 +12,7 @@ import * as marketing from '../../../marketing/marketing.service.js';
 import * as org from '../../../institution/org.service.js';
 import * as community from '../../../community/community.service.js';
 import * as campus from '../../../campus/campus.service.js';
+import * as lectures from '../../../lectures/lecture.service.js';
 import { ok } from '../protocol.js';
 import { RISK, noArgs, rupees, shortDate, summarise } from './_shared.js';
 
@@ -294,6 +295,21 @@ export const operationsTools = {
       const rows = rowsOf(await community.feed(ctx.actor, {})).slice(0, 15).map((p) => ({ title: p.title ?? String(p.body ?? '').slice(0, 80), kind: p.kind, author: p.authorName ?? null, publishedAt: p.publishedAt ?? null }));
       const view = summarise(rows, (p) => p.title);
       return ok({ posts: rows, count: rows.length }, { speak: rows.length ? `${rows.length} recent post(s): ${view.list}.` : 'The newsroom has no posts yet.' });
+    },
+  },
+
+  list_digital_lectures: {
+    module: 'Lectures',
+    operation: 'GET',
+    risk: RISK.LOW,
+    description: 'Upcoming digital lectures and online meetings the caller hosts or is invited to, with their time and host. The join link is not included: a class is joined from its page. Read-only.',
+    inputSchema: noArgs,
+    permission: 'lectures.read',
+    service: 'lecture.service.list()',
+    async run(ctx) {
+      const rows = (await lectures.list(ctx.actor, {})).map((c) => ({ title: c.title, kind: c.kind, when: c.when, host: c.hostName, status: c.status, subject: c.subjectName }));
+      const view = summarise(rows.slice(0, 8), (c) => `${c.title} (${c.when})`);
+      return ok({ classes: rows, count: rows.length }, { speak: rows.length ? `${rows.length} online class(es) coming up: ${view.list}. Join from the Digital Lectures page.` : 'No online classes are coming up.' });
     },
   },
 

@@ -60,6 +60,9 @@ const contactPreferenceSchema = new Schema(
       at: { type: Date, default: null },
       source: { type: String, default: null }, // e.g. "portal", "admission form", "WhatsApp reply"
     },
+    // Email carries only operational messages (a class, a deadline), so it is
+    // on unless the person turns it off.
+    emailOptOut: { type: Boolean, default: false },
     language: { type: String, default: 'en' },
     quietHours: {
       enabled: { type: Boolean, default: true },

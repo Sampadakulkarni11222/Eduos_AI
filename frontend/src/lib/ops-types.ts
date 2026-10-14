@@ -100,6 +100,44 @@ export interface VerificationDto {
   dispute?: { raisedAt: string | null; note: string | null; resolution: string | null }; checksDone?: number; checksRequired?: number; adverse?: number; history?: HistoryEntry[];
 }
 
+// ── pulse (interactive dashboard) ──
+export interface PulseChartDto {
+  key: string; title: string; type: 'line' | 'bar' | 'funnel' | 'ageing'; unit: 'count' | 'percent' | 'paise'; link: string | null; definition: string;
+  points: Array<{ label: string; value: number | null; detail?: string; tone?: 'good' | 'warn' | 'bad' | 'neutral' }>; status: 'OK' | 'EMPTY'; emptyText: string; footnote?: string;
+}
+export interface PulseDto {
+  charts: PulseChartDto[];
+  activity: Array<{ at: string; kind: string; text: string; link: string }>;
+  departments: Array<{ key: string; name: string; link: string; lines: Array<[number | null, string]>; attention: boolean }>;
+  briefing: string[]; asOf: string;
+}
+
+// ── digital lectures ──
+export interface LectureDto {
+  id: string; refNo: string; seriesId: string | null; kind: string; title: string; description: string | null; hostName: string | null; isHost: boolean; canManage: boolean;
+  subjectName: string | null; sectionIds: string[]; includeGuardians: boolean; inviteeRoles: string[]; invitedPeople: number;
+  startsAt: string; endsAt: string; when: string; durationMinutes: number; provider: string; status: 'SCHEDULED' | 'LIVE' | 'ENDED' | 'CANCELLED'; cancelReason: string | null;
+  joinOpen: boolean; joinOpensAt: string; materials: Attachment[]; recordingUrl: string | null; summary: string | null; joinedCount: number;
+  occurrences?: number; delivery?: { recipients: number; byStatus?: Record<string, number> } | null;
+}
+export interface LectureOptionsDto { sections: Array<{ id: string; label: string }>; kinds: string[]; canInviteRoles: boolean; staffRoles: string[]; providers: Array<{ key: string; label: string; needsLink: boolean; note: string }> }
+export interface LectureAttendanceDto { title: string; when: string; invited: number; joined: number; note: string; rows: Array<{ name: string; joined: boolean; firstJoinedAt: string | null; times: number }> }
+
+// ── official documents ──
+export type DocCell = string | number | boolean | null | undefined;
+export interface OfficialDocumentDto {
+  kind: 'RETURN' | 'LETTER';
+  letterhead: { name: string; displayName: string | null; managedBy: string | null; address: string | null; codes: string[]; contact: string[]; missing: string[] };
+  refNo: string; date: string; to: string; subject: string; period?: string; theirReference?: string | null; opening?: string; body?: string;
+  sections?: Array<
+    | { type: 'table'; title: string; columns: Array<{ key: string; label: string; num?: boolean }>; rows: Array<Record<string, DocCell>>; note: string | null }
+    | { type: 'facts'; title: string; items: Array<[string, DocCell]>; note?: null }
+  >;
+  sources?: string[]; generatedAt?: string | null; findings?: { errors: string[]; warnings: string[] };
+  declaration?: string; signatories: Array<{ role: string; name: string | null; seal?: boolean }>;
+  watermark: string | null; confidential?: boolean; status?: string; filingNote: string;
+}
+
 // ── compliance ──
 export interface AccreditationItemDto { id: string; metric: string; ownerProfileId: string | null; ownerName: string | null; dueOn: string | null; status: 'NOT_STARTED' | 'IN_PROGRESS' | 'READY' | 'NOT_APPLICABLE'; note: string | null; evidence: Attachment[] }
 export interface AccreditationCycleDto {

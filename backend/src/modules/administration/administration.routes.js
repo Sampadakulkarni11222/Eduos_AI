@@ -9,6 +9,7 @@ import * as events from './events.service.js';
 import * as verification from './verification.service.js';
 import * as compliance from '../compliance/compliance.service.js';
 import * as accreditation from '../compliance/accreditation.service.js';
+import * as documents from '../compliance/documents.service.js';
 import * as safeguarding from '../compliance/safeguarding.service.js';
 import * as governance from '../governance/governance.service.js';
 import * as institution from '../institution/institution.service.js';
@@ -42,6 +43,7 @@ correspondenceRouter.get('/stats', cRead, ok((r) => correspondence.stats(r.actor
 correspondenceRouter.post('/', cManage, ok((r) => correspondence.register(r.actor, r.body), 'Registered', 201));
 correspondenceRouter.post('/extract', cRead, ok((r) => correspondence.extractTasks(r.body?.text, r.body?.receivedOn ? new Date(r.body.receivedOn) : new Date())));
 correspondenceRouter.post('/reminders/run', cManage, ok((r) => correspondence.sendDueReminders(r.actor, { withinDays: Number(r.body?.withinDays) || 3 }), 'Reminders sent'));
+correspondenceRouter.get('/:id/document', cRead, ok((r) => documents.correspondenceDocument(r.actor, r.scope, r.params.id)));
 correspondenceRouter.get('/:id', cRead, ok((r) => correspondence.get(r.actor, r.scope, r.params.id)));
 correspondenceRouter.get('/:id/suggest', cRead, ok((r) => correspondence.suggest(r.actor, r.scope, r.params.id)));
 correspondenceRouter.post('/:id/assign', cManage, ok((r) => correspondence.assign(r.actor, r.scope, r.params.id, r.body), 'Assigned'));
@@ -145,6 +147,7 @@ complianceRouter.get('/returns/:id/export.csv', kRead, asyncHandler(async (req, 
   res.setHeader('Content-Disposition', `attachment; filename="return-${req.params.id}.csv"`);
   res.send(csv);
 }));
+complianceRouter.get('/returns/:id/document', kRead, ok((r) => documents.returnDocument(r.actor, r.params.id)));
 complianceRouter.post('/returns/:id/regenerate', kManage, ok((r) => compliance.regenerateReturn(r.actor, r.params.id), 'Regenerated'));
 complianceRouter.post('/returns/:id/data', kManage, ok((r) => compliance.editReturnData(r.actor, r.params.id, r.body), 'Figures updated'));
 complianceRouter.post('/returns/:id/review', kManage, ok((r) => compliance.sendReturnForReview(r.actor, r.params.id, r.body), 'Sent for review'));

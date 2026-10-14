@@ -7,6 +7,7 @@ import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard } from '@/compon
 import { api } from '@/lib/api';
 import { useSchoolHref } from '@/lib/school-path';
 import type { LibrarianDashboardDto } from '@/lib/types';
+import { PulseBoard } from '@/components/ops/pulse-board';
 
 export default function LibrarianDashboard() {
   // Links are written school-less; this adds the school in the URL.
@@ -33,6 +34,9 @@ export default function LibrarianDashboard() {
         desc: 'Lending catalog & student activity tracking.',
       }}
     >
+      {/* The interactive board: briefing, departments, campus, charts and live activity. */}
+      <PulseBoard />
+
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
         <StatCard label="Total Catalog Books" value={data ? data.totalCopies : '—'} delta={data ? `${data.totalBooks} unique titles` : undefined} deltaDir="flat" />
         <StatCard label="Active Book Issues" value={data ? data.issuedBooks : '—'} delta={data ? 'in circulation' : undefined} deltaDir="flat" />
