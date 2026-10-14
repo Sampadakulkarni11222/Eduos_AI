@@ -71,7 +71,19 @@ import reportCardRoutes from '../modules/reportcards/reportcards.routes.js';
 import analyticsRoutes from '../modules/analytics/analytics.routes.js';
 import labsRoutes from '../modules/labs/labs.routes.js';
 import billsRoutes from '../modules/bills/bills.routes.js';
+// Clubs, teams, houses, fixtures; achievement and top-ranker showcase.
+import clubsRoutes from '../modules/clubs/clubs.routes.js';
+import showcaseRoutes from '../modules/showcase/showcase.routes.js';
+// Sustainability, public online admission form, library accession/scan, AI drafts.
+import sustainabilityRoutes from '../modules/sustainability/sustainability.routes.js';
+import { publicAdmissionRouter, onlineApplicationsRouter } from '../modules/admissions/online.routes.js';
+import libraryCopiesRoutes from '../modules/library/library.copies.routes.js';
+import aiDraftsRoutes from '../modules/ai/drafts.routes.js';
 import { feeAdjustmentsRouter, accountsExportRouter } from '../modules/fees/finance-extras.routes.js';
+// Alumni lifecycle and community, newsroom social publishing (staff only), daily learning digest.
+import alumniRoutes from '../modules/alumni/alumni.routes.js';
+import socialRoutes from '../modules/social/social.routes.js';
+import digestRoutes from '../modules/digest/digest.routes.js';
 
 const router = Router();
 
@@ -116,6 +128,8 @@ router.get('/health', async (_req, res) => {
 });
 
 // ─── Module routes ──────────────────────────────────────────────
+// Public (no sign-in): the per-school online admission form.
+router.use('/public/admissions', publicAdmissionRouter);
 router.use('/auth', authRoutes);
 router.use('/roles', roleRoutes);
 router.use('/profiles', profileRoutes);
@@ -142,12 +156,15 @@ router.use('/tickets', ticketRoutes);
 router.use('/medical', medicalRoutes);
 router.use('/registrations', registrationRoutes);
 router.use('/student-requests', studentRequestRoutes);
+router.use('/admissions/online', onlineApplicationsRouter);
 router.use('/admissions', admissionRoutes);
 router.use('/growth', growthRoutes);
 router.use('/risk', riskRoutes);
+router.use('/ai/drafts', aiDraftsRoutes);
 router.use('/ai', aiRoutes);
 router.use('/whatsapp', whatsappRoutes);
 router.use('/observability', observabilityRoutes);
+router.use('/library/copies', libraryCopiesRoutes);
 router.use('/library', libraryRoutes);
 router.use('/hostel', hostelRoutes);
 router.use('/dashboard', dashboardRoutes);
@@ -192,12 +209,18 @@ router.use('/report-cards', reportCardRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/labs', labsRoutes);
 router.use('/bills', billsRoutes);
+router.use('/clubs', clubsRoutes);
+router.use('/showcase', showcaseRoutes);
+router.use('/sustainability', sustainabilityRoutes);
 router.use('/fee-adjustments', feeAdjustmentsRouter);
 router.use('/accounts-export', accountsExportRouter);
 router.use('/community', communityRouter);
 router.use('/marketing', marketingRouter);
 router.use('/campus', campusRouter);
 router.use('/insights', insightsRouter);
+router.use('/alumni', alumniRoutes);
+router.use('/social', socialRoutes);
+router.use('/digest', digestRoutes);
 
 // NOTE — a public GET /admin-seed endpoint used to live here, gated only by a
 // hardcoded default secret ('eduos-seed-2026'). Anyone who could reach the API

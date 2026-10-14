@@ -292,7 +292,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   return (
     <>
       <Button onClick={handleOpen} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 14 }}>✨</span> {label}
+        <span style={{ fontSize: 14 }} aria-hidden="true">✨</span> <span className="ask-label">{label}</span>
       </Button>
       {open && minimized && portal(
         <button

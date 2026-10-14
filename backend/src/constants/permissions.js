@@ -870,6 +870,7 @@ export const SYSTEM_ROLES = [
       ['camera.events.review', 'ALL'],
       ['sustainability.read', 'ALL'],
       ['sustainability.manage', 'ALL'],
+      ['sustainability.verify', 'ALL'],
       ['digest.read', 'ALL'],
       ['ai.drafts.use', 'OWN'],
       ['users.read', 'ALL'],

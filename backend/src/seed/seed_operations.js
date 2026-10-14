@@ -1134,6 +1134,111 @@ async function seedOperations() {
     });
   }
 
+  // ── Alumni, social publishing outbox and the daily digest (agent: alumni-social) ──
+  {
+    const { AlumniProfile } = await import('../models/alumni.model.js');
+    const { SocialPost } = await import('../models/social.model.js');
+    const { DigestSource, DigestItem, DigestPreference } = await import('../models/digest.model.js');
+    const alumniSvc = await import('../modules/alumni/alumni.service.js');
+    const socialSvc = await import('../modules/social/social.service.js');
+    const digestSvc = await import('../modules/digest/digest.service.js');
+    const { setFeatures } = await import('../utils/features.js');
+    const soon = (days) => new Date(Date.now() + days * 86_400_000);
+
+    await section('Alumni (sample)', AlumniProfile, async () => {
+      const made = [];
+      // The demo alumnus signs in; the others are fictional records with no login.
+      if (who.ALUMNUS) {
+        made.push(await AlumniProfile.create({
+          profileId: who.ALUMNUS.profile._id, accountId: who.ALUMNUS.profile.accountId, kind: 'FORMER_STUDENT', displayName: who.ALUMNUS.profile.displayName,
+          batchYear: 2018, section: 'Class 12 A', house: 'Tagore', leftReason: 'GRADUATED', profession: 'Software engineer (sample)', city: 'Pune',
+          links: { linkedin: 'https://www.linkedin.com/in/demo-alumnus-sample' }, consent: { profession: true, city: true, links: false, at: new Date() }, transitionedByProfileId: HR.profile._id,
+        }));
+      }
+      const sample = [
+        ['Sample Ananya Iyer', 2018, 'Class 12 B', 'Raman', { profession: 'Doctor (sample)', consent: { profession: true } }],
+        ['Sample Kabir Rao', 2019, 'Class 12 A', 'Tagore', { city: 'Bengaluru', consent: { city: true } }],
+        ['Sample Meera Nair', 2022, 'Class 12 C', 'Kalam', {}],
+      ];
+      for (const [displayName, batchYear, sec, house, extra] of sample) {
+        // eslint-disable-next-line no-await-in-loop
+        made.push(await AlumniProfile.create({ kind: 'FORMER_STUDENT', displayName, batchYear, section: sec, house, leftReason: 'GRADUATED', transitionedByProfileId: HR.profile._id, ...extra, consent: { profession: false, city: false, links: false, ...(extra.consent ?? {}) } }));
+      }
+      made.push(await AlumniProfile.create({ kind: 'FORMER_STAFF', displayName: 'Sample Mr. D. Kulkarni (retired Physics teacher)', formerRole: 'TEACHER', servedFrom: 2009, servedTo: 2021, leftReason: 'RETIRED', transitionedByProfileId: HR.profile._id }));
+      for (const a of made) {
+        // eslint-disable-next-line no-await-in-loop
+        await alumniSvc.joinCircles(a, HR.profile._id);
+      }
+      await alumniSvc.createEvent(HR.actor, { title: 'Class of 2018 reunion (sample)', batchYear: 2018, startsAt: soon(45), venue: 'School auditorium', description: 'Tea, a campus walk and the new science block. (Sample event.)' });
+      await alumniSvc.createEvent(HR.actor, { title: 'Alumni career talk for Class 12 (sample)', startsAt: soon(20), venue: 'Library hall' });
+      if (who.ALUMNUS) {
+        const circles = await alumniSvc.myCircles(who.ALUMNUS.actor);
+        const batch = circles.find((c) => c.name === 'Class of 2018');
+        const school = circles.find((c) => c.name === 'Alumni community');
+        if (school) await alumniSvc.createPost(HR.actor, { circleId: school.id, title: 'Welcome to the alumni community', body: 'Share news, offer mentoring and find your batch. (Sample post.)' });
+        if (batch) await attempt('alumni post', () => alumniSvc.createPost(who.ALUMNUS.actor, { circleId: batch.id, title: 'Reunion photos?', body: 'Does anyone still have photos from the 2018 farewell? (Sample post, waiting for review.)' }));
+      }
+      return `${made.length} alumni (one former teacher, 2009–2021), 2 reunions, an alumni post waiting for review`;
+    });
+
+    await section('Social publishing outbox (sample)', SocialPost, async () => {
+      await attempt('features', () => setFeatures({ socialPublishing: true }));
+      await socialSvc.connectAccount(ADMIN.actor, { network: 'FACEBOOK', handle: 'oakridge.sample' });
+      await socialSvc.connectAccount(ADMIN.actor, { network: 'INSTAGRAM', handle: 'oakridge.sample' });
+      const p = await socialSvc.compose(MARKETING.actor, { text: 'Admissions open for 2027-28. Visit our open day on Saturday, 10 am to 1 pm. (Sample post.)', link: 'https://oakridge.example/admissions', networks: ['FACEBOOK', 'INSTAGRAM', 'LINKEDIN'], noIdentifiableStudents: true });
+      await socialSvc.publish(MARKETING.actor, p.id);
+      await socialSvc.compose(MARKETING.actor, { text: 'Our science fair is next week. (Sample draft.)', networks: ['X', 'YOUTUBE'], noIdentifiableStudents: true });
+      return '2 accounts pending provider credentials; 1 post simulated on 3 networks, 1 draft — nothing was posted';
+    });
+
+    await section('Daily digest (sample)', DigestSource, async () => {
+      const sources = [
+        ['Sample Science Weekly', 'https://feeds.example.org/science.xml', ['SCIENCE', 'ENVIRONMENT']],
+        ['Sample Careers Desk', 'https://feeds.example.org/careers.xml', ['CAREERS']],
+        ['Sample Education Policy Notes', 'https://feeds.example.org/policy.xml', ['EDUCATION_POLICY']],
+        ['Sample Tech Explainers', 'https://feeds.example.org/tech.atom', ['TECHNOLOGY', 'MATHEMATICS']],
+        ['Sample School Sports', 'https://feeds.example.org/sports.xml', ['SPORTS']],
+      ];
+      const made = [];
+      for (const [title, url, interests] of sources) {
+        // eslint-disable-next-line no-await-in-loop
+        made.push(await digestSvc.addSource(ADMIN.actor, { title, url, interests }));
+      }
+      const items = [
+        [0, 'Why the monsoon arrived late this year (sample)', 'A plain-language look at the season\'s weather patterns.', ['SCIENCE', 'ENVIRONMENT']],
+        [0, 'Students measure air quality around their school (sample)', 'A low-cost sensor project any class can try.', ['SCIENCE', 'ENVIRONMENT']],
+        [1, 'Five careers in data you may not have heard of (sample)', 'What the work looks like and which subjects help.', ['CAREERS']],
+        [1, 'How to prepare for a first internship interview (sample)', 'Practical tips from recent graduates.', ['CAREERS']],
+        [2, 'What the new assessment framework means for Class 10 (sample)', 'A summary of the proposed changes and timelines.', ['EDUCATION_POLICY']],
+        [3, 'How search engines rank pages, explained simply (sample)', 'Links, relevance and why results differ.', ['TECHNOLOGY']],
+        [3, 'The maths behind error-correcting codes (sample)', 'How a scratched disc still plays.', ['MATHEMATICS', 'TECHNOLOGY']],
+        [4, 'District under-14 athletics: results roundup (sample)', 'Track and field highlights from the weekend.', ['SPORTS']],
+      ];
+      const at = Date.now();
+      for (const [i, title, summary, interests] of items) {
+        const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        // eslint-disable-next-line no-await-in-loop
+        await DigestItem.create({ sourceId: made[i].id, sourceTitle: made[i].title, link: `https://example.org/sample/${slug}`, title, summary, interests, publishedAt: new Date(at - (i + 1) * 3_600_000), fetchedAt: new Date(at) });
+      }
+      const prefs = [[who.STUDENT, ['SCIENCE', 'TECHNOLOGY', 'CAREERS']], [TEACHER, ['EDUCATION_POLICY', 'SCIENCE']], [who.PARENT, ['EDUCATION_POLICY', 'CAREERS']], [who.ALUMNUS, ['CAREERS', 'TECHNOLOGY']], [PRINCIPAL, ['EDUCATION_POLICY']]];
+      for (const [p, interests] of prefs) {
+        if (!p) continue;
+        // eslint-disable-next-line no-await-in-loop
+        await DigestPreference.updateOne({ profileId: p.profile._id }, { $set: { interests, emailOptIn: false }, $setOnInsert: { profileId: p.profile._id } }, { upsert: true });
+      }
+      return `${made.length} approved sample feeds (example.org — the daily fetch records them as unreachable), ${items.length} sample headlines, interests for the demo people`;
+    });
+  }
+
+  // ── Clubs, houses, fixtures and the achievement showcase (agent: clubs) ──
+  // Sample clubs and teams with members, sessions and registers, house results and a published showcase: see seed_clubs.js.
+  await (await import('./seed_clubs.js')).seedClubs({ section, attempt, who, actorOf, roleByKey, teachers });
+
+  // ── Sustainability, online admission applications, library accession numbers (agent: green-admission) ──
+  // Zones, eco teams, plantings with photo checks, waste with vendor receipts, meters, sanitation duties (as tasks), verified eco points,
+  // two sample online applications and accession numbers for the catalogue: see seed_green_admission.js.
+  await (await import('./seed_green_admission.js')).seedGreenAdmission({ section, attempt, who, tenantId: SEED_SCHOOL_SLUG });
+
   // ── What came out ────────────────────────────────────────────────────────
   const pending = await ApprovalRequest.countDocuments({ status: 'PENDING' }).catch(() => 0);
   // Printed directly, so the summary shows whatever the log level is.

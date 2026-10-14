@@ -238,7 +238,7 @@ export function PortalShell({
         )}
         <div className="topbar">
           <div className="topbar-headrow">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            <div style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', gap: 12, minWidth: 0 }}>
               <button className="hamburger-btn" onClick={() => setMobileOpen(true)} aria-label="Open Menu">
                 ☰
               </button>

@@ -538,6 +538,172 @@ const CONTENT: Record<string, OpsContent> = {
       'Every voucher is checked to balance before the file is produced.',
     ],
   },
+  // Alumni, newsroom social publishing, the daily digest and student profile links.
+  alumni: {
+    category: 'Community',
+    summary: 'Former students and former staff in one community: alumni circles for the whole school and for each batch, a directory, passing-out years and the years staff served, and reunions.',
+    highlights: [
+      { label: 'Community only', text: 'An alumnus keeps the newsroom, alumni circles, directory, reunions and mentoring. They do not see student records, marks or fees — only their own archived enrolment history.' },
+      { label: 'Consent per field', text: 'The directory shows a name and batch. Profession, city and links appear only for the fields that person switched on.' },
+      { label: 'Batches and served years', text: 'Former students are grouped by passing-out year, section and house; former teachers appear under every year they served.' },
+    ],
+    steps: [
+      'Community: write to your batch circle or the school-wide circle. Posts wait for the school to review them.',
+      'Directory: search by name or batch year. My batch shows the people from your year.',
+      'Reunions: reply Going, Maybe or Not going to events for your batch or for all alumni.',
+      'My profile: add your profession, city and links, then choose which of them others may see, or take yourself off the directory.',
+    ],
+    tips: ['Your record shows your years and classes. Ask the school office for transcripts or a leaving certificate.'],
+  },
+  'alumni-manage': {
+    title: 'Alumni',
+    category: 'Community',
+    summary: 'Move a graduating student or a member of staff who leaves to alumni, review alumni posts, plan reunions and correct batches.',
+    workflow: ['Graduates or leaves', 'Moved to alumni', 'Student or staff sign-in closed', 'Alumni community'],
+    steps: [
+      'Manage alumni → Move to alumni: choose a student (graduated, left or transferred) or a member of staff (left, resigned or retired), with the passing-out year or the years served.',
+      'Their old sign-in is closed and an alumni profile opens on the same account, joined to the school-wide circle and their batch (or the former-staff circle).',
+      'Posts to review: publish or reject alumni posts; a rejection needs a reason the author sees.',
+      'Reunions: create an event for one batch or for all alumni; invitees are told in the app.',
+    ],
+    tips: ['You see each person\'s consent choices, not the details they kept private.', 'Suspending an alumnus closes their alumni sign-in until you restore it.'],
+  },
+  social: {
+    category: 'Community',
+    summary: 'Share a public newsroom story, or a post with no identifiable child, to the school\'s Facebook, Instagram, X, LinkedIn and YouTube community accounts. Each network has its own line in the outbox.',
+    workflow: ['Compose', 'Consent checked', 'Publish', 'Consent checked again', 'Per-network status'],
+    highlights: [
+      { label: 'Simulated — not posted', text: 'No network is connected with provider credentials yet, so every send is recorded as simulated. Nothing leaves the school.' },
+      { label: 'Consent at publishing', text: 'Every child tagged in a story needs public-media consent. It is checked when you compose and again at the moment you publish; if any is missing, nothing is sent.' },
+      { label: 'Never twice', text: 'A network that was sent or simulated is never sent again. Only a failed network can be retried.' },
+      { label: 'Staff only', text: 'Parents, students and alumni can never publish to the school\'s accounts.' },
+    ],
+    steps: [
+      'Compose: pick a published public story or write the text, choose the networks, and confirm no child can be identified if you are not sharing a story.',
+      'Save to outbox, then Publish. Each network shows Queued, Sending, Sent, Failed or Simulated — not posted.',
+      'Accounts: an administrator records the school\'s handle on each network; it waits as "connection pending: needs provider credentials".',
+    ],
+    tips: ['Tokens and passwords are never typed into this screen.'],
+  },
+  digest: {
+    category: 'Learning',
+    summary: 'A short daily digest of headlines from news and learning feeds your school approved, matched to the interests you pick: science, technology, sports, careers, education policy and more.',
+    steps: [
+      'Interests: tick the topics you want. Your digest changes straight away.',
+      'My digest: today\'s headlines with a short summary; the link opens the original site.',
+      'Tick "Also email me" if you want a copy by email.',
+      'Sources (administrators): approve a feed by its https address and tag it with interests; pause or read it now.',
+    ],
+    tips: [
+      'Feeds are read once a day. Addresses inside the school\'s or any private network are refused, and very large feeds are skipped.',
+      'Headlines are shown as plain text; nothing from a feed runs in your browser.',
+    ],
+  },
+  'profile-links': {
+    category: 'Community',
+    summary: 'A student can add LinkedIn, Instagram, GitHub and a personal site to their profile. Other students and parents see them only if the student agrees and, for anyone under 18, a guardian agrees too.',
+    steps: [
+      'Student: add your links (full https addresses) and Save, then tick "Show my links" if you want others to see them.',
+      'Guardian: open your child\'s card and tick "I agree" to let other students and parents see the links your child shared.',
+    ],
+    tips: ['Changing a link asks the guardian to agree again.', 'Teachers and school staff can always see a student\'s links; other families cannot unless both agree.'],
+  },
+  clubs: {
+    category: 'Community',
+    summary: 'Clubs and teams for sports (cricket, football, basketball, athletics, chess, yoga) and the arts (dance, singing, drama, visual arts). Families ask to join; a parent consents for a child under 18; the teacher in charge approves. Sessions, registers, fixtures, house points and kit are kept here, and each student has a participation portfolio.',
+    workflow: ['Asked to join', 'Parent consent (under 18)', 'Teacher approves', 'Member or waiting list'],
+    highlights: [
+      { label: 'Fair places', text: 'A club has a set number of places. When it is full, approved students join a waiting list in the order they were approved, and the first in line gets the next free place automatically.' },
+      { label: 'Consent first', text: 'A request from a student under 18 waits for a parent. A parent who asks for their child gives consent by asking. A student with no date of birth on record is treated as under 18.' },
+      { label: 'Approved results only', text: 'House points and the portfolio count a result only after a second teacher has approved it; the teacher who recorded it cannot approve it.' },
+    ],
+    steps: [
+      'Families: open Browse, choose a club and Ask to join (parents pick the child). Follow it under My requests; parents give or refuse consent there.',
+      'Teachers in charge: decide requests under Requests, schedule sessions at a school venue (booked through Facilities) and take the register after each session.',
+      'Fixtures & houses: schedule an inter-house or external fixture, set the team sheet, record the result; another teacher approves it before it counts.',
+      "Kit: record the club's equipment, lend it to a member with a return date (a reminder lands on your task list) and mark it back or lost.",
+      'Portfolio: every club, session attended, fixture and award a student has, for their records and applications.',
+    ],
+    tips: [
+      'A session without a register becomes a task for the coach after it ends.',
+      "Families never see other members' names or unapproved results.",
+    ],
+  },
+  showcase: {
+    category: 'Community',
+    summary: "The school's showcase of previous class and term top rankers and achievements in sports, arts and olympiads, published by the school.",
+    workflow: ['Drafted', 'Reviewed by a second person', 'Published', 'Withdrawn if needed'],
+    highlights: [
+      { label: 'From published results', text: 'Ranks are drawn only from exam results that are published. Equal marks share a rank and the next rank is skipped (1, 1, 3).' },
+      { label: 'Top ranks only', text: 'The school sets a cut-off (for example the top 3). Nothing below it is ever shown, and never a full class list.' },
+      { label: 'Consent', text: "A child appears only with their family's media consent. It is checked again when publishing (an entry without it is left out, with the reason) and every time the page is read." },
+    ],
+    steps: [
+      'Everyone: open Showcase to see what the school has published; filter by academic, sports, arts or olympiad.',
+      'Administration, the principal and marketing: under Prepare and publish, create a showcase, draw the top ranks for a class or grade, and add achievements from approved records and results.',
+      'Someone other than the person who drafted an entry reviews it; then publish. Entries can be withdrawn at any time.',
+    ],
+    tips: ['Students and parents can read the showcase but can never publish to it.'],
+  },
+  // Sustainability, eco points, library labels and scan desk, AI drafts, online admission applications.
+  sustainability: {
+    category: 'Administration',
+    summary: 'Greenery, waste, water, energy and sanitation in one register: trees with survival checks, waste by stream with vendor receipts, compost, monthly meter figures, sanitation duties that run as tasks, eco points for verified activities, and evidence packs to support SHVR, CSE Green Schools and Mission LiFE submissions.',
+    workflow: ['Log', 'Attach evidence', 'Someone else verifies', 'Points count', 'Compile a pack'],
+    highlights: [
+      { label: 'Photo for every check', text: 'A survival check or sanitation check is recorded only with a photo (or the service slip).' },
+      { label: 'Receipts', text: 'E-waste, sanitary and hazardous lab waste handed to a vendor needs the vendor\'s name and their receipt.' },
+      { label: 'Never self-verified', text: 'Eco points exist only once someone other than the person who logged the activity has verified it.' },
+      { label: 'Evidence, not filing', text: 'Evidence packs are evidence to support your submission. EduOS never files or submits anything to a programme.' },
+    ],
+    steps: [
+      'Zones & teams (administration): add gardens, grounds, toilet blocks and tanks, and the classes, houses and eco clubs that earn points.',
+      'Trees: record a planting with species, zone, date and who planted it; record survival checks with a photo. Survival is alive against planted.',
+      'Waste: record each stream\'s weight, whether it was separated at source, where it went and the vendor\'s receipt. Water & energy: record each meter once a month.',
+      'Sanitation: add toilet cleaning per block, pad dispensers, incinerators and tank cleaning. Each due date is a task in Tasks; record the check with a photo, or complete the task there.',
+      'Activities & points: a teacher logs what their class or club did with photos; the principal, compliance officer or another teacher verifies it and the points count.',
+      'Evidence packs (administration): choose a programme, compile for the academic year and download the CSV. Section headings are generic where the programme\'s exact form is not known; the pack says so.',
+    ],
+    tips: ['Per-student figures divide by the pupils on roll now.', 'Teachers see and log only for their own class and the clubs they lead.'],
+  },
+  'eco-points': {
+    category: 'Community',
+    summary: 'The school\'s eco points and each class, house and club\'s total, counting only activities a staff member has verified. Your class is marked.',
+    steps: ['Open Eco points to see the totals and the latest verified activities.', 'Ask your class teacher how your class can join the next activity.'],
+    tips: ['Only team totals are shown, never individual pupils.'],
+  },
+  'library-labels': {
+    category: 'Learning',
+    summary: 'Accession numbers for every physical copy (one running series for the school), printable Code 128 barcode labels, and a scan desk that issues and returns books with a keyboard-wedge barcode scanner.',
+    workflow: ['Number copies', 'Print labels', 'Scan book', 'Scan student', 'Issued'],
+    steps: [
+      'Accession numbers & labels: choose a book and Number copies. Leave the count empty to number the copies the catalogue already has; enter a count to add new copies.',
+      'Open the label sheet, Print it at 100% scale, then Mark as printed so the next batch shows only new labels.',
+      'Scan desk → Issue: click the box, scan the book, then scan or type the student\'s admission number and press Enter.',
+      'Scan desk → Return: scan the book. Any late fine is worked out as at the desk.',
+    ],
+    tips: ['A scanner is just a keyboard: it types the code and presses Enter.', 'A copy that is out cannot be issued again until it is returned.'],
+  },
+  'ai-drafts': {
+    category: 'Command Centre',
+    summary: 'Ask for a draft letter, circular, minutes from your notes, a lesson-plan outline or a report-card remark. Copy it, edit it and save it where it is used. Nothing is sent, published or saved from here.',
+    highlights: [
+      { label: 'Template without a key', text: 'When the school has no AI key configured, drafts come from templates and are labelled "Template draft (no AI key configured)".' },
+      { label: 'Restricted details stay out', text: 'Sentences about health, safeguarding and similar matters, and phone numbers, emails and ID numbers, are removed before anything reaches a model.' },
+      { label: 'Remarks', text: 'A report-card remark uses only marks bands and the attendance percentage. The pupil\'s name is never sent; it is put into the text shown to you.' },
+    ],
+    steps: ['Choose the kind of draft and fill in what you know.', 'Draft, then edit the text in the box and Copy it.', 'Paste it into the screen where it belongs (a circular, the minutes, the report card) and save it there.'],
+    tips: ['The AI only drafts. A person reviews, edits and decides.'],
+  },
+  'online-applications': {
+    category: 'Growth',
+    summary: 'Applications made on the school\'s public online admission form, with the documents the family uploaded. Each one is already a NEW lead in the admissions CRM, where it is worked.',
+    steps: [
+      'Share the public form link (shown at the top) on the school website. Families need no account and pay nothing there.',
+      'Open the CRM to contact the family and move the lead through its stages; the family sees a plain status when they check with their reference number.',
+    ],
+    tips: ['Families check status with the reference number and a code sent to the phone on the application, so they see only their own.'],
+  },
 };
 
 const PAGES = opsRoutes.pages as Record<string, { title: string; icon: string; hidden?: boolean }>;

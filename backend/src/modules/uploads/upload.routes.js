@@ -23,7 +23,7 @@ import { currentTenantId } from '../../tenancy/tenantContext.js';
 
 // SVG is deliberately excluded: it is an active-content format (it can carry
 // <script>), and these files are served from our own origin.
-const ALLOWED_EXTENSIONS = new Set([
+export const ALLOWED_EXTENSIONS = new Set([
   'pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp',
   'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'csv', 'txt', 'md',
   'zip', 'mp3', 'mp4',
@@ -31,7 +31,7 @@ const ALLOWED_EXTENSIONS = new Set([
 
 const uploadDir = resolve(process.cwd(), env.UPLOAD_DIR);
 
-function sanitizeFilename(name) {
+export function sanitizeFilename(name) {
   // Keep the basename only and strip anything that isn't filename-safe.
   const base = String(name).split(/[\\/]/).pop() ?? 'file';
   return base.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120);

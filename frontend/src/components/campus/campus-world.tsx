@@ -12,6 +12,7 @@ import type { CampusDepartmentDto, CampusMapDto, CampusNodeDto, FacilityDetailDt
 import { BookRoomModal, ReportIssueModal } from '@/components/ops/operations-views';
 import { DataNote, ErrorNote, fmtDate, fmtDateTime, humanize, useLoad } from '@/components/ops/kit';
 import { STATE_COLORS, stateOf, type CampusScene, type Level } from './campus-scene';
+import { CampusLayersPanel, DepartmentTasks, RoomLayerFacts } from './campus-layers';
 
 /**
  * Campus World — the 3D view of the institution with what is happening in
@@ -125,6 +126,10 @@ export function CampusWorldView() {
   // A time of today to look at instead of now (staff only; the server ignores it for families).
   const [at, setAt] = useState<string | null>(null);
   const map = useLoad(() => opsApi.campusMap(undefined, at), [at]);
+  // Operational layers (labs, transport, cover, tasks, gate…): only what the reader may see; refreshed with the map.
+  const ops = useLoad(() => opsApi.campusLayers(), []);
+  const reloadOps = ops.reload;
+  useEffect(() => { const t = window.setInterval(() => { void reloadOps(); }, 30_000); return () => window.clearInterval(t); }, [reloadOps]);
   const holder = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<CampusScene | null>(null);
   const [supported, setSupported] = useState<boolean | null>(null);
@@ -195,6 +200,19 @@ export function CampusWorldView() {
     }
     return out;
   }, [nodes, buildingOf]);
+
+  /** Short badges from the operational layers, drawn on room labels: a substitute teaching, a practical, the gate. */
+  const opsBadge = useMemo(() => {
+    const out = new Map<string, string>();
+    const add = (id: string | null | undefined, text: string) => { if (id) out.set(id, out.has(id) ? `${out.get(id)} · ${text}` : text); };
+    for (const c of ops.data?.cover?.now ?? []) add(c.facilityId, `cover: ${c.substituteName ?? 'substitute'}`);
+    for (const l of ops.data?.labs ?? []) if (l.practicalNow) add(l.facilityId, `practical: ${l.practicalNow.title}`);
+    const g = ops.data?.gate;
+    if (g && (g.visitorsOnSite !== null || g.studentsOutOnPass !== null)) add(g.facilityId, [g.visitorsOnSite !== null ? `${g.visitorsOnSite} visitors` : null, g.studentsOutOnPass !== null ? `${g.studentsOutOnPass} out` : null].filter(Boolean).join(', '));
+    const t = ops.data?.transport;
+    if (t) add(t.facilityId, `${t.live}/${t.vehicles.length} buses live`);
+    return out;
+  }, [ops.data]);
 
   // Mount the scene once data and the container exist; Three.js is loaded only here.
   // Keyed on whether data has arrived, not on each minute's refresh: a refresh
@@ -307,6 +325,7 @@ export function CampusWorldView() {
   const roomLine = (r: CampusNodeDto) => `${humanize(r.kind)}${r.capacity ? ` · ${r.capacity} seats` : ''} · ${stateLabel(r)}${r.lesson?.teacher ? ` · ${r.lesson.teacher}` : ''}${r.live ? ` · ${headcount(r.live)}` : ''}`;
   const listView = (
     <div className="ops-stack">
+      <CampusLayersPanel data={ops.data} onGo={(id) => setSelected(id)} />
       {buildings.map((b) => (
         <div key={b.id} className="ops-section card card-pad">
           <div className="ops-section-head"><h2 className="ops-section-title">{b.name}</h2><Button small variant="soft" onClick={() => { setView('3d'); enterBuilding(b); }}>Show in 3D</Button></div>
@@ -404,7 +423,7 @@ export function CampusWorldView() {
             return (
               <div key={l.id} className={`cw-label${l.id === selected ? ' is-selected' : ''}${l.id === hovered ? ' is-hover' : ''}${st === 'EXAM' ? ' is-exam' : ''}`} style={{ left: l.x, top: l.y }} aria-hidden="true">
                 {n.kind !== 'BUILDING' && <i className="cw-label-dot" style={{ background: STATE_COLORS[st] }} />}
-                <b>{n.name}</b>{chip ? <span className="cw-label-sub"> · {chip}</span> : null}
+                <b>{n.name}</b>{chip ? <span className="cw-label-sub"> · {chip}</span> : null}{opsBadge.has(n.id) ? <span className="cw-label-sub cwl-badge"> · {opsBadge.get(n.id)}</span> : null}
               </div>
             );
           })}
@@ -463,6 +482,7 @@ export function CampusWorldView() {
                     </div>
                   </div>
                 )}
+                <CampusLayersPanel data={ops.data} onGo={(id) => { const n = byId.get(id); if (n) goTo(n); }} />
               </div>
               <div className="cw-right">
                 <div className="cw-glass cw-controls" role="group" aria-label="Camera">
@@ -487,6 +507,7 @@ export function CampusWorldView() {
                     {activeDept.metrics.length > 0 && (
                       <div className="cw-metrics">{activeDept.metrics.map((m, i) => <div key={i} className={`cw-metric is-${m.tone}`}><b>{m.value}</b><span>{m.label}</span></div>)}</div>
                     )}
+                    <DepartmentTasks data={ops.data} code={activeDept.code} />
                     {activeDept.facilityIds.length > 0 && (
                       <div>
                         <div className="field-label">Where it works</div>
@@ -553,6 +574,7 @@ export function CampusWorldView() {
                       {sel.bookingsToday !== undefined && <><dt>Bookings today</dt><dd>{sel.bookingsToday}</dd></>}
                       {sel.openWorkOrders !== undefined && <><dt>Open repairs</dt><dd>{sel.openWorkOrders}{sel.urgentWorkOrders ? ` (${sel.urgentWorkOrders} urgent)` : ''}</dd></>}
                     </dl>
+                    <RoomLayerFacts data={ops.data} facilityId={sel.id} />
                     {sel.kind === 'BUILDING' && (() => {
                       const sum = buildingSummary.get(sel.id);
                       return (

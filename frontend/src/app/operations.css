@@ -668,3 +668,197 @@ body.role-alumnus{--accent:#4d3416;--accent-2:#6b4a22;--sidebar-text:#EFE3CF;--s
   .bill-bars li{grid-template-columns:56px 1fr 96px}
   .lab-scan-row{flex-wrap:wrap}
 }
+
+/* ── Campus map: operational layers (campus-layers.tsx) ── */
+.cwl{padding:7px 10px;max-width:min(620px,100%);display:flex;flex-direction:column;gap:6px;min-width:0}
+.cwl-head{display:flex;align-items:center;gap:10px;min-width:0}
+.cwl-chips{display:flex;flex-wrap:wrap;gap:6px;padding:3px 3px 5px;min-width:0}
+.cwl-chips .cw-dept{flex:none;white-space:nowrap}
+.cwl-list{max-height:200px}
+.cwl-row{display:flex;flex-direction:column;padding:6px;font-size:13px;min-width:0}
+.cwl-row b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cwl-totals{display:flex;flex-wrap:wrap;gap:4px 12px;padding:4px 6px 6px;font-size:12px;color:#4B5563}
+.cwl-totals b{color:#1F2937;font-variant-numeric:tabular-nums}
+.cwl-note{margin:0;font-size:11px;color:#6B7280}
+.cwl-tone-good{background:#E8F7EE;color:#1E7A45}
+.cwl-tone-warn{background:#FDF4E1;color:#8A5E0A}
+.cwl-tone-bad{background:#FBE5E3;color:#A8322E}
+.cwl-tone-neutral{background:#EEF1F6;color:#4B5563}
+.cwl-facts{display:flex;flex-direction:column;gap:4px}
+.cwl-cover{display:flex;flex-direction:column;background:#EEF3FD;border-radius:11px;padding:8px 10px;font-size:12.5px}
+.cwl-cover span{font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#2F6FE4}
+.cwl-badge{color:#2F6FE4}
+.ops-stack>.cwl{max-width:none}
+@media (max-width:760px){.cwl{max-width:none}.cwl-head{flex-direction:column;align-items:stretch;gap:4px}}
+
+/* ── Alumni, social publishing, daily digest, profile links (agent: alumni-social) ── */
+.alu-links{display:inline-flex;flex-wrap:wrap;gap:8px;font-size:12.5px}
+.alu-links a{color:var(--text-1);text-decoration:underline;overflow-wrap:anywhere}
+.alu-batches{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+.alu-post-body{margin:4px 0;font-size:13px;color:var(--text-1);white-space:pre-wrap;overflow-wrap:anywhere}
+.alu-consent{display:flex;align-items:flex-start;gap:8px;font-size:13px;margin:6px 0;cursor:pointer}
+.alu-consent input{margin-top:2px;flex-shrink:0}
+.alu-rsvp{display:inline-flex;flex-wrap:wrap;gap:6px}
+.soc-networks{border:none;padding:0;margin:8px 0;display:flex;flex-wrap:wrap;gap:8px}
+.soc-networks legend{font-size:12px;font-weight:700;color:var(--text-2);margin-bottom:6px;padding:0}
+.soc-outbox{list-style:none;display:flex;flex-wrap:wrap;gap:8px 14px;margin:6px 0 0;padding:0;font-size:12.5px}
+.soc-outbox li{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.soc-connect{display:flex;align-items:flex-end;padding-bottom:12px}
+.dig-interests{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 10px}
+.dig-url{overflow-wrap:anywhere;word-break:break-all}
+.dig-item .ops-row-title a{color:var(--text-1);overflow-wrap:anywhere}
+@media (max-width:640px){.alu-batches{grid-template-columns:repeat(2,minmax(0,1fr))}.soc-connect{padding-bottom:4px}.alu-rsvp{width:100%}}
+
+/* ── Clubs, teams and houses; achievement showcase (agent: clubs) ─────── */
+.clubs-grid{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;padding:0;margin:0}
+.clubs-card{border:1px solid var(--hairline-2);border-radius:12px;padding:12px 14px;background:var(--card-bg);display:flex;flex-direction:column;gap:8px;border-top:4px solid var(--accent);min-width:0}
+.clubs-card.cat-sports{border-top-color:#2e7d4f}
+.clubs-card.cat-arts{border-top-color:#8e3f9e}
+.clubs-card.cat-academic{border-top-color:#2a5d9f}
+.clubs-card .ops-row-link{display:flex;flex-direction:column;gap:3px;min-width:0}
+.clubs-card .ops-row-link:disabled{cursor:default}
+.clubs-card-head{display:flex;gap:6px;flex-wrap:wrap}
+.clubs-card-cat{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-faint)}
+.clubs-card-action{display:flex;justify-content:flex-end}
+.clubs-seats{display:flex;flex-direction:column;gap:4px;margin-top:4px}
+.clubs-seats-bar{height:6px;border-radius:99px;background:var(--hairline);overflow:hidden}
+.clubs-seats-bar span{display:block;height:100%;background:var(--accent);border-radius:99px}
+.clubs-seats-text{font-size:11.5px;color:var(--text-2)}
+.clubs-date{width:44px;flex:0 0 44px;text-align:center;border:1px solid var(--hairline-2);border-radius:8px;padding:3px 0;line-height:1.1}
+.clubs-date b{display:block;font-size:16px;color:var(--text-1)}
+.clubs-date span{font-size:10.5px;text-transform:uppercase;color:var(--text-faint)}
+.clubs-houses{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
+.clubs-houses li{display:grid;grid-template-columns:22px 14px minmax(70px,120px) minmax(0,1fr) 44px;align-items:center;gap:8px}
+.clubs-house-pos{font-weight:700;color:var(--text-2);text-align:center}
+.clubs-house-swatch{width:14px;height:14px;border-radius:4px}
+.clubs-house-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clubs-house-bar{height:10px;border-radius:99px;background:var(--hairline);overflow:hidden}
+.clubs-house-bar span{display:block;height:100%;border-radius:99px}
+.clubs-house-pts{text-align:right;font-variant-numeric:tabular-nums}
+.clubs-marks{display:inline-flex;border:1px solid var(--hairline-2);border-radius:8px;overflow:hidden}
+.clubs-mark{border:none;background:transparent;padding:6px 10px;font:inherit;font-size:12px;cursor:pointer;color:var(--text-2)}
+.clubs-mark+.clubs-mark{border-left:1px solid var(--hairline-2)}
+.clubs-mark.is-on.m-present{background:#E6F4EA;color:#1e6b3a;font-weight:700}
+.clubs-mark.is-on.m-absent{background:#FBE9E7;color:#a12a1f;font-weight:700}
+.clubs-mark.is-on.m-excused{background:#FCF6EA;color:#8a5a00;font-weight:700}
+.clubs-mark:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
+.clubs-role{width:auto;max-width:150px}
+.showcase-grid{list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;padding:0;margin:0}
+.showcase-tile{border:1px solid var(--hairline-2);border-radius:12px;padding:12px 14px;background:var(--card-bg);display:flex;flex-direction:column;gap:4px;min-width:0}
+.showcase-tile-top{display:flex;align-items:center;gap:8px}
+.showcase-cat{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-faint)}
+.showcase-name{font-weight:700;color:var(--text-1);overflow-wrap:anywhere}
+.showcase-title{font-size:13px;color:var(--text-1)}
+.showcase-detail{font-size:12px;color:var(--text-2);overflow-wrap:anywhere}
+.showcase-icon{font-size:20px;line-height:1}
+.showcase-medal{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex:0 0 28px;border-radius:50%;font-weight:800;font-size:13px;color:#3b2a00;background:#e9e3d3;border:2px solid #cbbf9f}
+.showcase-medal.r1{background:#f6d365;border-color:#d4a514}
+.showcase-medal.r2{background:#e3e6ea;border-color:#a9b0b8}
+.showcase-medal.r3{background:#e9b98b;border-color:#b87333}
+.showcase-card-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px}
+.showcase-card-head strong{font-family:Newsreader,serif;font-size:17px}
+.showcase-card-link{font-size:12px;color:var(--accent);font-weight:600}
+.showcase-strip{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.showcase-strip li{display:flex;gap:10px;align-items:flex-start;min-width:0;padding:8px 0;border-top:1px solid var(--hairline)}
+.showcase-strip li>div{min-width:0}
+@media (max-width:640px){
+  .clubs-grid,.showcase-grid,.showcase-strip{grid-template-columns:1fr}
+  .clubs-houses li{grid-template-columns:18px 12px minmax(60px,90px) minmax(0,1fr) 36px;gap:6px}
+  .clubs-marks{width:100%}.clubs-mark{flex:1}
+}
+
+/* ── Sustainability, eco points, library labels & scan desk, AI drafts, public admission form (agent: green-admission) ── */
+.green-view,.lib-labels-view,.drafts-view{display:grid;gap:14px;min-width:0}
+.green-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.green-check{display:flex;gap:8px;align-items:flex-start;font-size:13px;margin:4px 0}
+.green-checklist{border:1px solid var(--hairline);border-radius:10px;padding:8px 12px;margin:0 0 12px}
+.green-checklist legend{font-size:12px;font-weight:700;color:var(--text-2);padding:0 4px}
+.green-inline{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.green-inline > *{min-width:0;flex:1 1 180px}
+.green-inline > .btn{flex:0 0 auto;margin-bottom:12px}
+.green-actions{display:flex;gap:6px;flex-wrap:wrap}
+.green-duties{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.green-duty{border:1px solid var(--card-border);border-radius:12px;padding:12px;display:grid;gap:6px;background:var(--card-bg);font-size:13px;min-width:0}
+.green-duty.is-overdue{border-color:var(--red)}
+.green-duty-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.green-pack-pick{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:10px}
+.green-pack h3{margin:8px 0 4px;font-size:16px}
+.green-pack-section{border-top:1px solid var(--hairline);padding:10px 0}
+.green-pack-section h4{margin:0 0 6px;font-size:14px}
+.green-board,.green-recent{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.green-board li{display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--hairline);border-radius:10px;min-width:0}
+.green-board li.is-mine{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.green-board-name{min-width:0;overflow-wrap:anywhere}
+.green-board-points{font-weight:800;font-variant-numeric:tabular-nums;color:var(--green)}
+.green-mine{color:var(--accent);font-weight:700}
+.green-recent li{font-size:13px;overflow-wrap:anywhere}
+/* Library labels: an A4 sheet of 3 x n labels; only the sheet prints. */
+.code128{display:block;width:100%;height:44px;background:#fff}
+.lib-label-sheet{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.lib-label{border:1px dashed var(--hairline-2);border-radius:6px;padding:8px;background:#fff;color:#000;display:grid;gap:3px;text-align:center;break-inside:avoid}
+.lib-label-school{font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+.lib-label-title{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lib-label-code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;font-weight:700;letter-spacing:.08em}
+.lib-label-meta{font-size:10px}
+.lib-scan{display:grid;gap:6px;margin:10px 0}
+.lib-scan-input{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:18px;letter-spacing:.05em}
+.lib-scan-log{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:13px}
+.lib-scan-log li{padding:6px 10px;border-radius:8px;border:1px solid var(--hairline);overflow-wrap:anywhere}
+.lib-scan-log li.is-ok{border-left:3px solid var(--green)}
+.lib-scan-log li.is-warn{border-left:3px solid var(--amber)}
+/* Only while a label sheet is on screen: other pages print as they always have. */
+@media print{
+  body:has(.lib-label-sheet) *{visibility:hidden}
+  body:has(.lib-label-sheet) .lib-label-sheet,body:has(.lib-label-sheet) .lib-label-sheet *{visibility:visible}
+  .lib-label-sheet{position:absolute;left:0;top:0;width:100%;grid-template-columns:repeat(3,1fr)}
+  .lib-label{border:1px solid #ccc}
+}
+.drafts-bands{border:1px solid var(--hairline);border-radius:10px;padding:8px 12px;margin:0 0 10px}
+.drafts-output{width:100%;font-family:inherit;line-height:1.5;white-space:pre-wrap}
+.drafts-label{display:inline-block;font-size:12px;font-weight:700;padding:3px 8px;border-radius:999px;margin:0 0 8px}
+.drafts-template{background:var(--field-bg);color:var(--text-2);border:1px solid var(--hairline-2)}
+.drafts-ai{background:var(--accent);color:var(--on-accent)}
+/* Public online admission form (outside the portals). */
+.adm-page{min-height:100vh;background:var(--panel-bg,#f6f7f9);padding:24px 16px;box-sizing:border-box}
+.adm-card{max-width:760px;margin:0 auto;background:var(--card-bg,#fff);border:1px solid var(--card-border,#e5e7eb);border-radius:16px;padding:20px;box-sizing:border-box;min-width:0}
+.adm-head h1{margin:0;font-size:22px;overflow-wrap:anywhere}
+.adm-head p{margin:4px 0 14px;color:var(--text-2)}
+.adm-tabs{display:flex;gap:6px;margin-bottom:14px}
+.adm-tabs button{flex:1;padding:9px;border-radius:10px;border:1px solid var(--hairline-2,#ddd);background:transparent;font-weight:700;cursor:pointer;color:var(--text-1)}
+.adm-tabs button.is-on{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+.adm-form{display:grid;gap:12px}
+.adm-form fieldset{border:1px solid var(--hairline,#eee);border-radius:12px;padding:10px 14px;margin:0;display:grid;gap:10px;min-width:0}
+.adm-form legend{font-weight:800;font-size:13px;padding:0 4px}
+.adm-form label{display:grid;gap:4px;font-size:13px;font-weight:600;min-width:0}
+.adm-form .input{width:100%;box-sizing:border-box}
+.adm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.adm-consent{display:flex !important;grid-template-columns:none;gap:8px;align-items:flex-start;font-weight:500 !important}
+.adm-hp{position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden}
+.adm-note{font-size:12.5px;color:var(--text-2);margin:0}
+.adm-error{color:var(--red);font-size:13px;margin:0}
+.adm-docs{margin:0;padding-left:18px;font-size:13px}
+.adm-link{background:none;border:0;color:var(--accent);cursor:pointer;text-decoration:underline;padding:0 4px}
+.adm-done{text-align:center;display:grid;gap:8px;justify-items:center}
+.adm-ref{font-size:24px;font-weight:800;letter-spacing:.04em;margin:0;overflow-wrap:anywhere}
+.adm-kv{display:grid;gap:6px;margin:0;text-align:left;width:100%;max-width:420px}
+.adm-kv div{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--hairline,#eee);padding:4px 0}
+.adm-kv dt{color:var(--text-2)}.adm-kv dd{margin:0;font-weight:600;text-align:right;overflow-wrap:anywhere}
+@media (max-width:640px){
+  .green-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .green-duties,.lib-label-sheet{grid-template-columns:1fr}
+  .adm-card{padding:14px}
+  .adm-grid{grid-template-columns:1fr}
+}
+
+/* ── Touch targets on coarse pointers (visual QA sweep) ── */
+@media (pointer:coarse){.kpi-info{width:30px;height:30px;top:6px;right:6px}.news-react{min-height:36px}}
+
+/* ── Visual QA fixes (agent-campus-ui) ── */
+/* The trend chart's 520-wide viewBox is drawn at ~340px, which shrank 10px axis labels to ~6px. */
+.an-svg .pb-axis{font-size:15px}
+/* The later .cw-panel width rule overrode the phone layout; panels are full width on phones. */
+@media (max-width:760px){.cw-panel{width:auto;max-width:none;max-height:none}}
+/* KPI tiles two to a row on phones (one per row pushed every page's content below the fold). */
+@media (max-width:560px){.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.kpi{padding:12px;min-height:76px}.kpi-value{font-size:22px;overflow-wrap:anywhere}}
+/* On a phone the page title needs the room: "Ask Agent" keeps its name for screen readers and shows the ✨ only. */
+@media (max-width:480px){.topbar .ask-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}}

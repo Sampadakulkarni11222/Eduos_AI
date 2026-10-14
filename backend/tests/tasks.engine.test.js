@@ -106,3 +106,15 @@ describe('feature switch', () => {
     await expect(inOak(() => setFeatures({ nonsense: true }))).rejects.toMatchObject({ code: 'UNKNOWN_FEATURE' });
   });
 });
+
+describe('summary at OWN scope', () => {
+  it('counts the caller\'s own items (the profile id is cast inside the aggregation)', async () => {
+    const teacher = s.people.TEACHER.actor;
+    await inOak(() => tasks.createItem(teacher, 'OWN', { title: 'Lab glassware', department: 'LABS', dueAt: at(-2) }));
+    const sum = await inOak(() => tasks.summary(teacher, 'OWN', {}));
+    expect(sum.byDepartment.find((d) => d.department === 'LABS')?.overdue).toBe(1);
+    // Someone else's own view does not include it.
+    const admin = await inOak(() => tasks.summary(s.people.ADMIN.actor, 'OWN', {}));
+    expect(admin.byDepartment.find((d) => d.department === 'LABS')).toBeUndefined();
+  });
+});

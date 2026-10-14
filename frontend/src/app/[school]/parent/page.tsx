@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth';
 import { rupees } from '@/components/ui';
 import type { CalendarEventDto, ParentDashboardDto, StudentListItem } from '@/lib/types';
 import { PulseBoard } from '@/components/ops/pulse-board';
+import { ShowcaseCard } from '@/components/ops/showcase-view';
 import { formatDate, formatDayMonth, formatTime12, greeting, greetingName, humanizeLabel } from '../student/_lib/format';
 
 /**
@@ -83,6 +84,7 @@ export default function ParentDashboard() {
     <PortalShell expectedSlug="parent" topbar={{ title: 'My Children', desc: "Your family's school life in one place" }}>
       {/* The interactive board: briefing, departments, campus, charts and live activity. */}
       <PulseBoard />
+      <div style={{ marginTop: 16 }}><ShowcaseCard /></div>
 
       {kids === null && !err && <Card><SkeletonRows rows={3} /></Card>}
       {err && <EmptyState title="Couldn't load your children" sub="Check your connection and reload the page." />}

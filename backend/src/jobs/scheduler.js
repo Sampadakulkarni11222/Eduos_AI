@@ -20,8 +20,11 @@ import * as cameraSvc from '../modules/safety/camera.service.js';
 import * as ptm from '../modules/ptm/ptm.service.js';
 import * as quarterlyReports from '../modules/analytics/quarterly.service.js';
 import { runLabsDue } from '../modules/labs/labs.due.js';
+import { syncDuties as syncSanitation } from '../modules/sustainability/sustainability.sanitation.js';
+import { runAttendanceReminders as runClubRegisters } from '../modules/clubs/sessions.service.js';
 import { runBillsDue } from '../modules/bills/bills.service.js';
 import { syncRenewals } from '../modules/bills/renewals.service.js';
+import { runDaily as runDigest } from '../modules/digest/digest.service.js';
 
 /**
  * The in-process scheduler for the operations modules.
@@ -59,6 +62,10 @@ export const JOBS = [
   { key: 'reports.quarterly', everyMinutes: 6 * 60, feature: 'analytics', leaseMinutes: 45, run: (now) => quarterlyReports.generateScheduled({ now }) },
   // Lab expiries, calibrations, warranty/AMC ends, licence renewals and low stock into the tasks queue.
   { key: 'labs.due', everyMinutes: 24 * 60, feature: 'labs', run: (now) => runLabsDue({ now }) },
+  // Sanitation duties (toilet cleaning, pad dispensers, incinerators, water tanks): the next occurrence of each as a task.
+  { key: 'sustainability.sanitation', everyMinutes: 60, feature: 'sustainability', run: (now) => syncSanitation({ now }) },
+  // Club sessions that ended without a register become a task for the coach.
+  { key: 'clubs.registers', everyMinutes: 60, feature: 'clubs', run: (now) => runClubRegisters({ now }) },
   // Unpaid bills, expected bills, AMC visits and the renewals list (licences, agreements, warranties) into the tasks queue.
   { key: 'bills.due', everyMinutes: 24 * 60, feature: 'bills', run: async (now) => ({ bills: await runBillsDue(), renewals: await syncRenewals({ now }) }) },
   // A seat offer past its last day frees the seat; nobody is offered it automatically.
@@ -80,6 +87,8 @@ export const JOBS = [
       return { checked: sources.length, changed };
     },
   },
+  // Daily learning digest: fetch the admin-approved feeds (SSRF-safe), then build each person's digest; email only to those who opted in.
+  { key: 'digest.daily', everyMinutes: 24 * 60, feature: 'digest', run: (now) => runDigest({ now }) },
 ];
 
 /** Runs every job that is due for every active school. Returns what ran, for tests and logs. */

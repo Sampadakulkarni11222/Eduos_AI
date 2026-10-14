@@ -13,6 +13,7 @@ import { logger } from '../../utils/logger.js';
 import * as compliance from '../compliance/compliance.service.js';
 import * as lectures from '../lectures/lecture.service.js';
 import { startOfDayUtc } from '../ops/common.js';
+import { localDate, localMidnight } from '../../utils/periods.js';
 
 /**
  * The interactive part of every role's home: charts, a live activity feed,
@@ -129,7 +130,10 @@ async function approvalsFlow(actor) {
 async function classesAhead(actor) {
   if (!can(actor, 'lectures.read')) return null;
   const mine = await lectures.list(actor, {});
-  const today = startOfDayUtc();
+  // Local midnight in the school's zone: UTC midnight is 05:30 in India, so
+  // between midnight and 05:30 "today" would otherwise be yesterday.
+  const local = localDate(new Date());
+  const today = localMidnight(local.y, local.m, local.d);
   const points = Array.from({ length: 7 }, (_, i) => {
     const day = new Date(today.getTime() + i * DAY);
     const n = mine.filter((c) => {

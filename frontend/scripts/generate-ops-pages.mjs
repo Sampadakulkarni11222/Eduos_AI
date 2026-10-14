@@ -58,6 +58,20 @@ const VIEWS = {
   StaffLeaveView: ["import { StaffLeaveView } from '@/components/ops/staff-views';", '<StaffLeaveView />'],
   CoverView: ["import { CoverView } from '@/components/ops/staff-views';", '<CoverView />'],
   TermReportCardsView: ["import { TermReportCardsView } from '@/components/ops/term-report-cards-view';", '<TermReportCardsView />'],
+  // Clubs, teams and houses; achievement and top-ranker showcase.
+  ClubsView: ["import { ClubsView } from '@/components/ops/clubs-view';", '<ClubsView />'],
+  ShowcaseView: ["import { ShowcaseView } from '@/components/ops/showcase-view';", '<ShowcaseView />'],
+  // Alumni, newsroom social publishing, daily digest, student profile links.
+  AlumniView: ["import { AlumniView } from '@/components/ops/alumni-social-views';", '<AlumniView />'],
+  SocialPublishingView: ["import { SocialPublishingView } from '@/components/ops/alumni-social-views';", '<SocialPublishingView />'],
+  DigestView: ["import { DigestView } from '@/components/ops/alumni-social-views';", '<DigestView />'],
+  ProfileLinksView: ["import { ProfileLinksView } from '@/components/ops/alumni-social-views';", '<ProfileLinksView />'],
+  // Sustainability, eco points, library labels and scan desk, AI drafts, online admission applications.
+  SustainabilityView: ["import { SustainabilityView } from '@/components/ops/sustainability-view';", '<SustainabilityView />'],
+  EcoPointsView: ["import { EcoPointsView } from '@/components/ops/sustainability-view';", '<EcoPointsView />'],
+  LibraryLabelsView: ["import { LibraryLabelsView } from '@/components/ops/library-labels-view';", '<LibraryLabelsView />'],
+  AiDraftsView: ["import { AiDraftsView } from '@/components/ops/ai-drafts-view';", '<AiDraftsView />'],
+  OnlineApplicationsView: ["import { OnlineApplicationsView } from '@/components/ops/online-applications-view';", '<OnlineApplicationsView />'],
 };
 
 const page = (portal, title, desc, view) => {

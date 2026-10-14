@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { opsApi } from '@/lib/ops-api';
 import { usePortalHref } from '@/lib/school-path';
 import { PulseBoard } from './pulse-board';
+import { ShowcaseCard } from './showcase-view';
 import type { HomeDto } from '@/lib/ops-types';
 import { ApprovalDecisionButtons } from './approvals-view';
 import { DataNote, KpiGrid, Loadable, SectionCard, StatusPill, fmtDate, fmtDateTime, humanize, money, useLoad } from './kit';
@@ -52,6 +53,7 @@ export function RoleHome({ title = 'Today' }: { title?: string }) {
       <div className="ops-stack">
         <Greeting home={home} />
         <PulseBoard greet={false} />
+        <ShowcaseCard />
         {home.role === 'PRINCIPAL' || home.decisions ? (
           <div className="ops-grid-main">
             <div className="ops-stack">

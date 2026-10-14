@@ -344,8 +344,8 @@ body.role-warden{
 .dot{width:9px;height:9px;border-radius:50%;flex:none;display:inline-block}
 
 /* ===== Tabs ===== */
-.tabs{display:flex;gap:4px}
-.tab{border:none;border-radius:8px 8px 0 0;padding:9px 15px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;background:transparent;color:var(--text-faint)}
+.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:thin;max-width:100%}
+.tab{white-space:nowrap;flex:none;border:none;border-radius:8px 8px 0 0;padding:9px 15px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;background:transparent;color:var(--text-faint)}
 .tab.active{background:var(--surface-raised,#fff);color:var(--accent);border-bottom:2px solid var(--accent)}
 .chip-tab{border:none;border-radius:8px;padding:8px 15px;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:600;background:var(--field-bg,#fff);border:1px solid var(--input-border);color:var(--text-2)}
 .chip-tab.active{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}

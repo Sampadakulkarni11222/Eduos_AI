@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { DueItem, DEPARTMENTS, CATEGORIES, SEVERITIES } from '../../models/dueItem.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { AppError } from '../../utils/AppError.js';
@@ -192,7 +193,11 @@ export async function summary(actor, scope) {
   requireProfile(actor);
   const now = new Date();
   const base = { status: { $in: OPEN_STATES } };
-  if (scope !== 'ALL') base.$or = [{ ownerProfileId: actor.profileId }, { delegateProfileId: actor.profileId }];
+  if (scope !== 'ALL') {
+    // An aggregation does not cast strings to ObjectIds the way find() does.
+    const me = new mongoose.Types.ObjectId(String(actor.profileId));
+    base.$or = [{ ownerProfileId: me }, { delegateProfileId: me }];
+  }
   const rows = await DueItem.aggregate([
     { $match: base },
     { $group: {

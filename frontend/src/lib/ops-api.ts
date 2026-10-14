@@ -294,6 +294,7 @@ export const opsApi = {
   // ── campus ──
   campusMap: (campusCode?: string, at?: string | null) => get<T.CampusMapDto>('/campus/map', { campusCode, at }),
   campusFacility: (id: string, at?: string | null) => get<T.FacilityDetailDto>(`/campus/facilities/${id}`, { at }),
+  campusLayers: () => get<T.CampusLayersDto>('/campus/layers'),
 
   // ── messaging ──
   preferences: () => get<T.PreferencesDto>('/messaging/preferences'),

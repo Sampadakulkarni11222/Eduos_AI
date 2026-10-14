@@ -4,6 +4,7 @@ import { requirePermission } from '../../middleware/permission.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
 import * as campus from './campus.service.js';
+import { campusLayers } from './layers.service.js';
 import * as insights from '../insights/insights.service.js';
 import { pulse } from '../insights/pulse.service.js';
 import { inbox as approvalInbox } from '../approvals/approval.service.js';
@@ -23,6 +24,15 @@ campusRouter.get('/map', requirePermission('campus.map.read'), asyncHandler(asyn
   const opts = { campusCode: req.query.campusCode || undefined, at: req.query.at || null };
   const key = `campus:${req.actor.tenantId}:${req.actor.roleKey}:${permissionKey(req.actor.permissions)}:${opts.campusCode ?? ''}:${opts.at ?? ''}`;
   sendSuccess(res, await shortCache(key, BOARD_CACHE_MS, () => campus.campusMap(req.actor, opts)));
+}));
+// Operational layers (labs, transport bay, cover, tasks, gate, activities, greenery),
+// each limited to readers whose permissions allow the underlying read. Readers whose
+// labs or tasks are scoped to their own records get an answer of their own.
+campusRouter.get('/layers', requirePermission('campus.map.read'), asyncHandler(async (req, res) => {
+  const a = req.actor;
+  const own = a.permissions?.['labs.read'] === 'OWN' || a.permissions?.['tasks.read'] === 'OWN';
+  const key = `campus-layers:${a.tenantId}:${own ? a.profileId : `${a.roleKey}:${permissionKey(a.permissions)}`}`;
+  sendSuccess(res, await shortCache(key, BOARD_CACHE_MS, () => campusLayers(a)));
 }));
 campusRouter.get('/facilities/:id', requirePermission('campus.map.read'), asyncHandler(async (req, res) =>
   sendSuccess(res, await campus.facilityDetail(req.actor, req.params.id, { at: req.query.at || null }))));

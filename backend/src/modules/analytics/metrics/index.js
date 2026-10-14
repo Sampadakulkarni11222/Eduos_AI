@@ -11,3 +11,5 @@ import './academics.js';
 import './finance.js';
 import './procurement.js';
 import './operations.js';
+import '../../clubs/clubs.metrics.js';
+import '../../sustainability/sustainability.metrics.js';

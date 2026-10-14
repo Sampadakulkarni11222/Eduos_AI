@@ -177,6 +177,40 @@ export const TEMPLATES = {
     subject: (v) => `${v.studentName} marked ${v.statusLabel} on ${v.date}`,
     text: (v) => `${v.studentName} was marked ${v.statusLabel} in today's register (${v.date}). If this is unexpected, please contact the class teacher. You can apply for leave in EduOS.`,
   },
+  // Clubs and teams (modules/clubs).
+  CLUB_CONSENT_NEEDED: {
+    category: 'UTILITY',
+    subject: (v) => `Consent needed: ${v.club}`,
+    text: (v) => `${v.student} asked to join ${v.club}. Please give or refuse your consent in EduOS (Clubs).`,
+  },
+  CLUB_JOIN_REQUEST: {
+    category: 'UTILITY',
+    text: (v) => `A request to join ${v.club} is waiting for your decision. Open EduOS (Clubs) to review it.`,
+  },
+  CLUB_JOIN_DECIDED: {
+    category: 'UTILITY',
+    subject: (v) => `${v.club}: ${v.outcome}`,
+    text: (v) => `${v.student}'s request to join ${v.club}: ${v.outcome}. Details in EduOS.`,
+  },
+  CLUB_SESSION_CANCELLED: {
+    category: 'UTILITY',
+    text: (v) => `The ${v.club} session on ${v.when} is cancelled${v.reason ? `: ${v.reason}` : ''}.`,
+  },
+  // Online admission form (modules/admissions/online.service.js).
+  ADMISSION_ACK: {
+    category: 'UTILITY',
+    subject: (v) => `Application received: ${v.ref}`,
+    text: (v) => `${v.school} has received the admission application for ${v.child}. Your reference number is ${v.ref}. Use it with this phone number to check the status online. No fee is due at this stage.`,
+  },
+  ADMISSION_RECEIVED: {
+    category: 'UTILITY',
+    text: (v) => `New online admission application ${v.ref}: ${v.child} for ${v.grade}. Open the admissions CRM in EduOS to follow up.`,
+  },
+  DIGEST_READY: {
+    category: 'UTILITY',
+    subject: (v) => `Your daily digest for ${v.day}`,
+    text: (v) => `Your daily digest is ready: ${v.count} headline(s) from feeds your school approved${v.top ? `, starting with "${v.top}"` : ''}. Read it in EduOS.`,
+  },
 };
 
 const IST_OFFSET_MIN = 330;

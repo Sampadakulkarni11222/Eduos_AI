@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { AppError } from '../../utils/AppError.js';
 import { nextSequence } from '../../utils/sequence.js';
+import { localDate } from '../../utils/periods.js';
 import { currentTenantId } from '../../tenancy/tenantContext.js';
 import { Role } from '../../models/role.model.js';
 import { Profile } from '../../models/profile.model.js';
@@ -182,8 +183,15 @@ export async function profileNames(ids) {
   return new Map(rows.map((r) => [String(r._id), r.displayName]));
 }
 
+/**
+ * The school-local calendar day of an instant, as UTC midnight (the key that
+ * date-only fields are stored under). The UTC date would be yesterday for the
+ * first 5.5 hours of an Indian day; a value that is already a day key maps to
+ * itself, since the school's zone is ahead of UTC.
+ */
 export function startOfDayUtc(d = new Date()) {
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const { y, m, d: day } = localDate(new Date(d));
+  return new Date(Date.UTC(y, m - 1, day));
 }
 
 export function daysBetween(a, b) {
