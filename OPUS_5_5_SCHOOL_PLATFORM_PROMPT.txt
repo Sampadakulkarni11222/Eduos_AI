@@ -1,0 +1,198 @@
+IMPLEMENTATION PROMPT: COMPLETE THE EDUOS SCHOOL OPERATING PLATFORM
+Prepared 14 October 2026. Code inspection baseline: d359a48.
+
+Baseline validation completed during preparation: 71 tests passed across six existing backend suites (dashboard.visibility, procurement.matchAndPo, scheduler.jobs, lectures.online, community.safeguarding and campus.live). Command, from backend/: npm.cmd test -- --reporter=dot tests/dashboard.visibility.test.js tests/procurement.matchAndPo.test.js tests/scheduler.jobs.test.js tests/lectures.online.test.js tests/community.safeguarding.test.js tests/campus.live.test.js. These establish only the tested existing behaviours; no frontend/browser test, full regression, live hardware or real provider validation was performed. Preparation added this prompt only, not application features.
+
+You are working in the existing EduOS repository. Act as an experienced school operations product lead and full-stack engineer. Implement the requirements below, not merely a proposal or visual mockup. Think through daily work for principals, administrators, teachers, students, guardians, finance, admissions, transport, lab staff, facilities, compliance, sports coaches, alumni and management.
+
+The objective is one connected platform where school work is managed, recorded, measured, assigned and reminded to the correct people. Preserve existing working features. Complete workflows end to end: schema, validation, API, permissions, UI, audit, notifications, reporting, migrations, tests and contextual 3D campus access. Do not mistake a menu, model, event label or demo for a complete feature.
+
+1. REPOSITORY FACTS AND INITIAL AUDIT
+
+The product is backend/ (Express, Mongoose, MongoDB) and frontend/ (Next.js 15, React 18, TypeScript, custom CSS, Three.js). Root package scripts are legacy; use package-specific scripts. Preserve the existing school tenant context, tenant-scoped model plugin, JWT/profile identity, permission catalog, ALL/OWN scope conventions and server-authoritative access control. Extend the established UI and architecture; do not replace the application or introduce a second platform.
+
+Read applicable AGENTS.md and relevant architecture documents first. Preserve uncommitted user work, including video files. Do not seed, migrate destructively or test against a configured remote database. Existing backend tests use an in-memory MongoDB replica set and disable dotenv loading.
+
+The following is evidence from a targeted source inspection, not a complete production certification. Recheck against the working tree:
+
+* Dashboards exist in backend/src/modules/dashboard/dashboard.service.js. getAdminDashboard exposes current counts and a permission-gated admissions pipeline; getFinanceDashboard aggregates invoice totals without a common custom-period comparison contract. Marketing also has analytics. Extend these sources into unified analytics rather than inventing a separate source of financial truth.
+* Fees and invoicing exist: backend/src/modules/fees/, backend/src/models/fee.model.js, backend/src/utils/invoicePdf.js and frontend/src/components/fees/. Audit issuance, numbering, receipt, payment allocation, refunds, voids, credit adjustments and exports before adding anything.
+* Procurement is substantial: backend/src/modules/finance-ops/procurement.service.js and backend/src/models/finance.model.js contain vendors, purchase requests, quotations, purchase orders, receipts, vendor invoices, matching, payments, assets and budgets. Asset has facility, custodian and warrantyUntil. Extend actual gaps; do not rebuild basic procurement.
+* Compliance exists in backend/src/models/compliance.model.js and backend/src/modules/compliance/compliance.service.js: obligations, regulatory returns, licences, software subscriptions, expiry, renewal lead time/cost/owner, policies, training, notices and encrypted safeguarding cases. Integrate lifecycle improvements here.
+* Facilities already have room bookings and work orders: backend/src/models/facility.model.js and backend/src/modules/administration/facility.service.js.
+* Transport currently has routes, stops, drivers, fares, requests and student enrolments: backend/src/models/transport.model.js and backend/src/modules/transport/. A dedicated vehicle capacity/trip/GPS/device lifecycle was not found in this inspection.
+* PTM exists as an institution/calendar event; PARENT_MEETING exists in backend/src/models/onlineClass.model.js and backend/src/modules/lectures/lecture.service.js, with tests in backend/tests/lectures.online.test.js. A full parent slot-booking/review-call/action follow-up workflow was not found. Admissions counselling appointments are a different workflow.
+* Sports, arts, music, dance and other achievements exist in backend/src/models/coCurricular.model.js as student requests with approval. Full clubs, coaching, fixtures, sessions, participation and equipment operations need a separate audit and extension.
+* Newsroom/community already has feeds, audience scopes, circles, comments, moderation, media consent, verified mentor profiles, batch information and supervised mentorship: backend/src/models/community.model.js and backend/src/modules/community/. The frontend has an alumnus portal. Do not claim alumni or newsroom are absent. Verify transition from former student/teacher to community-only access.
+* The 3D campus already exists: frontend/src/components/campus/campus-world.tsx, campus-scene.ts, backend/src/modules/campus/campus.service.js. LAB rooms exist, but room presence does not establish dedicated science/computer lab operations. The LAB shortcut currently points to academic modules.
+* Jobs exist in backend/src/jobs/scheduler.js with per-tenant JobRun claims: messaging release, lecture reminders, verification/offer expiry, governance/correspondence/compliance reminders and notice checks. Full quarterly analytics generation/delivery was not found. Assess crash recovery and durable delivery before extending.
+* Permissions live in backend/src/constants/permissions.js, backend/src/middleware/permission.js, backend/src/modules/permissions/, frontend/src/lib/permissions.tsx and frontend/src/lib/ops-routes.json. Existing analytics permissions do not prove complete analytics implementation.
+* Dedicated sustainability operations, external social publishing, daily personalised research feeds, camera event ingestion and ID checkpoint tracking were not found in the targeted inspection. Confirm by tracing models, route mounts, services, UI, workers and tests.
+
+Create a coverage matrix with one row per requirement: existing/partial/missing/unverified, evidence paths, user workflow, owning department, dependencies, gap, acceptance test and delivery status. Keep it current as implementation proceeds. Search beyond the supplied paths; this is not an exhaustive inventory.
+
+2. RESEARCH AND APPLICABILITY
+
+Use official documentation and primary sources. Keep a source register containing URL, publisher, publication/version date when available, checked date, jurisdiction, applicability and design implication. Separate vendor-advertised capability from verified implementation quality. Compare workflows, not just feature names. At minimum benchmark Fedena and Entab for admissions, academics, finance, transport, inventory, alumni, communications and management reporting. For PTM, laboratories and sports, investigate specific product documentation rather than assuming either vendor supports every detail.
+
+Starting sources checked during this audit:
+* Fedena feature catalogue: https://fedena.com/feature-tour
+* Fedena advanced modules: https://fedena.com/feature-tour/ultimate-modules
+* Entab school ERP: https://www.entab.in/school-erp-software.html
+* Entab reporting examples: https://www.entab.in/ERP-enhance-schools-performance.html
+* Ministry of Education Eco Clubs for Mission LiFE: https://ecoclubs.education.gov.in/
+* Government announcement of Swachh Evam Harit Vidyalaya Rating (SHVR) 2025-26: https://www.pib.gov.in/PressReleasePage.aspx?PRID=2149668&lang=2&reg=48
+* Delhi education circular on SHVR 2025-26: https://www.edudel.nic.in/upload/upload_2025_26/1945_1952_dt_14082025.pdf
+* CSE Green Schools Programme 2026-27: https://www.cseindia.org/gsp-audit-2026-13190
+* GSP rating and analysis: https://www.greenschoolsprogramme.org/schools/gsp-audit/rating-analytics/
+* CBSE child safety guidance: https://www.cbse.gov.in/cbsenew/documents/IIPS.pdf
+* CBSE certificate requirements, historical circular requiring current-applicability checking: https://www.cbse.gov.in/cbsenew/documents/Circular_2324.pdf
+* MeitY DPDP Rules and enforcement materials: https://www.meity.gov.in/documents/act-and-policies/digital-personal-data-protection-rules-2025-gDOxUjMtQWa?pageTitle=Digital-Personal-Data-Protection-Rules-2025
+* Final DPDP Rules PDF: https://www.meity.gov.in/static/uploads/2025/11/53450e6e5dc0bfa85ebd78686cadad39.pdf
+* Meta's official Instagram API collection: https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api
+
+Research findings to preserve: Fedena advertises broad ERP modules including transport, finance and alumni; Entab advertises management dashboards and a student lifecycle extending to alumni. These are baseline comparisons, not evidence that competitors implement every workflow below. Eco Clubs provide environmental participation resources. SHVR provides a government rating/recognition route; the Delhi 2025-26 circular illustrates that participation obligations can be jurisdiction- and cycle-specific. CSE GSP is a separate non-government environmental audit/recognition programme. Do not conflate them or advertise guaranteed awards, universal mandates or an expired application window as current.
+
+Assume India as the initial research context, but school state, board, school type and local requirements remain configurable. Check current Gazette/corrigenda, commencement dates and relevant exemptions before describing DPDP duties as presently applicable; publication alone does not mean every provision commenced. Do not use the draft explanatory note as final law. Record unresolved legal applicability as requiring school review, without blocking unrelated implementation.
+
+3. ANALYTICS AND COMPARISON WORKSPACE
+
+Provide one easy-to-navigate workspace with principal executive overview, admin operations overview and department tabs. Start with urgent actions, headline numbers and trends; allow drill-down into underlying authorised records. Use consistent cards, tables, charts, saved filters, breadcrumbs, search, accessible colours and mobile layouts. Do not create a wall of unrelated cards.
+
+Global filters: custom start/end dates, today/week/month/quarter/year, academic year, financial year, campus, department, class/section, programme and relevant entity/status. Compare previous equivalent period, same elapsed portion of prior year, selected prior academic/financial years and a custom comparison range. Support multi-year trends. Store the school's timezone and calendar; use explicit inclusive UI dates converted to half-open timestamp ranges. Academic and financial years must not be assumed identical.
+
+Create a metric catalogue: stable key, definition, numerator/denominator, unit, date basis, source models, aggregation, scope, refresh time, historical availability and drill-down. Distinguish point-in-time counts from flows. Use enrolment history for prior student counts; do not apply today's ACTIVE status to all past years. Show unavailable history and incomplete coverage instead of invented zeroes. Define leap-day and unequal-period handling. A zero baseline yields an explicit non-comparable percentage, not infinity. Maintain metric definition versions.
+
+Required department coverage:
+* Students/admissions: opening/closing strength, applications, stage conversions, withdrawals, retention, capacity, waitlists, conversion time, source/campaign performance and concessions.
+* Academics: attendance, chronic absence, exam/subject/cohort performance, learning progress, assignment completion, syllabus progress, substitutions and teacher workload; avoid simplistic teacher rankings from unadjusted marks.
+* Finance/pricing: billed fees, due balances, ageing, payments actually received in period, refunds, credits, concessions, net collections, planned versus actual income, expenses, budget utilisation, commitments, cash-flow forecast and per-student cost with stated denominator. Separate invoice-date billing, payment-date cash and any recognised-revenue basis. Show school fee pricing/version effects separately from platform seat pricing, which remains platform-authorised.
+* Procurement: quotation comparison, purchase approval turnaround, ordered/received/invoiced/paid values, outstanding commitments, vendor concentration, overdue delivery, invoice mismatches, duplicate candidates and asset ownership.
+* People: staffing, vacancies, attendance/leave, substitute coverage, training and payroll totals by permitted scope; individual pay remains restricted.
+* Transport: seat utilisation, assigned versus boarded students, delays, missed checkpoints, kilometres, fuel, maintenance and per-route cost.
+* Labs/inventory: utilisation, stock, consumption, expiry, reorder shortages, breakage, downtime, calibration and maintenance spend.
+* Facilities/compliance: open work orders, service uptime, licences/renewals, overdue inspections, sanitary task completion, utility cost and renewal forecast.
+* Engagement: PTM bookings/completion/actions, parent review calls, clubs, arts/sports participation, verified achievements, alumni mentoring and newsroom engagement.
+* Sustainability: waste by stream, diversion, water/energy intensity, tree survival, participation, verified evidence and recognition progress.
+* Existing library, hostel, medical, canteen and other domains: audit and include meaningful operational metrics while protecting health, counselling and safeguarding information.
+
+Every total must reconcile to its source and every export respect the same scope. Use integer minor units for money, explicit currency and no silent mixed-currency summation. Include freshness, data quality and record count. Provide CSV and printable/PDF reporting; escape spreadsheet formula injection. Index and paginate queries; use bounded date ranges and background exports for expensive work. Cache keys include tenant, scope, filters and metric version. Permission revocation must invalidate access to cached/exported reports.
+
+4. FINANCIAL CONTROL, BILLS AND SERVICE LIFECYCLES
+
+Audit existing invoice/receipt functions and complete missing UI and reconciliation. Preserve immutable issued financial history; use controlled adjustments. Cover recurring service bills, utilities, AMC, software renewals, vendor due dates, partial payments, refunds and payment evidence. Do not label an initiated payment as settled.
+
+Link request -> budget commitment -> quotes -> approval -> PO -> goods/service receipt -> invoice matching -> payment approval -> confirmation -> asset/service lifecycle. Prevent duplicate commitments/expenses when dashboards aggregate different stages. Include quantity/price/tax tolerances, duplicate invoice candidates, unusual variance and unallocated payments as explainable review queues, never automatic accusations of fraud. Separate requester, approver and payment confirmer where configured. Add owner-assigned bill reminders, snooze reason, escalation and closure evidence.
+
+5. SCIENCE AND COMPUTER LABS
+
+Use Facility for physical rooms and the existing Asset/procurement models for ownership; add dedicated domain records where needed, not duplicate rooms/assets. Cover lab type, in-charge, capacity, timetable and bookings, practical plan, preparation request, safety checklist, supervised session attendance, issue/return and incident handling.
+
+Science: batch/lot inventory, units and safe conversions, supplier, opened/expiry dates, safety data sheets, hazard/storage compatibility, restricted cupboards, minimum stock, first-expiry-first-out suggestions, consumption, damaged stock, disposal evidence, calibration and equipment certification. Block expired/unsafe items from issue. Do not give students hazardous handling/disposal tasks.
+
+Computer: device tag/serial, hardware, operating system, warranty/AMC, repair history, installed software and licence seats/renewals, workstation assignments, session bookings, peripherals, uptime and decommissioning/e-waste evidence. Do not invent remote-monitoring data or store credentials in asset fields.
+
+Use an auditable stock movement ledger with atomic issue/return, no negative inventory under concurrency, stocktakes, adjustment reasons and procurement links. Add barcode/QR workflows with manual fallback. Surface utilisation, shortages, expiry and maintenance through analytics, reminders and the campus lab panel.
+
+6. TRANSPORT, ID CHECKPOINTS AND CONDITIONAL CAMERA SUPPORT
+
+Separate Vehicle from Route and Trip. Track lawful configured capacity, driver/attendant assignment and credentials, permits, insurance, fitness, pollution certificate, fire extinguisher/first aid checks, service schedule, mileage/fuel and breakdowns. Enforce trip capacity atomically; distinguish route enrolment, scheduled allocation and actual boarding. Handle substitute vehicles, pickup/drop differences, no-shows, safe handover and trip closure reconciliation.
+
+Implement provider-neutral GPS ingestion with authenticated devices, replay protection, deduplication, event time versus received time, offline buffering and stale/offline status. Parents see only their child's authorised active trip and relevant vehicle ETA, not other children's locations or driver off-duty history. Geofence and delay alerts need configurable thresholds and suppression. Provide manual boarding and attendance fallback.
+
+ID tracking means explicit authorised checkpoints, not continuous invisible surveillance: school gate arrival/departure, bus boarding/alighting and approved lab/library usage. Support QR/RFID adapters, lost-card revocation, replacement, duplicate scans, incorrect vehicle alerts and guardian pickup authorisation. A scan is a checkpoint event, not proof of continuous presence. Protect custody restrictions and record guardian-link changes.
+
+Camera integration is an optional per-school capability, disabled until configured. Implement camera/device registry, approved location/purpose, provider adapter contract, event ingestion, health status, retention configuration, restricted evidence storage and human review workflow. Use timetable plus teacher check-in/substitution records as primary operational context. Camera occupancy may flag a possible unattended room but cannot prove whether a teacher is teaching well.
+
+Possible aggression or bullying alerts are unverified observations for trained staff, never automatic findings against a child. Include confidence, timestamp, limited evidence, reviewer decision, false-alert feedback, escalation, case linkage, appeal/correction and resolution. Notify designated safeguarding staff/principal according to permission and assignment; notify teachers only when authorised and appropriate. Do not leak case details to feeds, ordinary analytics, parents of other students or maps. Preserve the existing encrypted safeguarding design.
+
+No face identification, emotion inference, covert tracking, automated discipline, child behaviour scores, bathroom/changing-room cameras or unrestricted parent video streams. Provide non-camera reporting and urgent-response procedures. Do not claim robust bullying detection from a generic model. Production model selection requires representative evaluation of false positives/negatives, low-light/occlusion, latency and human response capacity. Hardware/provider credentials are genuine deployment dependencies: build test adapters and end-to-end software, clearly label simulations, and report activation separately from implementation.
+
+7. PTM AND PARENT REVIEW CALLS
+
+Extend existing events/calendar/online meetings. Add event rounds, teacher availability, slot duration/buffers, multiple children/teachers, atomic conflict prevention, parent self-booking, staff assisted booking, reschedule/cancel, waitlist, venue or secure meeting link, reminders and check-in/no-show tracking.
+
+Review-call cases need reason, assigned staff, schedule, attempts, reached/not reached outcome, private structured notes, agreed actions, owner, deadline, next follow-up and closure. Prepare an authorised child-specific briefing with attendance, academic progress, fees where permitted and extracurricular participation. Separate safeguarding notes from ordinary PTM summaries. Track overdue actions and meeting effectiveness, with translation/accessibility preferences. Never record calls by default.
+
+8. SPORTS, ARTS AND ACHIEVEMENT SHOWCASE
+
+Extend achievement records with clubs/teams/houses, coach/instructor assignments, age/skill eligibility, trials, capacity/waitlist, season calendars, rehearsals/practice, fixtures/tournaments, attendance, facility/equipment bookings, permissions, travel, cost and certificates. Include sports, dance, music, theatre, visual arts, debate, science clubs and community service. Track participation opportunities and inclusion as well as medals. Restrict medical accommodations to those who need them.
+
+Generate proposed top-ranker showcases from approved, published results, with year/class/subject, defined tie rules, minimum eligibility and corrected-result handling. Require school review and appropriate publicity consent. Preserve historical snapshots, but process consent withdrawal/corrections across public surfaces. Include arts/sports and improvement achievements; do not expose the full class ranking or non-consenting children's data. Reuse newsroom publishing and media consent.
+
+9. ALUMNI AND NEWSROOM AS A LONG-TERM COMMUNITY
+
+Extend existing circles, mentor verification and alumnus portal. Model former students and former teachers, graduation/leaving year, batch, class/programme, house and interests. Support verified affiliation, batch groups, reunions, guidance events, mentor availability, supervised student mentoring and voluntary professional updates.
+
+Graduation/leaving must revoke operational access while allowing opted-in community-only access, including secure account recovery. Keep original records under school retention policy and current alumni profile information separately. Users control optional social links, contact visibility, directory discoverability and updates. Do not scrape or continuously track personal social accounts. Validate URLs safely. Provide opt-out, export/deletion handling and moderation/block/report tools. Minors must not gain unmoderated private access to unknown adults.
+
+10. DAILY TRENDS/FORUM AND EXTERNAL SOCIAL PUBLISHING
+
+Build opt-in interest-based digests for subject, role, age band, technology, education and school domain. Ingest allowlisted RSS/official APIs or licensed sources; record original link, publication date, fetched time, topic and attribution. Deduplicate and summarise briefly without republishing full copyrighted articles. Treat fetched text as untrusted data: no embedded instructions may invoke tools or publish content. Protect feed fetching against SSRF, unsafe redirects, private-network targets, oversized responses and HTML/script injection.
+
+Daily approved-source posts may auto-publish to appropriate moderated circles under a labelled system author, with configurable review requirements, quiet hours, frequency, opt-out, source outage handling and correction/retraction. Add discussion, bookmarking, teacher-curated explanations and notification digests. Avoid behavioural advertising or sensitive-interest profiling of children. No fresh verified item should result in 'no new items', not fabricated news. Never describe this as an undocumented Google Alerts API integration.
+
+Newsroom authors with a specific staff publishing permission can choose connected school social destinations per post. Parents and students must be refused server-side even if they manipulate requests; default-deny alumni and other unapproved profiles. Selection is not publication: show per-network preview, consent/publicity checks and approval state. Only approved public content can reach external networks, never institution/class-only posts.
+
+Use official provider APIs, correct OAuth/account requirements and encrypted server-side tokens; implement token expiry/reconnect, quotas, media constraints, durable outbox, idempotency, retry/backoff, webhook verification, per-network success/failure/external IDs and cancellation. Recheck consent and permissions when a queued post executes. Handle partial success without duplicate posting. Withdrawal should attempt supported external deletion and report limitations honestly. Do not promise all networks/formats before verifying API access. No real posts or account connections during development.
+
+11. GREENERY, WASTE, SANITATION AND RECOGNITION
+
+Create an Eco Club workspace linked to facilities, inventory, events and newsroom. Maintain tree/plant inventory with location/species, planting date, caretaker and survival checks; waste bins/streams and measured weights; collection/recycler receipts; composting; water/electricity meters and bills; leak fixes; energy actions; water quality tests; cleanliness checks and accessible sanitation supplies.
+
+Measure verified outcomes: waste generated and diverted, water/energy per student or occupied day, tree survival, actions completed and evidence completeness. Record measurement units, baseline, method and verifier. Do not treat trees planted as trees surviving or invent carbon savings without an explicit methodology.
+
+Add voluntary activity participation, teacher-verified evidence, transparent capped points, duplicate detection and corrections. Reward safe stewardship and teamwork, never unsafe waste handling, humiliation, spending or compulsory public exposure. Make leaderboards optional and class/house-focused. Platform recognition must say it is issued by EduOS and must not resemble government certification.
+
+Maintain programme-specific checklists for Eco Clubs, SHVR and CSE GSP with cycle, eligibility, application dates, source links, responsible person, evidence pack and actual outcome. Separate government requirements, board/state instructions, voluntary participation and platform initiatives. Keep a configurable obligation review before assigning mandatory status. Generate approved impact posts, annual sustainability summaries and application evidence exports; do not submit applications or claim awards automatically. Validate current deadlines instead of reusing the 2025-26 dates.
+
+12. COMMON REMINDERS AND QUARTERLY REPORTS
+
+Unify due items for bills, licences, services, assets, vehicle checks, laboratory expiry/calibration, sanitation/water testing, training, PTM follow-ups and renewals. Each has entity link, department, owner/delegate, due date, severity, recurrence, evidence, escalation, acknowledgement, snooze reason and completion. Provide 'My tasks', department calendar and principal/admin exceptions dashboard with forecast costs and counts.
+
+Lead times should be configurable (for example 90/60/30/7 days and overdue), with deduplication, quiet hours, holiday rules, delegated ownership, delivery receipts and escalation. Recurrence creates the next instance after completion without overwriting history. Removing an owner must not orphan work.
+
+Generate quarterly department and consolidated principal/admin reports automatically using configured fiscal/academic quarters and school timezone. Include current/prior quarter and prior-year comparisons, KPI definitions, source cut-off, missing data, budget/cost variance, operational issues, renewal forecasts, achievements and assigned decisions. Numerical results are deterministic; any narrative generated by AI must reference those numbers and never invent causes.
+
+Reports must be versioned snapshots with generation status, period, metric version, access-controlled recipients and downloadable PDF/CSV. Deliver through configured in-app/email channels using secure expiring links where appropriate. Separate restricted appendices; general management reports must not expose case narratives, sensitive health data or individual salaries. Revalidate recipient authority at delivery/download. Do not grant a principal new raw admissions/payroll access implicitly; add explicit approved report scopes where necessary.
+
+Use persisted job schedules, lease/claim recovery, unique logical report keys and durable delivery/outbox records. Survive restart, missed ticks, repeated ticks, worker crash, partial delivery and provider failure. Retry failed recipients without regenerating or duplicating successful deliveries. Distinguish generated, queued, sent, delivered and failed. An in-process timer alone is not delivery reliability.
+
+13. ACCESS MANAGEMENT AND 3D CAMPUS
+
+Produce a role-permission-data-scope matrix for every new endpoint, page, action, export, background job, notification, AI/MCP tool and map field. Reuse existing permissions when appropriate; introduce narrowly scoped read/manage/approve/publish/export capabilities where needed. Cover principal, admin, finance, teacher, parent, student, alumni, lab, transport, facilities, compliance, coach and marketing responsibilities through existing role machinery.
+
+Enforce tenant/campus/department/assigned-class/own-child/own-record scopes server-side, including nested IDs, aggregations and downloads. Frontend hiding is not access control. Distinguish school subscription/feature entitlement from user authority. Feature switches must disable APIs and workers as well as UI. Preserve platform-only seat pricing and avoid global-super-admin data exposure by accident. Add auditable temporary delegation and revocation if required by workflows.
+
+Extend existing 3D campus with role-authorised lab inventory/session panels, sports bookings, transport bay capacity/service status, gardens, waste stations, utilities and maintenance tasks. Use canonical facility/entity IDs and existing APIs; do not duplicate state in scene code. Show timestamps and demo/offline states. Provide accessible 2D/list navigation with the same tasks and deep links. No student location trails, safeguarding case details or camera feeds on the general game/map. Any restricted device-maintenance view must be a separately authorised surface. Reuse geometry/assets and keep performance acceptable on school hardware.
+
+14. OTHER GAPS AND DELIVERY ORDER
+
+Audit, do not blindly rebuild, adjacent school needs: visitor/contractor passes and child pickup; emergency drills and evacuation accountability; accessibility/accommodation workflows; staff substitute coverage; canteen/allergen controls; hostel roll calls; library loss/returns; grievance resolution; document retention; backup/recovery; communications preferences; offline operation; academic rollover and alumni transition. Add demonstrated gaps to the coverage matrix with priority and rationale. Do not declare 'every school need' complete from a feature checklist.
+
+Implement in coherent slices:
+A. Audit, metric/data contracts, permission gaps, shared due-item/worker reliability, source register and migration plan.
+B. Financial analytics and reconciled comparisons, bill/service lifecycle, labs, vehicle capacity and operational reminders.
+C. PTM/review calls, sports/arts, sustainability, alumni lifecycle and achievement publishing.
+D. Quarterly reports, daily digests, official social adapters, GPS/ID integration and optional camera review pipeline.
+E. Department/principal/admin polish, 3D integration across all applicable slices, full regression and acceptance evidence.
+
+Permissions, notifications, tests and map links belong in each slice, not as forgotten final tasks. Maintain an implementation ledger so context limits do not cause requirements to disappear. Continue through authorised work rather than returning after scaffolding. When credentials/hardware or deployment decisions are unavailable, finish the testable software path and list the precise remaining activation requirement without claiming it works live.
+
+15. ACCEPTANCE AND HANDOVER
+
+Require executable tests for consequential behaviour:
+* Cross-school IDs, wrong departments, unrelated guardians, former-role sessions and exports cannot expose data; principal aggregate access does not imply sensitive record access.
+* Custom dates, timezone midnight, leap day, academic rollover, incomplete history, empty datasets and zero comparison denominators behave explicitly.
+* Finance totals reconcile across invoices/payments/refunds/credits without double-counting; period collections use payment dates.
+* Concurrent PTM bookings, vehicle allocations and lab issues cannot exceed availability; duplicate device events do not duplicate attendance.
+* Expired stock cannot be issued; stocktakes, service renewals and repeated reminders retain audit history.
+* Failed/restarted quarterly jobs recover; delivery retries do not resend completed recipients; revoked recipients cannot download.
+* Parent/student external publishing requests fail server-side; consent withdrawal before dispatch stops publication; provider timeout/partial success does not duplicate posts.
+* Alumni retain only permitted community access; minor mentoring remains supervised.
+* Camera observations stay unverified until reviewed; restricted evidence never reaches public/community/map responses.
+* Every major flow has create -> approve where needed -> execute -> view -> notify -> report -> correct/cancel behaviour, plus loading/empty/error/offline states.
+
+Run relevant existing tests first, then meaningful new integration and UI tests. Use actual isolated MongoDB transactions for money/stock/capacity concurrency. Backend: npm.cmd test and npm.cmd run build on Windows. Frontend: npm.cmd test, npm.cmd run typecheck, npm.cmd run lint, npm.cmd run build. Use npm on shells where appropriate. Report pre-existing failures separately. Test rendered role workflows and mobile/keyboard access; do not claim browser verification from source inspection.
+
+Deliver working code and migrations with rollback notes, updated permission matrix, metric catalogue, sources/competitor comparison, evidence-backed coverage matrix, realistic labelled demo data, reproducible test commands/results and setup documentation for real providers. Summarise what is implemented, tested, simulated, credential-dependent and still missing. Never report an untested placeholder, manually triggered script or simulated hardware feed as completed production automation.

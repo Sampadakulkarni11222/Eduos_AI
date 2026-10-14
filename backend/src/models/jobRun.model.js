@@ -18,6 +18,8 @@ const jobRunSchema = new Schema(
     ok: { type: Boolean, default: null },
     result: { type: Schema.Types.Mixed, default: null },
     error: { type: String, default: null },
+    // Times a crashed run was taken over after its lease ran out.
+    attempts: { type: Number, default: 1 },
   },
   { versionKey: false },
 );

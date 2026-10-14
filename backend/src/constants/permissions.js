@@ -255,6 +255,64 @@ export const PERMISSION_CATALOG = [
   // Outbound messaging (WhatsApp/SMS/email) log and preferences.
   { key: 'messaging.read', group: 'communication', description: 'View the outbound message log and delivery states' },
   { key: 'messaging.manage', group: 'communication', description: 'Configure message templates and send operational notifications' },
+  // ── School platform completion (feat/school-platform-complete) ──
+  // Analytics workspace and quarterly decision reports.
+  { key: 'analytics.workspace.read', group: 'analytics', description: 'Open the analytics workspace: department figures, custom periods and comparisons (ALL: every department; OWN: your own department or classes)' },
+  { key: 'analytics.export', group: 'analytics', description: 'Download analytics tables as CSV or PDF (exports respect the same scope as the screen)' },
+  { key: 'reports.quarterly.read', group: 'analytics', description: 'Read the quarterly decision reports addressed to you' },
+  { key: 'reports.quarterly.manage', group: 'analytics', description: 'Configure, regenerate and distribute quarterly reports' },
+  // Shared tasks and reminders (bills, renewals, services, inspections, follow-ups).
+  { key: 'tasks.read', group: 'operations', description: 'See due items and reminders (OWN: assigned to you or your department; ALL: the whole school)' },
+  { key: 'tasks.manage', group: 'operations', description: 'Create, assign, snooze, complete and escalate due items' },
+  // Bills and service lifecycles.
+  { key: 'bills.read', group: 'finance', description: 'See recurring bills, service contracts and their due dates' },
+  { key: 'bills.manage', group: 'finance', description: 'Record bills, payments against them and service visits; configure recurrence' },
+  // Science and computer laboratories.
+  { key: 'labs.read', group: 'labs', description: 'See laboratories, stock, equipment and practical sessions (OWN: labs you are in charge of or sessions you teach)' },
+  { key: 'labs.manage', group: 'labs', description: 'Run a lab: stock receipts, issue/return, stocktakes, equipment, calibration and practical sessions (OWN: labs you are in charge of)' },
+  // Transport fleet, trips and checkpoints.
+  { key: 'transport.fleet.manage', group: 'transport', description: 'Manage vehicles, their capacity, documents, services and breakdowns' },
+  { key: 'transport.trips.operate', group: 'transport', description: 'Run trips: allocate seats, record boarding, alighting and safe handover (OWN: trips you are assigned to)' },
+  { key: 'transport.tracking.read', group: 'transport', description: 'See live trip position and ETA (OWN: your own child\'s active trip only)' },
+  { key: 'checkpoints.read', group: 'safety', description: 'See ID checkpoint events (gate, bus, lab, library) (OWN: your own child)' },
+  { key: 'checkpoints.manage', group: 'safety', description: 'Manage ID cards and checkpoint devices; revoke lost cards' },
+  { key: 'visitors.manage', group: 'safety', description: 'Register visitors and contractors, issue and close passes, authorise pickups' },
+  // Optional camera event review (off until a school configures it).
+  { key: 'camera.devices.manage', group: 'safety', description: 'Register cameras, approved locations and purposes, retention and health' },
+  { key: 'camera.events.review', group: 'sensitive', description: 'Review unverified camera observations and decide on them (trained staff only)' },
+  // PTM, review calls and parent–teacher conversations.
+  { key: 'ptm.read', group: 'engagement', description: 'See PTM rounds and slots (OWN: your own bookings or your own slots)' },
+  { key: 'ptm.manage', group: 'engagement', description: 'Create PTM rounds, set availability and run meetings (OWN: your own slots)' },
+  { key: 'ptm.book', group: 'engagement', description: 'Book, reschedule or cancel a PTM slot for your own child' },
+  { key: 'reviewcalls.manage', group: 'engagement', description: 'Open and follow up parent review calls and agreed actions (OWN: assigned to you)' },
+  { key: 'conversations.use', group: 'engagement', description: 'Message about a child: parents with their child\'s teachers, teachers with the parents of their pupils' },
+  // Staff cover and leave.
+  { key: 'staffleave.apply', group: 'people', description: 'Apply for your own staff leave and see your balance' },
+  { key: 'staffleave.manage', group: 'people', description: 'Approve staff leave, set leave policies and balances' },
+  { key: 'cover.manage', group: 'people', description: 'Arrange substitute cover for absent teachers' },
+  // Clubs, sports, arts and showcases.
+  { key: 'clubs.read', group: 'activities', description: 'See clubs, teams, sessions and fixtures (OWN: the ones you belong to or your child\'s)' },
+  { key: 'clubs.manage', group: 'activities', description: 'Run clubs and teams: sessions, attendance, fixtures and results (OWN: the ones you coach)' },
+  { key: 'clubs.join', group: 'activities', description: 'Ask to join a club or team (for yourself or your child)' },
+  { key: 'showcase.publish', group: 'activities', description: 'Prepare and publish achievement and top-ranker showcases' },
+  // Alumni, digests and external publishing.
+  { key: 'alumni.directory.read', group: 'community', description: 'Browse the alumni directory (only people who chose to be listed)' },
+  { key: 'alumni.manage', group: 'community', description: 'Verify alumni, manage batches, reunions and transitions to alumni access' },
+  { key: 'digest.read', group: 'community', description: 'Read the daily learning and trends digest' },
+  { key: 'digest.manage', group: 'community', description: 'Choose approved sources and review digest items before they are published' },
+  { key: 'social.publish', group: 'community', description: 'Send approved public newsroom posts to the school\'s connected social accounts' },
+  { key: 'social.connect', group: 'community', description: 'Connect and disconnect the school\'s social media accounts' },
+  // Sustainability, sanitation and recognition.
+  { key: 'sustainability.read', group: 'sustainability', description: 'See greenery, waste, water and energy records and recognition progress' },
+  { key: 'sustainability.manage', group: 'sustainability', description: 'Record measurements, trees, waste and sanitation checks; run eco-club activities' },
+  { key: 'sustainability.verify', group: 'sustainability', description: 'Verify eco activities and award points' },
+  // Report cards, admissions form, hostel passes, finance extras, AI drafts.
+  { key: 'reportcards.manage', group: 'academics', description: 'Prepare, moderate and publish term report cards' },
+  { key: 'hostel.outpass.request', group: 'hostel', description: 'Request an out-pass for yourself or your child' },
+  { key: 'hostel.outpass.manage', group: 'hostel', description: 'Approve out-passes and record exit and return at the gate' },
+  { key: 'fees.concessions.manage', group: 'fees', description: 'Define fee concessions and apply them (with approval)' },
+  { key: 'accounts.export', group: 'finance', description: 'Export vouchers and GST summaries for the accountant (Tally-compatible)' },
+  { key: 'ai.drafts.use', group: 'ai', description: 'Ask the assistant for a draft (letter, minutes, lesson plan, remarks) that you review before using' },
 ];
 
 const grants = (pairs) => pairs.map(([key, scope]) => ({ key, scope }));
@@ -308,6 +366,8 @@ export const AI_ASSISTANT_PERMISSION = 'ai.copilot.use';
  */
 export const RESTRICTED_BY_DEFAULT = [
   'payroll.approve',
+  // Camera observations about children are reviewed only by named, trained staff.
+  'camera.events.review',
   // Preparing pay (structures, inputs, adjustments) belongs to finance and HR. An administrator
   // holding it could add an adjustment to their own line and send the run for approval.
   'payroll.prepare',
@@ -360,7 +420,7 @@ const ALL_EXCEPT = (...excluded) =>
  * catalogue: child-protection case files and individual salary and bank
  * details belong to the school, not to the platform operator.
  */
-export const PLATFORM_WITHHELD = ['safeguarding.manage', 'payroll.sensitive.read'];
+export const PLATFORM_WITHHELD = ['safeguarding.manage', 'payroll.sensitive.read', 'camera.events.review'];
 
 export const SYSTEM_ROLES = [
   {
@@ -382,6 +442,40 @@ export const SYSTEM_ROLES = [
     name: 'Principal',
     description: 'Oversight across the whole school',
     grants: merge([
+      // School platform completion.
+      ['analytics.workspace.read', 'ALL'],
+      ['analytics.export', 'ALL'],
+      ['reports.quarterly.read', 'ALL'],
+      ['reports.quarterly.manage', 'ALL'],
+      ['tasks.read', 'ALL'],
+      ['tasks.manage', 'ALL'],
+      ['bills.read', 'ALL'],
+      ['labs.read', 'ALL'],
+      ['transport.tracking.read', 'ALL'],
+      ['checkpoints.read', 'ALL'],
+      ['visitors.manage', 'ALL'],
+      ['ptm.read', 'ALL'],
+      ['ptm.manage', 'ALL'],
+      ['reviewcalls.manage', 'ALL'],
+      ['conversations.use', 'ALL'],
+      ['staffleave.apply', 'OWN'],
+      ['staffleave.manage', 'ALL'],
+      ['cover.manage', 'ALL'],
+      ['clubs.read', 'ALL'],
+      ['clubs.manage', 'ALL'],
+      ['showcase.publish', 'ALL'],
+      ['alumni.directory.read', 'ALL'],
+      ['alumni.manage', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['digest.manage', 'ALL'],
+      ['social.publish', 'ALL'],
+      ['sustainability.read', 'ALL'],
+      ['sustainability.manage', 'ALL'],
+      ['sustainability.verify', 'ALL'],
+      ['reportcards.manage', 'ALL'],
+      ['hostel.outpass.manage', 'ALL'],
+      ['ai.drafts.use', 'ALL'],
+      ['camera.events.review', 'ALL'],
       ['users.read', 'ALL'],
       ['students.read', 'ALL'],
       ['attendance.read', 'ALL'],
@@ -451,6 +545,27 @@ export const SYSTEM_ROLES = [
     name: 'Teacher',
     description: 'Manages their own classes',
     grants: merge([
+      // School platform completion.
+      ['analytics.workspace.read', 'OWN'],
+      ['tasks.read', 'OWN'],
+      ['tasks.manage', 'OWN'],
+      ['labs.read', 'OWN'],
+      ['labs.manage', 'OWN'],
+      ['ptm.read', 'OWN'],
+      ['ptm.manage', 'OWN'],
+      ['reviewcalls.manage', 'OWN'],
+      ['conversations.use', 'OWN'],
+      ['staffleave.apply', 'OWN'],
+      ['clubs.read', 'ALL'],
+      ['clubs.manage', 'OWN'],
+      ['digest.read', 'ALL'],
+      ['sustainability.read', 'ALL'],
+      ['sustainability.manage', 'OWN'],
+      ['sustainability.verify', 'OWN'],
+      ['reportcards.manage', 'OWN'],
+      ['alumni.directory.read', 'ALL'],
+      ['ai.drafts.use', 'OWN'],
+      ['transport.trips.operate', 'OWN'],
       ['syllabus.read', 'OWN'],
       ['syllabus.manage', 'OWN'],
       ['students.read', 'OWN'],
@@ -497,6 +612,17 @@ export const SYSTEM_ROLES = [
     name: 'Parent',
     description: "Views their own children's records",
     grants: merge([
+      // School platform completion.
+      ['ptm.read', 'OWN'],
+      ['ptm.book', 'OWN'],
+      ['conversations.use', 'OWN'],
+      ['transport.tracking.read', 'OWN'],
+      ['checkpoints.read', 'OWN'],
+      ['clubs.read', 'OWN'],
+      ['clubs.join', 'OWN'],
+      ['hostel.outpass.request', 'OWN'],
+      ['sustainability.read', 'ALL'],
+      ['digest.read', 'ALL'],
       ['syllabus.read', 'OWN'],
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
@@ -526,6 +652,13 @@ export const SYSTEM_ROLES = [
     name: 'Student',
     description: 'Views their own records',
     grants: merge([
+      // School platform completion.
+      ['clubs.read', 'OWN'],
+      ['clubs.join', 'OWN'],
+      ['sustainability.read', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['alumni.directory.read', 'ALL'],
+      ['hostel.outpass.request', 'OWN'],
       ['syllabus.read', 'OWN'],
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
@@ -563,6 +696,19 @@ export const SYSTEM_ROLES = [
     name: 'Finance',
     description: 'Manages fees and payments',
     grants: merge([
+      // School platform completion.
+      ['analytics.workspace.read', 'OWN'],
+      ['analytics.export', 'OWN'],
+      ['reports.quarterly.read', 'OWN'],
+      ['tasks.read', 'OWN'],
+      ['tasks.manage', 'OWN'],
+      ['bills.read', 'ALL'],
+      ['bills.manage', 'ALL'],
+      ['staffleave.apply', 'OWN'],
+      ['fees.concessions.manage', 'ALL'],
+      ['accounts.export', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['ai.drafts.use', 'OWN'],
       ['students.read', 'ALL'],
       ['fees.structure.manage', 'ALL'],
       ['fees.read', 'ALL'],
@@ -607,6 +753,12 @@ export const SYSTEM_ROLES = [
     name: 'Librarian',
     description: 'Manages the school library catalog and lending',
     grants: merge([
+      // School platform completion.
+      ['tasks.read', 'OWN'],
+      ['tasks.manage', 'OWN'],
+      ['staffleave.apply', 'OWN'],
+      ['digest.read', 'ALL'],
+      ['ai.drafts.use', 'OWN'],
       ['library.read', 'ALL'],
       ['library.manage', 'ALL'],
       ['students.read', 'ALL'],
@@ -623,6 +775,14 @@ export const SYSTEM_ROLES = [
     name: 'Warden',
     description: 'Manages hostel facilities and student welfare',
     grants: merge([
+      // School platform completion.
+      ['tasks.read', 'OWN'],
+      ['tasks.manage', 'OWN'],
+      ['staffleave.apply', 'OWN'],
+      ['hostel.outpass.manage', 'ALL'],
+      ['checkpoints.read', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['ai.drafts.use', 'OWN'],
       ['hostel.read', 'ALL'],
       ['hostel.manage', 'ALL'],
       ['medical.read', 'ALL'],
@@ -642,6 +802,17 @@ export const SYSTEM_ROLES = [
     name: 'HR & Payroll',
     description: 'Recruitment, staff records, verification and payroll preparation',
     grants: merge(STAFF_OPERATIONS, [
+      // School platform completion.
+      ['analytics.workspace.read', 'OWN'],
+      ['reports.quarterly.read', 'OWN'],
+      ['tasks.read', 'OWN'],
+      ['tasks.manage', 'OWN'],
+      ['staffleave.apply', 'OWN'],
+      ['staffleave.manage', 'ALL'],
+      ['cover.manage', 'ALL'],
+      ['alumni.manage', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['ai.drafts.use', 'OWN'],
       ['users.read', 'ALL'],
       ['org.manage', 'ALL'],
       ['payroll.read', 'ALL'],
@@ -661,6 +832,16 @@ export const SYSTEM_ROLES = [
     name: 'Marketing & Admissions',
     description: 'Campaigns, creative assets, enquiries, counselling and enrolment',
     grants: merge(STAFF_OPERATIONS, [
+      // School platform completion.
+      ['analytics.workspace.read', 'OWN'],
+      ['tasks.read', 'OWN'],
+      ['tasks.manage', 'OWN'],
+      ['staffleave.apply', 'OWN'],
+      ['showcase.publish', 'ALL'],
+      ['social.publish', 'ALL'],
+      ['alumni.directory.read', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['ai.drafts.use', 'OWN'],
       ['admissions.read', 'ALL'],
       ['admissions.manage', 'ALL'],
       ['marketing.read', 'ALL'],
@@ -676,6 +857,21 @@ export const SYSTEM_ROLES = [
     name: 'Compliance & Safeguarding Officer',
     description: 'Designated officer for safeguarding, statutory compliance, policies and training',
     grants: merge(STAFF_OPERATIONS, [
+      // School platform completion.
+      ['analytics.workspace.read', 'OWN'],
+      ['reports.quarterly.read', 'OWN'],
+      ['tasks.read', 'ALL'],
+      ['tasks.manage', 'ALL'],
+      ['bills.read', 'ALL'],
+      ['staffleave.apply', 'OWN'],
+      ['visitors.manage', 'ALL'],
+      ['checkpoints.read', 'ALL'],
+      ['camera.devices.manage', 'ALL'],
+      ['camera.events.review', 'ALL'],
+      ['sustainability.read', 'ALL'],
+      ['sustainability.manage', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['ai.drafts.use', 'OWN'],
       ['users.read', 'ALL'],
       ['compliance.read', 'ALL'],
       ['compliance.manage', 'ALL'],
@@ -696,6 +892,10 @@ export const SYSTEM_ROLES = [
     name: 'Trustee / Governing Body Member',
     description: 'Governance: meetings, resolutions, board-level approvals and institution health',
     grants: grants([
+      // School platform completion.
+      ['analytics.workspace.read', 'ALL'],
+      ['reports.quarterly.read', 'OWN'],
+      ['digest.read', 'ALL'],
       ['lectures.read', 'OWN'],
       ['governance.read', 'OWN'],
       ['approvals.read', 'OWN'],
@@ -719,6 +919,10 @@ export const SYSTEM_ROLES = [
     name: 'Alumnus',
     description: 'Verified former student: newsroom, alumni circles and mentoring',
     grants: merge(FAMILY_COMMUNITY, [
+      // School platform completion.
+      ['alumni.directory.read', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['clubs.read', 'OWN'],
       ['community.post', 'OWN'],
       ['mentoring.participate', 'OWN'],
       ['ai.copilot.use', 'OWN'],

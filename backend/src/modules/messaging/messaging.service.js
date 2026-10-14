@@ -84,6 +84,14 @@ export const TEMPLATES = {
   // Sent to a student's guardians when the day's register marks them absent or
   // late (modules/attendance-alerts). States only what the register says; the
   // school may still correct a mark, so the wording does not claim more.
+  TASK_DUE: {
+    category: 'UTILITY',
+    text: (v) => `${v.title} is due ${v.days === 0 ? 'today' : v.days === 1 ? 'tomorrow' : `in ${v.days} days`} (${v.when}). See your tasks in EduOS.`,
+  },
+  TASK_OVERDUE: {
+    category: 'UTILITY',
+    text: (v) => `Overdue ${v.days} day(s): ${v.title} (${v.department}). It needs an owner's action; see the exceptions list in EduOS.`,
+  },
   ATTENDANCE_ALERT: {
     category: 'UTILITY',
     subject: (v) => `${v.studentName} marked ${v.statusLabel} on ${v.date}`,

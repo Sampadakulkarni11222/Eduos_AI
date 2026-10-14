@@ -58,6 +58,7 @@ import { auditLogger } from '../middleware/auditLogger.js';
 import { signUploadUrlsInResponses, unsignUploadUrlsInBody } from '../modules/uploads/signedUrls.js';
 import lectureRoutes from '../modules/lectures/lecture.routes.js';
 import syllabusRoutes from '../modules/syllabus/syllabus.routes.js';
+import tasksRoutes from '../modules/tasks/tasks.routes.js';
 
 const router = Router();
 
@@ -161,6 +162,7 @@ router.use('/procurement', procurementRouter);
 router.use('/budgets', budgetRouter);
 router.use('/lectures', lectureRoutes);
 router.use('/syllabus', syllabusRoutes);
+router.use('/tasks', tasksRoutes);
 router.use('/community', communityRouter);
 router.use('/marketing', marketingRouter);
 router.use('/campus', campusRouter);

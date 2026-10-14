@@ -3,6 +3,7 @@ import { JobRun } from '../models/jobRun.model.js';
 import { NoticeSource } from '../models/compliance.model.js';
 import { runWithTenant } from '../tenancy/tenantContext.js';
 import { logger } from '../utils/logger.js';
+import { featureEnabled } from '../utils/features.js';
 import * as messaging from '../modules/messaging/messaging.service.js';
 import * as correspondence from '../modules/administration/correspondence.service.js';
 import * as verification from '../modules/administration/verification.service.js';
@@ -10,6 +11,7 @@ import * as governance from '../modules/governance/governance.service.js';
 import * as compliance from '../modules/compliance/compliance.service.js';
 import * as lectures from '../modules/lectures/lecture.service.js';
 import * as marketing from '../modules/marketing/marketing.service.js';
+import * as tasks from '../modules/tasks/tasks.service.js';
 
 /**
  * The in-process scheduler for the operations modules.
@@ -32,6 +34,8 @@ export const JOBS = [
   // Every five minutes with a twenty-minute look-ahead: each class is reminded once, 15 to 20 minutes before it starts.
   { key: 'lectures.reminders', everyMinutes: 5, run: (now) => lectures.sendReminders(SYSTEM, { now }) },
   { key: 'verification.expire', everyMinutes: 60, run: (now) => verification.expireLapsed(now) },
+  // Reminders at each lead time, escalation of overdue items, and items whose owner left.
+  { key: 'tasks.reminders', everyMinutes: 60, feature: 'tasks', run: (now) => tasks.runReminders({ now }) },
   // A seat offer past its last day frees the seat; nobody is offered it automatically.
   { key: 'marketing.offers.expire', everyMinutes: 60, run: (now) => marketing.expireOffers({ now }) },
   { key: 'governance.reminders', everyMinutes: 60, run: () => governance.sendReminders(SYSTEM, { hours: 48 }) },
@@ -59,6 +63,9 @@ export async function tick(now = new Date()) {
   const ran = [];
   for (const { slug } of schools) {
     for (const job of JOBS) {
+      // A school that has switched a module off gets none of its background work either.
+      // eslint-disable-next-line no-await-in-loop
+      if (job.feature && !(await featureEnabled(job.feature, slug))) continue;
       const window = Math.floor(now.getTime() / (job.everyMinutes * 60_000));
       const key = `${job.key}:${slug}:${window}`;
       let claim;
@@ -66,8 +73,19 @@ export async function tick(now = new Date()) {
         // eslint-disable-next-line no-await-in-loop -- jobs run one at a time so a slow school cannot starve the database
         claim = await JobRun.create({ key, job: job.key, tenantId: slug, startedAt: now });
       } catch (err) {
-        if (err?.code === 11000) continue; // already done (or being done) for this window
-        throw err;
+        if (err?.code !== 11000) throw err;
+        // Already done, or being done, for this window -- unless the worker that
+        // claimed it died before finishing. A claim whose lease has run out with
+        // no finish is taken over (atomically: only one taker), so a crash does
+        // not silently lose a daily or quarterly run.
+        const leaseMs = (job.leaseMinutes ?? 30) * 60_000;
+        // eslint-disable-next-line no-await-in-loop
+        claim = await JobRun.findOneAndUpdate(
+          { key, finishedAt: null, startedAt: { $lt: new Date(now.getTime() - leaseMs) } },
+          { $set: { startedAt: now }, $inc: { attempts: 1 } },
+          { new: true },
+        );
+        if (!claim) continue;
       }
       try {
         // eslint-disable-next-line no-await-in-loop

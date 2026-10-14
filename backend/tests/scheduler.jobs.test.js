@@ -80,3 +80,24 @@ describe('scheduler', () => {
     } finally { JOBS[0].run = original; }
   });
 });
+
+describe('scheduler recovery and feature switches', () => {
+  it('takes over a run whose worker died before finishing, once its lease has run out', async () => {
+    const { JobRun } = await import('../src/models/jobRun.model.js');
+    const now = new Date('2026-10-15T05:00:00Z');
+    const first = await tick(now);
+    expect(first.length).toBeGreaterThan(0);
+    // Simulate a crash: the daily job's claim never finished.
+    const daily = JOBS.find((j) => j.everyMinutes === 24 * 60);
+    await JobRun.updateMany({ job: daily.key }, { $set: { finishedAt: null, ok: null } });
+    // Within the lease nothing is retaken; after it, exactly one taker reruns it.
+    expect((await tick(new Date(now.getTime() + 60_000))).filter((r) => r.job === daily.key)).toHaveLength(0);
+    const later = new Date(now.getTime() + 40 * 60_000);
+    const rerun = (await tick(later)).filter((r) => r.job === daily.key);
+    expect(rerun.length).toBeGreaterThan(0);
+    expect((await tick(new Date(later.getTime() + 1000))).filter((r) => r.job === daily.key)).toHaveLength(0);
+    const runs = await JobRun.find({ job: daily.key }).lean();
+    expect(runs.every((r) => r.finishedAt && r.attempts >= 1)).toBe(true);
+    expect(runs.some((r) => r.attempts === 2)).toBe(true);
+  });
+});

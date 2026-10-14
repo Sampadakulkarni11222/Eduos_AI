@@ -1,3 +1,4 @@
+import { describeFeatures, setFeatures } from '../../utils/features.js';
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
@@ -38,6 +39,10 @@ institutionRouter.get('/public/:slug', asyncHandler(async (req, res) => {
 
 institutionRouter.use(authenticate);
 institutionRouter.get('/terminology', asyncHandler(async (_req, res) => sendSuccess(res, await institution.terminology())));
+// Which modules this school has switched on (any signed-in person: screens hide what is off).
+institutionRouter.get('/features', asyncHandler(async (_req, res) => sendSuccess(res, await describeFeatures())));
+institutionRouter.put('/features', requirePermission('settings.manage', 'ALL'), asyncHandler(async (req, res) =>
+  sendSuccess(res, await setFeatures(req.body ?? {}))));
 institutionRouter.get('/', requirePermission('institution.read'), asyncHandler(async (_req, res) => sendSuccess(res, await institution.getProfile())));
 institutionRouter.put('/', requirePermission('institution.manage'), asyncHandler(async (req, res) =>
   sendSuccess(res, await institution.updateProfile(req.actor, req.body), 'Institution profile saved')));
