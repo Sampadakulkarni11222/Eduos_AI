@@ -12,6 +12,7 @@
     "obfuscate": "node obfuscate.config.js",
     "build:obfuscated": "npm run build && npm run obfuscate",
     "start:obfuscated": "node dist-obfuscated/app.js",
+    "demo": "node scripts/local-demo.mjs",
     "seed": "node src/seed/seed.js",
     "seed:school": "node src/seed/seed_school_data.js",
     "superadmin:create": "node scripts/create-super-admin.js",
