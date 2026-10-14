@@ -135,6 +135,13 @@ export function renewSession(): Promise<boolean> {
 }
 
 export async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
+  // A page that loads before the session has been renewed used to send its
+  // first requests with no token, get 401 on each and send them all again.
+  // When a session exists but no token is held yet, wait for the one shared
+  // renewal first. Sign-in calls themselves never wait.
+  if (!accessToken && !retried && !path.startsWith('/auth/') && hasSession()) {
+    await refresh();
+  }
   const res = await fetch(`${BACKEND_URL}/api/v1${path}`, {
     ...init,
     headers: {

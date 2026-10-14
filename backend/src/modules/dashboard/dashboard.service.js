@@ -1,14 +1,14 @@
 import mongoose from 'mongoose';
 
-import { Student, StudentGuardian, Enrollment } from '../../models/student.model.js';
+import { Student, Enrollment } from '../../models/student.model.js';
 import { Lead } from '../../models/lead.model.js';
 import { Invoice } from '../../models/fee.model.js';
 import { Ticket } from '../../models/ticket.model.js';
 import { Announcement } from '../../models/announcement.model.js';
-import { AcademicYear, Section, SubjectOffering } from '../../models/academics.model.js';
+import { Section, SubjectOffering } from '../../models/academics.model.js';
 import { AttendanceRecord } from '../../models/attendanceRecord.model.js';
 import { Assignment, Submission } from '../../models/assignment.model.js';
-import { Exam, ExamSubject, Mark } from '../../models/exam.model.js';
+import { ExamSubject, Mark } from '../../models/exam.model.js';
 import { TimetableSlot } from '../../models/timetableSlot.model.js';
 import { Book, BookIssue } from '../../models/library.model.js';
 import { HostelRoom, HostelAllocation, HostelInquiry } from '../../models/hostel.model.js';
@@ -19,7 +19,6 @@ import { gradeForPercentage, percentage } from '../../utils/grading.js';
 import {
   getTeacherSectionIds,
   getGuardianStudentIds,
-  getOwnStudentId,
 } from '../../utils/scope.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

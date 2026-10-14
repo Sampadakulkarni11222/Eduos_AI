@@ -15,7 +15,6 @@ import {
   chargeOnline,
   createPaymentLink,
   isOnlinePaymentEnabled,
-  paymentMode,
   fetchGatewayPayment,
   verifyCheckoutSignature,
 } from '../../providers/payment.provider.js';

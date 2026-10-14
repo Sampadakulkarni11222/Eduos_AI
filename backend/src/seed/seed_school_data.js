@@ -347,7 +347,6 @@ async function seedSchool() {
   for (let sIdx = 0; sIdx < sections.length; sIdx++) {
     const section = sections[sIdx];
     const grade = grades.find((g) => g._id.toString() === section.gradeId.toString());
-    const gradeLabel = grade ? grade.name : 'Class';
 
     for (let i = 1; i <= 60; i++) {
       count++;
