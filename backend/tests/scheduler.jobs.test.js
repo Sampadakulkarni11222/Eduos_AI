@@ -36,9 +36,9 @@ describe('scheduler', () => {
     expect(await tick(new Date(now.getTime() + 30_000))).toEqual([]);
     expect(await JobRun.countDocuments()).toBe(JOBS.length * 2);
 
-    // Sixteen minutes on, only the 15-minute job is due again.
+    // Sixteen minutes on, only the jobs with a window of fifteen minutes or less are due again.
     const later = await tick(new Date(now.getTime() + 16 * 60_000));
-    expect([...new Set(later.map((r) => r.job))]).toEqual(['messaging.release']);
+    expect([...new Set(later.map((r) => r.job))].sort()).toEqual(['lectures.reminders', 'messaging.release']);
   });
 
   it('releases a message held for quiet hours without anyone asking', async () => {

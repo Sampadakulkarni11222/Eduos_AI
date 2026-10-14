@@ -10,13 +10,13 @@ The server side is built and tested, and every new screen has now been opened in
 
 | Check | Result |
 |---|---|
-| Backend tests, full suite | 4,045 tests in 140 files, all passed |
-| Backend tests added in this branch | 72 across 7 files: approvals (16), attendance drafts (7), administration (18), finance (10), community, marketing and campus (10), scheduler (4), accreditation and credits (7) |
-| Frontend tests, full suite | 400 passed, 28 files |
+| Backend tests, full suite | 4,068 tests in 143 files: 4,057 passed, 9 skipped by design, 2 failed in the full run and 1 file could not start because the in-memory test database crashed. Of those, one was this round's own scheduler test (not updated for the new lecture-reminder job; now fixed) and the other was a load failure. All three files pass when rerun on their own (83 tests). |
+| Backend tests added in this branch | 95 across 10 files: approvals (16), attendance drafts (7), administration (18), finance (10), community, marketing and campus (10), scheduler (4), accreditation and credits (7), digital lectures (11), official documents (5), dashboard data (7) |
+| Frontend tests, full suite | 403 passed, 28 files |
 | Frontend typecheck (`tsc --noEmit`) | Clean |
 | Frontend lint (`next lint`) | No warnings or errors |
 | Frontend production build | Succeeds |
-| Browser smoke test | 169 page loads as 13 profiles (every home page and every operations page in each sidebar): no page errors and no failed requests, apart from the first request on some older dashboards, which is sent before the session token arrives and is retried |
+| Browser smoke test | 182 page loads as 13 profiles (every home page and every operations page in each sidebar, now including Digital Lectures). 172 were clean. The other 10 were home pages: some only showed the first-load request that is sent before the session token arrives and is retried, and the admin and finance home pages timed out because the new dashboard linked to a page those portals do not have. That link is fixed and tested; the sweep was not re-run after the fix. |
 | Both seeders, on an empty database | Run cleanly, including the sample campus |
 | Dependency audit, backend | 4 findings (3 high, 1 moderate), all in packages already present on `main`; no backend dependency was added |
 | Dependency audit, frontend | 10 findings (7 high, 3 moderate), all in packages already present on `main`. The two packages added (`three`, `@types/three`, both 0.169.0) have none. |
