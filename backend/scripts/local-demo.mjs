@@ -15,6 +15,7 @@
  * server for the child processes only.
  */
 import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -78,12 +79,19 @@ try {
   console.log('2/4  Seeding the fictional demo school…');
   await run(process.execPath, ['src/seed/seed_school_data.js'], { cwd: backend, env, label: 'School seed' });
   await run(process.execPath, ['src/seed/seed.js'], { cwd: backend, env, label: 'Demo-user seed' });
+  console.log('     …and sample data for every section (letters, payroll, verification, modules, attendance)…');
+  await run(process.execPath, ['src/seed/seed_operations.js'], { cwd: backend, env: { ...env, LOG_LEVEL: 'warn' }, label: 'Sample-data seed' });
 
   console.log(`3/4  Starting the API on port ${API_PORT}…`);
   await run(process.execPath, ['src/app.js'], { cwd: backend, env, label: 'API', wait: false });
   await waitFor(`http://127.0.0.1:${API_PORT}/api/v1/auth/me`, 'The API');
 
-  const webEnv = { ...process.env, API_URL: `http://127.0.0.1:${API_PORT}`, NEXT_PUBLIC_BACKEND_URL: `http://localhost:${API_PORT}` };
+  // The sign-in library needs a secret even when only OTP sign-in is used; a throwaway one will do here.
+  const webEnv = {
+    ...process.env, API_URL: `http://127.0.0.1:${API_PORT}`, NEXT_PUBLIC_BACKEND_URL: `http://localhost:${API_PORT}`,
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL ?? `http://localhost:${WEB_PORT}`,
+    NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET ?? crypto.randomBytes(32).toString('hex'),
+  };
   if (forceBuild || !fs.existsSync(path.join(frontend, '.next', 'BUILD_ID'))) {
     console.log('4/4  Building the frontend (a few minutes the first time)…');
     await run(npx, ['next', 'build'], { cwd: frontend, env: webEnv, label: 'Frontend build' });

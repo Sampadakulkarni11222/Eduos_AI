@@ -1,6 +1,6 @@
 # Role and permission matrix — institution operations
 
-Generated from `backend/src/constants/permissions.js` (the source of truth; roles are synced to the database on boot). It covers the 46 permission keys added for institution operations. Earlier keys (academics, fees, library and so on) are unchanged.
+Generated from `backend/src/constants/permissions.js` (the source of truth; roles are synced to the database on boot). It covers the 50 permission keys added for institution operations. Earlier keys (academics, fees, library and so on) are unchanged.
 
 **A** = all records in the school. **O** = own records only. Blank = not granted.
 
@@ -52,6 +52,10 @@ Every API route checks its key on the server with `requirePermission`. The sideb
 | `community.moderate` | A | A | A |  |  |  |  |  |  |  |  |  |  |  |
 | `mentoring.participate` | A | A |  |  |  |  |  |  |  |  |  | O |  | O |
 | `campus.map.read` | A | A | A | A | A | A | A | O | A | A | A | O | O | O |
+| `syllabus.read` | A | A | A |  |  |  |  |  | O |  |  | O | O |  |
+| `syllabus.manage` | A | A | A |  |  |  |  |  | O |  |  |  |  |  |
+| `lectures.read` | A | A | A | O | O | O | O | O | O | O | O | O | O | O |
+| `lectures.manage` | A | A | A | O | O | O | O |  | O | O | O |  |  |  |
 | `messaging.read` | A | A | A |  |  |  |  |  |  |  |  |  |  |  |
 | `messaging.manage` | A | A |  |  |  |  |  |  |  |  |  |  |  |  |
 

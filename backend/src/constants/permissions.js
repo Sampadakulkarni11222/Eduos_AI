@@ -244,6 +244,10 @@ export const PERMISSION_CATALOG = [
   // Campus world.
   { key: 'campus.map.read', group: 'campus', description: 'Open the campus map (layers are limited by your other permissions)' },
 
+  // Syllabus: modules, their timelines and what was taught.
+  { key: 'syllabus.read', group: 'academics', description: 'See module plans and progress (OWN: your own classes or those of your children; ALL: the whole school)' },
+  { key: 'syllabus.manage', group: 'academics', description: 'Plan modules and record what was taught (OWN: the subjects you teach)' },
+
   // Digital lectures and online meetings.
   { key: 'lectures.read', group: 'academics', description: 'See and join online classes and meetings you are invited to (ALL: every one in the school)' },
   { key: 'lectures.manage', group: 'academics', description: 'Schedule, change and cancel online classes and meetings (OWN: the ones you host)' },
@@ -435,6 +439,8 @@ export const SYSTEM_ROLES = [
       ['messaging.read', 'ALL'],
       ['lectures.read', 'ALL'],
       ['lectures.manage', 'ALL'],
+      ['syllabus.read', 'ALL'],
+      ['syllabus.manage', 'ALL'],
     ]),
   },
   {
@@ -442,6 +448,8 @@ export const SYSTEM_ROLES = [
     name: 'Teacher',
     description: 'Manages their own classes',
     grants: merge([
+      ['syllabus.read', 'OWN'],
+      ['syllabus.manage', 'OWN'],
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
       ['attendance.mark', 'OWN'],
@@ -486,6 +494,7 @@ export const SYSTEM_ROLES = [
     name: 'Parent',
     description: "Views their own children's records",
     grants: merge([
+      ['syllabus.read', 'OWN'],
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
       ['leave.read', 'OWN'],
@@ -511,6 +520,7 @@ export const SYSTEM_ROLES = [
     name: 'Student',
     description: 'Views their own records',
     grants: merge([
+      ['syllabus.read', 'OWN'],
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
       ['leave.apply', 'OWN'],

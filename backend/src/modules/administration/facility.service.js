@@ -311,41 +311,47 @@ export async function createSampleCampus({ institutionType = 'SCHOOL', campusCod
     const rw = w / count;
     const docs = [];
     for (let i = 0; i < count; i++) {
-      docs.push({ ...S, ...extra, code: `${prefix}${String(i + 1).padStart(2, '0')}`, name: `${extra.label ?? (kind === 'LAB' ? 'Lab' : kind === 'LECTURE_HALL' ? 'Lecture Hall' : 'Room')} ${prefix}${String(i + 1).padStart(2, '0')}`, kind, parentId: floor._id, floorNo: floor.floorNo, capacity, layout: { x: x - w / 2 + rw * (i + 0.5), z, w: rw - 1, d: d - 2, h: 3.6 } });
+      docs.push({ ...S, ...extra, code: `${prefix}${String(i + 1).padStart(2, '0')}`, name: extra.names?.[i] ?? `${extra.label ?? (kind === 'LAB' ? 'Lab' : kind === 'LECTURE_HALL' ? 'Lecture Hall' : 'Room')} ${prefix}${String(i + 1).padStart(2, '0')}`, kind, parentId: floor._id, floorNo: floor.floorNo, capacity, layout: { x: x - w / 2 + rw * (i + 0.5), z, w: rw - 1, d: d - 2, h: 3.6 } });
     }
     delete docs.label;
-    await Facility.insertMany(docs.map(({ label: _l, ...r }) => r));
+    await Facility.insertMany(docs.map(({ label: _l, names: _n, ...r }) => r));
   };
   const academic = await building('ACB', college ? 'Academic Block' : 'Main Block', -50, -30, 80, 26, 3, '#E9DFC9');
-  await rooms(academic.fl[0], 'G', college ? 'LECTURE_HALL' : 'CLASSROOM', 5, { x: -50, z: -30, w: 80, d: 26 }, college ? 60 : 40);
-  await rooms(academic.fl[1], '1', college ? 'LECTURE_HALL' : 'CLASSROOM', 5, { x: -50, z: -30, w: 80, d: 26 }, college ? 60 : 40);
-  await rooms(academic.fl[2], '2', 'LAB', 3, { x: -50, z: -30, w: 80, d: 26 }, 30);
+  await rooms(academic.fl[0], 'G', college ? 'LECTURE_HALL' : 'CLASSROOM', 5, { x: -50, z: -30, w: 80, d: 26 }, college ? 60 : 40, { department: 'Academics' });
+  await rooms(academic.fl[1], '1', college ? 'LECTURE_HALL' : 'CLASSROOM', 5, { x: -50, z: -30, w: 80, d: 26 }, college ? 60 : 40, { department: 'Academics' });
+  await rooms(academic.fl[2], '2', 'LAB', 4, { x: -50, z: -30, w: 80, d: 26 }, 30, { department: 'Academics', names: ['Physics Lab', 'Chemistry Lab', 'Computer Lab', 'Art & Music Room'] });
   const admin = await building('ADM', 'Administration Block', 40, -40, 50, 22, 2, '#DCCFB6');
   await Facility.insertMany([
-    { ...S, code: 'ADM-OFF', name: 'Administration Office', kind: 'OFFICE', parentId: admin.fl[0]._id, floorNo: 0, capacity: 12, layout: { x: 28, z: -40, w: 22, d: 18, h: 3.6 } },
-    { ...S, code: 'ADM-FIN', name: 'Accounts & Admissions', kind: 'OFFICE', parentId: admin.fl[0]._id, floorNo: 0, capacity: 10, layout: { x: 52, z: -40, w: 22, d: 18, h: 3.6 } },
-    { ...S, code: 'ADM-PRN', name: "Principal's Office", kind: 'OFFICE', parentId: admin.fl[1]._id, floorNo: 1, capacity: 6, layout: { x: 28, z: -40, w: 22, d: 18, h: 3.6 }, bookable: false },
-    { ...S, code: 'ADM-STF', name: 'Staff Room', kind: 'STAFF_ROOM', parentId: admin.fl[1]._id, floorNo: 1, capacity: 40, layout: { x: 52, z: -40, w: 22, d: 18, h: 3.6 } },
-    { ...S, code: 'ADM-SRV', name: 'Server Room', kind: 'SERVER_ROOM', parentId: admin.fl[0]._id, floorNo: 0, restricted: true, bookable: false, layout: { x: 40, z: -30, w: 6, d: 4, h: 3 } },
+    { ...S, code: 'ADM-OFF', name: 'Administration Office', kind: 'OFFICE', department: 'Administration', parentId: admin.fl[0]._id, floorNo: 0, capacity: 12, layout: { x: 24, z: -42, w: 15, d: 14, h: 3.6 } },
+    { ...S, code: 'ADM-FIN', name: 'Accounts Office', kind: 'OFFICE', department: 'Finance & Accounts', parentId: admin.fl[0]._id, floorNo: 0, capacity: 8, layout: { x: 40.5, z: -42, w: 15, d: 14, h: 3.6 } },
+    { ...S, code: 'ADM-ADM', name: 'Admissions & Marketing Desk', kind: 'OFFICE', department: 'Admissions & Marketing', parentId: admin.fl[0]._id, floorNo: 0, capacity: 8, layout: { x: 56.5, z: -42, w: 14, d: 14, h: 3.6 } },
+    { ...S, code: 'ADM-PRN', name: "Principal's Office", kind: 'OFFICE', department: "Principal's Office", parentId: admin.fl[1]._id, floorNo: 1, capacity: 6, layout: { x: 22, z: -40, w: 12, d: 18, h: 3.6 }, bookable: false },
+    { ...S, code: 'ADM-HR', name: 'HR Office', kind: 'OFFICE', department: 'Human Resources', parentId: admin.fl[1]._id, floorNo: 1, capacity: 6, layout: { x: 34.5, z: -40, w: 11, d: 18, h: 3.6 } },
+    { ...S, code: 'ADM-CMP', name: 'Compliance & Safeguarding Cell', kind: 'OFFICE', department: 'Compliance & Safeguarding', parentId: admin.fl[1]._id, floorNo: 1, capacity: 6, layout: { x: 46, z: -40, w: 10, d: 18, h: 3.6 } },
+    { ...S, code: 'ADM-STF', name: 'Staff Room', kind: 'STAFF_ROOM', department: 'Academics', parentId: admin.fl[1]._id, floorNo: 1, capacity: 40, layout: { x: 58, z: -40, w: 12, d: 18, h: 3.6 } },
+    { ...S, code: 'ADM-SRV', name: 'Server Room', kind: 'SERVER_ROOM', parentId: admin.fl[0]._id, floorNo: 0, restricted: true, bookable: false, layout: { x: 40, z: -31.5, w: 6, d: 4, h: 3 } },
   ]);
   const lib = await building('LIB', 'Library', 40, 10, 34, 24, 1, '#E6D7BC');
-  await Facility.create({ ...S, code: 'LIB-RR', name: 'Reading Room', kind: 'LIBRARY', parentId: lib.fl[0]._id, floorNo: 0, capacity: 80, layout: { x: 40, z: 10, w: 32, d: 22, h: 3.6 } });
+  await Facility.create({ ...S, code: 'LIB-RR', name: 'Reading Room', kind: 'LIBRARY', department: 'Library', parentId: lib.fl[0]._id, floorNo: 0, capacity: 80, layout: { x: 40, z: 10, w: 32, d: 22, h: 3.6 } });
   const aud = await building('AUD', 'Auditorium', -60, 25, 40, 30, 1, '#D9C7A4');
-  await Facility.create({ ...S, code: 'AUD-HALL', name: 'Main Auditorium', kind: 'AUDITORIUM', parentId: aud.fl[0]._id, floorNo: 0, capacity: 400, layout: { x: -60, z: 25, w: 38, d: 28, h: 8 } });
+  await Facility.create({ ...S, code: 'AUD-HALL', name: 'Main Auditorium', kind: 'AUDITORIUM', department: 'Events & Sports', parentId: aud.fl[0]._id, floorNo: 0, capacity: 400, layout: { x: -60, z: 25, w: 38, d: 28, h: 8 } });
   const can = await building('CAN', 'Canteen', 85, 10, 22, 18, 1, '#EADBC0');
-  await Facility.create({ ...S, code: 'CAN-1', name: 'Canteen Hall', kind: 'CANTEEN', parentId: can.fl[0]._id, floorNo: 0, capacity: 150, bookable: false, layout: { x: 85, z: 10, w: 20, d: 16, h: 3.6 } });
+  await Facility.create({ ...S, code: 'CAN-1', name: 'Canteen Hall', kind: 'CANTEEN', department: 'Canteen', parentId: can.fl[0]._id, floorNo: 0, capacity: 150, bookable: false, layout: { x: 85, z: 10, w: 20, d: 16, h: 3.6 } });
   const med = await building('MED', 'Health Centre', 85, -15, 16, 12, 1, '#F0E4CF');
-  await Facility.create({ ...S, code: 'MED-1', name: 'Sick Room', kind: 'CLINIC', parentId: med.fl[0]._id, floorNo: 0, capacity: 4, bookable: false, restricted: true, layout: { x: 85, z: -15, w: 14, d: 10, h: 3.4 } });
+  await Facility.create({ ...S, code: 'MED-1', name: 'Sick Room', kind: 'CLINIC', department: 'Health Centre', parentId: med.fl[0]._id, floorNo: 0, capacity: 4, bookable: false, restricted: true, layout: { x: 85, z: -15, w: 14, d: 10, h: 3.4 } });
   await Facility.insertMany([
-    { ...S, code: 'GRD-1', name: college ? 'Sports Ground' : 'Playground', kind: 'GROUND', parentId: campus._id, capacity: 600, layout: { x: -5, z: 55, w: 90, d: 45, h: 0 } },
-    { ...S, code: 'CRT-1', name: 'Basketball Court', kind: 'COURT', parentId: campus._id, capacity: 40, layout: { x: 70, z: 55, w: 28, d: 16, h: 0 } },
-    { ...S, code: 'BUS-1', name: 'Bus Bay', kind: 'TRANSPORT_BAY', parentId: campus._id, bookable: false, layout: { x: -95, z: -10, w: 18, d: 60, h: 0 } },
+    { ...S, code: 'GRD-1', name: college ? 'Sports Ground' : 'Playground', kind: 'GROUND', department: 'Events & Sports', parentId: campus._id, capacity: 600, layout: { x: -5, z: 55, w: 90, d: 45, h: 0 } },
+    { ...S, code: 'CRT-1', name: 'Basketball Court', kind: 'COURT', department: 'Events & Sports', parentId: campus._id, capacity: 40, layout: { x: 70, z: 55, w: 28, d: 16, h: 0 } },
+    { ...S, code: 'BUS-1', name: 'Bus Bay', kind: 'TRANSPORT_BAY', department: 'Transport', parentId: campus._id, bookable: false, layout: { x: -95, z: -10, w: 18, d: 60, h: 0 } },
     { ...S, code: 'PRK-1', name: 'Parking', kind: 'PARKING', parentId: campus._id, bookable: false, layout: { x: -95, z: 50, w: 18, d: 40, h: 0 } },
     { ...S, code: 'GATE-1', name: 'Main Gate', kind: 'GATE', parentId: campus._id, bookable: false, layout: { x: 0, z: -78, w: 14, d: 4, h: 3 } },
   ]);
-  if (college) {
-    const hostel = await building('HST', 'Hostel', -10, -60, 40, 14, 3, '#E2D4B8');
-    await Facility.create({ ...S, code: 'HST-1', name: 'Hostel Block A', kind: 'HOSTEL', parentId: hostel.fl[0]._id, floorNo: 0, capacity: 120, bookable: false, layout: { x: -10, z: -60, w: 38, d: 12, h: 3.6 } });
-  }
+  const hostel = await building('HST', 'Hostel', -10, -62, 40, 14, college ? 3 : 2, '#E2D4B8');
+  await Facility.insertMany([
+    { ...S, code: 'HST-1', name: 'Hostel Block A', kind: 'HOSTEL', department: 'Hostel', parentId: hostel.fl[0]._id, floorNo: 0, capacity: college ? 120 : 100, bookable: false, layout: { x: -10, z: -62, w: 38, d: 12, h: 3.6 } },
+    { ...S, code: 'HST-2', name: 'Hostel Block B', kind: 'HOSTEL', department: 'Hostel', parentId: hostel.fl[1]._id, floorNo: 1, capacity: college ? 120 : 100, bookable: false, layout: { x: -10, z: -62, w: 38, d: 12, h: 3.6 } },
+  ]);
+  const store = await building('STR', 'Stores', 88, -42, 14, 12, 1, '#DDD0B4');
+  await Facility.create({ ...S, code: 'STR-1', name: 'Central Store', kind: 'STORE', department: 'Administration', parentId: store.fl[0]._id, floorNo: 0, bookable: false, layout: { x: 88, z: -42, w: 12, d: 10, h: 3.4 } });
   return { created: await Facility.countDocuments({ sampleLayout: true }) };
 }

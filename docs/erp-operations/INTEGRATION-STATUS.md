@@ -53,6 +53,10 @@ The assistant has sixteen read-only tools for the new modules and is available t
 
 It cannot approve, file, pay, clear or decide anything in these modules, and it has no access to safeguarding cases, individual pay or the contents of background checks. Without an AI model key it answers from built-in question matching; with one, it understands freer phrasing. The full list is in `docs/MCP-TOOLS.md`.
 
+## Trying it locally
+
+`npm run demo` in `backend` starts a throwaway in-memory database, seeds the fictional school, its people and sample data for every section, and serves the product at `http://localhost:3000/oakridge` (add `-- --build` after changing the frontend). The same sample data can be added to a local development database with `npm run seed:school`, `npm run seed` and `npm run seed:operations`, in that order. All of it is fictional; nothing is filed, paid or sent.
+
 ## Local development on Windows
 
 The frontend's server side now reaches the backend at `http://127.0.0.1:5000` by default. Before this, it used `localhost`, which Node resolves to IPv6 on Windows while the backend listens on IPv4, so sessions could not be renewed and people were signed out on reload. Set `API_URL` if your backend is elsewhere.

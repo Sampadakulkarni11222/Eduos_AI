@@ -216,9 +216,33 @@ export interface ConsentDto { studentId: string; name: string; level: 'NONE' | '
 
 // ── campus ──
 export interface CampusNodeNow { type: string; label: string; teacher?: string | null; until?: string; source: string }
-export interface CampusNodeDto { id: string; code: string; name: string; kind: string; parentId: string | null; campusCode: string | null; floorNo: number | null; capacity: number | null; accessible: boolean; status: string; restricted: boolean; layout: FacilityDto['layout']; sampleLayout: boolean; now: CampusNodeNow[] | null; nextScheduled?: { label: string; at: string }; periodsToday?: number; bookingsToday?: number; openWorkOrders?: number; urgentWorkOrders?: number }
-export interface CampusMapDto { institution: string | null; institutionType: string; campuses: Array<{ code: string; name: string }>; sampleLayout: boolean; layers: Record<string, boolean>; asOf: string; localTime: string; kpis: Record<string, number | string>; facilities: CampusNodeDto[]; eventsToday: Array<{ id: string; title: string; facilityId: string | null; startsAt: string; endsAt: string; status: string }> }
-export interface FacilityDetailDto extends FacilityDto { layers: Record<string, boolean>; children: Array<{ id: string; name: string; kind: string; capacity: number | null; status: string; floorNo: number | null }>; scheduleToday?: Array<{ startTime: string; endTime: string; section: string; subject: string | null; teacher: string | null }>; scheduleSource?: string; upcomingBookings?: Array<{ startsAt: string; endsAt: string; title: string }>; workOrders?: Array<{ id: string; refNo: string; title: string; priority: string; status: string; dueAt: string; overdue: boolean }>; bookable?: boolean }
+export interface ModuleNowDto { title: string; nextTopic: string | null; progressPct: number; expectedPct?: number; pace: string; plannedEnd?: string }
+/** Headcount from today's register. `present` is null until the register is taken. */
+export interface RoomLiveDto { class: string | null; homeRoom: boolean; away?: boolean; awayIn?: string; enrolled: number; present: number | null; absent: number | null; registerTaken: boolean; attendancePct: number | null; source: string }
+export interface RoomLessonDto { periodNo: number; startTime: string; endTime: string; class: string; subject: string; teacher?: string | null; module: ModuleNowDto | null }
+export interface CampusNodeDto { id: string; code: string; name: string; kind: string; parentId: string | null; campusCode: string | null; floorNo: number | null; capacity: number | null; accessible: boolean; status: string; restricted: boolean; layout: FacilityDto['layout']; sampleLayout: boolean; department?: string | null; now: CampusNodeNow[] | null; live?: RoomLiveDto; lesson?: RoomLessonDto; nextScheduled?: { label: string; at: string }; periodsToday?: number; bookingsToday?: number; openWorkOrders?: number; urgentWorkOrders?: number }
+export interface CampusDepartmentDto { code: string; name: string; description: string | null; head: { name: string | null; title: string } | null; staffCount: number | null; facilityIds: string[]; metrics: Array<{ value: number | string; label: string; tone: 'good' | 'warn' | 'bad' | 'neutral' }>; pages: string[] }
+export interface CampusMapDto { institution: string | null; institutionType: string; campuses: Array<{ code: string; name: string }>; sampleLayout: boolean; layers: Record<string, boolean>; asOf: string; preview?: boolean; localTime: string; kpis: Record<string, number | string | null>; facilities: CampusNodeDto[]; departments?: CampusDepartmentDto[]; eventsToday: Array<{ id: string; title: string; facilityId: string | null; startsAt: string; endsAt: string; status: string }> }
+export interface ClassTodayDto { class: string | null; sectionId: string; enrolled: number; present: number | null; absent: number | null; late: number | null; registerTaken: boolean; attendancePct: number | null; exam: { name: string; subject: string | null; paperToday: boolean } | null; week: Array<{ date: string; present: number; marked: number; pct: number | null }>; source: string }
+export interface FacilityDetailDto extends FacilityDto { layers: Record<string, boolean>; children: Array<{ id: string; name: string; kind: string; capacity: number | null; status: string; floorNo: number | null }>; scheduleToday?: Array<{ periodNo?: number; startTime: string; endTime: string; section: string; subject: string | null; teacher: string | null; subjectOfferingId?: string; module?: ModuleNowDto | null; isNow?: boolean }>; scheduleSource?: string; classToday?: ClassTodayDto; upcomingBookings?: Array<{ startsAt: string; endsAt: string; title: string }>; workOrders?: Array<{ id: string; refNo: string; title: string; priority: string; status: string; dueAt: string; overdue: boolean }>; bookable?: boolean }
+
+// ── syllabus and modules ──
+export interface CourseModuleDto {
+  id: string; subjectOfferingId: string; order: number; title: string; description: string | null; plannedStart: string; plannedEnd: string; plannedPeriods: number | null;
+  status: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED'; startedAt: string | null; completedAt: string | null;
+  topics: Array<{ id: string; title: string; done: boolean; doneAt: string | null }>;
+  updates: Array<{ taughtOn: string; byName: string | null; note: string | null; topicsCovered: string[]; homework: string | null }>;
+  topicsDone: number; topicsTotal: number; progressPct: number; expectedPct: number; pace: string; daysLeft: number; lastUpdateOn: string | null;
+}
+export interface SyllabusSummaryDto { modulesTotal: number; modulesDone: number; coveragePct: number | null; health: string; lastUpdateOn: string | null; current: (ModuleNowDto & { id: string; expectedPct: number; plannedEnd: string }) | null }
+export interface SyllabusRowDto extends SyllabusSummaryDto { subjectOfferingId: string; subject: string; class: string; teacherId: string | null; teacher: string | null; canManage: boolean }
+export interface SyllabusPlanDto extends SyllabusSummaryDto { subjectOfferingId: string; subject: string; class: string; teacher: string | null; canManage: boolean; modules: CourseModuleDto[] }
+export interface SyllabusOverviewDto {
+  rows: SyllabusRowDto[];
+  byTeacher: Array<{ teacherId: string | null; teacher: string; subjects: number; onTrack: number; behind: number; noPlan: number; noUpdate: number; coveragePct: number | null; lessonsThisWeek: number; avgScorePct: number | null }>;
+  totals: { subjects: number; onTrack: number; behind: number; noPlan: number; noRecentUpdate: number };
+  definition: string;
+}
 
 // ── messaging ──
 export interface PreferencesDto { whatsappOptIn: { status: string; at?: string | null }; language: string; quietHours: { enabled: boolean; startHour: number; endHour: number } }

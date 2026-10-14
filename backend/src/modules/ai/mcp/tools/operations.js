@@ -13,6 +13,7 @@ import * as org from '../../../institution/org.service.js';
 import * as community from '../../../community/community.service.js';
 import * as campus from '../../../campus/campus.service.js';
 import * as lectures from '../../../lectures/lecture.service.js';
+import * as syllabus from '../../../syllabus/syllabus.service.js';
 import { ok } from '../protocol.js';
 import { RISK, noArgs, rupees, shortDate, summarise } from './_shared.js';
 
@@ -310,6 +311,26 @@ export const operationsTools = {
       const rows = (await lectures.list(ctx.actor, {})).map((c) => ({ title: c.title, kind: c.kind, when: c.when, host: c.hostName, status: c.status, subject: c.subjectName }));
       const view = summarise(rows.slice(0, 8), (c) => `${c.title} (${c.when})`);
       return ok({ classes: rows, count: rows.length }, { speak: rows.length ? `${rows.length} online class(es) coming up: ${view.list}. Join from the Digital Lectures page.` : 'No online classes are coming up.' });
+    },
+  },
+
+  get_syllabus_progress: {
+    module: 'Syllabus',
+    operation: 'GET',
+    risk: RISK.LOW,
+    description: 'Syllabus progress by subject and class: the module being taught now, how much is covered, and whether it is on track, behind or has no recent update. A teacher sees their own subjects, a student or parent their class, the principal the whole school. Read-only.',
+    inputSchema: noArgs,
+    permission: 'syllabus.read',
+    service: 'syllabus.service.overview()',
+    async run(ctx) {
+      const o = await syllabus.overview(ctx.actor, {});
+      const rows = o.rows.map((r) => ({ subject: r.subject, class: r.class, teacher: r.teacher, health: r.health, coveragePct: r.coveragePct, currentModule: r.current?.title ?? null, nextTopic: r.current?.nextTopic ?? null }));
+      const behind = rows.filter((r) => ['BEHIND', 'OVERDUE'].includes(r.health));
+      const view = summarise(behind.slice(0, 6), (r) => `${r.class} ${r.subject}${r.teacher ? ` (${r.teacher})` : ''}`);
+      return ok(
+        { subjects: rows, totals: o.totals, definition: o.definition },
+        { speak: rows.length ? `${o.totals.subjects} subject(s): ${o.totals.onTrack} on track, ${o.totals.behind} behind, ${o.totals.noPlan} with no plan yet.${behind.length ? ` Behind: ${view.list}.` : ''}` : 'No subjects to show.' },
+      );
     },
   },
 

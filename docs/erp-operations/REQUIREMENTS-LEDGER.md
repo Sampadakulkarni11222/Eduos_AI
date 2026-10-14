@@ -26,7 +26,7 @@ Every API below is **Tested** unless noted; every screen is **Built**.
 | 6 | Trustee and board meetings with WhatsApp updates | Meetings, agenda, minutes, resolutions, action tracking. Members are notified in the app and by WhatsApp when it is live. | Tested | Built | WhatsApp is **Simulated** until templates are registered (see INTEGRATION-STATUS). |
 | 7 | Agreements, rules and policies | Agreement register with renewals; policies with versions and read-acknowledgement. | Tested | Built | |
 | 8 | Cost analysis | Budgets with committed and actual spend from procurement; cost figures on the principal's home. | Tested | Built | Cost per student shows "Not available" until budgets and enrolment are both present. |
-| 9 | Teacher and student performance | Existing risk and workload pages kept; summarised on the Command Centre. | Existing | Built | No new performance model was added. |
+| 9 | Teacher and student performance | Existing risk and workload pages kept; summarised on the Command Centre. Since the fourth round the principal also sees each teacher against their module plan: subjects on track and behind, lessons recorded this week, syllabus covered and the average of published exam results. | Tested | Built | The figures are signals shown side by side, not a rating or a ranking. |
 | 10 | Administration department: operations | Facilities, room booking with clash checks, maintenance work orders. | Tested | Built | |
 | 11 | Background verification of teachers and drivers, principal decides | Consent, checks with evidence, principal's final decision, expiry. | Tested | Built | **Planned**: showing a driver's clearance on transport routes. No link to any police or agency system; results are entered by staff. |
 | 12 | Events, fests, meeting arrangement | Proposal, budget, approval, tasks, close-out. | Tested | Built | |
@@ -39,7 +39,7 @@ Every API below is **Tested** unless noted; every screen is **Built**.
 | 19 | Smart dashboards for every profile | A role home for each role and the principal's Command Centre with a daily briefing. | Tested | Built | Missing data is shown as "Not available", never as zero. |
 | 20 | Licences, POCSO and other mandatory sessions, district notices | Licence register with expiry reminders, training sessions with attendance, notice register, notice sources watched for changes. | Tested | Built | Notice watching only detects that a page changed; a person reads and records the notice. Not yet run against live sites. Catalogue entries start as "Under review". |
 | 21 | Newsroom, circles, seniors and alumni | Posts with moderation, reactions, circles, mentoring (supervised for students), media consent, alumni role. | Tested | Built | Videos show as links (uploads have no captions). |
-| 22 | 3D game-like campus map for every profile, limited by access, with drill-down | Campus World: 3D buildings and rooms, click for detail, buttons to related pages, list view as the accessible alternative. Filtering is done on the server. | Tested | Built | Uses a sample layout until a school enters its own. Activity shown is scheduled, not live tracking. Frame rate not yet measured on a low-end phone. |
+| 22 | 3D game-like campus map for every profile, limited by access, with drill-down | Campus World: 3D buildings and rooms, click for detail, buttons to related pages, list view as the accessible alternative. Filtering is done on the server. | Tested | Built | Uses a sample layout until a school enters its own. Lessons come from the timetable and headcounts from the attendance register; nobody is located or tracked. Frame rate not yet measured on a low-end phone. |
 | 23 | Safeguarding | Anyone can raise a concern; only the safeguarding team can read cases; details encrypted. | Tested | Built | The system records reports to authorities; it does not make them. |
 | 24 | Messaging with honest status | Outbox with consent, quiet hours, idempotency and true delivery status. | Tested | Built | **Simulated** without a provider. |
 | 25 | Research all roles; final audit; competitors; AI opportunities | `REFERENCE-ANALYSIS.md`, `docs/research/regulatory-source-register.md`, `COMPETITOR-GAP-ANALYSIS.md`, `AUDIT.md`. | — | — | AI opportunities are listed, **not implemented** (see below). |
@@ -70,10 +70,25 @@ Every API below is **Tested** unless noted; every screen is **Built**.
 | 40 | Class announcements, reminders, changes and cancellations by app, email and WhatsApp | Tested |
 | 41 | Board and government submissions: researched; no public filing API found. Every return and letter prints as an official document on letterhead with declaration, signature and seal blocks and a DRAFT mark until approved; new board candidate list and mandatory disclosure templates | Tested (5) and checked in a browser |
 
+## Added in the fourth round
+
+| # | Item | Status |
+|---|---|---|
+| 42 | Syllabus & Modules: a teacher lays out each subject as modules with a planned window and topics, and records what was taught after a lesson (topics, note, homework). Progress is only what was recorded; "behind" is measured against the planned window | Tested (5) and checked in a browser as principal, teacher and student |
+| 43 | Principal's module tracker: every subject and every teacher against the plan (on track, behind, no lesson recorded this week, no plan), with the timeline of each subject one click away | Tested and checked in a browser |
+| 44 | Live classrooms on the campus map: present out of enrolled from today's attendance register ("register not taken" until it is marked), the lesson and teacher from the timetable, the module and next topic from the plan, exam in progress, the week's attendance, and a class shown as away when its lesson is in a lab | Tested (8) and checked in a browser |
+| 45 | Departments on the campus map: thirteen departments placed on their rooms, each with its head, people and live figures for those allowed to see them, and buttons to its pages in the reader's own portal | Tested and checked in a browser |
+| 46 | Campus map opens full page, with seated students that follow the register's count, a teacher at the board, an invigilator in an exam room, a time slider and "Play the day" for staff, and a button to hide the panels | Checked in a browser |
+| 47 | The sample campus now covers the whole school: named labs, a staff room, separate offices for administration, accounts, admissions, HR, compliance and the principal, a hostel, a store, and a department on every space | Tested |
+| 48 | Sample data for every section (`npm run seed:operations`, and part of `npm run demo`): 27 sections from the school profile to payroll, all written through the same services the screens use, all fictional | Run on an empty database; every section reports its result |
+| 49 | Assistant tool for syllabus progress (192 tools in the catalogue) | Tested |
+
 ## Not done
 
 - **Pressing every button on every screen.** The browser test proves pages load; forms were not all exercised by hand.
-- **AI that drafts or summarises** (reply drafts, notice summaries, minutes). The assistant's tools only read and report.
+- **AI that drafts or summarises** (reply drafts, notice summaries, minutes). The assistant's tools only read and report. It needs an AI model key, which is not configured.
+- **Instant push to the campus map.** The map asks the server every 30 seconds, so a register a teacher has just taken appears within half a minute, not at once.
+- **Poster and creative generation.** Marketing material is uploaded and approved, not designed in the system.
 - **Direct filing with boards or government**: no public API exists (see docs/research/board-submission-channels.md).
 - **Meeting-service integration**: EduOS does not create meetings inside Google Meet, Zoom or Teams, or read their attendance; the host pastes the link.
 - **College academics beyond credits and accreditation evidence**: credit-based grading, semester promotion, outcome mapping.

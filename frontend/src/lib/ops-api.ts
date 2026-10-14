@@ -282,9 +282,18 @@ export const opsApi = {
   requestMentoring: (body: unknown) => post<T.MentorshipDto>('/community/mentoring', body),
   mentoringAction: (id: string, body: unknown) => post<T.MentorshipDto>(`/community/mentoring/${id}`, body),
 
+  // ── syllabus and modules ──
+  syllabus: (p: Q = {}) => get<T.SyllabusOverviewDto>('/syllabus', p),
+  syllabusPlan: (offeringId: string) => get<T.SyllabusPlanDto>(`/syllabus/offerings/${offeringId}`),
+  syllabusOfferings: () => get<Array<{ id: string; label: string }>>('/syllabus/offerings'),
+  createModule: (body: unknown) => post<T.CourseModuleDto>('/syllabus/modules', body),
+  updateModule: (id: string, body: unknown) => patch<T.CourseModuleDto>(`/syllabus/modules/${id}`, body),
+  recordModuleProgress: (id: string, body: unknown) => post<T.CourseModuleDto>(`/syllabus/modules/${id}/progress`, body),
+  removeModule: (id: string) => del<{ removed: boolean }>(`/syllabus/modules/${id}`),
+
   // ── campus ──
-  campusMap: (campusCode?: string) => get<T.CampusMapDto>('/campus/map', { campusCode }),
-  campusFacility: (id: string) => get<T.FacilityDetailDto>(`/campus/facilities/${id}`),
+  campusMap: (campusCode?: string, at?: string | null) => get<T.CampusMapDto>('/campus/map', { campusCode, at }),
+  campusFacility: (id: string, at?: string | null) => get<T.FacilityDetailDto>(`/campus/facilities/${id}`, { at }),
 
   // ── messaging ──
   preferences: () => get<T.PreferencesDto>('/messaging/preferences'),

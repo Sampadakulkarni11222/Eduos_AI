@@ -36,6 +36,7 @@ export interface SceneOptions {
 export const STATE_COLORS: Record<string, string> = {
   FREE: '#8FD3A6',
   SCHEDULED_CLASS: '#4F86E8',
+  EXAM: '#E0527A',
   BOOKED: '#9B7BE6',
   EVENT: '#F2B33D',
   UNDER_MAINTENANCE: '#F07F3C',
@@ -49,7 +50,7 @@ export function stateOf(n: CampusNodeDto): string {
   if (n.status === 'UNDER_MAINTENANCE') return 'UNDER_MAINTENANCE';
   if (n.status === 'CLOSED') return 'CLOSED';
   const s = n.now?.[0]?.type;
-  if (s === 'SCHEDULED_CLASS' || s === 'BOOKED' || s === 'EVENT') return s;
+  if (s === 'EXAM' || s === 'SCHEDULED_CLASS' || s === 'BOOKED' || s === 'EVENT') return s;
   if (n.now) return 'FREE';
   return 'OTHER';
 }
@@ -85,6 +86,13 @@ export class CampusScene {
   private bus: { mesh: THREE.Group; path: THREE.CurvePath<THREE.Vector3>; t: number; stopAt: number; wait: number } | null = null;
   private cars: { mesh: THREE.InstancedMesh; t: Float32Array; path: THREE.CurvePath<THREE.Vector3>; count: number } | null = null;
   private pins: Pin[] = [];
+  private occupants: THREE.Group | null = null;
+  private occDisposables: Array<{ dispose: () => void }> = [];
+  private seated: { head: THREE.InstancedMesh; base: Float32Array; count: number; y: number } | null = null;
+  private teachers: Array<{ obj: THREE.Object3D; x: number; z: number; span: number; depth: number; phase: number }> = [];
+  private beams: THREE.Group | null = null;
+  private beamDisposables: Array<{ dispose: () => void }> = [];
+  private spotIds: string[] = [];
   private glide: { fromPos: THREE.Vector3; toPos: THREE.Vector3; fromTarget: THREE.Vector3; toTarget: THREE.Vector3; t: number } | null = null;
   private disposables: Array<{ dispose: () => void }> = [];
   /** Geometry and materials of the current build; freed on every rebuild. */
@@ -236,6 +244,8 @@ export class CampusScene {
     this.addTrees(W, D);
     this.addLife(W, D);
     this.refreshPins();
+    this.refreshOccupants();
+    this.refreshBeams();
     this.highlight(this.selectedId);
   }
 
@@ -565,6 +575,137 @@ export class CampusScene {
     }
   }
 
+  /** Where students sit (or stand, at a lab bench) in a room. Matches the furniture laid out above. */
+  private seatSpots(r: CampusNodeDto, RL: CampusNodeDto['layout'], w: number, d: number): Array<[number, number]> {
+    const spots: Array<[number, number]> = [];
+    if (['CLASSROOM', 'LECTURE_HALL'].includes(r.kind)) {
+      const cols = Math.max(2, Math.min(5, Math.floor((w - 3) / 2.6)));
+      const rows = Math.max(2, Math.min(5, Math.floor((d - 5) / 2.4)));
+      for (let rI = 0; rI < rows; rI++) for (let c = 0; c < cols; c++) {
+        spots.push([RL.x - (w - 3) / 2 + (c + 0.5) * ((w - 3) / cols), RL.z - d / 2 + 4 + rI * ((d - 5) / rows) + 0.95]);
+      }
+    } else if (r.kind === 'LAB') {
+      const len = Math.max(2, w - 4);
+      for (let i = 0; i < 3; i++) for (let k = 0; k < 4; k++) spots.push([RL.x - len / 2 + (k + 0.5) * (len / 4), RL.z - d / 2 + 3 + i * ((d - 5) / 2.4) + 1.3]);
+    }
+    return spots;
+  }
+
+  /**
+   * Figures in the rooms of the open floor. The share of seats filled follows
+   * the class's attendance register (present out of enrolled), so a room looks
+   * as full as the register says; a teacher stands at the board while a lesson
+   * is timetabled, and walks the aisle during an exam. They are figures, not
+   * people: nobody is located or tracked, and a class whose register has not
+   * been taken shows empty seats rather than a guess.
+   */
+  private refreshOccupants() {
+    if (this.occupants) { this.world.remove(this.occupants); this.occupants = null; }
+    for (const d of this.occDisposables) d.dispose();
+    this.occDisposables = []; this.teachers = []; this.seated = null;
+    if (this.level.kind !== 'building' || this.opts.lowPower) return;
+    const lvl = this.level;
+    const nodes = [...this.nodeById.values()];
+    const floors = nodes.filter((n) => n.parentId === lvl.buildingId && n.kind === 'FLOOR').sort((a, c) => (a.floorNo ?? 0) - (c.floorNo ?? 0));
+    const floor = floors.find((f) => (f.floorNo ?? 0) === (lvl.floorNo ?? floors[0]?.floorNo ?? 0));
+    if (!floor) return;
+    const own = <T extends { dispose: () => void }>(x: T) => { this.occDisposables.push(x); return x; };
+    const y = 0.4 + (floor.floorNo ?? 0) * INTERIOR_FLOOR_GAP + 0.38;
+    const group = new THREE.Group();
+    const skin = own(new THREE.MeshStandardMaterial({ color: '#F0CDAE', roughness: 0.7 }));
+    const teacherMat = own(new THREE.MeshStandardMaterial({ color: '#D2455E', roughness: 0.6 }));
+    const tBody = own(new THREE.CapsuleGeometry(0.34, 1.0, 4, 10));
+    const tHead = own(new THREE.SphereGeometry(0.32, 12, 10));
+    const sit: Array<[number, number]> = [];
+    for (const room of nodes.filter((n) => n.parentId === floor.id)) {
+      const RL = room.layout;
+      const w = Math.max(RL.w, 2); const d = Math.max(RL.d, 2);
+      const state = stateOf(room);
+      const live = room.live;
+      const spots = this.seatSpots(room, RL, w, d);
+      if (spots.length && live && live.present !== null && live.enrolled > 0 && (room.lesson || live.homeRoom || state === 'EXAM')) {
+        const filled = Math.min(spots.length, Math.max(live.present > 0 ? 1 : 0, Math.round(spots.length * (live.present / live.enrolled))));
+        // Empty seats are spread through the room rather than bunched at the back.
+        const gaps = spots.length - filled;
+        const empty = new Set<number>();
+        for (let k = 0; k < gaps; k++) empty.add(Math.floor(((k + 0.5) * spots.length) / gaps));
+        spots.forEach((spot, i) => { if (!empty.has(i)) sit.push(spot); });
+      }
+      if (room.lesson || state === 'EXAM') {
+        const exam = state === 'EXAM';
+        const g = new THREE.Group();
+        const body = new THREE.Mesh(tBody, teacherMat); body.position.y = 1.05;
+        const head = new THREE.Mesh(tHead, skin); head.position.y = 2.1;
+        g.add(body, head);
+        const x = exam ? RL.x - w / 2 + 0.9 : RL.x;
+        const z = RL.z - d / 2 + 1.6;
+        g.position.set(x, y, z);
+        g.traverse((o) => { o.castShadow = true; });
+        group.add(g);
+        this.teachers.push({ obj: g, x, z, span: exam ? 0 : Math.max(0.5, Math.min(w - 3, 5) / 2), depth: exam ? Math.max(0, d - 4) : 0, phase: this.teachers.length * 1.7 });
+      }
+    }
+    if (sit.length) {
+      const body = new THREE.InstancedMesh(own(new THREE.BoxGeometry(0.6, 0.85, 0.5)), own(new THREE.MeshStandardMaterial({ color: '#F6F8FC', roughness: 0.7 })), sit.length);
+      const head = new THREE.InstancedMesh(own(new THREE.SphereGeometry(0.28, 10, 8)), skin, sit.length);
+      const m = new THREE.Matrix4();
+      const base = new Float32Array(sit.length * 2);
+      sit.forEach(([x, z], i) => {
+        m.makeTranslation(x, y + 1.3, z); body.setMatrixAt(i, m);
+        m.makeTranslation(x, y + 2.0, z - 0.05); head.setMatrixAt(i, m);
+        base[i * 2] = x; base[i * 2 + 1] = z;
+      });
+      body.castShadow = true;
+      group.add(body, head);
+      this.seated = { head, base, count: sit.length, y: y + 2.0 };
+    }
+    this.world.add(group);
+    this.occupants = group;
+  }
+
+  /** Marks the buildings, rooms and open spaces a department works in with a soft beam, so it can be found at a glance. */
+  spotlight(ids: string[]) {
+    this.spotIds = ids;
+    this.refreshBeams();
+  }
+
+  private refreshBeams() {
+    if (this.beams) { this.world.remove(this.beams); this.beams = null; }
+    for (const d of this.beamDisposables) d.dispose();
+    this.beamDisposables = [];
+    if (!this.spotIds.length) return;
+    const own = <T extends { dispose: () => void }>(x: T) => { this.beamDisposables.push(x); return x; };
+    const beamMat = own(new THREE.MeshBasicMaterial({ color: 0xf2b33d, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false }));
+    const ringMat = own(new THREE.MeshBasicMaterial({ color: 0xf2b33d, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false }));
+    const group = new THREE.Group();
+    const seen = new Set<string>();
+    for (const id of this.spotIds) {
+      // A room is shown by its building from outside, and by itself when its floor is open.
+      let target = this.nodeById.get(id);
+      if (target && !this.meshById.has(target.id)) {
+        const floor = target.parentId ? this.nodeById.get(target.parentId) : undefined;
+        target = floor?.kind === 'FLOOR' && floor.parentId ? this.nodeById.get(floor.parentId) : undefined;
+      }
+      const obj = target ? this.meshById.get(target.id) : undefined;
+      if (!target || !obj || seen.has(target.id)) continue;
+      seen.add(target.id);
+      const box = new THREE.Box3().setFromObject(obj);
+      const size = box.getSize(new THREE.Vector3());
+      const c = box.getCenter(new THREE.Vector3());
+      const radius = Math.max(size.x, size.z) * 0.6 + 1.5;
+      const h = this.level.kind === 'campus' ? 64 : 9;
+      const beam = new THREE.Mesh(own(new THREE.CylinderGeometry(radius, radius, h, 40, 1, true)), beamMat);
+      beam.position.set(c.x, box.min.y + h / 2, c.z);
+      const ring = new THREE.Mesh(own(new THREE.RingGeometry(radius, radius + 0.9, 48)), ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(c.x, box.min.y + 0.5, c.z);
+      ring.userData.pulse = true;
+      group.add(beam, ring);
+    }
+    this.world.add(group);
+    this.beams = group;
+  }
+
   private addTrees(W: number, D: number) {
     const count = this.opts.lowPower ? 50 : 140;
     const trunkGeo = this.geo(new THREE.CylinderGeometry(0.35, 0.45, 2.4, 6));
@@ -745,6 +886,21 @@ export class CampusScene {
       b.mesh.lookAt(ahead.x, pos.y, ahead.z);
     }
     for (const pin of this.pins) pin.obj.position.y = pin.baseY + Math.sin(this.elapsed * 2.2 + pin.phase) * 0.6;
+    if (this.seated) {
+      // A small nod, as if writing.
+      const { head, base, count, y } = this.seated;
+      for (let i = 0; i < count; i++) {
+        m.makeTranslation(base[i * 2], y + Math.sin(this.elapsed * 1.6 + i * 2.1) * 0.05, base[i * 2 + 1] - 0.05);
+        head.setMatrixAt(i, m);
+      }
+      head.instanceMatrix.needsUpdate = true;
+    }
+    for (const t of this.teachers) {
+      // A teacher walks along the board; an invigilator walks the side aisle.
+      if (t.depth) t.obj.position.z = t.z + ((Math.sin(this.elapsed * 0.35 + t.phase) + 1) / 2) * t.depth;
+      else t.obj.position.x = t.x + Math.sin(this.elapsed * 0.6 + t.phase) * t.span;
+    }
+    if (this.beams) for (const o of this.beams.children) if (o.userData.pulse) o.scale.setScalar(1 + Math.sin(this.elapsed * 2.4) * 0.05);
   }
 
   // ── PINS (what is happening, from the records) ──────────────────────────
@@ -768,7 +924,7 @@ export class CampusScene {
     const floors = new Set([...this.nodeById.values()].filter((n) => n.parentId === b.id).map((n) => n.id));
     const rooms = [...this.nodeById.values()].filter((n) => n.parentId && floors.has(n.parentId));
     const states = rooms.map(stateOf);
-    for (const s of ['UNDER_MAINTENANCE', 'EVENT', 'BOOKED', 'SCHEDULED_CLASS']) if (states.includes(s)) return s;
+    for (const s of ['UNDER_MAINTENANCE', 'EXAM', 'EVENT', 'BOOKED', 'SCHEDULED_CLASS']) if (states.includes(s)) return s;
     return null;
   }
 
@@ -789,10 +945,10 @@ export class CampusScene {
     } else {
       const lvl = this.level;
       const floor = nodes.find((n) => n.parentId === lvl.buildingId && n.kind === 'FLOOR' && (n.floorNo ?? 0) === (lvl.floorNo ?? 0));
-      const y = 0.4 + (floor?.floorNo ?? 0) * INTERIOR_FLOOR_GAP + 2.2;
+      const y = 0.4 + (floor?.floorNo ?? 0) * INTERIOR_FLOOR_GAP + 3.8;
       for (const r of nodes.filter((n) => floor && n.parentId === floor.id)) {
         const s = stateOf(r);
-        if (['EVENT', 'BOOKED', 'UNDER_MAINTENANCE', 'SCHEDULED_CLASS'].includes(s)) targets.push({ x: r.layout.x, z: r.layout.z, y, state: s });
+        if (['EXAM', 'EVENT', 'BOOKED', 'UNDER_MAINTENANCE', 'SCHEDULED_CLASS'].includes(s)) targets.push({ x: r.layout.x, z: r.layout.z, y, state: s });
       }
     }
     targets.forEach((t, i) => {
@@ -812,6 +968,7 @@ export class CampusScene {
       (mesh.material as THREE.MeshStandardMaterial).color?.set(STATE_COLORS[stateOf(n)] ?? STATE_COLORS.OTHER);
     }
     this.refreshPins();
+    this.refreshOccupants();
   }
 
   // ── INTERACTION ─────────────────────────────────────────────────────────
@@ -916,7 +1073,7 @@ export class CampusScene {
     const obj = this.meshById.get(id);
     if (!obj) return;
     const c = new THREE.Box3().setFromObject(obj).getCenter(new THREE.Vector3());
-    const offset = this.camera.position.clone().sub(this.controls.target).setLength(this.level.kind === 'campus' ? 120 : 55);
+    const offset = this.camera.position.clone().sub(this.controls.target).setLength(this.level.kind === 'campus' ? 120 : 78);
     this.flyTo(c, c.clone().add(offset));
   }
 
@@ -961,6 +1118,9 @@ export class CampusScene {
     this.controls.enableDamping = !reducedMotion;
     this.rebuild();
   }
+
+  /** The container changed size without the window doing so (full-page mode). */
+  resize() { this.onResize(); }
 
   private onResize = () => {
     const w = this.container.clientWidth;
@@ -1008,7 +1168,7 @@ export class CampusScene {
     this.controls.dispose();
     this.highlight(null);
     this.clearWorld();
-    for (const d of this.disposables) d.dispose();
+    for (const d of [...this.disposables, ...this.occDisposables, ...this.beamDisposables]) d.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

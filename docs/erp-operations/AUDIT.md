@@ -1,6 +1,6 @@
 # Final audit — institution operations
 
-Branch `feat/education-erp-operations`, audited 2026-10-13. Companion documents: `REQUIREMENTS-LEDGER.md`, `ROLE-PERMISSION-MATRIX.md`, `INTEGRATION-STATUS.md`, `COMPETITOR-GAP-ANALYSIS.md`, `REFERENCE-ANALYSIS.md` and `docs/research/regulatory-source-register.md`.
+Branch `feat/education-erp-operations`, audited 2026-10-13, fourth round added 2026-10-14. Companion documents: `REQUIREMENTS-LEDGER.md`, `ROLE-PERMISSION-MATRIX.md`, `INTEGRATION-STATUS.md`, `COMPETITOR-GAP-ANALYSIS.md`, `REFERENCE-ANALYSIS.md` and `docs/research/regulatory-source-register.md`.
 
 ## Verdict
 
@@ -109,6 +109,19 @@ The first full backend run found 24 failures in 12 files, all caused by this bra
 | Official documents | Returns and letters print on letterhead for signature; DRAFT until approved; exports recorded; 5 tests. |
 | Board submission APIs | Researched; none public. Recorded in docs/research/board-submission-channels.md. |
 
+## Fourth round
+
+| Item | Result |
+|---|---|
+| Module tracker | Teachers plan and record; the principal sees every teacher and subject against the plan. A teacher can change only the subjects they teach, a family can only read their own class, and another school sees nothing (5 tests). |
+| Live classrooms | Headcount, teacher, lesson, module and exam on each classroom, for staff only; families receive none of it (8 tests). A register that has not been taken is shown as not taken, never as zero. |
+| Departments on the map | Head, people and live figures follow the reader's own permissions; students, parents and alumni see where a department is and nothing more. |
+| Full-page 3D view | Checked in a browser at campus, department, building, classroom and exam-room level, and with the panels hidden. |
+| Sample data | Both existing seeders and the new one run cleanly on an empty database; the demo starts with it. |
+| Browser check | 31 page loads as 13 profiles (home, Campus World, and Syllabus & Modules where the portal has it). All 18 Campus World and Syllabus & Modules pages loaded with no failed request, as did 5 home pages. The other eight home pages showed the known first-load request that is sent before the session token arrives and is retried; they are unchanged by this round. |
+| Backend tests, full suite | 4,081 tests in 145 files, all passed (53 minutes). This round adds 13: module tracking (5) and the live campus map (8). |
+| Frontend tests, full suite | 410 passed, 29 files; typecheck and lint clean; production build succeeds. |
+
 ## Known limitations
 
 1. **The browser test is a smoke test.** Every page loads; not every button has been pressed. Expect some defects in the forms.
@@ -117,13 +130,15 @@ The first full backend run found 24 failures in 12 files, all caused by this bra
 4. **Online classes run on a meeting service.** The default Jitsi server is public: anyone with a room's link can enter. Use the institution's own server for privacy. Attendance means the link was opened, not time spent.
 5. **Official documents depend on the Institution profile** for the letterhead; a missing name, address or code is called out on the page.
 6. **Accreditation criteria are headings only**, from each agency's published structure as understood when written. A cycle says so until someone records that they checked it against the current manual. The institution adds its own metrics.
-7. **Campus World uses a sample layout** until a school enters its own. It shows scheduled activity, not live positions. Frame rate was measured only under software rendering in the test browser (4 to 12 frames a second), which says little about a real device.
+7. **Campus World uses a sample layout** until a school enters its own. A classroom's headcount is the whole-day attendance register of the class timetabled there, so it is as current as the register and does not know who stepped out; the map refreshes every 30 seconds. An exam is shown for the whole day of the paper because exam papers carry a date, not a time. The figures drawn in a room are illustrative. Frame rate was measured only under software rendering in the test browser (4 to 12 frames a second), which says little about a real device.
 8. **Driver clearance is matched on the driver's name** as typed on the route, so a spelling difference reads as "no record".
 9. **The assistant's new tools answer through its built-in question matching** for the words listed in its vocabulary. Freer phrasing needs an AI model key to be configured.
 10. **Notice watching was not run against real sites.**
 11. **College academics stop at credits and accreditation evidence.** There is no credit-based grading, semester promotion or outcome mapping.
 12. **Videos in the newsroom are links**, because uploads carry no captions.
-13. **Pre-existing dependency findings** remain, and one pre-existing lint error in `tests/studyHelp.skillSync.test.js`.
+13. **A teacher's average exam result is a raw mean** of published marks in their subjects. It takes no account of the class or the paper, and is shown as one signal beside the plan, not as a rating.
+14. **Running `seed:school` again recreates every person.** Sample operations data seeded earlier then points at people who no longer exist; run `npm run seed:operations -- --reset` afterwards.
+15. **Pre-existing dependency findings** remain, and one pre-existing lint error in `tests/studyHelp.skillSync.test.js`.
 
 ## Recommended next work
 

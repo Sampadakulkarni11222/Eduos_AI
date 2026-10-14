@@ -35,14 +35,24 @@ const CONTENT: Record<string, OpsContent> = {
   },
   campus: {
     category: 'Command Centre',
-    summary: 'Your campus as a 3D world: buildings, rooms, what is scheduled now, bookings, open maintenance and events. Click a room to see its details and jump to the related page.',
-    steps: [
-      'Drag with the left mouse button to move around, the right button to rotate, and scroll to zoom. On a phone, drag and pinch.',
-      'Click a building or room to open its panel: today\'s timetable, bookings, open issues and events.',
-      'Use the buttons in the panel to book the room, report an issue or open the full record.',
-      'Switch to List for a plain list of spaces. It shows the same information.',
+    summary: 'Your campus as a 3D world, full page: every building, room and department, who is in each classroom from today\'s attendance register, which teacher is teaching what, the module they are on, exams, bookings, repairs and events. Click anything for detail and jump to the page where the work is done.',
+    highlights: [
+      { label: 'Live classrooms', text: 'A classroom shows present out of enrolled from today\'s register, the lesson and teacher from the timetable and the module from the teacher\'s plan. It says "register not taken" until the register is marked, and changes within half a minute of the teacher marking it.' },
+      { label: 'Departments', text: 'Click a department to light up where it works and see its head, people and live figures, with buttons to its pages.' },
     ],
-    tips: ['You only see the spaces your role is allowed to see. Restricted areas are hidden or shown without detail.'],
+    steps: [
+      'The map opens full page. Use Exit full page, or press Esc, to return to the portal; Hide panels leaves just the campus.',
+      'Drag with the left mouse button to move around, the right button to rotate, and scroll to zoom. On a phone, drag and pinch.',
+      'Click a department chip to find it on the map and read its figures. Click one of its rooms to go there.',
+      'Click a building, then Enter building, to see its rooms with students at their desks and the teacher at the board. Click a classroom for the headcount, the week\'s attendance, the lesson, the teacher and the module with its next topic.',
+      'Staff can drag the time slider, or press Play the day, to see the timetable at another time of today. The headcount stays today\'s register, and the clock says Preview.',
+      'Use the buttons in a panel to book the room, report an issue, open the module plan or go to the related page.',
+      'Switch to List for a plain list of spaces and departments. It shows the same information.',
+    ],
+    tips: [
+      'You only see the spaces your role is allowed to see. Restricted areas are hidden or shown without detail, and headcounts, teachers and department figures are shown to staff only.',
+      'The figures drawn in a room follow the register\'s count but are illustrative. Nobody is located or tracked.',
+    ],
   },
   lectures: {
     category: 'Learning',
@@ -55,6 +65,22 @@ const CONTENT: Record<string, OpsContent> = {
       'After the class, add the recording link, notes and material. Past & recordings keeps them for the class.',
     ],
     tips: ['The host sees who opened the link from EduOS. How long someone stayed is known only to the meeting service.'],
+  },
+  syllabus: {
+    category: 'Learning',
+    summary: 'Each subject laid out as modules with dates and topics. Teachers record what they taught after a lesson; the principal sees every subject and every teacher against the plan.',
+    workflow: ['Plan modules', 'Record lessons', 'Module complete'],
+    steps: [
+      'Open a subject to see its modules on a timeline, with today marked.',
+      'Teachers: add a module with a start date, a finish date and its topics, one per line.',
+      'After a lesson choose Record a lesson, tick the topics you finished and note any homework. Ticking the last topic completes the module.',
+      'The principal starts on By teacher: who is on track, who is behind and who has not recorded a lesson this week. Click a teacher to see their subjects.',
+      'Students and parents see the plan for their own class, without the edit buttons.',
+    ],
+    tips: [
+      'The bar is what has been recorded. The thin line on it is where the plan expects the class to be today.',
+      'The module being taught also shows on the campus map, in the classroom where the lesson is happening.',
+    ],
   },
   correspondence: {
     category: 'Administration',

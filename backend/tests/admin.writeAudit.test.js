@@ -145,10 +145,10 @@ describe('0. the no-model fallback path', () => {
     expect(isLlmEnabled()).toBe(false);
   });
 
-  it('Admin is offered 189 capabilities, 88 of them writes', () => {
+  it('Admin is offered 190 capabilities, 88 of them writes', () => {
     const offered = mcpToolsFor(actorForRole('ADMIN')).map((t) => t.name);
     const writes = offered.filter((n) => index()[n].operation !== 'GET');
-    expect(offered).toHaveLength(190);
+    expect(offered).toHaveLength(191);
     expect(writes).toHaveLength(88);
   });
 });

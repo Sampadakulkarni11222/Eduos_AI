@@ -1,16 +1,16 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 191,
+    "total": 192,
     "byOperation": {
-      "GET": 102,
+      "GET": 103,
       "CREATE": 33,
       "UPDATE": 15,
       "DELETE": 10,
       "ACTION": 31
     },
     "byRisk": {
-      "LOW": 108,
+      "LOW": 109,
       "HIGH": 30,
       "MEDIUM": 52,
       "CRITICAL": 1
@@ -8076,6 +8076,26 @@
       "wrapsAgentTool": null
     },
     {
+      "name": "get_syllabus_progress",
+      "module": "Syllabus",
+      "operation": "GET",
+      "description": "Syllabus progress by subject and class: the module being taught now, how much is covered, and whether it is on track, behind or has no recent update. A teacher sees their own subjects, a student or parent their class, the principal the whole school. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "syllabus.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "syllabus.service.overview()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
       "name": "get_campus_status",
       "module": "Campus",
       "operation": "GET",
@@ -8114,8 +8134,8 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 190,
-      "GET": 102,
+      "total": 191,
+      "GET": 103,
       "CREATE": 33,
       "UPDATE": 15,
       "ACTION": 30,
@@ -8344,14 +8364,15 @@
         "get_organisation_structure",
         "list_newsroom_posts",
         "list_digital_lectures",
+        "get_syllabus_progress",
         "get_campus_status"
       ]
     },
     {
       "role": "PRINCIPAL",
       "custom": false,
-      "total": 95,
-      "GET": 71,
+      "total": 96,
+      "GET": 72,
       "CREATE": 8,
       "UPDATE": 6,
       "ACTION": 9,
@@ -8462,14 +8483,15 @@
         "get_organisation_structure",
         "list_newsroom_posts",
         "list_digital_lectures",
+        "get_syllabus_progress",
         "get_campus_status"
       ]
     },
     {
       "role": "TEACHER",
       "custom": false,
-      "total": 66,
-      "GET": 51,
+      "total": 67,
+      "GET": 52,
       "CREATE": 3,
       "UPDATE": 1,
       "ACTION": 10,
@@ -8550,14 +8572,15 @@
         "get_organisation_structure",
         "list_newsroom_posts",
         "list_digital_lectures",
+        "get_syllabus_progress",
         "get_campus_status"
       ]
     },
     {
       "role": "PARENT",
       "custom": false,
-      "total": 48,
-      "GET": 45,
+      "total": 49,
+      "GET": 46,
       "CREATE": 1,
       "UPDATE": 1,
       "ACTION": 0,
@@ -8616,14 +8639,15 @@
         "get_my_day",
         "list_newsroom_posts",
         "list_digital_lectures",
+        "get_syllabus_progress",
         "get_campus_status"
       ]
     },
     {
       "role": "STUDENT",
       "custom": false,
-      "total": 68,
-      "GET": 55,
+      "total": 69,
+      "GET": 56,
       "CREATE": 7,
       "UPDATE": 0,
       "ACTION": 1,
@@ -8699,6 +8723,7 @@
         "get_my_day",
         "list_newsroom_posts",
         "list_digital_lectures",
+        "get_syllabus_progress",
         "get_campus_status"
       ]
     },

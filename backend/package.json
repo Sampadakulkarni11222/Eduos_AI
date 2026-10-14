@@ -15,6 +15,7 @@
     "demo": "node scripts/local-demo.mjs",
     "seed": "node src/seed/seed.js",
     "seed:school": "node src/seed/seed_school_data.js",
+    "seed:operations": "node src/seed/seed_operations.js",
     "superadmin:create": "node scripts/create-super-admin.js",
     "owner:drop": "node scripts/drop-owner-role.js",
     "schools:migrate": "node scripts/migrate-to-schools.js",

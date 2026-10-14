@@ -17,9 +17,9 @@ import { inbox as approvalInbox } from '../approvals/approval.service.js';
 export const campusRouter = Router();
 campusRouter.use(authenticate);
 campusRouter.get('/map', requirePermission('campus.map.read'), asyncHandler(async (req, res) =>
-  sendSuccess(res, await campus.campusMap(req.actor, { campusCode: req.query.campusCode || undefined }))));
+  sendSuccess(res, await campus.campusMap(req.actor, { campusCode: req.query.campusCode || undefined, at: req.query.at || null }))));
 campusRouter.get('/facilities/:id', requirePermission('campus.map.read'), asyncHandler(async (req, res) =>
-  sendSuccess(res, await campus.facilityDetail(req.actor, req.params.id))));
+  sendSuccess(res, await campus.facilityDetail(req.actor, req.params.id, { at: req.query.at || null }))));
 
 export const insightsRouter = Router();
 insightsRouter.use(authenticate);

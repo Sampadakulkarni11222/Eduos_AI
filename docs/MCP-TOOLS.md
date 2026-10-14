@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**191 tools** — 102 GET, 33 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION.
+**192 tools** — 103 GET, 33 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION.
 
-Risk mix: 108 LOW, 30 HIGH, 52 MEDIUM, 1 CRITICAL.
+Risk mix: 109 LOW, 30 HIGH, 52 MEDIUM, 1 CRITICAL.
 
-Status: 189 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 190 AVAILABLE, 2 PARTIAL (see below). 2 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -28,11 +28,11 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
 | `SUPER_ADMIN` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `ADMIN` | 190 | 102 | 33 | 15 | 30 | 10 | 30 | 82 |
-| `PRINCIPAL` | 95 | 71 | 8 | 6 | 9 | 1 | 7 | 24 |
-| `TEACHER` | 66 | 51 | 3 | 1 | 10 | 1 | 6 | 15 |
-| `PARENT` | 48 | 45 | 1 | 1 | 0 | 1 | 2 | 2 |
-| `STUDENT` | 68 | 55 | 7 | 0 | 1 | 5 | 0 | 8 |
+| `ADMIN` | 191 | 103 | 33 | 15 | 30 | 10 | 30 | 82 |
+| `PRINCIPAL` | 96 | 72 | 8 | 6 | 9 | 1 | 7 | 24 |
+| `TEACHER` | 67 | 52 | 3 | 1 | 10 | 1 | 6 | 15 |
+| `PARENT` | 49 | 46 | 1 | 1 | 0 | 1 | 2 | 2 |
+| `STUDENT` | 69 | 56 | 7 | 0 | 1 | 5 | 0 | 8 |
 | `FINANCE` | 43 | 33 | 5 | 1 | 4 | 0 | 8 | 10 |
 | `LIBRARIAN` | 37 | 30 | 1 | 1 | 4 | 1 | 1 | 7 |
 | `WARDEN` | 38 | 30 | 2 | 3 | 3 | 0 | 0 | 7 |
@@ -181,6 +181,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_subject_attendance` | Attendance | GET | `attendance.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_subjects` | Academics | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_submissions` | Assignments | GET | `submissions.grade` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_syllabus_progress` | Syllabus | GET | `syllabus.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_ticket` | Tickets | GET | `tickets.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_timetable` | Timetable | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_transport_requests` | Transport | GET | `transport.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -4401,6 +4402,32 @@ IRREVERSIBLE. Permanently erase a student's personal data (name, date of birth, 
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+## Syllabus
+
+### `get_syllabus_progress`
+
+Syllabus progress by subject and class: the module being taught now, how much is covered, and whether it is on track, behind or has no recent update. A teacher sees their own subjects, a student or parent their class, the principal the whole school. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `syllabus.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `syllabus.service.overview()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_syllabus_progress` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
 ## Tickets
 
 ### `list_tickets`
@@ -4965,7 +4992,7 @@ _(no arguments)_
 
 ## Permission coverage
 
-81 of the 129 permissions in the catalog are reachable through MCP.
+82 of the 131 permissions in the catalog are reachable through MCP.
 
 Permissions **not** reachable through any tool:
 
@@ -5014,6 +5041,7 @@ Permissions **not** reachable through any tool:
 - `community.post` — Draft newsroom stories and post in circles
 - `community.moderate` — Review, publish, hide and take down posts and comments
 - `mentoring.participate` — Offer or request mentoring from seniors and alumni
+- `syllabus.manage` — Plan modules and record what was taught (OWN: the subjects you teach)
 - `lectures.manage` — Schedule, change and cancel online classes and meetings (OWN: the ones you host)
 - `messaging.read` — View the outbound message log and delivery states
 - `messaging.manage` — Configure message templates and send operational notifications
