@@ -12,7 +12,8 @@ import {
 import { detectLanguage, t } from '../../../utils/language.js';
 import { currentTenantId } from '../../../tenancy/tenantContext.js';
 import { handleRagFallback } from './rag.js';
-import { composeAnswer } from './response.js';
+import { composeAnswer, answerIsModelWritten } from './response.js';
+import { evidenceFor } from './evidence.js';
 import { presentOf } from './present.js';
 import { withMcpSession, listTools as listMcpTools, callTool as callMcpTool } from '../mcp/client.js';
 import { getMcpTool, mcpToolsFor } from '../mcp/registry.js';
@@ -21,7 +22,7 @@ import { peekConfirmation, rejectConfirmation, markFailed, canonicalToolName } f
 import { asksSchoolWideFees, asksLeaveWithoutPermission } from './directIntents.js';
 import { impossibleDatesIn } from '../../../utils/naturalDates.js';
 import { entitiesFor, entitiesInTextByPosition } from '../mcp/capabilities.js';
-import { decisionAskedFor, humanDecisionReply } from '../mcp/decisions.js';
+import { decisionAskedFor, humanDecisionReply, approverMayRecord } from '../mcp/decisions.js';
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { env } from '../../../config/env.js';
@@ -554,6 +555,7 @@ export async function runAgentSafely(opts) {
             tool: intent.tool,
             degraded: true,
             via: 'MCP',
+            evidence: evidenceFor([{ tool: intent.tool, args: intent.args ?? {}, result }]),
           };
         }
       }
@@ -734,8 +736,10 @@ async function routeTurn({ mcpSession, message: rawMessage, actor, source, lang,
   // it on the screen, and is told which screen. Read before anything chooses a
   // capability, so the nearest thing the caller CAN do is never offered in its
   // place. See mcp/decisions.js.
+  // Unless it is one the approver may record and confirm themselves (see
+  // APPROVER_CONFIRMED): then it goes on to the tool, which drafts it.
   const decision = decisionAskedFor(message);
-  if (decision) {
+  if (decision && !approverMayRecord(actor, decision, message)) {
     const answer = humanDecisionReply(actor, decision, { channel: source });
     return { reply: answer.reply, lang, action: null, refused: answer.refused, ...(answer.link && { link: answer.link }) };
   }
@@ -1095,7 +1099,7 @@ async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
       const preface = calls.length ? await composeAnswer({ message, calls: inPlainWords(calls, lang), lang }) : '';
       return {
         reply: preface ? `${preface}\n\n${confirm}` : confirm,
-        ...(preface && { preface, tools: [...calls.map((c) => c.tool), step.tool] }),
+        ...(preface && { preface, tools: [...calls.map((c) => c.tool), step.tool], evidence: evidenceFor(calls) }),
         lang,
         action: {
           id: result.action.id,
@@ -1110,7 +1114,7 @@ async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
         via: 'MCP',
       };
     }
-    calls.push({ tool: step.tool, result });
+    calls.push({ tool: step.tool, args: step.args ?? {}, result });
   }
 
   const succeeded = calls.filter((c) => c.result?.success);
@@ -1213,6 +1217,11 @@ async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
     tool: calls[0].tool,
     tools: calls.map((c) => c.tool),
     via: 'MCP',
+    // "Based on": the records this answer used, with links (never a statement without its evidence).
+    evidence: evidenceFor(calls),
+    // Written by the model rather than laid out from the records: WhatsApp then
+    // carries the evidence in the message itself.
+    modelWritten: answerIsModelWritten(inPlainWords(calls, lang)),
     // More rows than one answer carries: the way to the next window.
     ...(succeeded.length === 1 && calls.length === 1 && {
       continuation: continuationFor(steps[0], succeeded[0].result, actor) ?? undefined,

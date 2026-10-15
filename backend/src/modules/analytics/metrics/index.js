@@ -13,3 +13,4 @@ import './procurement.js';
 import './operations.js';
 import '../../clubs/clubs.metrics.js';
 import '../../sustainability/sustainability.metrics.js';
+import '../../marketing/marketing.metrics.js';

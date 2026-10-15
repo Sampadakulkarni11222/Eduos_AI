@@ -94,13 +94,11 @@ const OPERATIONS_WHY = 'Institution-operations act or restricted read. The assis
  * "now has a capability" check forces its removal from this list.
  */
 const PLATFORM_PENDING = [
-  'analytics.workspace.read', 'analytics.export', 'reports.quarterly.read', 'reports.quarterly.manage', 'tasks.read', 'tasks.manage',
-  'bills.read', 'bills.manage', 'labs.read', 'labs.manage', 'transport.fleet.manage', 'transport.trips.operate', 'transport.tracking.read',
-  'checkpoints.read', 'checkpoints.manage', 'visitors.manage', 'camera.devices.manage', 'camera.events.review', 'ptm.read', 'ptm.manage',
-  'ptm.book', 'reviewcalls.manage', 'conversations.use', 'staffleave.apply', 'staffleave.manage', 'cover.manage', 'clubs.read', 'clubs.manage',
-  'clubs.join', 'showcase.publish', 'alumni.directory.read', 'alumni.manage', 'digest.read', 'digest.manage', 'social.publish', 'social.connect',
-  'sustainability.read', 'sustainability.manage', 'sustainability.verify', 'reportcards.manage', 'hostel.outpass.request', 'hostel.outpass.manage',
-  'fees.concessions.manage', 'accounts.export', 'ai.drafts.use',
+  // Analytics, tasks, labs, bills, fleet, safety, out-pass, staff leave/cover,
+  // concessions and the accounts export are now covered by tools/platformOps.js.
+  'alumni.manage', 'digest.manage', 'social.connect',
+  // Part 2 gaps: support plans, competency portfolios, scenario planning (screens and API first).
+  'supportplans.read', 'supportplans.manage', 'supportplans.referral.view', 'portfolios.read', 'portfolios.manage', 'portfolios.reflect', 'scenarios.read', 'scenarios.manage',
 ].filter((key) => !DECLARED_BY_A_TOOL.has(key));
 const PLATFORM_WHY = 'School-platform completion: the feature is being built in slices (see docs/erp-operations/PLATFORM-COVERAGE-MATRIX.md). Its screens and API come first; an assistant capability, read-only, follows where it is useful.';
 
@@ -116,11 +114,6 @@ const UNCOVERED = {
   },
 
   /* ── A. reachable under another permission key ─────────── */
-  'reportcards.read': {
-    category: 'A',
-    via: 'get_report_card',
-    why: 'Per-exam report cards are served by exam.service.getReportCard(); the tool gates on marks.read, the same key the exams report-card route requires. CBSE term cards (modules/reportcards, read by families with reportcards.read) are read on the Report Cards page; an assistant capability follows with the platform slice.',
-  },
   'fees.plan.review': {
     category: 'A',
     via: 'transition_fee_plan',
@@ -156,6 +149,14 @@ const UNCOVERED = {
     category: 'D',
     why: 'A decision (approve, reject, publish or refund). The assistant never decides: it lists what is waiting with get_pending_items_for_me and points to the screen where the holder decides.',
   }])),
+  'analytics.export': {
+    category: 'D',
+    why: 'Downloading the analytics workspace as CSV is a file, and MCP has no file channel in a chat. The same figures, at the same scope, are read through get_analytics_overview (analytics.workspace.read); the file is downloaded on the Analytics screen.',
+  },
+  'camera.devices.manage': {
+    category: 'D',
+    why: 'Registering cameras, their approved purposes, locations and retention, and rotating device secrets. Device credentials never travel through chat, and camera data stays off it: reviewers get only a count (get_camera_review_count).',
+  },
   'users.manage': {
     category: 'D',
     why: 'Creating and importing user accounts. Bulk import is a CSV upload and MCP has no file-upload channel, the same constraint that keeps attendance OCR unexposed; single creation mints credentials, which the assistant must not do. Reading the staff directory is available through list_users.',

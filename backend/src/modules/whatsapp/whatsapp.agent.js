@@ -1,3 +1,4 @@
+import { evidenceLine } from '../ai/agent/evidence.js';
 import { Account } from '../../models/account.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { AgentAction } from '../../models/agentAction.model.js';
@@ -311,6 +312,12 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
   // The assistant answers in Markdown (agent/present.js); WhatsApp shows
   // `**` and table pipes literally, so the reply is put in its own dialect.
   let reply = toWhatsAppText(result.reply) + moreLine(result.continuation);
+  // "Based on": when the model wrote the answer, the records it used, so no
+  // AI statement arrives without its evidence. An answer laid out from the
+  // records themselves is the evidence, and stays identical to the website's.
+  if (!result.action && result.modelWritten && result.evidence?.length) reply += `
+
+_${evidenceLine(result.evidence)}_`;
   if (result.action) {
     // WhatsApp cannot carry a hidden token, so the reply asks for a plain
     // yes/no and the pending action is matched from the actor's own queue.

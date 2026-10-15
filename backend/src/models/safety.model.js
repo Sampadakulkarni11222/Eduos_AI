@@ -281,6 +281,12 @@ const classCheckInSchema = new Schema(
     coveringForProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
     checkedInAt: { type: Date, default: Date.now },
     note: { type: String, default: null },
+    // TAP: the teacher checked in. CAMERA_REVIEWED: a trained reviewer confirmed a
+    // "teacher present in room" observation; the teacher is the one the timetable
+    // (or a confirmed cover) names for that room and period, never a face match.
+    source: { type: String, enum: ['TAP', 'CAMERA_REVIEWED'], default: 'TAP' },
+    reviewedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
+    observationId: { type: Schema.Types.ObjectId, ref: 'CameraObservation', default: null },
   },
   { timestamps: true }
 );
@@ -291,7 +297,7 @@ classCheckInSchema.index({ tenantId: 1, date: 1, sectionId: 1, periodNo: 1 });
 // Unverified until a trained reviewer decides. No image is stored here, only a
 // reference to restricted storage; no face identity, emotion or student score
 // is accepted or derived.
-export const OBSERVATION_TYPES = ['POSSIBLE_UNATTENDED_ROOM', 'POSSIBLE_AGGRESSION', 'DEVICE_OFFLINE'];
+export const OBSERVATION_TYPES = ['POSSIBLE_UNATTENDED_ROOM', 'POSSIBLE_AGGRESSION', 'DEVICE_OFFLINE', 'TEACHER_PRESENT_IN_ROOM'];
 export const REVIEW_DECISIONS = ['CONFIRMED', 'FALSE_ALERT', 'NEEDS_FOLLOW_UP'];
 const cameraObservationSchema = new Schema(
   {

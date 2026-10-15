@@ -156,7 +156,7 @@ export const libraryCopiesApi = {
 
 export const DRAFT_KINDS = ['LETTER', 'CIRCULAR', 'MINUTES', 'LESSON_PLAN', 'REPORT_REMARK'] as const;
 export type DraftKind = typeof DRAFT_KINDS[number];
-export interface DraftResult { kind: DraftKind; text: string; source: 'AI' | 'TEMPLATE'; label: string; redactions: number; saved: false; note: string }
+export interface DraftResult { kind: DraftKind; text: string; source: 'AI' | 'TEMPLATE'; label: string; redactions: number; saved: false; note: string; basedOn?: { source: string; items: Array<{ label: string; value: string }>; redactedCount: number } }
 export const aiDraftsApi = {
   status: () => get<{ aiConfigured: boolean; kinds: DraftKind[]; bands: string[]; label: string }>('/ai/drafts'),
   draft: (body: Record<string, unknown>) => post<DraftResult>('/ai/drafts', body),

@@ -12,7 +12,13 @@ import type { CampusDepartmentDto, CampusMapDto, CampusNodeDto, FacilityDetailDt
 import { BookRoomModal, ReportIssueModal } from '@/components/ops/operations-views';
 import { DataNote, ErrorNote, fmtDate, fmtDateTime, humanize, useLoad } from '@/components/ops/kit';
 import { STATE_COLORS, stateOf, type CampusScene, type Level } from './campus-scene';
-import { CampusLayersPanel, DepartmentTasks, RoomLayerFacts } from './campus-layers';
+import { CampusLayersPanel, DepartmentTasks, RoomLayerFacts, availableLayers } from './campus-layers';
+import { CollapsePanel, FoldButton, LiveNowBlock, MyCampusPanel, SeeDetailsLink, usePanelState, usePoll } from './campus-live';
+
+/** The panels over the 3D view that fold into chips (remembered per user). */
+const PANEL_IDS = ['mine', 'kpis', 'depts', 'ops', 'room', 'dept', 'tracker', 'table'];
+/** Spaces whose live detail is not a room's: the gate and the bus bay have their own kinds. */
+const LIVE_KIND: Record<string, string | null> = { GATE: 'gate', TRANSPORT_BAY: 'bus', BUILDING: null, FLOOR: null, CAMPUS: null, PARKING: null };
 
 /**
  * Campus World — the 3D view of the institution with what is happening in
@@ -156,6 +162,12 @@ export function CampusWorldView() {
   const [tableTab, setTableTab] = useState<'classes' | 'inuse' | 'repairs' | 'events'>('classes');
   const [clock, setClock] = useState(() => new Date());
   useEffect(() => { const t = window.setInterval(() => setClock(new Date()), 15_000); return () => window.clearInterval(t); }, []);
+  // Folded panels, and the reader's own corner of the campus (their child's class, their own class, their next class).
+  const panels = usePanelState();
+  const [childId, setChildId] = useState<string | null>(null);
+  const my = usePoll(() => opsApi.campusMyView(childId), [childId], 15);
+  useEffect(() => { try { if (localStorage.getItem('eduos.campus.hud') === '0') setHud(false); } catch { /* storage unavailable */ } }, []);
+  const toggleHud = useCallback((on: boolean) => { setHud(on); try { localStorage.setItem('eduos.campus.hud', on ? '1' : '0'); } catch { /* ignore */ } }, []);
 
   useEffect(() => { setReducedMotion(prefersReduced); }, [prefersReduced]);
   useEffect(() => {
@@ -296,6 +308,28 @@ export function CampusWorldView() {
   const activeDept = dept ? departments.find((x) => x.code === dept) ?? null : null;
   useEffect(() => { sceneRef.current?.spotlight(activeDept?.facilityIds ?? []); }, [activeDept, level, hasData]);
 
+  /** Go to a room's floor, then select it (the same as choosing it from the search). */
+  const flyTo = useCallback((id: string) => {
+    const n = byId.get(id);
+    if (!n) return;
+    const floor = n.parentId ? byId.get(n.parentId) : null;
+    if (floor?.kind === 'FLOOR' && floor.parentId) {
+      setLevel({ kind: 'building', buildingId: floor.parentId, floorNo: floor.floorNo ?? 0 });
+      window.setTimeout(() => setSelected(n.id), 60);
+    } else { setLevel({ kind: 'campus' }); setSelected(n.id); }
+  }, [byId]);
+  // A parent or student starts at their own classroom (once per child), when the 3D scene is ready.
+  const flown = useRef<string | null>(null);
+  useEffect(() => {
+    const f = my.data?.focus?.facilityId;
+    if (!f || !hasData || (my.data?.role !== 'PARENT' && my.data?.role !== 'STUDENT')) return;
+    if (view === '3d' && supported !== true) return;
+    const key = `${my.data?.selectedStudentId ?? ''}:${f}`;
+    if (flown.current === key) return;
+    flown.current = key;
+    flyTo(f);
+  }, [my.data, hasData, supported, view, flyTo]);
+
   const sel = selected ? byId.get(selected) : null;
   const enterBuilding = (b: CampusNodeDto) => {
     const floors = nodes.filter((n) => n.parentId === b.id && n.kind === 'FLOOR').sort((a, c) => (a.floorNo ?? 0) - (c.floorNo ?? 0));
@@ -323,8 +357,10 @@ export function CampusWorldView() {
   }
 
   const roomLine = (r: CampusNodeDto) => `${humanize(r.kind)}${r.capacity ? ` · ${r.capacity} seats` : ''} · ${stateLabel(r)}${r.lesson?.teacher ? ` · ${r.lesson.teacher}` : ''}${r.live ? ` · ${headcount(r.live)}` : ''}`;
+  const myPanel = <MyCampusPanel data={my.data} onGo={(id) => { setView('3d'); flyTo(id); }} onChild={(id) => setChildId(id)} onDept={(code) => { const x = departments.find((dd) => dd.code === code); if (x && dept !== code) pickDept(x); }} />;
   const listView = (
     <div className="ops-stack">
+      {myPanel}
       <CampusLayersPanel data={ops.data} onGo={(id) => setSelected(id)} />
       {buildings.map((b) => (
         <div key={b.id} className="ops-section card card-pad">
@@ -443,7 +479,8 @@ export function CampusWorldView() {
                   </ul>
                 )}
               </div>
-              <button type="button" className="cw-exit" aria-pressed={!hud} onClick={() => setHud(!hud)} title="Show or hide the panels over the map">{hud ? '◻ Hide panels' : '▣ Show panels'}</button>
+              <button type="button" className="cw-exit" aria-pressed={!hud} onClick={() => toggleHud(!hud)} title="Show or hide the panels over the map">{hud ? '◻ Hide panels' : '▣ Show panels'}</button>
+              {hud && <button type="button" className="cw-exit cwc-all" onClick={() => panels.setAll(PANEL_IDS, panels.anyClosed(PANEL_IDS))} title="Fold every panel into a chip, or open them all again">{panels.anyClosed(PANEL_IDS) ? '⊞ Expand all' : '⊟ Collapse all'}</button>}
               <div className="cw-site">
                 <span className="cw-site-badge">{siteName.split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase()}</span>
                 <span><b>{siteName}</b><span className="cw-site-sub">{k.rooms ? `${Math.round((Number(k.roomsInUse) / Number(k.rooms)) * 100)}% in use · ${k.roomsInUse}/${k.rooms} rooms` : 'No rooms recorded'}</span></span>
@@ -455,6 +492,10 @@ export function CampusWorldView() {
 
             <div className="cw-mid">
               <div className="cw-left" hidden={!hud}>
+                {my.data && ['PARENT', 'STUDENT', 'TEACHER'].includes(my.data.role) || (my.data?.departments?.length ?? 0) > 0
+                  ? <CollapsePanel id="mine" label={my.data?.role === 'PARENT' ? 'Your child\'s class' : my.data?.role === 'STUDENT' ? 'Your class' : my.data?.role === 'TEACHER' ? 'Your classes' : 'Your department'} panels={panels}>{myPanel}</CollapsePanel>
+                  : null}
+                <CollapsePanel id="kpis" label="Campus now" panels={panels} badge={k.roomsInUse}>
                 <div className="cw-kpis" aria-label="Campus now">
                   {staffView && (
                     <div className="cw-kpi cw-glass"><span className="cw-kpi-icon is-green" aria-hidden="true">☺</span><div><span>Students present today</span><b>{k.studentsPresent === null || k.studentsPresent === undefined ? '—' : k.studentsPresent}</b><small>{k.studentsMarked ? `of ${k.studentsMarked} marked · ${k.sectionsMarked}/${k.sections} registers taken` : 'no register taken yet'}</small></div></div>
@@ -468,7 +509,9 @@ export function CampusWorldView() {
                     ? <div className="cw-kpi cw-glass"><span className="cw-kpi-icon is-orange" aria-hidden="true">🔧</span><div><span>Open repairs</span><b>{k.openWorkOrders}</b><small>{k.outOfUse} spaces out of use</small></div></div>
                     : <div className="cw-kpi cw-glass"><span className="cw-kpi-icon is-orange" aria-hidden="true">⛔</span><div><span>Out of use</span><b>{k.outOfUse}</b><small>closed or under repair</small></div></div>}
                 </div>
+                </CollapsePanel>
                 {departments.length > 0 && (
+                  <CollapsePanel id="depts" label="Departments" panels={panels} badge={departments.length}>
                   <div className="cw-glass cw-depts" role="group" aria-label="Departments">
                     <div className="cw-depts-title">Departments <span>click one to find it and see its figures</span></div>
                     <div className="cw-dept-list">
@@ -481,8 +524,13 @@ export function CampusWorldView() {
                       ))}
                     </div>
                   </div>
+                  </CollapsePanel>
                 )}
-                <CampusLayersPanel data={ops.data} onGo={(id) => { const n = byId.get(id); if (n) goTo(n); }} />
+                {availableLayers(ops.data).length > 0 && (
+                  <CollapsePanel id="ops" label="Operations now" panels={panels}>
+                    <CampusLayersPanel data={ops.data} onGo={(id) => { const n = byId.get(id); if (n) goTo(n); }} />
+                  </CollapsePanel>
+                )}
               </div>
               <div className="cw-right">
                 <div className="cw-glass cw-controls" role="group" aria-label="Camera">
@@ -492,11 +540,14 @@ export function CampusWorldView() {
                   <button type="button" onClick={() => sceneRef.current?.rotate(-Math.PI / 8)} aria-label="Rotate right">⟳</button>
                   <button type="button" onClick={() => { setLevel({ kind: 'campus' }); setSelected(null); setDept(null); sceneRef.current?.home(); }} aria-label="Home view">⌂</button>
                 </div>
-                {!sel && activeDept && (
+                {!sel && activeDept && !panels.isOpen('dept') && (
+                  <button type="button" className="cw-glass cwc-chip" aria-expanded={false} onClick={() => panels.toggle('dept')} title={`Show ${activeDept.name}`}><span aria-hidden="true">▸</span>{activeDept.name}</button>
+                )}
+                {!sel && activeDept && panels.isOpen('dept') && (
                   <div className="cw-glass cw-panel" role="region" aria-label={`${activeDept.name} department`}>
                     <div className="cw-panel-head">
                       <div><div className="cw-eyebrow">Department</div><div className="cw-panel-title">{activeDept.name}</div>{activeDept.description && <div className="ops-row-sub">{activeDept.description}</div>}</div>
-                      <button type="button" className="modal-close" onClick={() => setDept(null)} aria-label="Close department">×</button>
+                      <span className="cwc-headbtns"><FoldButton id="dept" label={`${activeDept.name} department`} panels={panels} /><button type="button" className="modal-close" onClick={() => setDept(null)} aria-label="Close department">×</button></span>
                     </div>
                     {(activeDept.head || activeDept.staffCount !== null) && (
                       <dl className="cw-facts">
@@ -518,15 +569,19 @@ export function CampusWorldView() {
                     )}
                     <div className="ops-inline" style={{ marginTop: 8 }}>
                       {pagesOf(portal, activeDept.pages, 4).map((p) => <Link key={p.href} className="btn btn-soft btn-sm" href={link(p.href)}>{p.label} →</Link>)}
+                      {staffView && <SeeDetailsLink kind="department" id={activeDept.code} />}
                     </div>
                     {activeDept.metrics.length === 0 && pagesOf(portal, activeDept.pages).length === 0 && <p className="ops-muted">Its figures are kept for the staff who run it.</p>}
                   </div>
                 )}
-                {sel && (
+                {sel && !panels.isOpen('room') && (
+                  <button type="button" className="cw-glass cwc-chip" aria-expanded={false} onClick={() => panels.toggle('room')} title={`Show ${sel.name}`}><span aria-hidden="true">▸</span>{sel.name}{sel.lesson ? <span className="cwc-badge">{sel.lesson.subject}</span> : null}</button>
+                )}
+                {sel && panels.isOpen('room') && (
                   <div className="cw-glass cw-panel" role="region" aria-label={`${sel.name} details`}>
                     <div className="cw-panel-head">
                       <div><div className="cw-eyebrow">{humanize(sel.kind)}{sel.code ? ` · ${sel.code}` : ''}{sel.department ? ` · ${sel.department}` : ''}</div><div className="cw-panel-title">{sel.name}</div><div className="ops-row-sub">{placeOf(sel)}</div></div>
-                      <button type="button" className="modal-close" onClick={() => setSelected(null)} aria-label="Close details">×</button>
+                      <span className="cwc-headbtns"><FoldButton id="room" label={`${sel.name} details`} panels={panels} /><button type="button" className="modal-close" onClick={() => setSelected(null)} aria-label="Close details">×</button></span>
                     </div>
                     <div className="ops-inline" style={{ margin: '6px 0' }}>
                       <span className="cw-state" style={{ background: `${STATE_COLORS[stateOf(sel)]}33`, color: '#1f2937' }}><i className="cw-label-dot" style={{ background: STATE_COLORS[stateOf(sel)] }} />{stateLabel(sel) || humanize(sel.status)}</span>
@@ -599,12 +654,21 @@ export function CampusWorldView() {
                         {sel.live && <p className="cw-source">Headcount: {sel.live.source.toLowerCase()}. It changes here as soon as the teacher marks or corrects it.</p>}
                       </>
                     )}
+                    {(() => {
+                      // Live now, below everything the panel already shows: refreshed every 15 seconds while open.
+                      const liveKind = sel.kind in LIVE_KIND ? LIVE_KIND[sel.kind] : 'room';
+                      if (!liveKind) return null;
+                      if (liveKind === 'gate' && !ops.data?.gate) return null;
+                      if (liveKind === 'bus' && !ops.data?.transport) return null;
+                      return <LiveNowBlock key={`${liveKind}:${sel.id}`} kind={liveKind} id={liveKind === 'bus' ? null : sel.id} />;
+                    })()}
                   </div>
                 )}
               </div>
             </div>
 
             <div className="cw-bottom" hidden={!hud}>
+              <CollapsePanel id="tracker" label={sel && steps.length > 0 ? `${sel.name} today` : 'Places, time and legend'} panels={panels} className="cwc-tracker">
               <div className="cw-glass cw-tracker">
                 <nav className="cw-crumbs" aria-label="Location">
                   <button type="button" onClick={() => { setLevel({ kind: 'campus' }); setSelected(null); }}>{siteName}</button>
@@ -652,6 +716,9 @@ export function CampusWorldView() {
                 </div>
               </div>
 
+              </CollapsePanel>
+
+              <CollapsePanel id="table" label="On campus now" panels={panels} className="cwc-table">
               <div className="cw-glass cw-table">
                 <div className="cw-tabs" role="tablist" aria-label="On campus now">
                   {staffView && <button type="button" role="tab" aria-selected={tableTab === 'classes'} className={tableTab === 'classes' ? 'is-on' : ''} onClick={() => setTableTab('classes')}>Classes <span>{lessons.length}</span></button>}
@@ -679,6 +746,7 @@ export function CampusWorldView() {
                   }) : <li className="cw-empty">No events today.</li>)}
                 </ul>
               </div>
+              </CollapsePanel>
             </div>
           </div>
         </div>

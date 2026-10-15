@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth';
 import { opsApi } from '@/lib/ops-api';
 import { usePortalHref } from '@/lib/school-path';
 import { PulseBoard } from './pulse-board';
+import { RoleDashboard } from './role-dashboard';
 import { ShowcaseCard } from './showcase-view';
 import type { HomeDto } from '@/lib/ops-types';
 import { ApprovalDecisionButtons } from './approvals-view';
@@ -53,6 +54,8 @@ export function RoleHome({ title = 'Today' }: { title?: string }) {
       <div className="ops-stack">
         <Greeting home={home} />
         <PulseBoard greet={false} />
+        {/* The role's own charts (finance, HR, library, hostel, admissions, compliance, trustee); teachers, parents and students have theirs on their main page. */}
+        {!['TEACHER', 'PARENT', 'STUDENT'].includes(home.role ?? '') && <RoleDashboard />}
         <ShowcaseCard />
         {home.role === 'PRINCIPAL' || home.decisions ? (
           <div className="ops-grid-main">

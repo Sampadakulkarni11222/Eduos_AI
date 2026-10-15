@@ -9,6 +9,7 @@ import { useSchoolHref } from '@/lib/school-path';
 import { useAuth } from '@/lib/auth';
 import type { StudentDashboardDto, StudentListItem } from '@/lib/types';
 import { PulseBoard } from '@/components/ops/pulse-board';
+import { RoleDashboard } from '@/components/ops/role-dashboard';
 import { ShowcaseCard } from '@/components/ops/showcase-view';
 import { formatDate, formatTime12, greeting, greetingName } from './_lib/format';
 
@@ -35,6 +36,8 @@ export default function StudentDashboard() {
     <PortalShell expectedSlug="student" topbar={{ title: 'Student Portal', desc: 'Your school day at a glance' }}>
       {/* The interactive board: briefing, departments, campus, charts and live activity. */}
       <PulseBoard />
+      {/* My own charts: attendance, marks by subject, assignments, clubs, eco points, digest. */}
+      <RoleDashboard />
       <div style={{ marginTop: 16 }}><ShowcaseCard /></div>
 
       {loading && <Card><SkeletonRows rows={4} /></Card>}

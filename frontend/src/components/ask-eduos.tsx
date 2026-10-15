@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import type { AgentContinuation, AgentProposedAction, WhatsappAssistantLink } from '@/lib/types';
 import { SPEECH_LANGUAGES, isSpeechSupported, startDictation } from '@/lib/speech';
 import { ChatMarkdown } from './chat-markdown';
+import { EvidenceFooter } from './evidence-footer';
 
 /**
  * Turns of this conversation sent with each message, so a follow-up resolves
@@ -26,6 +27,8 @@ interface Msg {
   resolved?: 'done' | 'cancelled';
   /** Set when this answer holds part of a longer list: loads the next rows. */
   continuation?: AgentContinuation | null;
+  /** The records the answer used, shown under it as "Based on". */
+  evidence?: Array<{ text: string; link: string | null }>;
 }
 
 export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
@@ -155,7 +158,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
         .slice(-HISTORY_TURNS)
         .map((m) => ({ role: m.role, text: m.text }));
       const res = await api.agentAsk(text, speechLang.lang, history);
-      const aiMsg: Msg = { role: 'assistant', text: res.reply, action: res.action, continuation: res.continuation ?? null };
+      const aiMsg: Msg = { role: 'assistant', text: res.reply, action: res.action, continuation: res.continuation ?? null, evidence: res.evidence ?? [] };
       msgsRef.current = [...msgsRef.current, aiMsg];
       setMsgs([...msgsRef.current]);
     } catch (err) {
@@ -184,7 +187,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
     try {
       const res = await api.agentContinue(msg.continuation.token, speechLang.lang);
       msgsRef.current = msgsRef.current.map((m, i) => (i === idx ? { ...m, continuation: null } : m));
-      msgsRef.current = [...msgsRef.current, { role: 'assistant', text: res.reply, continuation: res.continuation ?? null }];
+      msgsRef.current = [...msgsRef.current, { role: 'assistant', text: res.reply, continuation: res.continuation ?? null, evidence: res.evidence ?? [] }];
       setMsgs([...msgsRef.current]);
     } catch (err) {
       const text = err instanceof ApiError ? err.message : 'Sorry — I could not load the rest just now.';
@@ -405,6 +408,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                       <div className="ai-confirm-expiry">Expires in {m.action.expiresInMinutes} min</div>
                     </div>
                   )}
+                  {m.role === 'assistant' && !!m.evidence?.length && <EvidenceFooter items={m.evidence} />}
                   {m.continuation && (
                     <button
                       type="button"

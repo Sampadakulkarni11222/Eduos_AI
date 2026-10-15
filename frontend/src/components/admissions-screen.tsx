@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
 import { normaliseLeadPhone } from '@/lib/phone';
 import type { LeadDetailDto } from '@/lib/types';
+import { LeadSourceSection } from '@/components/ops/growth-marketing-view';
 
 const STAGE_LABEL: Record<string, string> = {
   NEW: 'New', CONTACTED: 'Contacted', TOUR_SCHEDULED: 'Tour scheduled', APPLICATION: 'Application', ENROLLED: 'Enrolled', LOST: 'Lost',
@@ -399,6 +400,9 @@ function LeadDetailDrawer({
                 <div className="drawer-row"><dt>Created</dt><dd>{fmtDate(lead.createdAt)}</dd></div>
               </dl>
             </div>
+
+            {/* Where the enquiry came from (campaign attribution). */}
+            <LeadSourceSection leadId={leadId} canManage={canManage} />
 
             {canManage && editing ? (
               <div className="drawer-section">

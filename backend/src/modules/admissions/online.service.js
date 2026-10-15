@@ -221,6 +221,10 @@ export async function submitApplication(school, body = {}, { ip = null } = {}) {
     message: str(body.message, 'Message', { max: 2000 }), contactConsent: true, documents, submittedFrom: hashAddress(ip),
   });
   await LeadInteraction.create({ leadId: lead.id, type: 'NOTE', body: `Online application ${refNo} received with ${documents.length} document(s).` });
+  // Campaign attribution (utm_*, a short link's code, promo code, "how did you hear"). Never fails the application.
+  if (body.attribution) {
+    try { await (await import('../marketing/growth.service.js')).recordFormAttribution(lead.id, body.attribution); } catch (err) { logger.warn(`Admission attribution not recorded: ${err.message}`); }
+  }
   const acknowledgement = await acknowledge(app, school);
   // The admissions team hears about it in the app (and on WhatsApp when that is set up and they opted in).
   try {

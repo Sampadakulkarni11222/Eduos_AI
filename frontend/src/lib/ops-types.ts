@@ -110,6 +110,8 @@ export interface PulseDto {
   activity: Array<{ at: string; kind: string; text: string; link: string }>;
   departments: Array<{ key: string; name: string; link: string; lines: Array<[number | null, string]>; attention: boolean }>;
   briefing: string[]; asOf: string;
+  /** What each briefing line is based on, with links. */
+  briefingSources?: Array<{ text: string; link: string | null }>;
 }
 
 // ── digital lectures ──
@@ -262,3 +264,49 @@ export interface SyllabusOverviewDto {
 // ── messaging ──
 export interface PreferencesDto { whatsappOptIn: { status: string; at?: string | null }; language: string; quietHours: { enabled: boolean; startHour: number; endHour: number } }
 export interface OutboxDto { id: string; channel: string; templateKey: string; recipientMasked: string | null; preview: string; status: string; statusReason: string | null; createdAt: string; relatedEntityType: string | null }
+
+// ── Campus live detail and "my campus" (GET /campus/live, /campus/my-view) ──
+export interface CampusLivePeriodDto {
+  periodNo: number; startTime: string; endTime: string; startsAt: string; endsAt: string;
+  subject: string; teacher: string | null; teacherProfileId?: string | null; coveringFor: string | null; room: string | null; subjectOfferingId?: string;
+}
+export interface CampusLiveAttendanceDto {
+  marked: boolean; strength: number; present: number | null; absent?: number | null; late?: number | null;
+  attendancePct?: number | null; periodRegister?: { marked: number; present: number } | null; lastUpdatedAt: string | null; source?: string;
+}
+export interface CampusLiveNowDto {
+  className?: string; sectionId?: string; period?: CampusLivePeriodDto | null;
+  next?: { periodNo: number; startTime: string; endTime: string; subject: string; teacher: string | null; room: string | null } | null;
+  attendance?: CampusLiveAttendanceDto; classTeacher?: string | null;
+  practical?: { labId: string; title: string; subject: string | null; className: string | null; teacher: string | null; until: string | null; status: string } | null;
+  club?: { title: string; activity: string | null; startTime: string | null; endTime: string | null } | null;
+  homeRoom?: boolean; awayIn?: string | null; updatedAt: string | null;
+}
+export interface CampusLiveLinkDto { page: string; label: string; query: string }
+export type CampusLiveSectionDto =
+  | { key: string; title: string; type: 'facts'; rows: Array<{ label: string; value: string | number; format?: 'time' }>; link?: CampusLiveLinkDto | null }
+  | { key: string; title: string; type: 'metrics'; items: Array<{ label: string; value: string | number | null; tone?: string }>; note?: string; updatedAt?: string | null; link?: CampusLiveLinkDto | null }
+  | { key: string; title: string; type: 'list'; items: Array<{ title: string; sub?: string | null; badge?: string | null; at?: string; state?: string; go?: { kind: string; id: string } }>; empty?: string; link?: CampusLiveLinkDto | null }
+  | { key: string; title: string; type: 'roster'; items: Array<{ id: string; name: string; initial: string; admissionNo: string | null; rollNo: number | null; status: string | null; at?: string | null }>; counts: CampusLiveAttendanceDto; link?: CampusLiveLinkDto | null }
+  | { key: string; title: string; type: 'period'; period: CampusLivePeriodDto; attendance: CampusLiveAttendanceDto; className: string; link?: CampusLiveLinkDto | null }
+  | { key: string; title: string; type: 'note'; text: string; link?: CampusLiveLinkDto | null };
+export interface CampusLiveDetailDto {
+  asOf: string; refreshSeconds: number; kind: string; id: string; title: string; subtitle?: string | null;
+  facilityId?: string | null; sectionId?: string | null; live?: CampusLiveNowDto | null; sections: CampusLiveSectionDto[]; pages?: string[];
+}
+export interface CampusMyClassDto {
+  sectionId: string; className: string; subject: string; startTime: string; endTime: string; startsAt?: string; endsAt?: string; periodNo: number;
+  room: string | null; roomName?: string | null; facilityId?: string | null; cover: string | null; strength?: number; present?: number | null; marked?: boolean; state?: string;
+}
+export interface CampusMyViewDto {
+  role: 'PARENT' | 'STUDENT' | 'TEACHER' | 'STAFF' | 'ALUMNUS'; asOf: string; refreshSeconds: number; note?: string;
+  children?: Array<{ studentId: string; name: string; className: string | null }>; selectedStudentId?: string | null;
+  focus: { sectionId: string; className: string; facilityId: string | null; roomName?: string | null; homeFacilityId?: string | null } | null;
+  now?: CampusLivePeriodDto | null; next?: CampusLiveNowDto['next'] | CampusMyClassDto | null;
+  teacher?: { name: string; subject: string; coveringFor: string | null; profileId?: string | null } | null;
+  timetable?: Array<{ periodNo: number; startTime: string; endTime: string; subject: string; teacher: string | null; room: string | null; state: string }>;
+  classCounts?: { strength: number; present: number | null; marked: boolean; lastUpdatedAt: string | null };
+  child?: { studentId: string; name: string; today: string | null; markedAt: string | null; checkpoints: Array<{ point: string; label: string; at: string }> | null; bus: Array<{ title: string; status: string; myStatus: string; vehicle: string | null; stop: string | null; stopPlannedAt: string | null; eta: { at: string; isEstimate: boolean; label: string } | null }> | null };
+  current?: CampusMyClassDto | null; today?: CampusMyClassDto[];
+  departments?: string[]; layers?: string[];
+}

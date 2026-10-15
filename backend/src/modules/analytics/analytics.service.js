@@ -105,7 +105,7 @@ const periodDto = (p) => (p ? { from: p.from, to: p.to, start: p.start.toISOStri
  * Computes the workspace for already-resolved inputs. Used by the overview,
  * the CSV export and the quarterly reports, so all three agree.
  */
-export async function computeOverview({ scope, departments, period, comparison, calendar, now = new Date(), withTrend = true, onlyHeadline = false }) {
+export async function computeOverview({ scope, departments, period, comparison, calendar, now = new Date(), withTrend = true, onlyHeadline = false, compareTrend = false }) {
   const memo = new Map();
   const ctx = makeContext({ period, scope, calendar, now, memo });
   const cmpCtx = comparison ? makeContext({ period: comparison, scope, calendar, now, memo }) : null;
@@ -116,6 +116,8 @@ export async function computeOverview({ scope, departments, period, comparison, 
     const cur = await evaluate(m, ctx);
     const cmp = cmpCtx ? await evaluate(m, cmpCtx) : null;
     const trend = withTrend && m.trend ? await trendOf(m, ctx) : null;
+    // The comparison period's own trend, for drawing it under the current one (department views only).
+    const comparisonTrend = withTrend && compareTrend && cmpCtx && m.trend ? await trendOf(m, cmpCtx) : null;
     /* eslint-enable no-await-in-loop */
     out.push({
       ...describe(m),
@@ -124,6 +126,7 @@ export async function computeOverview({ scope, departments, period, comparison, 
       comparison: cmp,
       change: cmp ? change(cur.value, cmp.value) : null,
       trend,
+      comparisonTrend,
     });
   }
   return out;
@@ -143,7 +146,7 @@ export async function overview(actor, permissionScope, query = {}, { now = new D
   ].join('|');
   return shortCache(key, ANALYTICS_CACHE_MS, async () => {
     const onlyHeadline = department === 'all' || department === 'overview';
-    const list = await computeOverview({ scope, departments, period, comparison, calendar, now, onlyHeadline });
+    const list = await computeOverview({ scope, departments, period, comparison, calendar, now, onlyHeadline, compareTrend: !onlyHeadline });
     return {
       period: periodDto(period), comparison: periodDto(comparison), compare: mode,
       department, currency: CURRENCY,

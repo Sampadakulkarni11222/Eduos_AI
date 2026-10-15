@@ -1464,6 +1464,8 @@ export interface AgentReply {
   suggestions?: string[];
   /** Present when the answer holds part of a longer list: how to load the next rows. */
   continuation?: AgentContinuation | null;
+  /** The records this answer used ("Based on"), with links. */
+  evidence?: Array<{ tool: string; text: string; link: string | null; count: number | null }>;
 }
 
 /**

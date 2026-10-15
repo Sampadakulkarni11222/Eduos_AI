@@ -13,6 +13,9 @@ import { seatTools } from './tools/seats.js';
 import { customizationTools } from './tools/customization.js';
 import { domainTools } from './tools/domains.js';
 import { operationsTools } from './tools/operations.js';
+import { platformPeopleTools } from './tools/platformPeople.js';
+import { platformGapTools } from './tools/platformGaps.js';
+import { platformOpsTools } from './tools/platformOps.js';
 import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 import { isDecidingToolName } from './decisions.js';
 
@@ -64,6 +67,9 @@ const ASSEMBLED = {
   ...customizationTools,
   ...domainTools,
   ...operationsTools,
+  ...platformPeopleTools,
+  ...platformGapTools,
+  ...platformOpsTools,
 };
 
 /**
@@ -145,6 +151,10 @@ export function mcpToolsFor(actor, { includeMutations = true } = {}) {
       if (!includeMutations && mutates(tool)) return false;
       const scope = actor?.permissions?.[tool.permission];
       if (!scope) return false;
+      // A route guarded by requireRole() as well as a permission (a family's
+      // certificate requests) is mirrored by `forRoles`, so the capability is
+      // shown to exactly the people its screen serves.
+      if (Array.isArray(tool.forRoles) && !tool.forRoles.includes(actor?.roleKey)) return false;
       return !(tool.minScope === 'ALL' && scope !== 'ALL');
     })
     .map(([name, tool]) => ({
@@ -214,6 +224,15 @@ export function validateMcpRegistry() {
     // confirmation.
     if (mutates(tool) && typeof tool.summarise !== 'function') {
       problems.push(`${name} changes data but cannot summarise itself for confirmation`);
+    }
+
+    // An approver-confirmed decision (see APPROVER_CONFIRMED in decisions.js):
+    // recorded only when its approver states it and confirms it on the website.
+    if (tool.approverDecision && !(tool.confirm && tool.risk === 'HIGH' && tool.affectsOthers)) {
+      problems.push(`${name} records an approval but is not confirmed, HIGH risk and web-only`);
+    }
+    if (tool.approverDecision && !(tool.inputSchema?.required ?? []).includes('decision')) {
+      problems.push(`${name} records an approval without the approver stating the decision`);
     }
 
     if (!tool.wraps) continue;

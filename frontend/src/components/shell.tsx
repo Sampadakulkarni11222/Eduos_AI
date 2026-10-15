@@ -12,7 +12,9 @@ import { Spinner, cx } from './ui';
 import { usePermissions, getRequiredPermission } from '@/lib/permissions';
 import { portalHome, signInPathFor, stripSchool, useSchoolSegment, withSchool } from '@/lib/school-path';
 import { AskEduOS } from './ask-eduos';
+import { OfflineBanner } from './offline-banner';
 import { NotificationBell } from './notification-bell';
+import { UniversalSearch } from './universal-search';
 import { ModalA11yBridge } from './modal-a11y-bridge';
 import { useSchoolTheme, useFavicon, themeStyle } from '@/lib/school-theme';
 
@@ -260,6 +262,8 @@ export function PortalShell({
                   <span aria-hidden="true">◈</span><span className="topbar-campus-text"> Campus</span>
                 </Link>
               )}
+              {/* Universal search (Ctrl/Cmd+K): pages of this menu and records this person may see. */}
+              {expectedSlug !== 'super-admin' && <UniversalSearch portalSlug={expectedSlug} school={school} />}
               <NotificationBell portalSlug={expectedSlug} />
               <AskEduOS label="Ask Agent" />
             </div>
@@ -280,7 +284,10 @@ export function PortalShell({
                 </p>
               </div>
             ) : (
-              children
+              <>
+                <OfflineBanner />
+                {children}
+              </>
             )}
           </div>
         </div>

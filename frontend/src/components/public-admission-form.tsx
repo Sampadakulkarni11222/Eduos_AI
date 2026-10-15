@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { admissionPublicApi, PublicApiError, type AdmissionFormConfig, type ApplicationReceipt, type ApplicationStatus } from '@/lib/green-api';
+import { attributionFromUrl, publicHeardFrom } from '@/lib/growth-api';
 
 /**
  * The public online admission form, outside every portal: no sign-in, one per
@@ -26,7 +27,12 @@ function ApplyForm({ school, config }: { school: string; config: AdmissionFormCo
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ApplicationReceipt | null>(null);
-  const set = (k: string) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
+  // Campaign attribution: the link's utm_* / short-link code, a promo code, and "How did you hear about us?".
+  const [heardOptions, setHeardOptions] = useState<Array<{ id: string; label: string }>>([]);
+  const [heardFromId, setHeardFromId] = useState('');
+  const [promoCode, setPromoCode] = useState('');
+  useEffect(() => { void publicHeardFrom(school).then(setHeardOptions); }, [school]);
+  const set =(k: string) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   const maxMb = Math.round(config.files.maxBytes / 1024 / 1024);
 
   const pick = async (file: File | undefined) => {
@@ -46,7 +52,8 @@ function ApplyForm({ school, config }: { school: string; config: AdmissionFormCo
     e.preventDefault();
     setBusy(true); setError(null);
     try {
-      setReceipt(await admissionPublicApi.submit(school, { ...f, consent, website, documents: docs.map(({ fileToken, kind }) => ({ fileToken, kind })) }));
+      const attribution = { ...attributionFromUrl(window.location.search), ...(promoCode.trim() ? { promoCode: promoCode.trim() } : {}), ...(heardFromId ? { heardFromId } : {}) };
+      setReceipt(await admissionPublicApi.submit(school, { ...f, consent, website, documents: docs.map(({ fileToken, kind }) => ({ fileToken, kind })), ...(Object.keys(attribution).length ? { attribution } : {}) }));
     } catch (err) { setError(msg(err)); } finally { setBusy(false); }
   };
 
@@ -86,6 +93,10 @@ function ApplyForm({ school, config }: { school: string; config: AdmissionFormCo
         </div>
         <label>Address<textarea className="input" rows={2} value={f.address ?? ''} onChange={set('address')} maxLength={500} /></label>
         <label>Anything the school should know<textarea className="input" rows={3} value={f.message ?? ''} onChange={set('message')} maxLength={2000} /></label>
+        <div className="adm-grid">
+          {heardOptions.length > 0 && <label>How did you hear about us?<select className="input" value={heardFromId} onChange={(e) => setHeardFromId(e.target.value)}><option value="">Prefer not to say</option>{heardOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select></label>}
+          <label>Promo code (if you have one)<input className="input" value={promoCode} onChange={(e) => setPromoCode(e.target.value)} maxLength={40} autoComplete="off" /></label>
+        </div>
       </fieldset>
       <fieldset><legend>Documents (optional)</legend>
         <p className="adm-note">PDF, JPG or PNG, up to {maxMb} MB each, at most {config.files.maxFiles} files.</p>

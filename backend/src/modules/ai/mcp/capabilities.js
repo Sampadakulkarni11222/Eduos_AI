@@ -72,6 +72,28 @@ const ENTITY_OF_MODULE = {
   Campus: 'campus',
   Lectures: 'digitalLecture',
   Syllabus: 'syllabus',
+  // School-platform operations (tools/platformOps.js).
+  Tasks: 'dueItem',
+  Bills: 'bill',
+  Labs: 'lab',
+  Safety: 'safety',
+  'Staff leave': 'staffLeave',
+  Cover: 'cover',
+  // School-platform people modules (tools/platformPeople.js).
+  PTM: 'ptm',
+  'Review calls': 'reviewCall',
+  Conversations: 'conversation',
+  'Report cards': 'termReport',
+  Clubs: 'club',
+  Showcase: 'showcase',
+  Alumni: 'alumni',
+  Social: 'socialPost',
+  Digest: 'digest',
+  Sustainability: 'sustainability',
+  'AI drafts': 'aiDraft',
+  // Older-module gaps (tools/platformGaps.js).
+  Certificates: 'certificate',
+  Quizzes: 'quiz',
 };
 
 /**
@@ -359,6 +381,9 @@ export const ENTITY_VOCABULARY = [
   // Not bare "schedule": that is the calendar's word ("the exam schedule",
   // "what is scheduled for Friday"). A CLASS schedule is the timetable.
   ['timetable', /\btime.?table\b|\bperiods?\b|\bclass\s+schedules?\b|\blesson|\bnext\s+(?:class|lecture)\b|\bclass\b[^?.]*\b(?:next|right\s+now)\b/i],
+  // A member of staff's own leave, named by its type or its balance; listed
+  // before the student-leave entry so "casual leave" is read as staff leave.
+  ['staffLeave', /\bstaff\s+leave\b|\bleave\s+balance\b|\b(?:casual|earned|duty|maternity|paternity)\s+leave\b|\bleave\s+without\s+pay\b/i],
   ['leave', /\bleave\b|\bday\s*off\b|\bchutti\b|छुट्टी/i],
   ['elective', /\belective|\bsubject\s*registration|\bregistration/i],
   ['studentRequest', /\bco.?curricular|\bachievement|\bactivit(y|ies)\b|\bprofile[\s-]*(?:correction|edit|change)|\bstudent\s*request|\beditable\b|\bfields?\b[^?.]*\bcan\s+i\s+(?:change|edit|correct)/i],
@@ -374,19 +399,19 @@ export const ENTITY_VOCABULARY = [
   // "growth" before the marks vocabulary can claim "growth SCORE": a growth
   // score is an analytics figure that happens to share a word with marks, and
   // whichever entity is spoken first is the subject.
-  ['analytics', /\bdashboard|\banalytics|\bsummary\b|\boverview\b|\bgrowth\b/i],
+  ['analytics', /\bdashboard|\banalytics|\bsummary\b|\boverview\b|\bgrowth\b|\bquarterly\s+reports?\b|\banalytics\s+workspace\b/i],
   // "What is scheduled for Friday?" asks the calendar. The word was in no
   // vocabulary at all, so a question that named a real day named no entity,
   // scored below the floor on every capability and was answered with the list
   // of things the assistant can help with. A timetable question says so --
   // "timetable", "period", "lecture" -- and is matched by its own entry.
   ['calendar', /\bcalendar|\bevent|\bholiday|\bschedul(?:e|es|ed|ing)\b|\bagenda\b/i],
-  ['fee', /\bfees?\b|\binvoice|\bpayment|\breceipt|\binstallment|फीस/i],
+  ['fee', /\bfees?\b|\binvoice|\bpayment|\breceipt|\binstallment|फीस|\bconcessions?\b|\bcredit\s+notes?\b|\bgst\b|\bfee\s+adjustments?\b/i],
   // Seats a school buys, requested from the platform: "request 25 extra seats".
   ['seat', /\bseats?\b/i],
   ['library', /\blibrar|\bbooks?\b/i],
-  ['hostel', /\bhostel|\bdorm|\broom\b|\bbeds?\b|\bwarden\b/i],
-  ['transport', /\btransport|\bbus\b|\broute\b|\bpick[\s-]?up\b|\bdrop[\s-]?off\b|\bbus\s*stop/i],
+  ['hostel', /\bhostel|\bdorm|\broom\b|\bbeds?\b|\bwarden\b|\bout[\s-]?pass(?:es)?\b/i],
+  ['transport', /\btransport|\bbus\b|\broute\b|\bpick[\s-]?up\b|\bdrop[\s-]?off\b|\bbus\s*stop|\bvehicles?\b|\btrips?\b|\bboard(?:ed|ing)\b|\bfleet\b/i],
   // Admissions, but NOT the words "admission number" -- that is how a STUDENT
   // is identified, and reading it as the admissions pipeline would answer a
   // question about a pupil with a list of enquiries.
@@ -417,6 +442,31 @@ export const ENTITY_VOCABULARY = [
   // backspace characters, so "syllabus progress" matched nothing at all.
   ['syllabus', /\bsyllabus\b|\bmodule\s+(?:plan|progress)\b|\bportion\s+(?:covered|completed)\b/i],
   ['digitalLecture', /\bdigital\s+lectures?\b|\bonline\s+class(?:es)?\b|\blive\s+class(?:es)?\b|\bwebinars?\b/i],
+  // ── School-platform operations (tools/platformOps.js) ──
+  // Named by their own words only, so none takes a sentence from the entities
+  // above: "tasks" stays homework, "fees" stays fees.
+  ['dueItem', /\bdue\s+items?\b|\breminders?\b|\bsnooz(?:e|ed|ing)\b|\bto-?do\s+list\b/i],
+  ['bill', /\bbills?\b|\bamc\b|\bservice\s+(?:visits?|contracts?)\b|\brenewals?\b|\butility\s+bills?\b/i],
+  ['lab', /\blabs?\b|\blaborator(?:y|ies)\b|\bchemicals?\b|\breagents?\b|\bbeakers?\b|\bglassware\b|\bpracticals?\b|\bcalibrat(?:e|ed|ion|ions)\b/i],
+  ['safety', /\bvisitors?\b|\bcontractors?\b|\bid\s+cards?\b|\bcheckpoints?\b|\bemergency\s+roster\b|\bcamera\b|\bpick[\s-]?up\s+(?:delegat\w*|people|persons?|adults?)\b|\bdelegat\w*/i],
+  ['cover', /\bcover(?:s|ing|ed)?\b|\bsubstitut(?:e|es|ion)\b|\bproxy\s+(?:teacher|period)s?\b|\bstaff\s+absen(?:t|ce)\b/i],
+  // ── School-platform people modules (tools/platformPeople.js) ──
+  // Each named by its own words, so "report card" alone stays marks and
+  // "message" alone stays an announcement; only the term card, a conversation
+  // and the rest are claimed here.
+  ['ptm', /\bptms?\b|\bparent[\s-]+teacher\s+meetings?\b|\bmeeting\s+slots?\b/i],
+  ['reviewCall', /\breview\s+calls?\b/i],
+  ['conversation', /\bconversations?\b|\bunread\s+messages?\b|\bmessages?\s+(?:to|from)\s+(?:my\s+|the\s+)?(?:child'?s?\s+)?(?:class\s+|subject\s+)?teachers?\b/i],
+  ['termReport', /\bterm\s+reports?(?:\s+cards?)?\b|\bcbse\s+(?:report|card)s?\b|\breport[\s-]*card\s+remarks?\b/i],
+  ['club', /\bclubs?\b|\bsports?\s+teams?\b/i],
+  ['showcase', /\bshowcase\b/i],
+  ['alumni', /\balumn(?:i|us|a|ae)\b|\breunions?\b/i],
+  ['socialPost', /\bsocial(?:\s+media)?\s+posts?\b|\bsocial\s+media\b|\bfacebook\b|\binstagram\b|\blinkedin\b/i],
+  ['digest', /\bdigest\b|\bheadlines\b/i],
+  ['sustainability', /\beco\b|\beco[\s-]?points?\b|\bsustainab\w*|\bwaste\b|\bmeter\s+readings?\b|\bplant\s+checks?\b|\bcompost\w*/i],
+  ['certificate', /\bcertificates?\b|\bbonafide\b|\bcertificate\s+requests?\b/i],
+  ['quiz', /\bquiz(?:zes)?\b/i],
+  ['aiDraft', /\bai\s+drafts?\b|\bdraft(?:s|ing)?\s+(?:me\s+)?(?:a\s+|an\s+|the\s+)?(?:letter|circular|minutes|lesson\s+plan|documents?)\b/i],
 ];
 
 /**

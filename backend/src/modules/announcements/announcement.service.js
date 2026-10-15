@@ -196,7 +196,7 @@ async function readerReach(actor) {
 /** Matches a list field that is empty, or absent on a pre-migration row. */
 const unset = (field) => ({ $or: [{ [field]: { $size: 0 } }, { [field]: { $exists: false } }] });
 
-async function audienceFilterFor(actor) {
+export async function audienceFilterFor(actor) {
   if (actor?.permissions?.['announcements.publish'] === 'ALL') return {};
 
   const reach = await readerReach(actor);

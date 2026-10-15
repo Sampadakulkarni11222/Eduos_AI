@@ -9,6 +9,7 @@ import { useSchoolHref } from '@/lib/school-path';
 import { useAuth } from '@/lib/auth';
 import type { TeacherDashboardDto } from '@/lib/types';
 import { PulseBoard } from '@/components/ops/pulse-board';
+import { RoleDashboard } from '@/components/ops/role-dashboard';
 
 export default function TeacherDashboard() {
   // Links are written school-less; this adds the school in the URL.
@@ -30,6 +31,8 @@ export default function TeacherDashboard() {
     <PortalShell expectedSlug="teacher" topbar={{ title: 'My Dashboard', desc: 'Your teaching day at a glance' }}>
       {/* The interactive board: briefing, departments, campus, charts and live activity. */}
       <PulseBoard />
+      {/* My classes: attendance, hand-in rates, marks, students needing attention, syllabus, today. */}
+      <RoleDashboard />
 
       <div className="card card-pad" style={{ background: 'var(--accent)', color: 'var(--on-accent)', marginBottom: 18 }}>
         <div style={{ fontFamily: 'Newsreader, serif', fontSize: 24, fontWeight: 600 }}>{greeting()}, {name ?? 'there'}!</div>

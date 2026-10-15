@@ -780,6 +780,9 @@ const APPLY_LEAVE = /\bapply\b[^?.!]*\bleave\b|\bleave\b[^?.!]*\bapplication\b|\
 export function asksLeaveWithoutPermission(message, actor) {
   if (actor?.permissions?.['leave.apply'] || !actor?.permissions?.['leave.read']) return false;
   const text = String(message ?? '');
+  // A member of staff naming a staff leave type is applying for their own
+  // staff leave (apply_staff_leave), which they hold staffleave.apply for.
+  if (actor?.permissions?.['staffleave.apply'] && /\b(?:casual|earned|duty|maternity|paternity|staff)\s+leave\b|\bleave\s+without\s+pay\b/i.test(text)) return false;
   return APPLY_LEAVE.test(text) && !/\b(?:status|history|list|show|view|approve|reject|pending|requests?|applications|review)\b/i.test(text);
 }
 

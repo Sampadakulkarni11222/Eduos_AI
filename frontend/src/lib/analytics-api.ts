@@ -27,6 +27,8 @@ export interface MetricDto {
   unit: MetricUnit; kind: 'flow' | 'stock'; dateBasis: string; sources: string[]; link: string | null; version: number;
   headline: boolean; trend: TrendDto | null | boolean; currentOnly: boolean; history: string; scope: string; currency: string | null;
   current: MetricValue; comparison: MetricValue | null; change: ChangeDto | null;
+  /** The comparison period's own trend (department views), drawn under the current one. */
+  comparisonTrend?: TrendDto | null;
 }
 export interface DepartmentDto { key: string; label: string }
 export interface OverviewDto {
@@ -34,6 +36,7 @@ export interface OverviewDto {
   departments: DepartmentDto[]; scope: { level: 'ALL' | 'OWN'; departments: string[]; classes: number | null };
   metrics: MetricDto[]; computedAt: string; cutoff: string; catalogueVersion: string; freshness: string;
 }
+export interface CatalogueDto { version: string; departments: DepartmentDto[]; metrics: Array<Omit<MetricDto, 'current' | 'comparison' | 'change' | 'currency'>>; scope: { level: 'ALL' | 'OWN'; departments: string[] } }
 export interface OverviewQuery { preset: string; from?: string; to?: string; compare: string; compareFrom?: string; compareTo?: string; department: string }
 
 // ── quarterly reports ──────────────────────────────────────────────────
@@ -84,6 +87,7 @@ const clean = (q: OverviewQuery): Q => ({ ...q, from: q.preset === 'custom' ? q.
 
 export const analyticsApi = {
   overview: (q: OverviewQuery) => get<OverviewDto>('/analytics/overview', clean(q)),
+  catalogue: () => get<CatalogueDto>('/analytics/catalogue'),
   exportCsv: (q: OverviewQuery) => downloadCsv(`/analytics/export.csv${qs(clean(q))}`, `analytics-${q.department}.csv`),
 
   reports: () => get<{ items: ReportSummaryDto[]; total: number }>('/analytics/reports', { pageSize: 100 }),

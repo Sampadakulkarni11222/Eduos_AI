@@ -623,7 +623,10 @@ describe('8. the student catalogue matches the Web', () => {
   });
 
   it('keeps every write own-scoped', () => {
-    for (const c of capabilitiesFor(me()).filter((x) => x.writes)) {
+    // Writes keyed on the caller alone whatever the permission's scope: a
+    // student's own digest topics.
+    const SELF_ONLY = ['update_my_digest_interests'];
+    for (const c of capabilitiesFor(me()).filter((x) => x.writes && !SELF_ONLY.includes(x.name))) {
       expect(actorForRole('STUDENT').permissions[c.permission], c.name).toBe('OWN');
     }
   });

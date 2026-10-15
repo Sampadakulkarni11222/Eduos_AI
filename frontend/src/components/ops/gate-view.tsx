@@ -1,4 +1,5 @@
 'use client';
+import { offlineWrite } from '@/lib/offline-queue';
 import { useState } from 'react';
 import { Button, EmptyState, Field, Modal, useToast } from '@/components/ui';
 import { safetyApi, type CardDto, type VisitorDto } from '@/lib/safety-api';
@@ -167,7 +168,7 @@ function CheckpointsTab({ canManage }: { canManage: boolean }) {
           <div className="ops-inline">
             <Field label="Card code"><input className="input" value={code} onChange={(e) => setCode(e.target.value)} /></Field>
             <Field label="Checkpoint"><select className="input" value={point} onChange={(e) => setPoint(e.target.value)}>{['GATE_IN', 'GATE_OUT', 'LAB', 'LIBRARY'].map((p) => <option key={p} value={p}>{humanize(p)}</option>)}</select></Field>
-            <Button disabled={busy || !code} onClick={() => void run(async () => { const r = await safetyApi.scan({ code, point }); setResult(`${r.holderName ? `${r.holderName}: ` : ''}${r.message}`); setCode(''); await list.reload(); })}>Record</Button>
+            <Button disabled={busy || !code} onClick={() => void run(async () => { const w = await offlineWrite<{ holderName?: string; message: string }>('CHECKPOINT_SCAN', '/checkpoints/scan', { code, point, scannedAt: new Date().toISOString() }, `Scan ${code} (${point.toLowerCase()})`); if (w.queued || !w.data) { setResult('Offline: the scan is saved on this device with its time and will be sent when you are back online.'); setCode(''); return; } const r = w.data; setResult(`${r.holderName ? `${r.holderName}: ` : ''}${r.message}`); setCode(''); await list.reload(); })}>Record</Button>
           </div>
           {result && <p className="ops-muted" role="status">{result}</p>}
         </SectionCard>

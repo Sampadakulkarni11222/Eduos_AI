@@ -35,6 +35,11 @@ export const FEATURES = {
   hostelOutpass: { label: 'Hostel out-pass', default: true },
   accountsExport: { label: 'Accounts export (Tally, GST) and concessions', default: true },
   aiDrafts: { label: 'AI drafts (letters, minutes, plans, remarks)', default: true, needs: 'An AI model key; without one, drafts come from templates' },
+  // Part 2 gaps.
+  supportPlans: { label: 'Student support plans', default: true },
+  portfolios: { label: 'Competency portfolios', default: true },
+  offlineWorkflows: { label: 'Offline attendance, lab, gate, sanitation and PTM check-in', default: true },
+  scenarios: { label: 'Scenario planning (what-if projections)', default: true },
 };
 
 export const FEATURE_KEYS = Object.keys(FEATURES);

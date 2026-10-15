@@ -285,6 +285,10 @@ function authorize(actor, tool) {
   if (!scope) {
     return { error: fail(MCP_ERROR.FORBIDDEN, 'You are not authorized to access this information.') };
   }
+  // The REST route's requireRole(), where the tool declares one (forRoles).
+  if (Array.isArray(tool.forRoles) && !tool.forRoles.includes(actor?.roleKey)) {
+    return { error: fail(MCP_ERROR.FORBIDDEN, 'That is not available to your role.') };
+  }
   if (tool.minScope === 'ALL' && scope !== 'ALL') {
     return {
       error: fail(

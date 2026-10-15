@@ -122,6 +122,8 @@ const teacherish = (req, _res, next) => {
   next();
 };
 classCheckInRouter.get('/mine', teacherish, ok((r) => camera.myCheckIns(r.actor, r.query)));
+// Teacher presence by period for the principal and administrators (timetable plus check-ins).
+classCheckInRouter.get('/board', requireAnyOf(['cover.manage', 'ALL'], ['camera.events.review']), ok((r) => camera.presenceBoard(r.query)));
 classCheckInRouter.post('/', teacherish, ok((r) => camera.checkIn(r.actor, r.body), 'Checked in', 201));
 
 // ── /safety ───────────────────────────────────────────────────────────────

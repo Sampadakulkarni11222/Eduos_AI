@@ -8,6 +8,7 @@ import { usePermissions } from '@/lib/permissions';
 import type { CircleDto, MentorshipDto, PostDto } from '@/lib/ops-types';
 import { AttachUpload } from './attach';
 import { DataNote, ErrorNote, Loadable, PromptModal, SectionCard, StatusPill, Tabs, fmtDateTime, humanize, useAction, useLoad, useQueryParam } from './kit';
+import { ShareToSocialButton, SocialShareSection, SocialStatusStrip, newsroomSocialApi, useSocialOptions, type SocialOptions, type SocialStatusRow } from './newsroom-social';
 
 /**
  * Newsroom & community. Every post has an explicit audience; students' posts
@@ -120,7 +121,7 @@ function Comments({ p, onCount }: { p: NewsPost; onCount: () => void }) {
   );
 }
 
-export function PostCard({ p, onChanged, moderator, circles = [] }: { p: NewsPost; onChanged: () => void; moderator: boolean; circles?: NewsCircle[] }) {
+export function PostCard({ p, onChanged, moderator, circles = [], social }: { p: NewsPost; onChanged: () => void; moderator: boolean; circles?: NewsCircle[]; social?: { options: SocialOptions; rows: SocialStatusRow[]; onShared: () => void } }) {
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState<null | 'reject' | 'takedown' | 'report' | 'reinstate' | 'withdraw'>(null);
   const [editing, setEditing] = useState(false);
@@ -158,8 +159,10 @@ export function PostCard({ p, onChanged, moderator, circles = [] }: { p: NewsPos
           {(p.commentsEnabled || (p.commentCount ?? 0) > 0) && <button type="button" className="news-react" aria-expanded={open} onClick={() => setOpen((v) => !v)}>💬 {p.commentCount ? `${p.commentCount} comment${p.commentCount === 1 ? '' : 's'}` : 'Comments'}</button>}
           {!p.isMine && <button type="button" className="news-react" onClick={() => setPrompt('report')}>⚑ Report</button>}
           {canModerate && <><Button small variant="ghost" onClick={() => void run(async () => { await opsApi.moderatePost(p.id, p.pinned ? 'UNPIN' : 'PIN'); onChanged(); })}>{p.pinned ? 'Unpin' : 'Pin'}</Button><Button small variant="ghost" onClick={() => setPrompt('takedown')}>Take down</Button></>}
+          {social?.options.available && p.audience === 'PUBLIC' && <ShareToSocialButton postId={p.id} options={social.options} already={social.rows.map((r) => r.label)} onDone={social.onShared} />}
         </div>
       )}
+      {social && social.rows.length > 0 && <div className="news-post-body"><SocialStatusStrip rows={social.rows} /></div>}
       {p.status === 'PENDING_REVIEW' && canModerate && !p.isMine && <div className="news-actions"><Button small disabled={busy} onClick={() => void run(async () => { await opsApi.moderatePost(p.id, 'PUBLISH'); toast('Published', 'success'); onChanged(); })}>Publish</Button><Button small variant="soft" onClick={() => setPrompt('reject')}>Send back</Button></div>}
       {['TAKEN_DOWN', 'ARCHIVED'].includes(p.status) && moderator && <div className="news-actions"><Button small variant="soft" onClick={() => setPrompt('reinstate')}>Reinstate</Button></div>}
       {p.isMine && ['DRAFT', 'REJECTED', 'PENDING_REVIEW', 'PUBLISHED'].includes(p.status) && (
@@ -214,6 +217,9 @@ function Composer({ circles, onDone, onClose, editing }: { circles: NewsCircle[]
     commentPolicy: (editing?.commentPolicy ?? 'OPEN') as CommentPolicy, audienceRef: (editing?.audienceRef ?? []) as string[],
   });
   const [media, setMedia] = useState<MediaDraft[]>([]);
+  // "Also post to social media": staff with social.publish only (the server refuses everyone else).
+  const socialOptions = useSocialOptions();
+  const [socialNets, setSocialNets] = useState<string[]>([]);
   const sections = useLoad(() => (staff && (role === 'TEACHER' || moderator) ? (moderator ? api.allSections() : api.mySections()) : Promise.resolve([])), [staff, role, moderator]);
   const { run, busy, error } = useAction();
   const toast = useToast();
@@ -230,7 +236,21 @@ function Composer({ circles, onDone, onClose, editing }: { circles: NewsCircle[]
   });
   const save = (submit: boolean) => void run(async () => {
     const r = editing ? await newsApi.updatePost(editing.id, payload(submit)) : await opsApi.createPost(payload(submit));
-    toast(r.status === 'PUBLISHED' ? (editing ? 'Saved' : 'Published') : r.status === 'PENDING_REVIEW' ? 'Sent to a moderator for review' : 'Draft saved', 'success'); onDone(); onClose();
+    toast(r.status === 'PUBLISHED' ? (editing ? 'Saved' : 'Published') : r.status === 'PENDING_REVIEW' ? 'Sent to a moderator for review' : 'Draft saved', 'success');
+    const nets = socialOptions?.available && f.audience === 'PUBLIC' ? socialNets : [];
+    if (nets.length && r.status === 'PUBLISHED') {
+      // The story is saved whatever happens here; a refusal (e.g. consent) is shown, and the story can be shared later.
+      try {
+        const out = await newsroomSocialApi.share(r.id, nets);
+        const sim = out.networks.filter((n) => nets.includes(n.network) && n.status === 'SIMULATED').length;
+        toast(sim ? `Social media: ${sim} network(s) simulated — nothing was posted` : 'Also shared to social media', sim ? 'info' : 'success');
+      } catch (e) {
+        toast(`Story saved, but not shared to social media: ${e instanceof Error ? e.message : 'refused'}`, 'error');
+      }
+    } else if (nets.length) {
+      toast('It goes to social media once published: use “Share to social” on the story then.', 'info');
+    }
+    onDone(); onClose();
   });
   const mediaReady = media.every((m) => (m.kind !== 'IMAGE' || (m.altText.trim() && m.metadataStripped)) && (m.who === 'NONE' || (m.who === 'TAGGED' && m.students.length > 0)));
   const audienceReady = (f.audience !== 'CIRCLE' || f.circleId) && (!['ROLE', 'CLASS'].includes(f.audience) || f.audienceRef.length > 0);
@@ -268,6 +288,7 @@ function Composer({ circles, onDone, onClose, editing }: { circles: NewsCircle[]
       )}
       <Field label="Story" required><textarea className="input" rows={6} value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} style={{ width: '100%' }} /></Field>
       <Field label="Tags (comma separated)"><input className="input" value={f.tags} onChange={(e) => setF({ ...f, tags: e.target.value })} /></Field>
+      {staff && <SocialShareSection options={socialOptions} value={socialNets} onChange={setSocialNets} audience={f.audience} />}
       {editing && editing.media.length > 0 && !media.length && <p className="ops-muted">{editing.media.length} existing photo(s)/video(s) are kept. Adding new files replaces them.</p>}
       <AttachUpload label="Add a photo or video" accept=".jpg,.jpeg,.png,.webp,.mp4" hint="Remove location data from photos before uploading." onUploaded={(a) => setMedia((x) => [...x, { url: a.url, kind: a.mimeType.startsWith('video') ? 'VIDEO' : 'IMAGE', altText: '', caption: '', metadataStripped: false, who: '', students: [] }])} />
       {media.map((m, i) => (
@@ -516,6 +537,12 @@ export function NewsroomView({ initialTab }: { initialTab?: 'feed' | 'circles' |
   const role = me?.profile?.role ?? '';
   const showMentoring = canMentor || moderator;
   const items = [...(feed.data?.items ?? []), ...more.items];
+  // Per-network social status on each story, for staff who publish to social media.
+  const socialOptions = useSocialOptions();
+  const canSocial = Boolean(socialOptions?.canPublish);
+  const storyIds = [...items.map((p) => p.id), ...(focused.data ? [focused.data.id] : [])].filter((id, i, a) => a.indexOf(id) === i);
+  const socialStatus = useLoad(() => (canSocial && storyIds.length ? newsroomSocialApi.statuses(storyIds) : Promise.resolve({} as Record<string, SocialStatusRow[]>)), [canSocial, storyIds.join(',')]);
+  const socialFor = (p: NewsPost) => (canSocial && socialOptions ? { options: socialOptions, rows: socialStatus.data?.[p.id] ?? [], onShared: () => void socialStatus.reload() } : undefined);
   const hasMore = more.page > 1 ? more.hasMore : Boolean(feed.data?.hasMore);
   const feedPage = (page: number) => newsApi.feed({ tab: tab === 'feed' ? undefined : tab, q: q || undefined, circleId: tab === 'feed' ? circle?.id : undefined, page });
   const loadMore = () => void run(async () => {
@@ -549,7 +576,7 @@ export function NewsroomView({ initialTab }: { initialTab?: 'feed' | 'circles' |
         <Loadable state={focused}>{(p) => p && (
           <div className="news-feed-wrap">
             <div className="ops-inline"><b>Linked post</b><Button small variant="ghost" onClick={() => setFocusPost(null)}>Close</Button></div>
-            <PostCard p={p} moderator={moderator} circles={circles.data ?? []} onChanged={reloadAll} />
+            <PostCard p={p} moderator={moderator} circles={circles.data ?? []} onChanged={reloadAll} social={socialFor(p)} />
           </div>
         )}</Loadable>
       )}
@@ -569,7 +596,7 @@ export function NewsroomView({ initialTab }: { initialTab?: 'feed' | 'circles' |
               : <EmptyState title={tab === 'saved' ? 'Nothing saved yet' : tab === 'mine' ? 'You have not posted yet' : circle ? 'No posts in this circle yet' : 'No stories yet'} sub={tab === 'feed' ? 'Events, ceremonies, achievements and club news appear here.' : 'Nothing here yet.'} />
           ) : (
             <div className="news-feed news-feed-wrap">
-              {items.map((p) => <PostCard key={p.id} p={p} moderator={moderator} circles={circles.data ?? []} onChanged={reloadAll} />)}
+              {items.map((p) => <PostCard key={p.id} p={p} moderator={moderator} circles={circles.data ?? []} onChanged={reloadAll} social={socialFor(p)} />)}
               {hasMore && <Button variant="soft" disabled={busy} onClick={loadMore}>Load more</Button>}
             </div>
           )}</Loadable>

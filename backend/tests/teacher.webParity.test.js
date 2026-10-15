@@ -247,11 +247,8 @@ describe('2. natural-language requests reach the same capability on the website 
 
 describe('3. an act the Web does not offer a teacher is declined, and nothing runs', () => {
   const DECLINED = [
-    ['Update the homework deadline.', /can't update homework/],
-    ['Change the assignment details.', /can't change homework/],
-    ['Delete the test homework.', /can't delete homework/],
-    ['Delete the test assignment.', /can't delete homework/],
-    ['Delete all assignments.', /can't delete homework/],
+    // Bulk deletion is refused before anything is chosen, whatever the Web allows one at a time.
+    ['Delete all assignments.', /can't delete all assignments at once/],
     ['Delete the test announcement.', /can't delete an announcement/],
     ['Update an announcement.', /can't update an announcement|not .*available/],
     ['Schedule a calendar event for sports day on 10 October 2026.', /can't schedule the calendar/],
@@ -273,6 +270,35 @@ describe('3. an act the Web does not offer a teacher is declined, and nothing ru
       expect(waTool).toBeNull();
       expect(web.action ?? null).toBeNull();
       expect(await inSchool(OAK, () => Assignment.countDocuments())).toBe(assignmentsBefore);
+    }, 60000);
+  }
+});
+
+/* ── 3b. Homework a teacher set: the Web lets them change or withdraw it ─ */
+
+describe("3b. changing or withdrawing one's own homework is a draft or a question, never a guess", () => {
+  // PATCH/DELETE /assignments/:id (assignments.manage, the teacher's own
+  // homework only) are on the Teacher Web, so the assistant offers them too
+  // (update_assignment, delete_assignment), always proposed first.
+  const SENTENCES = [
+    ['Update the homework deadline.', 'update_assignment'],
+    ['Change the assignment details.', 'update_assignment'],
+    ['Delete the test homework.', 'delete_assignment'],
+    ['Delete the test assignment.', 'delete_assignment'],
+    ['Deleting or updating homework', 'delete_assignment'],
+  ];
+  for (const [message, tool] of SENTENCES) {
+    it(`"${message}"`, async () => {
+      const before = await inSchool(OAK, () => Assignment.find({ deletedAt: null }).lean());
+      const { web, wa, webTool } = await bothChannels(message);
+      expect(web.reply).not.toMatch(/not sure what you need/i);
+      expect(wa.reply).not.toMatch(/not sure what you need/i);
+      expect(webTool).toBe(tool);
+      // A draft to confirm, or a question about which homework or what to change.
+      const asked = web.action?.tool === tool || /which homework|what should change/i.test(String(web.reply));
+      expect(asked, String(web.reply)).toBe(true);
+      const after = await inSchool(OAK, () => Assignment.find({ deletedAt: null }).lean());
+      expect(after.map((a) => [String(a._id), String(a.dueAt), a.title])).toEqual(before.map((a) => [String(a._id), String(a.dueAt), a.title]));
     }, 60000);
   }
 });

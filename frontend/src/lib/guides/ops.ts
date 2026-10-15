@@ -48,10 +48,15 @@ const CONTENT: Record<string, OpsContent> = {
       'Staff can drag the time slider, or press Play the day, to see the timetable at another time of today. The headcount stays today\'s register, and the clock says Preview.',
       'Use the buttons in a panel to book the room, report an issue, open the module plan or go to the related page.',
       'Switch to List for a plain list of spaces and departments. It shows the same information.',
+      'A room in session shows Live now under its usual details: the teacher (and who they are covering for), the class and subject, the period with a countdown, whether the register is marked, present out of strength, late arrivals, a practical or club session, and when it last changed. It refreshes every 15 seconds while the panel is open.',
+      'See details opens one live page for a room, class, teacher, bus, lab, department, zone or the gate, refreshed every 15 seconds. Each part has Open full page when the school has a page for it, such as attendance, timetable, labs or fleet.',
+      'Every panel over the map has a fold button that turns it into a slim chip; click the chip to open it again. Collapse all folds them together. Your choices are remembered on this device.',
+      'Parents and students see their own class first: what is happening now, who is teaching, the class strength and how many are present, today\'s timetable and what is next, their own status today and their bus. Teachers see their current and next class with present counts.',
     ],
     tips: [
       'You only see the spaces your role is allowed to see. Restricted areas are hidden or shown without detail, and headcounts, teachers and department figures are shown to staff only.',
       'The figures drawn in a room follow the register\'s count but are illustrative. Nobody is located or tracked.',
+      'The named list of who is present, absent or late is shown only to the class teacher, the class\'s subject teachers, a confirmed substitute and school leadership. Families see counts for their own class and never another child\'s name or attendance.',
     ],
   },
   lectures: {
@@ -218,8 +223,12 @@ const CONTENT: Record<string, OpsContent> = {
       'Read and react to posts. Save the ones you want to keep.',
       'Write a post if your role allows it. Unless you are a moderator, a moderator reviews it before it appears.',
       'Join circles for clubs, classes or alumni batches.',
+      'Staff who publish to social media see "Also post to social media" in the composer: tick Facebook, Instagram, X, LinkedIn or YouTube for a story whose audience is Public (anyone). Each story then shows how each network went, and "Share to social" shares a published story later.',
     ],
-    tips: ['Photos of students appear only when the school has the right consent for them. Manage your family\'s consent under the Consent tab.'],
+    tips: [
+      'Photos of students appear only when the school has the right consent for them. Manage your family\'s consent under the Consent tab.',
+      'A network without a connected account is "Simulated": nothing is posted, and the story says so. If the option is missing, an administrator can switch social publishing on under Tenant Settings.',
+    ],
   },
   mentoring: {
     category: 'Community',
@@ -703,6 +712,89 @@ const CONTENT: Record<string, OpsContent> = {
       'Open the CRM to contact the family and move the lead through its stages; the family sees a plain status when they check with their reference number.',
     ],
     tips: ['Families check status with the reference number and a code sent to the phone on the application, so they see only their own.'],
+  },
+  campaigns: {
+    category: 'Growth',
+    summary: 'Every campaign in one place. Offline: banners and hoardings, pamphlets, posters, newspaper ads, radio and local TV, open houses, seminars, referral drives, society activations and fair stalls, with where they appear, dates, quantity, vendor, cost, creative and approval. Online: the campaigns whose code your ads carry.',
+    workflow: ['Draft', 'Sent for approval', 'Approved', 'Live', 'Completed'],
+    steps: [
+      'Press + Offline campaign. Give the channel, placements, dates, vendor and cost, attach the artwork, and link the vendor\'s bill if it is in Bills & Services.',
+      'Send it for approval. Another person with marketing rights, or the principal, approves it or sends it back with a note.',
+      'Open Tracking & QR: print the QR code or short link on the poster or pamphlet, quote the promo code on radio, and use the tracking phone number in print. Each brings enquiries back to this campaign.',
+      'Under How did you hear, set the answers families pick on the online form and counsellors pick at enquiry.',
+    ],
+    tips: ['Results are counted from the admissions CRM: enquiries, visits, applications and admissions. Opens of the QR or link are counted too, but they are opens, not people.'],
+  },
+  connectors: {
+    category: 'Growth',
+    summary: 'Ad platforms in one list: Meta (Facebook and Instagram), Google Ads, Google Analytics 4, YouTube, LinkedIn and any CSV. Import each platform\'s report export for spend, impressions, clicks and leads, receive leads by webhook, or load a clearly labelled simulated sample.',
+    steps: [
+      'Export the report from the platform as the card describes (by day, with the campaign name), then press Import performance CSV. Bad rows are listed with their line number and skipped.',
+      'Name your platform campaigns with the school campaign\'s code (e.g. ADM27 Open day) so spend is matched to that campaign.',
+      'Import leads CSV, or set up the lead webhook, to turn lead-form leads into enquiries. A family already in the CRM (same phone or e-mail) gets a note, not a second enquiry.',
+    ],
+    tips: [
+      '"Not connected" is normal: live sync is not built, so the CSV export is the working path. Saved credentials are stored encrypted and never shown again.',
+      'Importing the same days again replaces the earlier figures, so spend is never counted twice. Simulated sample figures are never counted as spend.',
+    ],
+  },
+  attribution: {
+    category: 'Growth',
+    summary: 'Which campaigns and channels bring enquiries, visits, applications and admissions, and what each costs: cost per enquiry, cost per admission and ROI.',
+    steps: [
+      'Choose the period of the enquiries. The charts show enquiries and cost per admission by channel; the tables break it down by offline and online campaign.',
+      'Set the value of one admission (for example first-year fees) to see ROI.',
+      'Download CSV to share the figures.',
+    ],
+    tips: ['Each enquiry is counted once, for the earliest way it was traced to a campaign. "Not known" means no source was recorded: ask families "How did you hear about us?" at enquiry.'],
+  },
+  // ── Part 2 gaps ──
+  'support-plans': {
+    category: 'Learning',
+    summary: 'Student support plans. Staff open a plan when the risk signals, attendance or marks (or their own judgement) show a child needs help: a concern area, measurable goals with review dates, actions with owners, progress reviews and a closing outcome. Families see the summary and goals for their own child.',
+    workflow: ['Signal or concern', 'Plan opened', 'Shared with family', 'Reviews', 'Closed with outcome'],
+    highlights: [
+      { label: 'From the risk signals', text: '"From risk signals" lists students the rule-based attendance and marks signals flag who have no plan yet, with the figure behind each one.' },
+      { label: 'Measurable goals', text: 'Every goal has a measure, a target and a review date. Review dates and staff actions become tasks in My Tasks, with reminders.' },
+      { label: 'What families see', text: 'Families see the summary, the goals and the review notes written for them, never internal notes or the safeguarding flag.' },
+    ],
+    steps: [
+      'Open a plan from a signal or with "+ Open a plan": choose the concern area and write the summary in words a family can read.',
+      'Add goals and actions. Share the plan with the family when you are ready; they can mark it as read and leave a comment.',
+      'Record progress against a goal, then a review with a note for the family and the next review date.',
+      'Close the plan with its outcome. You can reopen it if needed.',
+    ],
+    tips: ['No diagnoses, medication or clinical details: record a wellbeing referral only.', 'Safeguarding concerns go to the Safeguarding page; the plan only records that a referral was made, visible to authorised staff.'],
+  },
+  portfolio: {
+    category: 'Learning',
+    summary: 'A competency portfolio per student (communication, critical thinking, collaboration, creativity, digital, life skills and subject competencies). Evidence is read from school records and added by teachers; teachers rate each competency on a three-level rubric; students write reflections; anyone allowed to see it can download a PDF.',
+    highlights: [
+      { label: 'Evidence from records', text: 'Assignments, report-card co-scholastic grades, clubs and fixtures, showcase entries, lab practicals, class eco activities and approved co-curricular records, each linked to where it lives.' },
+      { label: 'Rubric, not scores', text: 'Developing, proficient or advanced, with a comment. There are no numeric scores and nothing about behaviour.' },
+      { label: 'Only your own', text: 'Parents see their own children and students their own portfolio.' },
+    ],
+    steps: ['Choose the student.', 'Teachers: Rate a competency or add evidence. Students: add your reflection.', 'Download the PDF to share at home or keep.'],
+  },
+  scenarios: {
+    category: 'Command Centre',
+    summary: 'What-if projections 1 to 5 years ahead from the school\'s current records: enrolment (intake and how many continue), fees (increase, concessions, collection), staffing (ratio, hires, increments), transport (vehicles needed for the riders) and budget.',
+    highlights: [
+      { label: 'Clearly a projection', text: 'Every figure is labelled a projection, not a forecast. Nothing here changes any record.' },
+      { label: 'Assumptions shown', text: 'Each assumption shows where its starting value came from: the school\'s records, a stated default, or your edit.' },
+      { label: 'Compare', text: 'Save scenarios and tick two to four to see them side by side with charts.' },
+    ],
+    steps: ['Check the current actuals at the top.', 'Edit the assumptions you want to test and Project.', 'Save it with a name; open "Saved and compare" to compare scenarios.'],
+  },
+  'teacher-presence': {
+    category: 'Transport & Safety',
+    summary: 'For each lesson on the timetable today: whether the teacher (or a substitute) is in class, from the teacher\'s class check-in or a "teacher present" camera observation that a trained reviewer confirmed.',
+    highlights: [
+      { label: 'No identification', text: 'The timetable names the teacher. A camera never identifies anyone; a reviewer only confirms that a teacher was present.' },
+      { label: 'Honest gaps', text: '"No check-in yet" means no record, not that the class was unattended.' },
+    ],
+    steps: ['Choose the day and, if you like, a period.', 'Follow up a lesson with no check-in with the teacher or arrange cover.'],
+    tips: ['Presence is never used to judge teaching.'],
   },
 };
 

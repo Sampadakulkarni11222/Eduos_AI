@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth';
 import { rupees } from '@/components/ui';
 import type { CalendarEventDto, ParentDashboardDto, StudentListItem } from '@/lib/types';
 import { PulseBoard } from '@/components/ops/pulse-board';
+import { RoleDashboard } from '@/components/ops/role-dashboard';
 import { ShowcaseCard } from '@/components/ops/showcase-view';
 import { formatDate, formatDayMonth, formatTime12, greeting, greetingName, humanizeLabel } from '../student/_lib/format';
 
@@ -84,6 +85,8 @@ export default function ParentDashboard() {
     <PortalShell expectedSlug="parent" topbar={{ title: 'My Children', desc: "Your family's school life in one place" }}>
       {/* The interactive board: briefing, departments, campus, charts and live activity. */}
       <PulseBoard />
+      {/* Per-child charts and analysis, following the child chosen below. */}
+      {kids !== null && <RoleDashboard childId={kid?.id ?? null} onChildChange={(id) => { const i = kids.findIndex((k) => k.id === id); if (i >= 0) setActiveKid(i); }} />}
       <div style={{ marginTop: 16 }}><ShowcaseCard /></div>
 
       {kids === null && !err && <Card><SkeletonRows rows={3} /></Card>}

@@ -1,4 +1,5 @@
 'use client';
+import { offlineWrite } from '@/lib/offline-queue';
 import { useState } from 'react';
 import { Button, EmptyState, Field, Modal, useToast } from '@/components/ui';
 import { safetyApi, type ObservationDto } from '@/lib/safety-api';
@@ -12,7 +13,7 @@ import { DataNote, ErrorNote, KeyValues, Loadable, SectionCard, StatusPill, Tabs
  * stored here, nobody is identified, and nothing from this page reaches
  * feeds, the campus map, analytics or parents.
  */
-const TYPE_LABEL: Record<string, string> = { POSSIBLE_UNATTENDED_ROOM: 'Possibly unattended room', POSSIBLE_AGGRESSION: 'Possible aggression', DEVICE_OFFLINE: 'Camera offline' };
+const TYPE_LABEL: Record<string, string> = { POSSIBLE_UNATTENDED_ROOM: 'Possibly unattended room', POSSIBLE_AGGRESSION: 'Possible aggression or bullying', DEVICE_OFFLINE: 'Camera offline', TEACHER_PRESENT_IN_ROOM: 'Teacher present in room' };
 const DECISIONS = [{ key: 'CONFIRMED', label: 'Confirmed' }, { key: 'FALSE_ALERT', label: 'False alert' }, { key: 'NEEDS_FOLLOW_UP', label: 'Needs follow-up' }];
 
 function ReviewDrawer({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
@@ -44,6 +45,8 @@ function ReviewDrawer({ id, onClose, onChanged }: { id: string; onClose: () => v
             ['Received', fmtDateTime(d.receivedAt)],
           ]} />
           {d.context && <div className="ops-callout"><b>School records:</b> {d.context.summary}</div>}
+          {d.type === 'TEACHER_PRESENT_IN_ROOM' && <DataNote>Confirming records a class check-in for the teacher the timetable (or a confirmed cover) names for this room and period. The camera never identifies who it saw.</DataNote>}
+          {d.type === 'POSSIBLE_AGGRESSION' && <DataNote>After you refer it, the principal and the class teacher of the class timetabled in this space are told that a reviewed observation was referred. No child is named.</DataNote>}
           {d.type === 'POSSIBLE_UNATTENDED_ROOM' && <DataNote>The timetable, the teacher&apos;s check-in, cover and leave are the record. A camera cannot tell whether good teaching happened.</DataNote>}
           {!!d.reviews?.length && (
             <SectionCard title="Reviews">
@@ -188,7 +191,7 @@ export function CheckInView() {
         <div className="ops-inline">
           <Field label="Period"><select className="input" value={periodNo} onChange={(e) => setPeriodNo(e.target.value)}>{Array.from({ length: 10 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}</option>)}</select></Field>
           <Field label="Covering for (staff id, optional)"><input className="input" value={covering} onChange={(e) => setCovering(e.target.value.trim())} /></Field>
-          <Button disabled={busy} onClick={() => void run(async () => { await safetyApi.checkIn({ periodNo: Number(periodNo), coveringForProfileId: covering || undefined }); toast('Checked in', 'success'); await list.reload(); })}>Check in</Button>
+          <Button disabled={busy} onClick={() => void run(async () => { const w = await offlineWrite('CLASS_CHECK_IN', '/class-check-ins', { periodNo: Number(periodNo), ...(covering ? { coveringForProfileId: covering } : {}) }, `Class check-in, period ${periodNo}`); toast(w.queued ? 'Saved on this device; it will be sent when you are back online' : 'Checked in', 'success'); if (!w.queued) await list.reload(); })}>Check in</Button>
         </div>
         <ErrorNote error={error} />
       </SectionCard>

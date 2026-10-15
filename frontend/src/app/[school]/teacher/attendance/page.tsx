@@ -1,4 +1,5 @@
 'use client';
+import { offlineWrite } from '@/lib/offline-queue';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, DateField, EmptyState, SkeletonRows, cx } from '@/components/ui';
@@ -125,12 +126,16 @@ export default function AttendancePage() {
         .filter((r) => marks[r.enrollmentId] !== undefined)
         .map((r) => ({ enrollmentId: r.enrollmentId, status: marks[r.enrollmentId]! }));
       if (!entries.length) { setSaveErr('Mark at least one student before saving.'); setSaving(false); savingRef.current = false; return; }
-      const updatedRoster = await api.markAttendance({
+      // Works offline: the register is queued on this device with an idempotency key and
+      // sent when the connection is back (the server's copy wins on any conflict).
+      const sent = await offlineWrite<AttendanceRoster>('ATTENDANCE', '/attendance/mark', {
         sectionId: data.section.id,
         date,
         ...(periodNo !== null && { periodNo }),
         entries,
-      });
+      }, `Attendance ${data.section.name ?? ''} ${date}`.trim());
+      if (sent.queued || !sent.data) { setSaved(true); setSaveErr(null); return; }
+      const updatedRoster = sent.data;
       setData(updatedRoster);
       const nextMarks: Record<string, AttStatus> = {};
       updatedRoster.roster.forEach((row) => { if (row.status) nextMarks[row.enrollmentId] = row.status; });

@@ -1,3 +1,4 @@
+import { isDecidingToolName } from '../src/modules/ai/mcp/decisions.js';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Section, Subject, SubjectOffering, Term } from '../src/models/academics.model.js';
 import { Student, Enrollment } from '../src/models/student.model.js';
@@ -148,22 +149,39 @@ async function converse(turns) {
 /* ── 1. The surface ───────────────────────────────────────── */
 
 describe('1. every Teacher write the Web offers is exposed, and nothing else', () => {
+  // The Teacher Web's own writes, plus the platform modules a teacher works in
+  // (tools/platformOps.js, platformPeople.js, platformGaps.js): homework they
+  // set can be changed or withdrawn (PATCH/DELETE /assignments/:id), and PTM,
+  // review calls, conversations, report-card remarks, clubs, sustainability,
+  // labs, tasks, staff leave, facilities and purchasing each mirror a screen.
   const WRITES = [
-    'create_assignment', 'create_announcement', 'create_course_material', 'update_course_material', 'delete_document',
-    'mark_attendance', 'bulk_mark_attendance', 'enter_marks', 'grade_submission', 'reply_to_ticket',
+    'add_ptm_availability', 'add_review_call_note', 'apply_staff_leave', 'bulk_mark_attendance', 'cancel_due_item',
+    'cancel_online_class', 'cancel_staff_leave', 'complete_due_item', 'create_announcement', 'create_assignment',
+    'create_course_material', 'create_due_item', 'create_purchase_request', 'delete_assignment', 'delete_document',
+    'draft_lab_reorder', 'enter_marks', 'grade_submission', 'issue_lab_stock', 'log_eco_activity', 'log_plant_check',
+    'log_review_call_attempt', 'log_syllabus_progress', 'mark_attendance', 'mark_club_attendance', 'open_review_call',
+    'plan_practical_session', 'receive_lab_stock', 'record_lab_calibration', 'record_lab_stock_use', 'record_trip_boarding',
+    'reply_to_ticket', 'report_lab_incident', 'report_repair', 'request_facility_reservation', 'save_term_report_remarks',
+    'schedule_online_class', 'send_conversation_message', 'snooze_due_item', 'update_assignment', 'update_course_material',
+    'update_my_digest_interests', 'update_review_call_schedule', 'verify_eco_activity',
   ];
   // Publishing marks and deciding leave, registrations and student requests
   // are decisions the teacher makes on their screens (mcp/decisions.js).
 
-  it('3 CREATE, 1 UPDATE, 1 DELETE, 5 ACTION -- 10 writes, and no decision', () => {
+  it('17 CREATE, 8 UPDATE, 3 DELETE, 16 ACTION -- 44 writes, and no decision', () => {
     const offered = mcpToolsFor(actorForRole('TEACHER')).map((t) => t.name);
     const index = Object.fromEntries(capabilityIndex().map((c) => [c.name, c]));
     const writes = offered.filter((name) => index[name].operation !== 'GET').sort();
     expect(writes).toEqual([...WRITES].sort());
     const by = (op) => writes.filter((name) => index[name].operation === op).length;
-    expect([by('CREATE'), by('UPDATE'), by('DELETE'), by('ACTION')]).toEqual([3, 1, 1, 5]);
-    expect(offered).toHaveLength(63);
+    expect([by('CREATE'), by('UPDATE'), by('DELETE'), by('ACTION')]).toEqual([17, 8, 3, 16]);
+    expect(offered).toHaveLength(127);
     expect(offered).toContain('get_pending_items_for_me');
+    // No decision: nothing named approve_/reject_/decide_/review_/publish_/refund_.
+    for (const name of offered) expect(isDecidingToolName(name), name).toBe(false);
+    for (const name of ['publish_marks', 'review_leave', 'decide_registration', 'decide_cocurricular', 'decide_profile_edit']) {
+      expect(offered, name).not.toContain(name);
+    }
     // Every one of them asks before it writes.
     for (const name of writes) expect(index[name].confirms, name).toBe(true);
   });
@@ -461,11 +479,11 @@ describe('6. writes the Web does not offer a teacher are declined before any cap
     ['Edit my previous announcement.', /can't edit an announcement/],
     ['Generate AI homework using generate_homework.', /can't generate homework/],
     ['Create a calendar event for sports day on 10 October 2026.', /can't create the calendar/],
-    ['Delete all assignments.', /can't delete homework/],
-    ['Delete the test assignment.', /can't delete homework/],
+    ['Delete all assignments.', /can't delete all assignments at once/],
     ['Delete all students.', /can't delete a student/],
-    ['Update the homework deadline.', /can't update homework/],
-    ['Deleting or updating homework', /can't delete homework/],
+    // Changing or withdrawing ONE piece of one's own homework is on the
+    // Teacher Web (PATCH/DELETE /assignments/:id), so those sentences now reach
+    // update_assignment / delete_assignment -- see teacher.webParity 3b.
   ];
 
   for (const [message, reply] of DECLINED) {

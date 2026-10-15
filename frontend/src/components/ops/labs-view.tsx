@@ -1,4 +1,5 @@
 'use client';
+import { offlineWrite } from '@/lib/offline-queue';
 import { Fragment, useMemo, useState } from 'react';
 import { Button, EmptyState, Field, Modal, Select, useToast } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -179,7 +180,10 @@ function OutModal({ kind, batch, item, onClose, onDone }: { kind: OutKind; batch
     <Modal title={`${title}: ${item.name} (${batch.code})`} onClose={onClose} footer={<>
       <Button variant="soft" onClick={onClose}>Cancel</Button>
       <Button className={kind === 'dispose' ? 'btn-danger' : undefined} disabled={busy || !f.quantity} onClick={() => void run(async () => {
-        await labsApi.moveOut(kind, { batchId: batch.id, quantity: f.quantity, unit: f.unit, reason: f.reason || null, issuedToName: f.issuedToName || null, evidence });
+        const body = { batchId: batch.id, quantity: f.quantity, unit: f.unit, reason: f.reason || null, issuedToName: f.issuedToName || null, evidence };
+        // Issue works offline too: queued on this device and sent once, with an idempotency key.
+        if (kind === 'issue') await offlineWrite('LAB_STOCK', '/labs/stock/issue', body, `Issue ${f.quantity} ${f.unit} of ${item.name}`);
+        else await labsApi.moveOut(kind, body);
         onDone(); onClose();
       })}>{title}</Button>
     </>}>
@@ -323,7 +327,7 @@ function StockTab({ labs, labId, setLabId, canManage, scanned }: { labs: LabDto[
       {receiveItem && <ReceiveModal item={receiveItem} onClose={() => setModal(null)} onDone={reload} />}
       {modal?.kind === 'stocktake' && items.data && <StocktakeModal labId={labId} items={items.data} onClose={() => setModal(null)} onDone={reload} />}
       {modal && 'batch' in modal && <OutModal kind={modal.kind} batch={modal.batch} item={modal.item} onClose={() => setModal(null)} onDone={reload} />}
-      {retFor && <PromptModal title={`Return to ${retFor.batchCode}`} label={`Quantity returned (${retFor.displayUnit}); up to ${retFor.outstandingDisplay}`} multiline={false} confirmLabel="Return" onClose={() => setRetFor(null)} onSubmit={async (q) => { await labsApi.returnStock({ issueMovementId: retFor.id, quantity: q, unit: retFor.displayUnit }); reload(); }} />}
+      {retFor && <PromptModal title={`Return to ${retFor.batchCode}`} label={`Quantity returned (${retFor.displayUnit}); up to ${retFor.outstandingDisplay}`} multiline={false} confirmLabel="Return" onClose={() => setRetFor(null)} onSubmit={async (q) => { await offlineWrite('LAB_STOCK', '/labs/stock/return', { issueMovementId: retFor.id, quantity: q, unit: retFor.displayUnit }, `Return to ${retFor.batchCode}`); reload(); }} />}
     </>
   );
 }

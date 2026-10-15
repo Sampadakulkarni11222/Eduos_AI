@@ -9,7 +9,7 @@ import { AppError } from '../../utils/AppError.js';
 import { recordAudit } from '../../utils/auditTrail.js';
 import { sendOperational } from '../messaging/messaging.service.js';
 import * as safeguarding from '../compliance/safeguarding.service.js';
-import { assertObjectId, dto, oneOf, optionalText, pushHistory, requireText } from '../ops/common.js';
+import { assertObjectId, dto, oneOf, optionalText, pushHistory, requireText, profilesWithRoles } from '../ops/common.js';
 import { getSettings, istMinutes, istWeekday, parseSchoolDay, profilesWithPermission, schoolDay } from './shared.js';
 
 /**
@@ -36,7 +36,9 @@ import { getSettings, istMinutes, istWeekday, parseSchoolDay, profilesWithPermis
  */
 const FORBIDDEN_TEXT = /toilet|washroom|restroom|bathroom|lavator|urinal|shower|changing|wc\b|dorm/i;
 const REFUSED_FIELDS = ['faceId', 'faces', 'personId', 'personIds', 'identity', 'identities', 'studentId', 'studentIds', 'name', 'names', 'emotion', 'emotions', 'sentiment', 'score', 'behaviourScore', 'behaviorScore', 'image', 'imageBase64', 'frame', 'snapshot', 'video'];
-const TYPE_PURPOSE = { POSSIBLE_UNATTENDED_ROOM: 'UNATTENDED_CLASSROOM_CHECK', POSSIBLE_AGGRESSION: 'CORRIDOR_SAFETY' };
+const TYPE_PURPOSE = { POSSIBLE_UNATTENDED_ROOM: 'UNATTENDED_CLASSROOM_CHECK', POSSIBLE_AGGRESSION: 'CORRIDOR_SAFETY', TEACHER_PRESENT_IN_ROOM: 'UNATTENDED_CLASSROOM_CHECK' };
+// Observations read against the timetable (which class, which teacher) for the reviewer.
+const ROOM_CONTEXT_TYPES = ['POSSIBLE_UNATTENDED_ROOM', 'TEACHER_PRESENT_IN_ROOM'];
 export const CAMERA_LIMITS = 'Observations are unverified until a trained reviewer decides. No face identification, emotion inference, behaviour scores or live streams to parents. A camera cannot judge teaching.';
 
 // ── device registry rules ────────────────────────────────────────────────
@@ -108,7 +110,7 @@ export async function ingest(device, body = {}, now = new Date()) {
     deviceId: device._id, deviceLabel: device.label, ...o, room: o.room ?? device.camera?.roomLabel ?? null, facilityId: device.camera?.facilityId ?? null,
     receivedAt: now, evidencePurgeAfter: o.evidenceRef ? new Date(now.getTime() + retention * 86_400_000) : null, status: 'UNVERIFIED',
   };
-  if (o.type === 'POSSIBLE_UNATTENDED_ROOM') doc.context = await roomContext({ room: doc.room, facilityId: doc.facilityId, at: o.observedAt });
+  if (ROOM_CONTEXT_TYPES.includes(o.type)) doc.context = await roomContext({ room: doc.room, facilityId: doc.facilityId, at: o.observedAt });
   let obs;
   try {
     obs = await CameraObservation.create(doc);
@@ -209,7 +211,7 @@ export async function get(actor, id) {
   if (!o) throw new AppError('Observation not found', 404);
   // Viewing restricted evidence references is itself audited.
   await recordAudit({ actor, action: 'camera.observation.view', entityType: 'CameraObservation', entityId: o._id });
-  if (o.type === 'POSSIBLE_UNATTENDED_ROOM') o.context = await roomContext({ room: o.room, facilityId: o.facilityId, at: o.observedAt });
+  if (ROOM_CONTEXT_TYPES.includes(o.type)) o.context = await roomContext({ room: o.room, facilityId: o.facilityId, at: o.observedAt });
   return present(o, { withHistory: true });
 }
 
@@ -232,7 +234,37 @@ export async function review(actor, id, body = {}) {
   o.status = decision;
   await o.save();
   await recordAudit({ actor, action: 'camera.observation.review', entityType: 'CameraObservation', entityId: o._id, after: { decision } });
-  return present(o.toObject(), { withHistory: true });
+  const out = present(o.toObject(), { withHistory: true });
+  if (o.type === 'TEACHER_PRESENT_IN_ROOM' && decision === 'CONFIRMED') out.presence = await recordReviewedPresence(actor, o);
+  return out;
+}
+
+/**
+ * A reviewer confirmed "teacher present in room": the class check-in for that
+ * period is recorded for the teacher the timetable (or a confirmed cover)
+ * names for the room, marked CAMERA_REVIEWED with the reviewer. The camera
+ * never identifies who it saw; if the timetable names nobody, nothing is
+ * recorded and the reviewer is told why. An existing check-in is kept.
+ */
+async function recordReviewedPresence(actor, o) {
+  const ctx = await roomContext({ room: o.room, facilityId: o.facilityId, at: o.observedAt });
+  const teacherId = ctx.cover?.substituteProfileId ?? ctx.teacherProfileId ?? null;
+  if (!ctx.scheduled || !teacherId) return { recorded: false, reason: 'The timetable names no teacher for this room at that time, so no check-in was recorded.' };
+  const date = schoolDay(o.observedAt);
+  const existing = await ClassCheckIn.findOne({ profileId: teacherId, date, periodNo: ctx.periodNo }).lean();
+  if (existing) return { recorded: false, reason: 'The teacher had already checked in for this period.', checkInId: String(existing._id) };
+  const name = ctx.cover?.substituteName ?? ctx.teacherName ?? null;
+  try {
+    const row = await ClassCheckIn.create({
+      profileId: teacherId, teacherName: name, date, periodNo: ctx.periodNo, sectionId: ctx.sectionId ?? null, room: o.room ?? null,
+      coveringForProfileId: ctx.cover ? ctx.teacherProfileId : null, checkedInAt: o.observedAt, source: 'CAMERA_REVIEWED',
+      reviewedByProfileId: actor.profileId, observationId: o._id, note: 'Presence confirmed by a trained reviewer from a camera observation (timetabled teacher; no identification).',
+    });
+    return { recorded: true, checkInId: String(row._id), teacherName: name, periodNo: ctx.periodNo };
+  } catch (err) {
+    if (err?.code === 11000) return { recorded: false, reason: 'The teacher had already checked in for this period.' };
+    throw err;
+  }
 }
 
 /**
@@ -266,7 +298,73 @@ export async function linkCase(actor, id, body = {}) {
   o.safeguardingRef = refNo ?? null;
   pushHistory(o, actor, 'LINKED_TO_SAFEGUARDING', { note: refNo ?? null });
   await o.save();
-  return present(o.toObject(), { withHistory: true });
+  const notified = await notifyAfterReferral(actor, o);
+  const out = present(o.toObject(), { withHistory: true });
+  out.notified = notified;
+  return out;
+}
+
+/**
+ * After a human reviewer has referred a possible bullying/aggression
+ * observation to safeguarding (never before), the principal and the class
+ * teacher of the class timetabled in that space are told that a reviewed
+ * observation was referred. The message names no child and carries no
+ * detail; the designated officer decides what happens next.
+ */
+async function notifyAfterReferral(actor, o) {
+  const recipients = new Set((await profilesWithRoles(['PRINCIPAL'])).map((p) => String(p._id)));
+  let classTeacher = null;
+  const ctx = await roomContext({ room: o.room, facilityId: o.facilityId, at: o.observedAt });
+  if (ctx.sectionId) {
+    const section = await Section.findById(ctx.sectionId).select('classTeacherId').lean();
+    if (section?.classTeacherId) { classTeacher = String(section.classTeacherId); recipients.add(classTeacher); }
+  }
+  recipients.delete(String(actor.profileId));
+  const ids = [...recipients];
+  if (ids.length) {
+    await sendOperational({ templateKey: 'SAFETY_REFERRAL_FOLLOWUP', recipientProfileIds: ids, variables: {}, link: '/safeguarding', idempotencyKey: `camera:${o._id}:referred`, relatedEntityType: 'CameraObservation', relatedEntityId: o._id });
+  }
+  return { principal: true, classTeacher: Boolean(classTeacher), count: ids.length };
+}
+
+/**
+ * A day's teacher presence by period: for each timetabled lesson, the teacher,
+ * whether they (or a substitute) checked in and how (tap or a reviewed camera
+ * observation). The timetable and check-ins are the record; no camera image
+ * or identity is involved.
+ */
+export async function presenceBoard(query = {}) {
+  const day = parseSchoolDay(query.date);
+  const weekday = istWeekday(new Date(day.getTime() + 6 * 3_600_000));
+  const slots = await TimetableSlot.find({ dayOfWeek: weekday, subjectOfferingId: { $ne: null } }).sort({ periodNo: 1 }).lean();
+  const offerings = new Map((await SubjectOffering.find({ _id: { $in: slots.map((x) => x.subjectOfferingId) } }).populate('subjectId', 'name').lean()).map((x) => [String(x._id), x]));
+  const sections = new Map((await Section.find({ _id: { $in: slots.map((x) => x.sectionId) } }).populate('gradeId', 'name').select('name gradeId').lean()).map((x) => [String(x._id), x]));
+  const checkIns = await ClassCheckIn.find({ date: day }).lean();
+  const teacherIds = [...new Set([...offerings.values()].map((x) => String(x.teacherId ?? '')).filter(Boolean))];
+  const names = new Map((await Profile.find({ _id: { $in: teacherIds } }).select('displayName').lean()).map((p) => [String(p._id), p.displayName]));
+  const nowMin = istMinutes(new Date());
+  const today = day.getTime() === schoolDay().getTime();
+  const rows = slots.map((slot) => {
+    const off = offerings.get(String(slot.subjectOfferingId));
+    const teacherId = off?.teacherId ? String(off.teacherId) : null;
+    const sec = sections.get(String(slot.sectionId));
+    const ci = checkIns.find((c) => c.periodNo === slot.periodNo && (String(c.sectionId) === String(slot.sectionId) || String(c.slotId) === String(slot._id)));
+    const started = !today || toMin(slot.startTime) <= nowMin;
+    return {
+      periodNo: slot.periodNo, time: `${slot.startTime}-${slot.endTime}`, room: slot.room ?? null,
+      sectionId: String(slot.sectionId), className: sec ? `${sec.gradeId?.name ?? ''} ${sec.name}`.trim() : null,
+      subject: off?.subjectId?.name ?? null, teacherProfileId: teacherId, teacherName: teacherId ? names.get(teacherId) ?? null : null,
+      status: ci ? (ci.coveringForProfileId ? 'COVER_PRESENT' : 'PRESENT') : started ? 'NOT_CHECKED_IN' : 'UPCOMING',
+      checkIn: ci ? { name: ci.teacherName, at: ci.checkedInAt, source: ci.source ?? 'TAP', covering: Boolean(ci.coveringForProfileId) } : null,
+    };
+  });
+  const counts = {
+    lessons: rows.length,
+    present: rows.filter((r) => r.status === 'PRESENT' || r.status === 'COVER_PRESENT').length,
+    notCheckedIn: rows.filter((r) => r.status === 'NOT_CHECKED_IN').length,
+    viaCamera: rows.filter((r) => r.checkIn?.source === 'CAMERA_REVIEWED').length,
+  };
+  return { date: day, rows, counts, note: 'From the timetable and teachers\' class check-ins (or a reviewer-confirmed camera observation). "Not checked in" means no record yet, not that the class was unattended.' };
 }
 
 /** Review performance: false-alert rate and time to decision, per type. */

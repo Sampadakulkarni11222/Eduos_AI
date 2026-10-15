@@ -1,4 +1,5 @@
 'use client';
+import { EvidenceFooter } from '@/components/evidence-footer';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { opsApi } from '@/lib/ops-api';
@@ -172,7 +173,7 @@ function MiniCampus() {
   );
 }
 
-function Briefing({ lines, greet }: { lines: string[]; greet: boolean }) {
+function Briefing({ lines, greet, sources }: { lines: string[]; greet: boolean; sources?: Array<{ text: string; link: string | null }> }) {
   const [speaking, setSpeaking] = useState(false);
   const canSpeak = typeof window !== 'undefined' && 'speechSynthesis' in window;
   const utter = useRef<SpeechSynthesisUtterance | null>(null);
@@ -192,6 +193,7 @@ function Briefing({ lines, greet }: { lines: string[]; greet: boolean }) {
       <div className="pb-brief-text">
         {greet && <div className="pb-brief-hello">{lines[0]}</div>}
         <div>{lines.slice(1).join(' ')}</div>
+        {!!sources?.length && <EvidenceFooter items={sources} />}
       </div>
       {canSpeak && <button type="button" className="btn btn-accent btn-sm" onClick={toggle} aria-pressed={speaking}>{speaking ? '■ Stop' : '▶ Brief me'}</button>}
     </div>
@@ -211,7 +213,7 @@ export function PulseBoard({ showBriefing = true, greet = true }: { showBriefing
   return (
     <Loadable state={state}>{(p: PulseDto) => (
       <div className="pb-board">
-        {showBriefing && <Briefing lines={p.briefing} greet={greet} />}
+        {showBriefing && <Briefing lines={p.briefing} greet={greet} sources={p.briefingSources} />}
         {p.departments.length > 0 && (
           <div className="pb-depts" role="list" aria-label="Departments">
             {p.departments.map((d) => (

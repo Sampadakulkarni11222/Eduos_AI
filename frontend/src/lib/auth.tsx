@@ -156,3 +156,8 @@ export function useAuth(): AuthState {
   if (!ctx) throw new Error('useAuth outside AuthProvider');
   return ctx;
 }
+
+/** The session when there is one, or null outside AuthProvider (for widgets that only personalise, never gate). */
+export function useMaybeAuth(): AuthState | null {
+  return useContext(AuthContext);
+}

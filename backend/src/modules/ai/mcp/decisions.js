@@ -200,3 +200,36 @@ export function humanDecisionReply(actor, kind, { channel = 'WEB' } = {}) {
     link,
   };
 }
+
+/* ── Decisions an approver may record through the assistant ──
+   The batch-3 product rule refines the one above: the assistant still never
+   decides on its own initiative, but it may RECORD a decision that the person
+   holding the approval authority states in their own words and then confirms,
+   on the website (tools/platformOps.js, `approverDecision: true`; the registry
+   refuses one that is not confirmed, HIGH risk and web-only). These are the
+   requests that are therefore not handed back to the screen. Each needs the
+   approver's permission AND words that name that kind of record, so "approve
+   Rahul's leave" (a student's leave) is still handed back as before. */
+export const APPROVER_CONFIRMED = [
+  // A colleague's staff leave, decided by HR or the principal.
+  { kind: 'leave', tool: 'record_staff_leave_decision', permission: 'staffleave.manage', scope: 'ALL',
+    words: /\b(?:staff|teacher|colleague|casual|earned|duty|maternity|paternity)\b|\b(?:mr|mrs|ms|miss|dr|sir|madam)\.?\s+[a-z]/i },
+  // A fee concession, credit note or void at the approver's stage.
+  { kind: 'approval', tool: 'record_concession_decision', permission: 'approvals.decide',
+    words: /\bconcessions?\b|\bcredit\s+notes?\b|\bvoid\b|\bfee\s+adjustments?\b/i },
+  // A hostel out-pass, decided by the warden (or consented to by a guardian).
+  { kind: 'approval', tool: 'record_outpass_decision', permission: 'hostel.outpass.manage', words: /\bout[\s-]?pass(?:es)?\b/i },
+  { kind: 'approval', tool: 'record_outpass_consent', permission: 'hostel.outpass.request', words: /\bout[\s-]?pass(?:es)?\b/i },
+  // Recording a payment made against a recurring BILL is a ledger entry a
+  // second person confirms, not the fee-payment decision on the Payments screen.
+  { kind: 'payment', tool: 'record_bill_payment', permission: 'bills.manage', scope: 'ALL',
+    words: /\bbills?\b|\belectricity\b|\bwater\s+bill\b|\binternet\b|\bamc\b|\butility\b|\bvendor\b/i, unless: /\binvoices?\b|\bfees?\b|\breceipts?\b|\bINV-/i },
+];
+
+/** Whether this request is one the actor may have recorded through an approver-confirmed tool. */
+export function approverMayRecord(actor, kind, message) {
+  const str = String(message ?? '');
+  return APPROVER_CONFIRMED.some((d) => d.kind === kind
+    && actor?.permissions?.[d.permission] && (!d.scope || actor.permissions[d.permission] === d.scope)
+    && d.words.test(str) && !(d.unless && d.unless.test(str)));
+}

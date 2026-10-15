@@ -84,6 +84,15 @@ import { feeAdjustmentsRouter, accountsExportRouter } from '../modules/fees/fina
 import alumniRoutes from '../modules/alumni/alumni.routes.js';
 import socialRoutes from '../modules/social/social.routes.js';
 import digestRoutes from '../modules/digest/digest.routes.js';
+// Part 2 gaps: student support plans.
+import supportPlanRoutes from '../modules/support/support.routes.js';
+import portfolioRoutes from '../modules/portfolios/portfolios.routes.js';
+import scenarioRoutes from '../modules/scenarios/scenarios.routes.js';
+import { offlineIdempotency } from '../middleware/idempotency.js';
+// Universal search; newsroom social sharing; offline marketing, ad connectors and attribution.
+import searchRoutes from '../modules/search/search.routes.js';
+import newsroomSocialRoutes from '../modules/social/newsroom-social.routes.js';
+import { growthRouter, publicMarketingRouter } from '../modules/marketing/growth.routes.js';
 
 const router = Router();
 
@@ -95,6 +104,10 @@ router.use(signUploadUrlsInResponses);
 
 // Global audit logging for state-modifying requests
 router.use(auditLogger);
+
+// Offline queues replay attendance, lab, checkpoint, sanitation and check-in writes with an
+// Idempotency-Key; a replay returns the first response and never writes twice.
+router.use(offlineIdempotency);
 
 
 /**
@@ -130,6 +143,8 @@ router.get('/health', async (_req, res) => {
 // ─── Module routes ──────────────────────────────────────────────
 // Public (no sign-in): the per-school online admission form.
 router.use('/public/admissions', publicAdmissionRouter);
+// Public (no sign-in): campaign tracking links and the HMAC-verified lead webhook.
+router.use('/public/marketing', publicMarketingRouter);
 router.use('/auth', authRoutes);
 router.use('/roles', roleRoutes);
 router.use('/profiles', profileRoutes);
@@ -221,6 +236,12 @@ router.use('/insights', insightsRouter);
 router.use('/alumni', alumniRoutes);
 router.use('/social', socialRoutes);
 router.use('/digest', digestRoutes);
+router.use('/support-plans', supportPlanRoutes);
+router.use('/portfolios', portfolioRoutes);
+router.use('/scenarios', scenarioRoutes);
+router.use('/search', searchRoutes);
+router.use('/newsroom-social', newsroomSocialRoutes);
+router.use('/marketing-growth', growthRouter);
 
 // NOTE — a public GET /admin-seed endpoint used to live here, gated only by a
 // hardcoded default secret ('eduos-seed-2026'). Anyone who could reach the API

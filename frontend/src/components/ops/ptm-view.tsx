@@ -1,4 +1,5 @@
 'use client';
+import { offlineWrite } from '@/lib/offline-queue';
 import { useState } from 'react';
 import { Button, EmptyState, Field, Modal, useToast } from '@/components/ui';
 import { usePermissions } from '@/lib/permissions';
@@ -194,7 +195,7 @@ function BookingDrawer({ booking, onClose, onChanged }: { booking: PtmBooking; o
     <Drawer title={booking.studentName ?? 'Meeting'} sub={`${booking.when} · ${booking.parentName ?? 'Parent'}${booking.className ? ` · ${booking.className}` : ''}`} onClose={onClose} footer={<>
       {booking.status === 'BOOKED' && <Button variant="ghost" onClick={() => setCancel(true)}>Cancel</Button>}
       {booking.status === 'BOOKED' && <Button variant="soft" disabled={busy} onClick={() => act(() => ptmApi.noShow(booking.id), 'Marked as no-show')}>No-show</Button>}
-      {booking.status === 'BOOKED' && <Button variant="soft" disabled={busy} onClick={() => act(() => ptmApi.checkIn(booking.id), 'Checked in')}>Check in</Button>}
+      {booking.status === 'BOOKED' && <Button variant="soft" disabled={busy} onClick={() => act(() => offlineWrite('PTM_CHECK_IN', `/ptm/bookings/${booking.id}/check-in`, {}, `PTM check-in: ${booking.studentName ?? 'meeting'}`), 'Checked in (sent now, or when back online)')}>Check in</Button>}
       {['BOOKED', 'CHECKED_IN', 'COMPLETED'].includes(booking.status) && <Button onClick={() => setOutcome(true)}>{booking.outcome ? 'Edit outcome' : 'Record outcome'}</Button>}
     </>}>
       <div className="ops-stack">

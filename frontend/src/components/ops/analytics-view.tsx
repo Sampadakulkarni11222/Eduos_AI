@@ -1,9 +1,12 @@
 'use client';
 import Link from 'next/link';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, EmptyState, Field, Modal, Select, useToast } from '@/components/ui';
 import { analyticsApi, type MetricDto, type OverviewDto, type OverviewQuery, type ReportDto, type ReportMetric, type ReportSummaryDto, type TrendDto } from '@/lib/analytics-api';
 import { usePermissions } from '@/lib/permissions';
+import { useMaybeAuth } from '@/lib/auth';
+import type { DashChartDto, DashUnit } from '@/lib/dashboard-api';
+import { DashChart, Sparkline } from './dash-charts';
 import { usePortalPage } from '@/lib/school-path';
 import { DataNote, ErrorNote, Loadable, SectionCard, StatusPill, Tabs, fmtDate, fmtDateTime, humanize, isoDay, money, useAction, useLoad, useQueryParam } from './kit';
 
@@ -43,11 +46,20 @@ export function ChangeBadge({ m }: { m: Pick<MetricDto, 'change' | 'unit'> }) {
   return <span className={`an-change is-${dir}`}><span aria-hidden="true">{arrow}</span> {c.pct! > 0 ? '+' : ''}{c.pct}%{abs ? ` (${abs})` : ''}<span className="sr-only"> {dir === 'flat' ? 'no change' : dir === 'up' ? 'increase' : 'decrease'} against the comparison</span></span>;
 }
 
-function MetricCard({ m, comparisonLabel }: { m: MetricDto; comparisonLabel: string | null }) {
+/** An icon per department tile; a department added later gets the generic one. */
+const DEPT_ICON: Record<string, string> = {
+  admissions: '🎓', academics: '📚', finance: '₹', procurement: '🧾', people: '👥', facilities: '🏛', engagement: '💬',
+  services: '🚌', labs: '🧪', fleet: '🚍', sustainability: '🌱',
+};
+const deptIcon = (key: string) => DEPT_ICON[key] ?? '📊';
+const dashUnit = (u: MetricDto['unit']): DashUnit => u;
+
+function MetricCard({ m, comparisonLabel, onOpen }: { m: MetricDto; comparisonLabel: string | null; onOpen?: (key: string) => void }) {
   const page = usePortalPage();
   const [open, setOpen] = useState(false);
   const href = page(m.link);
   const na = m.current.value === null;
+  const trend = m.trend && typeof m.trend === 'object' ? (m.trend as TrendDto) : null;
   return (
     <article className={`an-card${na ? ' is-na' : ''}`} aria-label={m.label}>
       <div className="an-card-head">
@@ -55,6 +67,7 @@ function MetricCard({ m, comparisonLabel }: { m: MetricDto; comparisonLabel: str
         <button type="button" className="kpi-info" aria-expanded={open} onClick={() => setOpen((v) => !v)} aria-label={`How "${m.label}" is calculated`}>i</button>
       </div>
       <div className="an-card-value">{formatValue(m.current.value, m.unit)}</div>
+      {trend && <Sparkline values={trend.points.map((p) => p.value)} label={m.label} unit={dashUnit(m.unit)} />}
       {m.comparison && (
         <div className="an-card-cmp">
           <ChangeBadge m={m} />
@@ -70,49 +83,60 @@ function MetricCard({ m, comparisonLabel }: { m: MetricDto; comparisonLabel: str
           <p className="kpi-meta">{m.history}</p>
         </div>
       )}
-      {href && <Link href={href} className="an-drill">Open the records <span aria-hidden="true">→</span></Link>}
+      <div className="an-card-foot">
+        {onOpen && <button type="button" className="an-open" onClick={() => onOpen(m.key)} aria-label={`Open the analysis of ${m.label}`}>Analyse <span aria-hidden="true">›</span></button>}
+        {href && <Link href={href} className="an-drill">Open the records <span aria-hidden="true">→</span></Link>}
+      </div>
     </article>
   );
 }
 
-/** A single-series trend line with hover readout and a table view of the same numbers. */
-export function TrendChart({ m, trend }: { m: MetricDto; trend: TrendDto }) {
+/**
+ * A trend line with hover readout and a table view of the same numbers. When
+ * the comparison period's trend is given it is drawn underneath, dashed and
+ * lighter, matched bucket by bucket.
+ */
+export function TrendChart({ m, trend, comparison = null, comparisonLabel = 'Comparison', big = false }: { m: MetricDto; trend: TrendDto; comparison?: TrendDto | null; comparisonLabel?: string; big?: boolean }) {
   const [hover, setHover] = useState<number | null>(null);
   const [table, setTable] = useState(false);
   const pts = trend.points;
-  const W = 520; const H = 160; const P = { l: 8, r: 8, t: 12, b: 24 };
-  const vals = pts.map((p) => p.value).filter((v): v is number => v !== null);
+  const cmp = comparison?.points ?? [];
+  const W = 520; const H = big ? 220 : 160; const P = { l: 8, r: 8, t: 12, b: 24 };
+  const vals = [...pts, ...cmp].map((p) => p.value).filter((v): v is number => v !== null);
   const max = m.unit === 'percent' ? 100 : Math.max(1, ...vals.map((v) => Math.abs(v))) * 1.1;
   const min = Math.min(0, ...vals);
   const x = (i: number) => P.l + (pts.length <= 1 ? (W - P.l - P.r) / 2 : (i * (W - P.l - P.r)) / (pts.length - 1));
   const y = (v: number) => P.t + (H - P.t - P.b) * (1 - (v - min) / (max - min || 1));
   const line = pts.map((p, i) => (p.value === null ? null : `${x(i)},${y(p.value)}`)).filter(Boolean).join(' ');
+  const cmpLine = cmp.slice(0, pts.length).map((p, i) => (p.value === null ? null : `${x(i)},${y(p.value)}`)).filter(Boolean).join(' ');
   const shown = hover !== null ? pts[hover] : null;
+  const shownCmp = hover !== null ? cmp[hover] : null;
   return (
-    <div className="an-trend card">
+    <div className={`an-trend card${big ? ' is-big' : ''}`}>
       <div className="an-trend-head">
         <h3 className="an-card-label">{m.label} by {trend.unit}</h3>
-        <span className="pb-readout" aria-live="polite">{shown ? <><b>{formatValue(shown.value, m.unit)}</b> {shown.label}</> : `${pts.length} ${trend.unit}s`}</span>
+        <span className="pb-readout" aria-live="polite">{shown ? <><b>{formatValue(shown.value, m.unit)}</b> {shown.label}{shownCmp ? ` · ${comparisonLabel} ${formatValue(shownCmp.value, m.unit)}` : ''}</> : `${pts.length} ${trend.unit}s`}</span>
         <button type="button" className="btn btn-soft btn-sm" aria-pressed={table} onClick={() => setTable((v) => !v)}>{table ? 'Show chart' : 'Show table'}</button>
       </div>
       {table ? (
         <div className="an-table-wrap">
           <table className="an-table">
             <caption className="sr-only">{m.label} by {trend.unit}</caption>
-            <thead><tr><th scope="col">{humanize(trend.unit)}</th><th scope="col">{m.label}</th></tr></thead>
-            <tbody>{pts.map((p) => <tr key={p.from}><th scope="row">{p.label}</th><td>{formatValue(p.value, m.unit)}</td></tr>)}</tbody>
+            <thead><tr><th scope="col">{humanize(trend.unit)}</th><th scope="col">{m.label}</th>{cmp.length > 0 && <th scope="col">{comparisonLabel}</th>}</tr></thead>
+            <tbody>{pts.map((p, i) => <tr key={p.from}><th scope="row">{p.label}</th><td>{formatValue(p.value, m.unit)}</td>{cmp.length > 0 && <td>{cmp[i] ? `${formatValue(cmp[i].value, m.unit)} (${cmp[i].label})` : '—'}</td>}</tr>)}</tbody>
           </table>
         </div>
       ) : (
-        <svg viewBox={`0 0 ${W} ${H}`} className="an-svg" role="img" aria-label={`${m.label}: ${pts.map((p) => `${p.label} ${formatValue(p.value, m.unit)}`).join(', ')}`}>
+        <svg viewBox={`0 0 ${W} ${H}`} className="an-svg" role="img" aria-label={`${m.label}: ${pts.map((p) => `${p.label} ${formatValue(p.value, m.unit)}`).join(', ')}${cmp.length ? `. ${comparisonLabel}: ${cmp.map((p) => `${p.label} ${formatValue(p.value, m.unit)}`).join(', ')}` : ''}`}>
           {[0.25, 0.5, 0.75, 1].map((f) => <line key={f} x1={P.l} x2={W - P.r} y1={y(min + (max - min) * f)} y2={y(min + (max - min) * f)} className="pb-grid" />)}
           {min < 0 && <line x1={P.l} x2={W - P.r} y1={y(0)} y2={y(0)} className="an-zero" />}
+          {cmpLine && <polyline points={cmpLine} className="dc-compare" />}
           {line && <polyline points={line} className="an-line" />}
           {pts.map((p, i) => (
             <g key={p.from}>
               {/* A hit target wider than the mark. */}
               <rect x={x(i) - (W / Math.max(pts.length, 1)) / 2} y={0} width={W / Math.max(pts.length, 1)} height={H} fill="transparent" tabIndex={0}
-                onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onFocus={() => setHover(i)} onBlur={() => setHover(null)} aria-label={`${p.label}: ${formatValue(p.value, m.unit)}`} />
+                onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} onFocus={() => setHover(i)} onBlur={() => setHover(null)} aria-label={`${p.label}: ${formatValue(p.value, m.unit)}${cmp[i] ? `; ${comparisonLabel} ${formatValue(cmp[i].value, m.unit)}` : ''}`} />
               {p.value !== null && (hover === i || pts.length <= 14) && <circle cx={x(i)} cy={y(p.value)} r={hover === i ? 5 : 3} className="an-dot" />}
             </g>
           ))}
@@ -121,41 +145,142 @@ export function TrendChart({ m, trend }: { m: MetricDto; trend: TrendDto }) {
           <text x={W - P.r} y={H - 6} className="pb-axis" textAnchor="end">{pts[pts.length - 1]?.label}</text>
         </svg>
       )}
+      {cmp.length > 0 && !table && (
+        <div className="dc-legend-row" aria-hidden="true"><span><i className="dc-key is-main" /> This period</span><span><i className="dc-key is-compare" /> {comparisonLabel}</span></div>
+      )}
     </div>
   );
 }
 
+/** A metric's breakdown as a chart: a donut when the parts make a whole, bars otherwise. */
+function breakdownChart(m: MetricDto): DashChartDto | null {
+  const rows = m.current.breakdown ?? [];
+  if (!rows.length) return null;
+  const shares = rows.some((b) => b.of !== undefined);
+  const unit: DashUnit = shares ? 'count' : m.unit === 'percent' ? 'percent' : dashUnit(m.unit);
+  const whole = !shares && m.unit !== 'percent' && rows.length <= 6 && rows.every((b) => (b.value ?? 0) >= 0);
+  return {
+    key: `${m.key}-breakdown`, title: `${m.label}: breakdown`, type: whole ? 'donut' : 'hbar', unit, link: m.link, definition: m.definition,
+    points: rows.map((b) => ({ label: humanize(b.label), value: b.value, detail: b.of !== undefined ? `of ${b.of.toLocaleString('en-IN')}` : undefined })),
+    status: rows.some((b) => b.value) ? 'OK' : 'EMPTY', emptyText: 'Nothing to break down in this period.',
+  };
+}
+
 function Breakdowns({ metrics }: { metrics: MetricDto[] }) {
-  const withRows = metrics.filter((m) => m.current.breakdown?.length);
-  if (!withRows.length) return null;
+  const charts = metrics.map(breakdownChart).filter((c): c is DashChartDto => Boolean(c));
+  if (!charts.length) return null;
   return (
-    <SectionCard title="Breakdowns" sub="The parts behind each figure, from the same records.">
-      <div className="an-breakdowns">
-        {withRows.map((m) => (
-          <div key={m.key} className="an-table-wrap">
-            <table className="an-table">
-              <caption>{m.label}</caption>
-              <thead><tr><th scope="col">Part</th><th scope="col">{m.unit === 'percent' ? 'Value' : 'Amount'}</th></tr></thead>
-              <tbody>{m.current.breakdown!.map((b, i) => (
-                <tr key={`${b.label}-${i}`}><th scope="row">{humanize(b.label)}</th><td>{formatValue(b.value, m.unit === 'percent' && b.of === undefined ? 'percent' : m.unit === 'percent' ? 'count' : m.unit)}{b.of !== undefined ? ` of ${b.of.toLocaleString('en-IN')}` : ''}</td></tr>
-              ))}</tbody>
-            </table>
-          </div>
-        ))}
-      </div>
+    <SectionCard title="Breakdowns" sub="The parts behind each figure, from the same records. Each has a table view.">
+      <div className="an-breakdowns">{charts.map((c) => <DashChart key={c.key} c={c} />)}</div>
     </SectionCard>
+  );
+}
+
+/** Searchable list of every measure in the reader's scope; choosing one opens its analysis. */
+function MetricPicker({ options, onPick }: { options: Array<{ key: string; label: string; department: string; deptLabel: string }>; onPick: (o: { key: string; department: string }) => void }) {
+  const [text, setText] = useState('');
+  const [open, setOpen] = useState(false);
+  const id = 'an-picker';
+  const q = text.trim().toLowerCase();
+  const matches = q ? options.filter((o) => `${o.label} ${o.deptLabel} ${o.key}`.toLowerCase().includes(q)).slice(0, 8) : [];
+  return (
+    <div className="an-picker">
+      <label htmlFor={id} className="an-picker-label">Find a measure</label>
+      <input id={id} className="input" type="search" role="combobox" aria-autocomplete="list" placeholder="Search, e.g. attendance, fees, enquiries" value={text} autoComplete="off"
+        aria-controls={`${id}-list`} aria-expanded={open && matches.length > 0}
+        onKeyDown={(e) => { if (e.key === 'Escape') { setText(''); setOpen(false); } }}
+        onChange={(e) => { setText(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} />
+      {open && q && (
+        <ul id={`${id}-list`} className="an-picker-list" aria-label="Matching measures">
+          {!matches.length ? <li className="an-muted an-picker-none">No measure matches “{text}”.</li> : matches.map((o) => (
+            <li key={o.key}>
+              <button type="button" className="an-picker-item" onClick={() => { onPick(o); setText(''); setOpen(false); }}>
+                <span aria-hidden="true">{deptIcon(o.department)}</span> <b>{o.label}</b> <span className="an-muted">{o.deptLabel}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ── saved views (per person, in this browser) ──────────────────────────
+
+interface SavedView { name: string; q: OverviewQuery; tab: string; focus: string | null }
+const viewsKey = (who: string) => `eduos.analytics.views:${who}`;
+function readViews(who: string): SavedView[] {
+  try { const v = JSON.parse(window.localStorage.getItem(viewsKey(who)) ?? '[]'); return Array.isArray(v) ? v.slice(0, 20) : []; } catch { return []; }
+}
+function writeViews(who: string, list: SavedView[]) {
+  try { window.localStorage.setItem(viewsKey(who), JSON.stringify(list.slice(0, 20))); } catch { /* storage unavailable: the view simply is not kept */ }
+}
+
+function SavedViews({ who, current, onApply }: { who: string; current: Omit<SavedView, 'name'>; onApply: (v: SavedView) => void }) {
+  const [views, setViews] = useState<SavedView[]>([]);
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState('');
+  useEffect(() => { setViews(readViews(who)); }, [who]);
+  const save = () => {
+    const n = name.trim().slice(0, 60);
+    if (!n) return;
+    const next = [{ name: n, ...current }, ...views.filter((v) => v.name !== n)];
+    setViews(next); writeViews(who, next); setNaming(false); setName('');
+  };
+  const remove = (n: string) => { const next = views.filter((v) => v.name !== n); setViews(next); writeViews(who, next); };
+  return (
+    <div className="an-views" role="group" aria-label="Saved views">
+      {views.length > 0 && (
+        <ul className="an-view-chips">
+          {views.map((v) => (
+            <li key={v.name} className="an-view-chip">
+              <button type="button" className="an-view-apply" onClick={() => onApply(v)}>{v.name}</button>
+              <button type="button" className="an-view-x" aria-label={`Forget the view ${v.name}`} onClick={() => remove(v.name)}>×</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {naming ? (
+        <form className="an-view-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
+          <label className="sr-only" htmlFor="an-view-name">Name for this view</label>
+          <input id="an-view-name" className="input" value={name} maxLength={60} placeholder="Name this view" onChange={(e) => setName(e.target.value)} />
+          <Button small type="submit" disabled={!name.trim()}>Save</Button>
+          <Button small type="button" variant="ghost" onClick={() => setNaming(false)}>Cancel</Button>
+        </form>
+      ) : <Button small variant="soft" onClick={() => setNaming(true)}>☆ Save this view</Button>}
+    </div>
+  );
+}
+
+function Breadcrumbs({ trail }: { trail: Array<{ label: string; onClick?: () => void }> }) {
+  return (
+    <nav aria-label="Breadcrumb" className="an-crumbs">
+      <ol>
+        {trail.map((t, i) => (
+          <li key={`${t.label}-${i}`}>
+            {i < trail.length - 1 && t.onClick ? <button type="button" className="an-crumb" onClick={t.onClick}>{t.label}</button> : <span aria-current={i === trail.length - 1 ? 'page' : undefined}>{t.label}</span>}
+          </li>
+        ))}
+      </ol>
+    </nav>
   );
 }
 
 export function AnalyticsView() {
   const { permissions } = usePermissions();
+  const auth = useMaybeAuth();
+  const who = auth?.me?.profile?.id ?? 'me';
   const today = isoDay();
   const [q, setQ] = useState<OverviewQuery>({ preset: 'month', compare: 'previous', department: 'all', from: today.slice(0, 8) + '01', to: today, compareFrom: '', compareTo: '' });
-  const [tab, setTab] = useState<string>('all');
+  const [tab, setTabRaw] = useState<string>('all');
+  const [focus, setFocus] = useState<string | null>(null);
+  const setTab = (t: string) => { setTabRaw(t); setFocus(null); };
   const { run, busy, error } = useAction();
   const ready = (q.preset !== 'custom' || (q.from && q.to)) && (q.compare !== 'custom' || (q.compareFrom && q.compareTo));
   const query = { ...q, department: tab === 'reports' ? 'all' : tab };
   const state = useLoad(() => (ready && tab !== 'reports' ? analyticsApi.overview(query) : Promise.resolve(null)), [JSON.stringify(query), ready]);
+  // Every measure in scope, for the search; the loaded figures stand in if the catalogue cannot be read.
+  const cat = useLoad(() => Promise.resolve().then(() => analyticsApi.catalogue()).catch(() => null), []);
   const canExport = Boolean(permissions['analytics.export']);
   const canReports = Boolean(permissions['reports.quarterly.read']);
   const set = (patch: Partial<OverviewQuery>) => setQ((cur) => ({ ...cur, ...patch }));
@@ -163,8 +288,16 @@ export function AnalyticsView() {
   const known = useRef<Array<{ key: string; label: string }>>([]);
   if (state.data?.departments?.length) known.current = state.data.departments;
   const departments = known.current;
+  const deptLabel = (k: string) => departments.find((x) => x.key === k)?.label ?? humanize(k);
 
   const tabs = [{ key: 'all', label: 'Overview' }, ...departments.map((d) => ({ key: d.key, label: d.label })), ...(canReports ? [{ key: 'reports', label: 'Quarterly reports' }] : [])];
+  const pickerOptions = (cat.data?.metrics ?? state.data?.metrics ?? []).map((m) => ({ key: m.key, label: m.label, department: m.department, deptLabel: deptLabel(m.department) }));
+  const focusLabel = focus ? (pickerOptions.find((o) => o.key === focus)?.label ?? focus) : null;
+  const trail = [
+    { label: 'Analytics', onClick: () => setTab('all') },
+    ...(tab !== 'all' ? [{ label: tab === 'reports' ? 'Quarterly reports' : deptLabel(tab), onClick: () => setFocus(null) }] : []),
+    ...(focusLabel ? [{ label: focusLabel }] : []),
+  ];
 
   return (
     <div className="an-root">
@@ -192,20 +325,51 @@ export function AnalyticsView() {
         <ErrorNote error={error} />
       </Card>
 
+      <div className="an-nav">
+        <Breadcrumbs trail={trail} />
+        {pickerOptions.length > 0 && <MetricPicker options={pickerOptions} onPick={(o) => { setTabRaw(o.department); setFocus(o.key); }} />}
+      </div>
+      <SavedViews who={who} current={{ q, tab, focus }} onApply={(v) => { setQ(v.q); setTabRaw(v.tab); setFocus(v.focus); }} />
+
       {tabs.length > 1 && <Tabs tabs={tabs} value={tab} onChange={setTab} />}
 
       {tab === 'reports' ? <QuarterlyReportsView embedded /> : (
         <Loadable state={state} empty={<EmptyState title="Choose the dates" sub="Pick both dates of a custom period (and of a custom comparison) to see the figures." />}>
-          {(d: OverviewDto | null) => d && <Workspace d={d} />}
+          {(d: OverviewDto | null) => d && <Workspace d={d} focus={focus} onFocus={(k) => { if (d.department === 'all') { const m = d.metrics.find((x) => x.key === k); if (m) setTabRaw(m.department); } setFocus(k); }} onDept={setTab} />}
         </Loadable>
       )}
     </div>
   );
 }
 
-function Workspace({ d }: { d: OverviewDto }) {
-  const trends = d.metrics.filter((m) => m.trend && typeof m.trend === 'object' && (m.trend as TrendDto).points.length > 1);
+function DepartmentTiles({ d, onDept }: { d: OverviewDto; onDept: (key: string) => void }) {
+  return (
+    <ul className="an-depts" aria-label="Departments">
+      {d.departments.map((dep) => {
+        const ms = d.metrics.filter((m) => m.department === dep.key);
+        const up = ms.filter((m) => m.change?.comparable && (m.change.abs ?? 0) > 0).length;
+        const down = ms.filter((m) => m.change?.comparable && (m.change.abs ?? 0) < 0).length;
+        return (
+          <li key={dep.key}>
+            <button type="button" className="an-dept" onClick={() => onDept(dep.key)} aria-label={`${dep.label}: open the department`}>
+              <span className="an-dept-icon" aria-hidden="true">{deptIcon(dep.key)}</span>
+              <span className="an-dept-name">{dep.label}</span>
+              <span className="an-dept-sub">{ms.length ? `${ms.length} headline measure${ms.length === 1 ? '' : 's'}` : 'Open for its measures'}{up || down ? ` · ▲${up} ▼${down}` : ''}</span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function Workspace({ d, focus, onFocus, onDept }: { d: OverviewDto; focus: string | null; onFocus: (key: string) => void; onDept: (key: string) => void }) {
+  const trendOf = (m: MetricDto) => (m.trend && typeof m.trend === 'object' && (m.trend as TrendDto).points.length > 1 ? (m.trend as TrendDto) : null);
+  const trends = d.metrics.filter((m) => trendOf(m));
   const cmpLabel = d.comparison ? `${d.comparison.label} (${fmtDate(d.comparison.start)} – ${fmtDate(new Date(new Date(d.comparison.end).getTime() - 1))})` : null;
+  const focused = focus ? d.metrics.find((m) => m.key === focus) ?? null : null;
+  const focusedBreakdown = focused ? breakdownChart(focused) : null;
+  const rest = focused ? d.metrics.filter((m) => m.key !== focused.key) : d.metrics;
   return (
     <>
       <p className="an-period">
@@ -213,11 +377,27 @@ function Workspace({ d }: { d: OverviewDto }) {
         {d.comparison && <> · compared with {cmpLabel}</>}
         {d.scope.level === 'OWN' && <> · <span className="an-scope">Your scope: {d.departments.map((x) => x.label).join(', ')}{d.scope.classes !== null ? ` (${d.scope.classes} class${d.scope.classes === 1 ? '' : 'es'})` : ''}</span></>}
       </p>
-      {d.metrics.length === 0 ? <EmptyState title="No figures here yet" sub="This department has no measures in the catalogue yet." /> : (
-        <div className="an-grid">{d.metrics.map((m) => <MetricCard key={m.key} m={m} comparisonLabel={d.comparison?.label ?? null} />)}</div>
+      {d.department === 'all' && d.departments.length > 1 && <DepartmentTiles d={d} onDept={onDept} />}
+      {focused && (
+        <section className="an-focus" aria-label={`Analysis of ${focused.label}`}>
+          <div className="an-focus-grid">
+            <MetricCard m={focused} comparisonLabel={d.comparison?.label ?? null} />
+            {trendOf(focused) ? <TrendChart m={focused} trend={trendOf(focused)!} comparison={focused.comparisonTrend ?? null} comparisonLabel={d.comparison?.label ?? 'Comparison'} big />
+              : <div className="card an-trend"><p className="an-muted">This measure has no trend over time{focused.currentOnly ? ': only its current value is kept' : ''}.</p></div>}
+          </div>
+          {focusedBreakdown && <DashChart c={focusedBreakdown} />}
+        </section>
       )}
-      {trends.length > 0 && <div className="an-trends">{trends.map((m) => <TrendChart key={m.key} m={m} trend={m.trend as TrendDto} />)}</div>}
-      {d.department !== 'all' && <Breakdowns metrics={d.metrics} />}
+      {d.metrics.length === 0 ? <EmptyState title="No figures here yet" sub="This department has no measures in the catalogue yet." /> : (
+        <>
+          {focused && <h3 className="an-sub">Other measures in {d.departments.find((x) => x.key === focused.department)?.label ?? 'this department'}</h3>}
+          <div className="an-grid">{rest.map((m) => <MetricCard key={m.key} m={m} comparisonLabel={d.comparison?.label ?? null} onOpen={onFocus} />)}</div>
+        </>
+      )}
+      {trends.filter((m) => m.key !== focused?.key).length > 0 && (
+        <div className="an-trends">{trends.filter((m) => m.key !== focused?.key).map((m) => <TrendChart key={m.key} m={m} trend={trendOf(m)!} comparison={m.comparisonTrend ?? null} comparisonLabel={d.comparison?.label ?? 'Comparison'} />)}</div>
+      )}
+      {d.department !== 'all' && <Breakdowns metrics={rest} />}
       <DataNote>
         Computed {fmtDateTime(d.computedAt)} from live records, cut off at {fmtDateTime(d.cutoff)}; money in {d.currency}. {d.freshness} Definitions version {d.catalogueVersion}.
         &ldquo;Not available&rdquo; means the records do not cover that period; &ldquo;not comparable&rdquo; means the comparison is missing or zero.

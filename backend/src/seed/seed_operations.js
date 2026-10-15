@@ -1239,6 +1239,15 @@ async function seedOperations() {
   // two sample online applications and accession numbers for the catalogue: see seed_green_admission.js.
   await (await import('./seed_green_admission.js')).seedGreenAdmission({ section, attempt, who, tenantId: SEED_SCHOOL_SLUG });
 
+  // ── Universal search, newsroom social sharing, offline marketing, connectors and attribution (agent: search-marketing) ──
+  // Social publishing switched on, a shared public story, offline campaigns with tracking codes, "how did you hear" answers,
+  // traced enquiries and a fictional ad-platform export: see seed_growth.js.
+  await (await import('./seed_growth.js')).seedGrowth({ section, attempt, who });
+
+  // ── Support plans, competency portfolios, scenarios, teacher presence (agent: p2-gaps) ──
+  // Plans from the risk signals, portfolio evidence and ratings, two saved scenarios and today's check-ins: see seed_p2_gaps.js.
+  await (await import('./seed_p2_gaps.js')).seedP2Gaps({ section, attempt, who, teachers, actorOf });
+
   // ── What came out ────────────────────────────────────────────────────────
   const pending = await ApprovalRequest.countDocuments({ status: 'PENDING' }).catch(() => 0);
   // Printed directly, so the summary shows whatever the log level is.

@@ -2,6 +2,11 @@ import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vites
 import fs from 'fs';
 import crypto from 'crypto';
 import { MCP_TOOLS, mcpToolsFor, mutates, requiresConfirmation } from '../src/modules/ai/mcp/registry.js';
+// The platform people and older-module gap tools carry their own write matrix
+// (tests/mcp.platformPeople.test.js); imported after the registry, which loads them.
+import { platformPeopleTools } from '../src/modules/ai/mcp/tools/platformPeople.js';
+import { platformGapTools } from '../src/modules/ai/mcp/tools/platformGaps.js';
+import { platformOpsTools } from '../src/modules/ai/mcp/tools/platformOps.js'; // its writes are exercised in tests/mcp.platformOps.test.js
 import { resetMcpClient } from '../src/modules/ai/mcp/client.js';
 import { env } from '../src/config/env.js';
 import { Student, Enrollment, StudentGuardian } from '../src/models/student.model.js';
@@ -708,7 +713,8 @@ async function attempt(tenant, actor, name, args) {
 
 describe('the write-tool matrix', () => {
   it('has a case for every one of the 76 write tools', () => {
-    const writeTools = Object.entries(MCP_TOOLS).filter(([, t]) => mutates(t)).map(([n]) => n).sort();
+    const ownSuite = new Set([...Object.keys(platformPeopleTools), ...Object.keys(platformGapTools), ...Object.keys(platformOpsTools)]);
+    const writeTools = Object.entries(MCP_TOOLS).filter(([n, t]) => mutates(t) && !ownSuite.has(n)).map(([n]) => n).sort();
     expect(writeTools).toHaveLength(76);
     expect([...new Set(CASES.map((c) => c.tool))].sort()).toEqual(writeTools);
   });

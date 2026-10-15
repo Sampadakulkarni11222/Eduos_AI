@@ -96,6 +96,18 @@ function summariseData(data) {
  *   `result` is the MCP envelope — `{ success, data, speakKey }`,
  *   `{ success, action }`, or `{ success: false, error }`.
  */
+/**
+ * Whether composeAnswer would hand these results to the model (several
+ * lookups, a model configured, no long list). Everything else is laid out by
+ * code from the records themselves.
+ */
+export function answerIsModelWritten(calls) {
+  const answered = calls.filter((c) => c.result?.success);
+  const refused = calls.filter((c) => !c.result?.success);
+  if (!answered.length || (answered.length === 1 && !refused.length)) return false;
+  return isLlmEnabled() && !answered.some((c) => carriesLongList(c.result?.data));
+}
+
 export async function composeAnswer({ message, calls, lang = 'en' }) {
   const answered = calls.filter((c) => c.result?.success);
   const refused = calls.filter((c) => !c.result?.success);

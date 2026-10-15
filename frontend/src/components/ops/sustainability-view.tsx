@@ -1,4 +1,5 @@
 'use client';
+import { offlineWrite } from '@/lib/offline-queue';
 import { useState } from 'react';
 import { Button, EmptyState, Field, Modal, Select } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -309,7 +310,7 @@ function DutyCheck({ duty, onClose, onDone }: { duty: DutyDto; onClose: () => vo
     <Modal title={`Check: ${duty.title}`} onClose={onClose} footer={<>
       <Button variant="soft" onClick={onClose}>Cancel</Button>
       <Button disabled={busy || !evidence.length || (gaps && !note)} onClick={() => void run(async () => {
-        await greenApi.recordCheck(duty.id, { itemsDone: done, note, evidence, stockAfter: stock === '' ? null : Number(stock) });
+        await offlineWrite('SANITATION_CHECK', `/sustainability/sanitation/${duty.id}/checks`, { itemsDone: done, note, evidence, stockAfter: stock === '' ? null : Number(stock) }, `Sanitation check: ${duty.title}`);
         onDone(); onClose();
       })}>Record check</Button>
     </>}>

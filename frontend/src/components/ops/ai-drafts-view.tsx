@@ -1,4 +1,5 @@
 'use client';
+import { EvidenceFooter } from '@/components/evidence-footer';
 import { useState } from 'react';
 import { Button, Field, Select } from '@/components/ui';
 import { aiDraftsApi, DRAFT_KINDS, type DraftKind, type DraftResult } from '@/lib/green-api';
@@ -75,6 +76,7 @@ export function AiDraftsView() {
               {result.redactions > 0 && <p className="ops-muted">{result.redactions} restricted or contact detail(s) were removed before drafting.</p>}
               <textarea className="input drafts-output" rows={14} value={result.text} onChange={(e) => setResult({ ...result, text: e.target.value })} aria-label="Draft text" />
               <DataNote>{result.note}</DataNote>
+              {result.basedOn && <EvidenceFooter note={result.basedOn.source} items={result.basedOn.items.map((x) => ({ text: `${x.label}: ${x.value}` }))} />}
             </SectionCard>
           )}
         </div>

@@ -277,6 +277,29 @@ function briefing(actor, { charts, departments: tiles, decisions }) {
   return lines;
 }
 
+/**
+ * What each briefing line is based on: the records, how many, for which
+ * days, and the page that holds them. Shown under the briefing so no
+ * sentence is presented without its evidence. Mirrors briefing() line by line.
+ */
+function briefingSources({ charts, departments: tiles, decisions }) {
+  const out = [];
+  if (decisions) out.push({ text: `${decisions} approval request${decisions === 1 ? '' : 's'} whose current stage you may decide`, link: '/approvals' });
+  const att = charts.find((c) => c.key === 'attendance' && c.status === 'OK');
+  const last = att?.points.at(-1);
+  if (last?.value != null) {
+    const days = att.points.filter((p) => p.value != null);
+    out.push({ text: `Attendance registers for ${days.length} school day${days.length === 1 ? '' : 's'} (${days[0]?.label ?? last.label} to ${last.label}); ${att.definition}`, link: att.link });
+  }
+  for (const t of tiles.filter((x) => x.attention)) {
+    const [n, what] = t.lines.find(([v]) => v) ?? [];
+    if (n) out.push({ text: `${t.name}: ${n} ${what} in the ${t.name.toLowerCase()} records`, link: t.link ?? null });
+  }
+  const classes = charts.find((c) => c.key === 'classes');
+  if (classes?.points[0]?.value) out.push({ text: `${classes.points[0].value} online class record(s) for today`, link: classes.link });
+  return out;
+}
+
 export async function pulse(actor, { decisions = 0 } = {}) {
   const charts = (await Promise.all([
     attempt('attendance', () => attendanceTrend(actor)),
@@ -292,5 +315,6 @@ export async function pulse(actor, { decisions = 0 } = {}) {
   const worded = (tiles ?? []).map((t) => ({ ...t, lines: (t.lines ?? []).map(([n, label]) => [n, countLabel(n, label)]) }));
   const out = { charts, activity: feed ?? [], departments: worded, asOf: new Date().toISOString() };
   out.briefing = briefing(actor, { ...out, decisions });
+  out.briefingSources = briefingSources({ ...out, decisions });
   return out;
 }

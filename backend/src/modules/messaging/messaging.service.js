@@ -210,6 +210,23 @@ export const TEMPLATES = {
     category: 'UTILITY',
     subject: (v) => `Your daily digest for ${v.day}`,
     text: (v) => `Your daily digest is ready: ${v.count} headline(s) from feeds your school approved${v.top ? `, starting with "${v.top}"` : ''}. Read it in EduOS.`,
+  },  // Part 2 gaps: support plans, portfolios, camera referral follow-up.
+  // Content-free: say something happened and link to the page.
+  SUPPORT_PLAN_SHARED: {
+    category: 'UTILITY',
+    text: (v) => `The school has shared a support plan for ${v.student} with you. Read its goals and next review date in EduOS.`,
+  },
+  SUPPORT_PLAN_REVIEWED: {
+    category: 'UTILITY',
+    text: (v) => `The support plan for ${v.student} was reviewed. See the progress on its goals in EduOS.`,
+  },
+  SUPPORT_PLAN_ACTION: {
+    category: 'UTILITY',
+    text: () => 'You have a new action on a student support plan. Open EduOS (Support plans) to see it.',
+  },
+  SAFETY_REFERRAL_FOLLOWUP: {
+    category: 'UTILITY',
+    text: () => 'A reviewed safety observation in a space your class uses was referred to the safeguarding officer. No names are shared; the officer may contact you. Open EduOS for the reference.',
   },
 };
 

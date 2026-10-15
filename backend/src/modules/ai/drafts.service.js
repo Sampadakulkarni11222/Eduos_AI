@@ -162,6 +162,22 @@ export function setDraftModelForTests({ call, enabled } = {}) {
 
 const NOTE = 'Nothing has been sent, published or saved. Copy the text, edit it, and save it in the screen where it will be used.';
 
+/**
+ * What a draft is based on: only what the person typed into the form (and
+ * how much was removed before the model saw it). A draft never draws on
+ * records it was not given, so this is its complete evidence.
+ */
+export function basedOn(kind, i, removed = 0) {
+  const items = [];
+  const add = (label, v) => { if (v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && !v.length)) items.push({ label, value: Array.isArray(v) ? v.join(', ') : String(v).slice(0, 160) }); };
+  if (kind === 'REPORT_REMARK') { add('Marks bands you entered', i.bands); add('Attendance you entered', i.attendancePct === null ? null : `${i.attendancePct}%`); }
+  if (kind === 'LETTER') { add('Recipient', i.recipient); add('Subject', i.subject); add('Purpose you wrote', i.purpose); add('Points you listed', i.points?.length ? `${i.points.length} point(s)` : null); }
+  if (kind === 'CIRCULAR') { add('Title', i.title); add('Audience', i.audience); add('Date', i.date); add('Details you wrote', i.details ? `${i.details.length} characters` : null); }
+  if (kind === 'MINUTES') { add('Meeting', i.meetingTitle); add('Date', i.date); add('Notes you pasted', i.notes ? `${i.notes.length} characters` : null); }
+  if (kind === 'LESSON_PLAN') { add('Subject', i.subject); add('Class', i.grade); add('Topic', i.topic); add('Objectives you listed', i.objectives?.length ? `${i.objectives.length}` : null); }
+  return { source: 'Only what you entered in this form; no school records were read.', items, redactedCount: removed };
+}
+
 export async function draft(actor, body = {}) {
   if (!actor?.profileId && !actor?.system) throw new AppError('Select a profile first', 403);
   const kind = String(body?.kind ?? '').toUpperCase();
@@ -171,7 +187,7 @@ export async function draft(actor, body = {}) {
   if (empty) throw new AppError('Give a little to work from (the notes, the topic, the purpose or the marks bands).', 400, [], 'NOTHING_TO_DRAFT');
   const { inputs, removed } = redactInputs(kind, raw);
   const firstName = kind === 'REPORT_REMARK' ? raw.firstName : '';
-  const base = { kind, redactions: removed, saved: false, note: NOTE };
+  const base = { kind, redactions: removed, saved: false, note: NOTE, basedOn: basedOn(kind, raw, removed) };
 
   if (modelEnabled()) {
     try {

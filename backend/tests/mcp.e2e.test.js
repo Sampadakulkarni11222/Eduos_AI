@@ -404,7 +404,10 @@ describe('the website and WhatsApp share one MCP client, server, registry and se
   it('gives the same answer, from the same tool, to the same person on both channels', async () => {
     const web = await ask(school.people.ADMIN, 'Which students have pending fees?');
     const wa = await whatsapp(school.people.ADMIN, 'Which students have pending fees?');
-    expect(wa.reply).toBe(web.reply);
+    // WhatsApp carries the "Based on" evidence as a closing line; the website shows it as a footer.
+    const basedOn = /\n\n_Based on: [^\n]*_$/;
+    expect(wa.reply.replace(basedOn, '')).toBe(web.reply);
+    expect(basedOn.test(wa.reply)).toBe(Boolean(web.modelWritten && web.evidence?.length));
     const channels = await inSchool(OAK, () => AuditLog.distinct('channel', { action: 'agent.get_pending_fees', 'after.via': 'MCP' }));
     expect(channels.sort()).toEqual(['WEB', 'WHATSAPP']);
   });

@@ -313,6 +313,15 @@ export const PERMISSION_CATALOG = [
   { key: 'fees.concessions.manage', group: 'fees', description: 'Define fee concessions and apply them (with approval)' },
   { key: 'accounts.export', group: 'finance', description: 'Export vouchers and GST summaries for the accountant (Tally-compatible)' },
   { key: 'ai.drafts.use', group: 'ai', description: 'Ask the assistant for a draft (letter, minutes, lesson plan, remarks) that you review before using' },
+  // ── Part 2 gaps: student support plans, competency portfolios, scenario planning ──
+  { key: 'supportplans.read', group: 'students', description: 'See student support plans (OWN: students you teach or plans you own; families: the plan summary and goals for their own child, never internal notes)' },
+  { key: 'supportplans.manage', group: 'students', description: 'Open and run student support plans: goals, actions, reviews and closure (OWN: students you teach)' },
+  { key: 'supportplans.referral.view', group: 'sensitive', description: 'See whether a support plan was referred to safeguarding (the flag only; the case stays in safeguarding)' },
+  { key: 'portfolios.read', group: 'academics', description: 'See competency portfolios (OWN: students you teach, your own child, or yourself)' },
+  { key: 'portfolios.manage', group: 'academics', description: 'Add evidence and rubric ratings to competency portfolios (OWN: students you teach)' },
+  { key: 'portfolios.reflect', group: 'academics', description: 'Write your own reflections in your competency portfolio' },
+  { key: 'scenarios.read', group: 'analytics', description: 'See saved what-if projections (enrolment, fees, staffing, transport, budget)' },
+  { key: 'scenarios.manage', group: 'analytics', description: 'Create, edit and compare what-if projections' },
 ];
 
 const grants = (pairs) => pairs.map(([key, scope]) => ({ key, scope }));
@@ -373,6 +382,8 @@ export const RESTRICTED_BY_DEFAULT = [
   'payroll.prepare',
   'payroll.sensitive.read',
   'safeguarding.manage',
+  // Whether a support plan was referred to safeguarding is itself sensitive.
+  'supportplans.referral.view',
   'verification.decide',
 ];
 
@@ -442,6 +453,14 @@ export const SYSTEM_ROLES = [
     name: 'Principal',
     description: 'Oversight across the whole school',
     grants: merge([
+      // Part 2 gaps.
+      ['supportplans.read', 'ALL'],
+      ['supportplans.manage', 'ALL'],
+      ['supportplans.referral.view', 'ALL'],
+      ['portfolios.read', 'ALL'],
+      ['portfolios.manage', 'ALL'],
+      ['scenarios.read', 'ALL'],
+      ['scenarios.manage', 'ALL'],
       // School platform completion.
       ['analytics.workspace.read', 'ALL'],
       ['analytics.export', 'ALL'],
@@ -545,6 +564,11 @@ export const SYSTEM_ROLES = [
     name: 'Teacher',
     description: 'Manages their own classes',
     grants: merge([
+      // Part 2 gaps.
+      ['supportplans.read', 'OWN'],
+      ['supportplans.manage', 'OWN'],
+      ['portfolios.read', 'OWN'],
+      ['portfolios.manage', 'OWN'],
       // School platform completion.
       ['analytics.workspace.read', 'OWN'],
       ['tasks.read', 'OWN'],
@@ -612,6 +636,9 @@ export const SYSTEM_ROLES = [
     name: 'Parent',
     description: "Views their own children's records",
     grants: merge([
+      // Part 2 gaps.
+      ['supportplans.read', 'OWN'],
+      ['portfolios.read', 'OWN'],
       // School platform completion.
       ['ptm.read', 'OWN'],
       ['ptm.book', 'OWN'],
@@ -652,6 +679,10 @@ export const SYSTEM_ROLES = [
     name: 'Student',
     description: 'Views their own records',
     grants: merge([
+      // Part 2 gaps.
+      ['supportplans.read', 'OWN'],
+      ['portfolios.read', 'OWN'],
+      ['portfolios.reflect', 'OWN'],
       // School platform completion.
       ['clubs.read', 'OWN'],
       ['clubs.join', 'OWN'],
@@ -696,6 +727,9 @@ export const SYSTEM_ROLES = [
     name: 'Finance',
     description: 'Manages fees and payments',
     grants: merge([
+      // Part 2 gaps.
+      ['scenarios.read', 'ALL'],
+      ['scenarios.manage', 'ALL'],
       // School platform completion.
       ['analytics.workspace.read', 'OWN'],
       ['analytics.export', 'OWN'],
@@ -857,6 +891,8 @@ export const SYSTEM_ROLES = [
     name: 'Compliance & Safeguarding Officer',
     description: 'Designated officer for safeguarding, statutory compliance, policies and training',
     grants: merge(STAFF_OPERATIONS, [
+      // Part 2 gaps.
+      ['supportplans.referral.view', 'ALL'],
       // School platform completion.
       ['analytics.workspace.read', 'OWN'],
       ['reports.quarterly.read', 'OWN'],
@@ -893,6 +929,8 @@ export const SYSTEM_ROLES = [
     name: 'Trustee / Governing Body Member',
     description: 'Governance: meetings, resolutions, board-level approvals and institution health',
     grants: grants([
+      // Part 2 gaps.
+      ['scenarios.read', 'ALL'],
       // School platform completion.
       ['analytics.workspace.read', 'ALL'],
       ['reports.quarterly.read', 'OWN'],

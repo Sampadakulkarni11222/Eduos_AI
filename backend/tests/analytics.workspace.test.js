@@ -125,6 +125,25 @@ describe('comparisons', () => {
     expect(Number.isFinite(z.change.abs)).toBe(true);
   });
 
+  it('draws the trend of the comparison period under a department view, and not on the overview', async () => {
+    await seedMoney();
+    const data = await overview('FINANCE', 'OWN', { ...SEPT, department: 'finance', compare: 'previous' });
+    const withTrend = data.metrics.filter((m) => m.trend);
+    expect(withTrend.length).toBeGreaterThan(0);
+    for (const m of withTrend) {
+      expect(m.comparisonTrend).toBeTruthy();
+      expect(m.comparisonTrend.points.length).toBeGreaterThan(0);
+    }
+    // August (the previous equal period) billed INV-0 only: its trend sums to the August figure.
+    const billed = metricOf(data, 'finance.billed');
+    if (billed.trend) {
+      const sum = billed.comparisonTrend.points.reduce((t, p) => t + (p.value ?? 0), 0);
+      expect(sum).toBe(billed.comparison.value);
+    }
+    const all = await overview('FINANCE', 'OWN', { ...SEPT, department: 'all', compare: 'previous' });
+    expect(all.metrics.every((m) => m.comparisonTrend === null)).toBe(true);
+  });
+
   it('shows current-only figures as not available for past periods', async () => {
     const data = await overview('PRINCIPAL', 'ALL', { preset: 'month', department: 'admissions', compare: 'lastYear' });
     const wait = metricOf(data, 'admissions.waitlist');

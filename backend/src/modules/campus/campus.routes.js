@@ -2,11 +2,14 @@ import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
+import { AppError } from '../../utils/AppError.js';
 import { sendSuccess } from '../../utils/response.js';
 import * as campus from './campus.service.js';
 import { campusLayers } from './layers.service.js';
+import { liveDetail, myView } from './live-detail.service.js';
 import * as insights from '../insights/insights.service.js';
 import { pulse } from '../insights/pulse.service.js';
+import { roleDashboard } from '../insights/dashboards.service.js';
 import { inbox as approvalInbox } from '../approvals/approval.service.js';
 import { shortCache, permissionKey, BOARD_CACHE_MS } from '../../utils/shortCache.js';
 
@@ -17,6 +20,8 @@ import { shortCache, permissionKey, BOARD_CACHE_MS } from '../../utils/shortCach
  *   - { name: Insights, description: Role home screens and the principal's daily briefing }
  */
 export const campusRouter = Router();
+// Live answers are polled every 15 seconds while open; a short cache absorbs double clicks without going stale.
+const LIVE_CACHE_MS = Math.min(BOARD_CACHE_MS, 5000);
 campusRouter.use(authenticate);
 // The map depends on the school, the reader's role and grants, and the options —
 // nothing personal — so readers with the same grants share one answer for a few seconds.
@@ -34,6 +39,22 @@ campusRouter.get('/layers', requirePermission('campus.map.read'), asyncHandler(a
   const key = `campus-layers:${a.tenantId}:${own ? a.profileId : `${a.roleKey}:${permissionKey(a.permissions)}`}`;
   sendSuccess(res, await shortCache(key, BOARD_CACHE_MS, () => campusLayers(a)));
 }));
+// Live detail of one room, class, teacher, bus, lab, department, zone or the gate,
+// limited to what the reader may see (families: their own class only). Personal
+// answers, so each reader gets their own for a few seconds.
+campusRouter.get('/live', requirePermission('campus.map.read'), asyncHandler(async (req, res) => {
+  const a = req.actor;
+  const kind = String(req.query.kind ?? '');
+  const id = req.query.id ? String(req.query.id) : null;
+  sendSuccess(res, await shortCache(`campus-live:${a.tenantId}:${a.profileId}:${kind}:${id ?? ''}`, LIVE_CACHE_MS, () => liveDetail(a, { kind, id })));
+}));
+// The reader's own corner of the campus: a parent's child's class, a student's
+// own class, a teacher's current and next class, a staff member's departments.
+campusRouter.get('/my-view', requirePermission('campus.map.read'), asyncHandler(async (req, res) => {
+  const a = req.actor;
+  const studentId = req.query.studentId ? String(req.query.studentId) : null;
+  sendSuccess(res, await shortCache(`campus-mine:${a.tenantId}:${a.profileId}:${studentId ?? ''}`, LIVE_CACHE_MS, () => myView(a, { studentId })));
+}));
 campusRouter.get('/facilities/:id', requirePermission('campus.map.read'), asyncHandler(async (req, res) =>
   sendSuccess(res, await campus.facilityDetail(req.actor, req.params.id, { at: req.query.at || null }))));
 
@@ -47,4 +68,13 @@ insightsRouter.get('/pulse', asyncHandler(async (req, res) => {
     const decisions = req.actor.permissions?.['approvals.read'] ? (await approvalInbox(req.actor).catch(() => [])).length : 0;
     return pulse(req.actor, { decisions });
   }));
+}));
+// The signed-in person's own dashboard (teacher's classes, a parent's child, a student's record,
+// a staff role's queue). Scope is decided in the service from the session; a parent may name one
+// of their own children. Cached per person, child and period like the pulse board.
+insightsRouter.get('/dashboard', asyncHandler(async (req, res) => {
+  const days = Number(req.query.days) || 0;
+  const child = typeof req.query.child === 'string' && /^[a-f0-9]{24}$/i.test(req.query.child) ? req.query.child : null;
+  if (req.query.child && !child) throw new AppError('child must be a student id', 400, [], 'BAD_CHILD');
+  return sendSuccess(res, await shortCache(`dashboard:${req.actor.tenantId}:${req.actor.profileId}:${child ?? ''}:${days}`, BOARD_CACHE_MS, () => roleDashboard(req.actor, { days, child })));
 }));

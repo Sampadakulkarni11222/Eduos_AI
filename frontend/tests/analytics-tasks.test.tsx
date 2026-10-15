@@ -19,7 +19,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 const api = vi.hoisted(() => ({
-  overview: vi.fn(), exportCsv: vi.fn(), reports: vi.fn(), report: vi.fn(), regenerate: vi.fn(), deliveries: vi.fn(), retryDeliveries: vi.fn(), downloadReport: vi.fn(),
+  overview: vi.fn(), catalogue: vi.fn(), exportCsv: vi.fn(), reports: vi.fn(), report: vi.fn(), regenerate: vi.fn(), deliveries: vi.fn(), retryDeliveries: vi.fn(), downloadReport: vi.fn(),
   tasks: vi.fn(), taskSummary: vi.fn(), createTask: vi.fn(), acknowledgeTask: vi.fn(), snoozeTask: vi.fn(), completeTask: vi.fn(), reassignTask: vi.fn(), cancelTask: vi.fn(),
   features: vi.fn(), setFeatures: vi.fn(),
 }));
@@ -95,6 +95,58 @@ describe('the analytics workspace', () => {
     await screen.findByRole('article', { name: 'Net fee collections' });
     expect(screen.queryByRole('button', { name: 'Export CSV' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Quarterly reports' })).toBeNull();
+  });
+});
+
+describe('finding your way around analytics', () => {
+  const trend = { unit: 'day' as const, points: [{ label: '1 Oct', from: '2026-10-01', to: '2026-10-01', value: 200000 }, { label: '2 Oct', from: '2026-10-02', to: '2026-10-02', value: 280000 }] };
+  const cmpTrend = { unit: 'day' as const, points: [{ label: '17 Sep', from: '2026-09-17', to: '2026-09-17', value: 150000 }, { label: '18 Sep', from: '2026-09-18', to: '2026-09-18', value: 250000 }] };
+  beforeEach(() => {
+    try { window.localStorage.clear(); } catch { /* none */ }
+    api.catalogue.mockResolvedValue({ version: 'abc', departments: [], scope: { level: 'ALL', departments: ['finance'] }, metrics: [metric({}), metric({ key: 'academics.attendance', department: 'academics', label: 'Attendance rate', unit: 'percent' })] });
+    api.overview.mockImplementation(async (q: { department: string }) => ({
+      ...overview([metric({ trend, comparisonTrend: q.department === 'all' ? null : cmpTrend, current: { value: 480000, records: 3, coverage: 'FULL', note: null, breakdown: [{ label: 'CASH', value: 300000 }, { label: 'UPI', value: 180000 }] } })]),
+      department: q.department,
+    }));
+  });
+
+  it('opens a department from its tile and shows where you are', async () => {
+    inApp(<AnalyticsView />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Finance: open the department' }));
+    await waitFor(() => expect(api.overview).toHaveBeenLastCalledWith(expect.objectContaining({ department: 'finance' })));
+    const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' });
+    expect(within(crumbs).getByText('Finance').getAttribute('aria-current')).toBe('page');
+    // Breakdowns are charts with a table view; the parts make a whole, so a donut with shares.
+    expect(await screen.findByRole('region', { name: 'Net fee collections: breakdown' })).toBeTruthy();
+    expect(screen.getByText('Cash').closest('li')?.textContent).toMatch(/63%/);
+    fireEvent.click(within(crumbs).getByRole('button', { name: 'Analytics' }));
+    await waitFor(() => expect(api.overview).toHaveBeenLastCalledWith(expect.objectContaining({ department: 'all' })));
+  });
+
+  it('finds a measure by search and analyses it against the comparison period', async () => {
+    inApp(<AnalyticsView />);
+    await screen.findByRole('article', { name: 'Net fee collections' });
+    fireEvent.change(await screen.findByLabelText('Find a measure'), { target: { value: 'net fee' } });
+    fireEvent.click(within(screen.getByRole('list', { name: 'Matching measures' })).getByRole('button', { name: /Net fee collections/ }));
+    await waitFor(() => expect(api.overview).toHaveBeenLastCalledWith(expect.objectContaining({ department: 'finance' })));
+    const focus = await screen.findByRole('region', { name: 'Analysis of Net fee collections' });
+    fireEvent.click(within(focus).getAllByRole('button', { name: 'Show table' })[0]);
+    const table = within(focus).getAllByRole('table')[0];
+    expect(within(table).getByText('2 Oct').closest('tr')!.textContent).toMatch(/2,800.*2,500.*18 Sep/);
+    expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByText('Net fee collections')).toBeTruthy();
+  });
+
+  it('saves a view in this browser and brings it back', async () => {
+    inApp(<AnalyticsView />);
+    await screen.findByRole('article', { name: 'Net fee collections' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Finance' }));
+    fireEvent.click(screen.getByRole('button', { name: /Save this view/ }));
+    fireEvent.change(screen.getByLabelText('Name for this view'), { target: { value: 'Monthly money' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(JSON.parse(window.localStorage.getItem('eduos.analytics.views:me') ?? '[]')[0]).toMatchObject({ name: 'Monthly money', tab: 'finance' });
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Monthly money' }));
+    await waitFor(() => expect(api.overview).toHaveBeenLastCalledWith(expect.objectContaining({ department: 'finance' })));
   });
 });
 
