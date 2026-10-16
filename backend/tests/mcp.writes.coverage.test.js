@@ -7,6 +7,11 @@ import { MCP_TOOLS, mcpToolsFor, mutates, requiresConfirmation } from '../src/mo
 import { platformPeopleTools } from '../src/modules/ai/mcp/tools/platformPeople.js';
 import { platformGapTools } from '../src/modules/ai/mcp/tools/platformGaps.js';
 import { platformOpsTools } from '../src/modules/ai/mcp/tools/platformOps.js'; // its writes are exercised in tests/mcp.platformOps.test.js
+// Part-3 tool sets: each has its own suite (mcp.p3Health, mcp.p3Integrations, genui.service, campus.moment).
+import { campusTools } from '../src/modules/ai/mcp/tools/p3Campus.js';
+import { healthTools } from '../src/modules/ai/mcp/tools/p3Health.js';
+import { integrationTools } from '../src/modules/ai/mcp/tools/p3Integrations.js';
+import { openuiTools } from '../src/modules/ai/mcp/tools/p3Openui.js';
 import { resetMcpClient } from '../src/modules/ai/mcp/client.js';
 import { env } from '../src/config/env.js';
 import { Student, Enrollment, StudentGuardian } from '../src/models/student.model.js';
@@ -713,7 +718,7 @@ async function attempt(tenant, actor, name, args) {
 
 describe('the write-tool matrix', () => {
   it('has a case for every one of the 76 write tools', () => {
-    const ownSuite = new Set([...Object.keys(platformPeopleTools), ...Object.keys(platformGapTools), ...Object.keys(platformOpsTools)]);
+    const ownSuite = new Set([...Object.keys(platformPeopleTools), ...Object.keys(platformGapTools), ...Object.keys(platformOpsTools), ...Object.keys(campusTools), ...Object.keys(healthTools), ...Object.keys(integrationTools), ...Object.keys(openuiTools)]);
     const writeTools = Object.entries(MCP_TOOLS).filter(([n, t]) => mutates(t) && !ownSuite.has(n)).map(([n]) => n).sort();
     expect(writeTools).toHaveLength(76);
     expect([...new Set(CASES.map((c) => c.tool))].sort()).toEqual(writeTools);

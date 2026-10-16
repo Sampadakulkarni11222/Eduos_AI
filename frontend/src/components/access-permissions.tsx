@@ -13,7 +13,7 @@ import type { PermissionDto, RoleDto } from '@/lib/types';
  * backend route via requirePermission — no client-side-only state.
  */
 
-const EDITABLE_ROLES = ['ADMIN', 'PRINCIPAL', 'TEACHER', 'FINANCE', 'LIBRARIAN', 'WARDEN', 'HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'PARENT', 'STUDENT', 'ALUMNUS'];
+const EDITABLE_ROLES = ['ADMIN', 'PRINCIPAL', 'TEACHER', 'FINANCE', 'LIBRARIAN', 'WARDEN', 'HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'NURSE', 'PARENT', 'STUDENT', 'ALUMNUS'];
 
 /**
  * Platform-tier keys. They belong to SUPER_ADMIN, which is not one of the roles

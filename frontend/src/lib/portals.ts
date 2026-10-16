@@ -31,7 +31,8 @@ export interface Portal {
     | 'role-marketing'
     | 'role-compliance'
     | 'role-trustee'
-    | 'role-alumnus';
+    | 'role-alumnus'
+    | 'role-nurse';
   label: string;
   sublabel: string;
   icon: string;
@@ -51,6 +52,7 @@ export const ROLE_TO_SLUG: Record<RoleKey, string> = {
   PRINCIPAL: 'principal',
   FINANCE: 'finance', LIBRARIAN: 'librarian', WARDEN: 'warden',
   HR: 'hr', MARKETING: 'marketing', COMPLIANCE: 'compliance', TRUSTEE: 'trustee', ALUMNUS: 'alumnus',
+  NURSE: 'nurse',
 };
 
 export const PORTALS: Record<string, Portal> = {
@@ -341,6 +343,13 @@ PORTALS.alumnus = {
   role: 'ALUMNUS', slug: 'alumnus', themeClass: 'role-alumnus',
   label: 'Alumni', sublabel: 'Alumni Network', icon: '🎓',
   nav: [{ title: 'WORKSPACE', items: [item('Home', '☀', '/alumnus', { ready: true })] }, { title: 'HELP & SUPPORT', items: [item('User Guide', '📖', '/alumnus/guide', { ready: true })] }],
+};
+
+// Part 3: the school nurse. Home is the health room itself.
+PORTALS.nurse = {
+  role: 'NURSE', slug: 'nurse', themeClass: 'role-nurse',
+  label: 'Health Room', sublabel: 'School Nurse', icon: '✚',
+  nav: [{ title: 'WORKSPACE', items: [item('Health room', '✚', '/nurse', { ready: true })] }, { title: 'HELP & SUPPORT', items: [item('User Guide', '📖', '/nurse/guide', { ready: true })] }],
 };
 
 type OpsPageDef = { title: string; icon: string; permission: string | null; group: string; hidden?: boolean };

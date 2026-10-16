@@ -36,6 +36,12 @@ export interface ConnectorDto {
   platform: string; label: string; status: string; statusLabel: string; accountLabel: string | null; credentialHint: string | null; leadWebhook: boolean; webhookConfigured: boolean;
   lastWebhookAt: string | null; csv: { how: string; columns: string[]; example: string }; simulatedRows: number;
   lastImport: { at: string; kind: string; accepted: number; rejected: number; fileName: string | null } | null;
+  /** The live-API side (OAuth connection and last sync); absent on older servers. */
+  live?: {
+    provider: string | null; mode: 'LIVE' | 'SIMULATED' | 'CSV_ONLY'; appConfigured: boolean; connected: boolean; connectionStatus: string | null;
+    lastSync: { at: string; ok: boolean | null; partial: boolean; from: string | null; to: string | null; rows: number; trigger: string | null; message: string | null; problems: Array<{ scope: string; problem: string }> } | null;
+    lastSyncOkAt: string | null; lastError: string | null;
+  };
 }
 export interface ImportResult { importId: string; platform: string; rows: number; accepted?: number; rejected: number; created?: number; duplicates?: number; matchedToCampaigns?: number; problems: Array<{ row: number; problem: string }> }
 export interface ImportDto { id: string; platform: string; kind: string; fileName: string | null; rows: number; accepted: number; rejected: number; created: number; duplicates: number; simulated: boolean; at: string; problems: Array<{ row: number; problem: string }> }
@@ -60,7 +66,7 @@ export const growthApi = {
   imports: (p: Q = {}) => request<ImportDto[]>(`${B}/connectors/imports${qs(p)}`),
   metrics: (p: Q = {}) => request<MetricSummaryDto[]>(`${B}/connectors/metrics${qs(p)}`),
   saveCredentials: (platform: string, body: unknown) => put<ConnectorDto>(`${B}/connectors/${platform}/credentials`, body),
-  sync: (platform: string) => post<{ synced: boolean; message: string }>(`${B}/connectors/${platform}/sync`),
+  sync: (platform: string, range: { from?: string; to?: string } = {}) => post<{ synced: boolean; message: string; ok?: boolean; partial?: boolean; rows?: number }>(`${B}/connectors/${platform}/sync`, range),
   rotateWebhook: (platform: string) => post<WebhookSecretDto>(`${B}/connectors/${platform}/webhook-secret`),
   importMetrics: (platform: string, csv: string, fileName?: string) => post<ImportResult>(`${B}/connectors/${platform}/import`, { csv, fileName }),
   importLeads: (platform: string, csv: string, fileName?: string) => post<ImportResult>(`${B}/connectors/${platform}/import-leads`, { csv, fileName }),

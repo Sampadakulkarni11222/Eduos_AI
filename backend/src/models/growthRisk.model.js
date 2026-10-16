@@ -26,6 +26,8 @@ const riskPredictionSchema = new Schema(
   { timestamps: true }
 );
 riskPredictionSchema.index({ enrollmentId: 1, type: 1 }, { unique: true });
+// "When was the last scan?" is asked on every risk read; without this it sorted every prediction.
+riskPredictionSchema.index({ tenantId: 1, computedAt: -1 });
 
 growthScoreSchema.plugin(tenantScoped); // school-owned
 export const GrowthScore = model('GrowthScore', growthScoreSchema);

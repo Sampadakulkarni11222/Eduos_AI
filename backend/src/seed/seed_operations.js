@@ -87,12 +87,13 @@ const rupees = (n) => Math.round(n * 100);
 const results = [];
 /** Runs one section; a failure is reported, and the rest still run. */
 async function section(name, Model, fn) {
+  const started = Date.now();
   try {
     if (Model && (await Model.countDocuments({})) > 0) { results.push([name, 'kept (already has data)']); return; }
     const note = await fn();
-    results.push([name, note ?? 'done']);
+    results.push([name, note ?? 'done', Date.now() - started]);
   } catch (err) {
-    results.push([name, `FAILED: ${err.message}`]);
+    results.push([name, `FAILED: ${err.message}`, Date.now() - started]);
     logger.warn(`  ✘  ${name}: ${err.stack?.split('\n').slice(0, 3).join(' | ')}`);
   }
 }
@@ -1248,12 +1249,28 @@ async function seedOperations() {
   // Plans from the risk signals, portfolio evidence and ratings, two saved scenarios and today's check-ins: see seed_p2_gaps.js.
   await (await import('./seed_p2_gaps.js')).seedP2Gaps({ section, attempt, who, teachers, actorOf });
 
+  // ── Campus World: shifts and bells, rooms on every period, games, calendar closures, teacher profiles (agent: p3-campus) ──
+  // Primary morning + secondary day shifts, a games period per class, a holiday / exam-only day / closure in the coming
+  // weeks and a winter vacation, and teachers' professional profiles (some shared with families): see seed_p3_campus.js.
+  await (await import('./seed_p3_campus.js')).seedP3Campus({ section, attempt, who, teachers });
+
+  // ── Volume and history for every portal (agent: p3-sampledata) ──
+  // A year and a half of registers, published exams, fees with payments, homework, library circulation, hostel and
+  // transport riders, tickets, notices, enquiries, alumni, leave, payslips, tasks and approvals: see seed_p3_sampledata.js.
+  await (await import('./seed_p3_sampledata.js')).seedP3SampleData({ section, attempt, who, teachers, actorOf, roleByKey });
+
+  // ── School health room (agent: p3-health) ──
+  // A week of visits, medication plans with consent and doses, first-aid stock (one expiring: a task), care notes,
+  // screenings and immunisations for the health card: see seed_health.js.
+  await (await import('./seed_health.js')).seedHealth({ section, attempt, who, tenantId: SEED_SCHOOL_SLUG });
+
   // ── What came out ────────────────────────────────────────────────────────
   const pending = await ApprovalRequest.countDocuments({ status: 'PENDING' }).catch(() => 0);
   // Printed directly, so the summary shows whatever the log level is.
   console.log('');
   console.log('Sample data for every section:');
-  for (const [name, note] of results) console.log(`  ${note.startsWith('FAILED') ? '✘' : '✔'}  ${name.padEnd(36)} ${note}`);
+  // Sections taking over five seconds show their time, so a slow one is easy to spot.
+  for (const [name, note, ms] of results) console.log(`  ${note.startsWith('FAILED') ? '✘' : '✔'}  ${name.padEnd(36)} ${note}${ms > 5000 ? ` (${Math.round(ms / 1000)} s)` : ''}`);
   console.log(`  ➜  ${pending} decisions are waiting in the approvals inbox.`);
   console.log('Everything above is fictional. Nothing was filed, paid or sent.');
   const failed = results.filter(([, n]) => n.startsWith('FAILED')).length;

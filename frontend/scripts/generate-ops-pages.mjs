@@ -83,6 +83,14 @@ const VIEWS = {
   PortfolioView: ["import { PortfolioView } from '@/components/ops/portfolio-view';", '<PortfolioView />'],
   ScenariosView: ["import { ScenariosView } from '@/components/ops/scenarios-view';", '<ScenariosView />'],
   PresenceView: ["import { PresenceView } from '@/components/ops/presence-view';", '<PresenceView />'],
+  // Part 3: the school health room (nurse, parent), care notes (class teacher), counts (principal, admin).
+  HealthView: ["import { HealthView } from '@/components/ops/health-view';", '<HealthView />'],
+  'HealthView:carenotes': ["import { HealthView } from '@/components/ops/health-view';", '<HealthView mode="carenotes" />'],
+  'HealthView:summary': ["import { HealthView } from '@/components/ops/health-view';", '<HealthView mode="summary" />'],
+  // Part 3: shifts and bell schedules (admin), staff professional profiles (everyone; HR for all).
+  ShiftsView: ["import { ShiftsView } from '@/components/ops/p3-campus-views';", '<ShiftsView />'],
+  ProfessionalProfileView: ["import { ProfessionalProfileView } from '@/components/ops/p3-campus-views';", '<ProfessionalProfileView />'],
+  StaffProfilesView: ["import { StaffProfilesView } from '@/components/ops/p3-campus-views';", '<StaffProfilesView />'],
 };
 
 const page = (portal, title, desc, view) => {
@@ -124,6 +132,7 @@ write('hr', page('hr', 'Today', 'Verification, payroll, people and training — 
 write('compliance', page('compliance', 'Today', 'Safeguarding, statutory deadlines, notices and training coverage.', 'RoleHome'));
 write('trustee', page('trustee', 'Governing body overview', 'Decisions for the board, meetings, budget and compliance at a glance.', 'RoleHome'));
 write('marketing', page('marketing', 'Today', 'Enquiries, follow-ups, campaigns and seats.', 'RoleHome'));
+write('nurse', page('nurse', 'Health room', "Today's visits, doses due, stock to replace, care notes, immunisations and health cards.", 'HealthView'));
 write('alumnus', page('alumnus', 'Alumni', 'News from your institution, alumni circles and mentoring.', 'NewsroomView'));
 const crm = path.join(root, 'src/app/[school]/marketing/admissions/page.tsx');
 if (!fs.existsSync(crm) || force) {

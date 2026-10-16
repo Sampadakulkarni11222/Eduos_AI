@@ -6,6 +6,7 @@ import { sendSuccess } from '../../utils/response.js';
 import { requireFeature } from '../../utils/features.js';
 import * as service from './analytics.service.js';
 import * as quarterly from './quarterly.service.js';
+import * as views from './views.service.js';
 import { renderQuarterlyPdf } from './quarterly.pdf.js';
 
 /**
@@ -49,6 +50,11 @@ router.get('/catalogue', workspace, ok((r) => service.catalogue(r.actor, r.scope
  *       - { in: query, name: department, schema: { type: string } }
  */
 router.get('/overview', workspace, ok((r) => service.overview(r.actor, r.scope, r.query)));
+// Part 3: saved views live on the server, per person (they follow the person across devices).
+router.get('/views', workspace, ok((r) => views.list(r.actor)));
+router.post('/views', workspace, ok((r) => views.save(r.actor, r.body), 'View saved', 201));
+router.post('/views/import', workspace, ok((r) => views.importViews(r.actor, r.body), 'Views imported'));
+router.delete('/views/:id', workspace, ok((r) => views.remove(r.actor, r.params.id), 'View forgotten'));
 
 // The export requires both keys and uses the workspace scope, so it never holds more than the screen.
 router.get('/export.csv', requirePermission('analytics.export'), workspace, asyncHandler(async (req, res) => {

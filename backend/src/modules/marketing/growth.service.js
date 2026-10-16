@@ -1,3 +1,4 @@
+import { maySelfApprove, noteSingleApprover } from '../policy/approverMode.service.js';
 import mongoose from 'mongoose';
 import { OfflineCampaign, HeardFromOption, LeadTouch, AdMetric, MarketingSetting, OFFLINE_CHANNELS, OFFLINE_STATUSES, TOUCH_VIA } from '../../models/marketingGrowth.model.js';
 import { Campaign, CounsellingAppointment } from '../../models/marketing.model.js';
@@ -178,9 +179,12 @@ export async function moveOffline(actor, id, body = {}) {
   const note = optionalText(body.note, { max: 1000 }) || null;
   if (action === 'APPROVE' || action === 'REJECT') {
     if (!mayApprove(actor)) throw new AppError('Approving a campaign needs marketing.manage or the principal.', 403);
-    if (String(c.createdByProfileId) === String(actor.profileId)) throw new AppError('Another person must approve this campaign.', 403, [], 'SELF_APPROVAL');
+    const own = String(c.createdByProfileId) === String(actor.profileId);
+    // Single-approver mode (school setting, off by default) lets a principal or administrator decide their own.
+    if (own && !(await maySelfApprove(actor))) throw new AppError('Another person must approve this campaign.', 403, [], 'SELF_APPROVAL');
     if (action === 'REJECT' && !note) throw new AppError('Say what needs to change.', 400, [], 'REASON_REQUIRED');
-    c.decision = { byProfileId: actor.profileId, byName: actor.displayName ?? null, at: new Date(), note };
+    c.decision = { byProfileId: actor.profileId, byName: actor.displayName ?? null, at: new Date(), note, singleApprover: own };
+    if (own) await noteSingleApprover(actor, { entityType: 'OfflineCampaign', entityId: c._id, what: `campaign ${action.toLowerCase()}` });
   }
   if (action === 'SUBMIT' && !c.placements.length && !['REFERRAL_DRIVE', 'RADIO_SPOT', 'LOCAL_TV_CABLE', 'NEWSPAPER_AD'].includes(c.channelType)) {
     throw new AppError('Add at least one placement (where it will appear) before sending it for approval.', 400, [], 'NO_PLACEMENT');

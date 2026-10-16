@@ -21,7 +21,7 @@
  */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { CampusNodeDto } from '@/lib/ops-types';
+import type { CampusMomentDto, CampusNodeDto } from '@/lib/ops-types';
 
 export type Level = { kind: 'campus' } | { kind: 'building'; buildingId: string; floorNo: number | null };
 export interface SceneOptions {
@@ -33,27 +33,9 @@ export interface SceneOptions {
 }
 
 /** What a room's colour means. Kept in one place for the legend. */
-export const STATE_COLORS: Record<string, string> = {
-  FREE: '#8FD3A6',
-  SCHEDULED_CLASS: '#4F86E8',
-  EXAM: '#E0527A',
-  BOOKED: '#9B7BE6',
-  EVENT: '#F2B33D',
-  UNDER_MAINTENANCE: '#F07F3C',
-  CLOSED: '#B4B9C2',
-  RESTRICTED: '#5D6470',
-  OTHER: '#DDE3EC',
-};
-
-export function stateOf(n: CampusNodeDto): string {
-  if (n.restricted && n.name === 'Restricted area') return 'RESTRICTED';
-  if (n.status === 'UNDER_MAINTENANCE') return 'UNDER_MAINTENANCE';
-  if (n.status === 'CLOSED') return 'CLOSED';
-  const s = n.now?.[0]?.type;
-  if (s === 'EXAM' || s === 'SCHEDULED_CLASS' || s === 'BOOKED' || s === 'EVENT') return s;
-  if (n.now) return 'FREE';
-  return 'OTHER';
-}
+// Re-exported so existing imports keep working; defined in campus-state.ts.
+export { STATE_COLORS, stateOf } from './campus-state';
+import { STATE_COLORS, stateOf } from './campus-state';
 
 const GROUND_KINDS = new Set(['GROUND', 'COURT', 'PARKING', 'TRANSPORT_BAY']);
 const ROOF_PALETTE = ['#3D7BE0', '#2BA39A', '#5A67D8', '#E0803D', '#D2455E', '#3C9BD6', '#7A5BD8'];
@@ -90,6 +72,11 @@ export class CampusScene {
   private occDisposables: Array<{ dispose: () => void }> = [];
   private seated: { head: THREE.InstancedMesh; base: Float32Array; count: number; y: number } | null = null;
   private teachers: Array<{ obj: THREE.Object3D; x: number; z: number; span: number; depth: number; phase: number }> = [];
+  /** The school day at the moment shown (from the server's day plan): who is where, buses, how busy the paths are. */
+  private moment: CampusMomentDto | null = null;
+  private crowdGroup: THREE.Group | null = null;
+  private crowdDisposables: Array<{ dispose: () => void }> = [];
+  private crowd: { body: THREE.InstancedMesh; head: THREE.InstancedMesh; base: Float32Array; mode: Uint8Array; count: number } | null = null;
   private beams: THREE.Group | null = null;
   private beamDisposables: Array<{ dispose: () => void }> = [];
   private spotIds: string[] = [];
@@ -180,6 +167,32 @@ export class CampusScene {
     this.rebuild();
   }
 
+  /**
+   * The day plan for the moment on screen (now, or a time and date picked on
+   * the slider): classes seated in their rooms, lunch in the canteen, games and
+   * assembly on the ground, arrivals at the gate and bus bay, buses coming,
+   * parked or leaving, and an empty campus on holidays and after hours.
+   * Figures are anonymous and illustrative; nobody is located.
+   */
+  setMoment(moment: CampusMomentDto | null) {
+    this.moment = moment;
+    if (!this.world.children.length) return;
+    this.refreshOccupants();
+    this.refreshCrowds();
+    this.applyLife();
+  }
+
+  /** How many walkers are out on the paths, and whether the bus is on the road. */
+  private applyLife() {
+    if (this.people) {
+      const w = this.moment?.walkers;
+      const n = !this.moment ? this.people.count : w === 'NONE' ? 0 : w === 'FEW' ? Math.round(this.people.count * 0.25) : this.people.count;
+      this.people.body.count = n;
+      this.people.head.count = n;
+    }
+    if (this.bus) this.bus.mesh.visible = !this.moment || this.moment.buses.phase !== 'AWAY';
+  }
+
   private material(color: string, opts: Partial<THREE.MeshStandardMaterialParameters> = {}, cache = true) {
     const k = cache ? `${color}|${JSON.stringify(opts)}` : '';
     if (cache && this.matCache.has(k)) return this.matCache.get(k)!;
@@ -245,6 +258,8 @@ export class CampusScene {
     this.addLife(W, D);
     this.refreshPins();
     this.refreshOccupants();
+    this.refreshCrowds();
+    this.applyLife();
     this.refreshBeams();
     this.highlight(this.selectedId);
   }
@@ -587,6 +602,15 @@ export class CampusScene {
     } else if (r.kind === 'LAB') {
       const len = Math.max(2, w - 4);
       for (let i = 0; i < 3; i++) for (let k = 0; k < 4; k++) spots.push([RL.x - len / 2 + (k + 0.5) * (len / 4), RL.z - d / 2 + 3 + i * ((d - 5) / 2.4) + 1.3]);
+    } else if (['CANTEEN', 'STAFF_ROOM', 'OFFICE'].includes(r.kind)) {
+      // Around the tables laid out above.
+      const n = r.kind === 'CANTEEN' ? 6 : 2;
+      for (let i = 0; i < n; i++) {
+        const tx = RL.x - w / 3 + (i % 3) * (w / 3); const tz = RL.z - d / 4 + Math.floor(i / 3) * (d / 2.5);
+        for (const [dx, dz] of [[-0.9, -1.2], [0.9, -1.2], [-0.9, 1.2], [0.9, 1.2]]) spots.push([tx + dx, tz + dz]);
+      }
+    } else if (r.kind === 'AUDITORIUM') {
+      for (let rI = 0; rI < 6; rI++) for (let c = 0; c < 8; c++) spots.push([RL.x - w / 2 + 3 + c * ((w - 6) / 7), RL.z - d / 2 + 6 + rI * ((d - 9) / 6) + 0.6]);
     }
     return spots;
   }
@@ -603,7 +627,8 @@ export class CampusScene {
     if (this.occupants) { this.world.remove(this.occupants); this.occupants = null; }
     for (const d of this.occDisposables) d.dispose();
     this.occDisposables = []; this.teachers = []; this.seated = null;
-    if (this.level.kind !== 'building' || this.opts.lowPower) return;
+    // Low-power still shows the figures (two instanced meshes); only shadows are dropped.
+    if (this.level.kind !== 'building') return;
     const lvl = this.level;
     const nodes = [...this.nodeById.values()];
     const floors = nodes.filter((n) => n.parentId === lvl.buildingId && n.kind === 'FLOOR').sort((a, c) => (a.floorNo ?? 0) - (c.floorNo ?? 0));
@@ -623,7 +648,19 @@ export class CampusScene {
       const state = stateOf(room);
       const live = room.live;
       const spots = this.seatSpots(room, RL, w, d);
-      if (spots.length && live && live.present !== null && live.enrolled > 0 && (room.lesson || live.homeRoom || state === 'EXAM')) {
+      const crowd = this.moment ? this.moment.crowd.find((c) => c.facilityId === room.id) ?? null : undefined;
+      if (crowd !== undefined) {
+        // The day plan says who is in this room now (a class, lunch, staff between periods).
+        if (crowd && spots.length) {
+          const n = crowd.students === null ? Math.round(spots.length * 0.75) : crowd.activity === 'STAFF' ? crowd.teachers : crowd.students;
+          const cap = Math.max(room.capacity ?? 0, n, 1);
+          const filled = Math.min(spots.length, Math.max(n > 0 ? 1 : 0, Math.round(spots.length * Math.min(1, n / cap))));
+          const gaps = spots.length - filled;
+          const empty = new Set<number>();
+          for (let k = 0; k < gaps; k++) empty.add(Math.floor(((k + 0.5) * spots.length) / gaps));
+          spots.forEach((spot, i) => { if (!empty.has(i)) sit.push(spot); });
+        }
+      } else if (spots.length && live && live.present !== null && live.enrolled > 0 && (room.lesson || live.homeRoom || state === 'EXAM')) {
         const filled = Math.min(spots.length, Math.max(live.present > 0 ? 1 : 0, Math.round(spots.length * (live.present / live.enrolled))));
         // Empty seats are spread through the room rather than bunched at the back.
         const gaps = spots.length - filled;
@@ -631,8 +668,10 @@ export class CampusScene {
         for (let k = 0; k < gaps; k++) empty.add(Math.floor(((k + 0.5) * spots.length) / gaps));
         spots.forEach((spot, i) => { if (!empty.has(i)) sit.push(spot); });
       }
-      if (room.lesson || state === 'EXAM') {
-        const exam = state === 'EXAM';
+      const here = this.moment ? this.moment.crowd.find((c) => c.facilityId === room.id) ?? null : null;
+      const teach = this.moment ? Boolean(here && here.teachers > 0 && ['CLASS', 'EXAM'].includes(here.activity)) : Boolean(room.lesson || state === 'EXAM');
+      if (teach) {
+        const exam = state === 'EXAM' || here?.activity === 'EXAM';
         const g = new THREE.Group();
         const body = new THREE.Mesh(tBody, teacherMat); body.position.y = 1.05;
         const head = new THREE.Mesh(tHead, skin); head.position.y = 2.1;
@@ -661,6 +700,68 @@ export class CampusScene {
     }
     this.world.add(group);
     this.occupants = group;
+  }
+
+  /**
+   * Groups out of doors, from the day plan: assembly lines and games on the
+   * ground, students at the gate and the bus bay at arrival and home time, a
+   * lunch queue outside the canteen. One figure stands for about two students.
+   */
+  private refreshCrowds() {
+    if (this.crowdGroup) { this.world.remove(this.crowdGroup); this.crowdGroup = null; }
+    for (const d of this.crowdDisposables) d.dispose();
+    this.crowdDisposables = []; this.crowd = null;
+    if (!this.moment) return;
+    const own = <T extends { dispose: () => void }>(x: T) => { this.crowdDisposables.push(x); return x; };
+    const spots: Array<{ x: number; z: number; mode: number; color: THREE.Color }> = [];
+    const palette: Record<string, string> = { SPORTS: '#F2B33D', ASSEMBLY: '#FFFFFF', BREAK: '#8FD3A6', LUNCH: '#E0803D', ARRIVAL: '#4F86E8', DISPERSAL: '#4F86E8', CLUB: '#9B7BE6' };
+    let seed = 11;
+    const rnd = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    const budget = this.opts.lowPower ? 220 : 520;
+    const OUT = ['GROUND', 'COURT', 'TRANSPORT_BAY', 'PARKING', 'GATE'];
+    for (const c of this.moment.crowd) {
+      const n = this.nodeById.get(c.facilityId);
+      if (!n || spots.length >= budget) continue;
+      let area: { x: number; z: number; w: number; d: number } | null = null;
+      if (OUT.includes(n.kind) && n.kind !== 'GATE') area = { x: n.layout.x, z: n.layout.z, w: n.layout.w * 0.8, d: n.layout.d * 0.8 };
+      else if (n.kind === 'GATE') area = { x: n.layout.x, z: n.layout.z + 6, w: Math.max(12, n.layout.w + 8), d: 6 };
+      else if (this.level.kind === 'campus' && ['LUNCH', 'CLUB'].includes(c.activity)) {
+        // Inside a building: a few at its door, so the activity reads from outside.
+        const floor = n.parentId ? this.nodeById.get(n.parentId) : null;
+        const b = floor?.parentId ? this.nodeById.get(floor.parentId) : null;
+        if (b) area = { x: b.layout.x, z: b.layout.z + b.layout.d / 2 + 4, w: b.layout.w * 0.7, d: 4 };
+      }
+      if (!area) continue;
+      const want = c.students === null ? 24 : Math.ceil(c.students / 2);
+      const count = Math.min(budget - spots.length, OUT.includes(n.kind) ? Math.min(180, want) : Math.min(14, want));
+      const color = new THREE.Color(palette[c.activity] ?? '#FFFFFF');
+      const mode = c.activity === 'SPORTS' || c.activity === 'BREAK' ? 1 : 0;
+      if (c.activity === 'ASSEMBLY') {
+        // Lines facing the front.
+        const cols = Math.max(4, Math.ceil(Math.sqrt(count * 2)));
+        for (let i = 0; i < count; i++) spots.push({ x: area.x - area.w / 2 + ((i % cols) + 0.5) * (area.w / cols), z: area.z - area.d / 4 + Math.floor(i / cols) * 2.2, mode: 0, color });
+      } else {
+        for (let i = 0; i < count; i++) spots.push({ x: area.x + (rnd() - 0.5) * area.w, z: area.z + (rnd() - 0.5) * area.d, mode, color });
+      }
+    }
+    if (!spots.length) return;
+    const body = new THREE.InstancedMesh(own(new THREE.CapsuleGeometry(0.42, 1.0, 3, 8)), own(new THREE.MeshStandardMaterial({ color: '#FFFFFF', roughness: 0.7 })), spots.length);
+    const head = new THREE.InstancedMesh(own(new THREE.SphereGeometry(0.42, 10, 8)), own(new THREE.MeshStandardMaterial({ color: '#E8C4A0', roughness: 0.6 })), spots.length);
+    const m = new THREE.Matrix4();
+    const base = new Float32Array(spots.length * 2);
+    const mode = new Uint8Array(spots.length);
+    spots.forEach((p, i) => {
+      m.makeTranslation(p.x, 1.25, p.z); body.setMatrixAt(i, m);
+      m.makeTranslation(p.x, 2.35, p.z); head.setMatrixAt(i, m);
+      body.setColorAt(i, p.color);
+      base[i * 2] = p.x; base[i * 2 + 1] = p.z; mode[i] = p.mode;
+    });
+    body.castShadow = !this.opts.lowPower;
+    const group = new THREE.Group();
+    group.add(body, head);
+    this.world.add(group);
+    this.crowdGroup = group;
+    this.crowd = { body, head, base, mode, count: spots.length };
   }
 
   /** Marks the buildings, rooms and open spaces a department works in with a soft beam, so it can be found at a glance. */
@@ -841,7 +942,8 @@ export class CampusScene {
     if (this.people) {
       const { body, head, paths, t, speed, lane, count } = this.people;
       const p = new THREE.Vector3();
-      for (let i = 0; i < count; i++) {
+      const shown = Math.min(count, body.count);
+      for (let i = 0; i < shown; i++) {
         t[i] = (t[i] + speed[i] * dt * 6 + 1) % 1;
         const path = paths[i % paths.length];
         p.lerpVectors(path[0], path[1], t[i]);
@@ -870,7 +972,14 @@ export class CampusScene {
       }
       mesh.instanceMatrix.needsUpdate = true;
     }
-    if (this.bus) {
+    if (this.bus && this.moment?.buses.phase === 'PARKED') {
+      // Parked in the bay through the school day.
+      const b = this.bus;
+      b.t = b.stopAt;
+      b.mesh.position.copy(b.path.getPointAt(b.t));
+      const ahead = b.path.getPointAt((b.t + 0.004) % 1);
+      b.mesh.lookAt(ahead.x, b.mesh.position.y, ahead.z);
+    } else if (this.bus && this.bus.mesh.visible) {
       const b = this.bus;
       if (b.wait > 0) b.wait -= dt;
       else {
@@ -884,6 +993,20 @@ export class CampusScene {
       const ahead = b.path.getPointAt((b.t + 0.004) % 1);
       b.mesh.position.copy(pos);
       b.mesh.lookAt(ahead.x, pos.y, ahead.z);
+    }
+    if (this.crowd) {
+      // Games and breaks: running about; everyone else stands, with a small sway.
+      const { body, head, base, mode, count } = this.crowd;
+      for (let i = 0; i < count; i++) {
+        const run = mode[i] === 1;
+        const x = base[i * 2] + (run ? Math.sin(this.elapsed * 1.3 + i) * 1.6 : 0);
+        const z = base[i * 2 + 1] + (run ? Math.cos(this.elapsed * 1.1 + i * 0.7) * 1.6 : 0);
+        const bob = run ? Math.abs(Math.sin(this.elapsed * 8 + i)) * 0.18 : Math.sin(this.elapsed * 1.5 + i) * 0.03;
+        m.makeTranslation(x, 1.25 + bob, z); body.setMatrixAt(i, m);
+        m.makeTranslation(x, 2.35 + bob, z); head.setMatrixAt(i, m);
+      }
+      body.instanceMatrix.needsUpdate = true;
+      head.instanceMatrix.needsUpdate = true;
     }
     for (const pin of this.pins) pin.obj.position.y = pin.baseY + Math.sin(this.elapsed * 2.2 + pin.phase) * 0.6;
     if (this.seated) {
@@ -969,6 +1092,8 @@ export class CampusScene {
     }
     this.refreshPins();
     this.refreshOccupants();
+    this.refreshCrowds();
+    this.applyLife();
   }
 
   // ── INTERACTION ─────────────────────────────────────────────────────────
@@ -1168,7 +1293,7 @@ export class CampusScene {
     this.controls.dispose();
     this.highlight(null);
     this.clearWorld();
-    for (const d of [...this.disposables, ...this.occDisposables, ...this.beamDisposables]) d.dispose();
+    for (const d of [...this.disposables, ...this.occDisposables, ...this.beamDisposables, ...this.crowdDisposables]) d.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

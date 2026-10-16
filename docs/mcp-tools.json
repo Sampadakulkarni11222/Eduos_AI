@@ -1,18 +1,18 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 318,
+    "total": 332,
     "byOperation": {
-      "GET": 165,
-      "CREATE": 65,
+      "GET": 173,
+      "CREATE": 68,
       "UPDATE": 29,
-      "DELETE": 14,
-      "ACTION": 45
+      "DELETE": 15,
+      "ACTION": 47
     },
     "byRisk": {
-      "LOW": 197,
-      "HIGH": 32,
-      "MEDIUM": 88,
+      "LOW": 208,
+      "HIGH": 34,
+      "MEDIUM": 89,
       "CRITICAL": 1
     }
   },
@@ -13323,6 +13323,521 @@
       "service": "quarterly.service.regenerate(deliver: false)",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
+    },
+    {
+      "name": "build_dashboard_panel",
+      "module": "Analytics",
+      "operation": "GET",
+      "description": "Builds a dashboard panel for a question in words — \"compare fee collection this year with last year by month\", \"show attendance for 7B this term\", \"my child's homework\" — from the analytics workspace (within the caller's own departments or classes) or the caller's own dashboard. Returns the figures with their period and comparison; the website shows them as a chart panel. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300,
+            "description": "What to show, in words, e.g. \"attendance for 7B this term\""
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "genui/ask.service.askDashboard()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "list_pinned_panels",
+      "module": "Analytics",
+      "operation": "GET",
+      "description": "The generated panels the caller has pinned to their Analytics page and dashboard. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "genui/panels.service.list()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "pin_dashboard_panel",
+      "module": "Analytics",
+      "operation": "CREATE",
+      "description": "Pins a question as a panel on the caller's own Analytics page or dashboard, rebuilt from live figures each time it is shown, e.g. \"pin fee collection this year by month to my analytics\". Only the caller sees it. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300,
+            "description": "What to show, in words, e.g. \"attendance for 7B this term\""
+          },
+          "surface": {
+            "type": "string",
+            "enum": [
+              "analytics",
+              "dashboard"
+            ],
+            "description": "analytics (the Analytics page) or dashboard (the home dashboard); default analytics"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "genui/panels.service.pin()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "unpin_dashboard_panel",
+      "module": "Analytics",
+      "operation": "DELETE",
+      "description": "Removes one of the caller's pinned panels, named by its title or question. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 120,
+            "description": "Words from the panel's title or question"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "genui/panels.service.unpin()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_health_visits_today",
+      "module": "Health room",
+      "operation": "GET",
+      "description": "School nurse only: today's health-room visits (who, time in/out, complaint, outcome) and the medicine doses due today with what has been given. Read-only; every read is audited.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "health.manage",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "health.service.today()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_child_medication_log",
+      "module": "Health room",
+      "operation": "GET",
+      "description": "A parent: the medication log for their own child at school (each dose given, missed or refused, when and by whom). The school nurse may ask for any student. Read-only; every read is audited.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "childName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The child, e.g. \"Rahul\". A parent with one child may leave it out."
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "health.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "health.service.medicationLog()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "log_health_visit",
+      "module": "Health room",
+      "operation": "CREATE",
+      "description": "School nurse only: record a health-room visit (student, complaint, what was done, outcome: returned to class, rest, first aid, sent home or referred; injury or medicine given). Parents are told for the outcomes the school chose. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The student, e.g. \"Rahul Sharma\""
+          },
+          "complaint": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "action": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "What was done"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "RETURNED_TO_CLASS",
+              "REST",
+              "FIRST_AID",
+              "SENT_HOME",
+              "REFERRED"
+            ]
+          },
+          "injury": {
+            "type": "boolean"
+          },
+          "medicineGiven": {
+            "type": "boolean"
+          },
+          "temperatureC": {
+            "type": "number",
+            "minimum": 30,
+            "maximum": 45
+          },
+          "notifyParent": {
+            "type": "boolean",
+            "description": "Tell the parents even when the outcome is not one the school notifies by default"
+          }
+        },
+        "required": [
+          "studentName",
+          "complaint",
+          "outcome"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "health.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "health.service.recordVisit()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "log_medicine_dose",
+      "module": "Health room",
+      "operation": "CREATE",
+      "description": "School nurse only: record a scheduled medicine dose from a consented plan as given, missed or refused (student and the dose time, e.g. 12:30). A controlled medicine then waits for a second person's countersignature on the Health page. Confirmed on the website only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "studentName": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "time": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "description": "The scheduled dose time, HH:MM"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "GIVEN",
+              "MISSED",
+              "REFUSED"
+            ]
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "YYYY-MM-DD; default today"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "studentName",
+          "time",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "health.manage",
+      "scope": "ALL",
+      "risk": "HIGH",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "health.service.recordDose()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_campus_moment",
+      "module": "Campus",
+      "operation": "GET",
+      "description": "What is happening on campus at a moment: whether the school is open (holiday, weekly off, vacation, closure, exam-only day), each shift's bell (arrival, assembly, period N of M and minutes left, break, lunch, dispersal, clubs), which classes are in which rooms or out on the ground or in the canteen, buses arriving/parked/departing, and when the school next opens. Staff may give any date (YYYY-MM-DD) and time (HH:MM, school time); parents and students get now, with numbers for their own child's class only. Read-only; nobody is located.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "A date, e.g. \"2026-10-16\". Staff only; default today."
+          },
+          "time": {
+            "type": "string",
+            "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$",
+            "description": "A school time, e.g. \"13:30\". Staff only; default now."
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "campus.map.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "campus/moment.service.campusMoment()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_section_shift",
+      "module": "Academics",
+      "operation": "GET",
+      "description": "Which shift a class is in (e.g. \"7B\", \"Class 7 B\"), with that shift's days and bell schedule (arrival, assembly, periods, breaks, lunch, dispersal). Parents and students may ask about their own child's class. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "className": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The class, e.g. \"7B\" or \"Class 7 B\""
+          }
+        },
+        "required": [
+          "className"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "timetable.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "campus/moment.service.shiftOfSection()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_teacher_qualifications",
+      "module": "Staff profiles",
+      "operation": "GET",
+      "description": "A teacher's professional profile: qualifications (degree, institution, year), subjects and specialisations, years of experience, certifications (e.g. CTET) and short bio. Staff see a colleague's record; parents and students see only what the teacher has agreed to show families, and only for teachers of their own child's class. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "teacherName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The teacher, e.g. \"Sunita Rao\""
+          }
+        },
+        "required": [
+          "teacherName"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "campus.map.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "staff/credentials.service.read()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "sync_ad_data",
+      "module": "Marketing",
+      "operation": "ACTION",
+      "description": "Sync ad data now: pull daily campaign spend, impressions, clicks, leads and conversions from the school's connected ad accounts (Meta, Google Ads, YouTube, Google Analytics 4, LinkedIn) for a date range (default the last 7 days). Re-syncing replaces those days, never doubles them. A platform that is not connected is reported as such (nothing is fetched; its figures come from CSV imports). Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "META_ADS",
+              "GOOGLE_ADS",
+              "GA4",
+              "YOUTUBE",
+              "LINKEDIN",
+              "ALL"
+            ],
+            "description": "Default ALL connected platforms"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "marketing.manage",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "connectors.service.sync() → integrations/adsync.service.syncPlatform()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_ad_campaign_performance",
+      "module": "Marketing",
+      "operation": "GET",
+      "description": "How ad campaigns did over a period (\"how did the Meta campaign do last week\"): spend, impressions, clicks, platform-reported leads, cost per lead and CTR per platform campaign, from the live sync or imported CSV exports, plus when each platform was last synced. Simulated sample rows are labelled. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "META_ADS",
+              "GOOGLE_ADS",
+              "GA4",
+              "YOUTUBE",
+              "LINKEDIN"
+            ]
+          },
+          "campaign": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Words from the campaign name or its code, e.g. \"ADM27\" or \"open day\""
+          },
+          "period": {
+            "type": "string",
+            "enum": [
+              "last_week",
+              "this_week",
+              "yesterday",
+              "last_7_days",
+              "last_30_days",
+              "this_month"
+            ],
+            "description": "Default last_week (Monday to Sunday)"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "marketing.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "connectors.service.metricsSummary() + listConnectors()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "share_news_to_social",
+      "module": "Social",
+      "operation": "ACTION",
+      "description": "Post a published, public newsroom story to the school's social accounts on the networks the staff member names (\"post this news to Facebook and LinkedIn\"), only at their explicit request. Every pictured child's public consent is checked again first. Each network is posted at most once per story; networks whose account is connected are posted for real, others are recorded as Simulated — not posted; YouTube community posts are not supported by YouTube's API. Confirmed on the website only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "story": {
+            "type": "string",
+            "maxLength": 160,
+            "description": "Words from the story title; default the latest published public story"
+          },
+          "networks": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5,
+            "items": {
+              "type": "string",
+              "enum": [
+                "FACEBOOK",
+                "INSTAGRAM",
+                "X",
+                "LINKEDIN",
+                "YOUTUBE"
+              ]
+            }
+          }
+        },
+        "required": [
+          "networks"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "social.publish",
+      "scope": "ALL",
+      "risk": "HIGH",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "newsroom-social.service.shareStory()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
     }
   ],
   "roleMatrix": [
@@ -13343,13 +13858,13 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 309,
-      "GET": 161,
-      "CREATE": 63,
+      "total": 319,
+      "GET": 167,
+      "CREATE": 64,
       "UPDATE": 29,
-      "ACTION": 43,
-      "DELETE": 13,
-      "highRiskActions": 33,
+      "ACTION": 45,
+      "DELETE": 14,
+      "highRiskActions": 34,
       "highRiskActionNames": [
         "add_guardian",
         "update_enrollment_status",
@@ -13383,9 +13898,10 @@
         "record_concession_decision",
         "record_outpass_consent",
         "record_outpass_decision",
-        "record_staff_leave_decision"
+        "record_staff_leave_decision",
+        "share_news_to_social"
       ],
-      "confirmationRequired": 148,
+      "confirmationRequired": 152,
       "names": [
         "search_students",
         "get_student",
@@ -13695,19 +14211,29 @@
         "get_analytics_overview",
         "list_quarterly_reports",
         "get_quarterly_report",
-        "regenerate_quarterly_report"
+        "regenerate_quarterly_report",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel",
+        "get_campus_moment",
+        "get_section_shift",
+        "get_teacher_qualifications",
+        "sync_ad_data",
+        "get_ad_campaign_performance",
+        "share_news_to_social"
       ]
     },
     {
       "role": "PRINCIPAL",
       "custom": false,
-      "total": 183,
-      "GET": 121,
-      "CREATE": 27,
+      "total": 192,
+      "GET": 127,
+      "CREATE": 28,
       "UPDATE": 14,
-      "ACTION": 19,
-      "DELETE": 2,
-      "highRiskActions": 11,
+      "ACTION": 20,
+      "DELETE": 3,
+      "highRiskActions": 12,
       "highRiskActionNames": [
         "transition_fee_plan",
         "create_announcement",
@@ -13719,9 +14245,10 @@
         "verify_eco_activity",
         "record_concession_decision",
         "record_outpass_decision",
-        "record_staff_leave_decision"
+        "record_staff_leave_decision",
+        "share_news_to_social"
       ],
-      "confirmationRequired": 62,
+      "confirmationRequired": 65,
       "names": [
         "search_students",
         "get_student",
@@ -13905,18 +14432,27 @@
         "get_analytics_overview",
         "list_quarterly_reports",
         "get_quarterly_report",
-        "regenerate_quarterly_report"
+        "regenerate_quarterly_report",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel",
+        "get_campus_moment",
+        "get_section_shift",
+        "get_teacher_qualifications",
+        "get_ad_campaign_performance",
+        "share_news_to_social"
       ]
     },
     {
       "role": "TEACHER",
       "custom": false,
-      "total": 127,
-      "GET": 83,
-      "CREATE": 17,
+      "total": 134,
+      "GET": 88,
+      "CREATE": 18,
       "UPDATE": 8,
       "ACTION": 16,
-      "DELETE": 3,
+      "DELETE": 4,
       "highRiskActions": 6,
       "highRiskActionNames": [
         "mark_attendance",
@@ -13926,7 +14462,7 @@
         "delete_document",
         "verify_eco_activity"
       ],
-      "confirmationRequired": 44,
+      "confirmationRequired": 46,
       "names": [
         "search_students",
         "get_student",
@@ -14054,25 +14590,32 @@
         "apply_staff_leave",
         "cancel_staff_leave",
         "get_cover_arrangements",
-        "get_analytics_overview"
+        "get_analytics_overview",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel",
+        "get_campus_moment",
+        "get_section_shift",
+        "get_teacher_qualifications"
       ]
     },
     {
       "role": "PARENT",
       "custom": false,
-      "total": 87,
-      "GET": 68,
-      "CREATE": 8,
+      "total": 95,
+      "GET": 74,
+      "CREATE": 9,
       "UPDATE": 4,
       "ACTION": 4,
-      "DELETE": 3,
+      "DELETE": 4,
       "highRiskActions": 3,
       "highRiskActionNames": [
         "upsert_medical_record",
         "remove_medical_record",
         "record_outpass_consent"
       ],
-      "confirmationRequired": 19,
+      "confirmationRequired": 21,
       "names": [
         "search_students",
         "get_student",
@@ -14160,23 +14703,31 @@
         "list_my_outpasses",
         "request_outpass",
         "cancel_outpass",
-        "record_outpass_consent"
+        "record_outpass_consent",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel",
+        "get_child_medication_log",
+        "get_campus_moment",
+        "get_section_shift",
+        "get_teacher_qualifications"
       ]
     },
     {
       "role": "STUDENT",
       "custom": false,
-      "total": 90,
-      "GET": 70,
-      "CREATE": 10,
+      "total": 97,
+      "GET": 75,
+      "CREATE": 11,
       "UPDATE": 1,
       "ACTION": 3,
-      "DELETE": 6,
+      "DELETE": 7,
       "highRiskActions": 1,
       "highRiskActionNames": [
         "record_outpass_consent"
       ],
-      "confirmationRequired": 20,
+      "confirmationRequired": 22,
       "names": [
         "search_students",
         "get_student",
@@ -14267,18 +14818,25 @@
         "list_my_outpasses",
         "request_outpass",
         "cancel_outpass",
-        "record_outpass_consent"
+        "record_outpass_consent",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel",
+        "get_campus_moment",
+        "get_section_shift",
+        "get_teacher_qualifications"
       ]
     },
     {
       "role": "FINANCE",
       "custom": false,
-      "total": 84,
-      "GET": 54,
-      "CREATE": 15,
+      "total": 90,
+      "GET": 58,
+      "CREATE": 16,
       "UPDATE": 7,
       "ACTION": 7,
-      "DELETE": 1,
+      "DELETE": 2,
       "highRiskActions": 10,
       "highRiskActionNames": [
         "create_invoice",
@@ -14292,7 +14850,7 @@
         "request_fee_adjustment",
         "record_concession_decision"
       ],
-      "confirmationRequired": 30,
+      "confirmationRequired": 32,
       "names": [
         "search_students",
         "get_student",
@@ -14377,23 +14935,29 @@
         "get_cover_arrangements",
         "get_analytics_overview",
         "list_quarterly_reports",
-        "get_quarterly_report"
+        "get_quarterly_report",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel",
+        "get_campus_moment",
+        "get_teacher_qualifications"
       ]
     },
     {
       "role": "LIBRARIAN",
       "custom": false,
-      "total": 61,
-      "GET": 41,
-      "CREATE": 7,
+      "total": 67,
+      "GET": 45,
+      "CREATE": 8,
       "UPDATE": 4,
       "ACTION": 7,
-      "DELETE": 2,
+      "DELETE": 3,
       "highRiskActions": 1,
       "highRiskActionNames": [
         "delete_book"
       ],
-      "confirmationRequired": 20,
+      "confirmationRequired": 22,
       "names": [
         "search_students",
         "get_student",
@@ -14455,23 +15019,29 @@
         "list_staff_leave",
         "apply_staff_leave",
         "cancel_staff_leave",
-        "get_cover_arrangements"
+        "get_cover_arrangements",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel",
+        "get_campus_moment",
+        "get_teacher_qualifications"
       ]
     },
     {
       "role": "WARDEN",
       "custom": false,
-      "total": 64,
-      "GET": 42,
-      "CREATE": 8,
+      "total": 70,
+      "GET": 46,
+      "CREATE": 9,
       "UPDATE": 6,
       "ACTION": 7,
-      "DELETE": 1,
+      "DELETE": 2,
       "highRiskActions": 1,
       "highRiskActionNames": [
         "record_outpass_decision"
       ],
-      "confirmationRequired": 22,
+      "confirmationRequired": 24,
       "names": [
         "search_students",
         "get_student",
@@ -14536,24 +15106,99 @@
         "list_staff_leave",
         "apply_staff_leave",
         "cancel_staff_leave",
-        "get_cover_arrangements"
+        "get_cover_arrangements",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel",
+        "get_campus_moment",
+        "get_teacher_qualifications"
+      ]
+    },
+    {
+      "role": "NURSE",
+      "custom": false,
+      "total": 52,
+      "GET": 37,
+      "CREATE": 9,
+      "UPDATE": 2,
+      "ACTION": 2,
+      "DELETE": 2,
+      "highRiskActions": 1,
+      "highRiskActionNames": [
+        "log_medicine_dose"
+      ],
+      "confirmationRequired": 15,
+      "names": [
+        "search_students",
+        "get_student",
+        "get_student_overview",
+        "list_guardians",
+        "list_enrollments",
+        "list_classes",
+        "list_subjects",
+        "list_academic_years",
+        "get_announcements",
+        "get_calendar_events",
+        "get_medical_record",
+        "get_dashboard",
+        "list_notifications",
+        "get_my_profile",
+        "get_my_day",
+        "list_pending_approvals",
+        "get_pending_items_for_me",
+        "list_fest_plans",
+        "list_maintenance_work",
+        "list_purchase_requests",
+        "get_organisation_structure",
+        "list_newsroom_posts",
+        "list_digital_lectures",
+        "get_campus_status",
+        "get_showcase",
+        "schedule_online_class",
+        "cancel_online_class",
+        "report_repair",
+        "list_my_maintenance_reports",
+        "request_facility_reservation",
+        "create_purchase_request",
+        "list_due_items",
+        "get_due_items_summary",
+        "create_due_item",
+        "snooze_due_item",
+        "complete_due_item",
+        "cancel_due_item",
+        "get_staff_leave_balance",
+        "list_staff_leave",
+        "apply_staff_leave",
+        "cancel_staff_leave",
+        "get_cover_arrangements",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel",
+        "get_health_visits_today",
+        "get_child_medication_log",
+        "log_health_visit",
+        "log_medicine_dose",
+        "get_campus_moment",
+        "get_teacher_qualifications"
       ]
     },
     {
       "role": "HR",
       "custom": false,
-      "total": 50,
-      "GET": 33,
-      "CREATE": 8,
+      "total": 56,
+      "GET": 37,
+      "CREATE": 9,
       "UPDATE": 3,
       "ACTION": 5,
-      "DELETE": 1,
+      "DELETE": 2,
       "highRiskActions": 2,
       "highRiskActionNames": [
         "record_concession_decision",
         "record_staff_leave_decision"
       ],
-      "confirmationRequired": 17,
+      "confirmationRequired": 19,
       "names": [
         "get_announcements",
         "get_calendar_events",
@@ -14604,24 +15249,31 @@
         "mark_staff_absent",
         "get_analytics_overview",
         "list_quarterly_reports",
-        "get_quarterly_report"
+        "get_quarterly_report",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel",
+        "get_campus_moment",
+        "get_teacher_qualifications"
       ]
     },
     {
       "role": "MARKETING",
       "custom": false,
-      "total": 51,
-      "GET": 34,
-      "CREATE": 9,
+      "total": 60,
+      "GET": 39,
+      "CREATE": 10,
       "UPDATE": 3,
-      "ACTION": 4,
-      "DELETE": 1,
-      "highRiskActions": 2,
+      "ACTION": 6,
+      "DELETE": 2,
+      "highRiskActions": 3,
       "highRiskActionNames": [
         "update_admission_lead",
-        "send_social_post"
+        "send_social_post",
+        "share_news_to_social"
       ],
-      "confirmationRequired": 17,
+      "confirmationRequired": 21,
       "names": [
         "list_classes",
         "list_subjects",
@@ -14673,23 +15325,32 @@
         "apply_staff_leave",
         "cancel_staff_leave",
         "get_cover_arrangements",
-        "get_analytics_overview"
+        "get_analytics_overview",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel",
+        "get_campus_moment",
+        "get_teacher_qualifications",
+        "sync_ad_data",
+        "get_ad_campaign_performance",
+        "share_news_to_social"
       ]
     },
     {
       "role": "COMPLIANCE",
       "custom": false,
-      "total": 62,
-      "GET": 42,
-      "CREATE": 10,
+      "total": 68,
+      "GET": 46,
+      "CREATE": 11,
       "UPDATE": 5,
       "ACTION": 4,
-      "DELETE": 1,
+      "DELETE": 2,
       "highRiskActions": 1,
       "highRiskActionNames": [
         "verify_eco_activity"
       ],
-      "confirmationRequired": 20,
+      "confirmationRequired": 22,
       "names": [
         "get_announcements",
         "get_calendar_events",
@@ -14752,23 +15413,29 @@
         "get_cover_arrangements",
         "get_analytics_overview",
         "list_quarterly_reports",
-        "get_quarterly_report"
+        "get_quarterly_report",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel",
+        "get_campus_moment",
+        "get_teacher_qualifications"
       ]
     },
     {
       "role": "TRUSTEE",
       "custom": false,
-      "total": 22,
-      "GET": 20,
-      "CREATE": 0,
+      "total": 28,
+      "GET": 24,
+      "CREATE": 1,
       "UPDATE": 1,
       "ACTION": 1,
-      "DELETE": 0,
+      "DELETE": 1,
       "highRiskActions": 1,
       "highRiskActionNames": [
         "record_concession_decision"
       ],
-      "confirmationRequired": 2,
+      "confirmationRequired": 4,
       "names": [
         "get_announcements",
         "get_calendar_events",
@@ -14791,21 +15458,27 @@
         "record_concession_decision",
         "get_analytics_overview",
         "list_quarterly_reports",
-        "get_quarterly_report"
+        "get_quarterly_report",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel",
+        "get_campus_moment",
+        "get_teacher_qualifications"
       ]
     },
     {
       "role": "ALUMNUS",
       "custom": false,
-      "total": 14,
-      "GET": 12,
-      "CREATE": 0,
+      "total": 20,
+      "GET": 16,
+      "CREATE": 1,
       "UPDATE": 1,
       "ACTION": 1,
-      "DELETE": 0,
+      "DELETE": 1,
       "highRiskActions": 0,
       "highRiskActionNames": [],
-      "confirmationRequired": 2,
+      "confirmationRequired": 4,
       "names": [
         "list_notifications",
         "get_my_profile",
@@ -14820,21 +15493,27 @@
         "list_alumni_events",
         "rsvp_alumni_event",
         "get_my_digest",
-        "update_my_digest_interests"
+        "update_my_digest_interests",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel",
+        "get_campus_moment",
+        "get_teacher_qualifications"
       ]
     },
     {
       "role": "COUNSELLOR (custom, example)",
       "custom": true,
-      "total": 19,
-      "GET": 19,
-      "CREATE": 0,
+      "total": 23,
+      "GET": 21,
+      "CREATE": 1,
       "UPDATE": 0,
       "ACTION": 0,
-      "DELETE": 0,
+      "DELETE": 1,
       "highRiskActions": 0,
       "highRiskActionNames": [],
-      "confirmationRequired": 0,
+      "confirmationRequired": 2,
       "names": [
         "search_students",
         "get_student",
@@ -14854,7 +15533,11 @@
         "get_attendance",
         "get_dashboard",
         "list_notifications",
-        "get_my_profile"
+        "get_my_profile",
+        "build_dashboard_panel",
+        "list_pinned_panels",
+        "pin_dashboard_panel",
+        "unpin_dashboard_panel"
       ]
     }
   ],

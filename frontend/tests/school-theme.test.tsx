@@ -4,6 +4,7 @@ import { getRequiredPermission, ROUTE_PERMISSIONS } from '@/lib/permissions';
 import { PORTALS } from '@/lib/portals';
 import { themeStyle, useFavicon, useSchoolDropdown, useSchoolTheme } from '@/lib/school-theme';
 import type { SchoolThemeDto } from '@/lib/types';
+import { invalidateCache } from '@/lib/cache';
 
 /**
  * The client half of school customisation.
@@ -36,6 +37,8 @@ const themed = (overrides: Partial<SchoolThemeDto> = {}): SchoolThemeDto => ({
 });
 
 afterEach(() => {
+  // The theme is kept per school for the tab (as sign-out does, start each test clean).
+  invalidateCache();
   schoolTheme.mockReset();
   schoolDropdown.mockReset();
   document.querySelector('link[rel="icon"]')?.remove();
@@ -121,6 +124,34 @@ describe('moving from one school to another', () => {
     }));
     await waitFor(() => expect(screen.getByTestId('name')).toHaveTextContent('School B'));
     expect(screen.getByTestId('shell').style.getPropertyValue('--accent')).toBe('#223366');
+    expect(schoolTheme).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('every page mounts its own shell', () => {
+  it('paints a school it has already fetched on the first frame, without asking again', async () => {
+    schoolTheme.mockResolvedValue(themed());
+    const first = render(<ThemeProbe enabled schoolKey="school-a" />);
+    await waitFor(() => expect(screen.getByTestId('name')).toHaveTextContent('School A'));
+    first.unmount();
+
+    // The next page: themed and ready immediately, and no second request.
+    render(<ThemeProbe enabled schoolKey="school-a" />);
+    expect(screen.getByTestId('ready')).toHaveTextContent('true');
+    expect(screen.getByTestId('shell').style.getPropertyValue('--accent')).toBe('#1f4a3a');
+    expect(schoolTheme).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks again after any saved change drops the read cache', async () => {
+    schoolTheme.mockResolvedValueOnce(themed());
+    const first = render(<ThemeProbe enabled schoolKey="school-a" />);
+    await waitFor(() => expect(screen.getByTestId('name')).toHaveTextContent('School A'));
+    first.unmount();
+
+    invalidateCache();
+    schoolTheme.mockResolvedValueOnce(themed({ branding: { displayName: 'School A renamed', tagline: null, logoUrl: null, faviconUrl: null } }));
+    render(<ThemeProbe enabled schoolKey="school-a" />);
+    await waitFor(() => expect(screen.getByTestId('name')).toHaveTextContent('School A renamed'));
     expect(schoolTheme).toHaveBeenCalledTimes(2);
   });
 });

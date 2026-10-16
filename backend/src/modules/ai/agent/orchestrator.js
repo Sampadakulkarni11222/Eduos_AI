@@ -19,7 +19,7 @@ import { withMcpSession, listTools as listMcpTools, callTool as callMcpTool } fr
 import { getMcpTool, mcpToolsFor } from '../mcp/registry.js';
 import { errorToAppError } from '../mcp/protocol.js';
 import { peekConfirmation, rejectConfirmation, markFailed, canonicalToolName } from '../mcp/confirm.js';
-import { asksSchoolWideFees, asksLeaveWithoutPermission } from './directIntents.js';
+import { asksSchoolWideFees, asksLeaveWithoutPermission, staffLeaveStep, staffLeaveQuestion, isStaffLeaveApplication } from './directIntents.js';
 import { impossibleDatesIn } from '../../../utils/naturalDates.js';
 import { entitiesFor, entitiesInTextByPosition } from '../mcp/capabilities.js';
 import { decisionAskedFor, humanDecisionReply, approverMayRecord } from '../mcp/decisions.js';
@@ -861,6 +861,37 @@ async function routeTurn({ mcpSession, message: rawMessage, actor, source, lang,
   }
 
   let steps = (intent.steps ?? [intent]).slice(0, MAX_PLAN_STEPS);
+
+  // Part 3: a member of staff applying for leave is applying for their own
+  // staff leave (apply_staff_leave), not a student's leave of absence. The
+  // step is turned into the staff one, and what is missing is asked for --
+  // the day, then the kind of leave, then the reason -- before any draft.
+  // Students and parents (no staffleave.apply) are untouched.
+  // A single sentence asking to apply ("take casual leave on 20 Oct") that a
+  // tier read as a staff-leave READ (list_staff_leave, the balance) is the
+  // application it says it is.
+  if (steps.length === 1 && steps[0].tool !== 'apply_staff_leave' && /^(?:list|get)_staff_leave/.test(steps[0].tool ?? '') && isStaffLeaveApplication(message, actor)) {
+    steps = [{ tool: 'apply_for_leave', args: {} }];
+  }
+  if (actor?.permissions?.['staffleave.apply'] && steps.some((step) => step.tool === 'apply_for_leave')) {
+    const leaveText = steps.length > 1
+      ? (String(message ?? '').split(JOINED_PARTS).map((part) => part?.trim()).filter(Boolean).find((part) => /\bleave\b|\bday\s+off\b/i.test(part)) ?? message)
+      : message;
+    // The caller's own turns of the request still open: each was answered by a question.
+    const turns = [...(history ?? [])];
+    const said = [];
+    for (let i = turns.length - 1; i >= 0; i -= 1) {
+      if (turns[i]?.role !== 'user') continue;
+      const reply = turns.slice(i + 1).find((t) => t?.role === 'assistant')?.text ?? '';
+      if (!isClarificationReply(reply)) break;
+      said.unshift(String(turns[i].text ?? ''));
+    }
+    steps = steps.map((step) => staffLeaveStep(step, leaveText, actor, new Date(), { said }));
+    const leave = steps.find((step) => step.tool === 'apply_staff_leave');
+    const question = leave && staffLeaveQuestion(leave.args);
+    if (question && steps.length === 1) return { reply: question, lang, action: null, needsInput: true };
+    if (question) steps = steps.filter((step) => step.tool !== 'apply_staff_leave');
+  }
 
   // A leave application given as the instruction of a joined sentence ("Show
   // my timetable and apply for leave tomorrow"), from an account that cannot

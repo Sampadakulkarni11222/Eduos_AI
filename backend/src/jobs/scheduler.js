@@ -25,6 +25,8 @@ import { runAttendanceReminders as runClubRegisters } from '../modules/clubs/ses
 import { runBillsDue } from '../modules/bills/bills.service.js';
 import { syncRenewals } from '../modules/bills/renewals.service.js';
 import { runDaily as runDigest } from '../modules/digest/digest.service.js';
+import { syncAllConnected as runAdSync } from '../modules/integrations/adsync.service.js';
+import { refreshDue as refreshSocialEngagement } from '../modules/integrations/engagement.service.js';
 
 /**
  * The in-process scheduler for the operations modules.
@@ -89,6 +91,12 @@ export const JOBS = [
   },
   // Daily learning digest: fetch the admin-approved feeds (SSRF-safe), then build each person's digest; email only to those who opted in.
   { key: 'digest.daily', everyMinutes: 24 * 60, feature: 'digest', run: (now) => runDigest({ now }) },
+  // Live ad sync: daily campaign metrics for the last three days from each connected ad account; re-syncing replaces, never doubles.
+  // Makes no request at all for a school with no connected account (or when the provider app is not configured).
+  // Gated inside run (not `feature:`) because both switches are off by default and the job is still listed for every school.
+  { key: 'marketing.adsync', everyMinutes: 6 * 60, run: async (now) => ((await featureEnabled('adSync')) ? runAdSync({ now }) : { skipped: 'adSync is switched off' }) },
+  // Likes, comments and shares read back for posts really sent in the last 30 days (simulated posts are never asked about).
+  { key: 'social.engagement', everyMinutes: 6 * 60, run: async (now) => ((await featureEnabled('socialPublishing')) ? refreshSocialEngagement({ now }) : { skipped: 'socialPublishing is switched off' }) },
 ];
 
 /** Runs every job that is due for every active school. Returns what ran, for tests and logs. */

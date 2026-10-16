@@ -71,6 +71,8 @@ const entrySchema = new Schema(
     createdByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', required: true },
     reviewedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
     reviewedAt: { type: Date, default: null },
+    // Part 3: reviewed by the person who drafted it, under the school's single-approver mode.
+    singleApprover: { type: Boolean, default: false },
     publishedAt: { type: Date, default: null },
     excludedReason: { type: String, default: null },
     withdrawnAt: { type: Date, default: null },

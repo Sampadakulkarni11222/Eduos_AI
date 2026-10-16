@@ -408,17 +408,16 @@ describe('the same shape with a different instruction', () => {
     expect(await count(LeaveApplication)).toBe(1);
   });
 
-  it('a role that cannot apply for leave is shown its timetable and told why the leave was not made -- no proposal', async () => {
+  it('a member of staff is shown its timetable and their own staff leave is drafted -- not a student leave', async () => {
+    // Changed deliberately in part 3: a member of staff (staffleave.apply) asking to apply for leave
+    // means their OWN staff leave, so it reaches apply_staff_leave as a draft (or a question for the
+    // day, kind and reason) instead of the old "isn't enabled for your account" refusal.
     const turn = await as('TEACHER').say('Show my timetable and apply for leave tomorrow because of fever');
     expect(turn.reply).toMatch(/Timetable/);
-    // Explained as an operation this account does not have -- not the bare
-    // "not authorized to access this information" (askAi.qaFixes, defect D).
-    expect(turn.reply).toMatch(/Applying for leave isn't enabled for your account/);
-    expect(turn.reply).not.toMatch(/not authorized/i);
-    expect(turn.action).toBeNull();
-    // The leave is never attempted.
+    expect(turn.reply).not.toMatch(/not authorized|isn't enabled/i);
+    expect(turn.action?.tool).toBe('apply_staff_leave');
+    // The student leave of absence is never attempted, and nothing is filed before yes.
     expect(turn.calls.some((c) => c.tool === 'apply_for_leave')).toBe(false);
     expect(await count(LeaveApplication)).toBe(0);
-    expect(await count(AgentAction)).toBe(0);
   });
 });

@@ -3,6 +3,7 @@ import { AgentAction } from '../src/models/agentAction.model.js';
 import { AuditLog } from '../src/models/auditLog.model.js';
 import { AttendanceRecord } from '../src/models/attendanceRecord.model.js';
 import { LeaveApplication } from '../src/models/leaveApplication.model.js';
+import { StaffLeave } from '../src/models/staffLeave.model.js';
 import { resetMcpClient } from '../src/modules/ai/mcp/client.js';
 import { resetAgentThrottle } from '../src/modules/ai/agent/throttle.js';
 import { parsePlan } from '../src/modules/ai/agent/intent.js';
@@ -575,37 +576,40 @@ describe('C — a student-specific attendance question is answered about that st
    D. A leave request from an account that cannot apply
    ════════════════════════════════════════════════════════════ */
 
-describe('D — a leave application from staff is explained as unsupported, alone or in a joined sentence', () => {
-  const STAFF = /Applying for leave isn't enabled for your account — a leave application in EduOS is a student's leave of absence.*staff leave is not handled here.*show pending leave requests/s;
+describe('D — a leave application from staff is their own staff leave, alone or in a joined sentence', () => {
+  // Changed deliberately in part 3: a member of staff (staffleave.apply) asking to apply for leave
+  // means their OWN staff leave, so it reaches apply_staff_leave as a draft (or a question for the
+  // day, kind and reason) instead of the old "isn't enabled for your account" refusal.
+  const DRAFT = /Apply for sick leave on \d{4}-\d{2}-\d{2}: 1 working day\(s\).*fever.*Shall I go ahead\?/s;
 
-  it('TEACHER, alone: explained, nothing called', async () => {
+  it('TEACHER, alone: drafted as their own sick leave, nothing filed before yes', async () => {
     const turn = await as('TEACHER').say('Apply for leave tomorrow because of fever');
-    expect(turn.reply).toMatch(STAFF);
-    expect(turn.refused).toBe('NOT_PERMITTED');
-    expect(turn.calls).toEqual([]);
-    expect(turn.reply).not.toMatch(/not authorized to access this information/i);
+    expect(turn.reply).toMatch(DRAFT);
+    expect(turn.refused).toBeNull();
+    expect(turn.action?.tool).toBe('apply_staff_leave');
+    expect(turn.reply).not.toMatch(/not authorized to access this information|isn't enabled/i);
     expect(await count(LeaveApplication)).toBe(0);
+    expect(await count(StaffLeave)).toBe(0);
   });
 
-  it('TEACHER, joined to a question: the question is answered and the leave is explained -- not "not authorized"', async () => {
+  it('TEACHER, joined to a question: the question is answered and the staff leave is drafted -- not "not authorized"', async () => {
     const turn = await as('TEACHER').say('Show my timetable and apply for leave tomorrow because of fever');
     expect(turn.reply).toMatch(/Timetable/);
-    expect(turn.reply).toMatch(STAFF);
-    expect(turn.reply).not.toMatch(/not authorized to access this information/i);
-    expect(turn.action).toBeNull();
-    // The read ran; the leave was never attempted.
-    expect(turn.calls.map((c) => [c.tool, c.status])).toEqual([['get_timetable', 'READ']]);
+    expect(turn.reply).toMatch(DRAFT);
+    expect(turn.reply).not.toMatch(/not authorized to access this information|isn't enabled/i);
+    expect(turn.action?.tool).toBe('apply_staff_leave');
+    // The read ran; the leave waits for a yes.
     expect(await count(LeaveApplication)).toBe(0);
-    expect(await count(AgentAction)).toBe(0);
+    expect(await count(StaffLeave)).toBe(0);
     expectNoLeak(turn.reply);
   });
 
   it('TEACHER, with the leave said first', async () => {
     const turn = await as('TEACHER').say('Apply for leave tomorrow because of fever and show my timetable');
-    expect(turn.reply).toMatch(/isn't enabled for your account/);
-    expect(turn.reply).not.toMatch(/not authorized to access this information/i);
+    expect(turn.reply).not.toMatch(/isn't enabled for your account|not authorized to access this information/i);
+    expect(turn.action?.tool).toBe('apply_staff_leave');
     expect(await count(LeaveApplication)).toBe(0);
-    expect(await count(AgentAction)).toBe(0);
+    expect(await count(StaffLeave)).toBe(0);
   });
 
   it('the account that reviews leave can still see the requests it was pointed to', async () => {

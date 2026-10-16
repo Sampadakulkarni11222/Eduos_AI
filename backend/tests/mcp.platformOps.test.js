@@ -158,7 +158,9 @@ describe('requests for a decision', () => {
 
   it('a teacher naming a staff leave type is not told leave is unavailable', () => {
     expect(asksLeaveWithoutPermission('apply for casual leave on Monday', role('TEACHER'))).toBe(false);
-    expect(asksLeaveWithoutPermission('Apply for leave tomorrow because of fever', role('TEACHER'))).toBe(true);
+    // Changed deliberately in part 3: any leave request from a holder of staffleave.apply is their
+    // own staff leave (apply_staff_leave), so it is never refused as "not enabled".
+    expect(asksLeaveWithoutPermission('Apply for leave tomorrow because of fever', role('TEACHER'))).toBe(false);
   });
 });
 

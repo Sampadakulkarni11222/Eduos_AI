@@ -271,7 +271,12 @@ export async function query({
   level, type, sectionId, gradeName, search, minProbability,
   page, pageSize, sortBy, sortDir,
 } = {}) {
-  const match = {};
+  // The table only ever shows predictions for active enrolments. Reading that
+  // set once (720 ids in the demo school) lets every stage below filter with an
+  // indexed $in instead of joining every prediction to its enrolment first,
+  // which was ~350 ms per aggregate and three aggregates per request.
+  const activeIds = await activeEnrollmentIds();
+  const match = { enrollmentId: { $in: activeIds } };
   if (level) match.level = String(level).toUpperCase();
   if (type) match.type = String(type).toUpperCase();
   if (minProbability != null && minProbability !== '') {
@@ -321,22 +326,28 @@ export async function query({
   const requestedSize = parseInt(pageSize, 10);
   const size = Number.isFinite(requestedSize) && requestedSize > 0 ? Math.min(requestedSize, 200) : 0;
 
+  const levelRank = { $addFields: { levelRank: { $switch: { branches: [
+    { case: { $eq: ['$level', 'HIGH'] }, then: 3 },
+    { case: { $eq: ['$level', 'MEDIUM'] }, then: 2 },
+  ], default: 1 } } } };
   const pipeline = [
     { $match: match },
     ...context,
     ...post,
-    { $addFields: { levelRank: { $switch: { branches: [
-      { case: { $eq: ['$level', 'HIGH'] }, then: 3 },
-      { case: { $eq: ['$level', 'MEDIUM'] }, then: 2 },
-    ], default: 1 } } } },
+    levelRank,
     { $sort: sortStage },
   ];
+  // With no filter or sort on a joined column, the joins only decorate the
+  // rows: page first, then join just the page (6 rows instead of thousands).
+  const joinFree = post.length === 0 && !['student', 'class'].includes(sortBy);
 
   // Count first (no documents materialised), so the page number can be clamped
   // before the page itself is fetched. The sort is skipped here — it cannot
   // change a count and sorting 1400+ joined docs just to discard them is the
   // difference between ~0.7s and ~2.9s on the broad filters.
-  const countPipeline = pipeline.filter((stage) => !('$sort' in stage) && !('$addFields' in stage && stage.$addFields.levelRank));
+  const countPipeline = joinFree
+    ? [{ $match: match }]
+    : pipeline.filter((stage) => !('$sort' in stage) && stage !== levelRank);
   const [{ total = 0 } = {}] = await RiskPrediction.aggregate([
     ...countPipeline,
     { $count: 'total' },
@@ -346,8 +357,11 @@ export async function query({
   // real rows instead of an empty table (matches /users and /students).
   const pageNo = size > 0 ? Math.min(Math.max(parseInt(page, 10) || 1, 1), totalPages) : 1;
 
+  const page$ = size > 0 ? [{ $skip: (pageNo - 1) * size }, { $limit: size }] : [];
   const paged = await RiskPrediction.aggregate(
-    size > 0 ? [...pipeline, { $skip: (pageNo - 1) * size }, { $limit: size }] : pipeline,
+    joinFree
+      ? [{ $match: match }, levelRank, { $sort: sortStage }, ...page$, ...context]
+      : [...pipeline, ...page$],
   ).allowDiskUse(true);
 
   const items = paged.map((r) => ({
@@ -365,7 +379,7 @@ export async function query({
     summary: buildSummary(r),
   }));
 
-  const summary = await summariseFromDb();
+  const [summary, computedAt] = await Promise.all([summariseFromDb(activeIds), lastComputedAt()]);
 
   return {
     items,
@@ -375,8 +389,13 @@ export async function query({
     page: pageNo,
     pageSize: size > 0 ? size : total,
     totalPages,
-    computedAt: await lastComputedAt(),
+    computedAt,
   };
+}
+
+/** Ids of the school's active enrolments (the acting school, via the tenant scope). */
+async function activeEnrollmentIds() {
+  return (await Enrollment.find({ status: 'ACTIVE' }).select('_id').lean()).map((e) => e._id);
 }
 
 function toObjectId(id) {
@@ -384,11 +403,9 @@ function toObjectId(id) {
 }
 
 /** Headline figures aggregated straight from the persisted predictions. */
-async function summariseFromDb() {
+async function summariseFromDb(activeIds) {
   const rows = await RiskPrediction.aggregate([
-    { $lookup: { from: 'enrollments', localField: 'enrollmentId', foreignField: '_id', as: 'enr' } },
-    { $unwind: { path: '$enr', preserveNullAndEmptyArrays: true } },
-    { $match: { 'enr.status': 'ACTIVE' } },
+    { $match: { enrollmentId: { $in: activeIds } } },
     { $group: { _id: { level: '$level', type: '$type' }, n: { $sum: 1 }, enrollments: { $addToSet: '$enrollmentId' } } },
   ]);
 
@@ -411,7 +428,7 @@ async function summariseFromDb() {
     }
   }
 
-  const activeEnrollments = await Enrollment.countDocuments({ status: 'ACTIVE' });
+  const activeEnrollments = activeIds.length;
   const flaggedSignals = Object.entries(byLevel)
     .filter(([lvl]) => lvl !== 'LOW')
     .reduce((sum, [, n]) => sum + n, 0);

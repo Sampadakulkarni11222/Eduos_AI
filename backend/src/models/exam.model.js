@@ -40,6 +40,10 @@ const markSchema = new Schema(
   { timestamps: true }
 );
 markSchema.index({ examSubjectId: 1, enrollmentId: 1 }, { unique: true });
+// Published-result totals per paper (syllabus overview, analytics) group marks
+// by paper; with status and marks in the index that read is answered from the
+// index alone instead of fetching every mark document.
+markSchema.index({ tenantId: 1, examSubjectId: 1, status: 1, marks: 1 });
 
 examSchema.plugin(tenantScoped); // school-owned
 export const Exam = model('Exam', examSchema);

@@ -8,6 +8,9 @@ import { presentFacility, scheduledSlots, scheduledSlotsForMany, createSampleCam
 import { assertObjectId, startOfDayUtc } from '../ops/common.js';
 import { liveBySection, departments as departmentsLive } from './live.service.js';
 import { currentFor as currentModules } from '../syllabus/syllabus.service.js';
+import { campusMoment, momentFromQuery } from './moment.service.js';
+import { ownStudentIds } from '../safety/shared.js';
+import { logger } from '../../utils/logger.js';
 
 /**
  * The campus world: buildings, floors and rooms with what is happening in
@@ -73,19 +76,44 @@ async function ensureCampus() {
  * like?"). The timetable, bookings and events move with it; the headcount is
  * still today's register, and the reply says it is a preview.
  */
-function previewMoment(actor, at, now) {
+function previewMoment(actor, at, now, date = null) {
+  // Another date (and time) of the school year: the calendar, shifts and timetable for that day.
+  if (date && STAFF.has(actor.roleKey)) return momentFromQuery({ date, at, now });
   const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(at ?? ''));
   if (!m || !STAFF.has(actor.roleKey)) return null;
   const ist = new Date(now.getTime() + 330 * 60_000);
   return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate(), Number(m[1]), Number(m[2])) - 330 * 60_000);
 }
 
-export async function campusMap(actor, { campusCode, at = null, now: realNow = new Date() } = {}) {
+export async function campusMap(actor, { campusCode, at = null, date = null, now: realNow = new Date() } = {}) {
   await ensureCampus();
   const layers = layersFor(actor);
-  const preview = previewMoment(actor, at, realNow);
+  const preview = previewMoment(actor, at, realNow, date);
   const now = preview ?? realNow;
   const staff = STAFF.has(actor.roleKey);
+  // The school day at this moment: open or closed, each shift's bell, where each class is.
+  let moment = null;
+  try {
+    const ownSectionIds = new Set();
+    if (!staff && (actor.roleKey === 'PARENT' || actor.roleKey === 'STUDENT')) {
+      const kids = await ownStudentIds(actor);
+      if (kids.length) for (const e of await Enrollment.find({ studentId: { $in: kids }, status: 'ACTIVE' }).select('sectionId').lean()) ownSectionIds.add(String(e.sectionId));
+    }
+    moment = await campusMoment({ at: now, now: realNow, viewer: { family: !staff, ownSectionIds } });
+  } catch (err) {
+    // The map still answers without the day plan; it just cannot say what the bell says.
+    logger.warn(`Campus day plan unavailable: ${err.message}`);
+    moment = null;
+  }
+  const inSession = new Map((moment?.sections ?? []).map((s) => [s.sectionId, s]));
+  // A timetabled period counts only while the day plan has that class in lessons
+  // (not on a holiday, outside its shift, or on an exam-only day without a paper).
+  const lessonOn = (slot) => {
+    if (!moment) return true;
+    if (!moment.day.open) return false;
+    const s = inSession.get(String(slot.sectionId?._id ?? slot.sectionId));
+    return Boolean(s && ['CLASS', 'SPORTS'].includes(s.activity) && Number(s.periodNo) === Number(slot.periodNo));
+  };
   const filter = campusCode ? { campusCode } : {};
   let facilities = await Facility.find(filter).lean();
   // Families never receive restricted spaces at all.
@@ -121,7 +149,7 @@ export async function campusMap(actor, { campusCode, at = null, now: realNow = n
     const rooms = facilities.filter((f) => ROOMLIKE.has(f.kind) && f.kind !== 'SERVER_ROOM' && !(f.restricted && !layers.restricted));
     for (const [id, slots] of await scheduledSlotsForMany(rooms, dow)) roomSlots.set(id, slots.filter((s) => s.subjectOfferingId));
   }
-  const currentOf = (f) => (roomSlots.get(String(f._id)) ?? []).find((s) => toMin(s.startTime) <= minutes && toMin(s.endTime) > minutes) ?? null;
+  const currentOf = (f) => (roomSlots.get(String(f._id)) ?? []).find((s) => toMin(s.startTime) <= minutes && toMin(s.endTime) > minutes && lessonOn(s)) ?? null;
   // Headcount and exams for every class that has a room or is in one now.
   const sectionIds = new Map();
   const offeringIds = new Map();
@@ -170,7 +198,7 @@ export async function campusMap(actor, { campusCode, at = null, now: realNow = n
       if (layers.schedule && f.kind !== 'SERVER_ROOM') {
         const slots = roomSlots.get(String(f._id)) ?? [];
         const current = currentOf(f);
-        const next = slots.find((s) => toMin(s.startTime) > minutes);
+        const next = moment && !moment.day.open ? null : slots.find((s) => toMin(s.startTime) > minutes);
         // The class in the room now, else the class whose room this is.
         const sectionId = current?.sectionId?._id ?? f.sectionId ?? null;
         const head = sectionId ? live.get(String(sectionId)) ?? null : null;
@@ -182,9 +210,17 @@ export async function campusMap(actor, { campusCode, at = null, now: realNow = n
             registerTaken: head.registerTaken, attendancePct: head.attendancePct,
             source: "Today's attendance register",
           };
+          // Whether the day plan has this class on campus now (its shift's hours, not a holiday).
+          if (moment) {
+            const plan = inSession.get(String(sectionId));
+            node.live.inSession = Boolean(plan?.activity);
+            node.live.activity = plan?.activity ?? null;
+          }
         }
         const away = !current && awayIn.has(String(sectionId));
-        if (head?.exam && !away && (head.exam.paperToday || current)) {
+        // An exam room is shown while its class is in lessons (not at arrival, lunch or after hours).
+        const onCampus = !moment || ['EXAM', 'CLASS', 'STUDY', 'CHANGEOVER', 'SPORTS'].includes(inSession.get(String(sectionId))?.activity);
+        if (head?.exam && !away && onCampus && (head.exam.paperToday || current)) {
           states.push({ type: 'EXAM', label: `${head.exam.name}${head.exam.subject ? ` · ${head.exam.subject}` : ''}`, source: 'EXAMS' });
           examsNow += 1;
         }
@@ -237,6 +273,7 @@ export async function campusMap(actor, { campusCode, at = null, now: realNow = n
     asOf: now.toISOString(),
     preview: Boolean(preview),
     localTime: hhmm,
+    moment,
     kpis: {
       rooms, roomsInUse: inUse, roomsFree: free,
       ...(academics ? { classesNow: academics.classesNow, examsNow, studentsPresent: academics.studentsMarked ? academics.studentsPresent : null, studentsMarked: academics.studentsMarked, studentsEnrolled: academics.studentsEnrolled, sectionsMarked: academics.sectionsMarked, sections: academics.sections } : {}),

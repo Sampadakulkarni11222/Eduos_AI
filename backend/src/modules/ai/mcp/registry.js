@@ -16,6 +16,10 @@ import { operationsTools } from './tools/operations.js';
 import { platformPeopleTools } from './tools/platformPeople.js';
 import { platformGapTools } from './tools/platformGaps.js';
 import { platformOpsTools } from './tools/platformOps.js';
+import { openuiTools } from './tools/p3Openui.js';
+import { healthTools } from './tools/p3Health.js';
+import { campusTools } from './tools/p3Campus.js';
+import { integrationTools } from './tools/p3Integrations.js';
 import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 import { isDecidingToolName } from './decisions.js';
 
@@ -70,6 +74,10 @@ const ASSEMBLED = {
   ...platformPeopleTools,
   ...platformGapTools,
   ...platformOpsTools,
+  ...openuiTools,
+  ...healthTools,
+  ...campusTools,
+  ...integrationTools,
 };
 
 /**

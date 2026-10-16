@@ -1,3 +1,4 @@
+import { maySelfApprove, noteSingleApprover } from '../policy/approverMode.service.js';
 import { ServiceAccount, Bill, ServiceVisit, BILL_CATEGORIES, BILLING_CYCLES, CYCLE_MONTHS } from '../../models/bill.model.js';
 import { Vendor } from '../../models/finance.model.js';
 import { Contract } from '../../models/administration.model.js';
@@ -253,13 +254,16 @@ export async function confirmPayment(actor, id, paymentId, body = {}) {
   const p = b.payments.id(assertObjectId(paymentId, 'paymentId'));
   if (!p) throw new AppError('Payment not found', 404);
   if (p.status !== 'RECORDED') throw new AppError(`This payment is already ${p.status.toLowerCase()}.`, 409);
-  if (String(p.recordedByProfileId) === String(actor.profileId)) throw new AppError('A different person confirms the payment from the bank statement.', 403, [], 'SAME_PERSON');
+  const own = String(p.recordedByProfileId) === String(actor.profileId);
+  // Single-approver mode (school setting, off by default) lets a principal or administrator confirm their own.
+  if (own && !(await maySelfApprove(actor))) throw new AppError('A different person confirms the payment from the bank statement.', 403, [], 'SAME_PERSON');
   const decision = oneOf(body.decision, ['CONFIRM', 'REJECT'], 'decision', 'CONFIRM');
   if (decision === 'CONFIRM') {
     p.status = 'CONFIRMED';
     p.bankReference = requireText(body.bankReference, 'bankReference (UTR / statement line)', { max: 120 });
     p.confirmedAt = new Date();
     p.confirmedByProfileId = actor.profileId;
+    p.singleApprover = own;
   } else {
     p.status = 'REJECTED';
     p.note = requireText(body.reason, 'reason', { max: 500 });
@@ -269,7 +273,8 @@ export async function confirmPayment(actor, id, paymentId, body = {}) {
   const from = b.status;
   b.status = statusOf(b);
   if (b.status === 'PAID') b.settledAt = new Date();
-  pushHistory(b, actor, decision === 'CONFIRM' ? 'PAYMENT_CONFIRMED' : 'PAYMENT_REJECTED', { from, to: b.status, note: decision === 'CONFIRM' ? p.bankReference : p.note });
+  pushHistory(b, actor, decision === 'CONFIRM' ? 'PAYMENT_CONFIRMED' : 'PAYMENT_REJECTED', { from, to: b.status, note: decision === 'CONFIRM' ? `${p.bankReference}${own ? ' (single-approver)' : ''}` : p.note });
+  if (own) await noteSingleApprover(actor, { entityType: 'Bill', entityId: b._id, what: `bill payment ${decision.toLowerCase()}` });
   await b.save();
   await safely(syncBillDue(b.toObject()), 'bill');
   return presentBill(b.toObject());

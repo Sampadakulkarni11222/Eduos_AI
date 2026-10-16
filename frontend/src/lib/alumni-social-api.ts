@@ -52,7 +52,12 @@ export const alumniApi = {
 export const NETWORKS = ['FACEBOOK', 'INSTAGRAM', 'X', 'LINKEDIN', 'YOUTUBE'] as const;
 export type Network = (typeof NETWORKS)[number];
 export const NETWORK_LABELS: Record<Network, string> = { FACEBOOK: 'Facebook', INSTAGRAM: 'Instagram', X: 'X', LINKEDIN: 'LinkedIn', YOUTUBE: 'YouTube community' };
-export interface OutboxRow { network: Network; label: string; status: 'QUEUED' | 'SENDING' | 'SENT' | 'FAILED' | 'SIMULATED'; statusReason: string | null; attempts: number; lastAttemptAt: string | null; display: string }
+export interface OutboxRow {
+  network: Network; label: string; status: 'QUEUED' | 'SENDING' | 'SENT' | 'FAILED' | 'SIMULATED' | 'NOT_SUPPORTED'; statusReason: string | null; attempts: number; lastAttemptAt: string | null; display: string;
+  // Live posting: the network's own id and link, the exact text sent, engagement read back later.
+  providerPostId?: string | null; permalink?: string | null; sentText?: string | null;
+  engagement?: { likes: number | null; comments: number | null; shares: number | null; impressions: number | null; at: string; error: string | null } | null;
+}
 export interface SocialPostDto { id: string; text: string; link: string | null; networks: Network[]; studentIds: string[]; noIdentifiableStudents: boolean; status: 'DRAFT' | 'PUBLISHING' | 'DONE' | 'BLOCKED'; blockedReason: string | null; createdByName: string | null; createdAt: string; communityPostId: string | null; outbox: OutboxRow[] }
 export interface SocialAccountDto { id: string; network: Network; label: string; handle: string; status: string; statusNote: string; createdAt: string }
 export interface ShareableStory { id: string; title: string | null; excerpt: string; publishedAt: string | null; taggedStudents: number }
@@ -65,6 +70,7 @@ export const socialApi = {
   posts: () => get<SocialPostDto[]>('/social/posts'),
   compose: (body: unknown) => post<SocialPostDto>('/social/posts', body),
   publish: (id: string) => post<SocialPostDto>(`/social/posts/${id}/publish`),
+  one: (id: string) => get<SocialPostDto>(`/social/posts/${id}`),
 };
 
 export interface DigestItemDto { id: string; title: string; link: string; summary: string; sourceTitle: string | null; publishedAt: string | null; interest: string | null; interestLabel: string | null }

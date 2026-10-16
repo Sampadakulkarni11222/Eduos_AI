@@ -23,7 +23,19 @@ const api = vi.hoisted(() => ({
   tasks: vi.fn(), taskSummary: vi.fn(), createTask: vi.fn(), acknowledgeTask: vi.fn(), snoozeTask: vi.fn(), completeTask: vi.fn(), reassignTask: vi.fn(), cancelTask: vi.fn(),
   features: vi.fn(), setFeatures: vi.fn(),
 }));
-vi.mock('@/lib/analytics-api', async (orig) => ({ ...(await orig<typeof import('@/lib/analytics-api')>()), analyticsApi: api }));
+// Saved views moved to the server in part 3 (they follow the person across devices): an in-memory server here.
+const views = vi.hoisted(() => {
+  const store: Array<{ id: string; name: string; filters: Record<string, unknown>; tab: string | null; focus: string | null; metricKeys: string[] }> = [];
+  const fns = {
+    store,
+    list: vi.fn(async () => ({ items: [...store] })),
+    save: vi.fn(async (b: { name: string; filters: Record<string, unknown>; tab: string; focus: string | null }) => { const v = { id: `v${store.length + 1}`, metricKeys: [], ...b }; store.splice(0, store.length, v, ...store.filter((x) => x.name !== b.name)); return v; }),
+    remove: vi.fn(async () => ({ removed: true })),
+    importViews: vi.fn(async (list: Array<{ name: string; filters: Record<string, unknown>; tab: string; focus: string | null }>) => { for (const b of list) store.push({ id: `i${store.length + 1}`, metricKeys: [], ...b }); return { imported: list.length, items: [...store] }; }),
+  };
+  return fns;
+});
+vi.mock('@/lib/analytics-api', async (orig) => ({ ...(await orig<typeof import('@/lib/analytics-api')>()), analyticsApi: api, savedViewsApi: views }));
 vi.mock('@/lib/ops-api', () => ({ opsApi: { orgStaff: vi.fn().mockResolvedValue([]) }, downloadCsv: vi.fn(), qs: () => '' }));
 const perms = vi.hoisted(() => ({ value: {} as Record<string, string> }));
 vi.mock('@/lib/permissions', () => ({ usePermissions: () => ({ permissions: perms.value, hasAccess: () => true }) }));
@@ -136,17 +148,30 @@ describe('finding your way around analytics', () => {
     expect(within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByText('Net fee collections')).toBeTruthy();
   });
 
-  it('saves a view in this browser and brings it back', async () => {
+  // Changed in part 3: views were kept in localStorage; they now live on the server per person
+  // (decision 2), with a one-time import of what a browser still holds.
+  it('saves a view on the server and brings it back', async () => {
+    views.store.splice(0);
     inApp(<AnalyticsView />);
     await screen.findByRole('article', { name: 'Net fee collections' });
     fireEvent.click(screen.getByRole('tab', { name: 'Finance' }));
     fireEvent.click(screen.getByRole('button', { name: /Save this view/ }));
     fireEvent.change(screen.getByLabelText('Name for this view'), { target: { value: 'Monthly money' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(JSON.parse(window.localStorage.getItem('eduos.analytics.views:me') ?? '[]')[0]).toMatchObject({ name: 'Monthly money', tab: 'finance' });
+    await waitFor(() => expect(views.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'Monthly money', tab: 'finance' })));
+    expect(window.localStorage.getItem('eduos.analytics.views:me')).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Monthly money' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Monthly money' }));
     await waitFor(() => expect(api.overview).toHaveBeenLastCalledWith(expect.objectContaining({ department: 'finance' })));
+  });
+
+  it('imports the views a browser kept before, once, then clears them', async () => {
+    views.store.splice(0);
+    window.localStorage.setItem('eduos.analytics.views:me', JSON.stringify([{ name: 'Old view', q: { preset: 'this_month', compare: 'previous', department: 'finance' }, tab: 'finance', focus: null }]));
+    inApp(<AnalyticsView />);
+    expect(await screen.findByRole('button', { name: 'Old view' })).toBeTruthy();
+    expect(views.importViews).toHaveBeenCalledWith([expect.objectContaining({ name: 'Old view', tab: 'finance' })]);
+    expect(window.localStorage.getItem('eduos.analytics.views:me')).toBeNull();
   });
 });
 

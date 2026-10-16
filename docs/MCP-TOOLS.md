@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**318 tools** — 165 GET, 65 CREATE, 29 UPDATE, 14 DELETE, 45 ACTION.
+**332 tools** — 173 GET, 68 CREATE, 29 UPDATE, 15 DELETE, 47 ACTION.
 
-Risk mix: 197 LOW, 32 HIGH, 88 MEDIUM, 1 CRITICAL.
+Risk mix: 208 LOW, 34 HIGH, 89 MEDIUM, 1 CRITICAL.
 
-Status: 316 AVAILABLE, 2 PARTIAL (see below). 1 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 330 AVAILABLE, 2 PARTIAL (see below). 1 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -28,36 +28,38 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
 | `SUPER_ADMIN` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `ADMIN` | 309 | 161 | 63 | 29 | 43 | 13 | 33 | 148 |
-| `PRINCIPAL` | 183 | 121 | 27 | 14 | 19 | 2 | 11 | 62 |
-| `TEACHER` | 127 | 83 | 17 | 8 | 16 | 3 | 6 | 44 |
-| `PARENT` | 87 | 68 | 8 | 4 | 4 | 3 | 3 | 19 |
-| `STUDENT` | 90 | 70 | 10 | 1 | 3 | 6 | 1 | 20 |
-| `FINANCE` | 84 | 54 | 15 | 7 | 7 | 1 | 10 | 30 |
-| `LIBRARIAN` | 61 | 41 | 7 | 4 | 7 | 2 | 1 | 20 |
-| `WARDEN` | 64 | 42 | 8 | 6 | 7 | 1 | 1 | 22 |
-| `HR` | 50 | 33 | 8 | 3 | 5 | 1 | 2 | 17 |
-| `MARKETING` | 51 | 34 | 9 | 3 | 4 | 1 | 2 | 17 |
-| `COMPLIANCE` | 62 | 42 | 10 | 5 | 4 | 1 | 1 | 20 |
-| `TRUSTEE` | 22 | 20 | 0 | 1 | 1 | 0 | 1 | 2 |
-| `ALUMNUS` | 14 | 12 | 0 | 1 | 1 | 0 | 0 | 2 |
-| `COUNSELLOR (custom, example)` | 19 | 19 | 0 | 0 | 0 | 0 | 0 | 0 |
+| `ADMIN` | 319 | 167 | 64 | 29 | 45 | 14 | 34 | 152 |
+| `PRINCIPAL` | 192 | 127 | 28 | 14 | 20 | 3 | 12 | 65 |
+| `TEACHER` | 134 | 88 | 18 | 8 | 16 | 4 | 6 | 46 |
+| `PARENT` | 95 | 74 | 9 | 4 | 4 | 4 | 3 | 21 |
+| `STUDENT` | 97 | 75 | 11 | 1 | 3 | 7 | 1 | 22 |
+| `FINANCE` | 90 | 58 | 16 | 7 | 7 | 2 | 10 | 32 |
+| `LIBRARIAN` | 67 | 45 | 8 | 4 | 7 | 3 | 1 | 22 |
+| `WARDEN` | 70 | 46 | 9 | 6 | 7 | 2 | 1 | 24 |
+| `NURSE` | 52 | 37 | 9 | 2 | 2 | 2 | 1 | 15 |
+| `HR` | 56 | 37 | 9 | 3 | 5 | 2 | 2 | 19 |
+| `MARKETING` | 60 | 39 | 10 | 3 | 6 | 2 | 3 | 21 |
+| `COMPLIANCE` | 68 | 46 | 11 | 5 | 4 | 2 | 1 | 22 |
+| `TRUSTEE` | 28 | 24 | 1 | 1 | 1 | 1 | 1 | 4 |
+| `ALUMNUS` | 20 | 16 | 1 | 1 | 1 | 1 | 0 | 4 |
+| `COUNSELLOR (custom, example)` | 23 | 21 | 1 | 0 | 0 | 1 | 0 | 2 |
 
 Custom roles are database rows, created per school, so none can be listed here in advance. The COUNSELLOR row is the custom role the test suites create; any custom role is computed exactly this way from its own grants.
 
 <details><summary>High-risk actions visible to each role</summary>
 
 - **SUPER_ADMIN** (0): _none_
-- **ADMIN** (33): `add_guardian`, `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `transition_fee_plan`, `create_fee_structure`, `enter_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`, `request_extra_seats`, `send_social_post`, `verify_eco_activity`, `record_bill_payment`, `verify_bill_payment`, `request_fee_adjustment`, `record_concession_decision`, `record_outpass_consent`, `record_outpass_decision`, `record_staff_leave_decision`
-- **PRINCIPAL** (11): `transition_fee_plan`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_document`, `send_social_post`, `verify_eco_activity`, `record_concession_decision`, `record_outpass_decision`, `record_staff_leave_decision`
+- **ADMIN** (34): `add_guardian`, `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `transition_fee_plan`, `create_fee_structure`, `enter_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`, `request_extra_seats`, `send_social_post`, `verify_eco_activity`, `record_bill_payment`, `verify_bill_payment`, `request_fee_adjustment`, `record_concession_decision`, `record_outpass_consent`, `record_outpass_decision`, `record_staff_leave_decision`, `share_news_to_social`
+- **PRINCIPAL** (12): `transition_fee_plan`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_document`, `send_social_post`, `verify_eco_activity`, `record_concession_decision`, `record_outpass_decision`, `record_staff_leave_decision`, `share_news_to_social`
 - **TEACHER** (6): `mark_attendance`, `bulk_mark_attendance`, `enter_marks`, `create_announcement`, `delete_document`, `verify_eco_activity`
 - **PARENT** (3): `upsert_medical_record`, `remove_medical_record`, `record_outpass_consent`
 - **STUDENT** (1): `record_outpass_consent`
 - **FINANCE** (10): `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `transition_fee_plan`, `create_fee_structure`, `record_bill_payment`, `verify_bill_payment`, `request_fee_adjustment`, `record_concession_decision`
 - **LIBRARIAN** (1): `delete_book`
 - **WARDEN** (1): `record_outpass_decision`
+- **NURSE** (1): `log_medicine_dose`
 - **HR** (2): `record_concession_decision`, `record_staff_leave_decision`
-- **MARKETING** (2): `update_admission_lead`, `send_social_post`
+- **MARKETING** (3): `update_admission_lead`, `send_social_post`, `share_news_to_social`
 - **COMPLIANCE** (1): `verify_eco_activity`
 - **TRUSTEE** (1): `record_concession_decision`
 - **ALUMNUS** (0): _none_
@@ -81,6 +83,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `assign_cover` | Cover | CREATE | `cover.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `assign_teacher_to_subject` | Academics | ACTION | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `block_id_card` | Safety | ACTION | `checkpoints.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `build_dashboard_panel` | Analytics | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `bulk_mark_attendance` | Attendance | ACTION | `attendance.mark` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `cancel_book_request` | Library | DELETE | `library.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `cancel_certificate_request` | Certificates | DELETE | `students.read` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
@@ -137,6 +140,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `generate_homework` | Assignments | ACTION | `assignments.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `generate_invoices` | Fees | ACTION | `fees.manage` | ALL | HIGH | CONDITIONAL | AVAILABLE |
 | `get_absent_students` | Attendance | GET | `attendance.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_ad_campaign_performance` | Marketing | GET | `marketing.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_admission_lead` | Admissions | GET | `admissions.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_admissions` | Admissions | GET | `admissions.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_ai_draft` | AI drafts | GET | `ai.drafts.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -156,7 +160,9 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_budget_position` | Budgets | GET | `budget.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_calendar_events` | Communication | GET | `calendar.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_camera_review_count` | Safety | GET | `camera.events.review` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_campus_moment` | Campus | GET | `campus.map.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_campus_status` | Campus | GET | `campus.map.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_child_medication_log` | Health room | GET | `health.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_class_attendance_summary` | Attendance | GET | `attendance.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_class_marks` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_cover_arrangements` | Cover | GET | `staffleave.apply` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -172,6 +178,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_fees` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_growth_score` | Analytics | GET | `ai.insights.read` | ALL | LOW | NOT_REQUIRED | PARTIAL |
 | `get_gst_summary` | Fees | GET | `accounts.export` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_health_visits_today` | Health room | GET | `health.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_hostel_residents` | Hostel | GET | `hostel.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_hostel_summary` | Hostel | GET | `hostel.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_invoice` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -216,6 +223,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_school_domain` | Domains | GET | `domains.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_seat_requests` | Seats | GET | `seats.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_seat_summary` | Seats | GET | `seats.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_section_shift` | Academics | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_showcase` | Showcase | GET | `institution.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_staff_leave_balance` | Staff leave | GET | `staffleave.apply` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_student` | Students | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -226,6 +234,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_subjects` | Academics | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_submissions` | Assignments | GET | `submissions.grade` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_syllabus_progress` | Syllabus | GET | `syllabus.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_teacher_qualifications` | Staff profiles | GET | `campus.map.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_term_report_remark_draft` | Report cards | GET | `reportcards.manage` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_ticket` | Tickets | GET | `tickets.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_timetable` | Timetable | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -282,6 +291,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `list_outpasses` | Hostel | GET | `hostel.outpass.manage` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_payroll_runs` | Payroll | GET | `payroll.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_pending_approvals` | Approvals | GET | `approvals.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `list_pinned_panels` | Analytics | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_practical_sessions` | Labs | GET | `labs.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_ptm_rounds` | PTM | GET | `ptm.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_purchase_requests` | Procurement | GET | `procurement.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -301,6 +311,8 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `list_users` | Users | GET | `users.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_vehicles` | Transport | GET | `transport.fleet.manage` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `log_eco_activity` | Sustainability | CREATE | `sustainability.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `log_health_visit` | Health room | CREATE | `health.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `log_medicine_dose` | Health room | CREATE | `health.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `log_meter_reading` | Sustainability | CREATE | `sustainability.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `log_plant_check` | Sustainability | ACTION | `sustainability.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `log_review_call_attempt` | Review calls | ACTION | `reviewcalls.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -313,6 +325,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `note_bill_flag` | Bills | UPDATE | `bills.manage` | ALL | LOW | REQUIRED | AVAILABLE |
 | `notify_users` | Communication | ACTION | `announcements.publish` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `open_review_call` | Review calls | CREATE | `reviewcalls.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `pin_dashboard_panel` | Analytics | CREATE | `ai.copilot.use` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `plan_practical_session` | Labs | CREATE | `labs.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `read_conversation` | Conversations | GET | `conversations.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `reassign_due_item` | Tasks | UPDATE | `tasks.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -357,10 +370,13 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `send_conversation_message` | Conversations | CREATE | `conversations.use` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `send_social_post` | Social | ACTION | `social.publish` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `send_whatsapp_message` | Communication | ACTION | `announcements.publish` | ALL | HIGH | REQUIRED | AVAILABLE |
+| `share_news_to_social` | Social | ACTION | `social.publish` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `snooze_due_item` | Tasks | UPDATE | `tasks.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `submit_assignment` | Assignments | ACTION | `submissions.submit` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `suggest_cover_teachers` | Cover | GET | `cover.manage` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `sync_ad_data` | Marketing | ACTION | `marketing.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `transition_fee_plan` | Fees | ACTION | `fees.read` | ALL | HIGH | REQUIRED | AVAILABLE |
+| `unpin_dashboard_panel` | Analytics | DELETE | `ai.copilot.use` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `update_admission_lead` | Admissions | ACTION | `admissions.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_announcement` | Communication | UPDATE | `announcements.publish` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_assignment` | Assignments | UPDATE | `assignments.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -761,6 +777,30 @@ _(no arguments)_
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
 
+### `get_section_shift`
+
+Which shift a class is in (e.g. "7B", "Class 7 B"), with that shift's days and bell schedule (arrival, assembly, periods, breaks, lunch, dispersal). Parents and students may ask about their own child's class. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `timetable.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `campus/moment.service.shiftOfSection()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_section_shift` |
+
+**Input**
+
+`className`: string **(required)** — The class, e.g. "7B" or "Class 7 B"
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
 ## Admissions
 
 ### `get_admissions`
@@ -1122,6 +1162,102 @@ Generate a new version of a quarterly report (the previous quarter by default) f
 **Input**
 
 `quarter`: string<br>`reason`: string
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `build_dashboard_panel`
+
+Builds a dashboard panel for a question in words — "compare fee collection this year with last year by month", "show attendance for 7B this term", "my child's homework" — from the analytics workspace (within the caller's own departments or classes) or the caller's own dashboard. Returns the figures with their period and comparison; the website shows them as a chart panel. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `ai.copilot.use` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `genui/ask.service.askDashboard()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.build_dashboard_panel` |
+
+**Input**
+
+`question`: string **(required)** — What to show, in words, e.g. "attendance for 7B this term"
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `list_pinned_panels`
+
+The generated panels the caller has pinned to their Analytics page and dashboard. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `ai.copilot.use` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `genui/panels.service.list()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.list_pinned_panels` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `pin_dashboard_panel`
+
+Pins a question as a panel on the caller's own Analytics page or dashboard, rebuilt from live figures each time it is shown, e.g. "pin fee collection this year by month to my analytics". Only the caller sees it. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ai.copilot.use` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `genui/panels.service.pin()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.pin_dashboard_panel` |
+
+**Input**
+
+`question`: string **(required)** — What to show, in words, e.g. "attendance for 7B this term"<br>`surface`: string — one of: analytics, dashboard — analytics (the Analytics page) or dashboard (the home dashboard); default analytics<br>`title`: string
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `unpin_dashboard_panel`
+
+Removes one of the caller's pinned panels, named by its title or question. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | DELETE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ai.copilot.use` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `genui/panels.service.unpin()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.unpin_dashboard_panel` |
+
+**Input**
+
+`title`: string **(required)** — Words from the panel's title or question
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -2048,6 +2184,30 @@ The campus right now: rooms in use and free by the timetable and bookings, space
 **Input**
 
 _(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `get_campus_moment`
+
+What is happening on campus at a moment: whether the school is open (holiday, weekly off, vacation, closure, exam-only day), each shift's bell (arrival, assembly, period N of M and minutes left, break, lunch, dispersal, clubs), which classes are in which rooms or out on the ground or in the canteen, buses arriving/parked/departing, and when the school next opens. Staff may give any date (YYYY-MM-DD) and time (HH:MM, school time); parents and students get now, with numbers for their own child's class only. Read-only; nobody is located.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `campus.map.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `campus/moment.service.campusMoment()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_campus_moment` |
+
+**Input**
+
+`date`: string — A date, e.g. "2026-10-16". Staff only; default today.<br>`time`: string — A school time, e.g. "13:30". Staff only; default now.
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -3933,6 +4093,104 @@ _(no arguments)_
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
 
+## Health room
+
+### `get_health_visits_today`
+
+School nurse only: today's health-room visits (who, time in/out, complaint, outcome) and the medicine doses due today with what has been given. Read-only; every read is audited.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `health.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `health.service.today()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_health_visits_today` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `get_child_medication_log`
+
+A parent: the medication log for their own child at school (each dose given, missed or refused, when and by whom). The school nurse may ask for any student. Read-only; every read is audited.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `health.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `health.service.medicationLog()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_child_medication_log` |
+
+**Input**
+
+`childName`: string — The child, e.g. "Rahul". A parent with one child may leave it out.
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `log_health_visit`
+
+School nurse only: record a health-room visit (student, complaint, what was done, outcome: returned to class, rest, first aid, sent home or referred; injury or medicine given). Parents are told for the outcomes the school chose. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `health.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `health.service.recordVisit()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.log_health_visit` |
+
+**Input**
+
+`studentName`: string **(required)** — The student, e.g. "Rahul Sharma"<br>`complaint`: string **(required)**<br>`action`: string — What was done<br>`outcome`: string **(required)** — one of: RETURNED_TO_CLASS, REST, FIRST_AID, SENT_HOME, REFERRED<br>`injury`: boolean<br>`medicineGiven`: boolean<br>`temperatureC`: number<br>`notifyParent`: boolean — Tell the parents even when the outcome is not one the school notifies by default
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `log_medicine_dose`
+
+School nurse only: record a scheduled medicine dose from a consented plan as given, missed or refused (student and the dose time, e.g. 12:30). A controlled medicine then waits for a second person's countersignature on the Health page. Confirmed on the website only.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | HIGH |
+| **Confirmation** | REQUIRED |
+| **Permission** | `health.manage` |
+| **Scope** | ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `health.service.recordDose()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.log_medicine_dose` |
+
+**Input**
+
+`studentName`: string **(required)**<br>`time`: string **(required)** — The scheduled dose time, HH:MM<br>`status`: string **(required)** — one of: GIVEN, MISSED, REFUSED<br>`date`: string — YYYY-MM-DD; default today<br>`note`: string
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Hostel
 
 ### `get_hostel_summary`
@@ -5212,6 +5470,54 @@ The admissions funnel in totals: enquiries by stage and by source, conversion an
 **Input**
 
 _(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `sync_ad_data`
+
+Sync ad data now: pull daily campaign spend, impressions, clicks, leads and conversions from the school's connected ad accounts (Meta, Google Ads, YouTube, Google Analytics 4, LinkedIn) for a date range (default the last 7 days). Re-syncing replaces those days, never doubles them. A platform that is not connected is reported as such (nothing is fetched; its figures come from CSV imports). Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `marketing.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `connectors.service.sync() → integrations/adsync.service.syncPlatform()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.sync_ad_data` |
+
+**Input**
+
+`platform`: string — one of: META_ADS, GOOGLE_ADS, GA4, YOUTUBE, LINKEDIN, ALL — Default ALL connected platforms<br>`from`: string<br>`to`: string
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `get_ad_campaign_performance`
+
+How ad campaigns did over a period ("how did the Meta campaign do last week"): spend, impressions, clicks, platform-reported leads, cost per lead and CTR per platform campaign, from the live sync or imported CSV exports, plus when each platform was last synced. Simulated sample rows are labelled. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `marketing.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `connectors.service.metricsSummary() + listConnectors()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_ad_campaign_performance` |
+
+**Input**
+
+`platform`: string — one of: META_ADS, GOOGLE_ADS, GA4, YOUTUBE, LINKEDIN<br>`campaign`: string — Words from the campaign name or its code, e.g. "ADM27" or "open day"<br>`period`: string — one of: last_week, this_week, yesterday, last_7_days, last_30_days, this_month — Default last_week (Monday to Sunday)<br>`from`: string<br>`to`: string
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -6499,6 +6805,30 @@ Send a drafted social post to its networks, at the explicit request of a staff m
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+### `share_news_to_social`
+
+Post a published, public newsroom story to the school's social accounts on the networks the staff member names ("post this news to Facebook and LinkedIn"), only at their explicit request. Every pictured child's public consent is checked again first. Each network is posted at most once per story; networks whose account is connected are posted for real, others are recorded as Simulated — not posted; YouTube community posts are not supported by YouTube's API. Confirmed on the website only.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | HIGH |
+| **Confirmation** | REQUIRED |
+| **Permission** | `social.publish` |
+| **Scope** | ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `newsroom-social.service.shareStory()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.share_news_to_social` |
+
+**Input**
+
+`story`: string — Words from the story title; default the latest published public story<br>`networks`: array **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Staff leave
 
 ### `get_staff_leave_balance`
@@ -6620,6 +6950,32 @@ For HR and the principal: record their own decision on a colleague's pending lea
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+## Staff profiles
+
+### `get_teacher_qualifications`
+
+A teacher's professional profile: qualifications (degree, institution, year), subjects and specialisations, years of experience, certifications (e.g. CTET) and short bio. Staff see a colleague's record; parents and students see only what the teacher has agreed to show families, and only for teachers of their own child's class. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `campus.map.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `staff/credentials.service.read()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_teacher_qualifications` |
+
+**Input**
+
+`teacherName`: string **(required)** — The teacher, e.g. "Sunita Rao"
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
 
 ## Student requests
 
@@ -8179,7 +8535,7 @@ _(no arguments)_
 
 ## Permission coverage
 
-123 of the 184 permissions in the catalog are reachable through MCP.
+126 of the 189 permissions in the catalog are reachable through MCP.
 
 Permissions **not** reachable through any tool:
 
@@ -8225,7 +8581,6 @@ Permissions **not** reachable through any tool:
 - `budget.manage` — Prepare budgets and explain variances
 - `funding.read` — View funding proposals, grants and loans
 - `funding.manage` — Prepare funding proposals and compare offers
-- `marketing.manage` — Plan campaigns and manage creative assets
 - `community.post` — Draft newsroom stories and post in circles
 - `community.moderate` — Review, publish, hide and take down posts and comments
 - `mentoring.participate` — Offer or request mentoring from seniors and alumni
@@ -8244,4 +8599,7 @@ Permissions **not** reachable through any tool:
 - `portfolios.reflect` — Write your own reflections in your competency portfolio
 - `scenarios.read` — See saved what-if projections (enrolment, fees, staffing, transport, budget)
 - `scenarios.manage` — Create, edit and compare what-if projections
+- `health.witness` — Countersign a controlled medicine dose as the second person
+- `health.carenotes.read` — See the short care notes parents agreed to share for the class you are class teacher of (e.g. a severe allergy)
+- `health.summary.read` — Health-room figures as counts only (no names, no details)
 

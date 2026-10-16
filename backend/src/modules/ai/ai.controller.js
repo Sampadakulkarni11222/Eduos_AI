@@ -6,6 +6,8 @@ import { mcpToolsFor } from './mcp/registry.js';
 import * as tutorService from './tutor.service.js';
 import * as studyBuddyService from './studyBuddy/studyBuddy.service.js';
 import * as creditService from './aiCredit.service.js';
+// Generated UI (OpenUI Lang panel) for website answers that carry data; WhatsApp keeps text.
+import { withGeneratedUi } from '../genui/agentUi.js';
 
 /* ── AI credits ─────────────────────────────────────────────
    Metering for AI-generated answers. Staff are not metered; students and
@@ -79,7 +81,7 @@ export const agent = asyncHandler(async (req, res) => {
     res,
     // Safe variant: a provider outage degrades to the rule-based answer rather
     // than a 500 the client can only render as "could not reach the assistant".
-    await agentCore.runAgentSafely({
+    await withGeneratedUi(await agentCore.runAgentSafely({
       message,
       actor: req.actor,
       source: WEB_CHANNEL,
@@ -89,7 +91,7 @@ export const agent = asyncHandler(async (req, res) => {
       // who was meant — while WhatsApp, which has always passed history,
       // resolved it. Same core, same behaviour now.
       history: sanitiseHistory(history),
-    }),
+    }), { message }),
     'Agent response'
   );
 });
@@ -104,12 +106,12 @@ export const agentContinue = asyncHandler(async (req, res) => {
   if (!continuationToken) throw new AppError('continuationToken is required', 400);
   sendSuccess(
     res,
-    await agentCore.continueAnswer({
+    await withGeneratedUi(await agentCore.continueAnswer({
       token: continuationToken,
       actor: req.actor,
       source: WEB_CHANNEL,
       lang,
-    }),
+    })),
     'Agent response continued'
   );
 });

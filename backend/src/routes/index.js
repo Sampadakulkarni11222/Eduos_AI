@@ -12,6 +12,8 @@ import academicsRoutes from '../modules/academics/academics.routes.js';
 import studentRoutes from '../modules/students/student.routes.js';
 import enrollmentRoutes from '../modules/students/enrollment.routes.js';
 import timetableRoutes from '../modules/timetable/timetable.routes.js';
+import shiftRoutes from '../modules/shifts/shifts.routes.js';
+import staffProfileRoutes from '../modules/staff/credentials.routes.js';
 import attendanceRoutes from '../modules/attendance/attendance.routes.js';
 import attendanceOcrRoutes from '../modules/attendance/ocr.routes.js';
 import leaveRoutes from '../modules/leave/leave.routes.js';
@@ -86,13 +88,19 @@ import socialRoutes from '../modules/social/social.routes.js';
 import digestRoutes from '../modules/digest/digest.routes.js';
 // Part 2 gaps: student support plans.
 import supportPlanRoutes from '../modules/support/support.routes.js';
+// Part 3: school health room.
+import healthRoutes from '../modules/health/health.routes.js';
+import schoolPolicyRoutes from '../modules/policy/policy.routes.js';
 import portfolioRoutes from '../modules/portfolios/portfolios.routes.js';
 import scenarioRoutes from '../modules/scenarios/scenarios.routes.js';
 import { offlineIdempotency } from '../middleware/idempotency.js';
 // Universal search; newsroom social sharing; offline marketing, ad connectors and attribution.
 import searchRoutes from '../modules/search/search.routes.js';
+import genuiRoutes from '../modules/genui/genui.routes.js';
 import newsroomSocialRoutes from '../modules/social/newsroom-social.routes.js';
 import { growthRouter, publicMarketingRouter } from '../modules/marketing/growth.routes.js';
+// Part 3: OAuth connections to ad/social providers (live ad sync, live posting) and the app-level Meta webhook.
+import { integrationsRouter, publicIntegrationsRouter } from '../modules/integrations/integrations.routes.js';
 
 const router = Router();
 
@@ -145,6 +153,7 @@ router.get('/health', async (_req, res) => {
 router.use('/public/admissions', publicAdmissionRouter);
 // Public (no sign-in): campaign tracking links and the HMAC-verified lead webhook.
 router.use('/public/marketing', publicMarketingRouter);
+router.use('/public/integrations', publicIntegrationsRouter);
 router.use('/auth', authRoutes);
 router.use('/roles', roleRoutes);
 router.use('/profiles', profileRoutes);
@@ -155,6 +164,8 @@ router.use('/academics', academicsRoutes);
 router.use('/students', studentRoutes);
 router.use('/enrollments', enrollmentRoutes);
 router.use('/timetable', timetableRoutes);
+router.use('/shifts', shiftRoutes);
+router.use('/staff-profile', staffProfileRoutes);
 router.use('/attendance/ocr', attendanceOcrRoutes);
 router.use('/attendance', attendanceRoutes);
 router.use('/leave', leaveRoutes);
@@ -237,11 +248,15 @@ router.use('/alumni', alumniRoutes);
 router.use('/social', socialRoutes);
 router.use('/digest', digestRoutes);
 router.use('/support-plans', supportPlanRoutes);
+router.use('/health', healthRoutes);
+router.use('/school-policy', schoolPolicyRoutes);
 router.use('/portfolios', portfolioRoutes);
 router.use('/scenarios', scenarioRoutes);
 router.use('/search', searchRoutes);
+router.use('/genui', genuiRoutes);
 router.use('/newsroom-social', newsroomSocialRoutes);
 router.use('/marketing-growth', growthRouter);
+router.use('/integrations', integrationsRouter);
 
 // NOTE — a public GET /admin-seed endpoint used to live here, gated only by a
 // hardcoded default secret ('eduos-seed-2026'). Anyone who could reach the API

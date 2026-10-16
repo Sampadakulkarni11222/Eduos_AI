@@ -279,7 +279,7 @@ export async function getUserById(id) {
 }
 
 const VALID_ROLE_KEYS = new Set(['ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT', 'FINANCE', 'LIBRARIAN', 'WARDEN',
-  'HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'ALUMNUS']);
+  'HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'ALUMNUS', 'NURSE']);
 const E164 = /^\+[1-9]\d{7,14}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

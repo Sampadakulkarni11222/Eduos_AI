@@ -220,11 +220,11 @@ export interface ConsentDto { studentId: string; name: string; level: 'NONE' | '
 export interface CampusNodeNow { type: string; label: string; teacher?: string | null; until?: string; source: string }
 export interface ModuleNowDto { title: string; nextTopic: string | null; progressPct: number; expectedPct?: number; pace: string; plannedEnd?: string }
 /** Headcount from today's register. `present` is null until the register is taken. */
-export interface RoomLiveDto { class: string | null; homeRoom: boolean; away?: boolean; awayIn?: string; enrolled: number; present: number | null; absent: number | null; registerTaken: boolean; attendancePct: number | null; source: string }
+export interface RoomLiveDto { class: string | null; homeRoom: boolean; away?: boolean; awayIn?: string; inSession?: boolean; activity?: string | null; enrolled: number; present: number | null; absent: number | null; registerTaken: boolean; attendancePct: number | null; source: string }
 export interface RoomLessonDto { periodNo: number; startTime: string; endTime: string; class: string; subject: string; teacher?: string | null; module: ModuleNowDto | null }
 export interface CampusNodeDto { id: string; code: string; name: string; kind: string; parentId: string | null; campusCode: string | null; floorNo: number | null; capacity: number | null; accessible: boolean; status: string; restricted: boolean; layout: FacilityDto['layout']; sampleLayout: boolean; department?: string | null; now: CampusNodeNow[] | null; live?: RoomLiveDto; lesson?: RoomLessonDto; nextScheduled?: { label: string; at: string }; periodsToday?: number; bookingsToday?: number; openWorkOrders?: number; urgentWorkOrders?: number }
 export interface CampusDepartmentDto { code: string; name: string; description: string | null; head: { name: string | null; title: string } | null; staffCount: number | null; facilityIds: string[]; metrics: Array<{ value: number | string; label: string; tone: 'good' | 'warn' | 'bad' | 'neutral' }>; pages: string[] }
-export interface CampusMapDto { institution: string | null; institutionType: string; campuses: Array<{ code: string; name: string }>; sampleLayout: boolean; layers: Record<string, boolean>; asOf: string; preview?: boolean; localTime: string; kpis: Record<string, number | string | null>; facilities: CampusNodeDto[]; departments?: CampusDepartmentDto[]; eventsToday: Array<{ id: string; title: string; facilityId: string | null; startsAt: string; endsAt: string; status: string }> }
+export interface CampusMapDto { institution: string | null; institutionType: string; campuses: Array<{ code: string; name: string }>; sampleLayout: boolean; layers: Record<string, boolean>; asOf: string; preview?: boolean; localTime: string; moment?: CampusMomentDto | null; kpis: Record<string, number | string | null>; facilities: CampusNodeDto[]; departments?: CampusDepartmentDto[]; eventsToday: Array<{ id: string; title: string; facilityId: string | null; startsAt: string; endsAt: string; status: string }> }
 /** Operational layers for the map (GET /campus/layers), each present only for readers allowed the underlying read. */
 export interface CampusLabLayerDto { labId: string; name: string; facilityId: string | null; practicalNow: { title: string; subject: string | null; className: string | null; until: string | null; status: string } | null; openIncidents: number | null; lowStock: number | null; expiringSoon: number | null; calibrationOverdue: number | null }
 export interface CampusVehicleLayerDto { id: string; registrationNo: string; type: string; vehicleStatus: string; positionStatus: 'LIVE' | 'STALE' | 'OFFLINE' | 'NO_DATA'; trips: Array<{ refNo: string; kind: string; status: string; routeName: string | null; seatsUsed: number; capacity: number }>; documentsDue: Array<{ kind: string; state: string; daysLeft: number | null }>; checksDue: Array<{ kind: string; state: string }>; blocked: boolean }
@@ -303,10 +303,43 @@ export interface CampusMyViewDto {
   children?: Array<{ studentId: string; name: string; className: string | null }>; selectedStudentId?: string | null;
   focus: { sectionId: string; className: string; facilityId: string | null; roomName?: string | null; homeFacilityId?: string | null } | null;
   now?: CampusLivePeriodDto | null; next?: CampusLiveNowDto['next'] | CampusMyClassDto | null;
-  teacher?: { name: string; subject: string; coveringFor: string | null; profileId?: string | null } | null;
+  teacher?: { name: string; subject: string; coveringFor: string | null; profileId?: string | null; about?: TeacherPublicDto | null } | null;
   timetable?: Array<{ periodNo: number; startTime: string; endTime: string; subject: string; teacher: string | null; room: string | null; state: string }>;
   classCounts?: { strength: number; present: number | null; marked: boolean; lastUpdatedAt: string | null };
   child?: { studentId: string; name: string; today: string | null; markedAt: string | null; checkpoints: Array<{ point: string; label: string; at: string }> | null; bus: Array<{ title: string; status: string; myStatus: string; vehicle: string | null; stop: string | null; stopPlannedAt: string | null; eta: { at: string; isEstimate: boolean; label: string } | null }> | null };
   current?: CampusMyClassDto | null; today?: CampusMyClassDto[];
   departments?: string[]; layers?: string[];
 }
+
+// ── Campus World day plan, shifts and staff professional profiles (p3-campus) ──
+export type CampusActivity = 'CLASS' | 'EXAM' | 'SPORTS' | 'STUDY' | 'CHANGEOVER' | 'ASSEMBLY' | 'BREAK' | 'LUNCH' | 'ARRIVAL' | 'DISPERSAL' | 'CLUB' | 'STAFF';
+export interface CampusCrowdDto { facilityId: string; students: number | null; teachers: number; activity: CampusActivity; labels: string[] }
+export interface CampusMomentDto {
+  date: string; time: string; dayOfWeek: number; timezone: string; isToday: boolean; live: boolean;
+  day: { kind: 'SCHOOL_DAY' | 'HOLIDAY' | 'VACATION' | 'CLOSURE' | 'WEEKLY_OFF' | 'EXAM_ONLY'; title: string | null; open: boolean };
+  banner: { text: string; sub: string | null; tone: 'class' | 'break' | 'closed' | 'holiday' | 'exam' | 'arrival' | 'clubs'; motion: boolean };
+  nextOpen: { date: string; time: string; label: string } | null;
+  shifts: Array<{ code: string; name: string; color: string | null; phase: string; label: string; periodNo: number | null; periodsTotal: number; minutesLeft: number | null; opensAt: string | null; closesAt: string | null; sections: number }>;
+  sections: Array<{ sectionId: string; className: string; shift: { code: string; name: string } | null; phase: string; activity: CampusActivity | null; facilityId: string | null; place: string | null; students: number; strength: number; headcountFrom: 'REGISTER' | 'STRENGTH'; periodNo: number | null; subject: string | null; teacher: string | null; teacherProfileId: string | null; until: string | null }>;
+  crowd: CampusCrowdDto[];
+  buses: { phase: 'AWAY' | 'ARRIVING' | 'PARKED' | 'DEPARTING'; trips: number | null; label: string };
+  walkers: 'NONE' | 'FEW' | 'BUSY';
+  totals: { onCampus: number; sectionsInSession: number; sections: number; registerTaken: number } | null;
+  source: string;
+}
+export interface ShiftBellDto { kind: 'ARRIVAL' | 'ASSEMBLY' | 'PERIOD' | 'BREAK' | 'LUNCH' | 'DISPERSAL' | 'CLUBS'; label: string | null; periodNo: number | null; start: string; end: string }
+export interface ShiftDto { id: string; code: string; name: string; color: string | null; active: boolean; daysOfWeek: number[]; bells: ShiftBellDto[]; periods: number; startsAt: string | null; endsAt: string | null; sections: Array<{ id: string; name: string }>; note: string | null; updatedAt: string | null; retimedPeriods?: number; moved?: string[] }
+export interface ShiftConflictDto { room: string; day: string; dayOfWeek: number; from: string; to: string; classes: string[] }
+export interface ShiftsDto { shifts: ShiftDto[]; unassigned: Array<{ id: string; name: string }>; sections: Array<{ id: string; name: string }>; conflicts: ShiftConflictDto[]; bellKinds: string[]; note: string }
+export type CredentialPart = 'qualifications' | 'subjects' | 'experience' | 'certifications' | 'bio';
+export interface TeacherPublicDto { profileId?: string; name: string | null; shown: CredentialPart[]; qualifications?: Array<{ degree: string; institution: string | null; year: number | null }>; subjects?: string[]; specialisations?: string[]; experienceYears?: number; certifications?: Array<{ name: string; issuer: string | null; year: number | null }>; bio?: string; teaches?: string[]; classTeacher?: boolean }
+export interface StaffCredentialDto {
+  profileId: string; name: string; role: string | null;
+  qualifications: Array<{ degree: string; institution: string | null; year: number | null }>;
+  subjects: string[]; specialisations: string[]; experienceYears: number | null;
+  certifications: Array<{ name: string; issuer: string | null; year: number | null }>;
+  bio: string | null; showToFamilies: Record<CredentialPart, boolean>; updatedAt: string | null;
+  canEdit?: boolean; canEditConsent?: boolean; familiesSee?: TeacherPublicDto;
+}
+export interface StaffCredentialRowDto { profileId: string; name: string; role: string | null; roleKey: string | null; filled: number; of: number; shownToFamilies: CredentialPart[] }
+export interface TeachersOfDto { studentId: string | null; child: string | null; teachers: Array<TeacherPublicDto & { profileId: string; name: string; teaches: string[]; classTeacher: boolean }>; note?: string }

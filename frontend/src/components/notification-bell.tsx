@@ -2,11 +2,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { readCache, writeCache } from '@/lib/cache';
 import { useSchoolHref } from '@/lib/school-path';
 import type { NotificationDto } from '@/lib/types';
 import { Spinner, cx } from './ui';
 
 const POLL_MS = 60_000;
+const COUNT_KEY = 'notifications:unread-count';
+const COUNT_FRESH_MS = 20_000;
 
 const TYPE_ICON: Record<string, string> = {
   ANNOUNCEMENT: '◍', ASSIGNMENT: '✎', MARKS: '◉', ATTENDANCE: '☱',
@@ -34,7 +37,9 @@ export function NotificationBell({ portalSlug }: { portalSlug: string }) {
   const link = useSchoolHref();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [unread, setUnread] = useState(0);
+  // Seeded from the last count this tab saw, so the badge does not blink to
+  // zero and back on every page (each page mounts its own shell).
+  const [unread, setUnread] = useState(() => readCache<number>(COUNT_KEY)?.data ?? 0);
   const [items, setItems] = useState<NotificationDto[] | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -42,6 +47,7 @@ export function NotificationBell({ portalSlug }: { portalSlug: string }) {
   const refreshCount = useCallback(async () => {
     try {
       const r = await api.unreadNotificationCount();
+      writeCache(COUNT_KEY, r.unreadCount);
       setUnread(r.unreadCount);
     } catch {
       /* a failed badge poll is not worth surfacing to the user */
@@ -49,7 +55,11 @@ export function NotificationBell({ portalSlug }: { portalSlug: string }) {
   }, []);
 
   useEffect(() => {
-    void refreshCount();
+    // A count fetched by the previous page moments ago is still the count:
+    // ask again only when it is older than COUNT_FRESH_MS. The poll is unchanged.
+    const hit = readCache<number>(COUNT_KEY);
+    if (hit) setUnread(hit.data);
+    if (!hit || Date.now() - hit.at > COUNT_FRESH_MS) void refreshCount();
     const t = setInterval(() => void refreshCount(), POLL_MS);
     return () => clearInterval(t);
   }, [refreshCount]);

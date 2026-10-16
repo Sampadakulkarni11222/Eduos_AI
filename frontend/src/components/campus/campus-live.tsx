@@ -7,6 +7,7 @@ import { useAuth } from '@/lib/auth';
 import { usePortalHref, usePortalPage } from '@/lib/school-path';
 import type { CampusLiveDetailDto, CampusLiveNowDto, CampusLivePeriodDto, CampusLiveSectionDto, CampusMyViewDto } from '@/lib/ops-types';
 import { DataNote, ErrorNote, humanize } from '@/components/ops/kit';
+import { TeacherAbout } from './campus-moment';
 
 /**
  * Live details for the campus map, added alongside what the map already shows:
@@ -296,6 +297,7 @@ export function MyCampusPanel({ data, onGo, onChild, onDept }: {
               <>
                 <div className="cwmy-now"><span>Now</span><b>{data.now.subject}</b>{data.teacher ? <> with <b>{data.teacher.name}</b>{data.teacher.coveringFor ? <span className="ops-muted"> (covering for {data.teacher.coveringFor})</span> : null}</> : null}</div>
                 <PeriodProgress period={data.now} now={now} />
+                <TeacherAbout about={data.teacher?.about} compact />
               </>
             ) : <p className="ops-muted">No lesson right now.</p>}
             {data.classCounts && <div className="cwmy-line">Class strength <b>{data.classCounts.strength}</b> · {data.classCounts.marked ? <>present <b>{data.classCounts.present}</b></> : 'register not taken yet'}</div>}

@@ -3,7 +3,9 @@ export type RoleKey =
   | 'ADMIN' | 'PRINCIPAL' | 'TEACHER' | 'PARENT'
   | 'STUDENT' | 'FINANCE' | 'LIBRARIAN' | 'WARDEN'
   // Institution operations roles.
-  | 'HR' | 'MARKETING' | 'COMPLIANCE' | 'TRUSTEE' | 'ALUMNUS';
+  | 'HR' | 'MARKETING' | 'COMPLIANCE' | 'TRUSTEE' | 'ALUMNUS'
+  // Part 3: the school nurse (health room).
+  | 'NURSE';
 
 export interface ProfileSummary {
   id: string;

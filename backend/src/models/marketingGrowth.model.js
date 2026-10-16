@@ -53,6 +53,8 @@ const offlineCampaignSchema = new Schema(
       byName: { type: String, default: null },
       at: { type: Date, default: null },
       note: { type: String, default: null },
+      // Part 3: decided by the campaign's creator, under single-approver mode.
+      singleApprover: { type: Boolean, default: false },
     },
     scans: { type: Number, default: 0 }, // short link / QR opens (not people)
     lastScanAt: { type: Date, default: null },
@@ -111,6 +113,19 @@ const connectorSchema = new Schema(
     webhookVerifyTokenEnc: { type: String, default: null, select: false },
     lastImportAt: { type: Date, default: null },
     lastWebhookAt: { type: Date, default: null },
+    // Live sync through the provider API (modules/integrations/adsync.service.js): the last run, ok or not.
+    lastSync: {
+      at: { type: Date, default: null },
+      ok: { type: Boolean, default: null },
+      partial: { type: Boolean, default: false },
+      from: { type: String, default: null }, // YYYY-MM-DD
+      to: { type: String, default: null },
+      rows: { type: Number, default: 0 },
+      trigger: { type: String, default: null }, // MANUAL | SCHEDULED | ASSISTANT
+      message: { type: String, default: null },
+      problems: [{ scope: String, problem: String }],
+    },
+    lastSyncOkAt: { type: Date, default: null },
     history: [historyEntry],
   },
   { timestamps: true }
@@ -130,6 +145,9 @@ const adMetricSchema = new Schema(
     impressions: { type: Number, default: 0, min: 0 },
     clicks: { type: Number, default: 0, min: 0 },
     leads: { type: Number, default: 0, min: 0 }, // as the platform reports them; CRM enquiries are counted separately
+    conversions: { type: Number, default: 0, min: 0 }, // platform-reported conversions (live sync); leads are a subset on most platforms
+    source: { type: String, enum: ['CSV', 'API', null], default: null }, // how the row arrived: an imported export or the live API sync
+    externalCampaignId: { type: String, default: null }, // the platform's campaign id, when synced live
     simulated: { type: Boolean, default: false },
     importId: { type: Schema.Types.ObjectId, ref: 'AdImport', default: null },
   },

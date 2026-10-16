@@ -134,12 +134,33 @@ export function renewSession(): Promise<boolean> {
   return refresh();
 }
 
-export async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
+/**
+ * Identical GETs in flight at the same moment share one network request: the
+ * shell, the page and a widget asking for the same thing as a page mounts no
+ * longer fire it two or three times. Only plain GETs with no caller-supplied
+ * options are shared, and only while the request is pending; nothing is cached.
+ */
+const getsInFlight = new Map<string, Promise<unknown>>();
+
+export function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
+  const shareable = !retried && Object.keys(init).length === 0;
+  if (!shareable) return send<T>(path, init, retried);
+  const key = `${getActingSchool()?.slug ?? ''} ${path}`;
+  const pending = getsInFlight.get(key) as Promise<T> | undefined;
+  if (pending) return pending;
+  const p = send<T>(path, init, retried).finally(() => { getsInFlight.delete(key); });
+  getsInFlight.set(key, p);
+  return p;
+}
+
+async function send<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
   // A page that loads before the session has been renewed used to send its
   // first requests with no token, get 401 on each and send them all again.
   // When a session exists but no token is held yet, wait for the one shared
   // renewal first. Sign-in calls themselves never wait.
-  if (!accessToken && !retried && !path.startsWith('/auth/') && hasSession()) {
+  // `/auth/me` is a read like any other and waits too: sent without a token it
+  // came back 401 on every cold load and was sent a second time.
+  if (!accessToken && !retried && (!path.startsWith('/auth/') || path === '/auth/me') && hasSession()) {
     await refresh();
   }
   const res = await fetch(`${BACKEND_URL}/api/v1${path}`, {
@@ -151,7 +172,7 @@ export async function request<T>(path: string, init: RequestInit = {}, retried =
     },
   });
   if (res.status === 401 && !retried && (await refresh())) {
-    return request<T>(path, init, true);
+    return send<T>(path, init, true);
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -165,7 +186,8 @@ export async function request<T>(path: string, init: RequestInit = {}, retried =
   // mutation. Blunt on purpose: a needless refetch costs one request, whereas
   // a missed invalidation shows the user a stale record.
   const method = (init.method ?? 'GET').toUpperCase();
-  if (method !== 'GET') invalidateCache();
+  // A read already in flight may predate this change, so later reads must not join it.
+  if (method !== 'GET') { invalidateCache(); getsInFlight.clear(); }
   if (res.status === 204) return undefined as T;
   const json = await res.json();
   // Backend wraps all success responses in { success: true, message: string, data: T }

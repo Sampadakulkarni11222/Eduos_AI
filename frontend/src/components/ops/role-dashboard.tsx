@@ -5,6 +5,7 @@ import { dashboardApi, type DashKpi, type DashList, type DashListItem, type Role
 import { usePortalPage } from '@/lib/school-path';
 import { DashChart, Sparkline, fmtDash } from './dash-charts';
 import { Loadable, fmtDateTime, useLoad } from './kit';
+import { AskDashboard } from '@/components/genui/ask-dashboard';
 
 /**
  * The signed-in person's own dashboard, under the pulse board: a teacher's
@@ -120,6 +121,7 @@ export function RoleDashboard({ childId, onChildChange }: { childId?: string | n
             )}
             <button type="button" className="btn btn-soft btn-sm" onClick={() => void state.reload()} disabled={state.loading}>{state.loading ? 'Updating…' : '↻ Refresh'}</button>
           </div>
+          <AskDashboard surface="dashboard" childId={d.child?.id ?? null} />
           {d.kpis.length > 0 && <div className="rd-kpis" role="list" aria-label="Key figures">{d.kpis.map((k) => <Kpi key={k.key} k={k} />)}</div>}
           {d.charts.length > 0 && <div className="rd-charts">{d.charts.map((c) => <DashChart key={`${c.key}-${d.period.days}-${d.child?.id ?? ''}`} c={c} />)}</div>}
           {d.lists.length > 0 && <div className="rd-lists">{d.lists.map((l) => <ListCard key={l.key} l={l} />)}</div>}

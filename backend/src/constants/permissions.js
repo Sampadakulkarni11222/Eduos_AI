@@ -322,6 +322,12 @@ export const PERMISSION_CATALOG = [
   { key: 'portfolios.reflect', group: 'academics', description: 'Write your own reflections in your competency portfolio' },
   { key: 'scenarios.read', group: 'analytics', description: 'See saved what-if projections (enrolment, fees, staffing, transport, budget)' },
   { key: 'scenarios.manage', group: 'analytics', description: 'Create, edit and compare what-if projections' },
+  // ── Part 3: school health room (visits, medication, immunisation, screenings). Restricted: see RESTRICTED_BY_DEFAULT. ──
+  { key: 'health.read', group: 'sensitive', description: 'See health-room visits, medication plans and doses, immunisations and screenings (OWN: your own child only)' },
+  { key: 'health.manage', group: 'sensitive', description: 'School nurse: record health-room visits, medication plans and doses, first-aid stock, immunisations, screenings and care notes' },
+  { key: 'health.witness', group: 'sensitive', description: 'Countersign a controlled medicine dose as the second person' },
+  { key: 'health.carenotes.read', group: 'sensitive', description: 'See the short care notes parents agreed to share for the class you are class teacher of (e.g. a severe allergy)' },
+  { key: 'health.summary.read', group: 'analytics', description: 'Health-room figures as counts only (no names, no details)' },
 ];
 
 const grants = (pairs) => pairs.map(([key, scope]) => ({ key, scope }));
@@ -385,6 +391,12 @@ export const RESTRICTED_BY_DEFAULT = [
   // Whether a support plan was referred to safeguarding is itself sensitive.
   'supportplans.referral.view',
   'verification.decide',
+  // Health records belong to the school nurse and the child's own family. An administrator sees the
+  // counts (health.summary.read) and grants these deliberately, audited, if the school wants otherwise.
+  'health.read',
+  'health.manage',
+  'health.witness',
+  'health.carenotes.read',
 ];
 
 /** Keys every staff role holds for the shared operations surfaces. */
@@ -431,7 +443,9 @@ const ALL_EXCEPT = (...excluded) =>
  * catalogue: child-protection case files and individual salary and bank
  * details belong to the school, not to the platform operator.
  */
-export const PLATFORM_WITHHELD = ['safeguarding.manage', 'payroll.sensitive.read', 'camera.events.review'];
+export const PLATFORM_WITHHELD = ['safeguarding.manage', 'payroll.sensitive.read', 'camera.events.review',
+  // A child's health record belongs to the school and the family, not to the platform operator.
+  'health.read', 'health.manage', 'health.witness', 'health.carenotes.read'];
 
 export const SYSTEM_ROLES = [
   {
@@ -461,6 +475,8 @@ export const SYSTEM_ROLES = [
       ['portfolios.manage', 'ALL'],
       ['scenarios.read', 'ALL'],
       ['scenarios.manage', 'ALL'],
+      // Part 3: health-room figures, counts only.
+      ['health.summary.read', 'ALL'],
       // School platform completion.
       ['analytics.workspace.read', 'ALL'],
       ['analytics.export', 'ALL'],
@@ -616,6 +632,8 @@ export const SYSTEM_ROLES = [
       // Read-only — allergy/emergency-contact visibility for a teacher's own
       // students; medical.manage stays parent/admin-only.
       ['medical.read', 'OWN'],
+      // Part 3: the short care notes parents agreed to share, for their own class only.
+      ['health.carenotes.read', 'OWN'],
       ['timetable.read', 'OWN'],
       ['announcements.read', 'ALL'],
       ['announcements.publish', 'OWN'],
@@ -670,6 +688,8 @@ export const SYSTEM_ROLES = [
       ['tickets.create', 'OWN'],
       ['medical.read', 'OWN'],
       ['medical.manage', 'OWN'],
+      // Part 3: their own child's health-room visits and medication log; consent to plans and care notes.
+      ['health.read', 'OWN'],
       ['ai.copilot.use', 'OWN'],
       ['analytics.child.read', 'OWN'],
     ], FAMILY_COMMUNITY),
@@ -829,6 +849,31 @@ export const SYSTEM_ROLES = [
       ['ai.copilot.use', 'ALL'],
       ['academics.read', 'ALL'],
     ], STAFF_OPERATIONS),
+  },
+  // ── Part 3: school nurse ───────────────────────────────────────────────
+  // No existing role fits: the warden's medical.read is for hostel residents and
+  // carries hostel management with it. Minimum grants: the health room itself,
+  // the existing medical record (allergies, emergency contact) to read, the
+  // student list to find a child, and the shared staff surfaces.
+  {
+    key: 'NURSE',
+    name: 'School Nurse',
+    description: 'Health room: visits, medication, first-aid stock, immunisations and screenings',
+    grants: merge(STAFF_OPERATIONS, [
+      ['health.read', 'ALL'],
+      ['health.manage', 'ALL'],
+      ['health.witness', 'ALL'],
+      ['health.summary.read', 'ALL'],
+      ['medical.read', 'ALL'],
+      ['students.read', 'ALL'],
+      ['academics.read', 'ALL'],
+      ['tasks.read', 'OWN'],
+      ['tasks.manage', 'OWN'],
+      ['staffleave.apply', 'OWN'],
+      ['announcements.read', 'ALL'],
+      ['calendar.read', 'ALL'],
+      ['ai.copilot.use', 'ALL'],
+    ]),
   },
   // ── Institution operations roles ───────────────────────────────────────
   {

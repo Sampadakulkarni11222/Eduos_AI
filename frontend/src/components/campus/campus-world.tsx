@@ -11,9 +11,11 @@ import { getActiveSchool } from '@/lib/school';
 import type { CampusDepartmentDto, CampusMapDto, CampusNodeDto, FacilityDetailDto, ModuleNowDto } from '@/lib/ops-types';
 import { BookRoomModal, ReportIssueModal } from '@/components/ops/operations-views';
 import { DataNote, ErrorNote, fmtDate, fmtDateTime, humanize, useLoad } from '@/components/ops/kit';
-import { STATE_COLORS, stateOf, type CampusScene, type Level } from './campus-scene';
+import type { CampusScene, Level } from './campus-scene';
+import { STATE_COLORS, stateOf } from './campus-state';
 import { CampusLayersPanel, DepartmentTasks, RoomLayerFacts, availableLayers } from './campus-layers';
 import { CollapsePanel, FoldButton, LiveNowBlock, MyCampusPanel, SeeDetailsLink, usePanelState, usePoll } from './campus-live';
+import { MomentBanner } from './campus-moment';
 
 /** The panels over the 3D view that fold into chips (remembered per user). */
 const PANEL_IDS = ['mine', 'kpis', 'depts', 'ops', 'room', 'dept', 'tracker', 'table'];
@@ -37,8 +39,10 @@ const PACE_LABEL: Record<string, string> = { UPCOMING: 'Upcoming', ON_TRACK: 'On
 const paceTone = (pace: string) => (pace === 'OVERDUE' ? 'bad' : pace === 'BEHIND' ? 'warn' : 'good');
 const DEPT_ICON: Record<string, string> = { LEADERSHIP: '★', ACADEMICS: '✎', ADMINISTRATION: '▣', FINANCE: '₹', ADMISSIONS: '✦', HR: '☺', COMPLIANCE: '⚖', LIBRARY: '▤', TRANSPORT: '⛟', HOSTEL: '⌂', HEALTH: '✚', EVENTS: '⚑', CANTEEN: '☕' };
 /** The school day on the time slider, in minutes from midnight. */
-const DAY_START = 7 * 60;
-const DAY_END = 18 * 60;
+const DAY_START = 6 * 60;
+const DAY_END = 20 * 60;
+/** Today in the school's time zone, as YYYY-MM-DD. */
+const schoolToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const hm = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 const toMinutes = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + (m || 0); };
 
@@ -131,7 +135,9 @@ export function CampusWorldView() {
   const portal = stripSchool(pathname, useSchoolSegment()).split('/')[1] ?? '';
   // A time of today to look at instead of now (staff only; the server ignores it for families).
   const [at, setAt] = useState<string | null>(null);
-  const map = useLoad(() => opsApi.campusMap(undefined, at), [at]);
+  // Another date of the school year (staff): the calendar, shifts and timetable of that day.
+  const [date, setDate] = useState<string | null>(null);
+  const map = useLoad(() => opsApi.campusMap(undefined, at, date), [at, date]);
   // Operational layers (labs, transport, cover, tasks, gate…): only what the reader may see; refreshed with the map.
   const ops = useLoad(() => opsApi.campusLayers(), []);
   const reloadOps = ops.reload;
@@ -207,7 +213,7 @@ export function CampusWorldView() {
       const s = out.get(b.id) ?? { lessons: 0, exams: 0, present: 0, counted: false };
       if (n.lesson) s.lessons += 1;
       if (n.now?.[0]?.type === 'EXAM') s.exams += 1;
-      if (n.live && !n.live.away && n.live.present !== null) { s.present += n.live.present; s.counted = true; }
+      if (n.live && !n.live.away && n.live.present !== null && n.live.inSession !== false) { s.present += n.live.present; s.counted = true; }
       out.set(b.id, s);
     }
     return out;
@@ -245,6 +251,7 @@ export function CampusWorldView() {
         onHover: (id) => setHovered(id),
       });
       scene.setData(map.data!.facilities);
+      scene.setMoment(map.data!.moment ?? null);
       sceneRef.current = scene;
     })();
     return () => { disposed = true; scene?.dispose(); sceneRef.current = null; };
@@ -263,7 +270,12 @@ export function CampusWorldView() {
     const t = window.setInterval(() => { void map.reload(); }, 30_000);
     return () => window.clearInterval(t);
   }, [map, playing]);
-  useEffect(() => { if (map.data && sceneRef.current) sceneRef.current.setData(map.data.facilities); }, [map.data]);
+  useEffect(() => {
+    if (!map.data || !sceneRef.current) return;
+    sceneRef.current.setData(map.data.facilities);
+    // Who is where at the moment shown: rooms, ground, canteen, gate, buses; empty when the school is closed.
+    sceneRef.current.setMoment(map.data.moment ?? null);
+  }, [map.data]);
 
   // "Play the day": step the time forward a quarter of an hour at a time.
   useEffect(() => {
@@ -360,6 +372,7 @@ export function CampusWorldView() {
   const myPanel = <MyCampusPanel data={my.data} onGo={(id) => { setView('3d'); flyTo(id); }} onChild={(id) => setChildId(id)} onDept={(code) => { const x = departments.find((dd) => dd.code === code); if (x && dept !== code) pickDept(x); }} />;
   const listView = (
     <div className="ops-stack">
+      <MomentBanner moment={map.data?.moment} />
       {myPanel}
       <CampusLayersPanel data={ops.data} onGo={(id) => setSelected(id)} />
       {buildings.map((b) => (
@@ -455,7 +468,7 @@ export function CampusWorldView() {
               ? [sum?.exams ? `${sum.exams} exam${sum.exams === 1 ? '' : 's'}` : null, sum?.lessons ? `${sum.lessons} class${sum.lessons === 1 ? '' : 'es'}` : null, sum?.counted ? `${sum.present} present` : null].filter(Boolean).join(' · ') || null
               : n.lesson ? `${n.lesson.subject}${n.live && n.live.present !== null ? ` · ${n.live.present}/${n.live.enrolled}` : ''}`
                 : n.now?.[0] ? n.now[0].label
-                  : n.live && !n.live.away && n.live.present !== null ? `${n.live.present}/${n.live.enrolled}` : null;
+                  : n.live && !n.live.away && n.live.present !== null && n.live.inSession !== false ? `${n.live.present}/${n.live.enrolled}` : null;
             return (
               <div key={l.id} className={`cw-label${l.id === selected ? ' is-selected' : ''}${l.id === hovered ? ' is-hover' : ''}${st === 'EXAM' ? ' is-exam' : ''}`} style={{ left: l.x, top: l.y }} aria-hidden="true">
                 {n.kind !== 'BUILDING' && <i className="cw-label-dot" style={{ background: STATE_COLORS[st] }} />}
@@ -486,9 +499,10 @@ export function CampusWorldView() {
                 <span><b>{siteName}</b><span className="cw-site-sub">{k.rooms ? `${Math.round((Number(k.roomsInUse) / Number(k.rooms)) * 100)}% in use · ${k.roomsInUse}/${k.rooms} rooms` : 'No rooms recorded'}</span></span>
               </div>
               {d.preview
-                ? <button type="button" className="cw-live is-preview" onClick={() => { setPlaying(false); setAt(null); }} title="You are looking at another time of today. Click to return to now.">◷ Preview {nowHm} · back to now</button>
+                ? <button type="button" className="cw-live is-preview" onClick={() => { setPlaying(false); setAt(null); setDate(null); }} title="You are looking at another time. Click to return to now.">◷ Preview {date && date !== schoolToday() ? `${date} ` : ''}{nowHm} · back to now</button>
                 : <span className="cw-live" title={`As of ${fmtDateTime(d.asOf)}; refreshes every 30 seconds`}><i aria-hidden="true" />Live {nowHm}</span>}
             </div>
+            <MomentBanner moment={d.moment} />
 
             <div className="cw-mid">
               <div className="cw-left" hidden={!hud}>
@@ -702,9 +716,10 @@ export function CampusWorldView() {
                 {staffView && (
                   <div className="cw-time" role="group" aria-label="Time of day">
                     <button type="button" className="cw-play" onClick={() => { if (!playing && (!at || toMinutes(at) >= DAY_END)) setAt(hm(DAY_START)); setPlaying(!playing); }} aria-pressed={playing}>{playing ? '❚❚ Pause' : '▶ Play the day'}</button>
-                    <input type="range" min={DAY_START} max={DAY_END} step={15} value={Math.min(DAY_END, Math.max(DAY_START, toMinutes(nowHm)))} onChange={(e) => { setPlaying(false); setAt(hm(Number(e.target.value))); }} aria-label="Look at another time of today" aria-valuetext={nowHm} />
+                    <input type="range" min={DAY_START} max={DAY_END} step={15} value={Math.min(DAY_END, Math.max(DAY_START, toMinutes(nowHm)))} onChange={(e) => { setPlaying(false); setAt(hm(Number(e.target.value))); }} aria-label="Look at another time of the day" aria-valuetext={nowHm} />
                     <b>{nowHm}</b>
-                    {at && <button type="button" className="cw-now" onClick={() => { setPlaying(false); setAt(null); }}>Now</button>}
+                    <input type="date" className="cw-date" aria-label="Look at another date" value={date ?? schoolToday()} onChange={(e) => { setPlaying(false); setDate(e.target.value || null); if (!at) setAt(nowHm); }} />
+                    {(at || date) && <button type="button" className="cw-now" onClick={() => { setPlaying(false); setAt(null); setDate(null); }}>Now</button>}
                   </div>
                 )}
                 <div className="cw-legend" aria-label="Legend">{legend.map(([key, label]) => <span key={key}><i style={{ background: STATE_COLORS[key] }} />{label}</span>)}</div>
@@ -751,7 +766,7 @@ export function CampusWorldView() {
           </div>
         </div>
       )}
-      <DataNote>{String(k.definition ?? '')} Headcounts come from today&apos;s attendance register and show &quot;not taken&quot; until a teacher marks it; the figures drawn in a room follow that count but are illustrative, and no one is located or tracked. Restricted spaces are hidden or masked for your role before anything reaches this page.</DataNote>
+      <DataNote>{String(k.definition ?? '')} Headcounts come from today&apos;s attendance register and show &quot;not taken&quot; until a teacher marks it; the figures drawn follow the day plan for the time shown (calendar, shifts and bells, timetable): classes in their rooms, lunch in the canteen, games and assembly on the ground, nobody on a holiday or after hours. They are illustrative, and no one is located or tracked. Restricted spaces are hidden or masked for your role before anything reaches this page.</DataNote>
       {modal === 'book' && sel && <BookRoomModal facilityId={sel.id} onClose={() => setModal(null)} onDone={() => void map.reload()} />}
       {modal === 'issue' && sel && <ReportIssueModal facilityId={sel.id} onClose={() => setModal(null)} onDone={() => void map.reload()} />}
     </div>

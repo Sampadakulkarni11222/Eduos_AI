@@ -19,6 +19,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        {/* The body face, Latin subset: fetched alongside the stylesheet rather than after it. */}
+        <link rel="preload" href="/fonts/hankengrotesk-ieVn2YZDLWuGJpnzaiwFXS9tYtpd59A.woff2" as="font" type="font/woff2" crossOrigin="" />
+      </head>
       <body className="bg-chalk font-body text-ink antialiased">
         <NextAuthProvider>
           <AuthProvider>

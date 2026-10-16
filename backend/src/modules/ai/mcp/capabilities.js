@@ -94,6 +94,8 @@ const ENTITY_OF_MODULE = {
   // Older-module gaps (tools/platformGaps.js).
   Certificates: 'certificate',
   Quizzes: 'quiz',
+  // Teachers' professional profiles (tools/p3Campus.js).
+  'Staff profiles': 'staffProfile',
 };
 
 /**
@@ -466,6 +468,8 @@ export const ENTITY_VOCABULARY = [
   ['sustainability', /\beco\b|\beco[\s-]?points?\b|\bsustainab\w*|\bwaste\b|\bmeter\s+readings?\b|\bplant\s+checks?\b|\bcompost\w*/i],
   ['certificate', /\bcertificates?\b|\bbonafide\b|\bcertificate\s+requests?\b/i],
   ['quiz', /\bquiz(?:zes)?\b/i],
+  // Teachers' professional profiles (tools/p3Campus.js).
+  ['staffProfile', /\bqualifications?\b|\bcertifications?\b|\bctet\b|\bteach(?:er|ing)\s+experience\b|\bteacher'?s?\s+(?:profile|bio)\b/i],
   ['aiDraft', /\bai\s+drafts?\b|\bdraft(?:s|ing)?\s+(?:me\s+)?(?:a\s+|an\s+|the\s+)?(?:letter|circular|minutes|lesson\s+plan|documents?)\b/i],
 ];
 

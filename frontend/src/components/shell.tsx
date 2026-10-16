@@ -426,6 +426,12 @@ function Sidebar({
                   <Link
                     key={it.href}
                     href={href}
+                    // Every portal page sits under the dynamic [school] segment,
+                    // so the default prefetch stops at the loading boundary and a
+                    // click still waits for the server. The pages are client
+                    // components with no server data, so prefetching them whole is
+                    // cheap and makes the switch immediate.
+                    prefetch
                     className={cx('nav-item', isActive && 'active')}
                     aria-current={isActive ? 'page' : undefined}
                     onClick={() => setMobileOpen(false)}

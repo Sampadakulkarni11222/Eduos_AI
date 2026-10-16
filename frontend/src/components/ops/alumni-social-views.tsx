@@ -7,6 +7,8 @@ import {
   alumniApi, digestApi, socialApi, LINK_HINTS, LINK_LABELS, NETWORKS, NETWORK_LABELS,
   type AlumniEvent, type AlumniPost, type AlumnusMe, type DirectoryEntry, type DigestSourceDto, type LinkKey, type Links, type Network, type OutboxRow, type SocialPostDto, type StudentLinks,
 } from '@/lib/alumni-social-api';
+import { IntegrationsPanel } from './integrations-panel';
+import { integrationsApi } from '@/lib/integrations-api';
 import { DataNote, ErrorNote, KeyValues, Loadable, PromptModal, SectionCard, StatusPill, Tabs, Tile, fmtDate, fmtDateTime, humanize, useAction, useLoad } from './kit';
 
 /**
@@ -366,7 +368,7 @@ export function ProfileLinksView() {
 
 // ── Social publishing ────────────────────────────────────────────────
 
-const outboxTone = (r: OutboxRow) => (r.status === 'SIMULATED' ? 'SIMULATED' : r.status === 'SENT' ? 'DONE' : r.status === 'FAILED' ? 'FAILED' : r.status === 'SENDING' ? 'IN_PROGRESS' : 'PENDING');
+const outboxTone = (r: OutboxRow) => (r.status === 'SIMULATED' ? 'SIMULATED' : r.status === 'NOT_SUPPORTED' ? 'CANCELLED' : r.status === 'SENT' ? 'DONE' : r.status === 'FAILED' ? 'FAILED' : r.status === 'SENDING' ? 'IN_PROGRESS' : 'PENDING');
 
 function Composer({ onSaved }: { onSaved: () => void }) {
   const stories = useLoad(() => socialApi.stories(), []);
@@ -409,11 +411,14 @@ function OutboxCard({ p, onChanged }: { p: SocialPostDto; onChanged: (p: SocialP
         <div className="ops-row-title">{p.text.length > 120 ? `${p.text.slice(0, 119)}…` : p.text}</div>
         <div className="ops-row-sub">{p.createdByName ?? '—'} · {fmtDateTime(p.createdAt)}{p.studentIds.length ? ` · ${p.studentIds.length} child(ren) tagged` : ' · no identifiable child'}{p.blockedReason ? ` · ${p.blockedReason}` : ''}</div>
         <ul className="soc-outbox" aria-label="Outbox">{p.outbox.map((r) => (
-          <li key={r.network}><b>{r.label}</b> <StatusPill status={outboxTone(r)} label={r.display} />{r.statusReason && r.status !== 'SIMULATED' ? <span className="ops-muted"> {r.statusReason}</span> : null}</li>
+          <li key={r.network}><b>{r.label}</b> <StatusPill status={outboxTone(r)} label={r.display} />{r.statusReason && r.status !== 'SIMULATED' ? <span className="ops-muted"> {r.statusReason}</span> : null}
+            {r.permalink && /^https:\/\//.test(r.permalink) ? <> <a href={r.permalink} target="_blank" rel="noopener noreferrer">View post</a></> : null}
+            {r.engagement ? <span className="ops-muted"> · {r.engagement.likes ?? 0} likes, {r.engagement.comments ?? 0} comments{r.engagement.shares !== null ? `, ${r.engagement.shares} shares` : ''} ({fmtDateTime(r.engagement.at)})</span> : null}</li>
         ))}</ul>
         <ErrorNote error={error} />
       </div>
       {pending && <Button small disabled={busy} onClick={() => void run(async () => onChanged(await socialApi.publish(p.id)))}>{p.outbox.some((r) => r.status === 'FAILED') ? 'Retry failed' : 'Publish'}</Button>}
+      {p.outbox.some((r) => r.status === 'SENT' && r.providerPostId) && <Button small variant="ghost" disabled={busy} onClick={() => void run(async () => { await integrationsApi.engagement(p.id); onChanged(await socialApi.one(p.id)); })}>Refresh engagement</Button>}
     </li>
   );
 }
@@ -459,7 +464,7 @@ export function SocialPublishingView() {
   if (isOff(posts.error)) return <EmptyState icon="⏻" title="Social publishing is switched off" sub="An administrator can switch it on in Settings → Features. Nothing is posted until each network is connected with provider credentials." />;
   return (
     <div className="ops-stack">
-      <DataNote>No network is connected with provider credentials, so every send is recorded as “Simulated — not posted”. Parents and students cannot publish here.</DataNote>
+      <DataNote>A network not connected through its official API (Accounts tab) is recorded as “Simulated — not posted”. Parents and students cannot publish here.</DataNote>
       <Tabs tabs={[...(canPublish ? [{ key: 'outbox' as const, label: 'Compose and outbox' }] : []), { key: 'accounts' as const, label: 'Accounts' }]} value={tab} onChange={setTab} />
       {tab === 'outbox' && canPublish && <>
         <Composer onSaved={() => void posts.reload()} />
@@ -467,6 +472,7 @@ export function SocialPublishingView() {
           <Loadable state={posts}>{(rows) => !rows.length ? <p className="ops-muted">Nothing in the outbox.</p> : <ul className="ops-list">{rows.map((p) => <OutboxCard key={p.id} p={p} onChanged={(out) => posts.setData(rows.map((x) => (x.id === out.id ? out : x)))} />)}</ul>}</Loadable>
         </SectionCard>
       </>}
+      {tab === 'accounts' && <IntegrationsPanel purpose="social" />}
       {tab === 'accounts' && <Accounts canConnect={canConnect} />}
     </div>
   );

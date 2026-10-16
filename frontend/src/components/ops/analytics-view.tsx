@@ -2,12 +2,13 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, EmptyState, Field, Modal, Select, useToast } from '@/components/ui';
-import { analyticsApi, type MetricDto, type OverviewDto, type OverviewQuery, type ReportDto, type ReportMetric, type ReportSummaryDto, type TrendDto } from '@/lib/analytics-api';
+import { analyticsApi, savedViewsApi, type SavedViewDto, type MetricDto, type OverviewDto, type OverviewQuery, type ReportDto, type ReportMetric, type ReportSummaryDto, type TrendDto } from '@/lib/analytics-api';
 import { usePermissions } from '@/lib/permissions';
 import { useMaybeAuth } from '@/lib/auth';
 import type { DashChartDto, DashUnit } from '@/lib/dashboard-api';
 import { DashChart, Sparkline } from './dash-charts';
 import { usePortalPage } from '@/lib/school-path';
+import { AskDashboard } from '@/components/genui/ask-dashboard';
 import { DataNote, ErrorNote, Loadable, SectionCard, StatusPill, Tabs, fmtDate, fmtDateTime, humanize, isoDay, money, useAction, useLoad, useQueryParam } from './kit';
 
 /**
@@ -205,29 +206,56 @@ function MetricPicker({ options, onPick }: { options: Array<{ key: string; label
   );
 }
 
-// ── saved views (per person, in this browser) ──────────────────────────
+// ── saved views (per person, on the server: they follow you across devices) ──
 
-interface SavedView { name: string; q: OverviewQuery; tab: string; focus: string | null }
+interface SavedView { id?: string; name: string; q: OverviewQuery; tab: string; focus: string | null }
+/** Where views were kept before they moved to the server; read once, imported, then cleared. */
 const viewsKey = (who: string) => `eduos.analytics.views:${who}`;
-function readViews(who: string): SavedView[] {
+function readLocalViews(who: string): SavedView[] {
   try { const v = JSON.parse(window.localStorage.getItem(viewsKey(who)) ?? '[]'); return Array.isArray(v) ? v.slice(0, 20) : []; } catch { return []; }
 }
-function writeViews(who: string, list: SavedView[]) {
-  try { window.localStorage.setItem(viewsKey(who), JSON.stringify(list.slice(0, 20))); } catch { /* storage unavailable: the view simply is not kept */ }
+function clearLocalViews(who: string) {
+  try { window.localStorage.removeItem(viewsKey(who)); } catch { /* storage unavailable: nothing to clear */ }
 }
+const fromServer = (v: SavedViewDto, fallback: OverviewQuery): SavedView => ({
+  id: v.id, name: v.name, tab: v.tab ?? 'ALL', focus: v.focus ?? null,
+  q: { ...fallback, ...Object.fromEntries(Object.entries(v.filters ?? {}).filter(([, x]) => x !== null && x !== undefined)) } as OverviewQuery,
+});
 
 function SavedViews({ who, current, onApply }: { who: string; current: Omit<SavedView, 'name'>; onApply: (v: SavedView) => void }) {
   const [views, setViews] = useState<SavedView[]>([]);
   const [naming, setNaming] = useState(false);
   const [name, setName] = useState('');
-  useEffect(() => { setViews(readViews(who)); }, [who]);
-  const save = () => {
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        // One-time import: views this browser kept before they moved to the server.
+        const local = readLocalViews(who);
+        let list = (await savedViewsApi.list()).items;
+        if (local.length) {
+          list = (await savedViewsApi.importViews(local.map((v) => ({ name: v.name, filters: v.q, tab: v.tab, focus: v.focus })))).items;
+          clearLocalViews(who);
+        }
+        if (live) setViews(list.map((v) => fromServer(v, current.q)));
+      } catch (e) { if (live) setErr(e instanceof Error ? e.message : 'Saved views could not be loaded.'); }
+    })();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load once per person
+  }, [who]);
+  const save = async () => {
     const n = name.trim().slice(0, 60);
     if (!n) return;
-    const next = [{ name: n, ...current }, ...views.filter((v) => v.name !== n)];
-    setViews(next); writeViews(who, next); setNaming(false); setName('');
+    try {
+      const saved = await savedViewsApi.save({ name: n, filters: current.q, tab: current.tab, focus: current.focus, metricKeys: current.focus ? [current.focus] : [] });
+      setViews([fromServer(saved, current.q), ...views.filter((v) => v.name !== n)]);
+      setNaming(false); setName(''); setErr(null);
+    } catch (e) { setErr(e instanceof Error ? e.message : 'The view could not be saved.'); }
   };
-  const remove = (n: string) => { const next = views.filter((v) => v.name !== n); setViews(next); writeViews(who, next); };
+  const remove = async (v: SavedView) => {
+    try { if (v.id) await savedViewsApi.remove(v.id); setViews(views.filter((x) => x.name !== v.name)); } catch (e) { setErr(e instanceof Error ? e.message : 'The view could not be forgotten.'); }
+  };
   return (
     <div className="an-views" role="group" aria-label="Saved views">
       {views.length > 0 && (
@@ -235,19 +263,20 @@ function SavedViews({ who, current, onApply }: { who: string; current: Omit<Save
           {views.map((v) => (
             <li key={v.name} className="an-view-chip">
               <button type="button" className="an-view-apply" onClick={() => onApply(v)}>{v.name}</button>
-              <button type="button" className="an-view-x" aria-label={`Forget the view ${v.name}`} onClick={() => remove(v.name)}>×</button>
+              <button type="button" className="an-view-x" aria-label={`Forget the view ${v.name}`} onClick={() => void remove(v)}>×</button>
             </li>
           ))}
         </ul>
       )}
       {naming ? (
-        <form className="an-view-form" onSubmit={(e) => { e.preventDefault(); save(); }}>
+        <form className="an-view-form" onSubmit={(e) => { e.preventDefault(); void save(); }}>
           <label className="sr-only" htmlFor="an-view-name">Name for this view</label>
           <input id="an-view-name" className="input" value={name} maxLength={60} placeholder="Name this view" onChange={(e) => setName(e.target.value)} />
           <Button small type="submit" disabled={!name.trim()}>Save</Button>
           <Button small type="button" variant="ghost" onClick={() => setNaming(false)}>Cancel</Button>
         </form>
       ) : <Button small variant="soft" onClick={() => setNaming(true)}>☆ Save this view</Button>}
+      {err && <span className="ops-error" role="alert">⚠ {err}</span>}
     </div>
   );
 }
@@ -330,6 +359,7 @@ export function AnalyticsView() {
         {pickerOptions.length > 0 && <MetricPicker options={pickerOptions} onPick={(o) => { setTabRaw(o.department); setFocus(o.key); }} />}
       </div>
       <SavedViews who={who} current={{ q, tab, focus }} onApply={(v) => { setQ(v.q); setTabRaw(v.tab); setFocus(v.focus); }} />
+      <AskDashboard surface="analytics" />
 
       {tabs.length > 1 && <Tabs tabs={tabs} value={tab} onChange={setTab} />}
 

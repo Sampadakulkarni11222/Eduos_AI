@@ -8,7 +8,7 @@ import { financeGuide } from './finance';
 import { librarianGuide } from './librarian';
 import { wardenGuide } from './warden';
 import { superAdminGuide } from './super-admin';
-import { hrGuide, marketingGuide, complianceGuide, trusteeGuide, alumnusGuide } from './departments';
+import { hrGuide, marketingGuide, complianceGuide, trusteeGuide, alumnusGuide, nurseGuide } from './departments';
 
 /** One guide per portal, keyed by the portal slug used in lib/portals.ts. */
 export const GUIDES: Record<string, RoleGuide> = {
@@ -26,4 +26,5 @@ export const GUIDES: Record<string, RoleGuide> = {
   compliance: complianceGuide,
   trustee: trusteeGuide,
   alumnus: alumnusGuide,
+  nurse: nurseGuide,
 };

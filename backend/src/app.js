@@ -62,7 +62,16 @@ function apiCompressionMiddleware(req, res, next) {
         return res.end(buffer, encoding, callback);
       }
 
-      zlib.brotliCompress(buffer, (err, compressed) => {
+      // Quality 5, not the library default of 11: 11 spent ~250 ms of CPU on
+      // a 50 KB JSON body (a fifth of a page switch) to save a few hundred
+      // bytes over quality 5, which takes ~2 ms. API bodies are compressed per
+      // request, so the cheap setting is the right one here.
+      zlib.brotliCompress(buffer, {
+        params: {
+          [zlib.constants.BROTLI_PARAM_QUALITY]: 5,
+          [zlib.constants.BROTLI_PARAM_SIZE_HINT]: buffer.length,
+        },
+      }, (err, compressed) => {
         res.write = originalWrite;
         res.end = originalEnd;
         if (err) {

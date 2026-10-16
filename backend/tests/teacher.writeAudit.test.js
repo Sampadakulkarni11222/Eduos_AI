@@ -159,7 +159,7 @@ describe('1. every Teacher write the Web offers is exposed, and nothing else', (
     'cancel_online_class', 'cancel_staff_leave', 'complete_due_item', 'create_announcement', 'create_assignment',
     'create_course_material', 'create_due_item', 'create_purchase_request', 'delete_assignment', 'delete_document',
     'draft_lab_reorder', 'enter_marks', 'grade_submission', 'issue_lab_stock', 'log_eco_activity', 'log_plant_check',
-    'log_review_call_attempt', 'log_syllabus_progress', 'mark_attendance', 'mark_club_attendance', 'open_review_call',
+    'log_review_call_attempt', 'log_syllabus_progress', 'mark_attendance', 'mark_club_attendance', 'open_review_call', 'pin_dashboard_panel', 'unpin_dashboard_panel',
     'plan_practical_session', 'receive_lab_stock', 'record_lab_calibration', 'record_lab_stock_use', 'record_trip_boarding',
     'reply_to_ticket', 'report_lab_incident', 'report_repair', 'request_facility_reservation', 'save_term_report_remarks',
     'schedule_online_class', 'send_conversation_message', 'snooze_due_item', 'update_assignment', 'update_course_material',
@@ -168,14 +168,14 @@ describe('1. every Teacher write the Web offers is exposed, and nothing else', (
   // Publishing marks and deciding leave, registrations and student requests
   // are decisions the teacher makes on their screens (mcp/decisions.js).
 
-  it('17 CREATE, 8 UPDATE, 3 DELETE, 16 ACTION -- 44 writes, and no decision', () => {
+  it('18 CREATE, 8 UPDATE, 4 DELETE, 16 ACTION -- 46 writes, and no decision', () => {
     const offered = mcpToolsFor(actorForRole('TEACHER')).map((t) => t.name);
     const index = Object.fromEntries(capabilityIndex().map((c) => [c.name, c]));
     const writes = offered.filter((name) => index[name].operation !== 'GET').sort();
     expect(writes).toEqual([...WRITES].sort());
     const by = (op) => writes.filter((name) => index[name].operation === op).length;
-    expect([by('CREATE'), by('UPDATE'), by('DELETE'), by('ACTION')]).toEqual([17, 8, 3, 16]);
-    expect(offered).toHaveLength(127);
+    expect([by('CREATE'), by('UPDATE'), by('DELETE'), by('ACTION')]).toEqual([18, 8, 4, 16]);
+    expect(offered).toHaveLength(134);
     expect(offered).toContain('get_pending_items_for_me');
     // No decision: nothing named approve_/reject_/decide_/review_/publish_/refund_.
     for (const name of offered) expect(isDecidingToolName(name), name).toBe(false);

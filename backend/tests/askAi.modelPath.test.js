@@ -219,10 +219,13 @@ describe('the deterministic guards run BEFORE the model, so it is never asked', 
     expect(turn.calls).toEqual([]);
   });
 
-  it('a leave application from staff is explained without consulting the model', async () => {
+  it('a leave application from staff is drafted as their own staff leave without consulting the model', async () => {
+    // Changed deliberately in part 3: a member of staff (staffleave.apply) asking to apply for leave
+    // means their OWN staff leave, so it reaches apply_staff_leave as a draft (or a question for the
+    // day, kind and reason) instead of the old "isn't enabled for your account" refusal.
     const turn = await as('TEACHER').say('Apply for leave tomorrow because of fever');
-    expect(turn.refused).toBe('NOT_PERMITTED');
-    expect(turn.reply).toMatch(/staff leave is not handled here/);
+    expect(turn.refused).toBeNull();
+    expect(turn.action?.tool).toBe('apply_staff_leave');
     expect(script.routing).toEqual([]);
   });
 });

@@ -113,6 +113,22 @@ const UNCOVERED = {
     why: 'list_payroll_runs reports school-wide run totals, so it needs school-wide scope. A holder at OWN scope may see only their own payslips, and individual pay is deliberately kept out of chat: it is read on My Payslips.',
   },
 
+  /* ── D. part 3 health room: restricted, kept to the Health page ── */
+  // The assistant reads only what the nurse or a parent for their own child may
+  // (tools/p3Health.js: health.read, health.manage). These three stay on the page.
+  'health.witness': {
+    category: 'D',
+    why: 'Countersigning a controlled medicine is the second person checking at the cabinet; it is done on the Health page by that person, never proposed through chat.',
+  },
+  'health.carenotes.read': {
+    category: 'D',
+    why: 'Care notes a parent agreed to share with the class teacher are health data; they are read on the Health page (audited), and kept out of chat transcripts altogether.',
+  },
+  'health.summary.read': {
+    category: 'D',
+    why: 'Health-room counts for the principal are shown on the Health page; health data, even as counts, is not offered through the assistant beyond what the health role reads.',
+  },
+
   /* ── A. reachable under another permission key ─────────── */
   'fees.plan.review': {
     category: 'A',
@@ -535,7 +551,8 @@ describe('role-specific figures are reachable by the role they describe', () => 
     // The institution-operations roles have no dashboard view of their own:
     // their figures are their role home, which get_my_day reads and which
     // gates on institution.read, a key every one of them holds.
-    const HOME_INSTEAD = ['HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'ALUMNUS'];
+    // NURSE (part 3) is one of them too: its work is the Health page.
+    const HOME_INSTEAD = ['HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'ALUMNUS', 'NURSE'];
     for (const role of HOME_INSTEAD) {
       const actor = actorFor(role);
       expect(mcpToolsFor(actor).some((t) => t.name === 'get_my_day'), `${role} cannot see get_my_day`).toBe(true);

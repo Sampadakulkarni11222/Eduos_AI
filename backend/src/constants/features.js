@@ -40,6 +40,10 @@ export const FEATURES = {
   portfolios: { label: 'Competency portfolios', default: true },
   offlineWorkflows: { label: 'Offline attendance, lab, gate, sanitation and PTM check-in', default: true },
   scenarios: { label: 'Scenario planning (what-if projections)', default: true },
+  // Part 3 integrations: scheduled pull of daily ad metrics from connected ad accounts (Meta, Google Ads, GA4, LinkedIn).
+  adSync: { label: 'Live ad-platform sync (daily campaign metrics)', default: false, needs: 'An ad account connected through the official API of the provider (Connectors page)' },
+  // Part 3.
+  healthRoom: { label: 'Health room: visits, medication, immunisations and health cards', default: true },
 };
 
 export const FEATURE_KEYS = Object.keys(FEATURES);

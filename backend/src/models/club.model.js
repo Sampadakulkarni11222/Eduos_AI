@@ -178,6 +178,8 @@ const fixtureSchema = new Schema(
       recordedAt: { type: Date, default: null },
       approvedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
       approvedAt: { type: Date, default: null },
+      // Part 3: approved by the person who recorded it, under single-approver mode.
+      singleApprover: { type: Boolean, default: false },
       rejectionReason: { type: String, default: null },
     },
     cancelReason: { type: String, default: null },

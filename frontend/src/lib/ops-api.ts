@@ -292,7 +292,20 @@ export const opsApi = {
   removeModule: (id: string) => del<{ removed: boolean }>(`/syllabus/modules/${id}`),
 
   // ── campus ──
-  campusMap: (campusCode?: string, at?: string | null) => get<T.CampusMapDto>('/campus/map', { campusCode, at }),
+  campusMap: (campusCode?: string, at?: string | null, date?: string | null) => get<T.CampusMapDto>('/campus/map', { campusCode, at, date }),
+  campusMoment: (date?: string | null, at?: string | null) => get<T.CampusMomentDto>('/campus/moment', { date, at }),
+  // ── shifts and bell schedules ──
+  shifts: () => get<T.ShiftsDto>('/shifts'),
+  createShift: (body: unknown) => post<T.ShiftDto>('/shifts', body),
+  updateShift: (id: string, body: unknown) => put<T.ShiftDto>(`/shifts/${id}`, body),
+  retireShift: (id: string) => del<{ id: string; retired: boolean }>(`/shifts/${id}`),
+  // ── staff professional profiles ──
+  myStaffProfile: () => get<T.StaffCredentialDto>('/staff-profile/me'),
+  saveMyStaffProfile: (body: unknown) => put<T.StaffCredentialDto>('/staff-profile/me', body),
+  staffProfiles: (search?: string) => get<T.StaffCredentialRowDto[]>('/staff-profile', { search }),
+  staffProfile: (profileId: string) => get<T.StaffCredentialDto & T.TeacherPublicDto>(`/staff-profile/${profileId}`),
+  saveStaffProfile: (profileId: string, body: unknown) => put<T.StaffCredentialDto>(`/staff-profile/${profileId}`, body),
+  teachersOf: (studentId?: string | null) => get<T.TeachersOfDto>('/staff-profile/teachers-of', { studentId }),
   campusFacility: (id: string, at?: string | null) => get<T.FacilityDetailDto>(`/campus/facilities/${id}`, { at }),
   campusLayers: () => get<T.CampusLayersDto>('/campus/layers'),
   campusLive: (kind: string, id?: string | null) => get<T.CampusLiveDetailDto>('/campus/live', { kind, id }),

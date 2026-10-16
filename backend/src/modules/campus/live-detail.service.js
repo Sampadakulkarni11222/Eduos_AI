@@ -17,6 +17,31 @@ import { hasConfirmedCover } from '../staff/coverAccess.js';
 import { coverFor } from '../staff/cover.service.js';
 import { liveBySection, departments as departmentsLive } from './live.service.js';
 import { campusLayers, layerAccess, loadOptional, adaptClubs } from './layers.service.js';
+import { publicViews } from '../staff/credentials.service.js';
+import { StaffCredential } from '../../models/staffCredential.model.js';
+
+/**
+ * A teacher's professional profile as a page section: for families only the parts the
+ * teacher agreed to show (nothing at all when none), for staff the whole record.
+ */
+function credentialSection(view, { family }) {
+  if (!view) return null;
+  const rows = [];
+  if (view.qualifications?.length) rows.push({ label: 'Qualifications', value: view.qualifications.map((q) => [q.degree, q.institution, q.year].filter(Boolean).join(', ')).join('; ') });
+  if (view.subjects?.length || view.specialisations?.length) rows.push({ label: 'Subjects', value: [...(view.subjects ?? []), ...(view.specialisations ?? [])].join(', ') });
+  if (view.experienceYears !== undefined && view.experienceYears !== null) rows.push({ label: 'Experience', value: `${view.experienceYears} years` });
+  if (view.certifications?.length) rows.push({ label: 'Certifications', value: view.certifications.map((c) => [c.name, c.year].filter(Boolean).join(' ')).join(', ') });
+  if (view.bio) rows.push({ label: 'About', value: view.bio });
+  if (!rows.length) return null;
+  return { key: 'credentials', title: family ? 'About the teacher' : 'Professional profile', type: 'facts', rows, note: family ? 'Shown because the teacher chose to share it with families.' : null };
+}
+
+async function credentialFor(profileId, family) {
+  if (!profileId) return null;
+  if (family) return (await publicViews([profileId])).get(String(profileId)) ?? null;
+  const doc = await StaffCredential.findOne({ profileId }).lean();
+  return doc ? { ...doc, experienceYears: doc.experienceYears } : null;
+}
 
 /**
  * Live detail behind the campus map: what is happening in one room, class,
@@ -243,6 +268,8 @@ async function classSections(v, sectionId, now, { includeRoster = true } = {}) {
     cls.attendance = { marked: a.marked, strength: a.strength, present: a.present, lastUpdatedAt: a.lastUpdatedAt, source: a.source };
   }
   const sections = [periodSection(now, cls), attendanceFacts(cls, v.family)];
+  const about = credentialSection(await credentialFor(cls.period?.teacherProfileId, v.family).catch(() => null), { family: v.family });
+  if (about) sections.splice(1, 0, { ...about, title: v.family ? `About ${cls.period.teacher ?? 'the teacher'}` : about.title });
   if (cls.exam?.paperToday) sections.push({ key: 'exam', title: 'Exam today', type: 'facts', rows: [{ label: cls.exam.name, value: cls.exam.subject ?? 'Paper today' }], link: link('exams', 'Exams') });
   if (includeRoster) {
     if (await canSeeRoster(v, sectionId, cls.period?.periodNo, now)) {
@@ -354,6 +381,8 @@ async function teacherDetail(v, id, now) {
     const cls = await classNow(now1.sectionId, now);
     if (cls) sections.push(attendanceFacts(cls));
   }
+  const about = credentialSection(await credentialFor(profile._id, v.family).catch(() => null), { family: v.family });
+  if (about) sections.unshift(about);
   return { kind: 'teacher', id: String(profile._id), title: profile.displayName, subtitle: 'Teacher', sections };
 }
 
@@ -488,7 +517,7 @@ async function familyView(v, actor, { studentId = null, now }) {
     ...base,
     focus: { sectionId: cls.sectionId, className: cls.className, facilityId: room ? String(room._id) : home ? String(home._id) : null, roomName: room?.name ?? home?.name ?? null, homeFacilityId: home ? String(home._id) : null },
     now: cls.period ? { ...cls.period, teacherProfileId: undefined } : null,
-    teacher: cls.period?.teacher ? { name: cls.period.teacher, subject: cls.period.subject, coveringFor: cls.period.coveringFor, profileId: cls.period.teacherProfileId } : null,
+    teacher: cls.period?.teacher ? { name: cls.period.teacher, subject: cls.period.subject, coveringFor: cls.period.coveringFor, profileId: cls.period.teacherProfileId, about: cls.period.teacherProfileId ? (await publicViews([cls.period.teacherProfileId]).catch(() => new Map())).get(String(cls.period.teacherProfileId)) ?? null : null } : null,
     next: cls.next[0] ?? null,
     timetable: cls.timetable,
     classCounts: { strength: cls.attendance.strength, present: cls.attendance.present, marked: cls.attendance.marked, lastUpdatedAt: cls.attendance.lastUpdatedAt },

@@ -9,6 +9,10 @@ import { logger } from '../../utils/logger.js';
 import { createLead } from '../admissions/admission.service.js';
 import { requireProfile, pushHistory, oneOf, optionalText } from '../ops/common.js';
 import { addTouch, CHANNEL_LABELS } from './growth.service.js';
+// Live provider APIs (OAuth connections, ad sync, Meta lead retrieval): modules/integrations.
+import { IntegrationConnection } from '../../models/integration.model.js';
+import { PLATFORM_PROVIDER, appConfigured as providerAppConfigured } from '../integrations/providers.js';
+import { syncPlatform, fetchMetaLead } from '../integrations/adsync.service.js';
 
 /**
  * Ad-platform connectors.
@@ -94,10 +98,11 @@ async function connectorFor(platform, { secrets = false } = {}) {
 /** The registry with each connector's state, last import and how much simulated sample data it holds. */
 export async function listConnectors(actor) {
   assertStaff(actor);
-  const [rows, sims, imports] = await Promise.all([
+  const [rows, sims, imports, conns] = await Promise.all([
     MarketingConnector.find({}).select('+webhookSecretEnc').lean(),
     AdMetric.aggregate([{ $match: { simulated: true } }, { $group: { _id: '$platform', n: { $sum: 1 } } }]),
     AdImport.find({}).sort({ createdAt: -1 }).limit(50).lean(),
+    IntegrationConnection.find({}).select('provider status purposes selected lastError').lean(),
   ]);
   return CONNECTOR_PLATFORMS.map((platform) => {
     const c = rows.find((r) => r.platform === platform);
@@ -112,8 +117,24 @@ export async function listConnectors(actor) {
       csv: { how: a.export, columns: a.columns, example: a.example },
       simulatedRows: sims.find((s) => s._id === platform)?.n ?? 0,
       lastImport: last ? { at: last.createdAt, kind: last.kind, accepted: last.accepted, rejected: last.rejected, fileName: last.fileName } : null,
+      live: liveState(platform, conns, c),
     };
   });
+}
+
+/** The live-API side of a connector: provider app, connection and the last sync. Never a token. */
+function liveState(platform, conns, c) {
+  const provider = PLATFORM_PROVIDER[platform] ?? null;
+  if (!provider) return { provider: null, mode: 'CSV_ONLY', appConfigured: false, connected: false, connectionStatus: null, lastSync: null, lastSyncOkAt: null, lastError: null };
+  const conn = conns.find((x) => x.provider === provider);
+  const configured = providerAppConfigured(provider);
+  const connected = configured && conn?.status === 'CONNECTED' && (conn.purposes ?? []).includes('ads');
+  return {
+    provider, appConfigured: configured, connected, connectionStatus: conn?.status ?? 'NOT_CONNECTED',
+    mode: connected ? 'LIVE' : 'SIMULATED',
+    lastSync: c?.lastSync?.at ? c.lastSync : null, lastSyncOkAt: c?.lastSyncOkAt ?? null,
+    lastError: conn?.lastError?.message ?? null,
+  };
 }
 
 /** Saves credentials (encrypted). Nothing is sent to the platform. */
@@ -139,19 +160,15 @@ export async function saveCredentials(actor, platform, body = {}) {
 }
 
 /**
- * The live sync. Not built: with or without credentials it reports that
- * honestly and points to the CSV export, which is the working path.
+ * The live sync, through the provider API (modules/integrations/adsync.service.js).
+ * Without the provider app configured or the school's account connected it
+ * fetches nothing and says so, pointing to the CSV export. A pasted token
+ * (saveCredentials) is not used for sync: live sync needs the OAuth connection.
  */
-export async function sync(actor, platform) {
+export async function sync(actor, platform, body = {}, opts = {}) {
   assertStaff(actor);
   const p = platformOf(platform);
-  const c = await connectorFor(p);
-  return {
-    platform: p, synced: false,
-    message: c?.status === 'CREDENTIALS_SAVED'
-      ? `Live sync with ${ADAPTERS[p].label} is not built in this version, so nothing was fetched. Import the CSV export instead.`
-      : `${ADAPTERS[p].label} is not connected. Import the CSV export instead.`,
-  };
+  return syncPlatform(actor, p, body ?? {}, opts);
 }
 
 /** Issues a new webhook secret (shown once) and verify token for lead webhooks. */
@@ -241,7 +258,7 @@ const pick = (row, names) => { for (const n of names) if (row[n] !== undefined &
 const has = (headers, names) => names.some((n) => headers.includes(n));
 
 /** Matches a platform campaign name to a school campaign: its code inside the name, or the same name. */
-async function campaignMatcher() {
+export async function campaignMatcher() {
   const camps = await Campaign.find({}).select('name code').lean();
   const byCode = camps.filter((c) => c.code && c.code.length >= 3).sort((a, b) => b.code.length - a.code.length);
   return (name) => {
@@ -453,7 +470,10 @@ export function leadsFromPayload(body) {
     for (const ch of Array.isArray(entry?.changes) ? entry.changes : []) {
       const v = ch?.value ?? {};
       const f = fromFields(v.field_data);
-      out.push({ externalId: v.leadgen_id ?? v.lead_id ?? null, campaignName: v.campaign_name ?? v.ad_name ?? null, guardianName: pick(f, LEAD_FIELD.guardian), childName: pick(f, LEAD_FIELD.child), phone: pick(f, LEAD_FIELD.phone), email: pick(f, LEAD_FIELD.email), grade: pick(f, LEAD_FIELD.grade) });
+      out.push({
+        // Real Meta lead-ads webhooks carry only ids: the answers are fetched from Graph (ingestPayload).
+        pageId: v.page_id ?? entry?.id ?? null, needsFetch: !Array.isArray(v.field_data) && Boolean(v.leadgen_id),
+        externalId: v.leadgen_id ?? v.lead_id ?? null, campaignName: v.campaign_name ?? v.ad_name ?? null, guardianName: pick(f, LEAD_FIELD.guardian), childName: pick(f, LEAD_FIELD.child), phone: pick(f, LEAD_FIELD.phone), email: pick(f, LEAD_FIELD.email), grade: pick(f, LEAD_FIELD.grade) });
     }
   }
   for (const l of Array.isArray(body?.leads) ? body.leads : []) {
@@ -466,14 +486,40 @@ export function leadsFromPayload(body) {
 export async function receiveWebhook(platform, rawBody, signatureHeader, body) {
   const p = platformOf(platform);
   const c = await connectorFor(p, { secrets: true });
-  if (!c?.webhookSecretEnc) throw new AppError('Not found', 404);
+  // Meta signs its own deliveries with the app secret; a school's own sender signs with the school's secret.
+  const appSecret = p === 'META_ADS' ? String(process.env.META_APP_SECRET ?? '').trim() : '';
+  if (!c?.webhookSecretEnc && !appSecret) throw new AppError('Not found', 404);
   let secret;
-  try { secret = decrypt(c.webhookSecretEnc)?.secret; } catch { secret = null; }
-  if (!verifySignature(secret, rawBody, signatureHeader)) throw new AppError('Signature does not match', 401, [], 'BAD_SIGNATURE');
+  try { secret = c?.webhookSecretEnc ? decrypt(c.webhookSecretEnc)?.secret : null; } catch { secret = null; }
+  if (!verifySignature(secret, rawBody, signatureHeader) && !verifySignature(appSecret, rawBody, signatureHeader)) throw new AppError('Signature does not match', 401, [], 'BAD_SIGNATURE');
+  const result = await ingestPayload(p, body);
+  await MarketingConnector.updateOne({ platform: p }, { $set: { lastWebhookAt: new Date() }, $setOnInsert: { platform: p, status: 'NOT_CONNECTED' } }, { upsert: true });
+  return result;
+}
+
+/** Answers for a Meta lead given only its id, fetched with the connected Page's token. */
+async function withMetaAnswers(l) {
+  const d = await fetchMetaLead({ leadgenId: l.externalId, pageId: l.pageId });
+  if (!d) return { ...l, problem: 'The lead form answers need a connected Meta Page (Connectors, Meta). The lead id was received.' };
+  const f = {};
+  for (const x of Array.isArray(d.field_data) ? d.field_data : []) f[norm(x?.name)] = Array.isArray(x?.values) ? x.values[0] : x?.value;
+  return { ...l, campaignName: d.campaign_name ?? d.ad_name ?? l.campaignName, guardianName: pick(f, LEAD_FIELD.guardian), childName: pick(f, LEAD_FIELD.child), phone: pick(f, LEAD_FIELD.phone), email: pick(f, LEAD_FIELD.email), grade: pick(f, LEAD_FIELD.grade) };
+}
+
+/** Ingests every lead in a verified webhook body (already inside the school's tenant context). */
+export async function ingestPayload(p, body) {
   const leads = leadsFromPayload(body);
-  const result = { received: leads.length, created: 0, duplicates: 0, rejected: 0 };
-  for (const l of leads) {
+  const result = { received: leads.length, created: 0, duplicates: 0, rejected: 0, fetched: 0, problems: [] };
+  for (let l of leads) {
     try {
+      if (l.needsFetch && p === 'META_ADS') {
+        // eslint-disable-next-line no-await-in-loop
+        if (l.externalId && (await LeadTouch.exists({ externalId: `${p}:${String(l.externalId).slice(0, 120)}` }))) { result.duplicates += 1; continue; }
+        // eslint-disable-next-line no-await-in-loop
+        l = await withMetaAnswers(l);
+        if (l.problem) { result.rejected += 1; result.problems.push(l.problem); continue; }
+        result.fetched += 1;
+      }
       // eslint-disable-next-line no-await-in-loop
       const out = await ingestLead(p, l);
       if (out.outcome === 'CREATED') result.created += 1; else if (out.outcome === 'REJECTED') result.rejected += 1; else result.duplicates += 1;
@@ -482,7 +528,7 @@ export async function receiveWebhook(platform, rawBody, signatureHeader, body) {
       logger.warn(`[lead webhook] ${p}: ${err.message}`);
     }
   }
-  await MarketingConnector.updateOne({ _id: c._id }, { $set: { lastWebhookAt: new Date() } });
+  result.problems = [...new Set(result.problems)].slice(0, 5);
   return result;
 }
 
@@ -490,11 +536,13 @@ export async function receiveWebhook(platform, rawBody, signatureHeader, body) {
 export async function verifyHandshake(platform, query = {}) {
   const p = platformOf(platform);
   const c = await connectorFor(p, { secrets: true });
-  if (!c?.webhookVerifyTokenEnc || query['hub.mode'] !== 'subscribe') return null;
+  const appToken = p === 'META_ADS' ? String(process.env.META_WEBHOOK_VERIFY_TOKEN ?? '').trim() : '';
+  if ((!c?.webhookVerifyTokenEnc && !appToken) || query['hub.mode'] !== 'subscribe') return null;
   let token;
-  try { token = decrypt(c.webhookVerifyTokenEnc)?.verifyToken; } catch { token = null; }
+  try { token = c?.webhookVerifyTokenEnc ? decrypt(c.webhookVerifyTokenEnc)?.verifyToken : null; } catch { token = null; }
   const given = String(query['hub.verify_token'] ?? '');
-  if (!token || given.length !== token.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(token))) return null;
+  const same = (t) => Boolean(t) && given.length === t.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(t));
+  if (!same(token) && !same(appToken)) return null;
   return String(query['hub.challenge'] ?? '').slice(0, 200);
 }
 

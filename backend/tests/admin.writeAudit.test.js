@@ -147,11 +147,11 @@ describe('0. the no-model fallback path', () => {
     expect(isLlmEnabled()).toBe(false);
   });
 
-  it('Admin is offered 309 capabilities, 148 of them writes -- and none that decides', () => {
+  it('Admin is offered 319 capabilities, 152 of them writes -- and none that decides', () => {
     const offered = mcpToolsFor(actorForRole('ADMIN')).map((t) => t.name);
     const writes = offered.filter((n) => index()[n].operation !== 'GET');
-    expect(offered).toHaveLength(309);
-    expect(writes).toHaveLength(148);
+    expect(offered).toHaveLength(319);
+    expect(writes).toHaveLength(152);
     expect(offered.filter((n) => /^(?:approve|reject|decide|review|publish|refund)_|^record_payment$/.test(n))).toEqual([]);
   });
 });

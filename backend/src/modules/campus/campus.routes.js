@@ -7,6 +7,9 @@ import { sendSuccess } from '../../utils/response.js';
 import * as campus from './campus.service.js';
 import { campusLayers } from './layers.service.js';
 import { liveDetail, myView } from './live-detail.service.js';
+import { campusMoment, momentFromQuery } from './moment.service.js';
+import { ownStudentIds } from '../safety/shared.js';
+import { Enrollment } from '../../models/student.model.js';
 import * as insights from '../insights/insights.service.js';
 import { pulse } from '../insights/pulse.service.js';
 import { roleDashboard } from '../insights/dashboards.service.js';
@@ -26,8 +29,10 @@ campusRouter.use(authenticate);
 // The map depends on the school, the reader's role and grants, and the options —
 // nothing personal — so readers with the same grants share one answer for a few seconds.
 campusRouter.get('/map', requirePermission('campus.map.read'), asyncHandler(async (req, res) => {
-  const opts = { campusCode: req.query.campusCode || undefined, at: req.query.at || null };
-  const key = `campus:${req.actor.tenantId}:${req.actor.roleKey}:${permissionKey(req.actor.permissions)}:${opts.campusCode ?? ''}:${opts.at ?? ''}`;
+  const opts = { campusCode: req.query.campusCode || undefined, at: req.query.at || null, date: req.query.date || null };
+  // Families get their own class's numbers in the day plan, so their answer is their own.
+  const who = ['PARENT', 'STUDENT'].includes(req.actor.roleKey) ? `${req.actor.profileId}:` : '';
+  const key = `campus:${req.actor.tenantId}:${who}${req.actor.roleKey}:${permissionKey(req.actor.permissions)}:${opts.campusCode ?? ''}:${opts.at ?? ''}:${opts.date ?? ''}`;
   sendSuccess(res, await shortCache(key, BOARD_CACHE_MS, () => campus.campusMap(req.actor, opts)));
 }));
 // Operational layers (labs, transport bay, cover, tasks, gate, activities, greenery),
@@ -54,6 +59,20 @@ campusRouter.get('/my-view', requirePermission('campus.map.read'), asyncHandler(
   const a = req.actor;
   const studentId = req.query.studentId ? String(req.query.studentId) : null;
   sendSuccess(res, await shortCache(`campus-mine:${a.tenantId}:${a.profileId}:${studentId ?? ''}`, LIVE_CACHE_MS, () => myView(a, { studentId })));
+}));
+// The school day at a moment (now, or a date and time staff pick): open or closed, each
+// shift's bell, where each class is. Families: now only, with numbers for their own class.
+campusRouter.get('/moment', requirePermission('campus.map.read'), asyncHandler(async (req, res) => {
+  const a = req.actor;
+  const family = ['PARENT', 'STUDENT', 'ALUMNUS'].includes(a.roleKey);
+  const at = family ? null : momentFromQuery({ date: req.query.date || null, at: req.query.at || null });
+  const ownSectionIds = new Set();
+  if (a.roleKey === 'PARENT' || a.roleKey === 'STUDENT') {
+    const kids = await ownStudentIds(a);
+    if (kids.length) for (const e of await Enrollment.find({ studentId: { $in: kids }, status: 'ACTIVE' }).select('sectionId').lean()) ownSectionIds.add(String(e.sectionId));
+  }
+  const key = `campus-moment:${a.tenantId}:${family ? a.profileId : 'staff'}:${req.query.date ?? ''}:${req.query.at ?? ''}`;
+  sendSuccess(res, await shortCache(key, LIVE_CACHE_MS, () => campusMoment({ at: at ?? new Date(), viewer: { family, ownSectionIds } })));
 }));
 campusRouter.get('/facilities/:id', requirePermission('campus.map.read'), asyncHandler(async (req, res) =>
   sendSuccess(res, await campus.facilityDetail(req.actor, req.params.id, { at: req.query.at || null }))));

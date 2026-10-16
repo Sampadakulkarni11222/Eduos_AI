@@ -4,7 +4,7 @@
  * that file); both share request() and its session handling.
  */
 import { request } from './api';
-import { downloadCsv, qs } from './ops-api';
+import { downloadCsv, qs, del } from './ops-api';
 import type { Attachment, HistoryEntry } from './ops-types';
 
 type Q = Record<string, string | number | boolean | null | undefined>;
@@ -84,6 +84,15 @@ export const TASK_CATEGORIES = ['BILL', 'LICENCE', 'SERVICE', 'INSPECTION', 'VEH
 export interface FeatureDto { key: string; label: string; enabled: boolean; default: boolean; needs: string | null }
 
 const clean = (q: OverviewQuery): Q => ({ ...q, from: q.preset === 'custom' ? q.from : undefined, to: q.preset === 'custom' ? q.to : undefined, compareFrom: q.compare === 'custom' ? q.compareFrom : undefined, compareTo: q.compare === 'custom' ? q.compareTo : undefined });
+
+// ── saved views (on the server, per person; part 3) ───────────────────
+export interface SavedViewDto { id: string; name: string; filters: Partial<OverviewQuery>; tab: string | null; focus: string | null; metricKeys: string[]; updatedAt?: string }
+export const savedViewsApi = {
+  list: () => get<{ items: SavedViewDto[] }>('/analytics/views'),
+  save: (body: { name: string; filters: OverviewQuery; tab: string; focus: string | null; metricKeys?: string[] }) => post<SavedViewDto>('/analytics/views', body),
+  remove: (id: string) => del<{ removed: boolean }>(`/analytics/views/${id}`),
+  importViews: (views: unknown[]) => post<{ imported: number; items: SavedViewDto[] }>('/analytics/views/import', { views }),
+};
 
 export const analyticsApi = {
   overview: (q: OverviewQuery) => get<OverviewDto>('/analytics/overview', clean(q)),

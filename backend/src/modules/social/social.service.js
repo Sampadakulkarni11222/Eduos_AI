@@ -4,6 +4,10 @@ import { Student } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { logger } from '../../utils/logger.js';
 import { requireProfile, assertObjectId, pushHistory, requireText, oneOf, dto } from '../ops/common.js';
+// Live posting through each network's official API once the school connects an account (modules/integrations).
+import { publishTo, limitProblems } from '../integrations/social.publishers.js';
+import { IntegrationConnection } from '../../models/integration.model.js';
+import { NETWORK_PROVIDER, appConfigured } from '../integrations/providers.js';
 
 /**
  * External social publishing for the newsroom.
@@ -15,14 +19,15 @@ import { requireProfile, assertObjectId, pushHistory, requireText, oneOf, dto } 
  * PUBLIC media consent, checked when the post is composed and again at the
  * moment of publishing.
  *
- * No network adapter is wired to a provider. Without credentials the outcome
- * is SIMULATED ("Simulated — not posted"); nothing claims to have been posted.
+ * Each network posts through its official API once the school connects the
+ * account (modules/integrations). Without that the outcome is SIMULATED
+ * ("Simulated — not posted"); nothing claims to have been posted.
  */
 
 const FAMILY_ROLES = new Set(['STUDENT', 'PARENT', 'ALUMNUS']);
 export const NETWORK_LABELS = { FACEBOOK: 'Facebook', INSTAGRAM: 'Instagram', X: 'X', LINKEDIN: 'LinkedIn', YOUTUBE: 'YouTube community' };
 export const SIMULATED_NOTE = 'Simulated — not posted';
-const DONE = new Set(['SENT', 'SIMULATED']);
+const DONE = new Set(['SENT', 'SIMULATED', 'NOT_SUPPORTED']);
 
 /** Refuses anyone who is not school staff holding `key`, regardless of how their role is set up. */
 export function assertStaff(actor, key = 'social.publish') {
@@ -35,17 +40,16 @@ export function assertStaff(actor, key = 'social.publish') {
 
 // ── adapters ───────────────────────────────────────────────────────────
 
-const hasCredentials = (network) => Boolean(String(process.env[`SOCIAL_${network}_ACCESS_TOKEN`] ?? '').trim());
-
 /**
- * The per-network adapter. With no provider credentials it records the honest
- * outcome, SIMULATED. Live posting through each network's official API is not
- * built; with credentials present it fails safely rather than pretend.
- * Returns `{ status: 'SENT'|'FAILED'|'SIMULATED', reason?, providerPostId? }`.
+ * The per-network adapter: live posting through each network's official API
+ * once the school has connected its account by OAuth (Social page). Without
+ * the provider app configured or the account connected it records the honest
+ * outcome, SIMULATED. YouTube community posts have no API: NOT_SUPPORTED.
+ * Returns `{ status: 'SENT'|'FAILED'|'SIMULATED'|'NOT_SUPPORTED', reason?, providerPostId?, permalink?, sentText? }`.
  */
-async function defaultAdapter(network) {
-  if (!hasCredentials(network)) return { status: 'SIMULATED', reason: `${SIMULATED_NOTE}: no ${NETWORK_LABELS[network]} provider credentials are configured.` };
-  return { status: 'FAILED', reason: `Posting to ${NETWORK_LABELS[network]} through its official API is not built in this version; nothing was sent.` };
+async function defaultAdapter(network, post = {}) {
+  // The school's OAuth connection decides (integrations/social.publishers.js): SIMULATED without one.
+  return publishTo(network, post);
 }
 let adapter = defaultAdapter;
 export function setSocialAdapterForTests(fn) { adapter = fn ?? defaultAdapter; }
@@ -82,6 +86,20 @@ function cleanNetworks(list) {
   return out;
 }
 
+/** Whether this school has a live (OAuth) connection that posts to `network`. */
+async function liveFor(network) {
+  const provider = NETWORK_PROVIDER[network];
+  if (!provider || !appConfigured(provider)) return false;
+  return Boolean(await IntegrationConnection.exists({ provider, status: 'CONNECTED', purposes: 'social' }));
+}
+
+function cleanImage(value) {
+  if (!value) return null;
+  const s = String(value).trim();
+  if (/^\/uploads\/[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(s)) return s;
+  return cleanUrl(s);
+}
+
 function cleanUrl(value) {
   if (!value) return null;
   let u;
@@ -100,7 +118,9 @@ async function present(post) {
       const r = rows.find((x) => x.network === n);
       return {
         network: n, label: NETWORK_LABELS[n], status: r?.status ?? 'QUEUED', statusReason: r?.statusReason ?? null, attempts: r?.attempts ?? 0, lastAttemptAt: r?.lastAttemptAt ?? null,
-        display: r?.status === 'SIMULATED' ? SIMULATED_NOTE : r?.status === 'SENT' ? 'Posted' : r?.status === 'FAILED' ? 'Failed — can be retried' : r?.status === 'SENDING' ? 'Sending' : 'Queued',
+        display: r?.status === 'SIMULATED' ? SIMULATED_NOTE : r?.status === 'SENT' ? 'Posted' : r?.status === 'FAILED' ? 'Failed — can be retried' : r?.status === 'SENDING' ? 'Sending' : r?.status === 'NOT_SUPPORTED' ? 'Not supported by this network' : 'Queued',
+        providerPostId: r?.providerPostId ?? null, permalink: r?.permalink ?? null, sentText: r?.sentText ?? null,
+        engagement: r?.engagement?.at ? r.engagement : null,
       };
     }),
   };
@@ -132,6 +152,16 @@ export async function compose(actor, body = {}) {
     if (!text) text = [story.title, story.body].filter(Boolean).join(' — ').slice(0, 2000);
   }
   text = requireText(text, 'text', { max: 2000 });
+  // Each network's limits, for the person's own words (a shared story is shortened to fit instead).
+  if (!communityPostId) {
+    const problems = limitProblems(networks, { text, link: body.link ? cleanUrl(body.link) : null });
+    if (problems.length) throw new AppError(problems[0].message, 400, problems.map((p) => p.message), problems[0].code);
+  }
+  let imageUrl = cleanImage(body.imageUrl);
+  if (!imageUrl && communityPostId) {
+    const story = await CommunityPost.findById(communityPostId).select('media').lean();
+    imageUrl = (story?.media ?? []).find((m) => m.kind === 'IMAGE' && !m.hidden)?.url ?? null;
+  }
   const known = await Student.countDocuments({ _id: { $in: [...studentIds] } });
   if (known !== studentIds.size) throw new AppError('A tagged student is not in this school', 404, [], 'UNKNOWN_STUDENT');
   if (!studentIds.size && body.noIdentifiableStudents !== true) {
@@ -140,7 +170,7 @@ export async function compose(actor, body = {}) {
   const missing = await missingConsent([...studentIds]);
   if (missing.length) refuseMissing(missing);
   const post = await SocialPost.create({
-    communityPostId, text, link: cleanUrl(body.link), networks, studentIds: [...studentIds], noIdentifiableStudents: !studentIds.size,
+    communityPostId, text, link: cleanUrl(body.link), imageUrl, networks, studentIds: [...studentIds], noIdentifiableStudents: !studentIds.size,
     createdByProfileId: actor.profileId, createdByName: actor.displayName ?? null,
   });
   pushHistory(post, actor, 'COMPOSED', { note: networks.map((n) => NETWORK_LABELS[n]).join(', ') });
@@ -184,15 +214,15 @@ export async function publish(actor, id) {
     let out;
     try {
       // eslint-disable-next-line no-await-in-loop
-      out = await adapter(network, { text: post.text, link: post.link, idempotencyKey: row.idempotencyKey });
+      out = await adapter(network, { text: post.text, link: post.link, imageUrl: post.imageUrl, shortenable: Boolean(post.communityPostId), idempotencyKey: row.idempotencyKey });
     } catch (err) {
       out = { status: 'FAILED', reason: String(err?.message ?? err).slice(0, 300) };
     }
-    const status = ['SENT', 'FAILED', 'SIMULATED'].includes(out?.status) ? out.status : 'FAILED';
+    const status = ['SENT', 'FAILED', 'SIMULATED', 'NOT_SUPPORTED'].includes(out?.status) ? out.status : 'FAILED';
     if (status === 'SIMULATED') logger.info(`[Social SIMULATION] ${network}: ${post.text.slice(0, 120)}`);
     // eslint-disable-next-line no-await-in-loop
     await SocialOutbox.updateOne({ _id: row._id, status: 'SENDING' }, {
-      $set: { status, statusReason: out?.reason ?? null, providerPostId: out?.providerPostId ?? null },
+      $set: { status, statusReason: out?.reason ?? null, providerPostId: out?.providerPostId ?? null, permalink: out?.permalink ?? null, sentText: out?.sentText ?? null },
       $push: { statusHistory: { status, at: new Date(), detail: out?.reason ?? undefined } },
     });
   }
@@ -231,7 +261,15 @@ export async function listAccounts(actor) {
   if (!actor.permissions?.['social.publish'] && !actor.permissions?.['social.connect']) throw new AppError('Missing permission: social.publish', 403);
   assertStaff(actor, actor.permissions['social.connect'] ? 'social.connect' : 'social.publish');
   const rows = await SocialAccount.find({}).sort({ network: 1 }).lean();
-  return { accounts: rows.map(accountDto), networks: NETWORKS.map((n) => ({ key: n, label: NETWORK_LABELS[n], credentials: hasCredentials(n) ? 'configured' : 'not configured' })) };
+  const live = await Promise.all(NETWORKS.map((n) => liveFor(n)));
+  return {
+    accounts: rows.map(accountDto),
+    networks: NETWORKS.map((n, i) => ({
+      key: n, label: NETWORK_LABELS[n], credentials: live[i] ? 'configured' : 'not configured',
+      provider: NETWORK_PROVIDER[n], mode: live[i] ? 'LIVE' : 'SIMULATED',
+      ...(n === 'YOUTUBE' ? { note: 'YouTube has no API for community posts: with a connected Google account the outcome is "Not supported", never a fake post.' } : {}),
+    })),
+  };
 }
 
 /**

@@ -13,6 +13,7 @@ import {
   type OfflineCampaignDto, type ConnectorDto, type ImportResult, type ReportRow, type WebhookSecretDto,
 } from '@/lib/growth-api';
 import { AttachUpload } from './attach';
+import { IntegrationsPanel } from './integrations-panel';
 import { DataNote, ErrorNote, KeyValues, Loadable, PromptModal, SectionCard, StatusPill, Tabs, Timeline, fmtDate, fmtDateTime, money, rupeesToPaise, useAction, useLoad } from './kit';
 
 /**
@@ -367,6 +368,14 @@ function ConnectorCard({ c, onChanged }: { c: ConnectorDto; onChanged: () => voi
       </div>
       <p className="ops-muted">{c.csv.how}</p>
       <p className="ops-muted">Columns: {c.csv.columns.join(', ')}</p>
+      {c.live && c.live.mode !== 'CSV_ONLY' && (
+        <p className={c.live.lastSync && c.live.lastSync.ok === false ? 'ops-callout is-warn' : 'ops-muted'} role="status">
+          {c.live.connected ? 'Live sync connected' : c.live.appConfigured ? 'Live sync: not connected' : 'Live sync: app not configured (Simulated)'}
+          {c.live.lastSync ? ` · last synced ${fmtDateTime(c.live.lastSync.at)}${c.live.lastSync.from ? ` (${c.live.lastSync.from} to ${c.live.lastSync.to})` : ''}: ${c.live.lastSync.message ?? ''}` : c.live.connected ? ' · not synced yet' : ''}
+          {c.live.lastError && !c.live.lastSync ? ` · ${c.live.lastError}` : ''}
+        </p>
+      )}
+      {c.live?.lastSync?.problems?.length ? <ul className="mg-problems">{c.live.lastSync.problems.slice(0, 5).map((pr) => <li key={`${pr.scope}-${pr.problem}`}>{pr.scope}: {pr.problem}</li>)}</ul> : null}
       {c.lastImport && <p className="ops-muted">Last import {fmtDateTime(c.lastImport.at)}: {c.lastImport.accepted} rows{c.lastImport.rejected ? `, ${c.lastImport.rejected} skipped` : ''}.</p>}
       {c.simulatedRows > 0 && <p className="ops-callout is-warn">Simulated sample loaded ({c.simulatedRows} rows). Fictional figures, labelled “simulated” everywhere and never counted as spend.</p>}
       {manage && (
@@ -381,7 +390,7 @@ function ConnectorCard({ c, onChanged }: { c: ConnectorDto; onChanged: () => voi
       {manage && c.platform !== 'CSV' && (
         <div className="news-actions">
           {manageAll && <Button small variant="ghost" onClick={() => setCred(true)}>{c.status === 'CREDENTIALS_SAVED' ? 'Replace credentials' : 'Add credentials'}</Button>}
-          <Button small variant="ghost" disabled={busy} onClick={() => void run(async () => { const r = await growthApi.sync(c.platform); toast(r.message, 'info'); })}>Sync now</Button>
+          <Button small variant="ghost" disabled={busy} onClick={() => void run(async () => { const r = await growthApi.sync(c.platform); toast(r.message, r.ok === false ? 'error' : 'info'); onChanged(); })}>Sync now</Button>
           {c.leadWebhook && manageAll && <Button small variant="ghost" disabled={busy} onClick={() => void run(async () => { setSecret(await growthApi.rotateWebhook(c.platform)); onChanged(); })}>{c.webhookConfigured ? 'New webhook secret' : 'Set up lead webhook'}</Button>}
         </div>
       )}
@@ -392,7 +401,7 @@ function ConnectorCard({ c, onChanged }: { c: ConnectorDto; onChanged: () => voi
           {c.status === 'CREDENTIALS_SAVED' && <Button variant="ghost" disabled={busy} onClick={() => void run(async () => { await growthApi.saveCredentials(c.platform, { clear: true }); setCred(false); onChanged(); })}>Remove</Button>}
           <Button disabled={busy || token.trim().length < 8} onClick={() => void run(async () => { await growthApi.saveCredentials(c.platform, { token, accountLabel: account }); setToken(''); setCred(false); toast('Saved, encrypted', 'success'); onChanged(); })}>Save</Button>
         </>}>
-          <p className="ops-callout">The key is stored encrypted and never shown again. Live sync with the platform is not built in this version, so imports still come from the CSV export.</p>
+          <p className="ops-callout">The key is stored encrypted and never shown again. Live sync uses the connection above (sign in with the platform), not a pasted key; without it, imports come from the CSV export.</p>
           <Field label="Account (name or id)"><input className="input" value={account} onChange={(e) => setAccount(e.target.value)} /></Field>
           <Field label="Access token or API key" required><input className="input" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} /></Field>
           <ErrorNote error={error} />
@@ -417,6 +426,7 @@ export function ConnectorsView() {
     <Loadable state={state}>{([conns, imports, metrics]) => (
       <div className="ops-stack">
         <DataNote>Not connected is normal: export the report from the ad platform and import it here. Rows for the same campaign and day replace the earlier import, so importing twice never doubles the spend.</DataNote>
+        <IntegrationsPanel purpose="ads" />
         <div className="mg-cards">{conns.map((c) => <ConnectorCard key={c.platform} c={c} onChanged={() => void state.reload()} />)}</div>
         <SectionCard title="Imported spend by platform campaign" sub="A platform campaign is matched to a school campaign when its name contains the campaign's code.">
           {!metrics.length ? <EmptyState title="Nothing imported yet" sub="Import a performance CSV above." /> : (

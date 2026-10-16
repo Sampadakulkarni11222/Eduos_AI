@@ -13,6 +13,7 @@ import type { CalendarEventDto, ParentDashboardDto, StudentListItem } from '@/li
 import { PulseBoard } from '@/components/ops/pulse-board';
 import { RoleDashboard } from '@/components/ops/role-dashboard';
 import { ShowcaseCard } from '@/components/ops/showcase-view';
+import { ChildTeachersCard } from '@/components/ops/p3-campus-views';
 import { formatDate, formatDayMonth, formatTime12, greeting, greetingName, humanizeLabel } from '../student/_lib/format';
 
 /**
@@ -207,6 +208,9 @@ export default function ParentDashboard() {
                   )}
                 </div>
                 
+                {/* The child's teachers, with only what each chose to share with families. */}
+                <ChildTeachersCard studentId={kid?.id ?? null} />
+
                 <div>
                   <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-faint)', letterSpacing: '0.05em', marginBottom: 4 }}>CLASS REPRESENTATIVE</div>
                   {kidStats?.classRepresentative ? (

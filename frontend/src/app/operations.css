@@ -1157,3 +1157,103 @@ a.dc-legend-item:hover,a.dc-legend-item:focus-visible{background:var(--hairline,
 .sc-assumptions{font-size:12px;padding-left:16px}
 .sc-assumptions .is-edited{color:var(--accent)}
 @media (max-width:760px){.sc-layout{grid-template-columns:1fr}.pf-grid{grid-template-columns:1fr}}
+
+/* ── Part 3: school health room (agent: p3-health) ───────────────────── */
+body.role-nurse{--accent:#1f5a52;--accent-2:#2c7368;--sidebar-text:#DDEEEA;--sidebar-heading:#F4FBF9;--sidebar-secondary:#93BDB4;--sidebar-group:#9cc1b9;--header-title:#1f5a52;--on-accent:#E6F3EF;--badge-on-accent-text:#1f5a52}
+.health-notes .ops-row-sub{white-space:normal;overflow-wrap:anywhere}
+.health-card .ops-kv{margin-bottom:8px}
+@media print{.health-card .btn{display:none}}
+
+/* ── p3-campus: day-plan banner, shifts editor, professional profile, teacher cards ── */
+.cwm-banner { display: flex; align-items: center; gap: 10px; padding: 8px 12px; margin: 6px 0; border-radius: 12px; background: rgba(255, 255, 255, 0.92); border: 1px solid rgba(15, 23, 42, 0.08); box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08); color: #1f2937; pointer-events: auto; max-width: 100%; flex-wrap: wrap; }
+.cwm-banner .cwm-icon { font-size: 18px; width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: 50%; background: #E8F0FD; flex: none; }
+.cwm-banner.is-break .cwm-icon { background: #E3F5E9; }
+.cwm-banner.is-closed .cwm-icon, .cwm-banner.is-holiday .cwm-icon { background: #F1F2F5; }
+.cwm-banner.is-holiday { border-color: #F2B33D; }
+.cwm-banner.is-exam .cwm-icon { background: #FCE4EC; }
+.cwm-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 220px; }
+.cwm-text b { font-size: 14px; overflow-wrap: anywhere; }
+.cwm-sub, .cwm-when, .cwm-bus { font-size: 12px; color: #4b5563; }
+.cwm-shifts { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: #374151; }
+.cwm-shift i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+.cwm-when, .cwm-bus { white-space: nowrap; }
+.cw-date { min-height: 30px; font-size: 12px; padding: 2px 6px; border-radius: 8px; border: 1px solid rgba(15, 23, 42, 0.15); background: #fff; color: #1f2937; }
+.cwm-about { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 6px 0 0; font-size: 12.5px; }
+.cwm-about dt { color: var(--text-faint, #6b7280); }
+.cwm-about dd { margin: 0; overflow-wrap: anywhere; }
+.p3s-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 8px; align-items: end; }
+.p3s-days, .p3s-classes { border: 0; padding: 0; margin: 8px 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.p3s-bells { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+.p3s-bell { display: grid; grid-template-columns: minmax(110px, 1.2fr) minmax(80px, 1fr) minmax(90px, 1fr) minmax(90px, 1fr) auto; gap: 6px; align-items: center; }
+.p3s-move { border: 1px solid #F2B33D; background: #FFF8E6; border-radius: 10px; padding: 10px; margin: 8px 0; }
+.p3s-timeline { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.p3s-timeline li { display: flex; flex-direction: column; padding: 4px 8px; border-radius: 8px; background: #EEF3FB; font-size: 12px; min-width: 88px; }
+.p3s-timeline li.is-break, .p3s-timeline li.is-lunch { background: #E3F5E9; }
+.p3s-timeline li.is-arrival, .p3s-timeline li.is-dispersal { background: #F1F2F5; }
+.p3s-timeline li.is-clubs, .p3s-timeline li.is-assembly { background: #F3EEFD; }
+.p3c-consent.is-on { border-color: #2BA39A; }
+.p3c-teachers { margin-top: 4px; }
+.p3c-tlist { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.p3c-tcard { border: 1px solid var(--border, #e5e7eb); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+@media (max-width: 600px) {
+  .p3s-bell { grid-template-columns: 1fr 1fr; }
+  .cwm-banner { padding: 6px 8px; }
+  .cwm-when, .cwm-bus { white-space: normal; }
+}
+
+/* ── Generated UI (OpenUI Lang panels): Ask AI answers, "Ask your dashboard", pinned panels ── */
+.genui-panel { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 14px; padding: 14px; min-width: 0; }
+.genui-panel.is-compact { padding: 10px; border-radius: 12px; background: transparent; }
+.genui-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.genui-head-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.genui-title { font-size: 15px; font-weight: 700; margin: 0; overflow-wrap: anywhere; }
+.genui-subtitle { font-size: 12px; color: var(--text-2); margin: 2px 0 0; overflow-wrap: anywhere; }
+.genui-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; min-width: 0; }
+.genui-panel.is-compact .genui-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.genui-wide { grid-column: 1 / -1; min-width: 0; }
+.genui-kpi { min-height: 0; }
+.genui-detail { font-size: 12px; color: var(--text-2); margin-top: 4px; overflow-wrap: anywhere; }
+.genui-up { color: var(--green); } .genui-down { color: var(--amber); }
+.genui-caption { caption-side: top; text-align: left; font-weight: 700; font-size: 13px; padding: 4px 0; }
+.genui-h { font-size: 13px; font-weight: 700; margin: 0 0 6px; }
+.genui-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.genui-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--card-border); padding: 6px 0; }
+.genui-row { display: flex; flex-direction: column; min-width: 0; color: inherit; }
+.genui-rec { font-weight: 600; overflow-wrap: anywhere; } .genui-sub { font-size: 12px; color: var(--text-2); margin: 2px 0 0; overflow-wrap: anywhere; }
+.genui-action { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; border: 1px dashed var(--card-border); border-radius: 12px; padding: 10px 12px; }
+.genui-action-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.genui-callout { border-radius: 10px; padding: 8px 12px; font-size: 13px; background: rgba(60, 155, 214, 0.08); border-left: 3px solid #3C9BD6; overflow-wrap: anywhere; }
+.genui-callout.is-good { background: rgba(46, 125, 50, 0.08); border-left-color: var(--green); }
+.genui-callout.is-warn { background: rgba(201, 130, 27, 0.1); border-left-color: #C9821B; }
+.genui-callout.is-bad { background: rgba(179, 38, 30, 0.08); border-left-color: var(--red, #B3261E); }
+.genui-ask { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
+.genui-ask-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.genui-ask-label { font-weight: 700; font-size: 14px; white-space: nowrap; }
+.genui-ask-input { flex: 1 1 240px; min-width: 0; }
+.genui-examples { display: flex; gap: 6px; flex-wrap: wrap; }
+.genui-chip { border: 1px solid var(--card-border); background: transparent; border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: inherit; }
+.genui-chip:hover, .genui-chip:focus-visible { border-color: var(--accent); }
+.genui-pins { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 12px; }
+.genui-loading { display: flex; align-items: center; gap: 8px; }
+.ai-bubble .genui-panel .dc-card { box-shadow: none; }
+.genui-toggle { margin-top: 4px; }
+@media (max-width: 600px) {
+  .genui-grid { grid-template-columns: 1fr 1fr; }
+  .genui-ask-label { white-space: normal; }
+  .genui-head { flex-direction: column; }
+}
+
+/* ── Part 3: provider connections (integrations-panel.tsx) ───────────── */
+.integ-card .integ-facts { display: grid; gap: 6px; margin: 8px 0; }
+.integ-card .integ-facts > div { display: grid; grid-template-columns: minmax(110px, 34%) 1fr; gap: 8px; }
+.integ-card .integ-facts dt { color: var(--muted, #6b7280); font-size: 0.85em; }
+.integ-card .integ-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.integ-scopes { font-size: 0.8em; overflow-wrap: anywhere; word-break: break-word; }
+.integ-pick { display: grid; gap: 4px; margin: 8px 0; }
+.integ-pick select { max-width: 100%; }
+@media (max-width: 480px) {
+  .integ-card .integ-facts > div { grid-template-columns: 1fr; gap: 2px; }
+}
+.genui-grid .pb-svg { max-height: 280px; }
+.genui-panel.is-compact .an-table { font-size: 12px; }
+.genui-panel.is-compact .an-table td, .genui-panel.is-compact .an-table th { white-space: nowrap; }

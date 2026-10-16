@@ -224,6 +224,15 @@ export const TEMPLATES = {
     category: 'UTILITY',
     text: () => 'You have a new action on a student support plan. Open EduOS (Support plans) to see it.',
   },
+  // Health room: never the complaint, the medicine or the outcome in the message itself.
+  HEALTH_ROOM_UPDATE: {
+    category: 'UTILITY',
+    text: () => 'There is an update from the school health room about your child. Open EduOS (Health) to see it.',
+  },
+  HEALTH_CONSENT_REQUEST: {
+    category: 'UTILITY',
+    text: () => 'The school health room is asking for your consent about your child. Open EduOS (Health) to read and respond.',
+  },
   SAFETY_REFERRAL_FOLLOWUP: {
     category: 'UTILITY',
     text: () => 'A reviewed safety observation in a space your class uses was referred to the safeguarding officer. No names are shared; the officer may contact you. Open EduOS for the reference.',

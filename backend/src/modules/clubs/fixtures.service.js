@@ -1,3 +1,4 @@
+import { maySelfApprove, noteSingleApprover } from '../policy/approverMode.service.js';
 import { Club, ClubMembership, House, HouseMembership, Fixture, FIXTURE_KINDS, CLUB_ACTIVITIES, CLUB_CATEGORIES } from '../../models/club.model.js';
 import { Facility, FacilityBooking } from '../../models/facility.model.js';
 import { Student } from '../../models/student.model.js';
@@ -272,7 +273,9 @@ export async function decideResult(actor, scope, id, body = {}) {
     if (!isCoach(club, actor) && !(fx.kind === 'HOUSE' && master)) throw new AppError('You cannot approve this result.', 403, [], 'NOT_FIXTURE_OWNER');
   }
   if (fx.result?.status !== 'PENDING_APPROVAL') throw new AppError('There is no result waiting for approval.', 409, [], 'NOT_PENDING');
-  if (String(fx.result.recordedByProfileId) === String(actor.profileId)) {
+  const own = String(fx.result.recordedByProfileId) === String(actor.profileId);
+  // Single-approver mode (school setting, off by default) lets a principal or administrator approve their own.
+  if (own && !(await maySelfApprove(actor))) {
     throw new AppError('Another teacher must approve a result you recorded.', 409, [], 'SECOND_PERSON_REQUIRED');
   }
   const decision = oneOf(body.decision, ['APPROVE', 'REJECT'], 'decision');
@@ -280,13 +283,15 @@ export async function decideResult(actor, scope, id, body = {}) {
     fx.result.status = 'APPROVED';
     fx.result.approvedByProfileId = actor.profileId;
     fx.result.approvedAt = new Date();
+    fx.result.singleApprover = own;
   } else {
     fx.result.status = 'REJECTED';
     fx.result.rejectionReason = requireText(body.reason, 'reason', { max: 500 });
   }
-  pushHistory(fx, actor, `RESULT_${fx.result.status}`, { from: 'PENDING_APPROVAL', to: fx.result.status, note: fx.result.rejectionReason });
+  pushHistory(fx, actor, `RESULT_${fx.result.status}`, { from: 'PENDING_APPROVAL', to: fx.result.status, note: fx.result.rejectionReason ?? (own ? 'single-approver' : null) });
   await fx.save();
   await recordAudit({ actor, action: `clubs.result.${decision.toLowerCase()}`, entityType: 'Fixture', entityId: fx._id, after: { status: fx.result.status } });
+  if (own) await noteSingleApprover(actor, { entityType: 'Fixture', entityId: fx._id, what: `fixture result ${decision.toLowerCase()}` });
   if (decision === 'REJECT' && fx.result.recordedByProfileId) {
     await notify({ recipientProfileIds: [String(fx.result.recordedByProfileId)], type: 'SYSTEM', title: `Result returned: ${fx.title}`, body: fx.result.rejectionReason, link: '/clubs' });
   }

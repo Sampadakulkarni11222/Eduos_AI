@@ -1,3 +1,4 @@
+import { maySelfApprove, noteSingleApprover } from '../policy/approverMode.service.js';
 import { ShowcaseSetting, ShowcaseEdition, ShowcaseEntry, ENTRY_CATEGORIES } from '../../models/showcase.model.js';
 import { MediaConsent } from '../../models/community.model.js';
 import { CoCurricularActivity } from '../../models/coCurricular.model.js';
@@ -240,7 +241,9 @@ export async function reviewEntry(actor, id, body = {}) {
   if (!entry) throw new AppError('Entry not found', 404);
   const decision = oneOf(body.decision ?? 'APPROVE', ['APPROVE', 'RETURN'], 'decision');
   if (entry.status !== 'DRAFT' && !(decision === 'RETURN' && entry.status === 'REVIEWED')) throw new AppError(`This entry is ${entry.status.toLowerCase()}.`, 409, [], 'INVALID_TRANSITION');
-  if (String(entry.createdByProfileId) === String(actor.profileId)) {
+  const own = String(entry.createdByProfileId) === String(actor.profileId);
+  // Single-approver mode (school setting, off by default) lets a principal or administrator review their own.
+  if (own && !(decision === 'APPROVE' && await maySelfApprove(actor))) {
     throw new AppError('Someone other than the person who drafted an entry reviews it.', 409, [], 'SECOND_PERSON_REQUIRED');
   }
   const from = entry.status;
@@ -248,13 +251,15 @@ export async function reviewEntry(actor, id, body = {}) {
     entry.status = 'REVIEWED';
     entry.reviewedByProfileId = actor.profileId;
     entry.reviewedAt = new Date();
+    entry.singleApprover = own;
   } else {
     entry.status = 'DRAFT';
     entry.reviewedByProfileId = null;
     entry.reviewedAt = null;
   }
-  pushHistory(entry, actor, decision === 'APPROVE' ? 'REVIEWED' : 'RETURNED', { from, to: entry.status, note: optionalText(body.note, { max: 300 }) || null });
+  pushHistory(entry, actor, decision === 'APPROVE' ? (own ? 'REVIEWED_SINGLE_APPROVER' : 'REVIEWED') : 'RETURNED', { from, to: entry.status, note: optionalText(body.note, { max: 300 }) || (own && decision === 'APPROVE' ? 'single-approver' : null) });
   await entry.save();
+  if (own && decision === 'APPROVE') await noteSingleApprover(actor, { entityType: 'ShowcaseEntry', entityId: entry._id, what: 'showcase review' });
   return (await entryDtos([entry.toObject()]))[0];
 }
 

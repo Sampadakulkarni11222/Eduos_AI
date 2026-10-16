@@ -10,7 +10,8 @@ import { historyEntry } from '../modules/ops/common.js';
  * credentials the honest outcome is SIMULATED: nothing left the server.
  */
 export const NETWORKS = ['FACEBOOK', 'INSTAGRAM', 'X', 'LINKEDIN', 'YOUTUBE'];
-export const OUTBOX_STATUSES = ['QUEUED', 'SENDING', 'SENT', 'FAILED', 'SIMULATED'];
+// NOT_SUPPORTED: the network has no API for this (YouTube community posts); final, never retried.
+export const OUTBOX_STATUSES = ['QUEUED', 'SENDING', 'SENT', 'FAILED', 'SIMULATED', 'NOT_SUPPORTED'];
 
 const socialAccountSchema = new Schema(
   {
@@ -35,6 +36,8 @@ const socialPostSchema = new Schema(
     communityPostId: { type: Schema.Types.ObjectId, ref: 'CommunityPost', default: null },
     text: { type: String, required: true },
     link: { type: String, default: null },
+    // A photo: an https link, or a stored /uploads path (made public for the network via PUBLIC_API_URL). Instagram needs one.
+    imageUrl: { type: String, default: null },
     networks: [{ type: String, enum: NETWORKS }],
     // Every child who appears: their public-media consent is checked when the
     // post is composed and again at the moment of publishing.
@@ -60,6 +63,17 @@ const socialOutboxSchema = new Schema(
     statusReason: { type: String, default: null },
     attempts: { type: Number, default: 0 },
     providerPostId: { type: String, default: null },
+    // Live posting (modules/integrations/social.publishers.js): the post's public link, the exact text sent, and engagement read back later.
+    permalink: { type: String, default: null },
+    sentText: { type: String, default: null },
+    engagement: {
+      likes: { type: Number, default: null },
+      comments: { type: Number, default: null },
+      shares: { type: Number, default: null },
+      impressions: { type: Number, default: null },
+      at: { type: Date, default: null },
+      error: { type: String, default: null },
+    },
     lastAttemptAt: { type: Date, default: null },
     statusHistory: [{ status: String, at: { type: Date, default: Date.now }, detail: String }],
   },

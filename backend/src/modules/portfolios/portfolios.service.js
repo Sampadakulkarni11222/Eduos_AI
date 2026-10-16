@@ -82,8 +82,11 @@ export async function students(actor, scope, query = {}) {
     const filter = { status: 'ACTIVE', ...(query.sectionId ? { sectionId: assertObjectId(query.sectionId, 'sectionId') } : {}) };
     ids = (await Enrollment.find(filter).select('studentId').limit(query.sectionId ? 500 : 200).lean()).map((e) => String(e.studentId));
   } else ids = await taughtStudentIds(actor.profileId);
-  const rows = await Student.find({ _id: { $in: ids }, deletedAt: null }).select('firstName lastName admissionNo').lean();
-  const enr = await Enrollment.find({ studentId: { $in: ids }, status: 'ACTIVE' }).populate({ path: 'sectionId', select: 'name gradeId', populate: { path: 'gradeId', select: 'name' } }).select('studentId sectionId').lean();
+  // Independent reads: run together rather than one after the other.
+  const [rows, enr] = await Promise.all([
+    Student.find({ _id: { $in: ids }, deletedAt: null }).select('firstName lastName admissionNo').lean(),
+    Enrollment.find({ studentId: { $in: ids }, status: 'ACTIVE' }).populate({ path: 'sectionId', select: 'name gradeId', populate: { path: 'gradeId', select: 'name' } }).select('studentId sectionId').lean(),
+  ]);
   const cls = new Map(enr.map((e) => [String(e.studentId), classLabel(e.sectionId)]));
   const q = String(query.search ?? '').toLowerCase();
   return rows.map((s) => ({ studentId: String(s._id), name: studentLabel(s), admissionNo: s.admissionNo, className: cls.get(String(s._id)) ?? null }))

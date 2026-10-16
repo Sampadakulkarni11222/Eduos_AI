@@ -178,3 +178,35 @@ export const alumnusGuide: RoleGuide = {
     ...common,
   ],
 };
+
+// Part 3: the school nurse.
+export const nurseGuide: RoleGuide = {
+  slug: 'nurse',
+  hubTitle: 'Health Room Hub',
+  hubDesc: 'How the school nurse runs the health room in EduOS.',
+  heroText: 'Record visits, give medicines with the parents’ consent, keep stock in date and keep each child’s health card.',
+  quickActions: ['health-room'],
+  help: {
+    title: 'A dose is due?',
+    text: 'Today on the Health room page lists every dose due, with what has been given.',
+    label: 'Open the Health room',
+    href: '/nurse',
+  },
+  topics: [
+    {
+      id: 'health-room', title: 'Health room', category: 'Workspace', icon: '✚', isNew: true,
+      href: '/nurse', openLabel: 'Open the Health room',
+      summary: 'Today’s visits and doses, the medication record, first-aid stock with expiry reminders, care notes, health cards and who is told when.',
+      steps: ['Record each visit as it happens and mark "Left now" when the child leaves.', 'Mark each dose due as given, missed or refused. A controlled medicine needs a second person to countersign.', 'Keep stock expiry dates current; they become reminders in Tasks.'],
+      tips: ['Clinical details are encrypted, and every read of a child’s record is audited.', 'Parents are told only that there is an update; the details stay behind their sign-in.'],
+    },
+    ...opsTopics('nurse'),
+    askAgentTopic({
+      askAbout: ['today’s visits and the doses due', 'a child’s medication log', 'your tasks and staff leave'],
+      canDo: ['record a health-room visit (you confirm the draft)', 'record a dose as given, missed or refused (confirmed on the website)'],
+      examples: ['What visits do we have today?', 'Record a visit for Rahul Sharma: headache, rested, returned to class', 'Mark Rahul’s 12:30 dose as given'],
+      notYet: ['countersigning a controlled medicine', 'care notes', 'consent and prescriptions'],
+    }),
+    ...common,
+  ],
+};

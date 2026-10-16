@@ -8,6 +8,18 @@ import type { AgentContinuation, AgentProposedAction, WhatsappAssistantLink } fr
 import { SPEECH_LANGUAGES, isSpeechSupported, startDictation } from '@/lib/speech';
 import { ChatMarkdown } from './chat-markdown';
 import { EvidenceFooter } from './evidence-footer';
+import dynamic from 'next/dynamic';
+import { ASK_EVENT } from './genui/ask-event';
+import type { GenUi } from './genui/genui';
+
+/**
+ * The generated-UI renderer (with its schema library and charts) is only
+ * needed once the assistant answers with a panel, but this component sits on
+ * every page; loaded on demand it no longer adds ~35 kB to every route. The
+ * chunk is fetched as soon as the assistant is opened, ahead of any answer.
+ */
+const loadGenUi = () => import('./genui/genui');
+const GenUiPanel = dynamic(() => loadGenUi().then((m) => m.GenUiPanel), { ssr: false });
 
 /**
  * Turns of this conversation sent with each message, so a follow-up resolves
@@ -29,7 +41,17 @@ interface Msg {
   continuation?: AgentContinuation | null;
   /** The records the answer used, shown under it as "Based on". */
   evidence?: Array<{ text: string; link: string | null }>;
+  /** A generated panel (OpenUI Lang) for an answer with data; the text stays as the fallback. */
+  ui?: GenUi | null;
+  /** The person chose the text over the panel for this answer. */
+  showText?: boolean;
 }
+
+/** The generated panel on a reply, when the server sent one. */
+const uiOf = (res: unknown): GenUi | null => {
+  const ui = (res as { ui?: GenUi | null })?.ui;
+  return ui && ui.format === 'openui-lang' && typeof ui.program === 'string' ? ui : null;
+};
 
 export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   const [open, setOpen] = useState(false);
@@ -78,6 +100,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
 
   // Sync ref → state on open so the panel renders persisted history
   const handleOpen = () => {
+    void loadGenUi();
     setMsgs([...msgsRef.current]);
     setMinimized(false);
     setOpen(true);
@@ -129,6 +152,23 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
     void api.trackWhatsappAssistantClick(device).catch(() => {});
   };
 
+  // An action card on a generated panel (here or on a dashboard) opens the
+  // assistant with its question typed in -- never sent. The person sends it,
+  // and anything that writes still comes back as a draft to confirm.
+  useEffect(() => {
+    const onAsk = (e: Event) => {
+      const text = (e as CustomEvent<{ text?: unknown }>).detail?.text;
+      if (typeof text !== 'string' || !text.trim()) return;
+      setInput(text.slice(0, 300));
+      setMsgs([...msgsRef.current]);
+      setMinimized(false);
+      setOpen(true);
+      setTimeout(() => inputRef.current?.focus(), 0);
+    };
+    window.addEventListener(ASK_EVENT, onAsk);
+    return () => window.removeEventListener(ASK_EVENT, onAsk);
+  }, []);
+
   // Close on Escape
   useEffect(() => {
     if (!open) return;
@@ -158,7 +198,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
         .slice(-HISTORY_TURNS)
         .map((m) => ({ role: m.role, text: m.text }));
       const res = await api.agentAsk(text, speechLang.lang, history);
-      const aiMsg: Msg = { role: 'assistant', text: res.reply, action: res.action, continuation: res.continuation ?? null, evidence: res.evidence ?? [] };
+      const aiMsg: Msg = { role: 'assistant', text: res.reply, action: res.action, continuation: res.continuation ?? null, evidence: res.evidence ?? [], ui: uiOf(res) };
       msgsRef.current = [...msgsRef.current, aiMsg];
       setMsgs([...msgsRef.current]);
     } catch (err) {
@@ -187,7 +227,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
     try {
       const res = await api.agentContinue(msg.continuation.token, speechLang.lang);
       msgsRef.current = msgsRef.current.map((m, i) => (i === idx ? { ...m, continuation: null } : m));
-      msgsRef.current = [...msgsRef.current, { role: 'assistant', text: res.reply, continuation: res.continuation ?? null, evidence: res.evidence ?? [] }];
+      msgsRef.current = [...msgsRef.current, { role: 'assistant', text: res.reply, continuation: res.continuation ?? null, evidence: res.evidence ?? [], ui: uiOf(res) }];
       setMsgs([...msgsRef.current]);
     } catch (err) {
       const text = err instanceof ApiError ? err.message : 'Sorry — I could not load the rest just now.';
@@ -384,8 +424,22 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                       as React elements, never as HTML. The person's own words
                       are shown exactly as typed. */}
                   <div className="ai-bubble">
-                    {m.role === 'assistant' ? <ChatMarkdown text={m.text} /> : m.text}
+                    {m.role === 'assistant'
+                      ? (m.ui && !m.showText
+                        ? <GenUiPanel compact ui={m.ui} fallback={<ChatMarkdown text={m.text} />} onAsk={(t) => { setInput(t.slice(0, 300)); inputRef.current?.focus(); }} />
+                        : <ChatMarkdown text={m.text} />)
+                      : m.text}
                   </div>
+                  {m.role === 'assistant' && m.ui && (
+                    <button
+                      type="button"
+                      className="ai-read-more genui-toggle"
+                      aria-pressed={!!m.showText}
+                      onClick={() => { msgsRef.current = msgsRef.current.map((x, j) => (j === i ? { ...x, showText: !x.showText } : x)); setMsgs([...msgsRef.current]); }}
+                    >
+                      {m.showText ? 'Show as panel' : 'Show as text'}
+                    </button>
+                  )}
                   {m.tools && m.tools.length > 0 && <div className="ai-tools">used: {Array.from(new Set(m.tools)).join(', ')}</div>}
 
                   {/* Nothing is written until this is confirmed. The summary
@@ -408,7 +462,8 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                       <div className="ai-confirm-expiry">Expires in {m.action.expiresInMinutes} min</div>
                     </div>
                   )}
-                  {m.role === 'assistant' && !!m.evidence?.length && <EvidenceFooter items={m.evidence} />}
+                  {/* A generated panel carries its own "Based on" footer. */}
+                  {m.role === 'assistant' && !!m.evidence?.length && (!m.ui || m.showText) && <EvidenceFooter items={m.evidence} />}
                   {m.continuation && (
                     <button
                       type="button"

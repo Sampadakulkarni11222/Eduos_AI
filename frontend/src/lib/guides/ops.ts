@@ -582,7 +582,7 @@ const CONTENT: Record<string, OpsContent> = {
     summary: 'Share a public newsroom story, or a post with no identifiable child, to the school\'s Facebook, Instagram, X, LinkedIn and YouTube community accounts. Each network has its own line in the outbox.',
     workflow: ['Compose', 'Consent checked', 'Publish', 'Consent checked again', 'Per-network status'],
     highlights: [
-      { label: 'Simulated — not posted', text: 'No network is connected with provider credentials yet, so every send is recorded as simulated. Nothing leaves the school.' },
+      { label: 'Simulated — not posted', text: 'The network is not connected through its official API (Accounts tab), so the send is recorded as simulated. Nothing leaves the school.' },
       { label: 'Consent at publishing', text: 'Every child tagged in a story needs public-media consent. It is checked when you compose and again at the moment you publish; if any is missing, nothing is sent.' },
       { label: 'Never twice', text: 'A network that was sent or simulated is never sent again. Only a failed network can be retried.' },
       { label: 'Staff only', text: 'Parents, students and alumni can never publish to the school\'s accounts.' },
@@ -590,7 +590,7 @@ const CONTENT: Record<string, OpsContent> = {
     steps: [
       'Compose: pick a published public story or write the text, choose the networks, and confirm no child can be identified if you are not sharing a story.',
       'Save to outbox, then Publish. Each network shows Queued, Sending, Sent, Failed or Simulated — not posted.',
-      'Accounts: an administrator records the school\'s handle on each network; it waits as "connection pending: needs provider credentials".',
+      'Accounts: an administrator presses Connect for Meta, LinkedIn or X and signs in on that network\'s own page, then chooses the Facebook Page or LinkedIn organisation to post as. Disconnect revokes the access. YouTube community posts have no API and are marked "Not supported".',
     ],
     tips: ['Tokens and passwords are never typed into this screen.'],
   },
@@ -734,7 +734,7 @@ const CONTENT: Record<string, OpsContent> = {
       'Import leads CSV, or set up the lead webhook, to turn lead-form leads into enquiries. A family already in the CRM (same phone or e-mail) gets a note, not a second enquiry.',
     ],
     tips: [
-      '"Not connected" is normal: live sync is not built, so the CSV export is the working path. Saved credentials are stored encrypted and never shown again.',
+      '"Not connected" is normal: connect Meta, Google or LinkedIn at the top of the page (sign in on the platform\'s own page) to sync daily spend, clicks and leads; otherwise the CSV export is the working path. Re-syncing replaces days, never doubles them.',
       'Importing the same days again replaces the earlier figures, so spend is never counted twice. Simulated sample figures are never counted as spend.',
     ],
   },
@@ -786,6 +786,29 @@ const CONTENT: Record<string, OpsContent> = {
     ],
     steps: ['Check the current actuals at the top.', 'Edit the assumptions you want to test and Project.', 'Save it with a name; open "Saved and compare" to compare scenarios.'],
   },
+  // Part 3: the school health room.
+  health: {
+    category: 'Health',
+    summary: 'The health room. The school nurse records visits (complaint, vitals, what was done, time in and out, outcome), gives medicines from plans the parents consented to, keeps first-aid stock and expiry dates, drafts care notes, and records immunisations and screenings for the annual health card. Parents see their own child’s visits, medicines and care notes here.',
+    highlights: [
+      { label: 'Encrypted and audited', text: 'Every clinical detail is encrypted at rest, and every time someone opens a child’s record it is written to the audit log.' },
+      { label: 'Parents decide', text: 'No medicine is given without the parent’s consent and the prescription. A care note reaches the class teacher only if the parent agrees to share it.' },
+      { label: 'Two people for controlled medicines', text: 'A second person countersigns each dose of a controlled medicine.' },
+    ],
+    steps: ['Nurse: record a visit from Today; mark each dose due as given, missed or refused.', 'Parent: give consent to a medicine, upload the prescription, and choose whether a care note is shared.', 'Use Health cards to add screenings and immunisations and print the card.'],
+    tips: ['Parents get a message only that there is an update, never the details, for the outcomes the school chose.'],
+  },
+  'care-notes': {
+    category: 'Health',
+    summary: 'Short care notes for children in the class you are class teacher of, which their parents agreed to share, e.g. "Severe nut allergy: EpiPen in the health room".',
+    steps: ['Read the notes at the start of term and before trips.', 'Ask the school nurse about anything else; health records are not shown here.'],
+    tips: ['A note disappears as soon as the parent stops sharing it.'],
+  },
+  'health-summary': {
+    category: 'Health',
+    summary: 'Health-room figures as counts only: visits by outcome, injuries, medication plans, missed doses, controlled doses to countersign and stock to replace. No names or clinical details.',
+    steps: ['Choose the period.', 'Follow up stock or countersigning with the school nurse.'],
+  },
   'teacher-presence': {
     category: 'Transport & Safety',
     summary: 'For each lesson on the timetable today: whether the teacher (or a substitute) is in class, from the teacher\'s class check-in or a "teacher present" camera observation that a trained reviewer confirmed.',
@@ -795,6 +818,32 @@ const CONTENT: Record<string, OpsContent> = {
     ],
     steps: ['Choose the day and, if you like, a period.', 'Follow up a lesson with no check-in with the teacher or arrange cover.'],
     tips: ['Presence is never used to judge teaching.'],
+  },
+  shifts: {
+    category: 'Administration',
+    summary: 'Shifts give groups of classes their own school day: a primary morning shift and a secondary day shift, for example, each with its own arrival, assembly, periods, breaks, lunch, dispersal and clubs.',
+    highlights: [
+      { label: 'One shift per class', text: 'A class belongs to one shift; teachers may teach in any. Moving a class asks first.' },
+      { label: 'No room clashes', text: 'Two classes of different shifts are never put in the same room at the same time: such a plan is refused and the clash is named.' },
+      { label: 'One set of times', text: 'Saving a shift sets its classes\' timetable period times to the shift\'s period bells, so the timetable, cover, attendance and Campus World agree.' },
+    ],
+    steps: ['Choose New shift, or Edit an existing one.', 'Set the days, then the bells: periods carry their number; breaks, lunch and assembly a label.', 'Tick the classes in the shift and save.'],
+    tips: ['Campus World shows each shift at its own point of the day: one may be at lunch while another has gone home.'],
+  },
+  'professional-profile': {
+    category: 'Organisation',
+    summary: 'Your qualifications (degree, institution, year), subjects and specialisations, years of experience, certifications such as CTET, and a short bio.',
+    highlights: [
+      { label: 'Your choice', text: 'Each part has its own "Show to families" switch, off until you turn it on. Families of the classes you teach then see only those parts.' },
+      { label: 'Where it shows', text: 'Campus World\'s "who is teaching now", the live class page and the parent\'s teacher cards.' },
+    ],
+    steps: ['Fill in what you want to.', 'Turn on "Show to families" for the parts families may see.', 'Save, and check "What families see" at the bottom.'],
+  },
+  'staff-profiles': {
+    category: 'Organisation',
+    summary: 'HR: every staff member\'s professional profile, how complete it is and what each shares with families.',
+    highlights: [{ label: 'Consent stays theirs', text: 'HR may correct qualifications and details; whether a part is shown to families is changed only by the person.' }],
+    steps: ['Search for the person.', 'Open their profile, correct it and save.'],
   },
 };
 

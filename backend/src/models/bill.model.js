@@ -73,6 +73,8 @@ const billPaymentSchema = new Schema(
     recordedAt: { type: Date, default: Date.now },
     confirmedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
     confirmedAt: { type: Date, default: null },
+    // Part 3: confirmed by the person who recorded it, under single-approver mode.
+    singleApprover: { type: Boolean, default: false },
     bankReference: { type: String, default: null },
     note: { type: String, default: null },
   },
