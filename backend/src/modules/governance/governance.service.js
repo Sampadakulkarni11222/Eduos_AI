@@ -39,6 +39,12 @@ function present(m, actor) {
   const chair = (m.members ?? []).find((x) => x.role === 'CHAIR');
   out.isChair = Boolean(actor && chair && String(chair.profileId ?? '') === String(actor.profileId));
   out.canApproveMinutes = Boolean(actor && (out.isChair || actor.roleKey === 'PRINCIPAL'));
+  // Who may tick an action done: its owner or the secretariat (others got a 403 on click).
+  const manage = Boolean(actor?.permissions?.['governance.manage']);
+  out.actions = (out.actions ?? []).map((a) => ({ ...a, canUpdate: manage || Boolean(actor && String(a.ownerProfileId ?? '') === String(actor.profileId)) }));
+  // My own conflict declarations, so the screen can show and edit them.
+  const mine = (m.members ?? []).find((x) => actor && String(x.profileId ?? '') === String(actor.profileId));
+  out.myConflicts = (mine?.conflicts ?? []).map((c) => ({ agendaOrder: c.agendaOrder, declaration: c.declaration }));
   return out;
 }
 
@@ -139,9 +145,17 @@ export async function rsvp(actor, scope, id, body = {}) {
   const m = await load(id, actor, scope);
   const me = m.members.find((x) => String(x.profileId ?? '') === String(actor.profileId));
   if (!me) throw new AppError('Only members can respond.', 403);
-  me.rsvp = oneOf(body.rsvp, ['ACCEPTED', 'DECLINED', 'TENTATIVE'], 'rsvp');
+  // Declaring a conflict on its own keeps the member's existing response.
+  if (body.rsvp !== undefined || !Array.isArray(body.conflicts)) me.rsvp = oneOf(body.rsvp, ['ACCEPTED', 'DECLINED', 'TENTATIVE'], 'rsvp');
   if (Array.isArray(body.conflicts)) {
-    me.conflicts = body.conflicts.slice(0, 20).map((c) => ({ agendaOrder: Number(c.agendaOrder), declaration: requireText(c.declaration, 'declaration', { max: 1000 }) }));
+    // A declaration is about an item on this meeting's agenda, and cannot be changed once the record is closed.
+    if (m.minutes?.status === 'APPROVED') throw new AppError('The minutes are approved; declarations can no longer change.', 409, [], 'MINUTES_LOCKED');
+    const orders = new Set((m.agenda ?? []).map((a) => Number(a.order)));
+    me.conflicts = body.conflicts.slice(0, 20).map((c) => {
+      const order = Number(c.agendaOrder);
+      if (!orders.has(order)) throw new AppError(`There is no agenda item ${c.agendaOrder} on this meeting.`, 400, [], 'BAD_AGENDA_ITEM');
+      return { agendaOrder: order, declaration: requireText(c.declaration, 'declaration', { max: 1000 }) };
+    });
   }
   m.markModified('members');
   await m.save();
@@ -199,13 +213,23 @@ export async function record(actor, scope, id, body = {}) {
       if (forV + against + abstain > presentVoting) {
         throw new AppError(`Resolution ${i + 1} records ${forV + against + abstain} votes, but only ${presentVoting} voting ${presentVoting === 1 ? 'member was' : 'members were'} present.`, 400, [], 'VOTES_EXCEED_PRESENT');
       }
+      // A member who declared a conflict on this agenda item is recused: they
+      // may be present but do not vote on it.
+      const order = r.agendaOrder ? Number(r.agendaOrder) : null;
+      const recused = order ? m.members.filter((x) => x.attended && x.voting && (x.conflicts ?? []).some((c) => Number(c.agendaOrder) === order)) : [];
+      if (recused.length && forV + against > presentVoting - recused.length) {
+        throw new AppError(`Resolution ${i + 1} is on agenda item ${order}, where ${recused.map((x) => x.name).join(', ')} declared a conflict and ${recused.length === 1 ? 'does' : 'do'} not vote; at most ${presentVoting - recused.length} votes for or against can be recorded.`, 400, [], 'CONFLICTED_MEMBER_VOTED');
+      }
       const outcome = oneOf(r.outcome, ['PASSED', 'FAILED', 'DEFERRED', 'WITHDRAWN'], 'outcome', forV > against ? 'PASSED' : 'FAILED');
       if (outcome === 'PASSED' && forV <= against) throw new AppError(`Resolution ${i + 1} cannot pass with ${forV} for and ${against} against.`, 400);
       return { number: optionalText(r.number, { max: 30 }) || `${m.refNo}/R${i + 1}`, agendaOrder: r.agendaOrder ? Number(r.agendaOrder) : null, text: requireText(r.text, 'resolution text', { max: 4000 }), proposer: optionalText(r.proposer, { max: 120 }) || null, seconder: optionalText(r.seconder, { max: 120 }) || null, votesFor: forV, votesAgainst: against, abstentions: Math.max(0, Number(r.abstentions) || 0), outcome };
     });
   }
   if (Array.isArray(body.actions)) {
-    m.actions = body.actions.slice(0, 100).map((a) => ({ title: requireText(a.title, 'action', { max: 300 }), ownerProfileId: a.ownerProfileId ? assertObjectId(a.ownerProfileId) : null, ownerName: optionalText(a.ownerName, { max: 120 }) || null, dueOn: parseDate(a.dueOn, 'action dueOn'), status: oneOf(a.status, ['OPEN', 'DONE', 'DROPPED'], 'action status', 'OPEN'), resolutionNumber: optionalText(a.resolutionNumber, { max: 30 }) || null }));
+    // An owner named by profile gets their name on the register (it read "—" otherwise).
+    const ownerIds = body.actions.map((a) => a.ownerProfileId).filter(Boolean).map((x) => assertObjectId(x));
+    const owners = new Map((await Profile.find({ _id: { $in: ownerIds } }).select('_id displayName').lean()).map((p) => [String(p._id), p.displayName]));
+    m.actions = body.actions.slice(0, 100).map((a) => ({ title: requireText(a.title, 'action', { max: 300 }), ownerProfileId: a.ownerProfileId ? assertObjectId(a.ownerProfileId) : null, ownerName: optionalText(a.ownerName, { max: 120 }) || owners.get(String(a.ownerProfileId ?? '')) || null, dueOn: parseDate(a.dueOn, 'action dueOn'), status: oneOf(a.status, ['OPEN', 'DONE', 'DROPPED'], 'action status', 'OPEN'), resolutionNumber: optionalText(a.resolutionNumber, { max: 30 }) || null }));
   }
   pushHistory(m, actor, 'RECORDED');
   m.markModified('members');
@@ -246,6 +270,9 @@ export async function updateAction(actor, scope, id, actionId, body = {}) {
 
 export async function cancel(actor, scope, id, { reason } = {}) {
   const m = await load(id, actor, scope);
+  // A meeting that took place is part of the record; it cannot be "cancelled" afterwards.
+  if (m.status === 'HELD' || m.minutes?.status === 'APPROVED') throw new AppError('This meeting has been held; its record stays. Correct it through the minutes instead.', 409, [], 'MEETING_HELD');
+  if (m.status === 'CANCELLED') throw new AppError('This meeting is already cancelled.', 409, [], 'MEETING_CANCELLED');
   m.status = 'CANCELLED';
   pushHistory(m, actor, 'CANCELLED', { note: requireText(reason, 'reason', { max: 500 }) });
   await m.save();

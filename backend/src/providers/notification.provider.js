@@ -114,7 +114,7 @@ async function sendViaResend(email, code) {
  * with EMAIL_PROVIDER=console nothing leaves the server and the caller is told
  * so, rather than being handed a success it would record as a delivery.
  */
-export async function sendEmail({ to, subject, text }) {
+export async function sendEmail({ to, subject, text, html }) {
   if (env.EMAIL_PROVIDER === 'console') {
     logger.info(`[email SIMULATION] to ${String(to).replace(/^(.).*(@.*)$/, '$1***$2')}: ${subject}`);
     return { sent: false, simulated: true };
@@ -126,7 +126,7 @@ export async function sendEmail({ to, subject, text }) {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ from, to: [to], subject, text }),
+      body: JSON.stringify({ from, to: [to], subject, text, ...(html && { html }) }),
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return { sent: false, error: `HTTP ${res.status}` };

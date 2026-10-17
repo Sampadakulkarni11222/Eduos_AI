@@ -521,6 +521,18 @@ async function teacherDashboard(actor, period, now = new Date()) {
     lists.push(list('today', 'My timetable today', items, { link: '/timetable', empty: 'No periods on your timetable today.' }));
   });
 
+  // Part 4 (teacher audit): today's lesson plans and past lessons still to mark taught.
+  await attempt('lesson plans', async () => {
+    const { LessonPlan } = await import('../../models/teaching.model.js');
+    const [todays, open] = await Promise.all([
+      LessonPlan.find({ teacherId: me, date: today }).sort({ periodNo: 1 }).select('title periodNo status subjectOfferingId').lean(),
+      LessonPlan.countDocuments({ teacherId: me, date: { $lt: today }, status: { $ne: 'TAUGHT' } }),
+    ]);
+    const items = todays.map((p) => ({ text: `${p.periodNo != null ? `P${p.periodNo} · ` : ''}${p.title}`, sub: offeringLabel.get(String(p.subjectOfferingId)) ?? '', link: '/lesson-plans', tone: p.status === 'TAUGHT' ? 'good' : 'neutral', badge: p.status === 'TAUGHT' ? 'Taught' : p.status === 'READY' ? 'Ready' : 'Draft' }));
+    if (open) items.push({ text: `${plural(open, 'past lesson')} not yet marked taught`, sub: 'Mark them taught to update the syllabus tracker', link: '/lesson-plans', tone: 'warn', badge: 'To do' });
+    lists.push(list('lessonPlans', 'Lesson plans today', items, { link: '/lesson-plans', empty: 'No lesson plan for today. Plan one, or let the assistant suggest one from your syllabus.' }));
+  });
+
   const duties = await attempt('cover duties', async () => {
     if (!(await featureEnabled('staffCover'))) return null;
     const rows = await CoverAssignment.find({ substituteProfileId: me, status: 'CONFIRMED', date: { $gte: today, $lt: new Date(today.getTime() + 14 * DAY) } })

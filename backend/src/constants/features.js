@@ -44,6 +44,8 @@ export const FEATURES = {
   adSync: { label: 'Live ad-platform sync (daily campaign metrics)', default: false, needs: 'An ad account connected through the official API of the provider (Connectors page)' },
   // Part 3.
   healthRoom: { label: 'Health room: visits, medication, immunisations and health cards', default: true },
+  // Part 4: opportunities catalogue and the interactive weekly / monthly newsletter (built on the digest's approved feeds).
+  newsletter: { label: 'Opportunities and the weekly / monthly newsletter', default: true },
 };
 
 export const FEATURE_KEYS = Object.keys(FEATURES);

@@ -5,6 +5,7 @@ import { Card, EmptyState, SkeletonRows, Pill, rupees } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import type { BookDto, BookIssueDto, StudentListItem } from '@/lib/types';
 import { formatDate, humanizeLabel } from '../../student/_lib/format';
+import { AskBookButton, ChildBookRequests } from '@/components/family-requests';
 
 /**
  * Why a list could not be loaded, in words a parent can act on. A failed
@@ -36,6 +37,8 @@ export default function ParentLibrary() {
   const [loading, setLoading] = useState(false);
   const [issuedError, setIssuedError] = useState<string | null>(null);
   const [booksError, setBooksError] = useState<string | null>(null);
+  // Part 4: bumps when a request is sent, so the requests card reloads.
+  const [asked, setAsked] = useState(0);
 
   const loadBooks = (q?: string) => {
     setBooksError(null);
@@ -153,6 +156,9 @@ export default function ParentLibrary() {
                           <Pill tone={b.availableCopies > 0 ? 'green' : 'red'}>
                             {b.availableCopies > 0 ? 'Available' : 'Out'}
                           </Pill>
+                          {kid && b.resourceType !== 'DIGITAL' && b.availableCopies > 0 && (
+                            <div style={{ marginTop: 6 }}><AskBookButton studentId={kid.id} bookId={b.id} firstName={kid.name.split(' ')[0]} onDone={() => setAsked((n) => n + 1)} /></div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -163,6 +169,8 @@ export default function ParentLibrary() {
           </Card>
         </div>
       )}
+      {/* Part 4: a parent asks the librarian for a book for this child. */}
+      {kid && <ChildBookRequests studentId={kid.id} firstName={kid.name.split(' ')[0]} refreshKey={asked} />}
     </PortalShell>
   );
 }

@@ -177,19 +177,52 @@ async function seedOperations() {
     if (await TimetableSlot.exists({ periodNo: 6 })) return 'kept';
     const sections = await Section.find({}).sort({ _id: 1 }).lean();
     const extra = [{ no: 6, start: '13:15', end: '14:00' }, { no: 7, start: '14:15', end: '15:00' }, { no: 8, start: '15:00', end: '15:45' }];
+    const morning = [['08:30', '09:15'], ['09:15', '10:00'], ['10:15', '11:00'], ['11:00', '11:45'], ['12:30', '13:15']];
+    // A teacher is never in two rooms at once, and no one is worked past a
+    // realistic load: the morning timetable is read first, then each new
+    // period goes to a subject whose teacher is free then and under the caps.
+    // A period nobody is free for is left without a lesson (a free period).
+    const MAX_PER_DAY = 7;
+    const MAX_PER_WEEK = 36;
+    const busy = new Set();
+    const perDay = new Map();
+    const perWeek = new Map();
+    const book = (teacher, day, periodNo) => {
+      busy.add(`${teacher}|${day}|${periodNo}`);
+      perDay.set(`${teacher}|${day}`, (perDay.get(`${teacher}|${day}`) ?? 0) + 1);
+      perWeek.set(teacher, (perWeek.get(teacher) ?? 0) + 1);
+    };
+    const free = (teacher, day, periodNo) => !busy.has(`${teacher}|${day}|${periodNo}`)
+      && (perDay.get(`${teacher}|${day}`) ?? 0) < MAX_PER_DAY && (perWeek.get(teacher) ?? 0) < MAX_PER_WEEK;
+    const existing = await TimetableSlot.find({ subjectOfferingId: { $ne: null } }).populate('subjectOfferingId', 'teacherId').lean();
+    for (const slot of existing) if (slot.subjectOfferingId?.teacherId) book(String(slot.subjectOfferingId.teacherId), slot.dayOfWeek, slot.periodNo);
+
     const docs = [];
+    let freePeriods = 0;
     for (const [i, sec] of sections.entries()) {
       // eslint-disable-next-line no-await-in-loop
-      const offs = await SubjectOffering.find({ sectionId: sec._id }).sort({ _id: 1 }).select('_id').lean();
+      const offs = await SubjectOffering.find({ sectionId: sec._id }).sort({ _id: 1 }).select('_id teacherId').lean();
       if (!offs.length) continue;
+      const wanted = [];
       for (const day of [1, 2, 3, 4, 5, 6]) {
-        for (const p of extra) docs.push({ sectionId: sec._id, dayOfWeek: day, periodNo: p.no, startTime: p.start, endTime: p.end, subjectOfferingId: offs[(day + p.no - 1 + i) % offs.length]._id });
+        for (const p of extra) wanted.push({ day, no: p.no, start: p.start, end: p.end });
         // Saturday mornings too, so a weekend test still shows a school at work.
-        if (day === 6) for (const [k, t] of [['08:30', '09:15'], ['09:15', '10:00'], ['10:15', '11:00'], ['11:00', '11:45'], ['12:30', '13:15']].entries()) docs.push({ sectionId: sec._id, dayOfWeek: 6, periodNo: k + 1, startTime: t[0], endTime: t[1], subjectOfferingId: offs[(day + k + i) % offs.length]._id });
+        if (day === 6) for (const [k, t] of morning.entries()) wanted.push({ day: 6, no: k + 1, start: t[0], end: t[1] });
+      }
+      for (const w of wanted) {
+        const first = (w.day + w.no - 1 + i) % offs.length;
+        let chosen = null;
+        for (let step = 0; step < offs.length && !chosen; step++) {
+          const off = offs[(first + step) % offs.length];
+          if (off.teacherId && free(String(off.teacherId), w.day, w.no)) chosen = off;
+        }
+        if (!chosen) { freePeriods += 1; continue; }
+        book(String(chosen.teacherId), w.day, w.no);
+        docs.push({ sectionId: sec._id, dayOfWeek: w.day, periodNo: w.no, startTime: w.start, endTime: w.end, subjectOfferingId: chosen._id });
       }
     }
     await TimetableSlot.insertMany(docs, { ordered: false }).catch((e) => { if (!e.insertedDocs) throw e; });
-    return `${docs.length} periods added (afternoons and Saturday)`;
+    return `${docs.length} periods added (afternoons and Saturday), ${freePeriods} left free so no teacher is double-booked`;
   });
 
   // A lab period a day for the first classes, so the labs are in use too.
@@ -555,6 +588,28 @@ async function seedOperations() {
     }
     return `${n} stories (one waiting for moderation) and three circles`;
   });
+
+  // ── A second child for the demo parent (part 4, parent audit) ─────────────
+  // Many families have children in two classes. The demo parent gets a second
+  // linked child in another grade (same surname where the roll has one), so the
+  // child switcher, the family desk and the assistant's "which child?" all have
+  // something real to show. Idempotent: an existing second link is kept.
+  if (who.PARENT) {
+    await section('Second child for the demo parent', null, async () => {
+      const links = await StudentGuardian.find({ guardianProfileId: who.PARENT.profile._id }).select('studentId relation').lean();
+      if (links.length >= 2) return 'already linked';
+      const first = links[0] ? await Student.findById(links[0].studentId).select('lastName').lean() : null;
+      const firstEnr = links[0] ? await Enrollment.findOne({ studentId: links[0].studentId, status: 'ACTIVE' }).select('sectionId').lean() : null;
+      const firstSection = firstEnr ? await Section.findById(firstEnr.sectionId).select('gradeId').lean() : null;
+      const otherGrades = await Section.find(firstSection ? { gradeId: { $ne: firstSection.gradeId } } : {}).select('_id').lean();
+      const candidates = await Enrollment.find({ status: 'ACTIVE', sectionId: { $in: otherGrades.map((s) => s._id) } }).select('studentId').limit(400).lean();
+      const pool = await Student.find({ _id: { $in: candidates.map((c) => c.studentId) }, deletedAt: null, profileId: { $ne: who.STUDENT?.profile?._id ?? null } }).select('firstName lastName').lean();
+      const sibling = pool.find((s) => first?.lastName && s.lastName === first.lastName) ?? pool[0];
+      if (!sibling) return 'no other class to link';
+      await StudentGuardian.create({ studentId: sibling._id, guardianProfileId: who.PARENT.profile._id, relation: links[0]?.relation ?? 'MOTHER', isPrimary: false, pickupAuthorized: true });
+      return `${sibling.firstName} ${sibling.lastName ?? ''}`.trim();
+    });
+  }
 
   // ── Students and parents ─────────────────────────────────────────────────
   // The demo student and the demo parent's children, so their screens have
@@ -1263,6 +1318,31 @@ async function seedOperations() {
   // A week of visits, medication plans with consent and doses, first-aid stock (one expiring: a task), care notes,
   // screenings and immunisations for the health card: see seed_health.js.
   await (await import('./seed_health.js')).seedHealth({ section, attempt, who, tenantId: SEED_SCHOOL_SLUG });
+
+  // ── Alumni certificates, the give-back board and the board LOC check (agent: p4 student-alumnus) ──
+  // The demo alumnus's archived record and a certificate request, alumni offers (one waiting for review), a student's
+  // interest, and a board-registration check on the calendar: see seed_p4_student_alumnus.js.
+  await (await import('./seed_p4_student_alumnus.js')).seedP4StudentAlumnus({ section, attempt, who });
+
+  // ── Lesson plans, the question bank and CPD hours (agent: p4 teacher) ──
+  // The demo teacher's week of plans (taught, ready, one awaiting its taught mark, one with feedback), a question bank
+  // and draft paper for two subjects, and CPD hours for the teacher and colleagues: see seed_p4_teacher.js.
+  await (await import('./seed_p4_teacher.js')).seedP4Teacher({ section, attempt, who });
+
+  // ── Recruitment, staff exits, the day-end cash close and the nurse's watch list (agent: p4 finance-hr-nurse) ──
+  // Vacancies and candidates across the pipeline, a resignation with clearances and the full-and-final worksheet,
+  // two closed cash days (one checked), and a fever cluster sample: see seed_p4_finance_hr_nurse.js.
+  await (await import('./seed_p4_finance_hr_nurse.js')).seedP4FinanceHrNurse({ section, attempt, who, tenantId: SEED_SCHOOL_SLUG });
+
+  // ── Library desk, hostel life, admissions follow-ups, data protection (agent: p4 support-roles) ──
+  // Reservations and a reading challenge, last night's roll call, the week's menu and two incidents, next actions on
+  // open enquiries, three committees, data requests and a closed breach: see seed_p4_support_roles.js.
+  await (await import('./seed_p4_support_roles.js')).seedP4SupportRoles({ section, attempt, who });
+
+  // ── Opportunities and the weekly / monthly newsletter (agent: p4 newsletter) ──
+  // The curated starter list (dates unconfirmed), three school events with confirmed dates, two weekly editions and this
+  // month's edition published with flashcards, quiz and poll, saves, a comment waiting for staff: see seed_p4_newsletter.js.
+  await (await import('./seed_p4_newsletter.js')).seedP4Newsletter({ section, attempt, who });
 
   // ── What came out ────────────────────────────────────────────────────────
   const pending = await ApprovalRequest.countDocuments({ status: 'PENDING' }).catch(() => 0);

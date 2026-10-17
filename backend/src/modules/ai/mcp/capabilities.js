@@ -96,6 +96,10 @@ const ENTITY_OF_MODULE = {
   Quizzes: 'quiz',
   // Teachers' professional profiles (tools/p3Campus.js).
   'Staff profiles': 'staffProfile',
+  // Part 4, teacher planning (tools/p4Teacher.js): named so they can carry vocabulary of their own.
+  'Lesson plans': 'lessonPlan',
+  'Question bank': 'questionBank',
+  CPD: 'cpd',
 };
 
 /**
@@ -128,6 +132,10 @@ const ENTITY_OF_TOOL = {
   list_notifications: 'notification',
   // Everything waiting on the caller to decide, across every queue.
   get_pending_items_for_me: 'approval',
+  // Part 4 reachability: the planner and the board-registration check are their own questions, not
+  // questions about a class ("show my planner" tied with the electives list and was asked back).
+  get_my_planner: 'planner',
+  get_board_registration_details: 'boardRegistration',
 };
 
 /** Argument names that name WHAT the request is about. */
@@ -382,7 +390,7 @@ export const ENTITY_VOCABULARY = [
   // not the caller's section.
   // Not bare "schedule": that is the calendar's word ("the exam schedule",
   // "what is scheduled for Friday"). A CLASS schedule is the timetable.
-  ['timetable', /\btime.?table\b|\bperiods?\b|\bclass\s+schedules?\b|\blesson|\bnext\s+(?:class|lecture)\b|\bclass\b[^?.]*\b(?:next|right\s+now)\b/i],
+  ['timetable', /\btime.?table\b|\bperiods?\b|\bclass\s+schedules?\b|\blesson(?!s?\s+(?:plans?|taught)\b)|\bnext\s+(?:class|lecture)\b|\bclass\b[^?.]*\b(?:next|right\s+now)\b/i],
   // A member of staff's own leave, named by its type or its balance; listed
   // before the student-leave entry so "casual leave" is read as staff leave.
   ['staffLeave', /\bstaff\s+leave\b|\bleave\s+balance\b|\b(?:casual|earned|duty|maternity|paternity)\s+leave\b|\bleave\s+without\s+pay\b/i],
@@ -408,12 +416,12 @@ export const ENTITY_VOCABULARY = [
   // of things the assistant can help with. A timetable question says so --
   // "timetable", "period", "lecture" -- and is matched by its own entry.
   ['calendar', /\bcalendar|\bevent|\bholiday|\bschedul(?:e|es|ed|ing)\b|\bagenda\b/i],
-  ['fee', /\bfees?\b|\binvoice|\bpayment|\breceipt|\binstallment|फीस|\bconcessions?\b|\bcredit\s+notes?\b|\bgst\b|\bfee\s+adjustments?\b/i],
+  ['fee', /\bfees?\b(?!\s+tax\s+statements?)|\binvoice|\bpayment|\breceipt|\binstallment|फीस|\bconcessions?\b|\bcredit\s+notes?\b|\bgst\b|\bfee\s+adjustments?\b/i],
   // Seats a school buys, requested from the platform: "request 25 extra seats".
   ['seat', /\bseats?\b/i],
   ['library', /\blibrar|\bbooks?\b/i],
   ['hostel', /\bhostel|\bdorm|\broom\b|\bbeds?\b|\bwarden\b|\bout[\s-]?pass(?:es)?\b/i],
-  ['transport', /\btransport|\bbus\b|\broute\b|\bpick[\s-]?up\b|\bdrop[\s-]?off\b|\bbus\s*stop|\bvehicles?\b|\btrips?\b|\bboard(?:ed|ing)\b|\bfleet\b/i],
+  ['transport', /\btransport|\bbus\b|\broute\b|\bpick[\s-]?up\b(?!\s+(?:delegat\w*|people|persons?|adults?)\b)|\bdrop[\s-]?off\b|\bbus\s*stop|\bvehicles?\b|\btrips?\b|\bboard(?:ed|ing)\b|\bfleet\b/i],
   // Admissions, but NOT the words "admission number" -- that is how a STUDENT
   // is identified, and reading it as the admissions pipeline would answer a
   // question about a pupil with a list of enquiries.
@@ -429,7 +437,7 @@ export const ENTITY_VOCABULARY = [
   ['approval', /\bapprovals\b|\b(?:my|your)\s+approval\b|\bapproval\s+(?:inbox|requests?)\b|\bpending\s+(?:for|on)\s+me\b|\bmy\s+decision\b/i],
   ['compliance', /\bcompliance\b|\blicen[cs]es?\b|\bregulatory\s+returns?\b/i],
   ['correspondence', /\bcorrespondence\b|\bofficial\s+letters?\b/i],
-  ['governance', /\bboard\s+meetings?\b|\btrustee\s+meetings?\b|\bgoverning\s+body\b|\bcommittee\s+meetings?\b/i],
+  ['governance', /\bboard\s+meetings?\b|\btrustee\s+meetings?\b|\bgoverning\s+body\b|\bcommittee\s+meetings?\b|\bboard\s+agendas?\b|\bboard\s+packs?\b|\bboard\s+actions?\b/i],
   ['institutionEvent', /\bfests?\b/i],
   ['maintenance', /\bmaintenance\b|\brepairs?\b|\bwork\s+orders?\b/i],
   ['verification', /\bbackground\s+(?:verification|checks?)\b|\bverification\s+counts?\b/i],
@@ -470,6 +478,20 @@ export const ENTITY_VOCABULARY = [
   ['quiz', /\bquiz(?:zes)?\b/i],
   // Teachers' professional profiles (tools/p3Campus.js).
   ['staffProfile', /\bqualifications?\b|\bcertifications?\b|\bctet\b|\bteach(?:er|ing)\s+experience\b|\bteacher'?s?\s+(?:profile|bio)\b/i],
+  // ── Part 4 reachability (agent: p4 support-roles) ──
+  ['lessonPlan', /\blesson\s+plans?\b|\blessons?\s+taught\b/i],
+  ['questionBank', /\bquestion\s+bank\b|\bbank\s+questions?\b|\b(?:build|check|set)\s+(?:a\s+|the\s+)?question\s+papers?\b|\bblueprint\b/i],
+  ['cpd', /\bcpd\b|\bprofessional\s+development\b/i],
+  // Each by its own phrase, so none takes a sentence from the entities above. They sort by POSITION
+  // (entitiesInTextByPosition), so "school attendance overview" is leadership because "school" comes
+  // before "attendance", and "child growth view" is the family view, not analytics.
+  ['leadership', /\bschool\s+attendance\s+overview\b|\b(?:teacher|staff)\s+workloads?\b/i],
+  ['family', /\bfamily\s+today\b|\bfee\s+tax\s+statements?\b|\btax\s+statements?\b|\btranslat(?:e|es|ed|ing|ion)\b|\bmessage\s+preferences?\b|\bchild\s+growth\b|\bgrowth\s+view\b/i],
+  // The school's opportunities newsletter. Not bare "opportunity": the alumni board's opportunities
+  // (list_alumni_opportunities, offer_opportunity) share the word and keep it.
+  ['newsletter', /\bnewsletters?\b|\bsuggest(?:s|ed|ing)?\s+(?:an?\s+)?opportunit(?:y|ies)\b|\bfind\s+opportunit(?:y|ies)\b|\bsaved\s+opportunit(?:y|ies)\b|\bopportunity\s+eligibility\b/i],
+  ['planner', /\bplanner\b|\bstudy\s+(?:plan|week|schedule)s?\b/i],
+  ['boardRegistration', /\bboard\s+registrations?\b|\blist\s+of\s+candidates\b/i],
   ['aiDraft', /\bai\s+drafts?\b|\bdraft(?:s|ing)?\s+(?:me\s+)?(?:a\s+|an\s+|the\s+)?(?:letter|circular|minutes|lesson\s+plan|documents?)\b/i],
 ];
 

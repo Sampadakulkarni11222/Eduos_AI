@@ -372,7 +372,13 @@ for (const [slug, keys] of Object.entries(opsRoutes.portals as Record<string, st
     if (!groups.has(title)) groups.set(title, []);
     groups.get(title)!.push(item(key === 'today' && slug === 'principal' ? 'Command Centre' : page.title, page.icon, href, { ready: true }));
   }
-  const insertAt = portal.nav.findIndex((g) => g.title === 'WORKSPACE' || g.title === 'OVERVIEW') + 1;
+  // A teacher's own classes come first: the operations groups go after TEACHING
+  // so Attendance, Assignments and Exams are not pushed below the fold.
+  const teaching = slug === 'teacher' ? portal.nav.findIndex((g) => g.title === 'TEACHING') : -1;
+  // A parent's own pages (their child, school life, payments) come first; the
+  // shared school pages follow them, just before Help.
+  const parentHelp = slug === 'parent' ? portal.nav.findIndex((g) => g.title === 'HELP & SUPPORT') : -1;
+  const insertAt = parentHelp > 0 ? parentHelp : teaching >= 0 ? teaching + 1 : portal.nav.findIndex((g) => g.title === 'WORKSPACE' || g.title === 'OVERVIEW') + 1;
   portal.nav.splice(insertAt, 0, ...[...groups.entries()].map(([title, items]) => ({ title, items })));
 }
 

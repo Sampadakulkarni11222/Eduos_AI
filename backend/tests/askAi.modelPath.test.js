@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, afterEach } from 'vitest';
 
 /**
  * The same guarantees, with a language model switched ON.
@@ -201,6 +201,10 @@ describe('what the model returns is validated by trusted code', () => {
 });
 
 describe('the deterministic guards run BEFORE the model, so it is never asked', () => {
+  // Staff leave counts school days: on a weekend "tomorrow" would be a Sunday and
+  // nothing could be applied for, so these run on a fixed Wednesday (after the seed).
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T04:30:00Z')); });
+  afterEach(() => { vi.useRealTimers(); });
   it('an impossible date is asked about without consulting the model', async () => {
     const message = 'Mark Aman Gupta absent on 31 February';
     // Even a model eager to "fix" it for today is never given the chance.

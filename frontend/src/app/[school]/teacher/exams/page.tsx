@@ -1,5 +1,6 @@
 'use client';
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import { PaperResultsPanel } from '@/components/ops/p4-teacher-views';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, useToast } from '@/components/ui';
 import { api, ApiError, request } from '@/lib/api';
@@ -22,6 +23,8 @@ export default function TeacherExams() {
   const [perf, setPerf] = useState<PerformanceDto | null>(null);
   const [loading, setLoading] = useState(false);
   const [entryOpen, setEntryOpen] = useState(false);
+  // Bumped after marks are saved, so the class result below refreshes (part 4).
+  const [resultsVersion, setResultsVersion] = useState(0);
 
   useEffect(() => {
     api.exams().then((r) => setExams(r)).catch(() => setExams([]));
@@ -106,6 +109,8 @@ export default function TeacherExams() {
         )}
       </Card>
 
+      {examSubjectId && <PaperResultsPanel examSubjectId={examSubjectId} version={resultsVersion} />}
+
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, marginTop: 8, flexWrap: 'wrap' }}>
         <select className="input" style={{ maxWidth: 200 }} value={classFilter} onChange={(e) => setClassFilter(e.target.value)} aria-label="Class">
           <option value="">All classes</option>
@@ -149,7 +154,7 @@ export default function TeacherExams() {
         <MarksEntryModal
           examSubjectId={examSubjectId}
           onClose={() => setEntryOpen(false)}
-          onSaved={() => { if (enrollmentId) api.performance(enrollmentId).then(setPerf).catch(() => {}); }}
+          onSaved={() => { setResultsVersion((v) => v + 1); if (enrollmentId) api.performance(enrollmentId).then(setPerf).catch(() => {}); }}
         />
       )}
     </PortalShell>

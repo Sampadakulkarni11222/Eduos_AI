@@ -270,7 +270,7 @@ export default function AttendancePage() {
 
       {!loading && data && data.roster.length > 0 && mode === 'list' && (
         <Card pad={false}>
-          <table className="data-table data-table-cards">
+          <table className="data-table data-table-cards att-roster">
             <thead><tr><th>Roll</th><th>Student</th><th style={{ textAlign: 'right' }}>Status</th></tr></thead>
             <tbody>
               {data.roster.map((r) => (

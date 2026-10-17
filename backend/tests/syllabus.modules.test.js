@@ -110,7 +110,10 @@ describe('who sees the tracker', () => {
   it('shows a teacher their own subjects, a student and a parent their class, and another school nothing', async () => {
     const m = await inOak(() => syllabus.createModule(school.people.TEACHER.actor, fractions()));
     const mine = await inOak(() => syllabus.overview(school.people.TEACHER.actor));
-    expect(mine.rows.map((r) => r.subject)).toEqual(['Mathematics']);
+    // TEACHER is also Class 6 A's class teacher, so they follow the class's Science too, read-only (part 4).
+    expect(mine.rows.map((r) => r.subject).sort()).toEqual(['Mathematics', 'Science']);
+    expect(mine.rows.find((r) => r.subject === 'Science').canManage).toBe(false);
+    expect(mine.rows.find((r) => r.subject === 'Mathematics').canManage).toBe(true);
     expect(mine.byTeacher).toEqual([]);
 
     for (const who of ['STUDENT', 'PARENT']) {

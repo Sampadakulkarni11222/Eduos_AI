@@ -6,6 +6,7 @@ import { BookRequest } from '../../models/bookRequest.model.js';
 import '../../models/profile.model.js';
 import { Student } from '../../models/student.model.js';
 import { getOwnStudentId, getGuardianStudentIds } from '../../utils/scope.js';
+import { requestingStudentFor, familyStudentIds } from '../../utils/familyStudent.js';
 import { AppError } from '../../utils/AppError.js';
 import { paginate, mapPage } from '../../utils/paginate.js';
 import { insertRows, rowError } from '../../utils/csvImport.js';
@@ -113,6 +114,8 @@ function toIssueDto(issue) {
     returnedAt: raw.returnedAt ?? null,
     status: raw.status,
     finePaise: (raw.fineAmount ?? 0) * 100, // fineAmount stored in rupees, frontend uses paise
+    renewCount: raw.renewCount ?? 0,
+    fineStatus: raw.fineStatus ?? ((raw.fineAmount ?? 0) > 0 ? 'DUE' : 'NONE'),
   };
 }
 
@@ -674,13 +677,15 @@ export async function returnBook(issueId) {
   // Claimed atomically, so a double-clicked return restocks the copy once.
   const claimed = await BookIssue.findOneAndUpdate(
     { _id: issue._id, status: { $ne: 'RETURNED' } },
-    { $set: { status: 'RETURNED', returnedAt: now, ...(fine > 0 ? { fineAmount: fine } : {}) } },
+    { $set: { status: 'RETURNED', returnedAt: now, ...(fine > 0 ? { fineAmount: fine, fineStatus: 'DUE' } : {}) } },
     { new: true },
   );
   if (!claimed) throw new AppError('Already returned', 409);
 
   // Restore available copy
   await Book.findByIdAndUpdate(issue.bookId, { $inc: { availableCopies: 1 } });
+  // Part 4: a returned copy goes to the next reservation in the queue, if any (library.desk.js).
+  await import('./library.desk.js').then((m) => m.promoteHolds(issue.bookId)).catch(() => {});
 
   const populated = await BookIssue.findById(issueId).populate('bookId', 'title author isbn');
   return toIssueDto(populated);
@@ -695,12 +700,9 @@ export async function returnBook(issueId) {
  * behind it cannot make one. Read from the session profile through the same
  * lookup every OWN-scoped route uses — never from anything the caller sent.
  */
-async function requestingStudentId(actor) {
-  const studentId = await getOwnStudentId(actor?.profileId);
-  if (!studentId) {
-    throw new AppError('No student record is linked to this account', 404, [], 'STUDENT_NOT_LINKED');
-  }
-  return studentId;
+async function requestingStudentId(actor, studentId = null) {
+  // A student asks for themselves; a parent for one of their own children (utils/familyStudent.js).
+  return requestingStudentFor(actor, studentId);
 }
 
 const toRequestDto = (req) => {
@@ -725,8 +727,8 @@ const toRequestDto = (req) => {
 };
 
 /** A student asks for a copy. Lands as PENDING for a librarian to decide. */
-export async function requestBook(actor, bookId) {
-  const studentId = await requestingStudentId(actor);
+export async function requestBook(actor, bookId, forStudentId = null) {
+  const studentId = await requestingStudentId(actor, forStudentId);
 
   const book = await Book.findOne({ _id: bookId, deletedAt: null });
   if (!book) throw new AppError('Book not found', 404);
@@ -787,9 +789,9 @@ export async function requestBook(actor, bookId) {
 }
 
 /** Every request the signed-in student has made, newest first. */
-export async function listMyBookRequests(actor) {
-  const studentId = await requestingStudentId(actor);
-  const requests = await BookRequest.find({ studentId })
+export async function listMyBookRequests(actor, { studentId: forStudentId = null } = {}) {
+  const ids = await familyStudentIds(actor, forStudentId);
+  const requests = await BookRequest.find({ studentId: { $in: ids } })
     .sort({ createdAt: -1 })
     .populate('bookId', 'title author availableCopies resourceType')
     .populate('decidedByProfileId', 'displayName');
@@ -798,9 +800,9 @@ export async function listMyBookRequests(actor) {
 
 /** A student withdraws their own request, while it is still pending. */
 export async function cancelBookRequest(actor, requestId) {
-  const studentId = await requestingStudentId(actor);
+  const ids = await familyStudentIds(actor);
 
-  const request = await BookRequest.findOne({ _id: requestId, studentId });
+  const request = await BookRequest.findOne({ _id: requestId, studentId: { $in: ids } });
   if (!request) throw new AppError('Request not found', 404);
   if (request.status !== 'PENDING') {
     throw new AppError(`This request was already ${request.status.toLowerCase()}`, 409, [], 'NOT_CANCELLABLE');
@@ -904,10 +906,12 @@ export async function decideBookRequest(actor, requestId, { status, note = null,
   // Tell the student. Without this the decision exists only in the audit trail
   // and on a page they would have to remember to revisit.
   const student = await Student.findById(request.studentId).select('profileId').lean();
-  if (student?.profileId) {
+  // A parent who asked on their child's behalf is told too (Part 4: parents make requests).
+  const toldIds = [student?.profileId, request.requestedByProfileId].filter(Boolean).map(String);
+  if (toldIds.length) {
     const title = request.bookId?.title ?? 'the book you asked for';
     await notify({
-      recipientProfileIds: [student.profileId],
+      recipientProfileIds: [...new Set(toldIds)],
       type: 'LIBRARY',
       title: status === 'APPROVED'
         ? `"${title}" has been issued to you`

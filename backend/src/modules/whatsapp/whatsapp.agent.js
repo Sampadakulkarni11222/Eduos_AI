@@ -8,7 +8,8 @@ import { runAgentSafely, confirmAction, continueAnswer } from '../ai/agent/orche
 import { hasOpenWrite } from '../ai/agent/intent.js';
 import { toWhatsAppText } from '../ai/agent/present.js';
 import { latestPendingFor, reissueToken } from '../ai/mcp/confirm.js';
-import { detectLanguage, t } from '../../utils/language.js';
+import { detectLanguage, t, LANGUAGE_NAMES } from '../../utils/language.js';
+import { getPreferences } from '../messaging/messaging.service.js';
 import { runWithTenant, runAcrossSchools } from '../../tenancy/tenantContext.js';
 import { normalisePhone, buildHistory, latestContinuation } from './whatsapp.session.js';
 import { isOpeningMessage, buildBriefing } from './whatsapp.briefing.js';
@@ -248,7 +249,7 @@ export async function handleInboundMessage({ from, text, conversation = null, in
  */
 export async function converse({ actor, multipleProfiles = false, roleLabel = '', text, history = [], continuationToken = null }) {
   const message = String(text ?? '').trim();
-  const lang = detectLanguage(message).lang;
+  const lang = await replyLanguage(message, actor);
   if (!message) return { reply: t('agent.sendText', lang), lang };
 
   // Arrival. Someone who has just tapped through from the app says "Hi", and
@@ -343,6 +344,22 @@ _${evidenceLine(result.evidence)}_`;
     degraded: Boolean(result.degraded),
     continuationToken: result.continuation?.token ?? null,
   };
+}
+
+/**
+ * The language to answer in. What the person wrote decides when it is clear
+ * (Devanagari, Tamil, Hinglish...). A message that says nothing about language
+ * ("Hi", "ok", a number) is answered in the language they chose for school
+ * messages, so a parent who set Hindi is not greeted in English.
+ */
+async function replyLanguage(message, actor) {
+  const detected = detectLanguage(message);
+  if (detected.confident) return detected.lang;
+  try {
+    const pref = actor?.profileId ? await getPreferences(actor) : null;
+    if (pref?.language && LANGUAGE_NAMES[pref.language]) return pref.language;
+  } catch { /* preference unreadable: answer in what was detected */ }
+  return detected.lang;
 }
 
 /**

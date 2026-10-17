@@ -1,5 +1,5 @@
 import { CourseModule } from '../../models/courseModule.model.js';
-import { SubjectOffering, Term, AcademicYear } from '../../models/academics.model.js';
+import { SubjectOffering, Term, AcademicYear, Section } from '../../models/academics.model.js';
 import { Enrollment } from '../../models/student.model.js';
 import { ExamSubject, Mark } from '../../models/exam.model.js';
 import { Profile } from '../../models/profile.model.js';
@@ -44,7 +44,13 @@ function assertCanManage(actor, offering) {
 /** The sections a caller may read: all, the ones they teach, or their own or their children's. */
 async function readableOfferingFilter(actor) {
   if (seesAll(actor)) return {};
-  if (actor.roleKey === 'TEACHER') return { teacherId: actor.profileId };
+  if (actor.roleKey === 'TEACHER') {
+    // A class teacher also follows every subject of their own class (read
+    // only: canManage stays with the subject's teacher), so they can see where
+    // the class stands before a PTM or the report card.
+    const own = await Section.find({ classTeacherId: actor.profileId }).distinct('_id');
+    return own.length ? { $or: [{ teacherId: actor.profileId }, { sectionId: { $in: own } }] } : { teacherId: actor.profileId };
+  }
   const own = await getOwnStudentId(actor.profileId);
   const studentIds = own ? [own] : await getGuardianStudentIds(actor.profileId);
   if (!studentIds.length) return { _id: null };
@@ -323,7 +329,7 @@ export async function overview(actor, query = {}) {
   return {
     rows, byTeacher: seesAll(actor) ? byTeacher : [],
     totals: { subjects: rows.length, onTrack: count('ON_TRACK') + count('COMPLETED'), behind: count('BEHIND') + count('OVERDUE'), noPlan: count('NO_PLAN'), noRecentUpdate: count('NO_RECENT_UPDATE') },
-    definition: `On track compares topics done with how much of each module's planned window has passed. "No recent update" means nothing was recorded for ${STALE_DAYS} days on a module that should be under way. Average result is the mean of published exam marks in the teacher's subjects, and is one signal among several, not a rating.`,
+    definition: `On track compares topics done with how much of each module's planned window has passed. "No recent update" means nothing was recorded for ${STALE_DAYS} days on a module that should be under way.${seesAll(actor) ? " Average result is the mean of published exam marks in the teacher's subjects, and is one signal among several, not a rating." : ""}`,
   };
 }
 

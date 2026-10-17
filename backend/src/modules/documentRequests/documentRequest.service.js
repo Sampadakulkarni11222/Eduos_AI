@@ -5,6 +5,7 @@ import { Upload } from '../../models/upload.model.js';
 import { Role } from '../../models/role.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { Student, Enrollment } from '../../models/student.model.js';
+import { AlumniProfile } from '../../models/alumni.model.js';
 import { getGuardianStudentIds } from '../../utils/scope.js';
 import { Section } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
@@ -120,6 +121,7 @@ function toDto(r, { admin = false } = {}) {
  */
 async function studentContext(actor, studentId = null) {
   if (actor.roleKey === 'PARENT') return childContext(actor, studentId);
+  if (actor.roleKey === 'ALUMNUS') return alumnusContext(actor);
   if (actor.roleKey !== 'STUDENT') throw new AppError('Only students and parents can request documents', 403, [], 'ROLE_NOT_PERMITTED');
   return resolveStudentContext(actor);
 }
@@ -140,6 +142,23 @@ async function childContext(actor, studentId) {
     .sort({ createdAt: -1 })
     .select('_id sectionId academicYearId')
     .lean();
+  return { student, enrollment: enrollment ?? null };
+}
+
+/**
+ * A former student asking for a document from their own archived record
+ * (a duplicate leaving certificate, a character or study certificate). The
+ * record is found through their alumni profile, never through an id they send;
+ * former staff have no student record and are refused.
+ */
+async function alumnusContext(actor) {
+  const a = await AlumniProfile.findOne({ profileId: actor.profileId }).select('kind studentId status').lean();
+  if (!a || a.kind !== 'FORMER_STUDENT' || !a.studentId) throw new AppError('Document requests here are for former students. Former staff can ask HR for a service certificate.', 403, [], 'ROLE_NOT_PERMITTED');
+  if (a.status !== 'ACTIVE') throw new AppError('Your alumni membership is suspended. Contact the school.', 403, [], 'ALUMNUS_SUSPENDED');
+  const student = await Student.findOne({ _id: a.studentId, deletedAt: null }).select('_id firstName lastName dob gender address admissionNo').lean();
+  if (!student) throw new AppError('Your school record could not be found. Contact the school office.', 404, [], 'STUDENT_NOT_LINKED');
+  // The last class they were in, whatever its status now (graduated, withdrawn).
+  const enrollment = await Enrollment.findOne({ studentId: student._id }).sort({ createdAt: -1 }).select('_id sectionId academicYearId').lean();
   return { student, enrollment: enrollment ?? null };
 }
 

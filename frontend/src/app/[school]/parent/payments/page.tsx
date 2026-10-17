@@ -4,7 +4,9 @@ import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, rupees, useToast } from '@/components/ui';
 import { api, ApiError } from '@/lib/api';
 import { runCheckout, PaymentCancelled } from '@/lib/razorpay';
-import type { InvoiceDto } from '@/lib/types';
+import type { InvoiceDto, PaymentReceiptDto } from '@/lib/types';
+import { PaymentHistoryTable } from '@/components/fees/payment-history-table';
+import { FeeTaxStatement } from '@/components/family/fee-tax-statement';
 
 const TONE: Record<string, 'green' | 'amber' | 'red' | 'gray'> = { PAID: 'green', PARTIAL: 'amber', PENDING: 'gray', OVERDUE: 'red' };
 
@@ -19,7 +21,13 @@ export default function ParentPayments() {
   const [canPayOnline, setCanPayOnline] = useState(true);
   const toast = useToast();
 
-  const load = () => api.invoices().then(setInvoices).catch(() => setInvoices([]));
+  // Receipts: every payment the family has made, with its PDF, so a parent
+  // never has to ask the office for a copy.
+  const [receipts, setReceipts] = useState<PaymentReceiptDto[] | null>(null);
+  const load = () => {
+    api.listPayments().then(setReceipts).catch(() => setReceipts([]));
+    return api.invoices().then(setInvoices).catch(() => setInvoices([]));
+  };
   useEffect(() => { void load(); }, []);
   useEffect(() => {
     api.feeSummary()
@@ -44,7 +52,7 @@ export default function ParentPayments() {
         <thead>
           <tr>
             <th>Invoice</th><th>Student</th><th>Total</th><th>Paid</th><th>Due Date</th><th>Status</th>
-            {withActions && <th></th>}
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -61,15 +69,14 @@ export default function ParentPayments() {
                   {fmtDate(i.dueOn)}
                 </td>
                 <td data-label="Status"><Pill tone={TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
-                {withActions && (
-                  <td data-label="Actions">
-                    {canPayOnline && due > 0 && i.status !== 'CANCELLED' ? (
+                <td data-label="Actions">
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                    {withActions && canPayOnline && due > 0 && i.status !== 'CANCELLED' && (
                       <Button small onClick={() => setPaying(i)}>Pay {rupees(due)}</Button>
-                    ) : (
-                      <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>—</span>
                     )}
-                  </td>
-                )}
+                    <Button small variant="ghost" onClick={() => api.downloadInvoicePdf(i.id)}>Invoice PDF</Button>
+                  </div>
+                </td>
               </tr>
             );
           })}
@@ -132,6 +139,17 @@ export default function ParentPayments() {
           )}
         </>
       )}
+
+      {receipts && receipts.length > 0 && (
+        <>
+          <div style={{ fontFamily: 'Newsreader, serif', fontSize: 16, fontWeight: 600, margin: '22px 0 10px', color: 'var(--text-1)' }}>
+            Receipts
+          </div>
+          <Card pad={false}><PaymentHistoryTable payments={receipts} /></Card>
+        </>
+      )}
+
+      {invoices && invoices.length > 0 && <div style={{ marginTop: 22 }}><FeeTaxStatement /></div>}
 
       {paying && (
         <PayModal

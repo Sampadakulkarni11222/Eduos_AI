@@ -610,7 +610,10 @@ describe('the hand-off from the app', () => {
       // holds the permission for -- the briefing opens no new data path.
       const { TOOLS } = await import('../src/modules/ai/agent/tools.js');
       for (const name of briefing.tools) {
-        expect(resolved.actor.permissions[TOOLS[name].permission], `${roleKey} may run ${name}`).toBeTruthy();
+        // A briefing tool is an agent tool or an MCP-native one (a parent's get_family_today).
+        const { getMcpTool } = await import('../src/modules/ai/mcp/registry.js');
+        const tool = TOOLS[name] ?? getMcpTool(name);
+        expect(resolved.actor.permissions[tool.permission], `${roleKey} may run ${name}`).toBeTruthy();
       }
     }
   });

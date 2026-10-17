@@ -65,8 +65,15 @@ const VIEWS = {
   ShowcaseView: ["import { ShowcaseView } from '@/components/ops/showcase-view';", '<ShowcaseView />'],
   // Alumni, newsroom social publishing, daily digest, student profile links.
   AlumniView: ["import { AlumniView } from '@/components/ops/alumni-social-views';", '<AlumniView />'],
+  StudentPlannerView: ["import { StudentPlannerView } from '@/components/ops/p4-student-alumnus-views';", '<StudentPlannerView />'],
+  GiveBackView: ["import { GiveBackView } from '@/components/ops/p4-student-alumnus-views';", '<GiveBackView />'],
+  AlumniCertificatesView: ["import { AlumniCertificatesView } from '@/components/ops/p4-student-alumnus-views';", '<AlumniCertificatesView />'],
+  AlumnusHomeView: ["import { AlumnusHomeView } from '@/components/ops/p4-student-alumnus-views';", '<AlumnusHomeView />'],
   SocialPublishingView: ["import { SocialPublishingView } from '@/components/ops/alumni-social-views';", '<SocialPublishingView />'],
   DigestView: ["import { DigestView } from '@/components/ops/alumni-social-views';", '<DigestView />'],
+  // Part 4: opportunities and the interactive weekly / monthly newsletter (readers), and the editor's desk.
+  NewsletterView: ["import { NewsletterView } from '@/components/ops/newsletter-views';", '<NewsletterView />'],
+  NewsletterDeskView: ["import { NewsletterDeskView } from '@/components/ops/newsletter-views';", '<NewsletterDeskView />'],
   ProfileLinksView: ["import { ProfileLinksView } from '@/components/ops/alumni-social-views';", '<ProfileLinksView />'],
   // Sustainability, eco points, library labels and scan desk, AI drafts, online admission applications.
   SustainabilityView: ["import { SustainabilityView } from '@/components/ops/sustainability-view';", '<SustainabilityView />'],
@@ -91,6 +98,20 @@ const VIEWS = {
   ShiftsView: ["import { ShiftsView } from '@/components/ops/p3-campus-views';", '<ShiftsView />'],
   ProfessionalProfileView: ["import { ProfessionalProfileView } from '@/components/ops/p3-campus-views';", '<ProfessionalProfileView />'],
   StaffProfilesView: ["import { StaffProfilesView } from '@/components/ops/p3-campus-views';", '<StaffProfilesView />'],
+  // Part 4, teacher audit: lesson plans, question bank and papers, CPD hours.
+  LessonPlansView: ["import { LessonPlansView } from '@/components/ops/p4-teacher-views';", '<LessonPlansView />'],
+  QuestionBankView: ["import { QuestionBankView } from '@/components/ops/p4-teacher-views';", '<QuestionBankView />'],
+  CpdView: ["import { CpdView } from '@/components/ops/p4-teacher-views';", '<CpdView />'],
+  // Part 4, support roles: library desk, hostel life, admissions follow-ups, data protection and committees.
+  LibraryDeskView: ["import { LibraryDeskView } from '@/components/ops/p4-support-views';", '<LibraryDeskView />'],
+  HostelLifeView: ["import { HostelLifeView } from '@/components/ops/p4-support-views';", '<HostelLifeView />'],
+  FollowupsView: ["import { FollowupsView } from '@/components/ops/p4-support-views';", '<FollowupsView />'],
+  DataProtectionView: ["import { DataProtectionView } from '@/components/ops/p4-support-views';", '<DataProtectionView />'],
+  // Part 4 (finance, HR, nurse audit).
+  FinanceReportsView: ["import { FinanceReportsView } from '@/components/ops/p4-ops-views';", '<FinanceReportsView />'],
+  RecruitmentView: ["import { RecruitmentView } from '@/components/ops/p4-ops-views';", '<RecruitmentView />'],
+  StaffExitsView: ["import { StaffExitsView } from '@/components/ops/p4-ops-views';", '<StaffExitsView />'],
+  HealthWatchView: ["import { HealthWatchView } from '@/components/ops/p4-ops-views';", '<HealthWatchView />'],
 };
 
 const page = (portal, title, desc, view) => {
@@ -133,7 +154,7 @@ write('compliance', page('compliance', 'Today', 'Safeguarding, statutory deadlin
 write('trustee', page('trustee', 'Governing body overview', 'Decisions for the board, meetings, budget and compliance at a glance.', 'RoleHome'));
 write('marketing', page('marketing', 'Today', 'Enquiries, follow-ups, campaigns and seats.', 'RoleHome'));
 write('nurse', page('nurse', 'Health room', "Today's visits, doses due, stock to replace, care notes, immunisations and health cards.", 'HealthView'));
-write('alumnus', page('alumnus', 'Alumni', 'News from your institution, alumni circles and mentoring.', 'NewsroomView'));
+write('alumnus', page('alumnus', 'Alumni', 'News from your institution, alumni circles and mentoring.', 'AlumnusHomeView'));
 const crm = path.join(root, 'src/app/[school]/marketing/admissions/page.tsx');
 if (!fs.existsSync(crm) || force) {
   fs.mkdirSync(path.dirname(crm), { recursive: true });

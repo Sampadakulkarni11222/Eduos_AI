@@ -675,6 +675,10 @@ export const SYSTEM_ROLES = [
       ['leave.apply', 'OWN'],
       ['library.read', 'OWN'],
       ['leave.read', 'OWN'],
+      // Part 4: a parent asks for a library book or a bus place for their own child
+      // (the services check the child is theirs: utils/familyStudent.js).
+      ['library.request', 'OWN'],
+      ['transport.request', 'OWN'],
       ['assignments.read', 'OWN'],
       ['marks.read', 'OWN'],
       ['reportcards.read', 'OWN'],

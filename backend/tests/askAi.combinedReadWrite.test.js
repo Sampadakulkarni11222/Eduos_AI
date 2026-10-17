@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, afterEach } from 'vitest';
 import { AgentAction } from '../src/models/agentAction.model.js';
 import { AttendanceRecord } from '../src/models/attendanceRecord.model.js';
 import { LeaveApplication } from '../src/models/leaveApplication.model.js';
@@ -397,6 +397,10 @@ describe('a refused question does not take the instruction down with it, or the 
 /* ── Another write ────────────────────────────────────────── */
 
 describe('the same shape with a different instruction', () => {
+  // Staff leave counts school days: on a weekend "tomorrow" would be a Sunday and
+  // nothing could be applied for, so these run on a fixed Wednesday (after the seed).
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T04:30:00Z')); });
+  afterEach(() => { vi.useRealTimers(); });
   it('shows a student their attendance and proposes their leave; nothing is applied before a yes', async () => {
     const student = school.people.STUDENT;
     const res = await ask(student, 'Show my attendance and apply for leave tomorrow because of fever');

@@ -16,6 +16,7 @@ import * as fleetTrips from '../modules/fleet/trips.service.js';
 import * as visitorsSvc from '../modules/safety/visitors.service.js';
 import * as pickupSvc from '../modules/safety/pickup.service.js';
 import * as outpassSvc from '../modules/hostel/outpass.service.js';
+import * as libraryDesk from '../modules/library/library.desk.js';
 import * as cameraSvc from '../modules/safety/camera.service.js';
 import * as ptm from '../modules/ptm/ptm.service.js';
 import * as quarterlyReports from '../modules/analytics/quarterly.service.js';
@@ -25,6 +26,7 @@ import { runAttendanceReminders as runClubRegisters } from '../modules/clubs/ses
 import { runBillsDue } from '../modules/bills/bills.service.js';
 import { syncRenewals } from '../modules/bills/renewals.service.js';
 import { runDaily as runDigest } from '../modules/digest/digest.service.js';
+import { runScheduled as runNewsletter } from '../modules/newsletter/editions.service.js';
 import { syncAllConnected as runAdSync } from '../modules/integrations/adsync.service.js';
 import { refreshDue as refreshSocialEngagement } from '../modules/integrations/engagement.service.js';
 
@@ -72,6 +74,8 @@ export const JOBS = [
   { key: 'bills.due', everyMinutes: 24 * 60, feature: 'bills', run: async (now) => ({ bills: await runBillsDue(), renewals: await syncRenewals({ now }) }) },
   // A seat offer past its last day frees the seat; nobody is offered it automatically.
   { key: 'marketing.offers.expire', everyMinutes: 60, run: (now) => marketing.expireOffers({ now }) },
+  // Part 4: a library reservation not collected by its date goes back, and the copy passes to the next in line.
+  { key: 'library.holds.expire', everyMinutes: 60, run: (now) => libraryDesk.expireHolds({ now }) },
   { key: 'governance.reminders', everyMinutes: 60, run: () => governance.sendReminders(SYSTEM, { hours: 48 }) },
   { key: 'correspondence.reminders', everyMinutes: 24 * 60, run: (now) => correspondence.sendDueReminders(SYSTEM, { withinDays: 3, now }) },
   { key: 'compliance.reminders', everyMinutes: 24 * 60, run: (now) => compliance.sendDeadlineReminders(SYSTEM, { withinDays: 14, now }) },
@@ -91,6 +95,9 @@ export const JOBS = [
   },
   // Daily learning digest: fetch the admin-approved feeds (SSRF-safe), then build each person's digest; email only to those who opted in.
   { key: 'digest.daily', everyMinutes: 24 * 60, feature: 'digest', run: (now) => runDigest({ now }) },
+  // Part 4 newsletter: opportunity candidates from the approved feeds, this week's and this month's drafts (once per period;
+  // an editor publishes), and "Remind me" deadline reminders through the outbox.
+  { key: 'newsletter.daily', everyMinutes: 24 * 60, feature: 'newsletter', run: (now) => runNewsletter({ now }) },
   // Live ad sync: daily campaign metrics for the last three days from each connected ad account; re-syncing replaces, never doubles.
   // Makes no request at all for a school with no connected account (or when the provider app is not configured).
   // Gated inside run (not `feature:`) because both switches are off by default and the job is still listed for every school.

@@ -4,7 +4,7 @@ import { SYSTEM_ROLES } from '../src/constants/permissions.js';
 import { MCP_TOOLS, mcpToolsFor } from '../src/modules/ai/mcp/registry.js';
 import { resetMcpClient } from '../src/modules/ai/mcp/client.js';
 import { speakOf } from '../src/modules/ai/agent/response.js';
-import { seedSchool, seedPerson, mcp, readToolArgs, OAK } from './support/mcpSchool.js';
+import { seedSchool, seedPerson, mcp, readToolArgs, OAK, actorForRole } from './support/mcpSchool.js';
 
 /**
  * Every read tool, run for real, for every role that can see it.
@@ -66,6 +66,8 @@ describe('every read tool keeps its contract', () => {
       ['ADMIN', 'PRINCIPAL', 'FINANCE', 'TEACHER', 'LIBRARIAN', 'WARDEN', 'PARENT', 'STUDENT', 'NURSE']
         .flatMap((k) => mcpToolsFor(school.people[k].actor).map((t) => t.name)),
     );
+    // The alumnus (no fixture person; a role's catalogue depends only on its grants).
+    for (const t of mcpToolsFor(actorForRole('ALUMNUS'))) covered.add(t.name);
     const uncovered = READ_TOOLS.filter((n) => !covered.has(n));
     expect(uncovered).toEqual([]);
   });

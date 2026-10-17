@@ -736,6 +736,11 @@ export async function seedP3Workflows({ section, attempt, who, teachers = [], ac
     const members = [TRUSTEE, PRINCIPAL, ADMIN, FINANCE].filter(Boolean);
     const m = await governance.create(PRINCIPAL.actor, { body: 'TRUST_BOARD', title: 'Annual general meeting of the trust (sample)', quorum: 2, mode: 'IN_PERSON', location: 'Board Room', durationMinutes: 120, memberProfileIds: members.map((x) => x.id), memberRoles: { [PRINCIPAL.id]: 'SECRETARY', ...(TRUSTEE ? { [TRUSTEE.id]: 'CHAIR' } : {}) }, proposedSlots: [daysAgo(35, 11).toISOString()] });
     await governance.schedule(PRINCIPAL.actor, 'ALL', m.id, { scheduledAt: daysAgo(30, 11).toISOString() });
+    // Members had accepted before the meeting (the list otherwise read "0/4 accepted" for a meeting everyone attended).
+    for (const p of members) {
+      // eslint-disable-next-line no-await-in-loop
+      await attempt('rsvp', () => governance.rsvp(p.actor, 'ALL', m.id, { rsvp: 'ACCEPTED' }));
+    }
     await attempt('agenda', () => governance.setAgenda(PRINCIPAL.actor, 'ALL', m.id, { items: [{ title: 'Annual accounts 2025-26', decisionNeeded: true }, { title: 'Fee revision for 2027-28', decisionNeeded: true }, { title: 'New science block: progress', decisionNeeded: false }] }));
     const full = await governance.get(PRINCIPAL.actor, 'ALL', m.id);
     const attendance = (full.members ?? []).map((x) => ({ memberId: x.id ?? x._id, attended: true }));
@@ -849,6 +854,17 @@ export async function seedP3Workflows({ section, attempt, who, teachers = [], ac
         if (req) await attempt('approve last year', () => approvals.decide(d.actor, String(req._id), { action: 'APPROVE', comment: 'Approved (sample).' }));
       }
       note.push('the 2025-26 budget approved');
+      // Last year's outturn, so budget-versus-actual has something to show (sample figures).
+      const outturn = { IT: 0.97, FURN: 1.12, LAB: 0.88, EVT: 1.04, MKT: 0.91, MNT: 1.18 };
+      const b = await Budget.findById(prev.id);
+      if (b) {
+        for (const l of b.lines) { l.actualPaise = Math.round(l.plannedPaise * (outturn[l.code] ?? 1)); l.committedPaise = 0; }
+        const mnt = b.lines.find((l) => l.code === 'MNT');
+        if (mnt) mnt.varianceExplanation = 'Roof waterproofing after the July rains (sample).';
+        b.markModified('lines');
+        await b.save();
+        note.push('with last year’s actual spend by line');
+      }
     }
     return note.join('; ') || 'nothing to do';
   });

@@ -73,7 +73,7 @@ export const roster = asyncHandler(async (req, res) => {
  * session belongs to.
  */
 export const routesForStudent = asyncHandler(async (req, res) => {
-  const data = await service.listRoutesForStudent(req.actor);
+  const data = await service.listRoutesForStudent(req.actor, { studentId: req.query.studentId ?? null });
   sendSuccess(res, data, 'Routes fetched');
 });
 
@@ -82,12 +82,13 @@ export const requestRoute = asyncHandler(async (req, res) => {
     routeId: req.body.routeId,
     stopId: req.body.stopId,
     direction: req.body.direction,
+    studentId: req.body.studentId ?? null,
   });
   sendSuccess(res, request, 'Transport request submitted for approval', 201);
 });
 
 export const listMyTransportRequests = asyncHandler(async (req, res) => {
-  const requests = await service.listMyTransportRequests(req.actor);
+  const requests = await service.listMyTransportRequests(req.actor, { studentId: req.query.studentId ?? null });
   sendSuccess(res, requests, 'Your transport requests fetched');
 });
 

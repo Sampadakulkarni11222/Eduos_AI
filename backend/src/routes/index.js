@@ -31,6 +31,8 @@ import registrationRoutes from '../modules/registrations/registration.routes.js'
 import studentRequestRoutes from '../modules/studentRequests/studentRequests.routes.js';
 import admissionRoutes from '../modules/admissions/admission.routes.js';
 import growthRoutes from '../modules/growth/growth.routes.js';
+// Part 4 (parent): the family desk.
+import familyRoutes from '../modules/family/family.routes.js';
 import riskRoutes from '../modules/risk/risk.routes.js';
 import aiRoutes from '../modules/ai/ai.routes.js';
 import whatsappRoutes from '../modules/whatsapp/whatsapp.routes.js';
@@ -70,6 +72,7 @@ import { ptmRouter, reviewCallsRouter } from '../modules/ptm/ptm.routes.js';
 import conversationRoutes from '../modules/conversations/conversations.routes.js';
 import staffRoutes from '../modules/staff/staff.routes.js';
 import reportCardRoutes from '../modules/reportcards/reportcards.routes.js';
+import teachingRoutes from '../modules/teaching/teaching.routes.js'; // Part 4: lesson plans, question bank, CPD hours.
 import analyticsRoutes from '../modules/analytics/analytics.routes.js';
 import labsRoutes from '../modules/labs/labs.routes.js';
 import billsRoutes from '../modules/bills/bills.routes.js';
@@ -80,19 +83,32 @@ import showcaseRoutes from '../modules/showcase/showcase.routes.js';
 import sustainabilityRoutes from '../modules/sustainability/sustainability.routes.js';
 import { publicAdmissionRouter, onlineApplicationsRouter } from '../modules/admissions/online.routes.js';
 import libraryCopiesRoutes from '../modules/library/library.copies.routes.js';
+// Part 4 (support roles): library desk, hostel life, data protection, admissions follow-ups.
+import libraryDeskRoutes from '../modules/library/library.desk.routes.js';
+import hostelLifeRoutes from '../modules/hostel/life.routes.js';
+import privacyRoutes from '../modules/compliance/privacy.routes.js';
+import followupRoutes from '../modules/marketing/followups.routes.js';
 import aiDraftsRoutes from '../modules/ai/drafts.routes.js';
 import { feeAdjustmentsRouter, accountsExportRouter } from '../modules/fees/finance-extras.routes.js';
 // Alumni lifecycle and community, newsroom social publishing (staff only), daily learning digest.
 import alumniRoutes from '../modules/alumni/alumni.routes.js';
+// Part 4: student and alumnus audit (alumni certificates, give-back board, student planner).
+import { alumniServicesRouter, plannerRouter } from '../modules/p4StudentAlumnus/p4StudentAlumnus.routes.js';
 import socialRoutes from '../modules/social/social.routes.js';
 import digestRoutes from '../modules/digest/digest.routes.js';
+// Part 4: opportunities and the interactive weekly / monthly newsletter.
+import newsletterRoutes, { publicNewsletterRouter } from '../modules/newsletter/newsletter.routes.js';
 // Part 2 gaps: student support plans.
 import supportPlanRoutes from '../modules/support/support.routes.js';
 // Part 3: school health room.
 import healthRoutes from '../modules/health/health.routes.js';
+// Part 4 (finance, HR, nurse audit): collections reports and cash close, recruitment, exits, the nurse's watch list.
+import { financeReportsRouter, recruitmentRouter, exitsRouter, healthInsightsRouter } from '../modules/p4ops/p4ops.routes.js';
 import schoolPolicyRoutes from '../modules/policy/policy.routes.js';
 import portfolioRoutes from '../modules/portfolios/portfolios.routes.js';
 import scenarioRoutes from '../modules/scenarios/scenarios.routes.js';
+// Part 4 (leadership): attendance overview, teacher workload, board packs, certificates.
+import leadershipRoutes from '../modules/leadership/leadership.routes.js';
 import { offlineIdempotency } from '../middleware/idempotency.js';
 // Universal search; newsroom social sharing; offline marketing, ad connectors and attribution.
 import searchRoutes from '../modules/search/search.routes.js';
@@ -151,6 +167,7 @@ router.get('/health', async (_req, res) => {
 // ─── Module routes ──────────────────────────────────────────────
 // Public (no sign-in): the per-school online admission form.
 router.use('/public/admissions', publicAdmissionRouter);
+router.use('/public/newsletter', publicNewsletterRouter);
 // Public (no sign-in): campaign tracking links and the HMAC-verified lead webhook.
 router.use('/public/marketing', publicMarketingRouter);
 router.use('/public/integrations', publicIntegrationsRouter);
@@ -191,6 +208,10 @@ router.use('/ai', aiRoutes);
 router.use('/whatsapp', whatsappRoutes);
 router.use('/observability', observabilityRoutes);
 router.use('/library/copies', libraryCopiesRoutes);
+router.use('/library/desk', libraryDeskRoutes);
+router.use('/hostel/life', hostelLifeRoutes);
+router.use('/compliance/privacy', privacyRoutes);
+router.use('/admissions/followups', followupRoutes);
 router.use('/library', libraryRoutes);
 router.use('/hostel', hostelRoutes);
 router.use('/dashboard', dashboardRoutes);
@@ -218,6 +239,7 @@ router.use('/procurement', procurementRouter);
 router.use('/budgets', budgetRouter);
 router.use('/lectures', lectureRoutes);
 router.use('/syllabus', syllabusRoutes);
+router.use('/teaching', teachingRoutes);
 router.use('/tasks', tasksRoutes);
 router.use('/fleet', fleetRoutes);
 router.use('/checkpoints', checkpointsRouter);
@@ -245,10 +267,17 @@ router.use('/marketing', marketingRouter);
 router.use('/campus', campusRouter);
 router.use('/insights', insightsRouter);
 router.use('/alumni', alumniRoutes);
+router.use('/alumni-services', alumniServicesRouter);
+router.use('/student-planner', plannerRouter);
 router.use('/social', socialRoutes);
 router.use('/digest', digestRoutes);
+router.use('/newsletter', newsletterRoutes);
 router.use('/support-plans', supportPlanRoutes);
 router.use('/health', healthRoutes);
+router.use('/finance-reports', financeReportsRouter);
+router.use('/recruitment', recruitmentRouter);
+router.use('/exits', exitsRouter);
+router.use('/health-insights', healthInsightsRouter);
 router.use('/school-policy', schoolPolicyRoutes);
 router.use('/portfolios', portfolioRoutes);
 router.use('/scenarios', scenarioRoutes);
@@ -257,6 +286,8 @@ router.use('/genui', genuiRoutes);
 router.use('/newsroom-social', newsroomSocialRoutes);
 router.use('/marketing-growth', growthRouter);
 router.use('/integrations', integrationsRouter);
+router.use('/family', familyRoutes);
+router.use('/leadership', leadershipRoutes);
 
 // NOTE — a public GET /admin-seed endpoint used to live here, gated only by a
 // hardcoded default secret ('eduos-seed-2026'). Anyone who could reach the API

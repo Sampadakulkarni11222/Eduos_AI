@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, afterEach } from 'vitest';
 import { AgentAction } from '../src/models/agentAction.model.js';
 import { AuditLog } from '../src/models/auditLog.model.js';
 import { AttendanceRecord } from '../src/models/attendanceRecord.model.js';
@@ -577,6 +577,10 @@ describe('C — a student-specific attendance question is answered about that st
    ════════════════════════════════════════════════════════════ */
 
 describe('D — a leave application from staff is their own staff leave, alone or in a joined sentence', () => {
+  // Staff leave counts school days: on a weekend "tomorrow" would be a Sunday and
+  // nothing could be applied for, so these run on a fixed Wednesday (after the seed).
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T04:30:00Z')); });
+  afterEach(() => { vi.useRealTimers(); });
   // Changed deliberately in part 3: a member of staff (staffleave.apply) asking to apply for leave
   // means their OWN staff leave, so it reaches apply_staff_leave as a draft (or a question for the
   // day, kind and reason) instead of the old "isn't enabled for your account" refusal.

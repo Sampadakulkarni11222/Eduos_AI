@@ -61,17 +61,19 @@ function sizeOf(body) {
 const PORTALS = {
   principal: ['principal@schoolerp.com', [['/tickets', 10], ['/tasks?view=mine&status=open', 2], ['/payroll/payslips/mine', 3], ['/staff/leave?view=mine', 1], ['/governance/actions', 2], ['/compliance/my/policies', 3], ['/budgets', 2], ['/payroll/runs', 4], ['/community/mentors?all=true', 2]]],
   admin: ['admin@schoolerp.com', [['/tickets', 10], ['/document-requests', 10], ['/registrations/review?status=PENDING', 10], ['/transport/routes', 4], ['/transport/requests/review?status=PENDING', 3], ['/accounts-export/fee-heads', 4], ['/academics/years', 2]]],
-  teacher: ['teacher@schoolerp.com', [['/quizzes', 4], ['/leave?status=PENDING', 3], ['/registrations/review?status=PENDING', 5], ['/payroll/payslips/mine', 3], ['/compliance/my/policies', 3], ['/staff/leave?view=mine', 1]]],
-  finance: ['finance@schoolerp.com', [['/payroll/runs', 4], ['/payroll/payslips/mine', 3], ['/budgets', 2], ['/accounts-export/fee-heads', 4], ['/compliance/my/policies', 3]]],
-  librarian: ['librarian@schoolerp.com', [['/library/requests/review?status=PENDING', 3], ['/library/books?resourceKind=NOTE', 5], ['/library/books?resourceKind=QUESTION_PAPER', 5], ['/tickets', 2], ['/tasks?view=mine&status=open', 2], ['/payroll/payslips/mine', 3], ['/approvals?mine=true', 2]]],
-  warden: ['warden@schoolerp.com', [['/outpass?status=PENDING_WARDEN', 2], ['/tickets', 2], ['/payroll/payslips/mine', 3], ['/staff/leave?view=mine', 1], ['/approvals?mine=true', 2]]],
-  hr: ['hr@schoolerp.com', [['/payroll/runs', 4], ['/payroll/payslips/mine', 3], ['/staff/leave?view=mine', 1], ['/tasks?view=mine&status=open', 1]]],
-  marketing: ['marketing@schoolerp.com', [['/approvals?mine=true', 2], ['/tasks?view=mine&status=open', 2], ['/payroll/payslips/mine', 3], ['/staff/leave?view=mine', 1]]],
-  compliance: ['compliance@schoolerp.com', [['/approvals?mine=true', 5], ['/compliance/my/policies', 3], ['/payroll/payslips/mine', 3]]],
+  teacher: ['teacher@schoolerp.com', [['/quizzes', 4], ['/leave?status=PENDING', 3], ['/registrations/review?status=PENDING', 5], ['/payroll/payslips/mine', 3], ['/compliance/my/policies', 3], ['/staff/leave?view=mine', 1], ['/teaching/lesson-plans', 4], ['/teaching/question-bank/scopes', 1], ['/teaching/papers', 1], ['/teaching/cpd', 1]]],
+  finance: ['finance@schoolerp.com', [['/payroll/runs', 4], ['/payroll/payslips/mine', 3], ['/budgets', 2], ['/accounts-export/fee-heads', 4], ['/compliance/my/policies', 3], ['/finance-reports/cash-close', 2], ['/finance-reports/ageing', 5]]],
+  librarian: ['librarian@schoolerp.com', [['/library/requests/review?status=PENDING', 3], ['/library/books?resourceKind=NOTE', 5], ['/library/books?resourceKind=QUESTION_PAPER', 5], ['/tickets', 2], ['/tasks?view=mine&status=open', 2], ['/payroll/payslips/mine', 3], ['/approvals?mine=true', 2], ['/library/desk/holds', 1], ['/library/desk/challenges', 1], ['/library/desk/overdue', 1]]],
+  warden: ['warden@schoolerp.com', [['/outpass?status=PENDING_WARDEN', 2], ['/tickets', 2], ['/payroll/payslips/mine', 3], ['/staff/leave?view=mine', 1], ['/approvals?mine=true', 2], ['/hostel/life/rollcalls', 1], ['/hostel/life/incidents?status=ALL', 2]]],
+  hr: ['hr@schoolerp.com', [['/payroll/runs', 4], ['/payroll/payslips/mine', 3], ['/staff/leave?view=mine', 1], ['/tasks?view=mine&status=open', 1], ['/recruitment/vacancies', 3], ['/recruitment/candidates', 5], ['/exits', 1]]],
+  // Part 4: the nurse's health room and watch list.
+  nurse: ['nurse@schoolerp.com', [['/health/visits', 3], ['/health/stock', 3], ['/health-insights', 1]]],
+  marketing: ['marketing@schoolerp.com', [['/approvals?mine=true', 2], ['/tasks?view=mine&status=open', 2], ['/payroll/payslips/mine', 3], ['/staff/leave?view=mine', 1], ['/admissions/followups/counsellors', 1]]],
+  compliance: ['compliance@schoolerp.com', [['/approvals?mine=true', 5], ['/compliance/my/policies', 3], ['/payroll/payslips/mine', 3], ['/compliance/privacy/committees', 3], ['/compliance/privacy/requests?status=ALL', 3]]],
   trustee: ['trustee@schoolerp.com', [['/governance/actions', 2], ['/governance/meetings', 2], ['/budgets', 2]]],
-  student: ['+910000003001', [['/quizzes', 4], ['/quizzes/my-attempts', 2], ['/library/books?resourceKind=NOTE', 5], ['/library/books?resourceKind=QUESTION_PAPER', 5], ['/tickets', 2], ['/registrations/mine', 1], ['/leave/mine', 1], ['/document-requests/mine', 1], ['/student-requests/cocurricular', 1], ['/community/mentors', 2], ['/community/mentoring', 1], ['/report-cards/published', 1], ['/support-plans/family', 1]]],
-  parent: ['+910000004001', [['/fees/invoices', 4], ['/tickets', 2], ['/leave/mine', 1], ['/document-requests/mine', 1], ['/compliance/my/policies', 2], ['/report-cards/published', 1], ['/support-plans/family', 1]]],
-  alumnus: ['+910000000033', [['/community/mentors', 2]]],
+  student: ['+910000003001', [['/quizzes', 4], ['/quizzes/my-attempts', 2], ['/library/books?resourceKind=NOTE', 5], ['/library/books?resourceKind=QUESTION_PAPER', 5], ['/tickets', 2], ['/registrations/mine', 1], ['/leave/mine', 1], ['/document-requests/mine', 1], ['/student-requests/cocurricular', 1], ['/community/mentors', 2], ['/community/mentoring', 1], ['/report-cards/published', 1], ['/support-plans/family', 1], ['/student-planner/me', 1], ['/alumni-services/opportunities', 1]]],
+  parent: ['+910000004001', [['/fees/invoices', 4], ['/tickets', 2], ['/leave/mine', 1], ['/document-requests/mine', 1], ['/compliance/my/policies', 2], ['/report-cards/published', 1], ['/support-plans/family', 1], ['/students', 2]]],
+  alumnus: ['+910000000033', [['/community/mentors', 2], ['/alumni-services/opportunities', 4], ['/alumni-services/documents', 1], ['/alumni-services/opportunities/mine', 1]]],
 };
 
 describe.skipIf(skip)('demo completeness: every portal has sample data', () => {
@@ -107,6 +109,21 @@ describe.skipIf(skip)('demo completeness: every portal has sample data', () => {
 
   // One test on purpose: the suite's afterEach clears every collection, so the seeded school only lives for one.
   it('signs in as each of the 13 portals and finds data on their key screens, and analytics can compare with last year', async () => {
+    // The timetable is believable: no teacher in two rooms at once, and no one past 7 periods a day.
+    const db = mongoose.connection.db;
+    const teachers = new Map((await db.collection('subjectofferings').find({}, { projection: { teacherId: 1 } }).toArray()).map((o) => [String(o._id), String(o.teacherId)]));
+    const at = new Map(); const daily = new Map();
+    for (const slot of await db.collection('timetableslots').find({ subjectOfferingId: { $ne: null } }).toArray()) {
+      const teacher = teachers.get(String(slot.subjectOfferingId));
+      if (!teacher || teacher === 'undefined') continue;
+      const key = `${slot.tenantId}|${teacher}|${slot.dayOfWeek}|${slot.periodNo}`;
+      at.set(key, (at.get(key) ?? 0) + 1);
+      const dayKey = `${slot.tenantId}|${teacher}|${slot.dayOfWeek}`;
+      daily.set(dayKey, (daily.get(dayKey) ?? 0) + 1);
+    }
+    expect([...at].filter(([, n]) => n > 1), 'teachers double-booked').toEqual([]);
+    expect([...daily].filter(([, n]) => n > 7), 'teachers over 7 periods a day').toEqual([]);
+
     const empty = [];
     for (const [portal, [who, checks]] of Object.entries(PORTALS)) {
       // eslint-disable-next-line no-await-in-loop

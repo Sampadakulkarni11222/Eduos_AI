@@ -608,6 +608,42 @@ const CONTENT: Record<string, OpsContent> = {
       'Headlines are shown as plain text; nothing from a feed runs in your browser.',
     ],
   },
+  // Part 4: opportunities and the interactive weekly / monthly newsletter.
+  opportunities: {
+    category: 'Learning',
+    summary: 'Competitions, olympiads, scholarships, entrance exams, hackathons, science fairs, research programmes and more, from school to international level, matched to you (or to each of your children) with the reason, plus a weekly and a monthly newsletter you can play with: flashcards, a three-question quiz, a poll and comments.',
+    highlights: [
+      { label: 'Matched, with the reason', text: 'Matches use class, age, stream, clubs, competency-portfolio strengths, past entries and the interests you choose, and say why: "Because Riya is in Class 9 and in the Robotics club". A parent sees matches for their own children only.' },
+      { label: 'Honest dates', text: 'Dates the school has checked on the official site show a countdown. Anything else says when it usually runs and "check dates on the official site".' },
+      { label: 'Safe to join in', text: 'No profiles, no messages between readers. Comments from students and parents are checked by staff first, and students appear as their class, never by name. The class and house quiz board is opt-in and shows only averages.' },
+    ],
+    steps: [
+      'Newsletter: open this week\'s or this month\'s edition. It remembers where you stopped. Switch to Hindi or a larger text size at the top.',
+      'On any opportunity: Save, Remind me (reminders 7, 3 and 1 day before a confirmed closing date), Add to calendar, Can I enter? (yes, no or check, with reasons), Ask a teacher, or open the official site.',
+      'Flashcards: tap to flip, swipe right if you knew it and left to see it again. Cards come back on a schedule; review a few each day to keep your streak.',
+      'Quick quiz: three questions, instant answers and explanations, one try per edition. Poll: vote to see the live results.',
+      'For you, Explore (with this month\'s map by level and region), Saved and Questions keep everything in one place. Settings: weekly / monthly, the email version (parents and staff) and your interests.',
+    ],
+    tips: [
+      'The email version has no tracking pixels and an unsubscribe link. Without an email service connected, the school\'s outbox records it as simulated.',
+      'Staff: "Know a good opportunity?" under Explore sends an item to the editor\'s review queue.',
+    ],
+  },
+  'newsletter-desk': {
+    title: 'Newsletter Desk',
+    category: 'Learning',
+    summary: 'The editor\'s desk for opportunities and the newsletter: review what staff, the curated starter list and the approved feeds suggest; publish each edition with one press; moderate comments; keep the list of official sites; see opens, clicks, quiz players and saves.',
+    workflow: ['Suggested (staff, starter list, feeds)', 'Editor reviews and publishes', 'Drafts made each week and month', 'Editor publishes the edition', 'In the app and by email to those who opted in'],
+    steps: [
+      'Review queue: edit, publish or reject (with a reason the person sees). "Add the starter list" brings real recurring programmes with dates left unconfirmed; "Look in approved feeds" finds candidates in the daily digest\'s feeds.',
+      'Published: edit an item, confirm its dates after checking them on the official site, or archive it.',
+      'Editions: drafts are made automatically once a week and once a month. Preview, edit the hook and items (the flashcards, quiz and poll rebuild), then Publish. Withdrawing hides an edition; publishing it again does not send it twice.',
+      'Comments: approve or do not show comments from students and parents (teachers can also approve students\' comments).',
+      'Official sites: an item\'s link must be on one of these domains; it is checked when saved and again when published.',
+      'Analytics: delivered, emailed (sent or simulated), opens, read to the end, clicks, quiz players and average, poll votes and saves per edition.',
+    ],
+    tips: ['Never type dates you have not checked: leave them blank and the item says "check dates on the official site".'],
+  },
   'profile-links': {
     category: 'Community',
     summary: 'A student can add LinkedIn, Instagram, GitHub and a personal site to their profile. Other students and parents see them only if the student agrees and, for anyone under 18, a guardian agrees too.',
@@ -692,6 +728,66 @@ const CONTENT: Record<string, OpsContent> = {
       'Scan desk → Return: scan the book. Any late fine is worked out as at the desk.',
     ],
     tips: ['A scanner is just a keyboard: it types the code and presses Enter.', 'A copy that is out cannot be issued again until it is returned.'],
+  },
+  'library-desk': {
+    category: 'Learning',
+    summary: 'The librarian’s day in one place: overdue loans with the fine so far and one-press reminders to families, reservations and the hold shelf, fines to settle, reading challenges, circulation insights and next-read suggestions with reasons.',
+    workflow: ['Check Today', 'Remind overdue', 'Lend from the hold shelf', 'Settle fines', 'Run a reading challenge'],
+    highlights: [
+      { label: 'Reservations', text: 'When no copy is free a student joins the queue; a returned copy is set aside for the first in line for three days and the family is told.' },
+      { label: 'Renewals', text: 'A loan can be renewed twice, never when it is overdue or when someone is waiting and no other copy is free.' },
+      { label: 'Ask AI', text: 'Say "renew Wings of Fire for Rahul" or "who is overdue?"; every change is shown as a draft for you to confirm.' },
+    ],
+    steps: [
+      'Today shows counts from the records: overdue, ready to collect, in queues, fines and the last 30 days.',
+      'Overdue → Remind borrowers: each student and their guardians are reminded at most once a day.',
+      'Reservations → Reserve a book, Lend now when the student collects, or Cancel.',
+      'Fines → Paid when collected at the desk; Waive needs a reason.',
+      'Reading programme → New challenge: target, dates, classes and (optionally) categories; Progress shows each student.',
+      'Suggest a book: pick a student to see unread titles with the reasons.',
+    ],
+    tips: ['Returned books count towards a reading challenge.', 'Idle titles (not borrowed in a year) are listed under Insights.'],
+  },
+  'hostel-life': {
+    category: 'Transport & Safety',
+    summary: 'Night and morning roll call, the mess menu and tonight’s headcount, the kitchen allergy list, and incidents with a record of every call to the family.',
+    workflow: ['Open roll call', 'Mark', 'Submit', 'Find anyone missing', 'Log the call home'],
+    highlights: [
+      { label: 'Out-passes counted for you', text: 'Residents out on an out-pass are already marked on leave with the pass number.' },
+      { label: 'Nobody unaccounted for', text: 'Submitting with anyone unmarked or absent alerts every warden and the principal and opens an urgent task until each is marked as arrived.' },
+    ],
+    steps: [
+      'Roll call → choose the date and Night or Morning → Open roll call.',
+      'Mark each resident, or Mark everyone else present, then Submit.',
+      'Mess → Edit to set the week’s menu; Show list for the allergies the kitchen must know (each view is audited).',
+      'Incidents → Record incident; Log parent contact after you speak to the family; Resolve when closed.',
+    ],
+    tips: ['A safeguarding concern goes on the Safeguarding page; here you only note that it was referred.'],
+  },
+  followups: {
+    category: 'Growth',
+    summary: 'Every enquiry that needs a touch today: overdue, due today, never contacted and with no next step, sorted by a warmth score that explains itself. Log what happened and the next step in one go.',
+    workflow: ['Open the list', 'Call or message', 'Log follow-up', 'Set next action'],
+    highlights: [
+      { label: 'Explained score', text: 'Press the score to see each reason (stage, recent contact, visits, consent, how the source converts, seats left). It orders the list and decides nothing.' },
+      { label: 'Consent respected', text: 'A family that withdrew consent is marked Do not contact; only a note can be recorded.' },
+    ],
+    steps: ['Start with Overdue, then Due today and Never contacted.', 'Log follow-up: how, what was said, the next action and (if it changed) the stage.', 'Counsellors shows open, overdue, conversion and first-response time per person.'],
+  },
+  'data-protection': {
+    category: 'Administration',
+    summary: 'A readiness checklist that points at records (CBSE safety certificates, statutory committees, data requests, breaches, training), the DPDP data-principal request register, the breach register with its 72-hour clock, and statutory committees.',
+    highlights: [
+      { label: 'Evidence, not a verdict', text: 'OK means a record exists and is in date; you decide whether the school is compliant.' },
+      { label: 'Nothing is filed from here', text: 'The breach register records when you told the Board and the people affected; it sends nothing itself.' },
+    ],
+    steps: [
+      'Readiness: work down the lines marked Action or Missing; each says what was found.',
+      'Data requests → Log a request; mark ID verified; Complete with what was done, or Decline with the reason.',
+      'Breaches → Log a breach as soon as you know; record Board told, Report sent and People informed as they happen.',
+      'Committees → Add committee with members (name | role | phone), dates and where it is displayed.',
+    ],
+    tips: ['For a child, the parent makes the request.', 'Committee review dates become tasks a month and a week ahead.'],
   },
   'ai-drafts': {
     category: 'Command Centre',
@@ -809,6 +905,54 @@ const CONTENT: Record<string, OpsContent> = {
     summary: 'Health-room figures as counts only: visits by outcome, injuries, medication plans, missed doses, controlled doses to countersign and stock to replace. No names or clinical details.',
     steps: ['Choose the period.', 'Follow up stock or countersigning with the school nurse.'],
   },
+  // Part 4 (finance, HR, nurse audit).
+  'finance-reports': {
+    category: 'Finance',
+    summary: 'The bursar\'s day: what came in (by day, mode, cashier, fee head and class), the day book to download, who is overdue and for how long, receipts an auditor would ask about, and the day-end cash count.',
+    steps: [
+      'Collections: choose the dates (or Today) to see receipts by mode, cashier, head and class. Download the day book for the cash book or the auditor.',
+      'Overdue & reminders: filter by days overdue or class, download the list, or send the standard reminder to those families (you see who receives it first).',
+      'Audit flags: look at each flag and the receipts behind it (a repeated UTR, cash at the s.269ST limit, out-of-hours or back-dated entries).',
+      'Cash close: count the notes and coins at the end of the day; explain any difference; a second person marks it checked.',
+    ],
+    tips: [
+      'Amounts are what the ledger credited: payments awaiting approval are shown separately until approved.',
+      'A family gets at most one reminder a week, and families on an approved fee plan are left out.',
+    ],
+  },
+  recruitment: {
+    category: 'People',
+    summary: 'Every opening and its candidates in one place: screening, demo lesson, interview scorecards, the offer letter draft and background verification before a child-facing post joins.',
+    steps: [
+      'Open a vacancy with the post, qualifications (e.g. B.Ed, CTET) and closing date.',
+      'Add candidates; open one to move them on, add your scorecard, or record why they are not going forward.',
+      'Draft the offer from the CTC and joining date, edit it, print and sign it. Nothing is sent from here.',
+      'Start background verification at interview or offer; a child-facing post cannot be marked joined until it clears.',
+    ],
+  },
+  'staff-exits': {
+    category: 'People',
+    summary: 'A leaving staff member from notice to relieving letter: notice served, department clearances, exit interview, the full-and-final worksheet and the letters.',
+    steps: [
+      'Start an exit with the kind, notice date, last working day and departments to clear.',
+      'Mark each department cleared, or record dues (an amount or what is outstanding).',
+      'Work out the full-and-final: gratuity (after five years), earned-leave encashment, notice recovery and dues.',
+      'Put it on a full-and-final payroll run; it then goes through calculate, submit and the principal\'s approval as usual.',
+      'Draft the relieving and experience letters, sign them and close the exit.',
+    ],
+    tips: ['Gratuity uses basic + DA from the pay structure, 15/26 of a month per completed year, capped at the Act\'s ceiling; the school\'s tax adviser computes any TDS.'],
+  },
+  'health-watch': {
+    category: 'Health',
+    summary: 'What the health-room records suggest looking at: several children in one class with a similar complaint, children seen often, immunisations due, screening coverage and follow-ups. For the nurse only.',
+    steps: [
+      'Open a possible cluster to see the visits behind it; decide whether to tell the class parents, the principal or the health authority.',
+      'Check frequent visitors with their parents or the counsellor.',
+      'Use the immunisation and screening lists to plan the next camp.',
+      'Download the register for a date range when it is asked for.',
+    ],
+    tips: ['These are prompts, not diagnoses. Nothing is sent from this page, and every read is logged.'],
+  },
   'teacher-presence': {
     category: 'Transport & Safety',
     summary: 'For each lesson on the timetable today: whether the teacher (or a substitute) is in class, from the teacher\'s class check-in or a "teacher present" camera observation that a trained reviewer confirmed.',
@@ -844,6 +988,66 @@ const CONTENT: Record<string, OpsContent> = {
     summary: 'HR: every staff member\'s professional profile, how complete it is and what each shares with families.',
     highlights: [{ label: 'Consent stays theirs', text: 'HR may correct qualifications and details; whether a part is shown to families is changed only by the person.' }],
     steps: ['Search for the person.', 'Open their profile, correct it and save.'],
+  },
+  // Part 4: student and alumnus audit.
+  planner: {
+    category: 'Learning',
+    summary: 'Everything due, the exams ahead and a suggested study week built from your own homework, exam dates and published marks.',
+    highlights: [
+      { label: 'Sized for your age', text: 'About 20–30 minutes a day in primary classes, an hour in middle school, longer in Classes 9 to 12.' },
+      { label: 'Board details', text: 'In Classes 10 and 12 it lists the details the school sends to the board (name, date of birth, parents’ names, subjects) so you can check them in time.' },
+      { label: 'Only your marks', text: 'The plan uses your own published results; nobody else’s marks are shown or compared.' },
+    ],
+    steps: ['Open My Planner.', 'Check homework due and the exams coming up.', 'Use the suggested week as a guide; change it to suit you.', 'In Classes 10 and 12, check each board detail and ask for a correction from My Profile if anything is wrong.'],
+  },
+  'give-back': {
+    title: 'Opportunities',
+    category: 'Community',
+    summary: 'Career talks, mentoring, internships and jobs offered by alumni, checked by the school before anyone sees them.',
+    highlights: [
+      { label: 'Reviewed first', text: 'An alumnus’s offer goes to the alumni coordinator, who publishes or returns it with a reason.' },
+      { label: 'Safe introductions', text: 'Students press "I’m interested" and the coordinator introduces them. Students never see an alumnus’s contact or link, and the alumnus never sees who asked.' },
+    ],
+    steps: ['Alumni: press Offer something, describe it, choose who it is for and send it for review.', 'Students and alumni: press I’m interested on an offer, with a line about why.', 'Alumni coordinator: open To review, then Publish, or Reject with a reason.'],
+  },
+  certificates: {
+    category: 'Community',
+    summary: 'Former students request a character, study or leaving certificate from their own school record and download the signed copy here.',
+    highlights: [
+      { label: 'Same office queue', text: 'Requests arrive in the school office’s Document Requests list, beside current students’ requests.' },
+      { label: 'Board documents', text: 'A duplicate board marksheet or migration certificate comes from the board itself (for CBSE, its duplicate-documents service or DigiLocker), not the school.' },
+    ],
+    steps: ['Press Request a certificate.', 'Choose the certificate, say what it is for and when you need it.', 'Watch the status; when it is Ready, press Download.'],
+  },
+  // Part 4: teacher audit.
+  'lesson-plans': {
+    category: 'Learning',
+    summary: 'Plan each lesson for your classes: objectives, the 5E flow with minutes, NEP pedagogies, teaching aids, a competency-based check, differentiation and homework.',
+    highlights: [
+      { label: 'Start from a suggestion', text: 'Suggest from my syllabus plan builds a first draft from the module\'s next untaught topics and a competency-based question from the bank. You edit it before saving; nothing is saved by itself.' },
+      { label: 'One record', text: 'Mark taught ticks the planned topics in the syllabus tracker and can set the homework as a real assignment with a due date.' },
+      { label: 'Feedback, not approval', text: 'The principal or a coordinator can read every plan and leave a note. A note never changes your plan.' },
+    ],
+    steps: ['Press New plan, choose the class and date.', 'Press Suggest from my syllabus plan, or write your own.', 'After the lesson, press Mark taught, add a reflection and, if you like, set the homework.'],
+  },
+  'question-bank': {
+    category: 'Learning',
+    summary: 'The shared question bank for each subject and class you teach, and question papers built from a blueprint.',
+    highlights: [
+      { label: 'Competency share', text: 'Case-based, source-based and assertion-reason questions, and those asking students to apply or analyse, count as competency-based. CBSE asks for about half of a paper.' },
+      { label: 'Checks before print', text: 'Each paper shows total marks, the competency share, cognitive levels and chapter spread, and warns about repeats or a chapter carrying too much.' },
+      { label: 'Into a quiz', text: 'A paper\'s MCQs can become a draft online quiz for one of your classes; you publish it from Quizzes.' },
+    ],
+    steps: ['Choose the subject and class.', 'Add questions, or tick some and make a worksheet from them.', 'Press Build a paper, set the blueprint, then review the checks, print and make it final.'],
+  },
+  'cpd-hours': {
+    category: 'Organisation',
+    summary: 'Your professional development hours this year against the CBSE reference of at least 50: 25 external and 25 in-house, across the NPST areas.',
+    highlights: [
+      { label: 'Counted for you', text: 'In-house trainings the school records you as attending appear by themselves, with their hours.' },
+      { label: 'Verified by someone else', text: 'HR or the principal checks each logged entry against its certificate; nobody verifies their own.' },
+    ],
+    steps: ['Press Log hours after a training.', 'Choose external or in-house and the NPST area, add the hours and a certificate link.', 'Check Still to do this year for what is short.'],
   },
 };
 

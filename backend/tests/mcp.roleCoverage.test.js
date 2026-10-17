@@ -148,7 +148,8 @@ const UNCOVERED = {
   'analytics.child.read': {
     category: 'A',
     via: 'get_dashboard',
-    why: 'Child-level figures for a parent are the parent dashboard view, alongside get_growth_score.',
+    scopes: ['ALL'],
+    why: 'A parent (OWN) reaches it through get_child_growth_view (tools/p4Parent.js, enforced in growth.routes). At school-wide scope the child-level figures are the dashboard views and get_growth_score, which carry their own permissions.',
   },
 
   /* ── C. blocked ────────────────────────────────────────── */
@@ -356,7 +357,7 @@ describe('permissions granted but enforced nowhere in the backend', () => {
    * knows a capability is expected along with it.
    */
   const DEAD = [
-    'analytics.child.read', 'analytics.class.read', 'analytics.school.read',
+    'analytics.class.read', 'analytics.school.read',
   ];
 
   const sources = (() => {

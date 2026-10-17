@@ -235,7 +235,10 @@ export function directStep(message, actor, now = new Date()) {
         args: { ...periodArgs(text, now), order: highest ? 'HIGHEST' : 'LOWEST', ...(count && { limit: Number(count) }) },
       };
     }
-    if (staffView && OVERALL_ATTENDANCE.test(text) && !spokenClass && !refersToOwnClasses(text) && !named.self) {
+    // "The school attendance overview" asks for leadership's overview (today, the week, chronic absence),
+    // which the leadership capability answers; the per-class summary stays the answer to the rest.
+    const asksLeadershipOverview = /\battendance\s+overview\b/i.test(text) && holds('get_school_attendance_overview');
+    if (staffView && OVERALL_ATTENDANCE.test(text) && !spokenClass && !refersToOwnClasses(text) && !named.self && !asksLeadershipOverview) {
       return { tool: 'get_class_attendance_summary', args: { ...periodArgs(text, now) } };
     }
   }

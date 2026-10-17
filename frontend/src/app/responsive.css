@@ -60,7 +60,7 @@ fieldset{min-width:0}
   .cw-kpi b{font-size:18px}
   /* The replay slider row: date, play and the range share one line. */
   .cw-time{flex-wrap:wrap}
-  .cw-time input[type=range]{min-width:0}
+  .cw-time input[type=range]{min-width:0;flex:1 1 100%;order:9}
 }
 
 /* --- Touch targets (coarse pointers: phones and tablets) ---------------------
@@ -74,7 +74,8 @@ fieldset{min-width:0}
   .main summary,
   .main select,
   .main a.btn,
-  .main input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]):not([type=color]){min-height:40px}
+  .main input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]){min-height:40px}
+  .main input[type=color]{min-width:48px}
   .main button:not(.nav-item),.main a.btn,.main [role=button]{min-width:40px}
   .main button,.main a.btn,.main [role=button]{touch-action:manipulation}
   .main input[type=checkbox],.main input[type=radio]{width:20px;height:20px}
@@ -84,6 +85,7 @@ fieldset{min-width:0}
   .cwc-fold{width:40px;height:40px}
   .kpi-info{width:40px;height:40px;top:2px;right:2px}
   .cw-time input[type=range]{min-height:40px}
+  .pb-feed-item,.rd-item-link{min-height:40px}
   /* Links that sit in a line of text or a row title. */
   .pb-chart-title,.ops-row-title,.showcase-card-link,.an-drill,.tk-title,.expandable-toggle,.cw-crumbs button,
   .dc-hbar,.ops-row-link,.stat-card-link .stat-label a{padding-block:10px;margin-block:-10px}
@@ -101,7 +103,13 @@ fieldset{min-width:0}
   .main .pb-live,.main .stat-delta,.main .stat-label,.main .ops-flag-overdue,.main .showcase-cat,.main .clubs-card-cat,
   .main .clubs-seats-text,.main .cw-legend span,.main .cw-depts-title,.main .cw-dept-num,.main .kpi-info,.main .rd-badge,
   .main .an-note,.main .an-dept-sub,.main .dc-legend-row span,.main .kpi-label,.main .ops-row-sub,.main .ops-kv dt,.main .muted,
-  .main .ops-decision-meta,.main .sc-bar-val,.main .sc-bar-label,.main .cwl-note,.main .cw-kpi span,.main .cw-kpi small{font-size:12px}
+  .main .ops-decision-meta,.main .sc-bar-val,.main .sc-bar-label,.main .cwl-note,.main .cw-kpi span,.main .cw-kpi small,
+  .main .cw-row-sub,.main .cw-pill,.main .cw-row span,
+  .main .kanban-col-title,.main .kanban-count,.main .date-range-sep,.main .rd-count,.main .ops-muted,.main .att-context b,
+  .main .ops-step-label,.main .pf-kind,.main .lib-note-body,.main .cw-eyebrow,.main .cwlv-upd,.main .ptm-slot span,
+  .main .cw-metric span,.main .cw-module-next span,.main .cwl-cover span,.main .clubs-date span,.main .cwmy-now span,
+  .main .cw-site-sub,.main .cw-legend,.main .cw-module-head,.main .cw-pace,.main .cw-module-sub,.main .cw-source,
+  .main .cwl-note,.main .cwc-badge{font-size:12px}
   .sidebar .nav-group-label{font-size:12px}
   .main [style*="font-size: 9px"],.main [style*="font-size: 9.5px"],.main [style*="font-size: 10px"],
   .main [style*="font-size: 10.5px"],.main [style*="font-size: 11px"],.main [style*="font-size: 11.5px"]{font-size:12px!important}
@@ -113,7 +121,14 @@ fieldset{min-width:0}
 @media (max-width:560px){
   .main div[style*="display: flex"] > select.input,
   .main div[style*="display:flex"] > select.input,
-  .main .ops-inline > select.input{flex:1 1 140px;min-width:0}
+  .main .ops-inline > select.input,
+  .main div[style*="display: flex"] > .filter-field,
+  .main div[style*="display:flex"] > .filter-field{flex:1 1 140px;min-width:0}
+  .main div[style*="display: flex"] > .filter-field > select,
+  .main div[style*="display:flex"] > .filter-field > select{width:100%}
+  /* A search box leading a filter row gets the row to itself. */
+  .main div[style*="display: flex"] > input.input:first-child,
+  .main div[style*="display:flex"] > input.input:first-child{flex:1 1 100%;min-width:0}
 }
 
 /* --- Form fields use the full width on a phone ------------------------------

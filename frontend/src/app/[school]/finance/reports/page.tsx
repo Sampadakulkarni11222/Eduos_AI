@@ -47,6 +47,8 @@ export default function FinanceReports() {
 
   return (
     <PortalShell expectedSlug="finance" topbar={{ title: 'Financial Reports', desc: 'Detailed analytics and breakdown of fee collections.' }}>
+      {/* Part 4: the day book, collections by mode / cashier / head, overdue ageing, audit flags and the cash close live on Finance Reports. */}
+      <p className="ops-data-note"><span aria-hidden="true">ⓘ</span> For a date range by mode, cashier and fee head, the day book, overdue ageing with reminders, audit flags and the day-end cash close, open <a href="finance-reports">Finance Reports</a>.</p>
       {loading ? (
         <Card><SkeletonRows rows={8} /></Card>
       ) : (

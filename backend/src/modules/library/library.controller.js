@@ -75,12 +75,12 @@ export const returnBook = asyncHandler(async (req, res) => {
 export const requestBook = asyncHandler(async (req, res) => {
   // The student is resolved from the session inside the service; a studentId
   // in the body is neither read nor honoured.
-  const request = await service.requestBook(req.actor, req.body.bookId);
+  const request = await service.requestBook(req.actor, req.body.bookId, req.body.studentId ?? null);
   sendSuccess(res, request, 'Book request submitted for approval', 201);
 });
 
 export const listMyBookRequests = asyncHandler(async (req, res) => {
-  const requests = await service.listMyBookRequests(req.actor);
+  const requests = await service.listMyBookRequests(req.actor, { studentId: req.query.studentId ?? null });
   sendSuccess(res, requests, 'Your book requests fetched');
 });
 

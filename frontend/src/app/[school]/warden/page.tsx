@@ -9,6 +9,7 @@ import { useSchoolHref } from '@/lib/school-path';
 import { formatCalendarDate } from '@/lib/timetable-dates';
 import type { WardenDashboardDto } from '@/lib/types';
 import { PulseBoard } from '@/components/ops/pulse-board';
+import { SupportBriefCard } from '@/components/ops/p4-support-views';
 
 export default function WardenDashboard() {
   // Links are written school-less; this adds the school in the URL.
@@ -36,6 +37,8 @@ export default function WardenDashboard() {
     >
       {/* The interactive board: briefing, departments, campus, charts and live activity. */}
       <PulseBoard />
+      {/* Part 4: the day's desk / night briefing, with a link to the screen where it is done. */}
+      <SupportBriefCard kind="hostel" />
 
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
         <StatCard label="Total Rooms" value={data ? data.totalRooms : '—'} delta={data ? `${data.occupiedRooms} occupied · ${data.totalCapacity} beds` : undefined} deltaDir="flat" />

@@ -12,6 +12,17 @@ import { campusTools } from '../src/modules/ai/mcp/tools/p3Campus.js';
 import { healthTools } from '../src/modules/ai/mcp/tools/p3Health.js';
 import { integrationTools } from '../src/modules/ai/mcp/tools/p3Integrations.js';
 import { openuiTools } from '../src/modules/ai/mcp/tools/p3Openui.js';
+import { teacherP4Tools } from '../src/modules/ai/mcp/tools/p4Teacher.js'; // its writes are exercised in tests/mcp.p4Teacher.test.js
+// Profile-audit tool sets: each has its own suite (mcp.p4Leadership, mcp.p4FinanceHrNurse, mcp.p4SupportRoles, parent.familyDesk, mcp.p4Newsletter, p4.studentAlumnus).
+import { leadershipTools } from '../src/modules/ai/mcp/tools/p4Leadership.js';
+import { p4FinanceHrNurseTools } from '../src/modules/ai/mcp/tools/p4FinanceHrNurse.js';
+import { p4LibrarianTools } from '../src/modules/ai/mcp/tools/p4Librarian.js';
+import { p4WardenTools } from '../src/modules/ai/mcp/tools/p4Warden.js';
+import { p4MarketingTools } from '../src/modules/ai/mcp/tools/p4Marketing.js';
+import { p4ComplianceTools } from '../src/modules/ai/mcp/tools/p4Compliance.js';
+import { p4ParentTools } from '../src/modules/ai/mcp/tools/p4Parent.js';
+import { newsletterP4Tools } from '../src/modules/ai/mcp/tools/p4Newsletter.js';
+import { p4StudentAlumnusTools } from '../src/modules/ai/mcp/tools/p4StudentAlumnus.js';
 import { resetMcpClient } from '../src/modules/ai/mcp/client.js';
 import { env } from '../src/config/env.js';
 import { Student, Enrollment, StudentGuardian } from '../src/models/student.model.js';
@@ -718,7 +729,7 @@ async function attempt(tenant, actor, name, args) {
 
 describe('the write-tool matrix', () => {
   it('has a case for every one of the 76 write tools', () => {
-    const ownSuite = new Set([...Object.keys(platformPeopleTools), ...Object.keys(platformGapTools), ...Object.keys(platformOpsTools), ...Object.keys(campusTools), ...Object.keys(healthTools), ...Object.keys(integrationTools), ...Object.keys(openuiTools)]);
+    const ownSuite = new Set([...Object.keys(platformPeopleTools), ...Object.keys(platformGapTools), ...Object.keys(platformOpsTools), ...Object.keys(campusTools), ...Object.keys(healthTools), ...Object.keys(integrationTools), ...Object.keys(openuiTools), ...Object.keys(teacherP4Tools), ...Object.keys(leadershipTools), ...Object.keys(p4FinanceHrNurseTools), ...Object.keys(p4LibrarianTools), ...Object.keys(p4WardenTools), ...Object.keys(p4MarketingTools), ...Object.keys(p4ComplianceTools), ...Object.keys(p4ParentTools), ...Object.keys(newsletterP4Tools), ...Object.keys(p4StudentAlumnusTools)]);
     const writeTools = Object.entries(MCP_TOOLS).filter(([n, t]) => mutates(t) && !ownSuite.has(n)).map(([n]) => n).sort();
     expect(writeTools).toHaveLength(76);
     expect([...new Set(CASES.map((c) => c.tool))].sort()).toEqual(writeTools);

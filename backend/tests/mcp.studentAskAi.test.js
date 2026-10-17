@@ -624,8 +624,10 @@ describe('8. the student catalogue matches the Web', () => {
 
   it('keeps every write own-scoped', () => {
     // Writes keyed on the caller alone whatever the permission's scope: a
-    // student's own digest topics.
-    const SELF_ONLY = ['update_my_digest_interests'];
+    // student's own digest topics, their own saved opportunities, their own
+    // quiz answers, their own question to a teacher and their own interest in
+    // an alumni offer (each service writes only the caller's record).
+    const SELF_ONLY = ['update_my_digest_interests', 'save_opportunity', 'answer_newsletter_quiz', 'ask_teacher_about_opportunity', 'express_interest_in_opportunity'];
     for (const c of capabilitiesFor(me()).filter((x) => x.writes && !SELF_ONLY.includes(x.name))) {
       expect(actorForRole('STUDENT').permissions[c.permission], c.name).toBe('OWN');
     }

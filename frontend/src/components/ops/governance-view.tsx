@@ -5,6 +5,14 @@ import { opsApi } from '@/lib/ops-api';
 import { usePermissions } from '@/lib/permissions';
 import type { MeetingDto } from '@/lib/ops-types';
 import { Drawer } from './drawer';
+import { BoardPackPanel } from '@/components/leadership/board-pack';
+
+/** Fields the API adds to a meeting for the person viewing it (part 4). */
+type MeetingView = MeetingDto & {
+  canApproveMinutes?: boolean;
+  myConflicts?: Array<{ agendaOrder: number; declaration: string }>;
+  actions: Array<MeetingDto['actions'][number] & { canUpdate?: boolean }>;
+};
 import { DataNote, ErrorNote, KeyValues, Loadable, PromptModal, SectionCard, StatusPill, Tabs, fmtDate, fmtDateTime, humanize, useAction, useLoad, useQueryParam } from './kit';
 
 /**
@@ -20,9 +28,10 @@ function MeetingDetail({ id, onClose, onChanged }: { id: string; onClose: () => 
   const { permissions } = usePermissions();
   const canManage = Boolean(permissions['governance.manage']);
   const state = useLoad(() => opsApi.meeting(id), [id]);
-  const [tab, setTab] = useState<'overview' | 'agenda' | 'record'>('overview');
+  const [tab, setTab] = useState<'overview' | 'agenda' | 'pack' | 'record'>('overview');
+  const [conflict, setConflict] = useState<{ agendaOrder: string; declaration: string }>({ agendaOrder: '', declaration: '' });
   const [agenda, setAgenda] = useState<Array<{ title: string; presenter: string; decisionNeeded: boolean }> | null>(null);
-  const [rec, setRec] = useState<{ attendance: Record<string, boolean>; minutes: string; resolutions: Array<{ text: string; votesFor: string; votesAgainst: string; abstentions: string }>; actions: Array<{ title: string; ownerName: string; dueOn: string }> } | null>(null);
+  const [rec, setRec] = useState<{ attendance: Record<string, boolean>; minutes: string; resolutions: Array<{ text: string; agendaOrder: string; votesFor: string; votesAgainst: string; abstentions: string }>; actions: Array<{ title: string; ownerName: string; dueOn: string }> } | null>(null);
   const [slots, setSlots] = useState<number[]>([]);
   const [prompt, setPrompt] = useState<null | 'cancel'>(null);
   const { run, busy, error } = useAction();
@@ -33,7 +42,7 @@ function MeetingDetail({ id, onClose, onChanged }: { id: string; onClose: () => 
   const startRecord = (d: MeetingDto) => setRec({
     attendance: Object.fromEntries(d.members.map((x) => [x._id, x.attended ?? false])),
     minutes: d.minutes.body ?? '',
-    resolutions: d.resolutions.length ? d.resolutions.map((r) => ({ text: r.text, votesFor: String(r.votesFor), votesAgainst: String(r.votesAgainst), abstentions: String(r.abstentions) })) : [],
+    resolutions: d.resolutions.length ? d.resolutions.map((r) => ({ text: r.text, agendaOrder: (r as typeof r & { agendaOrder?: number | null }).agendaOrder ? String((r as typeof r & { agendaOrder?: number | null }).agendaOrder) : '', votesFor: String(r.votesFor), votesAgainst: String(r.votesAgainst), abstentions: String(r.abstentions) })) : [],
     actions: d.actions.map((a) => ({ title: a.title, ownerName: a.ownerName ?? '', dueOn: a.dueOn?.slice(0, 10) ?? '' })),
   });
   return (
@@ -42,7 +51,7 @@ function MeetingDetail({ id, onClose, onChanged }: { id: string; onClose: () => 
       <Loadable state={state}>{(d) => (
         <>
           <div className="ops-inline"><StatusPill status={d.status} /><StatusPill status={d.agendaStatus === 'CIRCULATED' ? 'PUBLISHED' : 'DRAFT'} label={`Agenda ${humanize(d.agendaStatus)}`} />{d.quorumMet !== null && <StatusPill status={d.quorumMet ? 'CLEARED' : 'PENDING'} label={d.quorumMet ? 'Quorum met' : `Quorum ${d.presentVoting}/${d.quorum}`} />}{d.minutes.status === 'APPROVED' && <StatusPill status="APPROVED" label="Minutes approved" />}</div>
-          <Tabs tabs={[{ key: 'overview', label: 'Overview' }, { key: 'agenda', label: `Agenda (${d.agenda.length})` }, ...(canManage ? [{ key: 'record' as const, label: 'Minutes & resolutions' }] : [])]} value={tab} onChange={(t) => { setTab(t); if (t === 'record' && !rec) startRecord(d); }} />
+          <Tabs tabs={[{ key: 'overview', label: 'Overview' }, { key: 'agenda', label: `Agenda (${d.agenda.length})` }, { key: 'pack' as const, label: 'Board pack' }, ...(canManage ? [{ key: 'record' as const, label: 'Minutes & resolutions' }] : [])]} value={tab} onChange={(t) => { setTab(t); if (t === 'record' && !rec) startRecord(d); }} />
           {tab === 'overview' && (
             <>
               <KeyValues rows={[['When', d.scheduledAt ? fmtDateTime(d.scheduledAt) : 'Being scheduled'], ['Mode', humanize(d.mode)], ['Where', d.location ?? (d.meetingLink ? 'Online' : '—')], ['Quorum', d.quorum ? String(d.quorum) : 'Not set'], ['Accepted', `${d.accepted}/${d.members.length}`]]} />
@@ -62,14 +71,28 @@ function MeetingDetail({ id, onClose, onChanged }: { id: string; onClose: () => 
               {d.isMember && d.status === 'SCHEDULED' && (
                 <div className="ops-inline"><span>Will you attend?</span>{['ACCEPTED', 'TENTATIVE', 'DECLINED'].map((r) => <Button key={r} small variant="soft" onClick={() => void act('rsvp', { rsvp: r }, 'Response saved')}>{humanize(r)}</Button>)}</div>
               )}
+              {d.isMember && d.agenda.length > 0 && d.minutes.status !== 'APPROVED' && d.status !== 'CANCELLED' && (() => {
+                const mine = (d as MeetingView).myConflicts ?? [];
+                return (
+                  <SectionCard title="Conflicts of interest" sub="Declare any personal interest in an agenda item. You stay present but do not vote on that item.">
+                    {mine.length > 0 && <ul className="ops-list">{mine.map((c) => <li key={c.agendaOrder} className="ops-row"><div className="ops-row-main"><div className="ops-row-title">Item {c.agendaOrder}: {d.agenda.find((a) => a.order === c.agendaOrder)?.title ?? ''}</div><div className="ops-row-sub">{c.declaration}</div></div><Button small variant="ghost" onClick={() => void act('rsvp', { conflicts: mine.filter((x) => x.agendaOrder !== c.agendaOrder) }, 'Declaration withdrawn')}>Withdraw</Button></li>)}</ul>}
+                    <div className="ops-form-grid">
+                      <Field label="Agenda item"><select className="input" value={conflict.agendaOrder} onChange={(e) => setConflict({ ...conflict, agendaOrder: e.target.value })}><option value="">—</option>{d.agenda.map((a) => <option key={a.order} value={a.order}>{a.order}. {a.title}</option>)}</select></Field>
+                      <Field label="Your declaration"><input className="input" value={conflict.declaration} maxLength={1000} onChange={(e) => setConflict({ ...conflict, declaration: e.target.value })} placeholder="e.g. A relative owns the vendor" /></Field>
+                    </div>
+                    <Button small variant="soft" disabled={busy || !conflict.agendaOrder || !conflict.declaration.trim()} onClick={() => void act('rsvp', { conflicts: [...mine.filter((x) => x.agendaOrder !== Number(conflict.agendaOrder)), { agendaOrder: Number(conflict.agendaOrder), declaration: conflict.declaration.trim() }] }, 'Conflict declared').then(() => setConflict({ agendaOrder: '', declaration: '' }))}>Declare</Button>
+                  </SectionCard>
+                );
+              })()}
               <SectionCard title="Members">
-                <ul className="ops-list">{d.members.map((x) => <li key={x._id} className="ops-row"><div className="ops-row-main"><div className="ops-row-title">{x.name}</div><div className="ops-row-sub">{humanize(x.role)}{x.voting ? '' : ' · non-voting'}</div></div><StatusPill status={x.rsvp === 'ACCEPTED' ? 'ACCEPTED' : x.rsvp === 'DECLINED' ? 'REJECTED' : 'PENDING'} label={humanize(x.rsvp)} />{x.attended !== null && <StatusPill status={x.attended ? 'CLEARED' : 'DRAFT'} label={x.attended ? 'Present' : 'Absent'} />}</li>)}</ul>
+                <ul className="ops-list">{d.members.map((x) => <li key={x._id} className="ops-row"><div className="ops-row-main"><div className="ops-row-title">{x.name}</div><div className="ops-row-sub">{humanize(x.role)}{x.voting ? '' : ' · non-voting'}{(x as typeof x & { conflicts?: Array<{ agendaOrder: number }> }).conflicts?.length ? ` · conflict declared on item ${(x as typeof x & { conflicts?: Array<{ agendaOrder: number }> }).conflicts!.map((c) => c.agendaOrder).join(', ')}` : ''}</div></div><StatusPill status={x.rsvp === 'ACCEPTED' ? 'ACCEPTED' : x.rsvp === 'DECLINED' ? 'REJECTED' : 'PENDING'} label={humanize(x.rsvp)} />{x.attended !== null && <StatusPill status={x.attended ? 'CLEARED' : 'DRAFT'} label={x.attended ? 'Present' : 'Absent'} />}</li>)}</ul>
               </SectionCard>
               {d.minutes.body && <SectionCard title={`Minutes (${humanize(d.minutes.status)})`}><p style={{ whiteSpace: 'pre-wrap' }}>{d.minutes.body}</p>{d.minutes.status === 'DRAFT' && (d as MeetingDto & { canApproveMinutes?: boolean }).canApproveMinutes && <Button small onClick={() => void act('minutes/approve', {}, 'Minutes approved')}>Approve minutes</Button>}{d.minutes.status === 'DRAFT' && !(d as MeetingDto & { canApproveMinutes?: boolean }).canApproveMinutes && <p className="ops-muted">Awaiting the chair&apos;s approval.</p>}</SectionCard>}
               {d.resolutions.length > 0 && <SectionCard title="Resolutions"><ul className="ops-list">{d.resolutions.map((r) => <li key={r.number} className="ops-row"><div className="ops-row-main"><div className="ops-row-title">{r.number}</div><div>{r.text}</div><div className="ops-row-sub">For {r.votesFor} · Against {r.votesAgainst} · Abstain {r.abstentions}</div></div><StatusPill status={r.outcome === 'PASSED' ? 'APPROVED' : r.outcome === 'FAILED' ? 'REJECTED' : 'PENDING'} label={humanize(r.outcome)} /></li>)}</ul></SectionCard>}
-              {d.actions.length > 0 && <SectionCard title="Actions"><ul className="ops-list">{d.actions.map((a) => <li key={a._id} className="ops-row"><div className="ops-row-main"><div className="ops-row-title">{a.title}</div><div className="ops-row-sub">{a.ownerName ?? '—'} · due {fmtDate(a.dueOn)}</div></div><StatusPill status={a.status === 'OPEN' ? 'PENDING' : a.status === 'DONE' ? 'COMPLETED' : 'CANCELLED'} label={humanize(a.status)} />{a.status === 'OPEN' && <Button small variant="soft" onClick={() => void act(`actions/${a._id}`, { status: 'DONE' }, 'Action done')}>Done</Button>}</li>)}</ul></SectionCard>}
+              {d.actions.length > 0 && <SectionCard title="Actions"><ul className="ops-list">{d.actions.map((a) => <li key={a._id} className="ops-row"><div className="ops-row-main"><div className="ops-row-title">{a.title}</div><div className="ops-row-sub">{a.ownerName ?? '—'} · due {fmtDate(a.dueOn)}</div></div><StatusPill status={a.status === 'OPEN' ? 'PENDING' : a.status === 'DONE' ? 'COMPLETED' : 'CANCELLED'} label={humanize(a.status)} />{a.status === 'OPEN' && (a as MeetingView['actions'][number]).canUpdate !== false && <Button small variant="soft" onClick={() => void act(`actions/${a._id}`, { status: 'DONE' }, 'Action done')}>Done</Button>}</li>)}</ul></SectionCard>}
             </>
           )}
+          {tab === 'pack' && <BoardPackPanel meetingId={id} canManage={canManage} />}
           {tab === 'agenda' && (
             <>
               {(agenda ?? d.agenda.map((a) => ({ title: a.title, presenter: a.presenter ?? '', decisionNeeded: a.decisionNeeded }))).map((a, i, arr) => (
@@ -99,12 +122,13 @@ function MeetingDetail({ id, onClose, onChanged }: { id: string; onClose: () => 
                 {rec.resolutions.map((r, i) => (
                   <div key={i} className="ops-form-grid">
                     <Field label={`Resolution ${i + 1}`}><input className="input" value={r.text} onChange={(e) => setRec({ ...rec, resolutions: rec.resolutions.map((y, j) => (j === i ? { ...y, text: e.target.value } : y)) })} /></Field>
+                    <Field label="On agenda item"><select className="input" value={r.agendaOrder} onChange={(e) => setRec({ ...rec, resolutions: rec.resolutions.map((y, j) => (j === i ? { ...y, agendaOrder: e.target.value } : y)) })}><option value="">—</option>{d.agenda.map((a) => <option key={a.order} value={a.order}>{a.order}. {a.title}</option>)}</select></Field>
                     <Field label="For"><input className="input" inputMode="numeric" value={r.votesFor} onChange={(e) => setRec({ ...rec, resolutions: rec.resolutions.map((y, j) => (j === i ? { ...y, votesFor: e.target.value } : y)) })} /></Field>
                     <Field label="Against"><input className="input" inputMode="numeric" value={r.votesAgainst} onChange={(e) => setRec({ ...rec, resolutions: rec.resolutions.map((y, j) => (j === i ? { ...y, votesAgainst: e.target.value } : y)) })} /></Field>
                     <Field label="Abstain"><input className="input" inputMode="numeric" value={r.abstentions} onChange={(e) => setRec({ ...rec, resolutions: rec.resolutions.map((y, j) => (j === i ? { ...y, abstentions: e.target.value } : y)) })} /></Field>
                   </div>
                 ))}
-                <Button small variant="ghost" onClick={() => setRec({ ...rec, resolutions: [...rec.resolutions, { text: '', votesFor: '0', votesAgainst: '0', abstentions: '0' }] })}>+ Resolution</Button>
+                <Button small variant="ghost" onClick={() => setRec({ ...rec, resolutions: [...rec.resolutions, { text: '', agendaOrder: '', votesFor: '0', votesAgainst: '0', abstentions: '0' }] })}>+ Resolution</Button>
               </SectionCard>
               <SectionCard title="Actions">
                 {rec.actions.map((a, i) => (
@@ -119,7 +143,7 @@ function MeetingDetail({ id, onClose, onChanged }: { id: string; onClose: () => 
               <Button disabled={busy} onClick={() => void act('record', {
                 attendance: Object.entries(rec.attendance).map(([memberId, attended]) => ({ memberId, attended })),
                 ...(d.minutes.status !== 'APPROVED' && rec.minutes.trim() ? { minutes: rec.minutes } : {}),
-                resolutions: rec.resolutions.filter((r) => r.text.trim()).map((r) => ({ text: r.text, votesFor: Number(r.votesFor), votesAgainst: Number(r.votesAgainst), abstentions: Number(r.abstentions) })),
+                resolutions: rec.resolutions.filter((r) => r.text.trim()).map((r) => ({ text: r.text, ...(r.agendaOrder ? { agendaOrder: Number(r.agendaOrder) } : {}), votesFor: Number(r.votesFor), votesAgainst: Number(r.votesAgainst), abstentions: Number(r.abstentions) })),
                 actions: rec.actions.filter((a) => a.title.trim()).map((a) => ({ ...a, dueOn: a.dueOn || null })),
               }, 'Recorded')}>Save record</Button>
             </>
@@ -147,14 +171,14 @@ export function GovernanceView() {
     <div className="ops-stack">
       <div className="ops-inline">
         {canManage && <Button onClick={() => setCreating(true)}>+ New meeting</Button>}
-        {canManage && <Button variant="soft" onClick={() => void run(async () => { const r = await opsApi.meetingReminders(); toast(`${r.messages} reminder(s) for ${r.meetings} meeting(s)`, 'info'); })}>Send reminders (next 48 h)</Button>}
+        {canManage && <Button variant="soft" onClick={() => void run(async () => { const r = await opsApi.meetingReminders(); toast(`${r.messages} reminder${r.messages === 1 ? '' : 's'} for ${r.meetings} meeting${r.meetings === 1 ? '' : 's'}`, 'info'); })}>Send reminders (next 48 h)</Button>}
       </div>
       <Loadable state={state}>{([meetings, actions]) => (
         <div className="ops-grid-main">
           <SectionCard title="Meetings">
             {!meetings.length ? <EmptyState title="No meetings" sub="Schedule a board, SMC or committee meeting." /> : (
               <ul className="ops-list">{meetings.map((m) => (
-                <li key={m.id} className="ops-row"><div className="ops-row-main"><button type="button" className="ops-row-link" onClick={() => setSelected(m.id)}><div className="ops-row-title">{m.title}</div><div className="ops-row-sub">{humanize(m.body)} · {m.scheduledAt ? fmtDateTime(m.scheduledAt) : 'Being scheduled'} · {m.accepted}/{m.members.length} accepted{m.openActions ? ` · ${m.openActions} open action(s)` : ''}</div></button></div><StatusPill status={m.status} /></li>
+                <li key={m.id} className="ops-row"><div className="ops-row-main"><button type="button" className="ops-row-link" onClick={() => setSelected(m.id)}><div className="ops-row-title">{m.title}</div><div className="ops-row-sub">{humanize(m.body)} · {m.scheduledAt ? fmtDateTime(m.scheduledAt) : 'Being scheduled'} · {m.accepted}/{m.members.length} accepted{m.openActions ? ` · ${m.openActions} open action${m.openActions === 1 ? '' : 's'}` : ''}</div></button></div><StatusPill status={m.status} /></li>
               ))}</ul>
             )}
           </SectionCard>

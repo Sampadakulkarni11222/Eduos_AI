@@ -236,7 +236,7 @@ export async function myRecord(actor) {
   return {
     kind: a.kind, name: a.displayName, admissionNo: student?.admissionNo ?? null, batchLabel: batchLabel(a), leftReason: a.leftReason,
     enrolments: ens.map((e) => ({ year: yearName.get(String(e.academicYearId)) ?? null, class: secName.get(String(e.sectionId)) ?? null, status: e.status })),
-    note: 'Marks, fees and certificates are not shown here. Request a transcript or leaving certificate from the school office.',
+    note: 'Marks, fees and certificates are not shown here. Request a character, study or leaving certificate under Certificates; the school office issues it there.',
   };
 }
 

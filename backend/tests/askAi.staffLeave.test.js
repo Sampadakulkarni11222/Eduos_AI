@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll, beforeEach, vi, afterEach } from 'vitest';
 import { resetMcpClient } from '../src/modules/ai/mcp/client.js';
 import { resetAgentThrottle } from '../src/modules/ai/agent/throttle.js';
 import { staffLeaveStep, staffLeaveTypeFrom, staffLeaveQuestion, asksLeaveWithoutPermission } from '../src/modules/ai/agent/directIntents.js';
@@ -49,6 +49,10 @@ describe('reading a staff leave request', () => {
 });
 
 describe('through the assistant', () => {
+  // Staff leave counts school days: on a weekend "tomorrow" would be a Sunday and
+  // nothing could be applied for, so these run on a fixed Wednesday (after the seed).
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T04:30:00Z')); });
+  afterEach(() => { vi.useRealTimers(); });
   it('"apply for leave" asks which day; the answers lead to a draft; nothing is filed until yes', async () => {
     const t = as('TEACHER');
     const first = await t.say('apply for leave');

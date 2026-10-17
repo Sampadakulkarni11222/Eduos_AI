@@ -143,7 +143,7 @@ async function classesAhead(actor) {
     });
     return { label: i === 0 ? 'Today' : WEEKDAY_FMT.format(day), value: n.length, detail: n.map((c) => c.title).slice(0, 3).join(', ') || 'Nothing' };
   });
-  return chart('classes', 'Online classes this week', 'bar', points, { link: '/lectures', definition: 'Online classes and meetings you host or are invited to, by day.', empty: 'No online classes this week.' });
+  return chart('classes', 'Online classes this week', 'bar', points, { link: '/lectures', definition: actor.roleKey === 'PARENT' ? "Online classes for your children's classes, by day." : actor.roleKey === 'STUDENT' ? 'Online classes for your class, by day.' : 'Online classes and meetings you host or are invited to, by day.', empty: 'No online classes this week.' });
 }
 
 async function complianceAhead(actor) {
@@ -272,7 +272,11 @@ function briefing(actor, { charts, departments: tiles, decisions }) {
     if (n) lines.push(`${t.name}: ${n} ${what}.`);
   }
   const classes = charts.find((c) => c.key === 'classes');
-  if (classes?.points[0]?.value) lines.push(`You have ${classes.points[0].value} online class${classes.points[0].value === 1 ? '' : 'es'} today.`);
+  if (classes?.points[0]?.value) {
+    const n = classes.points[0].value; const word = `online class${n === 1 ? '' : 'es'}`;
+    // A parent does not attend the class: their child does.
+    lines.push(actor.roleKey === 'PARENT' ? `${n} ${word} for your child today.` : `You have ${n} ${word} today.`);
+  }
   if (lines.length === 1) lines.push('Nothing needs your attention right now.');
   return lines;
 }

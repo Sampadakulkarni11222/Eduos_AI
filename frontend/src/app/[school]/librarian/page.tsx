@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { useSchoolHref } from '@/lib/school-path';
 import type { LibrarianDashboardDto } from '@/lib/types';
 import { PulseBoard } from '@/components/ops/pulse-board';
+import { SupportBriefCard } from '@/components/ops/p4-support-views';
 
 export default function LibrarianDashboard() {
   // Links are written school-less; this adds the school in the URL.
@@ -36,6 +37,8 @@ export default function LibrarianDashboard() {
     >
       {/* The interactive board: briefing, departments, campus, charts and live activity. */}
       <PulseBoard />
+      {/* Part 4: the day's desk / night briefing, with a link to the screen where it is done. */}
+      <SupportBriefCard kind="library" />
 
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(4,1fr)', marginBottom: 18 }}>
         <StatCard label="Copies in Catalog" value={data ? data.totalCopies : '—'} delta={data ? `across ${data.totalBooks} ${data.totalBooks === 1 ? 'title' : 'titles'}` : undefined} deltaDir="flat" />

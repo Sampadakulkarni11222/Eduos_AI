@@ -283,7 +283,11 @@ const VERB_CUES = new Set([
 
 /** The words of a sentence that could be its verb. */
 export function verbPositions(text) {
-  const words = wordsOf(text);
+  // Quoted text is the person's own content -- "change its message to 'Submit
+  // the books'" -- and a verb inside it is not the act asked for (the same
+  // rule unavailableAction applies). A quote must open after a space and close
+  // before one, so the apostrophes of "can't ... what's" are never a pair.
+  const words = wordsOf(String(text ?? '').replace(/(^|\s)["“”']([^"“”']{2,500})["“”'](?=\s|[.,!?;:]|$)/g, '$1 '));
   const candidates = new Set();
   // An instruction opens with the verb's base form -- "mark", "record" --
   // never its third-person "-s" form. "Marks" at the head of a sentence is the
@@ -1360,6 +1364,10 @@ export function operationsNamed(verbCandidates, verbs, { requestMood = false, me
     const coarse = detectOperation(verb);
     if (coarse !== 'GET') operations.add(coarse);
     else for (const op of ops) operations.add(op);
+    // "Set" is both: "set homework" brings work into being, "set the board agenda" and "set my message
+    // preferences" change what is there. The coarse table reads it as CREATE only, which ruled out every
+    // set_ capability the catalogue declares (all UPDATEs), so the catalogue's own operations count too.
+    if (verb === 'set') for (const op of ops) operations.add(op);
   }
   if (operations.size) return correctionIsUpdate(operations, message);
 
@@ -2557,7 +2565,9 @@ export function unavailableAction(message, actor) {
   const coarse = opening && !toTheSpeaker
     ? (fieldChangeFromText(str) && !renameFromText(str) ? 'UPDATE' : detectOperation(opening))
     : 'GET';
-  const wanted = coarse !== 'GET'
+  // "Set" opens both kinds of act (operationsNamed reads it that way too):
+  // "set homework" creates, "set my message preferences" changes.
+  const wanted = coarse !== 'GET' && opening !== 'set'
     ? new Set([coarse])
     : operationsNamed(candidates, verbs, { requestMood: named.requestMood, message: str });
   if (!wanted.size || !subject) return null;
@@ -2590,9 +2600,17 @@ export function unavailableAction(message, actor) {
   // capability about that subject, or one whose own verb the sentence used
   // ("create grade" is create_grade, though "grade" also reads as marks);
   // any other shared noun counts as before.
-  if (pool.some((c) => performsAsked(c, wanted)
-    && nameParts(c.name).nouns.some((n) => (standsIn(c) ? tokens.has(n) : spoke(tokens, n))
-      && (c.entity === subject || entityOfWord(n) !== subject || candidates.has(nameParts(c.name).verb))))) return null;
+  // A capability about another entity is named only by all of its own words:
+  // "message" alone is not set_my_message_preferences, so "change its message"
+  // on an announcement must still find that nothing offers the act.
+  if (pool.some((c) => {
+    if (!performsAsked(c, wanted)) return false;
+    const { nouns, verb } = nameParts(c.name);
+    const hit = (n) => (standsIn(c) ? tokens.has(n) : spoke(tokens, n));
+    // (Its own verb spoken -- "apply for leave", "set my preferences" -- names it too.)
+    if (c.entity !== subject && !candidates.has(verb) && nouns.length > 1 && !nouns.every(hit)) return false;
+    return nouns.some((n) => hit(n) && (c.entity === subject || entityOfWord(n) !== subject || candidates.has(verb)));
+  })) return null;
   return { reason: 'NOT_OFFERED', verb: baseVerb(opening ?? [...wanted][0].toLowerCase()), entity: subject };
 }
 

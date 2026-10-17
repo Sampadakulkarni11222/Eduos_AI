@@ -113,6 +113,19 @@ export const TEMPLATES = {
     category: 'UTILITY',
     text: (v) => `Hostel out-pass ${v.refNo} for ${v.studentName}: ${v.update}. Open EduOS for details.`,
   },
+  // Part 4 (support roles): library overdue / hold ready, hostel roll call.
+  LIBRARY_OVERDUE: {
+    category: 'UTILITY',
+    text: (v) => `Library: "${v.title}" borrowed by ${v.studentName} was due on ${v.dueOn} (${v.days} day(s) late). Please return it to the library.`,
+  },
+  LIBRARY_HOLD_READY: {
+    category: 'UTILITY',
+    text: (v) => `Library: "${v.title}" that ${v.studentName} reserved is ready to collect until ${v.until}.`,
+  },
+  HOSTEL_ROLL_UNACCOUNTED: {
+    category: 'UTILITY',
+    text: (v) => `Hostel ${v.session} roll call ${v.date}: ${v.count} resident(s) not accounted for. Open EduOS (Hostel life) now.`,
+  },
   VISITOR_UPDATE: {
     category: 'UTILITY',
     text: (v) => `Visitor ${v.name} (${v.purpose}): ${v.update}. Open EduOS to respond.`,
@@ -237,6 +250,17 @@ export const TEMPLATES = {
     category: 'UTILITY',
     text: () => 'A reviewed safety observation in a space your class uses was referred to the safeguarding officer. No names are shared; the officer may contact you. Open EduOS for the reference.',
   },
+  // Part 4: opportunities newsletter (public opportunity information only; never a child's name).
+  NEWSLETTER_EDITION: {
+    category: 'UTILITY',
+    subject: (v) => `${v.title}${v.period ? ` (${v.period})` : ''}`,
+    text: (v) => `${v.title} is out${v.period ? ` for ${v.period}` : ''}: competitions, olympiads and scholarships picked by your school, with a quick quiz and flashcards. Open EduOS to read it.`,
+  },
+  OPPORTUNITY_REMINDER: {
+    category: 'UTILITY',
+    subject: (v) => `Reminder: ${v.title}`,
+    text: (v) => `Reminder: "${v.title}" ${v.when}. Open EduOS (Opportunities) for the details and the official link.`,
+  },
 };
 
 const IST_OFFSET_MIN = 330;
@@ -318,6 +342,8 @@ export async function sendOperational({
   templateKey, recipientProfileIds = [], variables = {}, link = null, idempotencyKey,
   urgency = 'NORMAL', relatedEntityType = null, relatedEntityId = null, requestedBy = null,
   channels = ['WHATSAPP'], now = new Date(),
+  // Optional rich email body ({ subject, text, html }) for content that is public by nature (the newsletter).
+  email: emailBody = null,
 }) {
   const template = TEMPLATES[templateKey];
   if (!template) throw new AppError(`Unknown message template ${templateKey}`, 500);
@@ -371,7 +397,9 @@ export async function sendOperational({
         else {
           row.attempts = 1;
           // eslint-disable-next-line no-await-in-loop -- sends are sequential per recipient
-          const out = await sendEmail({ to: email, subject: (template.subject ? template.subject(variables) : preview).slice(0, 150), text: `${preview}${link ? `\n\nOpen EduOS to see the details.` : ''}` });
+          const out = emailBody
+            ? await sendEmail({ to: email, subject: String(emailBody.subject ?? preview).slice(0, 150), text: emailBody.text ?? preview, html: emailBody.html ?? undefined })
+            : await sendEmail({ to: email, subject: (template.subject ? template.subject(variables) : preview).slice(0, 150), text: `${preview}${link ? `\n\nOpen EduOS to see the details.` : ''}` });
           if (out.sent) { status = 'SENT'; row.providerMessageId = out.id ?? null; }
           else if (out.simulated) { status = 'SIMULATED'; reason = 'Email is not configured; nothing was sent'; }
           else { status = out.unknown ? 'UNKNOWN' : 'FAILED'; reason = out.error ?? null; }
@@ -520,7 +548,12 @@ export async function updatePreferences(actor, body = {}) {
     set.whatsappOptIn = { status, at: new Date(), source: 'portal' };
   }
   if (typeof body.emailOptOut === 'boolean') set.emailOptOut = body.emailOptOut;
-  if (typeof body.language === 'string') set.language = body.language.slice(0, 10);
+  if (typeof body.language === 'string') {
+    // A language code ("hi", "mr"): it becomes the WhatsApp template language.
+    const code = body.language.trim().toLowerCase().slice(0, 10);
+    if (!/^[a-z]{2,3}(-[a-z]{2})?$/.test(code)) throw new AppError('Choose a language from the list.', 400, [], 'BAD_LANGUAGE');
+    set.language = code;
+  }
   if (body.quietHours && typeof body.quietHours === 'object') {
     const s = Number(body.quietHours.startHour);
     const e = Number(body.quietHours.endHour);

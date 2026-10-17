@@ -4,6 +4,7 @@ import { Button, EmptyState, Field, Modal, useToast } from '@/components/ui';
 import { fileHref } from '@/lib/api';
 import { MyEvidencePanel } from './accreditation-view';
 import { opsApi } from '@/lib/ops-api';
+import { familyApi } from '@/lib/family-api';
 import type { MyPolicyDto } from '@/lib/ops-types';
 import { ConsentsPanel } from './newsroom-view';
 import { Attachments, DataNote, ErrorNote, Loadable, SectionCard, StatusPill, Tabs, fmtDate, fmtDateTime, humanize, useAction, useLoad } from './kit';
@@ -17,6 +18,7 @@ export function MySpaceView() {
   const policies = useLoad(() => opsApi.myPolicies(), []);
   const trainings = useLoad(() => opsApi.myTrainings(), []);
   const prefs = useLoad(() => opsApi.preferences(), []);
+  const languages = useLoad(() => familyApi.languages(), []);
   const [reading, setReading] = useState<MyPolicyDto | null>(null);
   const { run, busy, error } = useAction();
   const toast = useToast();
@@ -50,6 +52,9 @@ export function MySpaceView() {
         <SectionCard title="How we contact you" sub="WhatsApp messages are sent only if you opt in. They say that something needs your attention and link here — they never carry confidential details or documents.">
           <label className="ops-inline"><input type="checkbox" checked={p.whatsappOptIn.status === 'OPTED_IN'} disabled={busy} onChange={(e) => void run(async () => { const r = await opsApi.savePreferences({ whatsappOptIn: e.target.checked }); prefs.setData(r); toast(e.target.checked ? 'WhatsApp updates on' : 'WhatsApp updates off', 'success'); })} /> Send me WhatsApp updates</label>
           <div className="ops-form-grid">
+            {(languages.data?.length ?? 0) > 0 && (
+              <Field label="Language for messages"><select className="input" value={p.language || 'en'} disabled={busy} onChange={(e) => void run(async () => { prefs.setData(await opsApi.savePreferences({ language: e.target.value })); toast('Language saved', 'success'); })}>{languages.data!.map((l) => <option key={l.code} value={l.code}>{l.name}</option>)}</select></Field>
+            )}
             <Field label="Quiet hours from"><select className="input" value={p.quietHours.startHour} disabled={busy} onChange={(e) => void run(async () => prefs.setData(await opsApi.savePreferences({ quietHours: { ...p.quietHours, startHour: Number(e.target.value) } })))}>{Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{`${String(h).padStart(2, '0')}:00`}</option>)}</select></Field>
             <Field label="until"><select className="input" value={p.quietHours.endHour} disabled={busy} onChange={(e) => void run(async () => prefs.setData(await opsApi.savePreferences({ quietHours: { ...p.quietHours, endHour: Number(e.target.value) } })))}>{Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{`${String(h).padStart(2, '0')}:00`}</option>)}</select></Field>
           </div>

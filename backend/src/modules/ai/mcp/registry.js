@@ -20,6 +20,16 @@ import { openuiTools } from './tools/p3Openui.js';
 import { healthTools } from './tools/p3Health.js';
 import { campusTools } from './tools/p3Campus.js';
 import { integrationTools } from './tools/p3Integrations.js';
+import { leadershipTools } from './tools/p4Leadership.js';
+import { p4FinanceHrNurseTools } from './tools/p4FinanceHrNurse.js';
+import { p4StudentAlumnusTools } from './tools/p4StudentAlumnus.js';
+import { teacherP4Tools } from './tools/p4Teacher.js';
+import { newsletterP4Tools } from './tools/p4Newsletter.js';
+import { p4LibrarianTools } from './tools/p4Librarian.js';
+import { p4WardenTools } from './tools/p4Warden.js';
+import { p4MarketingTools } from './tools/p4Marketing.js';
+import { p4ComplianceTools } from './tools/p4Compliance.js';
+import { p4ParentTools } from './tools/p4Parent.js';
 import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 import { isDecidingToolName } from './decisions.js';
 
@@ -78,6 +88,16 @@ const ASSEMBLED = {
   ...healthTools,
   ...campusTools,
   ...integrationTools,
+  ...leadershipTools,
+  ...p4FinanceHrNurseTools,
+  ...p4LibrarianTools,
+  ...p4WardenTools,
+  ...p4MarketingTools,
+  ...p4ComplianceTools,
+  ...p4ParentTools,
+  ...teacherP4Tools,
+  ...newsletterP4Tools,
+  ...p4StudentAlumnusTools,
 };
 
 /**

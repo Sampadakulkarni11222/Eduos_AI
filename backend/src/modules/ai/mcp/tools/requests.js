@@ -3,6 +3,7 @@ import * as transport from '../../../transport/transport.service.js';
 import * as cocurricular from '../../../studentRequests/cocurricular.service.js';
 import * as profileEdit from '../../../studentRequests/profileEdit.service.js';
 import { AppError } from '../../../../utils/AppError.js';
+import { childrenOf } from '../../../ptm/relations.js';
 import { ok, action } from '../protocol.js';
 import {
   RISK, objectId, noArgs, summarise,
@@ -128,6 +129,27 @@ const pendingNamed = (rows, term, nameOf) => {
 const asList = (rows) => (Array.isArray(rows) ? rows : (rows?.items ?? []));
 const rupees = (paise) => `₹${(Number(paise ?? 0) / 100).toLocaleString('en-IN')}`;
 
+/**
+ * Part 4: a parent asks for a book or a bus place for one of their own
+ * children. Null for a student (the service uses their own record); for a
+ * parent, the named child among their own, or their only child, or a question.
+ */
+async function forChild(ctx, childName) {
+  if (ctx.actor?.roleKey !== 'PARENT') return null;
+  const kids = await childrenOf(ctx.actor.profileId);
+  if (!kids.length) throw new AppError('No child is linked to your account.', 404, [], 'STUDENT_NOT_LINKED');
+  if (!childName) {
+    if (kids.length === 1) return { id: kids[0].studentId, name: kids[0].name };
+    throw new AppError(`Which child is this for? ${kids.map((k) => k.name).join(' or ')}.`, 400, [], 'AGENT_NEEDS_INPUT');
+  }
+  const term = String(childName).trim().toLowerCase();
+  const hits = kids.filter((k) => k.name.toLowerCase() === term || k.name.toLowerCase().split(' ')[0] === term);
+  const found = hits.length ? hits : kids.filter((k) => k.name.toLowerCase().includes(term));
+  if (found.length !== 1) throw new AppError(`Which child is this for? ${kids.map((k) => k.name).join(' or ')}.`, 400, [], 'AGENT_NEEDS_INPUT');
+  return { id: found[0].studentId, name: found[0].name };
+}
+const childNameArg = { type: 'string', maxLength: 80, description: 'A parent: which of your children this is for, e.g. "Riya" (leave out with one child)' };
+
 export const requestTools = {
   /* ── Library: asking for a book ──────────────────────── */
 
@@ -143,15 +165,17 @@ export const requestTools = {
       properties: {
         bookId: objectId('From list_books'),
         title: { type: 'string', maxLength: 300, description: 'The book as a person names it, e.g. "Introduction to Algorithms". An ambiguous title is refused, never guessed.' },
+        childName: childNameArg,
       },
       additionalProperties: false,
     },
     permission: 'library.request',
     service: 'library.service.listBooks() + requestBook()',
     summarise: (args, _actor, prepared) =>
-      `Ask the library to issue "${prepared?.title ?? args.title ?? args.bookId}" to you`,
-    async prepare(_ctx, args) {
-      if (args.bookId) return { bookId: String(args.bookId) };
+      `Ask the library to issue "${prepared?.title ?? args.title ?? args.bookId}" to ${prepared?.child?.name ?? 'you'}`,
+    async prepare(ctx, args) {
+      const child = await forChild(ctx, args.childName);
+      if (args.bookId) return { bookId: String(args.bookId), child };
       const term = String(args.title ?? '').trim();
       if (!term) throw new AppError('Which book? Give its title.', 400, [], 'AGENT_NEEDS_INPUT');
       const rows = asList(await library.listBooks({ search: term }));
@@ -160,11 +184,11 @@ export const requestTools = {
         term,
         describe: (b) => `"${b.title}"${b.author ? ` by ${b.author}` : ''}`,
       });
-      return { bookId: String(book.id ?? book._id), title: book.title };
+      return { bookId: String(book.id ?? book._id), title: book.title, child };
     },
     async run(ctx, args, prepared) {
       const plan = prepared ?? (await this.prepare(ctx, args));
-      const request = await library.requestBook(ctx.actor, plan.bookId);
+      const request = await library.requestBook(ctx.actor, plan.bookId, plan.child?.id ?? null);
       return action({
         type: 'book_requested',
         id: request.id,
@@ -242,12 +266,13 @@ export const requestTools = {
     risk: RISK.LOW,
     description:
       "The bus routes the caller can ask for, with each route's stops and what a place on it costs for the year. Also says whether the caller already has a request or a place. Read-only.",
-    inputSchema: noArgs,
+    inputSchema: { type: 'object', properties: { childName: childNameArg }, additionalProperties: false },
     permission: 'transport.request',
     service: 'transport.service.listRoutesForStudent()',
     resultShape: 'LIST',
-    async run(ctx) {
-      const view = await transport.listRoutesForStudent(ctx.actor);
+    async run(ctx, args = {}) {
+      const child = await forChild(ctx, args.childName);
+      const view = await transport.listRoutesForStudent(ctx.actor, { studentId: child?.id ?? null });
       const list = summarise(
         view.routes,
         (r) => `${r.name}${r.fareAmountPaise ? ` (${rupees(r.fareAmountPaise)} a year)` : ''}`,
@@ -282,6 +307,7 @@ export const requestTools = {
           enum: ['BOTH', 'PICKUP', 'DROP'],
           description: 'Both ways by default',
         },
+        childName: childNameArg,
       },
       additionalProperties: false,
     },
@@ -289,16 +315,17 @@ export const requestTools = {
     service: 'transport.service.listRoutesForStudent() + requestRoute()',
     summarise: (args, _actor, prepared) =>
       `Ask for a place on ${prepared?.routeName ?? args.routeName ?? `route ${args.routeId}`}` +
-      `${prepared?.stopName ? ` from ${prepared.stopName}` : ''}`,
+      `${prepared?.stopName ? ` from ${prepared.stopName}` : ''}${prepared?.child ? ` for ${prepared.child.name}` : ''}`,
     async prepare(ctx, args) {
+      const child = await forChild(ctx, args.childName);
       if (args.routeId && args.stopId) {
-        return { routeId: String(args.routeId), stopId: String(args.stopId) };
+        return { routeId: String(args.routeId), stopId: String(args.stopId), child };
       }
 
       // The routes this caller may ask for, read from the same service their
       // own screen reads -- so a route they cannot request is not a candidate
       // here either.
-      const view = await transport.listRoutesForStudent(ctx.actor);
+      const view = await transport.listRoutesForStudent(ctx.actor, { studentId: child?.id ?? null });
       const routes = view.routes ?? [];
       if (!routes.length) throw new AppError('No bus routes are running at the moment.', 404, [], 'NO_ROUTES');
 
@@ -342,6 +369,7 @@ export const requestTools = {
         stopId: String(stop.id ?? stop._id),
         routeName: route.name,
         stopName: stop.name,
+        child,
       };
     },
     async run(ctx, args, prepared) {
@@ -350,6 +378,7 @@ export const requestTools = {
         routeId: plan.routeId,
         stopId: plan.stopId,
         direction: args.direction ?? 'BOTH',
+        studentId: plan.child?.id ?? null,
       });
       return action({
         type: 'transport_requested',

@@ -14,6 +14,7 @@ import { PulseBoard } from '@/components/ops/pulse-board';
 import { RoleDashboard } from '@/components/ops/role-dashboard';
 import { ShowcaseCard } from '@/components/ops/showcase-view';
 import { ChildTeachersCard } from '@/components/ops/p3-campus-views';
+import { FamilyToday } from '@/components/family/family-today';
 import { formatDate, formatDayMonth, formatTime12, greeting, greetingName, humanizeLabel } from '../student/_lib/format';
 
 /**
@@ -84,6 +85,8 @@ export default function ParentDashboard() {
 
   return (
     <PortalShell expectedSlug="parent" topbar={{ title: 'My Children', desc: "Your family's school life in one place" }}>
+      {/* Every child at once and what is waiting for the parent, before the school-wide board. */}
+      <FamilyToday />
       {/* The interactive board: briefing, departments, campus, charts and live activity. */}
       <PulseBoard />
       {/* Per-child charts and analysis, following the child chosen below. */}
@@ -249,7 +252,7 @@ export default function ParentDashboard() {
 
               {upcomingEvents.slice(0, 4).map((e, idx) => (
                 <div
-                  key={e.id}
+                  key={`${e.id ?? 'ev'}-${e.startsAt}-${idx}`}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 12,
                     padding: '9px 0', borderTop: idx ? '1px solid var(--hairline)' : 'none',
