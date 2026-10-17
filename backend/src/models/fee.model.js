@@ -25,10 +25,16 @@ const invoiceSchema = new Schema(
   {
     enrollmentId: { type: Schema.Types.ObjectId, ref: 'Enrollment', required: true },
     invoiceNo: { type: String, required: true, unique: true },
-    status: { type: String, enum: ['PENDING', 'PARTIAL', 'PAID', 'OVERDUE', 'CANCELLED'], default: 'PENDING' },
+    status: { type: String, enum: ['PENDING', 'PARTIAL', 'PAID', 'OVERDUE', 'CANCELLED', 'DISPUTED'], default: 'PENDING' },
     totalPaise: { type: Number, required: true },
     paidPaise: { type: Number, default: 0 },
     dueOn: { type: Date, required: true },
+    cancellationReason: { type: String, trim: true, default: null },
+    cancelledAt: { type: Date, default: null },
+    cancelledByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
+    disputeReason: { type: String, trim: true, default: null },
+    disputedAt: { type: Date, default: null },
+    disputeResolvedAt: { type: Date, default: null },
     // Set only on invoices raised by publishing a FeePlan. Invoices billed the
     // old way keep both null, which is exactly how the two are told apart
     // everywhere they are read.

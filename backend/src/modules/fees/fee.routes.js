@@ -484,4 +484,37 @@ router.post('/payments/:id/change-request', requirePermission('fees.manage', 'AL
  */
 router.post('/payments/:id/refund', requirePermission('fees.payments.refund'), controller.refundPayment);
 
+// ── Invoices Extended (Cancellation & Disputes) ──
+router.post('/invoices/:id/cancel', requirePermission('fees.manage'), controller.cancelInvoice);
+router.post('/invoices/:id/dispute', requirePermission('fees.manage'), controller.disputeInvoice);
+
+// ── Expenses & Budgets ──
+router.get('/expenses/categories', requirePermission('fees.read', 'ALL'), controller.listExpenseCategories);
+router.post('/expenses/categories', requirePermission('fees.structure.manage'), controller.createExpenseCategory);
+router.get('/expenses', requirePermission('fees.read', 'ALL'), controller.listExpenses);
+router.post('/expenses', requirePermission('fees.manage'), controller.recordExpense);
+router.get('/budgets', requirePermission('fees.read', 'ALL'), controller.listBudgets);
+router.post('/budgets', requirePermission('fees.structure.manage'), controller.setBudget);
+router.get('/budgets/utilization', requirePermission('fees.read', 'ALL'), controller.getBudgetUtilization);
+
+// ── Bill Reminders ──
+router.get('/reminders/rules', requirePermission('fees.read', 'ALL'), controller.listReminderRules);
+router.post('/reminders/rules', requirePermission('fees.manage'), controller.createReminderRule);
+router.get('/reminders/logs', requirePermission('fees.read', 'ALL'), controller.listReminderLogs);
+router.post('/reminders/send', requirePermission('fees.manage'), controller.sendReminder);
+router.post('/reminders/sweep', requirePermission('fees.manage'), controller.runReminderSweep);
+
+// ── Revenue Leakage Detection & Investigation ──
+router.post('/leakage/scan', requirePermission('fees.manage'), controller.runLeakageDetection);
+router.get('/leakage/findings', requirePermission('fees.read', 'ALL'), controller.listLeakageFindings);
+router.get('/leakage/summary', requirePermission('fees.read', 'ALL'), controller.getLeakageSummary);
+router.patch('/leakage/findings/:id', requirePermission('fees.manage'), controller.updateLeakageStatus);
+
+// ── Quarterly Financial Reports ──
+router.post('/reports/quarterly/generate', requirePermission('fees.manage'), controller.generateQuarterlyReport);
+router.get('/reports/quarterly', requirePermission('fees.read', 'ALL'), controller.listQuarterlyReports);
+router.get('/reports/quarterly/:id', requirePermission('fees.read', 'ALL'), controller.getQuarterlyReport);
+router.get('/reports/quarterly/:id/pdf', requirePermission('fees.read', 'ALL'), controller.downloadQuarterlyReportPdf);
+router.post('/reports/quarterly/:id/distribute', requirePermission('fees.manage'), controller.distributeQuarterlyReport);
+
 export default router;

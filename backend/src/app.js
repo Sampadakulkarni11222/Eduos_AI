@@ -102,7 +102,7 @@ app.set('trust proxy', 1);
 // Must be mounted BEFORE any static handler, or uploaded files and the status
 // page are served with no security headers at all.
 app.use(helmet());
-app.use(cors({ origin: env.CORS_ORIGIN }));
+app.use(cors({ origin: env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean) }));
 
 // ─── Status Page (public/) ────────────────────────────────
 app.use(express.static(join(__dirname, '..', 'public')));

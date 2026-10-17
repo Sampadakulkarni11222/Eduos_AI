@@ -13,7 +13,7 @@
 import { cachedFetch, invalidateCache } from './cache';
 import { getActingSchool } from './acting-school';
 import { SESSION_MARKER } from './session-cookie';
-import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto, AnnouncementDraft, AnnouncementPreviewDto, TransportRosterRow, LibraryResourceKind, LeaveRequestDto, LeaveStatus } from './types';
+import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, AiReply, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto, AnnouncementDraft, AnnouncementPreviewDto, TransportRosterRow, LibraryResourceKind, LeaveRequestDto, LeaveStatus, ExpenseCategoryDto, ExpenseDto, BudgetDto, BudgetUtilizationDto, ReminderLogDto, RevenueLeakageFindingDto, LeakageSummaryDto, QuarterlyFinancialReportDto } from './types';
 
 /**
  * A document exactly as the API returns it, before this layer normalises it.
@@ -650,6 +650,72 @@ export const api = {
     request<PayOnlineResult>('/fees/pay', { method: 'POST', body: JSON.stringify(body) }),
   downloadInvoicePdf: (invoiceId: string) => openProtectedFile(`/fees/invoices/${invoiceId}/pdf`),
   downloadReceiptPdf: (paymentId: string) => openProtectedFile(`/fees/payments/${paymentId}/pdf`),
+  cancelInvoice: (id: string, reason: string) =>
+    request<InvoiceDto>(`/fees/invoices/${id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  disputeInvoice: (id: string, dispute: boolean, reason?: string) =>
+    request<InvoiceDto>(`/fees/invoices/${id}/dispute`, { method: 'POST', body: JSON.stringify({ dispute, reason }) }),
+
+  // ── expenses & budgets ──
+  expenseCategories: () => request<ExpenseCategoryDto[]>('/fees/expenses/categories'),
+  createExpenseCategory: (body: { name: string; code?: string; description?: string }) =>
+    request<ExpenseCategoryDto>('/fees/expenses/categories', { method: 'POST', body: JSON.stringify(body) }),
+  listExpenses: (params: { categoryId?: string; from?: string; to?: string; page?: number; pageSize?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.categoryId) q.set('categoryId', params.categoryId);
+    if (params.from) q.set('from', params.from);
+    if (params.to) q.set('to', params.to);
+    if (params.page) q.set('page', String(params.page));
+    if (params.pageSize) q.set('pageSize', String(params.pageSize));
+    return request<PageResult<ExpenseDto>>(`/fees/expenses?${q.toString()}`);
+  },
+  recordExpense: (body: { categoryId: string; title: string; amountPaise: number; expenseDate?: string; paymentMode?: string; vendorName?: string; notes?: string }) =>
+    request<ExpenseDto>('/fees/expenses', { method: 'POST', body: JSON.stringify(body) }),
+  budgets: (academicYearId?: string) =>
+    request<BudgetDto[]>(`/fees/budgets${academicYearId ? `?academicYearId=${academicYearId}` : ''}`),
+  setBudget: (body: { academicYearId: string; categoryId: string; allocatedPaise: number; quarter?: string; notes?: string }) =>
+    request<BudgetDto>('/fees/budgets', { method: 'POST', body: JSON.stringify(body) }),
+  budgetUtilization: (academicYearId?: string) =>
+    request<BudgetUtilizationDto[]>(`/fees/budgets/utilization${academicYearId ? `?academicYearId=${academicYearId}` : ''}`),
+
+  // ── bill reminders ──
+  reminderLogs: (params: { invoiceId?: string; page?: number; pageSize?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.invoiceId) q.set('invoiceId', params.invoiceId);
+    if (params.page) q.set('page', String(params.page));
+    if (params.pageSize) q.set('pageSize', String(params.pageSize));
+    return request<PageResult<ReminderLogDto>>(`/fees/reminders/logs?${q.toString()}`);
+  },
+  sendReminder: (body: { invoiceId: string; channel?: string; stage?: string; customMessage?: string }) =>
+    request<ReminderLogDto>('/fees/reminders/send', { method: 'POST', body: JSON.stringify(body) }),
+  runReminderSweep: () =>
+    request<{ scanned: number; sentCount: number; skippedCount: number }>('/fees/reminders/sweep', { method: 'POST' }),
+
+  // ── revenue leakage ──
+  scanLeakage: () =>
+    request<{ totalEvaluated: number; newFindingsCreated: number }>('/fees/leakage/scan', { method: 'POST' }),
+  leakageFindings: (params: { status?: string; severity?: string; page?: number; pageSize?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.status) q.set('status', params.status);
+    if (params.severity) q.set('severity', params.severity);
+    if (params.page) q.set('page', String(params.page));
+    if (params.pageSize) q.set('pageSize', String(params.pageSize));
+    return request<PageResult<RevenueLeakageFindingDto>>(`/fees/leakage/findings?${q.toString()}`);
+  },
+  leakageSummary: () => request<LeakageSummaryDto>('/fees/leakage/summary'),
+  updateLeakageStatus: (id: string, body: { status?: string; category?: string; recoveredAmountPaise?: number; notes?: string }) =>
+    request<RevenueLeakageFindingDto>(`/fees/leakage/findings/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  // ── quarterly reports ──
+  generateQuarterlyReport: (body: { year: number; quarter: string; executiveSummary?: string }) =>
+    request<QuarterlyFinancialReportDto>('/fees/reports/quarterly/generate', { method: 'POST', body: JSON.stringify(body) }),
+  quarterlyReports: () => request<QuarterlyFinancialReportDto[]>('/fees/reports/quarterly'),
+  quarterlyReport: (id: string) => request<QuarterlyFinancialReportDto>(`/fees/reports/quarterly/${id}`),
+  downloadQuarterlyReportPdf: (id: string) => openProtectedFile(`/fees/reports/quarterly/${id}/pdf`),
+  distributeQuarterlyReport: (id: string, recipientEmails: string[]) =>
+    request<{ distributedCount: number; outcomes: Array<{ email: string; status: string }> }>(
+      `/fees/reports/quarterly/${id}/distribute`,
+      { method: 'POST', body: JSON.stringify({ recipientEmails }) }
+    ),
 
   // ── announcements ──
   announcements: () => cachedRequest<AnnouncementDto[]>('/announcements'),

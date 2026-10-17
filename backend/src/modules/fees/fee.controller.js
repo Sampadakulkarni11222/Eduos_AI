@@ -7,6 +7,11 @@ import { renderInvoicePdf } from '../../utils/invoicePdf.js';
 import { renderReceiptPdf } from '../../utils/receiptPdf.js';
 import * as service from './fee.service.js';
 import * as planService from './plan.service.js';
+import * as expenseService from './expense.service.js';
+import * as reminderService from './reminder.service.js';
+import * as leakageService from './leakage.service.js';
+import * as reportService from './financialReport.service.js';
+import { renderQuarterlyFinancialReportPdf } from '../../utils/quarterlyReportPdf.js';
 
 export const createFeeHead = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.createFeeHead(req.body), 'Fee head created', 201);
@@ -220,4 +225,104 @@ export const refundPayment = asyncHandler(async (req, res) => {
 
 export const getSummary = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.getSummary(req.actor, req.scope, req.query), 'Fee summary fetched');
+});
+
+// ── Invoices Extended ──
+export const cancelInvoice = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.cancelInvoice(req.actor, req.params.id, req.body.reason), 'Invoice cancelled');
+});
+
+export const disputeInvoice = asyncHandler(async (req, res) => {
+  sendSuccess(res, await service.disputeInvoice(req.actor, req.params.id, req.body), 'Invoice dispute status updated');
+});
+
+// ── Expenses & Budgets ──
+export const listExpenseCategories = asyncHandler(async (_req, res) => {
+  sendSuccess(res, await expenseService.listExpenseCategories(), 'Expense categories fetched');
+});
+
+export const createExpenseCategory = asyncHandler(async (req, res) => {
+  sendSuccess(res, await expenseService.createExpenseCategory(req.actor, req.body), 'Expense category created', 201);
+});
+
+export const listExpenses = asyncHandler(async (req, res) => {
+  sendSuccess(res, await expenseService.listExpenses(req.query), 'Expenses fetched');
+});
+
+export const recordExpense = asyncHandler(async (req, res) => {
+  sendSuccess(res, await expenseService.recordExpense(req.actor, req.body), 'Expense recorded', 201);
+});
+
+export const listBudgets = asyncHandler(async (req, res) => {
+  sendSuccess(res, await expenseService.listBudgets(req.query), 'Budgets fetched');
+});
+
+export const setBudget = asyncHandler(async (req, res) => {
+  sendSuccess(res, await expenseService.setBudget(req.actor, req.body), 'Budget configured');
+});
+
+export const getBudgetUtilization = asyncHandler(async (req, res) => {
+  sendSuccess(res, await expenseService.getBudgetUtilization(req.query), 'Budget utilization calculated');
+});
+
+// ── Reminders ──
+export const listReminderRules = asyncHandler(async (_req, res) => {
+  sendSuccess(res, await reminderService.listReminderRules(), 'Reminder rules fetched');
+});
+
+export const createReminderRule = asyncHandler(async (req, res) => {
+  sendSuccess(res, await reminderService.createReminderRule(req.actor, req.body), 'Reminder rule created', 201);
+});
+
+export const listReminderLogs = asyncHandler(async (req, res) => {
+  sendSuccess(res, await reminderService.listReminderLogs(req.query), 'Reminder logs fetched');
+});
+
+export const sendReminder = asyncHandler(async (req, res) => {
+  sendSuccess(res, await reminderService.sendInvoiceReminder(req.actor, req.body), 'Reminder dispatched');
+});
+
+export const runReminderSweep = asyncHandler(async (req, res) => {
+  sendSuccess(res, await reminderService.runAutomatedReminderSweep(req.actor), 'Reminder sweep completed');
+});
+
+// ── Revenue Leakage ──
+export const runLeakageDetection = asyncHandler(async (req, res) => {
+  sendSuccess(res, await leakageService.runLeakageDetection(req.actor), 'Leakage scan executed');
+});
+
+export const listLeakageFindings = asyncHandler(async (req, res) => {
+  sendSuccess(res, await leakageService.listLeakageFindings(req.query), 'Leakage findings fetched');
+});
+
+export const getLeakageSummary = asyncHandler(async (_req, res) => {
+  sendSuccess(res, await leakageService.getLeakageSummary(), 'Leakage summary fetched');
+});
+
+export const updateLeakageStatus = asyncHandler(async (req, res) => {
+  sendSuccess(res, await leakageService.updateLeakageStatus(req.actor, req.params.id, req.body), 'Finding updated');
+});
+
+// ── Quarterly Financial Reports ──
+export const generateQuarterlyReport = asyncHandler(async (req, res) => {
+  sendSuccess(res, await reportService.generateQuarterlyReport(req.actor, req.body), 'Quarterly report generated', 201);
+});
+
+export const listQuarterlyReports = asyncHandler(async (_req, res) => {
+  sendSuccess(res, await reportService.listQuarterlyReports(), 'Quarterly reports fetched');
+});
+
+export const getQuarterlyReport = asyncHandler(async (req, res) => {
+  sendSuccess(res, await reportService.getQuarterlyReportById(req.params.id), 'Quarterly report fetched');
+});
+
+export const downloadQuarterlyReportPdf = asyncHandler(async (req, res) => {
+  const report = await reportService.getQuarterlyReportById(req.params.id);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="Quarterly-Report-${report.quarter}-${report.year}.pdf"`);
+  renderQuarterlyFinancialReportPdf(res, report);
+});
+
+export const distributeQuarterlyReport = asyncHandler(async (req, res) => {
+  sendSuccess(res, await reportService.distributeReport(req.actor, req.params.id, req.body), 'Report distributed');
 });

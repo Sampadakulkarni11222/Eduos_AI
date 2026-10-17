@@ -64,12 +64,14 @@ export function resolveMongoUri(processEnv = process.env) {
     return { uri: LOCAL_MONGO_FALLBACK, source: 'default', atlasIgnored: false };
   }
 
+  if (atlas) {
+    return { uri: atlas, source: 'MONGO_URI_ATLAS', atlasIgnored: false };
+  }
+
   return {
     uri: local ?? LOCAL_MONGO_FALLBACK,
     source: local ? 'MONGO_URI' : 'default',
-    // Surfaced so the connection log can explain the override rather than
-    // leaving someone to wonder why their Atlas URI "did nothing".
-    atlasIgnored: Boolean(atlas),
+    atlasIgnored: false,
   };
 }
 

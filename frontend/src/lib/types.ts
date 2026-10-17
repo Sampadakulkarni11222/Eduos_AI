@@ -811,9 +811,134 @@ export interface LibrarianDashboardDto {
   recentReturnHistory: Array<{ issueId: string; book: string; author: string; borrower: string; returnedAt: string; fine: number }>;
 }
 export interface FinanceDashboardDto {
-  pendingAmountPaise: number; collectedAmountPaise: number; totalBilled: number; collectionRate: number; invoiceCount: number;
+  pendingAmountPaise: number;
+  collectedAmountPaise: number;
+  totalBilled: number;
+  collectionRate: number;
+  invoiceCount: number;
+  overdueAmountPaise?: number;
+  overdueCount?: number;
+  totalExpensePaise?: number;
+  potentialLeakagePaise?: number;
+  confirmedLeakagePaise?: number;
+  recoveredLeakagePaise?: number;
   recentInvoices: Array<{ _id: string; invoiceNo: string; status: string; totalAmount: number; paidAmount: number; dueAmount: number; dueOn: string; studentName: string; admissionNo: string }>;
   pendingInvoices: Array<{ _id: string; invoiceNo: string; status: string; totalAmount: number; paidAmount: number; dueAmount: number; dueOn: string; studentName: string; admissionNo: string }>;
+}
+
+export interface ExpenseCategoryDto {
+  _id: string;
+  name: string;
+  code?: string;
+  description?: string;
+}
+
+export interface ExpenseDto {
+  _id: string;
+  title: string;
+  amountPaise: number;
+  expenseDate: string;
+  paymentMode: string;
+  vendorName?: string;
+  invoiceRef?: string;
+  status: string;
+  categoryId?: { _id: string; name: string };
+  notes?: string;
+}
+
+export interface BudgetDto {
+  _id: string;
+  quarter: string;
+  allocatedPaise: number;
+  notes?: string;
+  categoryId?: { _id: string; name: string; code?: string };
+  academicYearId?: { _id: string; name: string };
+}
+
+export interface BudgetUtilizationDto {
+  budgetId: string;
+  category: string;
+  quarter: string;
+  allocatedPaise: number;
+  spentPaise: number;
+  remainingPaise: number;
+  overrunPaise: number;
+  utilizationPct: number;
+}
+
+export interface ReminderLogDto {
+  _id: string;
+  invoiceId: { _id: string; invoiceNo: string; totalPaise: number; paidPaise: number; dueOn: string; status: string };
+  channel: string;
+  stage: string;
+  status: string;
+  title: string;
+  body: string;
+  sentAt: string;
+  recipientPhone?: string;
+  recipientEmail?: string;
+  failureReason?: string;
+}
+
+export interface RevenueLeakageFindingDto {
+  _id: string;
+  ruleCode: string;
+  ruleName: string;
+  category: 'POTENTIAL' | 'CONFIRMED';
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  estimatedAmountPaise: number;
+  recoveredAmountPaise: number;
+  status: 'OPEN' | 'UNDER_REVIEW' | 'CONFIRMED' | 'RESOLVED' | 'FALSE_POSITIVE';
+  investigationNotes?: string;
+  detectedAt: string;
+  evidence?: Record<string, unknown>;
+}
+
+export interface LeakageSummaryDto {
+  potentialPaise: number;
+  confirmedPaise: number;
+  recoveredPaise: number;
+  openCount: number;
+  confirmedCount: number;
+  resolvedCount: number;
+}
+
+export interface QuarterlyFinancialReportDto {
+  _id: string;
+  year: number;
+  quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4';
+  periodStart: string;
+  periodEnd: string;
+  metrics: {
+    openingReceivablesPaise: number;
+    closingReceivablesPaise: number;
+    totalBilledPaise: number;
+    totalCollectedPaise: number;
+    collectionRatePct: number;
+    totalExpensesPaise: number;
+    netOperatingMarginPaise: number;
+    totalConcessionsPaise: number;
+    totalRefundsPaise: number;
+    unreconciledPaymentsPaise: number;
+    potentialLeakagePaise: number;
+    confirmedLeakagePaise: number;
+    recoveredLeakagePaise: number;
+  };
+  ageingBuckets: {
+    currentPaise: number;
+    thirtyToSixtyPaise: number;
+    sixtyToNinetyPaise: number;
+    aboveNinetyPaise: number;
+  };
+  segmentPerformance: Array<{
+    segmentName: string;
+    billedPaise: number;
+    collectedPaise: number;
+    pendingPaise: number;
+  }>;
+  executiveSummary?: string;
+  status: string;
+  createdAt: string;
 }
 
 

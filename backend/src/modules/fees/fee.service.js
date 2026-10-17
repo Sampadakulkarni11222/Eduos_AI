@@ -2008,3 +2008,69 @@ export async function getSummary(actor, scope, query = {}) {
     onlinePaymentEnabled: isOnlinePaymentEnabled(),
   };
 }
+
+/**
+ * Cancels an invoice. Only invoices with 0 payments can be cancelled.
+ * If payments exist, they must first be refunded or reversed.
+ */
+export async function cancelInvoice(actor, invoiceId, reason) {
+  if (!reason || !String(reason).trim()) {
+    throw new AppError('Cancellation reason is required', 400);
+  }
+  const invoice = await Invoice.findById(invoiceId);
+  if (!invoice) throw new AppError('Invoice not found', 404);
+  if (invoice.status === 'CANCELLED') throw new AppError('Invoice is already cancelled', 409);
+  if (invoice.paidPaise > 0) {
+    throw new AppError('Cannot cancel an invoice with recorded payments. Refund all payments first.', 400);
+  }
+
+  const beforeStatus = invoice.status;
+  invoice.status = 'CANCELLED';
+  invoice.cancellationReason = String(reason).trim();
+  invoice.cancelledAt = new Date();
+  invoice.cancelledByProfileId = actor?.profileId;
+  await invoice.save();
+
+  await recordAudit({
+    actor,
+    action: 'fees.invoice.cancel',
+    entityType: 'Invoice',
+    entityId: invoice._id,
+    before: { status: beforeStatus },
+    after: { status: 'CANCELLED', reason },
+  });
+
+  return invoice;
+}
+
+/**
+ * Marks an invoice as disputed or resolves an active dispute.
+ */
+export async function disputeInvoice(actor, invoiceId, { dispute, reason = null }) {
+  const invoice = await Invoice.findById(invoiceId);
+  if (!invoice) throw new AppError('Invoice not found', 404);
+
+  const beforeStatus = invoice.status;
+  if (dispute) {
+    if (invoice.status === 'CANCELLED') throw new AppError('Cannot dispute a cancelled invoice', 400);
+    invoice.status = 'DISPUTED';
+    invoice.disputeReason = reason;
+    invoice.disputedAt = new Date();
+  } else {
+    // Resolve dispute
+    invoice.disputeResolvedAt = new Date();
+    invoice.status = invoice.paidPaise >= invoice.totalPaise ? 'PAID' : invoice.paidPaise > 0 ? 'PARTIAL' : (invoice.dueOn < new Date() ? 'OVERDUE' : 'PENDING');
+  }
+  await invoice.save();
+
+  await recordAudit({
+    actor,
+    action: dispute ? 'fees.invoice.dispute' : 'fees.invoice.dispute.resolve',
+    entityType: 'Invoice',
+    entityId: invoice._id,
+    before: { status: beforeStatus },
+    after: { status: invoice.status, reason },
+  });
+
+  return invoice;
+}

@@ -167,7 +167,28 @@ export default function FinancePayments() {
                       <td data-label="Paid">{rupees(i.paidPaise)}</td>
                       <td data-label="Due On">{i.dueOn}</td>
                       <td data-label="Status"><Pill tone={STATUS_TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
-                      <td data-label="Actions">{i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>}</td>
+                      <td data-label="Actions" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <Button small variant="ghost" onClick={() => api.downloadInvoicePdf(i.id)}>PDF</Button>
+                        {i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && (
+                          <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>
+                        )}
+                        {i.status !== 'PAID' && i.status !== 'CANCELLED' && (
+                          <Button
+                            small
+                            variant="ghost"
+                            onClick={async () => {
+                              try {
+                                await api.sendReminder({ invoiceId: i.id });
+                                toast(`Reminder sent for ${i.invoiceNo}`, 'success');
+                              } catch (err: unknown) {
+                                toast(err instanceof Error ? err.message : 'Reminder failed', 'error');
+                              }
+                            }}
+                          >
+                            Remind
+                          </Button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -223,7 +244,8 @@ export default function FinancePayments() {
                         <td style={{ color: 'var(--text-faint)' }} data-label="Date">
                           {new Date(r.paidOn ?? r.createdAt).toLocaleDateString('en-IN')}
                         </td>
-                        <td data-label="Actions">
+                        <td data-label="Actions" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <Button small variant="ghost" onClick={() => api.downloadReceiptPdf(r.id)}>PDF</Button>
                           {/* A published payment can no longer be edited here,
                               only asked about. That is the rule, not a hint. */}
                           {published && (

@@ -153,6 +153,67 @@ export async function getFinanceDashboard() {
     .select('invoiceNo status totalPaise paidPaise dueOn')
     .lean();
 
+  // Overdue count and amount
+  const now = new Date();
+  const overdueAgg = await Invoice.aggregate([
+    { $match: { status: { $in: ['PENDING', 'PARTIAL', 'OVERDUE'] }, dueOn: { $lt: now } } },
+    { $group: { _id: null, overduePaise: { $sum: { $subtract: ['$totalPaise', '$paidPaise'] } }, count: { $sum: 1 } } },
+  ]);
+  const overduePaise = overdueAgg[0]?.overduePaise ?? 0;
+  const overdueCount = overdueAgg[0]?.count ?? 0;
+
+  // Expenses & leakage summary
+  const { Expense } = await import('../../models/expense.model.js');
+  const { RevenueLeakageFinding } = await import('../../models/leakage.model.js');
+
+  const [expenseAgg, leakageAgg] = await Promise.all([
+    Expense.aggregate([
+      { $match: { status: { $ne: 'CANCELLED' } } },
+      { $group: { _id: null, totalSpent: { $sum: '$amountPaise' } } },
+    ]),
+    RevenueLeakageFinding.aggregate([
+      {
+        $group: {
+          _id: null,
+          potentialPaise: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$category', 'POTENTIAL'] },
+                    { $in: ['$status', ['OPEN', 'UNDER_REVIEW']] },
+                  ],
+                },
+                '$estimatedAmountPaise',
+                0,
+              ],
+            },
+          },
+          confirmedPaise: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$category', 'CONFIRMED'] },
+                    { $in: ['$status', ['OPEN', 'UNDER_REVIEW', 'CONFIRMED']] },
+                  ],
+                },
+                '$estimatedAmountPaise',
+                0,
+              ],
+            },
+          },
+          recoveredPaise: { $sum: '$recoveredAmountPaise' },
+        },
+      },
+    ]),
+  ]);
+
+  const totalExpensePaise = expenseAgg[0]?.totalSpent ?? 0;
+  const potentialLeakagePaise = leakageAgg[0]?.potentialPaise ?? 0;
+  const confirmedLeakagePaise = leakageAgg[0]?.confirmedPaise ?? 0;
+  const recoveredLeakagePaise = leakageAgg[0]?.recoveredPaise ?? 0;
+
   return {
     pendingAmount: toRs(pendingPaise),
     pendingAmountPaise: pendingPaise,
@@ -161,6 +222,12 @@ export async function getFinanceDashboard() {
     totalBilled: toRs(totalPaise),
     collectionRate: pct(paidPaise, totalPaise),
     invoiceCount,
+    overdueAmountPaise: overduePaise,
+    overdueCount,
+    totalExpensePaise,
+    potentialLeakagePaise,
+    confirmedLeakagePaise,
+    recoveredLeakagePaise,
     recentInvoices: recentInvoices.map(_formatInvoice),
     pendingInvoices: pendingInvoices.map(_formatInvoice),
   };
