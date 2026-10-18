@@ -1,6 +1,5 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
-import { AppError } from '../../utils/AppError.js';
 import { parseCsvRows } from '../../utils/csvImport.js';
 import * as service from './transport.service.js';
 

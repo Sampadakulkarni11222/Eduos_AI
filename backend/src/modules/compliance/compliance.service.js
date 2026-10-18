@@ -21,7 +21,7 @@ import { sendOperational } from '../messaging/messaging.service.js';
 import { candidateListData, disclosureData } from './documents.service.js';
 import {
   nextRef, requireProfile, assertObjectId, assertTransition, pushHistory, cleanAttachments, asPaise,
-  parseDate, requireText, optionalText, oneOf, dto, pageArgs, startOfDayUtc, profilesWithRoles,
+  parseDate, requireText, optionalText, oneOf, dto, startOfDayUtc, profilesWithRoles,
 } from '../ops/common.js';
 
 /**

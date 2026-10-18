@@ -9,7 +9,7 @@ import * as audit from '../../../audit/audit.service.js';
 import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
 import {
-  RISK, objectId, dateStr, noArgs, summarise, shortDate, resolveEnrollmentId, studentIdentitySchema,
+  RISK, objectId, dateStr, summarise, shortDate, resolveEnrollmentId, studentIdentitySchema,
   limitSchema, resultWindow, windowSlice, rangeOf, collectPages, collectCursor,
   resolveSection, classIdentitySchema,
   theNamed,
@@ -595,7 +595,7 @@ export const analyticsTools = {
     permission: 'materials.manage',
     affectsOthers: true,
     service: 'document.service.listForActor() + updateForActor()',
-    summarise: (args, _actor, prepared) => {
+    summarise: (args, _actor, _prepared) => {
       const changed = ['fileUrl', 'mimeType', 'visibleToRoles'].filter((f) => args[f] !== undefined);
       if (args.newTitle !== undefined || (args.documentId && args.title !== undefined)) changed.push('title');
       if (args.sectionId || args.className) changed.push('class');

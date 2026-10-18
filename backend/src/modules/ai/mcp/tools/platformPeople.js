@@ -28,7 +28,7 @@ import { AppError } from '../../../../utils/AppError.js';
 import { escapeRegex } from '../../../ops/common.js';
 import { ok, action } from '../protocol.js';
 import {
-  RISK, objectId, dateStr, noArgs, summarise, shortDate, resolveStudentId, studentIdentitySchema, theNamed,
+  RISK, dateStr, noArgs, summarise, shortDate, resolveStudentId, studentIdentitySchema, theNamed,
   resolveSection, classIdentitySchema,
 } from './_shared.js';
 
@@ -1314,7 +1314,6 @@ const digestTools = {
 
 /* ── Sustainability ───────────────────────────────────────── */
 
-const greenScope = (actor, key) => actor?.permissions?.[key] ?? 'OWN';
 
 const sustainabilityTools = {
   get_eco_points: {

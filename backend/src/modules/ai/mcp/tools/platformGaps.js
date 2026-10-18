@@ -39,7 +39,6 @@ import {
 const rowsOf = (out) => (Array.isArray(out) ? out : out?.items ?? []);
 const clean = (s) => String(s ?? '').trim().toLowerCase();
 const excerpt = (s, n = 100) => { const t = String(s ?? ''); return t.length > n ? `${t.slice(0, n)}…` : t; };
-const today = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
 
 function clockOf(raw, label = 'time') {
   const m = String(raw ?? '').trim().toLowerCase().match(/^(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?$/);

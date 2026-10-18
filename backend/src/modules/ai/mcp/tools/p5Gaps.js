@@ -84,7 +84,6 @@ const honorific = (s) => String(s ?? '').replace(/^(?:the|mr|mrs|ms|miss|dr|sir|
 const STAFF = ['ADMIN', 'PRINCIPAL', 'TEACHER', 'FINANCE', 'HR', 'MARKETING', 'COMPLIANCE', 'LIBRARIAN', 'WARDEN', 'NURSE'];
 const scopesOf = (actor, keys) => Object.fromEntries(keys.map((k) => [k, actor?.permissions?.[k] ?? null]).filter(([, v]) => v));
 const CLUB_KEYS = ['clubs.read', 'clubs.manage', 'clubs.join'];
-const PTM_KEYS = ['ptm.read', 'ptm.manage', 'ptm.book'];
 
 const ask = (message) => new AppError(message, 400, [], 'AGENT_NEEDS_INPUT');
 const notFound = (message) => new AppError(message, 404, [], 'NOT_FOUND');

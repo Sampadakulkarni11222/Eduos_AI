@@ -313,7 +313,6 @@ export async function query({
     post.push({ $match: { $or: [{ studentName: rx }, { className: rx }] } });
   }
 
-  const LEVEL_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1 };
   const dir = String(sortDir).toLowerCase() === 'asc' ? 1 : -1;
   const sortStage = {
     probability: { probability: dir },

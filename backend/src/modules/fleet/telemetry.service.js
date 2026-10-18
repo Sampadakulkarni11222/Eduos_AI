@@ -39,7 +39,7 @@ function cleanPoint(p) {
 }
 
 /** The trip a vehicle is running now (in progress first, then today's planned). */
-export async function activeTripFor(vehicleId, now = new Date()) {
+export async function activeTripFor(vehicleId, _now = new Date()) {
   return (await Trip.findOne({ vehicleId, status: 'IN_PROGRESS' }).sort({ startedAt: -1 }).lean())
     ?? null;
 }

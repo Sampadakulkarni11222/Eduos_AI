@@ -82,8 +82,9 @@ const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 /** Quoted text is the person's own words and is never split. */
 function shield(message) {
   const quotes = [];
-  const text = String(message ?? '').replace(/["“][^"”]*["”]/g, (q) => { quotes.push(q); return `\u0000${quotes.length - 1}\u0000`; });
-  return { text, restore: (s) => String(s).replace(/\u0000(\d+)\u0000/g, (_, i) => quotes[Number(i)]) };
+  // A private-use character marks a hidden quote (a control character here trips no-control-regex).
+  const text = String(message ?? '').replace(/["“][^"”]*["”]/g, (q) => { quotes.push(q); return `${quotes.length - 1}`; });
+  return { text, restore: (s) => String(s).replace(/(\d+)/g, (_, i) => quotes[Number(i)]) };
 }
 
 /** The pieces of a message, before any is judged: `[{ text, joiner }]`. */
@@ -315,11 +316,11 @@ export function childNamedIn(text, family) {
 }
 
 /** A part about ONE child: a per-student capability, or words about a child's records. */
-const PER_CHILD = /(?:class\s+teacher|performance|marks|scores?|results?|report\s+card|attendance|homework|assignments?|timetable|grades?|absent|progress)/i;
+const PER_CHILD = /\b(?:class\s+teacher|performance|marks|scores?|results?|report\s+card|attendance|homework|assignments?|timetable|grades?|absent|progress)\b/i;
 const perChild = (a) => Boolean(a.step && ['studentName', 'admissionNo', 'studentId'].some((k) => k in (getMcpTool(a.step.tool)?.inputSchema?.properties ?? {})))
   || PER_CHILD.test(a.ask);
 
-export async function runMultiAsk({ mcpSession, asks, actor, source, lang, message = '' }) {
+export async function runMultiAsk({ mcpSession, asks, actor, source: _source, lang, message = '' }) {
   // A parent of several children who names none: one question for the whole
   // message ("Which child?"), never a different question -- or a different
   // child -- per part. The answer resumes the message (orchestrator).
@@ -557,7 +558,7 @@ export async function perChildSteps(steps, message, actor) {
 }
 
 /** Runs the per-child reads (in parallel) and answers in one section per child. */
-export async function runPerChild({ mcpSession, plan, actor, lang }) {
+export async function runPerChild({ mcpSession, plan, actor: _actor, lang }) {
   const results = await Promise.all(plan.steps.map(async (s) => {
     try { return await callMcpTool(mcpSession, s.tool, s.args); } catch (err) {
       logger.warn(`Per-child read ${s.tool} failed: ${err.message}`);

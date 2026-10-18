@@ -11,7 +11,6 @@ import { Profile } from '../../models/profile.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { Enrollment } from '../../models/student.model.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
-import { runInTransaction } from '../../utils/transaction.js';
 import { SubjectRegistration } from '../../models/subjectRegistration.model.js';
 import { tenantFilter } from '../../tenancy/tenantContext.js';
 import { insertRows, rowError } from '../../utils/csvImport.js';

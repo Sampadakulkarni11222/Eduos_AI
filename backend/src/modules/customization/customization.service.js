@@ -274,7 +274,7 @@ export async function updateCustomization(actor, slug, input = {}) {
   const before = await getCustomization(tenantId);
   const next = validateCustomization(input, before);
 
-  const saved = await runWithTenant(tenantId, () =>
+  await runWithTenant(tenantId, () =>
     SchoolCustomization.findOneAndUpdate(
       { tenantId },
       {

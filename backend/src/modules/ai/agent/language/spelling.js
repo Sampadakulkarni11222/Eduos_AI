@@ -295,7 +295,7 @@ export function correctSpelling(message, { protect = new Set(), people = [], kno
  * which offers the near matches ("Did you mean …?") and never picks one. A
  * write still shows the person it names in its draft before anything runs.
  */
-export function correctPeopleNames(text, people, { protect = new Set(), corrections = [] } = {}) {
+export function correctPeopleNames(text, people, { protect: _protect = new Set(), corrections = [] } = {}) {
   const tokens = [...String(text).matchAll(/[A-Za-z]+(?:'s)?/g)];
   if (tokens.length < 2) return text;
   const index = people.map((name) => ({ name, lower: name.toLowerCase() })).filter((p) => p.lower.split(' ').length === 2);

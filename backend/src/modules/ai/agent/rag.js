@@ -26,7 +26,7 @@ const GREETING = /^\s*(?:hi+|hello|hey|hii+|good\s+(?:morning|afternoon|evening)
  * through the provider means one model id, one timeout, and one place to
  * change when the id moves again.
  */
-export async function handleRagFallback(message, actor, lang) {
+export async function handleRagFallback(message, actor, _lang) {
   // 1. Fetch unstructured data — as the caller, not as nobody. Called with no
   // actor, the announcement list applies the audience filter for a reader with
   // no role and no classes, so the retrieval context was missing every notice

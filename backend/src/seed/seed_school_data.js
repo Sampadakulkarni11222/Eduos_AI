@@ -138,7 +138,7 @@ async function seedSchool() {
     endsOn: new Date('2026-11-30'),
   });
 
-  const finalTerm = await Term.create({
+  await Term.create({
     academicYearId: acYear._id,
     name: 'Finals',
     startsOn: new Date('2026-12-01'),
@@ -499,7 +499,7 @@ async function seedSchool() {
   logger.info(`Inserting ${accountsToInsert.length} accounts...`);
   await Account.insertMany(accountsToInsert);
   logger.info(`Inserting ${profilesToInsert.length} profiles...`);
-  const studentProfiles = await Profile.insertMany(profilesToInsert);
+  await Profile.insertMany(profilesToInsert);
   logger.info(`Inserting ${studentsToInsert.length} students...`);
   await Student.insertMany(studentsToInsert);
   logger.info(`Inserting ${enrollmentsToInsert.length} enrollments...`);

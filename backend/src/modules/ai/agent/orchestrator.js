@@ -1403,7 +1403,7 @@ async function withKnowledge({ result, message, actor, lang }) {
  * to ask for and how to say the answer. That is the point of the split: the
  * agent cannot forget a check it does not perform.
  */
-async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
+async function runMcpPlan({ mcpSession, steps, message, actor, source: _source, lang }) {
   const calls = [];
   for (const step of steps) {
     const result = await callMcpTool(mcpSession, step.tool, step.args ?? {});
