@@ -110,6 +110,8 @@ export const PERMISSION_CATALOG = [
   { key: 'fees.manage', group: 'fees', description: 'Manage fee invoices' },
   { key: 'fees.pay', group: 'fees', description: 'Make a fee payment' },
   { key: 'fees.payments.refund', group: 'fees', description: 'Refund a fee payment' },
+  { key: 'expenses.read', group: 'finance', description: 'View school expense ledger and cost analysis' },
+  { key: 'expenses.manage', group: 'finance', description: 'Record school expenses and costs' },
 
   // Fee-plan and payment governance.
   //
@@ -392,6 +394,8 @@ export const SYSTEM_ROLES = [
       // refused it, while every other fee capability was granted.
       ['fees.pay', 'ALL'],
       ['fees.payments.refund', 'ALL'],
+      ['expenses.read', 'ALL'],
+      ['expenses.manage', 'ALL'],
       // Finance prepares and reviews; it does not approve. `fees.plan.approve`
       // and `fees.payments.approve` are deliberately absent — a payment Finance
       // registers stays PENDING_ADMIN_APPROVAL, and an installment plan it

@@ -198,7 +198,10 @@ export default function ParentDashboard() {
 
               {upcomingEvents.slice(0, 4).map((e, idx) => (
                 <div
-                  key={e.id}
+                  // Some legacy calendar rows arrive without an `id`. The
+                  // fallback remains unique within this ordered preview and
+                  // prevents React from reusing the wrong event row.
+                  key={e.id || `${e.startsAt}-${e.title}-${idx}`}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 12,
                     padding: '9px 0', borderTop: idx ? '1px solid var(--hairline)' : 'none',

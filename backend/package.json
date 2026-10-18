@@ -33,6 +33,7 @@
     "whatsapp:webhook:check": "node scripts/whatsapp-webhook-setup.js --check",
     "chatflow:check": "node scripts/chatflow-setup.js",
     "chatflow:webhook": "node scripts/chatflow-setup.js --register",
+    "jobs:billing": "node scripts/run-billing-jobs.js",
     "lint": "eslint src scripts --ext .js"
   },
   "keywords": [

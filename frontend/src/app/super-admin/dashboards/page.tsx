@@ -238,7 +238,9 @@ function Finance({ data }: { data: FinanceDashboardDto }) {
                   </td>
                   <td data-label="Status"><Pill tone={inv.status === 'PAID' ? 'green' : inv.dueAmount > 0 ? 'amber' : 'gray'}>{inv.status}</Pill></td>
                   <td style={{ color: 'var(--text-faint)' }} data-label="Due">{dateOnly(inv.dueOn)}</td>
-                  <td data-label="Amount">{rupees(inv.totalAmount)}</td>
+                  {/* Dashboard API values are already in rupees; applying
+                      rupees() would divide them by 100 a second time. */}
+                  <td data-label="Amount">{inRupees(inv.totalAmount)}</td>
                 </tr>
               ))}
             </tbody>

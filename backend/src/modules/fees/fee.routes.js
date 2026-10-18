@@ -200,6 +200,11 @@ router.post('/invoices/bulk', requirePermission('fees.manage'), csvUploadSingle(
  *         description: Fee summary fetched
  */
 router.get('/summary', requirePermission('fees.read'), controller.getSummary);
+router.get('/reports/financial', requirePermission('analytics.school.read', 'ALL'), controller.getFinancialReport);
+router.get('/reports/quarterly-erp', requirePermission('analytics.school.read', 'ALL'), controller.getQuarterlyErpReport);
+router.get('/reports/quarterly-erp/pdf', requirePermission('analytics.school.read', 'ALL'), controller.downloadQuarterlyErpPdf);
+router.get('/reports/quarterly-erp/csv', requirePermission('analytics.school.read', 'ALL'), controller.downloadQuarterlyErpCsv);
+router.post('/reminders/dispatch', requirePermission('fees.manage', 'ALL'), controller.dispatchFeeReminders);
 
 /**
  * @swagger

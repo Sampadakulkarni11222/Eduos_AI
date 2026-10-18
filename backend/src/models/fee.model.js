@@ -40,6 +40,33 @@ const invoiceSchema = new Schema(
 feeHeadSchema.index({ tenantId: 1, name: 1 }, { unique: true });
 invoiceSchema.index({ status: 1, dueOn: 1 });
 
+// A durable, idempotent record of every billing reminder.  This is deliberately
+// separate from Notification: a notification is an inbox item, while this row
+// is the audit/deduplication record that keeps a retrying job from sending the
+// same invoice reminder twice on the same day.
+const feeReminderSchema = new Schema(
+  {
+    invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice', required: true },
+    recipientProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', required: true },
+    channel: { type: String, enum: ['IN_APP'], default: 'IN_APP' },
+    kind: { type: String, enum: ['DUE_SOON', 'OVERDUE'], required: true },
+    sentOn: { type: String, required: true }, // UTC YYYY-MM-DD, stable idempotency key
+  },
+  { timestamps: true }
+);
+feeReminderSchema.index({ invoiceId: 1, recipientProfileId: 1, kind: 1, sentOn: 1 }, { unique: true });
+
+// Quarterly-report delivery is independently deduplicated from reminders so a
+// scheduler retry cannot send administration the same report twice.
+const financialReportDispatchSchema = new Schema(
+  {
+    quarter: { type: String, required: true }, // e.g. 2026-Q3 (the quarter being reported)
+    recipientProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', required: true },
+  },
+  { timestamps: true }
+);
+financialReportDispatchSchema.index({ quarter: 1, recipientProfileId: 1 }, { unique: true });
+
 const invoiceLineSchema = new Schema(
   {
     invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice', required: true },
@@ -242,6 +269,10 @@ feeStructureSchema.plugin(tenantScoped); // school-owned
 export const FeeStructure = model('FeeStructure', feeStructureSchema);
 invoiceSchema.plugin(tenantScoped); // school-owned
 export const Invoice = model('Invoice', invoiceSchema);
+feeReminderSchema.plugin(tenantScoped); // school-owned
+export const FeeReminder = model('FeeReminder', feeReminderSchema);
+financialReportDispatchSchema.plugin(tenantScoped); // school-owned
+export const FinancialReportDispatch = model('FinancialReportDispatch', financialReportDispatchSchema);
 invoiceLineSchema.plugin(tenantScoped); // school-owned
 export const InvoiceLine = model('InvoiceLine', invoiceLineSchema);
 paymentSchema.plugin(tenantScoped); // school-owned

@@ -505,6 +505,45 @@ export async function sendMessage(to, text) {
   }
 }
 
+/**
+ * Sends an approved Meta template for business-initiated messages.  Unlike a
+ * free-form text message, a template may be sent outside the 24-hour customer
+ * service window.  Callers must deliberately opt in through their own feature
+ * flag; this low-level helper never chooses recipients or content itself.
+ */
+export async function sendTemplate(to, templateName, bodyValues = [], languageCode = 'en') {
+  if (!templateName) return { sent: false, skipped: 'TEMPLATE_NOT_CONFIGURED' };
+  if (!isLiveMode()) return { sent: false, simulated: true, skipped: 'WHATSAPP_NOT_LIVE' };
+  const phone = normaliseWhatsappNumber(to);
+  if (!phone) return { sent: false, skipped: 'INVALID_RECIPIENT_PHONE' };
+  try {
+    const res = await fetch(`https://graph.facebook.com/v20.0/${env.WA_PHONE_NUMBER_ID}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.WA_ACCESS_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: phone,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: languageCode || 'en' },
+          ...(bodyValues.length ? {
+            components: [{
+              type: 'body',
+              parameters: bodyValues.map((value) => ({ type: 'text', text: String(value) })),
+            }],
+          } : {}),
+        },
+      }),
+    });
+    if (!res.ok) throw new Error(`WhatsApp template send failed: ${res.status}`);
+    return { sent: true };
+  } catch (err) {
+    logger.error(`WhatsApp template send error: ${err.message}`);
+    return { sent: false, error: err.message };
+  }
+}
+
 /** Quick-reply buttons offered after each answer, mirroring WA interactive replies. */
 const SUGGESTIONS = [
   { id: 'attendance', title: 'Attendance' },

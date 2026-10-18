@@ -5,6 +5,8 @@ import { logger } from '../../utils/logger.js';
 import { parseCsvRows } from '../../utils/csvImport.js';
 import { renderInvoicePdf } from '../../utils/invoicePdf.js';
 import { renderReceiptPdf } from '../../utils/receiptPdf.js';
+import { renderQuarterlyErpPdf, quarterlyErpCsv } from '../../utils/quarterlyErpReport.js';
+import { recordAudit } from '../../utils/auditTrail.js';
 import * as service from './fee.service.js';
 import * as planService from './plan.service.js';
 import * as seats from '../seats/seat.service.js';
@@ -138,6 +140,42 @@ export const getStudentPaymentOverview = asyncHandler(async (req, res) => {
     await service.getStudentPaymentOverview(req.actor, req.scope, req.query),
     'Payment overview fetched'
   );
+});
+
+export const getFinancialReport = asyncHandler(async (_req, res) => {
+  sendSuccess(res, await service.getFinancialReport(), 'Financial report generated');
+});
+
+const buildQuarterlyErpReport = async (actor) => {
+  const dashboards = await import('../dashboard/dashboard.service.js');
+  const [finance, operations, hostel, library] = await Promise.all([
+    service.getFinancialReport(), dashboards.getAdminDashboard(actor), dashboards.getWardenDashboard(), dashboards.getLibrarianDashboard(),
+  ]);
+  return { generatedAt: new Date().toISOString(), finance, operations, hostel, library };
+};
+
+export const getQuarterlyErpReport = asyncHandler(async (req, res) => {
+  sendSuccess(res, await buildQuarterlyErpReport(req.actor), 'Quarterly ERP report generated');
+});
+
+export const downloadQuarterlyErpPdf = asyncHandler(async (req, res) => {
+  const report = await buildQuarterlyErpReport(req.actor);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', 'attachment; filename="Quarterly-ERP-Report.pdf"');
+  renderQuarterlyErpPdf(res, report);
+});
+
+export const downloadQuarterlyErpCsv = asyncHandler(async (req, res) => {
+  const report = await buildQuarterlyErpReport(req.actor);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="Quarterly-ERP-Report.csv"');
+  res.send(quarterlyErpCsv(report));
+});
+
+export const dispatchFeeReminders = asyncHandler(async (req, res) => {
+  const result = await service.dispatchFeeReminders({ dueSoonDays: req.body?.dueSoonDays });
+  await recordAudit({ actor: req.actor, action: 'fees.reminders.dispatch', entityType: 'FeeReminder', after: result });
+  sendSuccess(res, result, 'Reminder dispatch completed');
 });
 
 // ── Installment plans ────────────────────────────────────────────────────

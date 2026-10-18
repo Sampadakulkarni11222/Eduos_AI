@@ -1,9 +1,9 @@
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 import {
-  FeeHead, FeeStructure, Invoice, InvoiceLine, Payment, PaymentChangeRequest,
+  FeeHead, FeeStructure, Invoice, InvoiceLine, Payment, PaymentChangeRequest, FeeReminder, FinancialReportDispatch,
 } from '../../models/fee.model.js';
-import { Student, Enrollment } from '../../models/student.model.js';
+import { Student, StudentGuardian, Enrollment } from '../../models/student.model.js';
 // Registered here rather than relied on: payment rows populate the profiles
 // that recorded and verified them, and populate needs the model present even
 // when a caller has imported only the fee module.
@@ -23,9 +23,19 @@ import {
 import { logger } from '../../utils/logger.js';
 import { runInTransaction } from '../../utils/transaction.js';
 import { rowError } from '../../utils/csvImport.js';
+import { notify } from '../notifications/notification.service.js';
+import { Profile } from '../../models/profile.model.js';
+import { Account } from '../../models/account.model.js';
+import '../../models/role.model.js'; // required for Profile.roleId populate in the standalone billing worker
+import { tenantFilter } from '../../tenancy/tenantContext.js';
+import { env } from '../../config/env.js';
+import { sendTemplate } from '../whatsapp/whatsapp.service.js';
 
 // Mirrors the enum on paymentSchema in models/fee.model.js.
 const PAYMENT_MODES = ['GATEWAY', 'CASH', 'CHEQUE', 'DD', 'BANK'];
+const formatRupees = (paise) => new Intl.NumberFormat('en-IN', {
+  style: 'currency', currency: 'INR', maximumFractionDigits: 0,
+}).format(Math.ceil((Number(paise) || 0) / 100));
 
 /**
  * What each manual payment mode has to carry.
@@ -309,7 +319,15 @@ export async function getPaymentLinks(actor, scope, { invoiceId } = {}) {
 export async function listInvoices(actor, scope, query = {}) {
   const filter = {};
   if (query.enrollmentId) filter.enrollmentId = query.enrollmentId;
-  if (query.status) filter.status = query.status;
+  // "Overdue" is a calendar state, not a value that must have been updated by
+  // a background job. This keeps the list correct immediately after midnight
+  // and after a scheduler outage, while paid/cancelled invoices stay excluded.
+  if (query.status === 'OVERDUE') {
+    filter.dueOn = { $lt: new Date() };
+    filter.status = { $nin: ['PAID', 'CANCELLED'] };
+  } else if (query.status) {
+    filter.status = query.status;
+  }
 
   if (scope === 'OWN') {
     const ids = await resolveEnrollmentIdsForOwn(actor);
@@ -393,6 +411,13 @@ export async function listInvoices(actor, scope, query = {}) {
   const mapped = invoices.map(inv => {
     const obj = inv.toObject();
     obj.id = obj._id; // frontend keys on `id`
+    if (
+      new Date(obj.dueOn) < new Date() &&
+      !['PAID', 'CANCELLED'].includes(obj.status) &&
+      obj.paidPaise < obj.totalPaise
+    ) {
+      obj.status = 'OVERDUE';
+    }
     if (obj.enrollmentId) {
       const student = obj.enrollmentId.studentId;
       const section = obj.enrollmentId.sectionId;
@@ -2019,6 +2044,179 @@ export async function getSummary(actor, scope, query = {}) {
     // copy of the configuration — and it reports availability only, never the
     // gateway's identity or keys.
     onlinePaymentEnabled: isOnlinePaymentEnabled(),
+  };
+}
+
+/**
+ * Financial figures used by the Finance report and the Principal's read-only
+ * fee-health view. The calculation is server-side so a browser never receives
+ * a school's entire ledger just to add it up.
+ */
+export async function getFinancialReport() {
+  const now = new Date();
+  const invoices = await Invoice.find({}).select('totalPaise paidPaise dueOn status enrollmentId').lean();
+  const totals = invoices.reduce((acc, invoice) => {
+    acc.billedPaise += invoice.totalPaise;
+    acc.collectedPaise += invoice.paidPaise;
+    const due = Math.max(0, invoice.totalPaise - invoice.paidPaise);
+    acc.outstandingPaise += due;
+    if (due > 0 && new Date(invoice.dueOn) < now && !['PAID', 'CANCELLED'].includes(invoice.status)) {
+      acc.overduePaise += due;
+      acc.overdueCount += 1;
+    }
+    return acc;
+  }, { billedPaise: 0, collectedPaise: 0, outstandingPaise: 0, overduePaise: 0, overdueCount: 0 });
+  const { summary: expenseSummary } = await import('../expenses/expense.service.js');
+  const expenses = await expenseSummary();
+  return {
+    ...totals,
+    invoiceCount: invoices.length,
+    collectionRate: totals.billedPaise ? Math.round((totals.collectedPaise / totals.billedPaise) * 100) : 0,
+    // Leakage is explicitly a risk indicator, never presented as a booked expense.
+    leakageRiskPaise: totals.overduePaise,
+    totalExpensePaise: expenses.totalPaise,
+    netPositionPaise: totals.collectedPaise - expenses.totalPaise,
+    expensesByCategory: expenses.byCategory,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/** Sends in-app due/overdue reminders. Safe to run repeatedly: FeeReminder's
+ * unique index is the idempotency boundary, including in multi-worker deploys. */
+export async function dispatchFeeReminders({ dueSoonDays = 7 } = {}) {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const until = new Date(today);
+  until.setUTCDate(until.getUTCDate() + Math.max(0, Math.min(Number(dueSoonDays) || 0, 30)));
+  const invoices = await Invoice.find({
+    status: { $in: ['PENDING', 'PARTIAL', 'OVERDUE'] }, dueOn: { $lte: until },
+  }).populate({ path: 'enrollmentId', select: 'studentId' }).lean();
+  const sentOn = today.toISOString().slice(0, 10);
+  const studentIds = [...new Set(invoices.map((i) => i.enrollmentId?.studentId?.toString()).filter(Boolean))];
+  const [students, guardianLinks] = await Promise.all([
+    Student.find({ _id: { $in: studentIds } }).select('_id profileId').lean(),
+    StudentGuardian.find({ studentId: { $in: studentIds } }).select('studentId guardianProfileId').lean(),
+  ]);
+  const studentProfiles = new Map(students.map((s) => [String(s._id), s.profileId]));
+  const guardianProfiles = new Map();
+  for (const link of guardianLinks) {
+    const key = String(link.studentId);
+    guardianProfiles.set(key, [...(guardianProfiles.get(key) ?? []), link.guardianProfileId]);
+  }
+
+  const deliveries = [];
+  for (const invoice of invoices) {
+    const due = Math.max(0, invoice.totalPaise - invoice.paidPaise);
+    if (!due || !invoice.enrollmentId?.studentId) continue;
+    const studentId = String(invoice.enrollmentId.studentId);
+    const recipients = [studentProfiles.get(studentId), ...(guardianProfiles.get(studentId) ?? [])].filter(Boolean);
+    const overdue = new Date(invoice.dueOn) < today;
+    const kind = overdue ? 'OVERDUE' : 'DUE_SOON';
+    for (const recipientProfileId of recipients) {
+      deliveries.push({ invoice, recipientProfileId, due, overdue, kind });
+    }
+  }
+
+  // A WhatsApp reminder is permitted only after the school explicitly enables
+  // it and supplies an approved Meta template.  Free-form messages cannot be
+  // used for this scheduled flow because most guardians will be outside
+  // WhatsApp's 24-hour customer-service window.
+  const whatsappPhones = new Map();
+  if (env.WA_BILLING_NOTIFICATIONS_ENABLED && env.WA_BILLING_REMINDER_TEMPLATE) {
+    const profileIds = [...new Set(deliveries.map((d) => String(d.recipientProfileId)))];
+    const profiles = await Profile.find({ _id: { $in: profileIds } })
+      .populate({ path: 'accountId', select: 'phoneE164' }).select('_id accountId').lean();
+    for (const profile of profiles) {
+      if (profile.accountId?.phoneE164) whatsappPhones.set(String(profile._id), profile.accountId.phoneE164);
+    }
+  }
+
+  // Bounded parallelism avoids a slow serial loop on a large school while
+  // keeping database and notification-provider pressure predictable.
+  let sent = 0;
+  let whatsappSent = 0;
+  const BATCH_SIZE = 25;
+  for (let i = 0; i < deliveries.length; i += BATCH_SIZE) {
+    const outcomes = await Promise.all(deliveries.slice(i, i + BATCH_SIZE).map(async ({ invoice, recipientProfileId, due, overdue, kind }) => {
+      try {
+        await FeeReminder.create({ invoiceId: invoice._id, recipientProfileId, kind, sentOn });
+      } catch (err) {
+        if (err?.code === 11000) return false; // already sent by this or another worker
+        throw err;
+      }
+      await notify({
+        recipientProfileIds: [recipientProfileId], type: 'FEES',
+        title: overdue ? 'Fee payment overdue' : 'Fee payment due soon',
+        body: `Invoice ${invoice.invoiceNo} has ${Math.ceil(due / 100)} outstanding.`,
+        link: '/payments', meta: { invoiceId: String(invoice._id), kind },
+      });
+      const phone = whatsappPhones.get(String(recipientProfileId));
+      if (phone) {
+        const delivery = await sendTemplate(phone, env.WA_BILLING_REMINDER_TEMPLATE, [
+          invoice.invoiceNo,
+          formatRupees(due),
+          new Date(invoice.dueOn).toLocaleDateString('en-IN'),
+          overdue ? 'overdue' : 'due soon',
+        ], env.WA_TEMPLATE_LANGUAGE);
+        if (delivery.sent) whatsappSent += 1;
+      }
+      return true;
+    }));
+    sent += outcomes.filter(Boolean).length;
+  }
+  return {
+    sent, candidateInvoices: invoices.length, sentOn, whatsappSent,
+    whatsapp: env.WA_BILLING_NOTIFICATIONS_ENABLED && env.WA_BILLING_REMINDER_TEMPLATE
+      ? 'template_delivery_enabled' : 'not_configured',
+  };
+}
+
+/** Deliver the completed quarter's high-level report to school administrators.
+ * The worker calls this on the first day of Jan/Apr/Jul/Oct; the database
+ * uniqueness constraint still makes retries and overlapping workers safe. */
+export async function dispatchQuarterlyFinancialReport({ force = false } = {}) {
+  const now = new Date();
+  const month = now.getUTCMonth();
+  if (!force && ![0, 3, 6, 9].includes(month)) return { dispatched: 0, skipped: 'not_quarter_boundary' };
+  const previousQuarter = month === 0 ? 4 : Math.ceil(month / 3);
+  const year = month === 0 ? now.getUTCFullYear() - 1 : now.getUTCFullYear();
+  const quarter = `${year}-Q${previousQuarter}`;
+  const admins = await Profile.find({ ...tenantFilter(), status: 'ACTIVE' })
+    .populate({ path: 'roleId', match: { key: 'ADMIN' }, select: 'key' })
+    .populate({ path: 'accountId', select: 'phoneE164' }).select('_id roleId accountId').lean();
+  const report = await getFinancialReport();
+  let dispatched = 0;
+  let whatsappSent = 0;
+  for (const admin of admins.filter((p) => p.roleId?.key === 'ADMIN')) {
+    try {
+      await FinancialReportDispatch.create({ quarter, recipientProfileId: admin._id });
+    } catch (err) {
+      if (err?.code === 11000) continue;
+      throw err;
+    }
+    await notify({
+      recipientProfileIds: [admin._id], type: 'FEES', title: `Quarterly financial report: ${quarter}`,
+      body: `Collection ${report.collectionRate}%. Collected ${formatRupees(report.collectedPaise)}; costs ${formatRupees(report.totalExpensePaise)}; net ${formatRupees(report.netPositionPaise)}; outstanding ${formatRupees(report.outstandingPaise)}; overdue ${formatRupees(report.overduePaise)}.`,
+      link: '/admin/payments', meta: { quarter, report },
+    });
+    if (env.WA_BILLING_NOTIFICATIONS_ENABLED && env.WA_QUARTERLY_REPORT_TEMPLATE && admin.accountId?.phoneE164) {
+      const delivery = await sendTemplate(admin.accountId.phoneE164, env.WA_QUARTERLY_REPORT_TEMPLATE, [
+        quarter,
+        `${report.collectionRate}%`,
+        formatRupees(report.collectedPaise),
+        formatRupees(report.totalExpensePaise),
+        formatRupees(report.netPositionPaise),
+        formatRupees(report.outstandingPaise),
+        formatRupees(report.overduePaise),
+      ], env.WA_TEMPLATE_LANGUAGE);
+      if (delivery.sent) whatsappSent += 1;
+    }
+    dispatched += 1;
+  }
+  return {
+    dispatched, quarter, whatsappSent,
+    whatsapp: env.WA_BILLING_NOTIFICATIONS_ENABLED && env.WA_QUARTERLY_REPORT_TEMPLATE
+      ? 'template_delivery_enabled' : 'not_configured',
   };
 }
 

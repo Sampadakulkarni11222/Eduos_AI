@@ -1,0 +1,11 @@
+import { Router } from 'express';
+import { authenticate } from '../../middleware/auth.js';
+import { requirePermission } from '../../middleware/permission.js';
+import * as service from './expense.service.js';
+import { asyncHandler } from '../../utils/asyncHandler.js';
+import { sendSuccess } from '../../utils/response.js';
+const router = Router(); router.use(authenticate);
+router.get('/', requirePermission('expenses.read', 'ALL'), asyncHandler(async (req, res) => sendSuccess(res, await service.list(req.query))));
+router.get('/summary', requirePermission('expenses.read', 'ALL'), asyncHandler(async (_req, res) => sendSuccess(res, await service.summary())));
+router.post('/', requirePermission('expenses.manage', 'ALL'), asyncHandler(async (req, res) => sendSuccess(res, await service.create(req.actor, req.body), 'Expense recorded', 201)));
+export default router;

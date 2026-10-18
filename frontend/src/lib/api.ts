@@ -777,6 +777,17 @@ export const api = {
   // it turned a renamed field into a silent ₹0 instead of a visible failure,
   // which is how a broken dashboard went unnoticed.
   feeSummary: () => cachedRequest<FeeSummary>('/fees/summary'),
+  financialReport: () => cachedRequest<import('./types').FinancialReportDto>('/fees/reports/financial'),
+  quarterlyErpReport: () => cachedRequest<Record<string, unknown>>('/fees/reports/quarterly-erp'),
+  downloadQuarterlyErpPdf: () => openProtectedFile('/fees/reports/quarterly-erp/pdf'),
+  downloadQuarterlyErpCsv: () => openProtectedFile('/fees/reports/quarterly-erp/csv'),
+  dispatchFeeReminders: (dueSoonDays = 7) =>
+    request<{ sent: number; candidateInvoices: number; sentOn: string }>('/fees/reminders/dispatch', {
+      method: 'POST', body: JSON.stringify({ dueSoonDays }),
+    }),
+  expenses: () => cachedRequest<Array<{ _id: string; category: string; description: string; amountPaise: number; incurredOn: string; vendor?: string | null }>>('/expenses'),
+  expenseSummary: () => cachedRequest<{ totalPaise: number; count: number; byCategory: Array<{ category: string; amountPaise: number; count: number }> }>('/expenses/summary'),
+  createExpense: (body: { category: string; description: string; amountPaise: number; incurredOn: string; vendor?: string; reference?: string }) => request<unknown>('/expenses', { method: 'POST', body: JSON.stringify(body) }),
   verifyCheckout: (body: { orderId: string; paymentId: string; signature: string }) =>
     request<{ handled: boolean; idempotent?: boolean; receiptNo?: string; invoiceNo?: string; invoiceStatus?: string; paidPaise?: number }>(
       '/fees/pay/verify', { method: 'POST', body: JSON.stringify(body) }

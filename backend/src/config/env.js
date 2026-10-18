@@ -185,6 +185,13 @@ export const env = {
   WA_PHONE_NUMBER_ID: process.env.WA_PHONE_NUMBER_ID ?? '',
   WA_ACCESS_TOKEN: process.env.WA_ACCESS_TOKEN ?? '',
   WA_APP_SECRET: process.env.WA_APP_SECRET ?? '',
+  // Business-initiated billing messages must use a Meta-approved template.
+  // Keeping these blank is intentional: it makes scheduled financial jobs
+  // in-app only until the business has obtained consent and approved copy.
+  WA_BILLING_NOTIFICATIONS_ENABLED: process.env.WA_BILLING_NOTIFICATIONS_ENABLED === 'true',
+  WA_BILLING_REMINDER_TEMPLATE: String(process.env.WA_BILLING_REMINDER_TEMPLATE ?? '').trim(),
+  WA_QUARTERLY_REPORT_TEMPLATE: String(process.env.WA_QUARTERLY_REPORT_TEMPLATE ?? '').trim(),
+  WA_TEMPLATE_LANGUAGE: String(process.env.WA_TEMPLATE_LANGUAGE ?? 'en').trim(),
   // ── Webhook registration (scripts/whatsapp-webhook-setup.js only) ──
   //
   // Receiving messages takes one more step than the credentials above: Meta has

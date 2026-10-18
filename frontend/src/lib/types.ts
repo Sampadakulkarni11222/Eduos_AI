@@ -242,6 +242,13 @@ export interface SubjectRegistrationDto {
 
 export interface InvoiceDto { id: string; invoiceNo: string; studentName: string; class: string | null; status: string; totalPaise: number; paidPaise: number; dueOn: string; sectionId?: string; studentId?: string; enrollmentId?: string; academicYearId?: string; academicYearName?: string; planId?: string | null; installmentSeq?: number | null; createdAt?: string }
 export interface FeeSummary { totalBilledPaise: number; totalCollectedPaise: number; pendingPaise: number; pendingCount: number; collectionPct: number; overduePaise: number; overdueCount: number; onlinePaymentEnabled?: boolean }
+export interface FinancialReportDto {
+  billedPaise: number; collectedPaise: number; outstandingPaise: number;
+  overduePaise: number; overdueCount: number; invoiceCount: number;
+  collectionRate: number; leakageRiskPaise: number; generatedAt: string;
+  totalExpensePaise: number; netPositionPaise: number;
+  expensesByCategory: Array<{ category: string; amountPaise: number; count: number }>;
+}
 /** `roleKeys` narrows a class-wise notice to one role, e.g. the parents of a section. */
 export interface AnnouncementAudience {
   all: boolean; gradeIds: string[]; sectionIds: string[]; subjectIds: string[]; roleKeys?: string[];
