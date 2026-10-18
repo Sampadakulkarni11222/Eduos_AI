@@ -59,7 +59,7 @@ function sizeOf(body) {
 
 // Who signs in, and the screens each portal opens first: [path, minimum number of things].
 const PORTALS = {
-  principal: ['principal@schoolerp.com', [['/tickets', 10], ['/tasks?view=mine&status=open', 2], ['/payroll/payslips/mine', 3], ['/staff/leave?view=mine', 1], ['/governance/actions', 2], ['/compliance/my/policies', 3], ['/budgets', 2], ['/payroll/runs', 4], ['/community/mentors?all=true', 2]]],
+  principal: ['principal@schoolerp.com', [['/tickets', 10], ['/tasks?view=mine&status=open', 2], ['/payroll/payslips/mine', 3], ['/staff/leave?view=mine', 1], ['/governance/actions', 2], ['/compliance/my/policies', 3], ['/budgets', 2], ['/payroll/runs', 4], ['/community/mentors?all=true', 2], ['/newsletter/alerts/sources', 1], ['/newsletter/alerts/items', 4]]],
   admin: ['admin@schoolerp.com', [['/tickets', 10], ['/document-requests', 10], ['/registrations/review?status=PENDING', 10], ['/transport/routes', 4], ['/transport/requests/review?status=PENDING', 3], ['/accounts-export/fee-heads', 4], ['/academics/years', 2]]],
   teacher: ['teacher@schoolerp.com', [['/quizzes', 4], ['/leave?status=PENDING', 3], ['/registrations/review?status=PENDING', 5], ['/payroll/payslips/mine', 3], ['/compliance/my/policies', 3], ['/staff/leave?view=mine', 1], ['/teaching/lesson-plans', 4], ['/teaching/question-bank/scopes', 1], ['/teaching/papers', 1], ['/teaching/cpd', 1]]],
   finance: ['finance@schoolerp.com', [['/payroll/runs', 4], ['/payroll/payslips/mine', 3], ['/budgets', 2], ['/accounts-export/fee-heads', 4], ['/compliance/my/policies', 3], ['/finance-reports/cash-close', 2], ['/finance-reports/ageing', 5]]],

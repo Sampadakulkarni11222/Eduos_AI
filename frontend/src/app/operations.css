@@ -1583,3 +1583,118 @@ body.role-nurse{--accent:#1f5a52;--accent-2:#2c7368;--sidebar-text:#DDEEEA;--sid
   .nl-card{aspect-ratio:4/3}
 }
 @media (prefers-reduced-motion:reduce){.nl-card,.nl-card-face,.nl-progress span,.nl-bar span{transition:none}}
+
+/* ── Part 5: newsletter AI and alert feeds (newsletter-ai-views.tsx) ──
+   The one new bold element is the 60-second deck: admit-card tickets in a swipe row, each torn along a
+   perforated top edge, its deadline set large in the edition's serif. Everything else (radar, badges,
+   challenges, extraction details, the Google Alerts desk) stays quiet and list-like. Phone first. */
+.nl60{display:flex;flex-direction:column;gap:10px;min-width:0}
+.nl60-dots{display:flex;gap:4px}
+.nl60-dots span{flex:1;height:3px;border-radius:3px;background:var(--hairline);transition:background .25s ease}
+.nl60-dots span.is-on{background:var(--accent)}
+.nl60-track{list-style:none;margin:0;padding:2px 2px 8px;display:grid;grid-auto-flow:column;grid-auto-columns:min(86%,320px);gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch}
+.nl60-card{scroll-snap-align:start;position:relative;display:flex;flex-direction:column;gap:6px;min-height:210px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:14px;padding:26px 16px 16px;overflow:hidden}
+.nl60-card::before{content:"";position:absolute;left:0;right:0;top:0;height:10px;background:var(--accent);-webkit-mask:radial-gradient(circle at 9px 10px,transparent 4px,#000 4.5px) 0 0/18px 10px repeat-x;mask:radial-gradient(circle at 9px 10px,transparent 4px,#000 4.5px) 0 0/18px 10px repeat-x}
+.nl60-card.is-urgent::before{background:var(--red)}
+.nl60-card.is-hook{background:var(--accent);color:var(--on-accent);border-color:transparent}
+.nl60-card.is-hook::before{background:var(--card-bg)}
+.nl60-chip{font-family:"Newsreader",serif;font-size:1.55em;font-weight:600;line-height:1.05;color:var(--accent)}
+.nl60-card.is-urgent .nl60-chip{color:var(--red)}
+.nl60-title{margin:0;font-size:1.02em;line-height:1.3;font-weight:650}
+.nl60-card.is-hook .nl60-title{font-family:"Newsreader",serif;font-size:1.35em;font-weight:600}
+.nl60-text{margin:0;line-height:1.45}
+.nl60-q{margin:auto 0 0;font-style:italic;opacity:.9}
+.nl60-because{margin:auto 0 0;font-size:.88em;color:var(--green);border-left:3px solid var(--green);padding-left:8px}
+.nl60-type{margin:0;font-size:.82em;color:var(--text-faint)}
+.nl60-nav{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px}
+@media (prefers-reduced-motion:reduce){.nl60-dots span{transition:none}.nl60-track{scroll-behavior:auto}}
+
+.nl-radar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.nl-radar-lane h3{margin:0 0 6px;font-size:.95em;font-weight:650}
+.nl-radar-lane ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.nl-radar-lane li{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px;align-items:start;padding:8px 0;border-top:1px solid var(--hairline)}
+.nl-radar-days{font-family:"Newsreader",serif;font-size:1.6em;font-weight:600;line-height:1;color:var(--accent);display:flex;flex-direction:column}
+.nl-radar-days small{font-family:inherit;font-size:.42em;font-weight:500;color:var(--text-faint)}
+.nl-radar-lane:first-child .nl-radar-days{color:var(--red)}
+.nl-radar-title{display:block;font-weight:600}
+.nl-radar-why{display:block;font-size:.85em;color:var(--text-faint)}
+@media (max-width:720px){.nl-radar{grid-template-columns:minmax(0,1fr)}}
+
+.nl-because-wrap{display:flex;flex-direction:column;gap:6px;min-width:0}
+.nl-because{margin:0;font-size:.88em;color:var(--green);border-left:3px solid var(--green);padding-left:8px}
+.nl-because.is-no{color:var(--text-faint);border-left-color:var(--hairline)}
+.nl-note{margin:0 0 10px;font-size:.92em;line-height:1.45;border-left:3px solid var(--gold);padding-left:10px}
+.nl-note-src{color:var(--text-faint)}
+.nl-note-src a{color:inherit;text-decoration:underline}
+
+.nl-badges{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.nl-badges-streak{margin:0}
+.nl-badges-streak b{font-family:"Newsreader",serif;font-size:1.5em;color:var(--accent)}
+.nl-badges ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+.nl-badge{display:flex;gap:6px;align-items:flex-start;border:1px solid var(--card-border);border-radius:10px;padding:6px 10px;font-size:.86em;max-width:100%}
+.nl-badge small{display:block;color:var(--text-faint);font-size:.9em}
+.nl-badge-mark{color:var(--text-faint)}
+.nl-badge.is-earned{border-color:var(--gold)}
+.nl-badge.is-earned .nl-badge-mark{color:var(--gold)}
+
+.nl-challenge{display:flex;flex-direction:column;gap:8px;margin-top:12px;padding-top:12px;border-top:1px dashed var(--hairline)}
+.nl-challenge-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.nl-challenge-list li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px}
+.nl-challenge-score{color:var(--text-faint)}
+.nl-challenge-score.is-done{color:var(--accent);font-weight:600}
+
+.nl-extract{margin-top:8px;border:1px solid var(--card-border);border-radius:10px;overflow:hidden}
+.nl-extract.is-ai{border-left:3px solid var(--blue)}
+.nl-extract.is-auto{border-left:3px solid var(--amber)}
+.nl-extract-head{display:flex;flex-wrap:wrap;gap:6px;justify-content:space-between;width:100%;background:transparent;border:0;padding:8px 10px;font:inherit;font-size:.9em;color:inherit;text-align:left;cursor:pointer;min-height:40px}
+.nl-extract-head:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
+.nl-extract-body{padding:0 10px 10px;font-size:.9em}
+.nl-extract-body dl{margin:0;display:flex;flex-direction:column;gap:6px}
+.nl-extract-body dt{font-weight:600}
+.nl-extract-body dd{margin:0;color:var(--text-muted);overflow-wrap:anywhere}
+
+.nl-regen{border:1px dashed var(--card-border);border-radius:10px;padding:10px 12px;margin:8px 0}
+.nl-regen-label{margin:0 0 6px;font-weight:600;font-size:.92em}
+.nl-regen-by{margin-left:6px;font-size:.8em;color:var(--text-faint)}
+
+.nl-alert-guide{display:flex;flex-direction:column;gap:14px}
+.nl-alert-steps{margin:0;padding-left:1.3em;display:flex;flex-direction:column;gap:6px;line-height:1.45;max-width:75ch}
+.nl-alert-suggest ul{list-style:none;margin:8px 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.nl-alert-suggest li{display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--hairline);padding:4px 0}
+.nl-alert-suggest code{font-family:inherit;font-weight:600;overflow-wrap:anywhere}
+.nl-alert-suggest .nl-seg{flex-wrap:wrap;border-radius:12px}
+.nl-alert-form{display:flex;flex-direction:column;gap:8px;max-width:640px}
+.nl-alert-tags{border:0;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:2px 14px}
+.nl-alert-tags legend{font-weight:600;font-size:.92em;margin-bottom:4px}
+.nl-alert-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.nl-alert-notes{margin:0;padding-left:1.2em;color:var(--text-faint);font-size:.9em;display:flex;flex-direction:column;gap:4px}
+.nl-item-status{font-size:.82em;border:1px solid var(--card-border);border-radius:999px;padding:1px 8px;white-space:nowrap}
+.nl-item-status.is-candidate{border-color:var(--green);color:var(--green)}
+.nl-item-status.is-duplicate,.nl-item-status.is-skipped{color:var(--text-faint)}
+.nl-item-status.is-failed{border-color:var(--red);color:var(--red)}
+@media (max-width:520px){.nl-alert-row{grid-template-columns:minmax(0,1fr)}}
+
+/* ── Part 5 QA (mobile) ───────────────────────────────────────────────── */
+/* Workload "By day" as card rows: keep the six day counts on one wrapping line under the label. */
+@media (max-width: 768px) {
+  .data-table-cards td.lead-days { flex-direction: row; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+  .data-table-cards td.lead-days::before { flex-basis: 100%; }
+  .lead-tile-sub, .lead-flag { font-size: 12px; }
+}
+/* Question bank: a 40px tap area round the small "select for a paper" box. */
+.p5-pick{display:inline-flex;align-items:center;justify-content:center;min-width:40px;min-height:40px;margin:-8px 0 -8px -8px;cursor:pointer;flex:none}
+.p5-pick input{width:20px;height:20px;margin:0}
+/* Phones: no text under 12px on the newsletter cards; "Open the records" is a full tap target. */
+@media (max-width: 520px) { .nl-card-hint, .nl-map-level { font-size: 12px; } }
+.an-drill{display:inline-flex;align-items:center;min-height:40px}
+/* Recruitment pipeline as cards on phones: the stage counts sit side by side instead of one per line. */
+@media (max-width: 768px) {
+  .data-table-cards.p5-pipeline td.num { display: inline-flex; width: auto; flex-direction: column; margin-right: 14px; }
+}
+/* Family pages on phones: 40px tap targets for "Open" and the language pickers; no text under 12px. */
+@media (max-width: 768px) {
+  .fam-go { min-height: 40px; min-width: 44px; justify-content: center; }
+  .fam-lang select.input, .notice-tr-bar select.input { min-height: 40px; }
+  .fam-label { font-size: 12px; }
+  .fee-tax-totals span { font-size: 12px; }
+}

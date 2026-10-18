@@ -309,7 +309,7 @@ export const opsApi = {
   campusFacility: (id: string, at?: string | null) => get<T.FacilityDetailDto>(`/campus/facilities/${id}`, { at }),
   campusLayers: () => get<T.CampusLayersDto>('/campus/layers'),
   campusLive: (kind: string, id?: string | null) => get<T.CampusLiveDetailDto>('/campus/live', { kind, id }),
-  campusMyView: (studentId?: string | null) => get<T.CampusMyViewDto>('/campus/my-view', { studentId }),
+  campusMyView: (studentId?: string | null, moment?: { at?: string | null; date?: string | null }) => get<T.CampusMyViewDto>('/campus/my-view', { studentId, at: moment?.at ?? undefined, date: moment?.date ?? undefined }),
 
   // ── messaging ──
   preferences: () => get<T.PreferencesDto>('/messaging/preferences'),

@@ -18,7 +18,12 @@ import { presentOf } from './present.js';
 import { withMcpSession, listTools as listMcpTools, callTool as callMcpTool } from '../mcp/client.js';
 import { getMcpTool, mcpToolsFor } from '../mcp/registry.js';
 import { errorToAppError } from '../mcp/protocol.js';
-import { peekConfirmation, rejectConfirmation, markFailed, canonicalToolName } from '../mcp/confirm.js';
+import { peekConfirmation, rejectConfirmation, markFailed, canonicalToolName, latestPendingFor, reissueToken } from '../mcp/confirm.js';
+import { loadMemory, rememberTurn, historyFrom, acceptableConversationId } from './memory.js';
+import {
+  isMoreRequest, AGREES, DECLINES, lastTurnProposed, looksLikeDraftEdit, applyDraftEdit, rewriteCorrection, groupWrite,
+} from './context.js';
+import { answerToOpenWrite } from './intent.js';
 import { asksSchoolWideFees, asksLeaveWithoutPermission, staffLeaveStep, staffLeaveQuestion, isStaffLeaveApplication } from './directIntents.js';
 import { impossibleDatesIn } from '../../../utils/naturalDates.js';
 import { entitiesFor, entitiesInTextByPosition } from '../mcp/capabilities.js';
@@ -488,6 +493,12 @@ function humaniseToolError(err, { actor, lang, tool }) {
 }
 
 
+/** True when the assistant's last turn asked the person something. */
+function lastReplyAsked(history) {
+  const last = [...(history ?? [])].reverse().find((t) => t?.role === 'assistant');
+  return Boolean(last) && isClarificationReply(last.text);
+}
+
 /* ── Entry point ───────────────────────────────────────────── */
 /**
  * Errors that are *answers*, not faults.
@@ -556,6 +567,7 @@ export async function runAgentSafely(opts) {
             degraded: true,
             via: 'MCP',
             evidence: evidenceFor([{ tool: intent.tool, args: intent.args ?? {}, result }]),
+            ...(acceptableConversationId(opts?.conversationId) && { conversationId: opts.conversationId }),
           };
         }
       }
@@ -570,6 +582,7 @@ export async function runAgentSafely(opts) {
       action: null,
       degraded: true,
       suggestions: available.slice(0, 5).map((tool) => tool.name),
+      ...(acceptableConversationId(opts?.conversationId) && { conversationId: opts.conversationId }),
     };
   }
 }
@@ -582,8 +595,31 @@ export async function runAgentSafely(opts) {
  *   earlier in a thread can widen what this one may do. Empty by default, so
  *   callers that pass none (the web assistant) behave exactly as before.
  */
-export async function runAgent({ message, actor, source = 'WEB', lang: langOverride, history = [] } = {}) {
+export async function runAgent({ message, actor, source = 'WEB', lang, history = [], conversationId = null } = {}) {
   if (!actor?.profileId) throw new AppError('Select a profile first', 403);
+  // The conversation, from the server's memory (agent/memory.js): the website
+  // sends the id it was given, WhatsApp its session. On the website the stored
+  // turns are the transcript -- the browser's copy is lost on every page
+  // change, and is only the fallback for a client that sends no id. WhatsApp
+  // keeps its own transcript of record and uses the memory for what the turns
+  // were about.
+  const memory = await loadMemory({ actor, source, conversationId });
+  const transcript = source === 'WHATSAPP' ? (history ?? []) : historyFrom(memory, history);
+  let result;
+  try {
+    result = await runAgentTurn({ message, actor, source, lang, history: transcript, memory });
+  } catch (err) {
+    // A refusal is still a turn of the conversation ("Class 9 B is not one of
+    // your classes" is what "and 9 B?" must follow on from).
+    if (isMeaningfulRefusal(err)) await rememberTurn({ actor, source, conversationId: memory.conversationId, message, result: { reply: err.message } });
+    throw err;
+  }
+  await rememberTurn({ actor, source, conversationId: memory.conversationId, message, result });
+  return { ...result, conversationId: memory.conversationId };
+}
+
+/** One turn, with the conversation already loaded. */
+async function runAgentTurn({ message, actor, source = 'WEB', lang: langOverride, history = [], memory = { turns: [], context: {} } } = {}) {
 
   // An explicit language (from the voice picker or a UI preference) wins over
   // detection — a user who has chosen Hindi should not be flipped back to
@@ -641,13 +677,80 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
     return { reply: invalidDateReply(impossible), lang, action: null, needsInput: true, refused: 'INVALID_DATE' };
   }
 
+  // "Show more": the next window of the last long list -- through the same
+  // signed continuation the website's "Load more" button redeems -- or, when
+  // the last answer was already complete, an honest "that was everything".
+  if (isMoreRequest(message)) {
+    const token = memory?.context?.continuation;
+    if (token) {
+      try {
+        return await continueAnswer({ token, actor, source, lang });
+      } catch (err) {
+        return { reply: err?.message ?? 'That list has expired. Please ask again.', lang, action: null };
+      }
+    }
+    return {
+      reply: history.length
+        ? 'That was everything — the last answer already showed all of it. Ask me for something else, or narrow it down (a class, a date, a name).'
+        : "There's nothing to show more of yet — ask me something first, for example \"show today's attendance\".",
+      lang,
+      action: null,
+    };
+  }
+
+  // A reply to the draft just shown: "yes", "no", or a change to it ("make it
+  // Monday instead"). Only when the last assistant turn WAS that draft and it
+  // is still this person's pending proposal on this channel -- so a "yes" can
+  // never land on something proposed elsewhere or long ago. Confirming goes
+  // through confirmAction, the website button's own path; a change is proposed
+  // again through the MCP tool and confirmed like the first draft.
+  const draft = await draftReply({ message, actor, source, lang, history, memory });
+  if (draft) return draft;
+
   // Everything from here runs with an MCP session open. The handle is the only
   // thing that lets a tool call reach the ERP; it exists for this turn alone,
   // and it — not anything in the message or the model's output — is what tells
   // the MCP server who is asking.
   return withMcpSession({ actor, channel: source }, (mcpSession) =>
-    routeTurn({ mcpSession, message, actor, source, lang, history })
+    routeTurn({ mcpSession, message, actor, source, lang, history, memory })
   );
+}
+
+/**
+ * The draft just shown, answered: confirmed, declined or changed -- or null
+ * when the message is not about it.
+ */
+async function draftReply({ message, actor, source, lang, history, memory }) {
+  const text = String(message ?? '');
+  const agrees = AGREES.test(text);
+  const declines = !agrees && DECLINES.test(text);
+  const edits = !agrees && !declines && looksLikeDraftEdit(text);
+  if (!agrees && !declines && !edits) return null;
+  if (!lastTurnProposed(history)) return null;
+
+  const pending = await latestPendingFor(actor, { source });
+  if (!pending) return null;
+  // The draft this conversation proposed, when the memory knows which.
+  const remembered = memory?.context?.lastActionId;
+  if (remembered && remembered !== String(pending._id)) return null;
+
+  if (agrees || declines) {
+    const token = await reissueToken(pending);
+    try {
+      return await confirmAction({ confirmToken: token, actor, source, accept: agrees, lang });
+    } catch (err) {
+      if (isMeaningfulRefusal(err)) return { reply: err.message, lang, action: null, executed: false };
+      throw err;
+    }
+  }
+
+  const toolName = canonicalToolName(pending.tool);
+  if (!getMcpTool(toolName)) return null;
+  const edit = applyDraftEdit({ tool: toolName, args: pending.args ?? {} }, text);
+  if (edit.ask) return { reply: edit.ask, lang, action: null, needsInput: true };
+  return withMcpSession({ actor, channel: source }, (mcpSession) => runMcpPlan({
+    mcpSession, steps: [{ tool: toolName, args: edit.args }], message: text, actor, source, lang,
+  }));
 }
 
 /**
@@ -656,7 +759,11 @@ export async function runAgent({ message, actor, source = 'WEB', lang: langOverr
  * Split out from runAgent so the session's lifetime is one visible
  * `withMcpSession` block rather than a handle threaded through early returns.
  */
-async function routeTurn({ mcpSession, message: rawMessage, actor, source, lang, history }) {
+async function routeTurn({ mcpSession, message: spokenMessage, actor, source, lang, history, memory = { context: {} } }) {
+  // A correction ("no, I meant yesterday") or a return to an earlier topic
+  // ("go back to the 5A attendance") is read as the plain request it is: a
+  // follow-up of the last question, or that question asked again.
+  const rawMessage = rewriteCorrection(spokenMessage, history) ?? spokenMessage;
   // One spelling for every check below and for the parser ("classteacher").
   const message = normaliseQuery(rawMessage);
   // The tool definitions come from the MCP server's own tools/list, which the
@@ -755,6 +862,24 @@ async function routeTurn({ mcpSession, message: rawMessage, actor, source, lang,
   // check above, which already says so where the act is not offered at all.
   const bulk = unavailable ? null : asksBulkDestruction(message);
   if (bulk) return declineBulk(bulk, lang);
+
+  // "Message their parents", "remind them": about the people the last answer
+  // listed (kept by the conversation memory from the tool's own data). One
+  // student is drafted for; several are asked about -- never a group message
+  // nobody chose.
+  const held = new Set(mcpTools.map((t) => t.name));
+  const group = groupWrite(message, { context: memory?.context ?? {}, heldTools: held });
+  if (group?.clarify) return { reply: group.clarify, lang, action: null, clarification: true };
+  if (group?.tool) return runMcpPlan({ mcpSession, steps: [group], message, actor, source, lang });
+
+  // The answer to a question asked about a write the transcript alone cannot
+  // replay (it was started by a turn read from the memory, such as "message
+  // their parents"): finished from the stored step.
+  const open = memory?.context?.openWrite;
+  if (open && held.has(open.tool) && lastReplyAsked(history)) {
+    const answered = answerToOpenWrite(open, message, actor);
+    if (answered) return runMcpPlan({ mcpSession, steps: [answered], message, actor, source, lang });
+  }
 
   const intent = await parseIntentWithLlm(message, actor, { history, tools: mcpTools });
 
@@ -871,6 +996,14 @@ async function routeTurn({ mcpSession, message: rawMessage, actor, source, lang,
   // tier read as a staff-leave READ (list_staff_leave, the balance) is the
   // application it says it is.
   if (steps.length === 1 && steps[0].tool !== 'apply_staff_leave' && /^(?:list|get)_staff_leave/.test(steps[0].tool ?? '') && isStaffLeaveApplication(message, actor)) {
+    steps = [{ tool: 'apply_for_leave', args: {} }];
+  }
+  // The same, when a tier went straight to the staff-leave write but read
+  // only part of it ("apply for casual leave on Monday for a family function"
+  // came out with no kind of leave and "Monday for a family function" as the
+  // reason, and was answered "I need a bit more"): read by the staff-leave
+  // reader, which knows the kind, the day and the reason apart.
+  if (steps.length === 1 && steps[0].tool === 'apply_staff_leave' && !steps[0].args?.type && isStaffLeaveApplication(message, actor)) {
     steps = [{ tool: 'apply_for_leave', args: {} }];
   }
   if (actor?.permissions?.['staffleave.apply'] && steps.some((step) => step.tool === 'apply_for_leave')) {
@@ -1201,6 +1334,8 @@ async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
         action: null,
         needsInput: true,
         intendedTool: tool,
+        // What was asked for, so the conversation memory can finish it with the next answer.
+        plan: steps.map(({ tool: name, args }) => ({ tool: name, args: args ?? {} })),
         via: 'MCP',
       };
     }
@@ -1247,6 +1382,8 @@ async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
     // every existing caller and test reads.
     tool: calls[0].tool,
     tools: calls.map((c) => c.tool),
+    // The calls as planned (tool and arguments): what the conversation was about.
+    plan: calls.map((c) => ({ tool: c.tool, args: c.args ?? {} })),
     via: 'MCP',
     // "Based on": the records this answer used, with links (never a statement without its evidence).
     evidence: evidenceFor(calls),
@@ -1451,6 +1588,7 @@ const FRIENDLY_FIELDS = {
   title: 'a title',
   content: 'what it should say',
   body: 'what it should say',
+  message: 'what the message should say',
   subject: 'a subject',
   status: 'the status',
   query: 'what to search for',

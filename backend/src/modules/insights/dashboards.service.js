@@ -768,7 +768,7 @@ async function librarianDashboard(actor, period, now = new Date()) {
   const late = open.filter((r) => new Date(r.dueDate) < now);
   const daysLate = (r) => Math.floor((now - new Date(r.dueDate)) / DAY);
   const AGE = [['1–7 days', 0, 8, 'warn'], ['8–30 days', 8, 31, 'bad'], ['Over 30 days', 31, Infinity, 'bad']];
-  return {
+  const lending = {
     view: 'librarian', title: 'Lending',
     kpis: [
       kpi('onLoan', 'On loan now', open.length, { link: '/books' }),
@@ -782,6 +782,26 @@ async function librarianDashboard(actor, period, now = new Date()) {
     ],
     lists: [], notes: [],
   };
+  // Part 5: reading challenges, how far each active one has got (counts only, no names).
+  const reading = await attempt('librarian reading challenges', () => readingChallengeChart(now));
+  if (reading) lending.charts.push(reading);
+  return lending;
+}
+
+async function readingChallengeChart(now = new Date()) {
+  const { ReadingChallenge } = await import('../../models/supportRoles.model.js');
+  const { challengeProgress } = await import('../library/library.desk.js');
+  const active = await ReadingChallenge.find({ status: 'ACTIVE', endsOn: { $gte: new Date(now.getTime() - 7 * DAY) } }).sort({ endsOn: 1 }).limit(4).select('_id').lean();
+  const points = [];
+  for (const c of active) {
+    const p = await challengeProgress(c._id);
+    points.push({
+      label: p.challenge.title, value: pct1(p.completed, p.participants),
+      detail: `${p.completed} of ${plural(p.participants, 'reader')} finished, ${p.started} started · target ${plural(p.challenge.targetBooks, 'book')}`,
+      tone: p.started ? 'good' : 'warn',
+    });
+  }
+  return chart('reading', 'Reading challenge progress', 'hbar', points, { unit: 'percent', link: '/library-desk', definition: 'For each active reading challenge: taking-part students who have finished (returned the target number of books issued in the challenge window) ÷ all taking part. The detail line also counts those who have started.', empty: 'No active reading challenge. Start one from the Library desk.' });
 }
 
 async function wardenDashboard(actor, period, now = new Date()) {
@@ -814,7 +834,100 @@ async function wardenDashboard(actor, period, now = new Date()) {
     charts.push(chart('outpass', 'Out-passes in this period', 'bar', ST.map(([label, s, tone]) => ({ label, value: passes.filter((p) => p.status === s).length, tone })), { link: '/outpass', definition: 'Out-pass requests raised in the period, by where they stand now.', empty: 'No out-pass requests in this period.' }));
     kpis.push(kpi('out', 'Out now', out, { link: '/outpass' }), kpi('pendingPass', 'Waiting for you', passes.filter((p) => p.status === 'PENDING_WARDEN').length, { link: '/outpass', tone: 'warn' }), kpi('late', 'Late returns', passes.filter((p) => p.late).length, { detail: 'in the period', link: '/outpass', tone: passes.some((p) => p.late) ? 'bad' : 'good' }));
   }
+  // Part 5: roll-call exceptions each week (absent, late, sick bay, left unmarked) from submitted roll calls.
+  const roll = await attempt('warden roll-call trend', () => rollCallExceptions(period, now));
+  if (roll) { charts.push(roll.chart); kpis.push(roll.kpi); }
   return { view: 'warden', title: 'Hostel', kpis, charts, lists: [], notes: [] };
+}
+
+const ROLL_EXCEPTIONS = [['Absent', 'ABSENT', 'bad'], ['Late', 'LATE', 'warn'], ['Sick bay', 'SICK_BAY', 'neutral'], ['Not marked', 'UNMARKED', 'warn']];
+async function rollCallExceptions(period, now = new Date()) {
+  const { HostelRollCall } = await import('../../models/supportRoles.model.js');
+  const today = startOfDayUtc(now);
+  const buckets = weekBuckets(period.days, today);
+  const ymd = (d) => new Date(d).toISOString().slice(0, 10);
+  const calls = await HostelRollCall.find({ date: { $gte: ymd(buckets[0].start) }, submittedAt: { $ne: null } }).select('date session entries.status').lean();
+  const exceptionsIn = (c, k) => (c.entries ?? []).filter((e) => (k ? e.status === k : ROLL_EXCEPTIONS.some(([, x]) => x === e.status))).length;
+  const weekOf = (c) => buckets.findIndex((b) => c.date >= ymd(b.start) && c.date < ymd(b.end));
+  const series = (k) => buckets.map((b, i) => {
+    const inWeek = calls.filter((c) => weekOf(c) === i);
+    return {
+      label: `w/c ${b.label}`,
+      value: inWeek.length ? inWeek.reduce((n, c) => n + exceptionsIn(c, k), 0) : null,
+      detail: !inWeek.length ? 'No roll call submitted' : k ? plural(inWeek.length, 'roll call') : `${plural(inWeek.length, 'roll call')}: ${ROLL_EXCEPTIONS.map(([l, x]) => `${inWeek.reduce((n, c) => n + exceptionsIn(c, x), 0)} ${l.toLowerCase()}`).join(', ')}`,
+    };
+  });
+  const all = series(null);
+  const recent = new Set([ymd(today), ymd(new Date(today.getTime() - DAY))]);
+  const unaccounted = calls.filter((c) => recent.has(c.date)).reduce((n, c) => n + exceptionsIn(c, 'ABSENT') + exceptionsIn(c, 'UNMARKED'), 0);
+  return {
+    chart: chart('rollcall', 'Roll-call exceptions each week', 'bar', all, { link: '/hostel-life', definition: 'Residents marked absent, late or in the sick bay, or left unmarked, in roll calls submitted that week (night and morning). On leave with an out-pass is not an exception. A week with no submitted roll call is left blank.', variants: [{ label: 'All exceptions', points: all }, ...ROLL_EXCEPTIONS.map(([label, k]) => ({ label, points: series(k) }))], empty: 'No roll call submitted in this period.' }),
+    kpi: kpi('unaccounted', 'Unaccounted at roll call', unaccounted, { detail: 'absent or not marked, today and yesterday', link: '/hostel-life', tone: unaccounted ? 'bad' : 'good' }),
+  };
+}
+
+/**
+ * Part 5: the school nurse's own dashboard (health.manage at ALL only). Figures
+ * come from the health room's records; the complaint is decrypted here only to
+ * sort a visit into a broad reason (fever, stomach, ...) and never leaves as
+ * text. No child is named. Other roles see health as counts only (the Health
+ * Room summary page).
+ */
+async function nurseDashboard(actor, period, now = new Date()) {
+  if (!can(actor, 'health.manage', 'ALL')) return null;
+  const { HealthVisit, HealthStock, CareNote } = await import('../../models/health.model.js');
+  const { COMPLAINT_CATEGORIES, complaintCategory } = await import('../p4ops/healthInsights.service.js');
+  const { decrypt } = await import('../../utils/crypto.js');
+  const today = startOfDayUtc(now);
+  const buckets = weekBuckets(period.days, today);
+  const [visits, stock, notes] = await Promise.all([
+    HealthVisit.find({ arrivedAt: { $gte: new Date(buckets[0].start.getTime() - DAY) } }).select('arrivedAt outcome injury complaintEnc').lean(),
+    HealthStock.find({ active: true }).select('quantity reorderLevel expiresOn').lean(),
+    CareNote.find({ active: true }).select('severity shareConsent').lean(),
+  ]);
+  const reasonOf = (v) => {
+    if (v.injury) return 'INJURY';
+    let text = '';
+    try { text = decrypt(v.complaintEnc) ?? ''; } catch { text = ''; }
+    return complaintCategory(text) ?? 'OTHER';
+  };
+  const REASONS = [{ key: 'INJURY', label: 'Injury' }, ...COMPLAINT_CATEGORIES.map((c) => ({ key: c.key, label: c.label })), { key: 'OTHER', label: 'Other' }];
+  // Each visit on its school-day (buckets are school days at UTC midnight, so a 00:30 visit is not counted in the day before).
+  const tagged = visits.map((v) => ({ at: v.arrivedAt, day: startOfDayUtc(v.arrivedAt), outcome: v.outcome, reason: reasonOf(v) })).filter((v) => v.day >= buckets[0].start);
+  const weekSeries = (keep) => buckets.map((b, i) => ({ label: `w/c ${b.label}`, value: tagged.filter((v) => keep(v) && inBucket(buckets, v.day) === i).length }));
+  const weekly = weekSeries(() => true);
+  const variants = REASONS.filter((r) => tagged.some((v) => v.reason === r.key)).map((r) => ({ label: r.label, points: weekSeries((v) => v.reason === r.key) }));
+  const byReason = REASONS.map((r) => ({ label: r.label, value: tagged.filter((v) => v.reason === r.key).length, tone: r.key === 'INJURY' ? 'warn' : 'neutral' })).filter((p) => p.value > 0).sort((a, b) => b.value - a.value);
+  const OUT = [['Back to class', 'RETURNED_TO_CLASS', 'good'], ['Rested', 'REST', 'neutral'], ['First aid', 'FIRST_AID', 'neutral'], ['Sent home', 'SENT_HOME', 'warn'], ['Referred', 'REFERRED', 'bad']];
+  const outcomes = OUT.map(([label, k, tone]) => ({ label, value: tagged.filter((v) => v.outcome === k).length, tone })).filter((p) => p.value > 0);
+  const daysTo = (d) => Math.floor((new Date(d).getTime() - today.getTime()) / DAY);
+  const dated = stock.filter((s) => s.expiresOn);
+  const STOCK = [['Expired', -Infinity, 0, 'bad'], ['Within 30 days', 0, 31, 'warn'], ['31–90 days', 31, 91, 'neutral']];
+  const stockAge = STOCK.map(([label, lo, hi, tone]) => ({ label, value: dated.filter((s) => daysTo(s.expiresOn) >= lo && daysTo(s.expiresOn) < hi).length, tone }));
+  const low = stock.filter((s) => s.quantity <= s.reorderLevel).length;
+  // A care note "waits" while the family has given no answer about sharing it with the class teacher.
+  const waiting = notes.filter((n) => !n.shareConsent?.granted && !n.shareConsent?.at);
+  const SEV = [['Severe', 'SEVERE', 'bad'], ['Important', 'IMPORTANT', 'warn'], ['For information', 'INFO', 'neutral']];
+  const careBySev = SEV.map(([label, k, tone]) => ({ label, value: waiting.filter((n) => (n.severity ?? 'IMPORTANT') === k).length, tone }));
+  const visitsToday = tagged.filter((v) => v.day.getTime() === today.getTime()).length;
+  return {
+    view: 'nurse', title: 'Health room at a glance',
+    kpis: [
+      kpi('visitsToday', 'Visits today', visitsToday),
+      kpi('visits', 'Visits in period', tagged.length, { detail: `last ${period.days} days`, link: '/health-watch' }),
+      kpi('careDue', 'Care notes waiting for consent', waiting.length, { detail: 'not yet shared with the class teacher', tone: waiting.some((n) => n.severity === 'SEVERE') ? 'bad' : waiting.length ? 'warn' : 'good' }),
+      kpi('expiring', 'Stock expired or expiring', stockAge[0].value + stockAge[1].value, { detail: `${stockAge[0].value} expired · ${plural(low, 'item')} below reorder level`, tone: stockAge[0].value ? 'bad' : stockAge[1].value ? 'warn' : 'good' }),
+    ],
+    charts: [
+      chart('visitsWeek', 'Visits each week', 'bar', weekly, { link: '/health-watch', definition: 'Health-room visits per week. Switch to one reason at a time. The reason comes from the recorded complaint (fever, stomach, cough and cold, rash, eye, headache) or the injury box; anything else is Other.', variants: variants.length > 1 ? [{ label: 'All visits', points: weekly }, ...variants] : null, empty: 'No visits in this period.' }),
+      chart('reasons', 'Visits by reason', 'hbar', byReason, { link: '/health-watch', definition: 'Visits in the period by broad reason. Counts only; the complaint itself stays in the visit record.', empty: 'No visits in this period.' }),
+      chart('outcomes', 'What happened after the visit', 'donut', outcomes, { definition: 'Visits in the period by outcome.', empty: 'No visits in this period.' }),
+      chart('stock', 'Stock by expiry', 'ageing', stockAge, { definition: 'Active first-aid and medicine stock items by days to their expiry date. Items with no expiry date are not counted.', empty: 'No stock item expires in the next 90 days.' }),
+      chart('careNotes', 'Care notes waiting for the family', 'hbar', careBySev, { definition: 'Active care notes the family has not yet answered about sharing with the class teacher, by severity. A note reaches the teacher only after consent.', empty: 'Every care note has an answer from the family.' }),
+    ],
+    lists: [],
+    notes: ['Only the school nurse sees this dashboard. The principal and admin see health-room figures as counts only.'],
+  };
 }
 
 async function marketingDashboard(actor, period) {
@@ -888,6 +1001,7 @@ async function trusteeDashboard(actor) {
 const STAFF_BUILDERS = {
   FINANCE: financeDashboard, HR: hrDashboard, LIBRARIAN: librarianDashboard, WARDEN: wardenDashboard,
   MARKETING: marketingDashboard, COMPLIANCE: complianceDashboard, TRUSTEE: trusteeDashboard,
+  NURSE: nurseDashboard,
 };
 const MONTHLY = new Set(['FINANCE']);
 

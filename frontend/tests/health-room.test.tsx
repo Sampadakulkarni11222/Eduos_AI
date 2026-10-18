@@ -24,6 +24,10 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('@/lib/health-api', async (orig) => ({ ...(await orig<typeof import('@/lib/health-api')>()), healthApi: api }));
 
+const dash = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock('@/lib/dashboard-api', async (orig) => ({ ...(await orig<typeof import('@/lib/dashboard-api')>()), dashboardApi: dash }));
+vi.mock('@/lib/genui-api', async (orig) => ({ ...(await orig<typeof import('@/lib/genui-api')>()), genuiApi: { pinned: vi.fn().mockResolvedValue({ items: [], max: 6 }), ask: vi.fn(), pin: vi.fn(), unpin: vi.fn() } }));
+
 const { HealthView } = await import('@/components/ops/health-view');
 const inApp = (ui: ReactNode) => render(<ToastProvider>{ui}</ToastProvider>);
 
@@ -66,5 +70,22 @@ describe('health room screen', () => {
     inApp(<HealthView />);
     expect(await screen.findByText(/Headache/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '+ Record a visit' })).toBeInTheDocument();
+  });
+});
+
+describe('nurse insights (part 5)', () => {
+  it("opens the nurse's own dashboard from an Insights tab", async () => {
+    role.value = 'NURSE';
+    perms.value = { 'health.manage': 'ALL', 'health.read': 'ALL' };
+    api.today.mockResolvedValue({ date: '2026-10-16', stock: { expired: 0, expiringSoon: 0, low: 0 }, doses: [], visits: [] });
+    dash.get.mockResolvedValue({ view: 'nurse', title: 'Health room at a glance', period: { days: 30, options: [{ days: 30, label: '30 days' }] }, asOf: new Date().toISOString(),
+      kpis: [{ key: 'careDue', label: 'Care notes waiting for consent', value: 1, unit: 'count', detail: 'not yet shared with the class teacher', link: null, tone: 'bad' }],
+      charts: [], lists: [], notes: ['Only the school nurse sees this dashboard.'] });
+    inApp(<HealthView />);
+    const { fireEvent } = await import('@testing-library/react');
+    fireEvent.click(await screen.findByRole('tab', { name: 'Insights' }));
+    expect(await screen.findByText('Health room at a glance')).toBeInTheDocument();
+    expect(screen.getByText('Care notes waiting for consent')).toBeInTheDocument();
+    expect(dash.get).toHaveBeenCalled();
   });
 });

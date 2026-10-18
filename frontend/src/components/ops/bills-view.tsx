@@ -561,13 +561,13 @@ export function AccountsExportView() {
       </SectionCard>
       <SectionCard title="Tax set-up of fee heads" sub="Only heads the school marks taxable carry a rate onto new invoices. Issued invoices keep what they were issued with.">
         <Loadable state={heads}>{(rows) => (
-          <div className="ops-table-wrap"><table className="ops-table"><thead><tr><th>Fee head</th><th>HSN/SAC</th><th>GST rate %</th><th /></tr></thead><tbody>
+          <div className="ops-table-wrap"><table className="ops-table data-table-cards"><thead><tr><th>Fee head</th><th>HSN/SAC</th><th>GST rate %</th><th /></tr></thead><tbody>
             {rows.map((h) => {
               const e = edit[h.id] ?? { hsnSac: h.hsnSac ?? '', rate: h.gstRateBp !== null ? String(h.gstRateBp / 100) : '' };
               return (
-                <tr key={h.id}><td>{h.name}<div className="ops-muted">{humanize(h.category)}</div></td>
-                  <td><input className="input lab-count" aria-label={`HSN/SAC for ${h.name}`} disabled={!canHeads} value={e.hsnSac} onChange={(ev) => setEdit({ ...edit, [h.id]: { ...e, hsnSac: ev.target.value } })} /></td>
-                  <td><input className="input lab-count" aria-label={`GST rate for ${h.name}`} inputMode="decimal" disabled={!canHeads} placeholder="exempt" value={e.rate} onChange={(ev) => setEdit({ ...edit, [h.id]: { ...e, rate: ev.target.value } })} /></td>
+                <tr key={h.id}><td data-label="Fee head">{h.name}<div className="ops-muted">{humanize(h.category)}</div></td>
+                  <td data-label="HSN/SAC"><input className="input lab-count" aria-label={`HSN/SAC for ${h.name}`} disabled={!canHeads} value={e.hsnSac} onChange={(ev) => setEdit({ ...edit, [h.id]: { ...e, hsnSac: ev.target.value } })} /></td>
+                  <td data-label="GST rate %"><input className="input lab-count" aria-label={`GST rate for ${h.name}`} inputMode="decimal" disabled={!canHeads} placeholder="exempt" value={e.rate} onChange={(ev) => setEdit({ ...edit, [h.id]: { ...e, rate: ev.target.value } })} /></td>
                   <td>{canHeads && edit[h.id] && <Button small variant="soft" disabled={busy} onClick={() => void run(async () => { await billsApi.setFeeHeadTax(h.id, { hsnSac: e.hsnSac.trim() || null, gstRateBp: e.rate ? Math.round(Number(e.rate) * 100) : null }); toast('Saved'); void heads.reload(); })}>Save</Button>}</td></tr>
               );
             })}

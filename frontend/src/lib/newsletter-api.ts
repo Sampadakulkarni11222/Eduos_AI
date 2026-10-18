@@ -35,6 +35,7 @@ export interface Opportunity {
   source: { kind: string; sourceTitle: string | null };
   submittedByName?: string | null; reviewedByName?: string | null; reviewNote?: string | null; clicks?: number; catalogueKey?: string | null;
   saved?: boolean; reason?: string | null; eligibilityVerdict?: Verdict | null; inEdition?: boolean; forStudents?: boolean;
+  extraction?: Extraction | null; sourceLink?: string | null;
 }
 export interface MatchGroup { kind: 'STUDENT' | 'TEACHER'; studentId: string | null; name: string | null; className: string | null; items: Array<Opportunity & { reason: string | null; eligibility: Verdict | null }> }
 export interface Preferences {
@@ -42,7 +43,7 @@ export interface Preferences {
   leaderboardOptIn: boolean; language: 'en' | 'hi'; textSize: 'S' | 'M' | 'L'; unsubscribed: boolean; streak: { count: number; best: number; lastDay?: string | null };
   options: { domains: Array<{ key: string; label: string }>; streams: string[] };
 }
-export interface EditionSummary { id: string; cadence: 'WEEKLY' | 'MONTHLY'; periodLabel: string; title: string; hook?: string | { text: string }; publishedAt: string | null; items?: number; myProgress: number; myQuizScore: number | null; status?: string; periodKey?: string; delivery?: { inApp: number; emailQueued: number; byStatus: Record<string, number> } | null; generatedBy?: string; opportunityIds?: string[]; flashcards?: number; quiz?: number; poll?: string | null; publishedByName?: string | null; createdAt?: string }
+export interface EditionSummary { id: string; cadence: 'WEEKLY' | 'MONTHLY'; periodLabel: string; title: string; hook?: string | { text: string }; publishedAt: string | null; items?: number; myProgress: number; myQuizScore: number | null; status?: string; periodKey?: string; delivery?: { inApp: number; emailQueued: number; byStatus: Record<string, number> } | null; generatedBy?: string; opportunityIds?: string[]; flashcards?: number; quiz?: number; poll?: string | null; publishedByName?: string | null; createdAt?: string; ai?: { by?: string | null; sections?: Record<string, string> } | null; sectionNotes?: SectionNote[] }
 export interface Flashcard { key: string; front: string; back: string; domain: string | null; box: number | null; lastResult?: string | null; edition?: string }
 export interface QuizQuestion { key: string; question: string; options: string[]; answerIndex?: number; explain?: string; yourAnswer?: number | null }
 export interface PollResults { total: number; options: Array<{ key: string; label: string; votes: number; pct: number }> }
@@ -60,6 +61,7 @@ export interface Edition {
   comments: CommentDto[]; leaderboard: Leaderboard | null;
   progress: { pct: number; lastSection: string | null; completed: boolean };
   reader: { language: 'en' | 'hi'; textSize: 'S' | 'M' | 'L'; streak: { count: number; best: number } };
+  sectionNotes?: SectionNote[]; writtenBy?: Record<string, 'AI' | 'TEMPLATE'> | null;
 }
 export interface NewsletterHome {
   weekly: { id: string; title: string; periodLabel: string; hook: string } | null; monthly: { id: string; title: string; periodLabel: string; hook: string } | null;
@@ -75,6 +77,35 @@ export interface AnalyticsOut {
   totals: { opens: number; clicks: number; quizParticipants: number; saves: number }; topClicked: Array<{ id: string; title: string; clicks: number }>; note: string;
 }
 export interface PendingComment { id: string; edition: string | null; editionId: string; displayName: string; authorRole: string; text: string; at: string }
+
+// ── Part 5: alert feeds (Google Alerts through its RSS delivery), AI extraction, AI editions, reader extras ──
+export interface Extraction { method: 'AI' | 'AUTO'; label: string; fields: Array<{ field: string; snippet: string; from: 'FEED' | 'PAGE' }>; dropped: string[]; page: { fetched: boolean; url: string | null; note: string | null } | null; at: string | null }
+export interface SectionNote { section: string; note: string; evidence: Array<{ opportunityId: string; title: string; url: string | null }> }
+export interface AlertSource {
+  id: string; kind: 'GOOGLE_ALERT' | 'RSS'; kindLabel: string; title: string; url: string; query: string | null; status: 'APPROVED' | 'PAUSED'; sample?: boolean;
+  tags: { domains: string[]; level: string | null; region: string | null; types: string[] }; tagLabels: { domains: string[]; level: string | null; region: string | null; types: string[] };
+  lastFetchedAt: string | null; lastStatus: 'NEVER' | 'OK' | 'FAILED'; lastError: string | null; lastItemCount: number; failures: number; nextFetchAt: string | null; itemsFound: number; addedByName: string | null;
+}
+export interface AlertGuide { title: string; steps: string[]; notes: string[]; state: string | null; suggestions: { byDomain: Record<string, string[]>; byLevel: Record<string, string[]> }; domains: Array<{ key: string; label: string }>; levels: Array<{ key: string; label: string }>; aiExtraction: string; urlPattern: string }
+export interface AlertItem { id: string; title: string; link: string; sourceTitle: string | null; status: 'NEW' | 'CANDIDATE' | 'DUPLICATE' | 'SKIPPED' | 'FAILED'; note: string | null; opportunityId: string | null; duplicateOfId: string | null; fetchedAt: string }
+export interface AlertAnalytics {
+  sources: Array<{ id: string; title: string; kind: string; sample: boolean; lastStatus: string; found: number; candidates: number; duplicates: number; skipped: number; failed: number; waiting: number; accepted: number; rejected: number; pending: number }>;
+  totals: { found: number; candidates: number; duplicates: number; accepted: number; rejected: number };
+  accuracy: { fieldsExtracted: number; fieldsEdited: number; keptAsExtractedPct: number | null; byMethod: Record<string, { extracted: number; edited: number; keptAsExtractedPct: number | null }>; byField: Array<{ field: string; extracted: number; edited: number; keptAsExtractedPct: number | null }>; note: string };
+}
+export interface Badge { key: string; label: string; earned: boolean; progress: string; hint: string }
+export interface ChallengeRow { id: string; direction: 'SENT' | 'RECEIVED'; with: string; status: 'WAITING' | 'DONE'; yourScore: number | null; theirScore: number | null; outOf: number; result: string }
+export interface Challenges { sent: ChallengeRow[]; received: ChallengeRow[]; left: number; note: string }
+export interface RadarRow { id: string; title: string; daysLeft: number; closes: string; saved: boolean; inEdition: boolean; because: string | null }
+export interface EditionExtras {
+  editionId: string;
+  sixtySeconds: Array<{ kind: 'HOOK' | 'ITEM' | 'NEXT'; id?: string; title: string; text: string; question?: string | null; type?: string; chip?: string; urgent?: boolean; because?: string | null; officialUrl?: string | null }>;
+  deadlineRadar: { in7: RadarRow[]; in14: RadarRow[]; in30: RadarRow[]; note: string };
+  because: Record<string, { text: string; for: string | null; notEligible?: boolean }>;
+  badges: Badge[]; streak: { count: number; best: number; lastDay?: string | null }; challenges: Challenges | null;
+}
+export const EDITION_SECTIONS = ['hook', 'notes', 'flashcards', 'quiz', 'poll'] as const;
+export type EditionSection = (typeof EDITION_SECTIONS)[number];
 
 export const newsletterApi = {
   home: () => get<NewsletterHome>('/newsletter/home'),
@@ -117,4 +148,18 @@ export const newsletterApi = {
   publish: (id: string) => post<{ delivered: boolean; delivery?: { inApp: number; emailQueued: number; byStatus: Record<string, number> } }>(`/newsletter/editions/${id}/publish`),
   withdraw: (id: string, reason: string) => post<EditionSummary>(`/newsletter/editions/${id}/withdraw`, { reason }),
   analytics: () => get<AnalyticsOut>('/newsletter/analytics'),
+  // Part 5
+  extras: (id: string) => get<EditionExtras>(`/newsletter/editions/${id}/extras`),
+  classmates: (id: string) => get<Array<{ studentId: string; name: string }>>(`/newsletter/editions/${id}/classmates`),
+  challenges: (id: string) => get<Challenges>(`/newsletter/editions/${id}/challenges`),
+  challenge: (id: string, studentId: string) => post<{ sent: boolean; to: string; challenges: Challenges }>(`/newsletter/editions/${id}/challenges`, { studentId }),
+  regenerate: (id: string, section: EditionSection) => post<{ section: string; writtenBy: 'AI' | 'TEMPLATE'; ai: boolean; message: string; rejected: Array<{ section: string; reason: string }> }>(`/newsletter/editions/${id}/regenerate`, { section }),
+  alertGuide: () => get<AlertGuide>('/newsletter/alerts/guide'),
+  alertSources: () => get<AlertSource[]>('/newsletter/alerts/sources'),
+  addAlertSource: (body: { kind?: 'GOOGLE_ALERT' | 'RSS'; url: string; title: string; query?: string; tags?: { domains?: string[]; level?: string | null; region?: string | null } }) => post<AlertSource>('/newsletter/alerts/sources', body),
+  updateAlertSource: (id: string, body: Record<string, unknown>) => patch<AlertSource>(`/newsletter/alerts/sources/${id}`, body),
+  checkAlertSource: (id: string) => post<{ added: number; source: AlertSource; extracted: { CANDIDATE: number; DUPLICATE: number; SKIPPED: number } }>(`/newsletter/alerts/sources/${id}/check`),
+  alertItems: (p: Q = {}) => get<AlertItem[]>('/newsletter/alerts/items', p),
+  alertAnalytics: () => get<AlertAnalytics>('/newsletter/alerts/analytics'),
+  runAlerts: () => post<{ feeds: { checked: number; added: number; failed: number }; extracted: { CANDIDATE: number; DUPLICATE: number; SKIPPED: number; processed: number } }>('/newsletter/alerts/run'),
 };

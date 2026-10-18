@@ -29,6 +29,49 @@ const GenUiPanel = dynamic(() => loadGenUi().then((m) => m.GenUiPanel), { ssr: f
  */
 const HISTORY_TURNS = 10;
 
+/**
+ * The conversation survives page changes and reloads.
+ *
+ * Every page renders its own shell, and the shell renders this component, so
+ * a conversation held only in component state was lost on every navigation --
+ * reproduced in the browser: after following a sidebar link the next message
+ * went out with no history at all. The server now keeps the conversation
+ * (agent/memory.js) under the id it hands back; this tab keeps that id and the
+ * messages on screen in sessionStorage, per signed-in profile, so the panel
+ * reopens where it was and the next question is understood in context.
+ * sessionStorage, not localStorage: it ends with the tab and is never shared
+ * with another one. Nothing here is authority -- the server finds the
+ * conversation only for this same person in this same school.
+ */
+const STORE_PREFIX = 'eduos.ask.v1';
+const MAX_STORED = 40;
+
+interface StoredChat { conversationId?: string; msgs: Msg[] }
+
+const storeKey = (profileId?: string | null) => (profileId ? `${STORE_PREFIX}.${profileId}` : null);
+
+function readStored(key: string | null): StoredChat | null {
+  if (!key || typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredChat;
+    return Array.isArray(parsed?.msgs) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string | null, value: StoredChat | null) {
+  if (!key || typeof window === 'undefined') return;
+  try {
+    if (!value) window.sessionStorage.removeItem(key);
+    else window.sessionStorage.setItem(key, JSON.stringify({ ...value, msgs: value.msgs.slice(-MAX_STORED) }));
+  } catch {
+    /* storage full or blocked: the conversation still works for this page */
+  }
+}
+
 interface Msg {
   role: 'user' | 'assistant';
   text: string;
@@ -82,6 +125,37 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   const msgsRef = useRef<Msg[]>([]);
   const convIdRef = useRef<string | undefined>();
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  const profileId = me?.profile?.id ?? null;
+  // Set once this profile's stored conversation has been read back, so the
+  // first (empty) render never overwrites it.
+  const restoredFor = useRef<string | null>(null);
+
+  // Restore this profile's conversation after a page change or reload; a
+  // different profile starts with its own (or a fresh) one.
+  useEffect(() => {
+    if (!profileId || restoredFor.current === profileId) return;
+    const stored = readStored(storeKey(profileId));
+    msgsRef.current = stored?.msgs ?? [];
+    convIdRef.current = stored?.conversationId;
+    restoredFor.current = profileId;
+    setMsgs([...msgsRef.current]);
+  }, [profileId]);
+
+  // Keep it as it changes.
+  useEffect(() => {
+    if (!profileId || restoredFor.current !== profileId) return;
+    writeStored(storeKey(profileId), { conversationId: convIdRef.current, msgs: msgsRef.current });
+  }, [msgs, profileId]);
+
+  /** "New chat": forget this conversation here and on the server's side of it. */
+  const newChat = () => {
+    if (busy) return;
+    msgsRef.current = [];
+    convIdRef.current = undefined;
+    writeStored(storeKey(profileId), null);
+    setMsgs([]);
+    setInput('');
+  };
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -197,7 +271,8 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
         .slice(0, -1)
         .slice(-HISTORY_TURNS)
         .map((m) => ({ role: m.role, text: m.text }));
-      const res = await api.agentAsk(text, speechLang.lang, history);
+      const res = await api.agentAsk(text, speechLang.lang, history, convIdRef.current);
+      if (res.conversationId) convIdRef.current = res.conversationId;
       const aiMsg: Msg = { role: 'assistant', text: res.reply, action: res.action, continuation: res.continuation ?? null, evidence: res.evidence ?? [], ui: uiOf(res) };
       msgsRef.current = [...msgsRef.current, aiMsg];
       setMsgs([...msgsRef.current]);
@@ -242,7 +317,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
     if (!msg?.action || busy) return;
     setBusy(true);
     try {
-      const res = await api.agentConfirm(msg.action.confirmToken, accept, speechLang.lang);
+      const res = await api.agentConfirm(msg.action.confirmToken, accept, speechLang.lang, convIdRef.current);
       msgsRef.current = msgsRef.current.map((m, i) =>
         i === idx ? { ...m, action: null, resolved: accept ? 'done' : 'cancelled' } : m
       );
@@ -359,6 +434,18 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                 <div className="ai-sub">Answers from your school data</div>
               </div>
               <div className="ai-header-actions">
+                {msgs.length > 0 && (
+                  <button
+                    type="button"
+                    className="ai-minimize ai-new-chat"
+                    onClick={newChat}
+                    disabled={busy}
+                    aria-label="Start a new chat"
+                    title="New chat"
+                  >
+                    ＋
+                  </button>
+                )}
                 <button
                   type="button"
                   className="ai-minimize"

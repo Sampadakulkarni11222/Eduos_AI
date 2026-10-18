@@ -34,7 +34,7 @@ export const OPP_STREAMS = ['SCIENCE', 'COMMERCE', 'HUMANITIES'];
 export const OPP_MODES = ['ONLINE', 'OFFLINE', 'HYBRID'];
 export const OPP_AUDIENCES = ['STUDENTS', 'TEACHERS', 'BOTH'];
 export const OPP_STATUSES = ['SUBMITTED', 'PUBLISHED', 'REJECTED', 'ARCHIVED'];
-export const OPP_SOURCES = ['CATALOGUE', 'FEED', 'STAFF'];
+export const OPP_SOURCES = ['CATALOGUE', 'FEED', 'STAFF', 'ALERT'];
 export const REACTIONS = ['USEFUL', 'INSPIRING', 'ENTERING', 'CURIOUS'];
 
 const opportunitySchema = new Schema(
@@ -81,6 +81,23 @@ const opportunitySchema = new Schema(
       kind: { type: String, enum: OPP_SOURCES, default: 'STAFF' },
       digestItemId: { type: Schema.Types.ObjectId, ref: 'DigestItem', default: null },
       sourceTitle: { type: String, default: null },
+      // Part 5: an item read from an editor-added alert feed (Google Alerts RSS or another feed).
+      feedItemId: { type: Schema.Types.ObjectId, ref: 'NewsletterFeedItem', default: null },
+      feedSourceId: { type: Schema.Types.ObjectId, ref: 'NewsletterFeedSource', default: null },
+      link: { type: String, default: null },
+    },
+    // Part 5: how a candidate was extracted from its feed item (and the page, when it was read).
+    // Every field kept carries the snippet it came from; `original` is what was extracted, so the
+    // editor's changes before publishing can be counted ("extraction accuracy").
+    extraction: {
+      method: { type: String, enum: ['AI', 'AUTO', null], default: null },
+      label: { type: String, default: null },
+      model: { type: String, default: null },
+      fields: [{ _id: false, field: String, snippet: String, from: { type: String, enum: ['FEED', 'PAGE'] } }],
+      dropped: [{ type: String }],
+      original: { type: Schema.Types.Mixed, default: null },
+      page: { fetched: { type: Boolean, default: false }, url: { type: String, default: null }, note: { type: String, default: null } },
+      at: { type: Date, default: null },
     },
     status: { type: String, enum: OPP_STATUSES, default: 'SUBMITTED' },
     submittedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
@@ -97,6 +114,7 @@ const opportunitySchema = new Schema(
 );
 opportunitySchema.index({ tenantId: 1, catalogueKey: 1 }, { unique: true, partialFilterExpression: { catalogueKey: { $type: 'string' } } });
 opportunitySchema.index({ tenantId: 1, 'source.digestItemId': 1 }, { unique: true, partialFilterExpression: { 'source.digestItemId': { $type: 'objectId' } } });
+opportunitySchema.index({ tenantId: 1, 'source.feedItemId': 1 }, { unique: true, partialFilterExpression: { 'source.feedItemId': { $type: 'objectId' } } });
 opportunitySchema.index({ status: 1, registrationCloses: 1 });
 
 const settingSchema = new Schema(
@@ -174,11 +192,23 @@ const editionSchema = new Schema(
       text: { type: String, default: '' },
       question: { type: String, default: null },
       textHi: { type: String, default: null },
+      // Part 5: the items the hook draws on (links are the items' official links, set by code).
+      evidence: [{ _id: false, opportunityId: Schema.Types.ObjectId, title: String, url: String }],
     },
     intro: { type: String, default: null },
     opportunityIds: [{ type: Schema.Types.ObjectId, ref: 'Opportunity' }],
     flashcards: [{ _id: false, key: String, front: String, back: String, domain: String, opportunityId: { type: Schema.Types.ObjectId, default: null } }],
-    quiz: [{ _id: false, key: String, question: String, options: [String], answerIndex: Number, explain: String }],
+    quiz: [{ _id: false, key: String, question: String, options: [String], answerIndex: Number, explain: String, opportunityId: { type: Schema.Types.ObjectId, default: null } }],
+    // Part 5: a short editor's note per section, each with the items it draws on.
+    sectionNotes: [{ _id: false, section: String, note: String, evidence: [{ _id: false, opportunityId: Schema.Types.ObjectId, title: String, url: String }] }],
+    // Part 5: who wrote each section: 'AI' (checked against the items) or 'TEMPLATE'.
+    ai: {
+      by: { type: String, enum: ['AI', 'TEMPLATE', 'MIXED', null], default: null },
+      sections: { type: Schema.Types.Mixed, default: {} },
+      model: { type: String, default: null },
+      rejected: [{ _id: false, section: String, reason: String }],
+      at: { type: Date, default: null },
+    },
     poll: {
       question: { type: String, default: null },
       options: [{ _id: false, key: String, label: String }],

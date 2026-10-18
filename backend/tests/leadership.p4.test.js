@@ -258,6 +258,25 @@ describe('certificates from the record', () => {
     expect(await inOak(() => IssuedCertificate.countDocuments({}))).toBe(1);
   });
 
+  it("words a former pupil's certificate in the past tense and keeps a Study Certificate's own title", async () => {
+    const { Enrollment } = await import('../src/models/student.model.js');
+    await inOak(() => Enrollment.updateOne({ _id: s.priya.enrollment._id }, { $set: { status: 'GRADUATED' } }));
+    const study = await request(s.priya, 'Study Certificate');
+    const pv = await inOak(() => certificates.preview(s.people.ADMIN.actor, String(study._id), { purpose: 'a visa application' }));
+    expect(pv.title).toBe('Study Certificate');
+    expect(pv.body).toMatch(/was a student of this school/);
+    expect(pv.body).not.toMatch(/is a bonafide student|, studying in/);
+    const ch = await request(s.priya, 'Character Certificate');
+    const cv = await inOak(() => certificates.preview(s.people.ADMIN.actor, String(ch._id), {}));
+    expect(cv.body).toMatch(/conduct and character while at the school were good/);
+    expect(cv.body).not.toMatch(/at present in/);
+    // A current pupil keeps the present-tense wording.
+    const cur = await request(s.rahul, 'Bonafide Certificate');
+    const bv = await inOak(() => certificates.preview(s.people.ADMIN.actor, String(cur._id), {}));
+    expect(bv.title).toBe('Bonafide Certificate');
+    expect(bv.body).toMatch(/is a bonafide student/);
+  });
+
   it('only generates for an approved request', async () => {
     const r = await request(s.priya, 'Character Certificate', 'PENDING');
     await expect(inOak(() => certificates.generate(s.people.ADMIN.actor, String(r._id), {}))).rejects.toMatchObject({ code: 'DOCUMENT_REQUEST_INVALID_TRANSITION' });

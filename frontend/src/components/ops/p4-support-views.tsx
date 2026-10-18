@@ -6,6 +6,7 @@ import { api, request } from '@/lib/api';
 import { useSchoolHref } from '@/lib/school-path';
 import { post, patch, put, qs } from '@/lib/ops-api';
 import { DataNote, ErrorNote, Loadable, PromptModal, SectionCard, Tabs, Tile, fmtDate, fmtDateTime, humanize, isoDay, useAction, useLoad } from './kit';
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /**
  * Part 4, support roles: the screens the librarian, the warden, the
@@ -112,7 +113,7 @@ function OverdueTab({ onChange }: { onChange: () => void }) {
   const today = isoDay();
   const remind = () => run(async () => {
     const r = await post<{ reminded: number; alreadyToday: number }>('/library/desk/overdue/remind', {});
-    toast(`Reminded ${r.reminded} borrower(s)${r.alreadyToday ? `; ${r.alreadyToday} already reminded today` : ''}`, 'success');
+    toast(`Reminded ${plural(r.reminded, 'borrower')}${r.alreadyToday ? `; ${r.alreadyToday} already reminded today` : ''}`, 'success');
     await state.reload(); onChange();
   });
   return (
@@ -201,7 +202,7 @@ function ReadingTab() {
   return (
     <>
       <SectionCard title="Reading challenges" sub="Books borrowed and returned in the window count. Students see only their own progress." actions={<Button onClick={() => setCreating(true)}>New challenge</Button>}>
-        <Loadable state={list}>{(rows) => <Table head={['Challenge', 'Window', 'Target', 'Status', '']} empty="No reading challenge yet. Start one for a class or the whole school." rows={rows.map((c) => [c.title, `${c.startsOn} → ${c.endsOn}`, `${c.targetBooks} book(s)${c.categories.length ? ` · ${c.categories.join(', ')}` : ''}`, humanize(c.status), <Button key="v" small variant="ghost" onClick={() => setOpen(c.id)}>Progress</Button>])} />}</Loadable>
+        <Loadable state={list}>{(rows) => <Table head={['Challenge', 'Window', 'Target', 'Status', '']} empty="No reading challenge yet. Start one for a class or the whole school." rows={rows.map((c) => [c.title, `${c.startsOn} → ${c.endsOn}`, `${plural(c.targetBooks, 'book')}${c.categories.length ? ` · ${c.categories.join(', ')}` : ''}`, humanize(c.status), <Button key="v" small variant="ghost" onClick={() => setOpen(c.id)}>Progress</Button>])} />}</Loadable>
       </SectionCard>
       {open && <Loadable state={progress}>{(p) => p && (
         <SectionCard title={p.challenge.title} sub={`${p.completed} of ${p.participants} completed · ${p.started} started`}>
@@ -267,7 +268,7 @@ function SuggestTab() {
       <StudentPicker value={student} onChange={setStudent} />
       {student && <Loadable state={state}>{(s) => s && (s.suggestions.length ? (
         <div className="ops-list">{s.suggestions.map((b) => <div key={b.bookId} className="ops-row"><div className="ops-row-main"><span className="ops-row-title">{b.title} · {b.author}</span><span className="ops-row-sub">{b.reasons.join(' · ')}</span></div></div>)}</div>
-      ) : <p className="ops-muted">Not enough borrowing history for {s.student} yet ({s.basedOn.loans} loan(s)).</p>)}</Loadable>}
+      ) : <p className="ops-muted">Not enough borrowing history for {s.student} yet ({plural(s.basedOn.loans, 'loan')}).</p>)}</Loadable>}
     </SectionCard>
   );
 }
@@ -332,7 +333,12 @@ function RollCallCard({ onChange }: { onChange: () => void }) {
         <div className="ops-inline" style={{ marginBottom: 10 }}>
           <input className="input" placeholder="Find by name or room" value={filter} onChange={(e) => setFilter(e.target.value)} />
           {!roll.submittedAt && <Button variant="soft" disabled={busy || !roll.counts.UNMARKED} onClick={() => void allPresent()}>Mark everyone else present</Button>}
-          {!roll.submittedAt && <Button disabled={busy} onClick={() => void submit()}>Submit</Button>}
+          {!roll.submittedAt && <Button disabled={busy} onClick={() => {
+            // Submitting with residents unmarked alerts the wardens and the principal at once: ask first.
+            const unmarked = roll.counts.UNMARKED ?? 0; const absent = roll.counts.ABSENT ?? 0; const left = unmarked + absent;
+            if (left && !window.confirm(`${left === 1 ? '1 resident is' : `${left} residents are`} not marked present (${unmarked} unmarked, ${absent} absent). Submitting alerts the wardens and the principal now. Submit anyway?`)) return;
+            void submit();
+          }}>Submit</Button>}
         </div>
         <div className="p4s-roll">{shown.map((e) => (
           <div key={e.studentId} className="p4s-roll-row">
@@ -440,7 +446,7 @@ function ContactModal({ incident, onClose, onSaved }: { incident: Incident; onCl
       <ErrorNote error={error} />
       <div className="ops-form-grid">
         <Field label="Spoke with"><input className="input" value={f.guardianName} onChange={(e) => setF({ ...f, guardianName: e.target.value })} /></Field>
-        <Field label="How"><select className="input" value={f.channel} onChange={(e) => setF({ ...f, channel: e.target.value })}>{['CALL', 'WHATSAPP', 'MEETING', 'EMAIL'].map((c) => <option key={c} value={c}>{humanize(c)}</option>)}</select></Field>
+        <Field label="How"><select className="input" value={f.channel} onChange={(e) => setF({ ...f, channel: e.target.value })}>{['CALL', 'WHATSAPP', 'MEETING', 'EMAIL'].map((c) => <option key={c} value={c}>{c === 'WHATSAPP' ? 'WhatsApp' : humanize(c)}</option>)}</select></Field>
       </div>
       <Field label="What was said" required><textarea className="input" rows={3} value={f.summary} onChange={(e) => setF({ ...f, summary: e.target.value })} /></Field>
     </Modal>
@@ -499,7 +505,7 @@ function LogFollowUp({ row, onClose, onSaved }: { row: FRow; onClose: () => void
       <ErrorNote error={error} />
       {row.doNotContact && <DataNote>This family withdrew consent to be contacted: only a note can be recorded.</DataNote>}
       <div className="ops-form-grid">
-        <Field label="How"><select className="input" value={f.channel} onChange={(e) => setF({ ...f, channel: e.target.value })}>{['CALL', 'WHATSAPP', 'EMAIL', 'VISIT', 'NOTE'].filter((c) => !row.doNotContact || c === 'NOTE' || c === 'VISIT').map((c) => <option key={c} value={c}>{humanize(c)}</option>)}</select></Field>
+        <Field label="How"><select className="input" value={f.channel} onChange={(e) => setF({ ...f, channel: e.target.value })}>{['CALL', 'WHATSAPP', 'EMAIL', 'VISIT', 'NOTE'].filter((c) => !row.doNotContact || c === 'NOTE' || c === 'VISIT').map((c) => <option key={c} value={c}>{c === 'WHATSAPP' ? 'WhatsApp' : humanize(c)}</option>)}</select></Field>
         <Field label="Next action"><input className="input" type="datetime-local" value={f.nextActionAt} onChange={(e) => setF({ ...f, nextActionAt: e.target.value })} /></Field>
         <Field label="Move stage to"><select className="input" value={f.stage} onChange={(e) => setF({ ...f, stage: e.target.value })}><option value="">Keep ({humanize(row.stage)})</option>{['CONTACTED', 'TOUR_SCHEDULED', 'APPLICATION', 'ENROLLED', 'LOST'].map((s) => <option key={s} value={s}>{humanize(s)}</option>)}</select></Field>
       </div>

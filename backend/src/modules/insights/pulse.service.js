@@ -260,7 +260,7 @@ async function departments(actor) {
 
 // ── briefing ─────────────────────────────────────────────────────────────
 
-function briefing(actor, { charts, departments: tiles, decisions }) {
+function briefing(actor, { charts, departments: tiles, decisions, desk = [] }) {
   const hour = ist(new Date()).getUTCHours();
   const lines = [`Good ${hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'}${actor.displayName ? `, ${actor.displayName.split(' ')[0]}` : ''}.`];
   if (decisions) lines.push(`${decisions} decision${decisions === 1 ? ' is' : 's are'} waiting on you.`);
@@ -277,6 +277,7 @@ function briefing(actor, { charts, departments: tiles, decisions }) {
     // A parent does not attend the class: their child does.
     lines.push(actor.roleKey === 'PARENT' ? `${n} ${word} for your child today.` : `You have ${n} ${word} today.`);
   }
+  for (const d of desk) lines.push(d.text);
   if (lines.length === 1) lines.push('Nothing needs your attention right now.');
   return lines;
 }
@@ -286,7 +287,7 @@ function briefing(actor, { charts, departments: tiles, decisions }) {
  * days, and the page that holds them. Shown under the briefing so no
  * sentence is presented without its evidence. Mirrors briefing() line by line.
  */
-function briefingSources({ charts, departments: tiles, decisions }) {
+function briefingSources({ charts, departments: tiles, decisions, desk = [] }) {
   const out = [];
   if (decisions) out.push({ text: `${decisions} approval request${decisions === 1 ? '' : 's'} whose current stage you may decide`, link: '/approvals' });
   const att = charts.find((c) => c.key === 'attendance' && c.status === 'OK');
@@ -300,7 +301,35 @@ function briefingSources({ charts, departments: tiles, decisions }) {
     if (n) out.push({ text: `${t.name}: ${n} ${what} in the ${t.name.toLowerCase()} records`, link: t.link ?? null });
   }
   const classes = charts.find((c) => c.key === 'classes');
-  if (classes?.points[0]?.value) out.push({ text: `${classes.points[0].value} online class record(s) for today`, link: classes.link });
+  if (classes?.points[0]?.value) out.push({ text: `${plural(classes.points[0].value, 'online class', 'online classes')} today`, link: classes.link });
+  for (const d of desk) out.push({ text: d.source, link: d.link });
+  return out;
+}
+
+/**
+ * Part 5: the library's and the hostel's own queue in the briefing, so a
+ * librarian with overdue loans or a warden with out-passes waiting is not told
+ * "nothing needs your attention". Counts only, from the same records as their desks.
+ */
+async function deskLines(actor, now = new Date()) {
+  const held = (k) => actor.permissions?.[k] === 'ALL';
+  const out = [];
+  if (actor.roleKey === 'LIBRARIAN' && held('library.read')) {
+    const { BookIssue } = await import('../../models/library.model.js');
+    const { BookHold } = await import('../../models/supportRoles.model.js');
+    const [overdue, ready] = await Promise.all([
+      BookIssue.countDocuments({ status: { $ne: 'RETURNED' }, returnedAt: null, dueDate: { $lt: startOfDayUtc(now) } }),
+      BookHold.countDocuments({ status: 'READY' }),
+    ]);
+    if (overdue) out.push({ text: `Library: ${plural(overdue, 'loan')} overdue.`, source: `Library: ${plural(overdue, 'loan')} past the due date and not returned`, link: '/library-desk' });
+    if (ready) out.push({ text: `${plural(ready, 'reservation')} waiting on the hold shelf.`, source: `Library: ${plural(ready, 'reservation')} ready to collect`, link: '/library-desk' });
+  }
+  if (actor.roleKey === 'WARDEN' && held('hostel.read')) {
+    const { OutPass } = await import('../../models/safety.model.js');
+    const [waiting, outNow] = await Promise.all([OutPass.countDocuments({ status: 'PENDING_WARDEN' }), OutPass.countDocuments({ status: 'OUT' })]);
+    if (waiting) out.push({ text: `Hostel: ${plural(waiting, 'out-pass', 'out-passes')} waiting for you.`, source: `Hostel: ${plural(waiting, 'out-pass request', 'out-pass requests')} at the warden's stage`, link: '/outpass' });
+    if (outNow) out.push({ text: `${plural(outNow, 'resident')} out on a pass now.`, source: `Hostel: ${plural(outNow, 'out-pass', 'out-passes')} with the resident out`, link: '/outpass' });
+  }
   return out;
 }
 
@@ -318,7 +347,8 @@ export async function pulse(actor, { decisions = 0 } = {}) {
   // Each tile line reads in the right number ("1 open letter", "2 open letters").
   const worded = (tiles ?? []).map((t) => ({ ...t, lines: (t.lines ?? []).map(([n, label]) => [n, countLabel(n, label)]) }));
   const out = { charts, activity: feed ?? [], departments: worded, asOf: new Date().toISOString() };
-  out.briefing = briefing(actor, { ...out, decisions });
-  out.briefingSources = briefingSources({ ...out, decisions });
+  const desk = (await attempt('desk', () => deskLines(actor))) ?? [];
+  out.briefing = briefing(actor, { ...out, decisions, desk });
+  out.briefingSources = briefingSources({ ...out, decisions, desk });
   return out;
 }

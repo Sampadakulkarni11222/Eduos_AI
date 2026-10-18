@@ -1344,6 +1344,11 @@ async function seedOperations() {
   // month's edition published with flashcards, quiz and poll, saves, a comment waiting for staff: see seed_p4_newsletter.js.
   await (await import('./seed_p4_newsletter.js')).seedP4Newsletter({ section, attempt, who });
 
+  // ── Newsletter alert feeds and AI extraction (agent: p5 newsletter-ai) ──
+  // One sample Google Alert source (made-up feed address, never fetched) and five fictional items run through the
+  // deterministic extractor: candidates in the review queue, a duplicate and a skip. See seed_p5_newsletter_ai.js.
+  await (await import('./seed_p5_newsletter_ai.js')).seedP5NewsletterAi({ section, attempt, who });
+
   // ── What came out ────────────────────────────────────────────────────────
   const pending = await ApprovalRequest.countDocuments({ status: 'PENDING' }).catch(() => 0);
   // Printed directly, so the summary shows whatever the log level is.

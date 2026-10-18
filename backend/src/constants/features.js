@@ -46,6 +46,8 @@ export const FEATURES = {
   healthRoom: { label: 'Health room: visits, medication, immunisations and health cards', default: true },
   // Part 4: opportunities catalogue and the interactive weekly / monthly newsletter (built on the digest's approved feeds).
   newsletter: { label: 'Opportunities and the weekly / monthly newsletter', default: true },
+  // Part 5: editor-added alert feeds (Google Alerts through its RSS delivery) read hourly and extracted into the review queue.
+  newsletterAlerts: { label: 'Newsletter alert feeds (Google Alerts RSS) and AI extraction', default: true },
 };
 
 export const FEATURE_KEYS = Object.keys(FEATURES);

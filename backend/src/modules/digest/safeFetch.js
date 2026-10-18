@@ -76,10 +76,11 @@ async function defaultResolve(host) {
 }
 
 /** One GET pinned to an already-checked address. Resolves to `{ status, headers, body }` where body is async-iterable. */
-function defaultRequest(url, { address, family, signal }) {
+const FEED_ACCEPT = 'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8';
+function defaultRequest(url, { address, family, signal, accept = FEED_ACCEPT, userAgent = 'EduOS-Digest/1.0 (+approved feed reader)' }) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, {
-      headers: { 'User-Agent': 'EduOS-Digest/1.0 (+approved feed reader)', Accept: 'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8' },
+      headers: { 'User-Agent': userAgent, Accept: accept },
       lookup: (_host, opts, cb) => (opts?.all ? cb(null, [{ address, family }]) : cb(null, address, family)),
       signal,
     }, (res) => resolve({ status: res.statusCode, headers: res.headers, body: res }));
@@ -106,10 +107,16 @@ async function readCapped(body, maxBytes) {
 /**
  * `resolve(host)` → `[{ address, family }]` and `request(url, { address, family, signal })`
  * are injectable for tests; the defaults use the system resolver and https.
+ *
+ * Optional (added for the newsletter's page reader): `checkUrl(url)` runs on the
+ * first address and on every redirect target before anything connects (throw a
+ * FetchRefused to stop, e.g. a host not on an allowlist); `accept` and
+ * `userAgent` set the request headers of the default request.
  */
-export async function safeFetchText(rawUrl, { resolve = defaultResolve, request = defaultRequest, maxBytes = 1_000_000, timeoutMs = 8000, maxRedirects = 3 } = {}) {
+export async function safeFetchText(rawUrl, { resolve = defaultResolve, request = defaultRequest, maxBytes = 1_000_000, timeoutMs = 8000, maxRedirects = 3, checkUrl = null, accept, userAgent } = {}) {
   const signal = AbortSignal.timeout(timeoutMs);
   let url = assertFeedUrl(rawUrl);
+  if (checkUrl) checkUrl(url);
   for (let hop = 0; hop <= maxRedirects; hop += 1) {
     const host = url.hostname.replace(/^\[|\]$/g, '');
     let addresses;
@@ -121,7 +128,7 @@ export async function safeFetchText(rawUrl, { resolve = defaultResolve, request 
     if (addresses.some((a) => isBlockedAddress(a.address))) throw new FetchRefused(`${host} points inside a private network`, 'SSRF_BLOCKED');
     const { address, family } = addresses[0];
     let res;
-    try { res = await request(url, { address, family, signal }); } catch (err) {
+    try { res = await request(url, { address, family, signal, ...(accept && { accept }), ...(userAgent && { userAgent }) }); } catch (err) {
       if (err instanceof FetchRefused) throw err;
       throw new FetchRefused(signal.aborted ? 'The feed took too long to answer' : `Could not fetch the feed (${err?.code ?? err?.message ?? 'error'})`, signal.aborted ? 'TIMEOUT' : 'FETCH_FAILED');
     }
@@ -131,13 +138,14 @@ export async function safeFetchText(rawUrl, { resolve = defaultResolve, request 
       if (!location) throw new FetchRefused('The feed redirected without a destination', 'BAD_REDIRECT');
       if (hop === maxRedirects) throw new FetchRefused('The feed redirected too many times', 'TOO_MANY_REDIRECTS');
       url = assertFeedUrl(new URL(location, url));
+      if (checkUrl) checkUrl(url);
       continue;
     }
     if (res.status !== 200) { res.body?.destroy?.(); throw new FetchRefused(`The feed answered HTTP ${res.status}`, 'HTTP_STATUS'); }
     const declared = Number(res.headers?.['content-length']);
     if (Number.isFinite(declared) && declared > maxBytes) { res.body?.destroy?.(); throw new FetchRefused(`The feed is larger than ${Math.round(maxBytes / 1024)} KB`, 'TOO_LARGE'); }
     try {
-      return { url: url.toString(), text: await readCapped(res.body, maxBytes) };
+      return { url: url.toString(), text: await readCapped(res.body, maxBytes), contentType: String(res.headers?.['content-type'] ?? '') };
     } catch (err) {
       if (err instanceof FetchRefused) throw err;
       throw new FetchRefused(signal.aborted ? 'The feed took too long to answer' : 'The feed stopped part-way', signal.aborted ? 'TIMEOUT' : 'FETCH_FAILED');

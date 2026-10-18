@@ -5,6 +5,7 @@ import { Student, Enrollment, StudentGuardian } from '../../models/student.model
 import '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { recordAudit } from '../../utils/auditTrail.js';
+import { plural } from '../../utils/plural.js';
 import { sendOperational } from '../messaging/messaging.service.js';
 import { dueDateEndOfDay, istDayNumber, overdueDays, startOfIstToday } from './library.service.js';
 
@@ -348,10 +349,10 @@ export async function briefing({ now = new Date() } = {}) {
   const expiring = ready.filter((h) => h.readyUntil && new Date(h.readyUntil).getTime() - now.getTime() < DAY);
   const longLate = over.filter((o) => o.daysLate >= 14);
   const lines = [];
-  lines.push(`${over.length} loan(s) overdue${longLate.length ? `, ${longLate.length} of them two weeks or more` : ''}${over.length ? `; ${over.filter((o) => o.remindedOn !== ymd(now)).length} not reminded today` : ''}.`);
-  lines.push(`${ready.length} reservation(s) waiting on the hold shelf${expiring.length ? ` (${expiring.length} expire within a day)` : ''}; ${holds.length - ready.length} in queues.`);
-  if (fines.totalDueRupees) lines.push(`₹${fines.totalDueRupees} in fines not yet settled across ${fines.items.filter((f) => f.fineStatus === 'DUE').length} loan(s).`);
-  lines.push(`Last 30 days: ${ins.loans} loan(s) to ${ins.activeReaders} reader(s) (${ins.readerShare}% of students)${ins.popular[0] ? `; most borrowed "${ins.popular[0].title}" (${ins.popular[0].loans})` : ''}.`);
+  lines.push(`${plural(over.length, 'loan')} overdue${longLate.length ? `, ${longLate.length} of them two weeks or more` : ''}${over.length ? `; ${over.filter((o) => o.remindedOn !== ymd(now)).length} not reminded today` : ''}.`);
+  lines.push(`${plural(ready.length, 'reservation')} waiting on the hold shelf${expiring.length ? ` (${expiring.length} expire within a day)` : ''}; ${holds.length - ready.length} in queues.`);
+  if (fines.totalDueRupees) lines.push(`₹${fines.totalDueRupees} in fines not yet settled across ${plural(fines.items.filter((f) => f.fineStatus === 'DUE').length, 'loan')}.`);
+  lines.push(`Last 30 days: ${plural(ins.loans, 'loan')} to ${plural(ins.activeReaders, 'reader')} (${ins.readerShare}% of students)${ins.popular[0] ? `; most borrowed "${ins.popular[0].title}" (${ins.popular[0].loans})` : ''}.`);
   if (ins.idleTitles) lines.push(`${ins.idleTitles} title(s) have not been borrowed in a year; consider a display or weeding review.`);
   return { lines, evidence: { overdue: over.length, holdsReady: ready.length, holdsQueued: holds.length - ready.length, finesDueRupees: fines.totalDueRupees, loans30d: ins.loans, idleTitles: ins.idleTitles } };
 }
@@ -386,7 +387,7 @@ export async function suggestFor(studentId, { limit = 5 } = {}) {
     const reasons = [];
     let score = 0;
     const fi = favourite.indexOf(b.category);
-    if (fi >= 0) { score += 3 - Math.min(fi, 2); reasons.push(`${studentLabel(student)} has borrowed ${catCount.get(b.category)} ${b.category} book(s)`); }
+    if (fi >= 0) { score += 3 - Math.min(fi, 2); reasons.push(`${studentLabel(student)} has borrowed ${plural(catCount.get(b.category), `${b.category} book`)}`); }
     const mates = classmatesPick.get(String(b._id)) ?? 0;
     if (mates) { score += Math.min(mates, 3); reasons.push(`borrowed ${mates} time(s) by classmates this year`); }
     reasons.push(`${b.availableCopies} copy(ies) on the shelf now`);
@@ -446,7 +447,8 @@ export async function challengeProgress(id, { onlyStudentId = null } = {}) {
   let studentIds;
   if (onlyStudentId) studentIds = [onlyStudentId];
   else if (c.sectionIds?.length) studentIds = (await Enrollment.find({ sectionId: { $in: c.sectionIds }, status: 'ACTIVE' }).select('studentId').lean()).map((e) => String(e.studentId));
-  else studentIds = (await Student.find({ deletedAt: null }).select('_id').limit(5000).lean()).map((s) => String(s._id));
+  // Every student on roll now (an active enrolment), so former pupils and alumni are not counted as taking part.
+  else studentIds = [...new Set((await Enrollment.find({ status: 'ACTIVE' }).select('studentId').limit(5000).lean()).map((e) => String(e.studentId)))];
   const { students, byKey } = await borrowerIndex(studentIds);
   const keys = students.flatMap((s) => [s._id, s.profileId].filter(Boolean));
   const loans = await BookIssue.find({ borrowerProfileId: { $in: keys }, issuedAt: { $gte: c.startsOn, $lt: c.endsOn }, status: 'RETURNED' }).populate('bookId', 'title category').lean();

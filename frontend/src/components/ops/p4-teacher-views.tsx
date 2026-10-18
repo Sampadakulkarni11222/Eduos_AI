@@ -525,7 +525,7 @@ export function QuestionBankView() {
                   <p className="ops-muted">{q.totals.questions} question{q.totals.questions === 1 ? '' : 's'} · {q.totals.competencyBased} competency-based · {q.totals.marks} marks in all</p>
                   <ul className="ops-list">{q.items.map((x) => (
                     <li key={x.id} className="ops-row">
-                      <input type="checkbox" aria-label="Select for a paper" checked={picked.includes(x.id)} onChange={(e) => setPicked(e.target.checked ? [...picked, x.id] : picked.filter((y) => y !== x.id))} />
+                      <label className="p5-pick"><input type="checkbox" aria-label="Select for a paper" checked={picked.includes(x.id)} onChange={(e) => setPicked(e.target.checked ? [...picked, x.id] : picked.filter((y) => y !== x.id))} /></label>
                       <div className="ops-row-main">
                         <div className="ops-row-title" style={{ fontWeight: 600 }}>{x.text}</div>
                         {x.options.length > 0 && <div className="ops-row-sub">{x.options.map((o, i) => `${String.fromCharCode(97 + i)}) ${o.text}${o.isCorrect ? ' ✔' : ''}`).join('   ')}</div>}

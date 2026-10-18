@@ -237,7 +237,10 @@ export async function handleInboundMessage({ from, text, conversation = null, in
   // The continuation of the last long list, if the last reply offered one.
   const continuationToken = await latestContinuation(conversation);
 
-  return runInActorScope(resolved, () => converse({ ...resolved, text, history, continuationToken }));
+  // The session id names the server-side conversation memory (agent/memory.js):
+  // what the turns were about -- the draft under discussion, the students the
+  // last answer listed -- kept for this person on this channel.
+  return runInActorScope(resolved, () => converse({ ...resolved, text, history, continuationToken, conversationId: conversation?.sessionId ?? null }));
 }
 
 /**
@@ -247,7 +250,7 @@ export async function handleInboundMessage({ from, text, conversation = null, in
  * in-app simulator (actor from the session), so the simulator is a true
  * preview rather than a lookalike.
  */
-export async function converse({ actor, multipleProfiles = false, roleLabel = '', text, history = [], continuationToken = null }) {
+export async function converse({ actor, multipleProfiles = false, roleLabel = '', text, history = [], continuationToken = null, conversationId = null }) {
   const message = String(text ?? '').trim();
   const lang = await replyLanguage(message, actor);
   if (!message) return { reply: t('agent.sendText', lang), lang };
@@ -308,7 +311,7 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
   // The safe variant, for the same reason the web route uses it: a provider
   // outage should degrade to a rule-based answer, not to silence on someone's
   // phone.
-  const result = await runAgentSafely({ message, actor, source: 'WHATSAPP', lang, history });
+  const result = await runAgentSafely({ message, actor, source: 'WHATSAPP', lang, history, conversationId });
 
   // The assistant answers in Markdown (agent/present.js); WhatsApp shows
   // `**` and table pipes literally, so the reply is put in its own dialect.

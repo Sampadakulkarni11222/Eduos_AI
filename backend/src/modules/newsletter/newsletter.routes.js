@@ -10,6 +10,8 @@ import { School } from '../../models/school.model.js';
 import { AppError } from '../../utils/AppError.js';
 import * as opps from './opportunities.service.js';
 import * as editions from './editions.service.js';
+import * as alerts from './alerts.service.js';
+import * as editionsAi from './editionsAi.service.js';
 
 /**
  * @swagger
@@ -76,6 +78,24 @@ router.patch('/editions/:id', manage, ok((r) => editions.updateDraft(r.actor, r.
 router.post('/editions/:id/publish', manage, ok((r) => editions.publish(r.actor, r.params.id), 'Edition published'));
 router.post('/editions/:id/withdraw', manage, ok((r) => editions.withdraw(r.actor, r.params.id, r.body), 'Edition withdrawn'));
 router.get('/analytics', manage, ok((r) => editions.analytics(r.actor)));
+
+// Part 5: alert feeds (Google Alerts through its RSS delivery, and other approved feeds), AI extraction
+// into the review queue, AI-written editions with "Regenerate this section", and the richer reader layer.
+const alertsOn = requireFeature('newsletterAlerts');
+router.get('/alerts/guide', alertsOn, manage, ok(() => alerts.guide()));
+router.get('/alerts/sources', alertsOn, manage, ok((r) => alerts.listSources(r.actor)));
+router.post('/alerts/sources', alertsOn, manage, ok((r) => alerts.addSource(r.actor, r.body), 'Feed added', 201));
+router.patch('/alerts/sources/:id', alertsOn, manage, ok((r) => alerts.updateSource(r.actor, r.params.id, r.body), 'Feed updated'));
+router.post('/alerts/sources/:id/check', alertsOn, manage, ok((r) => alerts.checkSource(r.actor, r.params.id), 'Checked'));
+router.get('/alerts/items', alertsOn, manage, ok((r) => alerts.recentItems(r.actor, r.query)));
+router.get('/alerts/queue', alertsOn, manage, ok((r) => alerts.reviewQueue(r.actor)));
+router.get('/alerts/analytics', alertsOn, manage, ok((r) => alerts.analytics(r.actor)));
+router.post('/alerts/run', alertsOn, manage, ok(() => alerts.runAlerts(), 'Feeds checked'));
+router.post('/editions/:id/regenerate', manage, ok((r) => editionsAi.regenerateSection(r.actor, r.params.id, r.body), 'Section regenerated'));
+router.get('/editions/:id/extras', read, ok((r) => editionsAi.extras(r.actor, r.params.id)));
+router.get('/editions/:id/classmates', read, ok((r) => editionsAi.classmates(r.actor, r.params.id)));
+router.get('/editions/:id/challenges', read, ok((r) => editionsAi.myChallenges(r.actor, r.params.id)));
+router.post('/editions/:id/challenges', read, ok((r) => editionsAi.challenge(r.actor, r.params.id, r.body), 'Challenge sent', 201));
 
 export default router;
 

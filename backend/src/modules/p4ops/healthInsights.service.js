@@ -182,3 +182,5 @@ export async function registerCsv(actor, query = {}) {
 }
 
 export const _test = { categoryOf };
+// Part 5: the nurse's role dashboard sorts visits into the same broad reasons.
+export { CATEGORIES as COMPLAINT_CATEGORIES, categoryOf as complaintCategory };

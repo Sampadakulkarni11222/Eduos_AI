@@ -6,6 +6,7 @@ import { usePermissions } from '@/lib/permissions';
 import { CONCERN_AREAS, GOAL_STATUSES, PLAN_OUTCOMES, portfolioApi, supportApi, type FamilyPlanDto, type PlanSuggestion, type SupportPlanDto } from '@/lib/p2-api';
 import { Drawer } from './drawer';
 import { DataNote, ErrorNote, KeyValues, Loadable, SectionCard, StatusPill, Tabs, Tile, Timeline, fmtDate, humanize, isoDay, useAction, useLoad, useQueryParam } from './kit';
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /**
  * Student support plans. Staff open a plan from the rule-based risk signals
@@ -37,9 +38,13 @@ function FamilyPlans() {
   const [ack, setAck] = useState<FamilyPlanDto | null>(null);
   const [comment, setComment] = useState('');
   const { run, busy, error } = useAction();
+  const { me } = useAuth();
+  const student = me?.profile?.role === 'STUDENT';
   return (
     <div className="ops-stack">
-      <DataNote>Plans the school has shared with you about your own child: what the plan is for, its goals and how they are going. Teachers&apos; internal notes are not shown here.</DataNote>
+      <DataNote>{student
+        ? 'Plans your school has shared with you: what each plan is for, its goals and how they are going. Teachers’ internal notes are not shown here.'
+        : 'Plans the school has shared with you about your own child: what the plan is for, its goals and how they are going. Teachers’ internal notes are not shown here.'}</DataNote>
       <Loadable state={state}>{(d) => !d.items.length ? <EmptyState title="No support plans" sub="When the school opens a support plan for your child and shares it, it appears here." /> : (
         <>{d.items.map((p) => (
           <SectionCard key={p.id} title={`${p.studentName} · ${p.areaLabel}`} sub={`${p.refNo} · ${p.ownerName ?? ''}${p.nextReviewOn ? ` · next review ${fmtDate(p.nextReviewOn)}` : ''}`} actions={!p.acknowledgedAt && p.status === 'ACTIVE' ? <Button small onClick={() => { setAck(p); setComment(''); }}>I have read this</Button> : <StatusPill status={p.status === 'CLOSED' ? 'CLOSED' : 'ACKNOWLEDGED'} label={p.status === 'CLOSED' ? `Closed${p.closure?.outcome ? `: ${humanize(p.closure.outcome)}` : ''}` : 'Read'} />}>
@@ -212,11 +217,11 @@ function StaffPlans() {
         )}</Loadable>
       ) : (
         <Loadable state={list}>{(d) => !d.items.length ? <EmptyState title={tab === 'ACTIVE' ? 'No active plans' : 'No closed plans'} sub="Open a plan from the risk signals or for any student you teach." /> : (
-          <SectionCard title={`${d.items.length} plan(s)`}>
+          <SectionCard title={plural(d.items.length, 'plan')}>
             <ul className="ops-list">{d.items.map((p) => (
               <li key={p.id} className="ops-row"><div className="ops-row-main"><button type="button" className="ops-row-link" onClick={() => setSelected(p.id)}>
                 <div className="ops-row-title">{p.studentName} · {p.areaLabel}</div>
-                <div className="ops-row-sub">{p.refNo} · {p.className} · {p.goals.length} goal(s) · {p.ownerName}{p.nextReviewOn ? ` · review ${fmtDate(p.nextReviewOn)}` : ''}</div>
+                <div className="ops-row-sub">{p.refNo} · {p.className} · {plural(p.goals.length, 'goal')} · {p.ownerName}{p.nextReviewOn ? ` · review ${fmtDate(p.nextReviewOn)}` : ''}</div>
               </button></div>{p.reviewOverdue ? <StatusPill status="OVERDUE" label="Review overdue" /> : <StatusPill status={p.status === 'ACTIVE' ? 'ACTIVE' : 'CLOSED'} />}</li>
             ))}</ul>
           </SectionCard>

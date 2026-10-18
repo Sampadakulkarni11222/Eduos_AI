@@ -5,6 +5,7 @@ import { request } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { p4Api, type Candidate, type CashExpected, type ExitCase, type Vacancy } from '@/lib/p4-ops-api';
 import { DataNote, ErrorNote, Loadable, SectionCard, StatusPill, Tabs, Tile, Timeline, fmtDate, humanize, isoDay, money, rupeesToPaise, useAction, useLoad } from './kit';
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /**
  * Part 4 (finance, HR, nurse audit):
@@ -115,7 +116,7 @@ function AgeingTab() {
       <ErrorNote error={error} />
       <Loadable state={a}>{(d) => (<>
         <div className="kpi-grid">
-          {d.buckets.map((b) => <Tile key={b.key} label={`${b.key} days · ${b.students} student(s)`} value={money(b.amountPaise)} tone={b.key === '90+' || b.key === '61-90' ? 'bad' : 'warn'} />)}
+          {d.buckets.map((b) => <Tile key={b.key} label={`${b.key} days · ${plural(b.students, 'student')}`} value={money(b.amountPaise)} tone={b.key === '90+' || b.key === '61-90' ? 'bad' : 'warn'} />)}
         </div>
         {!d.items.length ? <p className="ops-muted">Nobody is overdue{bucket ? ' in this bucket' : ''}.</p> : (
           <div className="ops-table-wrap"><table className="ops-table"><thead><tr><th>Student</th><th>Class</th><th className="num">Outstanding</th><th>Oldest due</th><th>Age</th><th>Last paid</th><th>Plan</th></tr></thead><tbody>
@@ -251,12 +252,12 @@ export function RecruitmentView() {
     <div className="bill-view">
       <SectionCard title="Vacancies" actions={<Button small onClick={() => setNewVac(true)}>Open a vacancy</Button>}>
         <Loadable state={vac}>{(d) => (!d.items.length ? <p className="ops-muted">No vacancies yet.</p> : (
-          <div className="ops-table-wrap"><table className="ops-table"><thead><tr><th>Post</th><th>Status</th><th>Closes</th>{STAGES.map((s) => <th key={s} className="num">{humanize(s)}</th>)}</tr></thead><tbody>
+          <div className="ops-table-wrap"><table className="ops-table data-table-cards p5-pipeline"><thead><tr><th>Post</th><th>Status</th><th>Closes</th>{STAGES.map((s) => <th key={s} className="num">{humanize(s)}</th>)}</tr></thead><tbody>
             {d.items.map((v) => (
               <tr key={v.id} className={`is-clickable${selected === v.id ? ' p4-sel' : ''}`} onClick={() => setSelected(selected === v.id ? '' : v.id)}>
-                <td><b>{v.title}</b><div className="ops-muted">{v.refNo}{v.department ? ` · ${v.department}` : ''}{v.qualifications ? ` · ${v.qualifications}` : ''}</div></td>
-                <td><StatusPill status={v.status} /></td><td>{v.closesOn ? fmtDate(v.closesOn) : '—'}</td>
-                {STAGES.map((s) => <td key={s} className="num">{v.pipeline[s] ?? 0}</td>)}
+                <td data-label="Post"><b>{v.title}</b><div className="ops-muted">{v.refNo}{v.department ? ` · ${v.department}` : ''}{v.qualifications ? ` · ${v.qualifications}` : ''}</div></td>
+                <td data-label="Status"><StatusPill status={v.status} /></td><td data-label="Closes">{v.closesOn ? fmtDate(v.closesOn) : '—'}</td>
+                {STAGES.map((s) => <td key={s} data-label={humanize(s)} className="num">{v.pipeline[s] ?? 0}</td>)}
               </tr>
             ))}
           </tbody></table></div>
@@ -264,11 +265,11 @@ export function RecruitmentView() {
       </SectionCard>
       <SectionCard title={selected ? `Candidates — ${vac.data?.items.find((v) => v.id === selected)?.title ?? ''}` : 'All candidates'} actions={<Button small variant="soft" disabled={!vac.data?.items.some((v) => v.status === 'OPEN')} onClick={() => setNewCand(true)}>Add candidate</Button>}>
         <Loadable state={cands}>{(d) => (!d.items.length ? <p className="ops-muted">No candidates.</p> : (
-          <div className="ops-table-wrap"><table className="ops-table"><thead><tr><th>Candidate</th><th>Post</th><th>Stage</th><th className="num">Score</th><th>Verification</th></tr></thead><tbody>
+          <div className="ops-table-wrap"><table className="ops-table data-table-cards"><thead><tr><th>Candidate</th><th>Post</th><th>Stage</th><th className="num">Score</th><th>Verification</th></tr></thead><tbody>
             {d.items.map((c) => (
               <tr key={c.id} className="is-clickable" onClick={() => setOpen(c)}>
-                <td><b>{c.name}</b><div className="ops-muted">{c.experienceYears !== null ? `${c.experienceYears} yrs` : ''}{c.qualifications ? ` · ${c.qualifications}` : ''}</div></td>
-                <td>{c.vacancy?.title}</td><td><StatusPill status={c.stage} /></td><td className="num">{c.averageScore ?? '—'}</td><td>{c.verificationStatus ? humanize(c.verificationStatus) : '—'}</td>
+                <td data-label="Candidate"><b>{c.name}</b><div className="ops-muted">{c.experienceYears !== null ? `${c.experienceYears} yrs` : ''}{c.qualifications ? ` · ${c.qualifications}` : ''}</div></td>
+                <td data-label="Post">{c.vacancy?.title}</td><td data-label="Stage"><StatusPill status={c.stage} /></td><td data-label="Score" className="num">{c.averageScore ?? '—'}</td><td data-label="Verification">{c.verificationStatus ? humanize(c.verificationStatus) : '—'}</td>
               </tr>
             ))}
           </tbody></table></div>
@@ -379,6 +380,8 @@ function CandidateDrawer({ candidate: c, onClose, onChanged }: { candidate: Cand
 // ── exits ────────────────────────────────────────────────────────────────
 
 const DEPTS = ['ACADEMICS', 'LIBRARY', 'IT', 'ACCOUNTS', 'ADMIN', 'TRANSPORT', 'LABS', 'HOSTEL'];
+/** "IT" stays upper case; the rest read as words. */
+const deptLabel = (d: string) => (d === 'IT' ? 'IT' : humanize(d));
 
 export function StaffExitsView() {
   const [showAll, setShowAll] = useState(false);
@@ -392,12 +395,12 @@ export function StaffExitsView() {
         <Button small onClick={() => setStart(true)}>Start an exit</Button>
       </>}>
         <Loadable state={list}>{(d) => (!d.items.length ? <p className="ops-muted">No exits{showAll ? '' : ' open'}.</p> : (
-          <div className="ops-table-wrap"><table className="ops-table"><thead><tr><th>Staff</th><th>Kind</th><th>Last working day</th><th>Notice</th><th>Clearances</th><th>Status</th></tr></thead><tbody>
+          <div className="ops-table-wrap"><table className="ops-table data-table-cards"><thead><tr><th>Staff</th><th>Kind</th><th>Last working day</th><th>Notice</th><th>Clearances</th><th>Status</th></tr></thead><tbody>
             {d.items.map((x) => (
               <tr key={x.id} className="is-clickable" onClick={() => setOpen(x)}>
-                <td><b>{x.name}</b><div className="ops-muted">{x.refNo}</div></td><td>{humanize(x.kind)}</td><td>{fmtDate(x.lastWorkingDay)}</td>
-                <td>{x.noticeWaived ? 'Waived' : `${x.noticeServedDays} / ${x.noticeDaysRequired} days`}</td>
-                <td>{x.clearancesPending ? <Pill tone="amber">{x.clearancesPending} pending</Pill> : <Pill tone="green">All in</Pill>}</td><td><StatusPill status={x.status} /></td>
+                <td data-label="Staff"><b>{x.name}</b><div className="ops-muted">{x.refNo}</div></td><td data-label="Kind">{humanize(x.kind)}</td><td data-label="Last working day">{fmtDate(x.lastWorkingDay)}</td>
+                <td data-label="Notice">{x.noticeWaived ? 'Waived' : `${x.noticeServedDays} / ${x.noticeDaysRequired} days`}</td>
+                <td data-label="Clearances">{x.clearancesPending ? <Pill tone="amber">{x.clearancesPending} pending</Pill> : <Pill tone="green">All in</Pill>}</td><td data-label="Status"><StatusPill status={x.status} /></td>
               </tr>
             ))}
           </tbody></table></div>
@@ -423,7 +426,7 @@ function StartExitModal({ onClose, onDone }: { onClose: () => void; onDone: () =
         <Field label="Notice required (days)"><input className="input" inputMode="numeric" value={f.noticeDaysRequired} onChange={(e) => setF({ ...f, noticeDaysRequired: e.target.value })} /></Field>
       </div>
       <Field label="Departments to clear"><div className="p4-chips">{DEPTS.map((d) => (
-        <label key={d} className="p4-check"><input type="checkbox" checked={f.departments.includes(d)} onChange={(e) => setF({ ...f, departments: e.target.checked ? [...f.departments, d] : f.departments.filter((x) => x !== d) })} /> {humanize(d)}</label>
+        <label key={d} className="p4-check"><input type="checkbox" checked={f.departments.includes(d)} onChange={(e) => setF({ ...f, departments: e.target.checked ? [...f.departments, d] : f.departments.filter((x) => x !== d) })} /> {deptLabel(d)}</label>
       ))}</div></Field>
       <Field label="Reason"><textarea className="input" rows={2} value={f.reason} onChange={(e) => setF({ ...f, reason: e.target.value })} /></Field>
       <ErrorNote error={error} />
@@ -441,12 +444,12 @@ function ExitDrawer({ x, onClose, onChanged }: { x: ExitCase; onClose: () => voi
   const toast = useToast();
   return (
     <Modal wide title={`${x.name} — ${humanize(x.kind)}`} onClose={onClose}>
-      <p><StatusPill status={x.status} /> {x.refNo} · notice {fmtDate(x.noticeOn)} · last working day {fmtDate(x.lastWorkingDay)} · {x.noticeWaived ? 'notice waived' : `${x.noticeServedDays} of ${x.noticeDaysRequired} days served`}</p>
+      <p><StatusPill status={x.status} /> {x.refNo} · notice {fmtDate(x.noticeOn)} · last working day {fmtDate(x.lastWorkingDay)} · {x.noticeWaived ? 'notice waived' : `notice period ${x.noticeServedDays} days (${x.noticeDaysRequired} required)`}</p>
       <ErrorNote error={error} />
       <SectionCard title="Clearances">
         <div className="ops-table-wrap"><table className="ops-table"><tbody>
           {x.clearances.map((c) => (
-            <tr key={c.department}><td>{humanize(c.department)}</td><td><StatusPill status={c.status} />{c.duesPaise ? ` ${money(c.duesPaise)}` : ''}{c.note ? <div className="ops-muted">{c.note}</div> : null}</td>
+            <tr key={c.department}><td>{deptLabel(c.department)}</td><td><StatusPill status={c.status} />{c.duesPaise ? ` ${money(c.duesPaise)}` : ''}{c.note ? <div className="ops-muted">{c.note}</div> : null}</td>
               <td>{!['CLOSED', 'WITHDRAWN'].includes(x.status) && <div className="lab-actions">
                 <Button small variant="soft" disabled={busy} onClick={() => void run(async () => onChanged(await p4Api.clearance(x.id, { department: c.department, status: 'CLEARED' })))}>Cleared</Button>
                 <input className="input lab-count" placeholder="₹ due" aria-label={`Dues for ${c.department}`} value={dues[c.department]?.amount ?? ''} onChange={(e) => setDues({ ...dues, [c.department]: { ...(dues[c.department] ?? { note: '' }), amount: e.target.value } })} />

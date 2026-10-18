@@ -58,7 +58,11 @@ campusRouter.get('/live', requirePermission('campus.map.read'), asyncHandler(asy
 campusRouter.get('/my-view', requirePermission('campus.map.read'), asyncHandler(async (req, res) => {
   const a = req.actor;
   const studentId = req.query.studentId ? String(req.query.studentId) : null;
-  sendSuccess(res, await shortCache(`campus-mine:${a.tenantId}:${a.profileId}:${studentId ?? ''}`, LIVE_CACHE_MS, () => myView(a, { studentId })));
+  // Part 5: staff previewing another time on the campus clock see their own classes at that time too.
+  const family = ['PARENT', 'STUDENT', 'ALUMNUS'].includes(a.roleKey);
+  const at = family ? null : momentFromQuery({ date: req.query.date || null, at: req.query.at || null });
+  const when = at ? `${req.query.date ?? ''}@${req.query.at ?? ''}` : '';
+  sendSuccess(res, await shortCache(`campus-mine:${a.tenantId}:${a.profileId}:${studentId ?? ''}:${when}`, LIVE_CACHE_MS, () => myView(a, { studentId, ...(at ? { now: at } : {}) })));
 }));
 // The school day at a moment (now, or a date and time staff pick): open or closed, each
 // shift's bell, where each class is. Families: now only, with numbers for their own class.

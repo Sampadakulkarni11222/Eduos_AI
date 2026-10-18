@@ -27,6 +27,7 @@ import { runBillsDue } from '../modules/bills/bills.service.js';
 import { syncRenewals } from '../modules/bills/renewals.service.js';
 import { runDaily as runDigest } from '../modules/digest/digest.service.js';
 import { runScheduled as runNewsletter } from '../modules/newsletter/editions.service.js';
+import { pollFeeds as pollAlertFeeds, extractPending as extractAlertItems } from '../modules/newsletter/alerts.service.js';
 import { syncAllConnected as runAdSync } from '../modules/integrations/adsync.service.js';
 import { refreshDue as refreshSocialEngagement } from '../modules/integrations/engagement.service.js';
 
@@ -98,6 +99,10 @@ export const JOBS = [
   // Part 4 newsletter: opportunity candidates from the approved feeds, this week's and this month's drafts (once per period;
   // an editor publishes), and "Remind me" deadline reminders through the outbox.
   { key: 'newsletter.daily', everyMinutes: 24 * 60, feature: 'newsletter', run: (now) => runNewsletter({ now }) },
+  // Part 5 newsletter alerts: read the editor-added feeds that are due (hourly; a failing feed backs off 2h, 4h ... a day),
+  // then turn new items into review-queue candidates (unique per item; nothing is published). Both idempotent.
+  { key: 'newsletter.alerts.poll', everyMinutes: 60, feature: 'newsletterAlerts', run: async (now) => ((await featureEnabled('newsletter')) ? pollAlertFeeds({ now }) : { skipped: 'newsletter is switched off' }) },
+  { key: 'newsletter.alerts.extract', everyMinutes: 30, feature: 'newsletterAlerts', run: async (now) => ((await featureEnabled('newsletter')) ? extractAlertItems({ now }) : { skipped: 'newsletter is switched off' }) },
   // Live ad sync: daily campaign metrics for the last three days from each connected ad account; re-syncing replaces, never doubles.
   // Makes no request at all for a school with no connected account (or when the provider app is not configured).
   // Gated inside run (not `feature:`) because both switches are off by default and the job is still listed for every school.

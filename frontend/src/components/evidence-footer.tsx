@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { usePortalHref } from '@/lib/school-path';
+import { usePortalHref, usePortalPage } from '@/lib/school-path';
 
 /**
  * "Based on": the source records behind a piece of AI-written or generated
@@ -12,6 +12,9 @@ export interface EvidenceItem { text: string; link?: string | null }
 
 export function EvidenceFooter({ items, title = 'Based on', note }: { items?: EvidenceItem[] | null; title?: string; note?: string }) {
   const href = usePortalHref();
+  const page = usePortalPage();
+  // The portal's own page first ("/fees" is Payments for finance), so a source never links to "not found".
+  const to = (link: string) => page(link) ?? href(link);
   if (!items?.length && !note) return null;
   return (
     <div className="evidence-footer" role="note" aria-label={title}>
@@ -20,7 +23,7 @@ export function EvidenceFooter({ items, title = 'Based on', note }: { items?: Ev
       {!!items?.length && (
         <ul className="evidence-list">
           {items.map((e, i) => (
-            <li key={i}>{e.link ? <Link href={href(e.link)}>{e.text}</Link> : e.text}</li>
+            <li key={i}>{e.link ? <Link href={to(e.link)}>{e.text}</Link> : e.text}</li>
           ))}
         </ul>
       )}

@@ -57,6 +57,12 @@ const KINDS = {
   GENERIC: { prefix: 'CERT', title: null, needsClearance: false },
 };
 
+/** The printed title: a Study or Enrolment Certificate keeps its own name; other kinds use the standard title. */
+export function titleFor(kind, typeName = '') {
+  if (kind === 'BONAFIDE' && /study|enrol?ment/i.test(String(typeName))) return String(typeName).trim();
+  return KINDS[kind].title ?? typeName;
+}
+
 export function kindOf(typeName = '') {
   const n = String(typeName).toLowerCase();
   if (/transfer|migration/.test(n)) return 'TC';
@@ -122,7 +128,7 @@ export async function clearance(actor, requestId) {
   const r = await loadRequest(requestId);
   const kind = kindOf(r.documentTypeName);
   const result = await clearanceFor(r.studentId);
-  return { requestId: String(r._id), kind, title: KINDS[kind].title ?? r.documentTypeName, required: KINDS[kind].needsClearance, ...result };
+  return { requestId: String(r._id), kind, title: titleFor(kind, r.documentTypeName), required: KINDS[kind].needsClearance, ...result };
 }
 
 async function attendanceThisYear(enrollmentId) {
@@ -170,6 +176,8 @@ export async function particulars(requestId) {
     attendance: await attendanceThisYear(current?._id ?? null),
     feesPaidUpTo: paid[0]?.dueOn ?? null, paidThisFy,
     gender: student.gender ?? null,
+    // Part 5: a former pupil (no active enrolment, e.g. an alumnus) gets past-tense wording.
+    former: !enrolments.some((e) => e.status === 'ACTIVE'),
   };
 }
 
@@ -214,6 +222,12 @@ function buildContent(kind, p, o, request) {
       ],
     };
   }
+  if (p.former && (kind === 'BONAFIDE' || kind === 'CHARACTER' || kind === 'GENERIC')) {
+    // A former pupil is no longer "a bonafide student" or "at present in" a class.
+    const span = `${p.firstAdmission ? ` from ${fmt(p.firstAdmission.on)}` : ''}${p.academicYear ? ` until the academic year ${p.academicYear}` : ''}`;
+    const conduct = kind === 'CHARACTER' ? ` To the best of our knowledge ${pronoun[1]} conduct and character while at the school were ${(o.conduct ?? 'good').toLowerCase()}.` : '';
+    return { body: `This is to certify that ${p.name}, ${pronoun[2]} of ${parent}, admission no. ${p.student.admissionNo ?? '—'}, was a student of this school${span}, last studying in ${p.lastClass ?? '—'}. ${pronoun[0]} ${pronoun[0] === 'They' ? 'were' : 'was'} born on ${fmt(p.dob) ?? '—'} (${dateInWords(p.dob) ?? '—'}) as per the school admission register.${conduct}${o.purpose ? ` This certificate is issued on request for the purpose of ${o.purpose}.` : ''}${o.remarks ? ` ${o.remarks}` : ''}`, rows: [] };
+  }
   if (kind === 'BONAFIDE') {
     return { body: `This is to certify that ${p.name}, ${pronoun[2]} of ${parent}, admission no. ${p.student.admissionNo ?? '—'}, is a bonafide student of this school, studying in ${p.lastClass ?? '—'}${p.academicYear ? ` in the academic year ${p.academicYear}` : ''}. ${pronoun[0]} ${pronoun[0] === 'They' ? 'were' : 'was'} born on ${fmt(p.dob) ?? '—'} (${dateInWords(p.dob) ?? '—'}) as per the school admission register.${o.purpose ? ` This certificate is issued on request for the purpose of ${o.purpose}.` : ''}${o.remarks ? ` ${o.remarks}` : ''}`, rows: [] };
   }
@@ -231,7 +245,7 @@ export async function preview(actor, requestId, body = {}) {
   const p = await particulars(requestId);
   const kind = kindOf(p.request.documentTypeName);
   const content = buildContent(kind, p, officeFields(body), p.request);
-  return { kind, title: KINDS[kind].title ?? p.request.documentTypeName, school: p.school, admissionNo: p.student.admissionNo, ...content, clearance: await clearanceFor(p.student._id), needsClearance: KINDS[kind].needsClearance };
+  return { kind, title: titleFor(kind, p.request.documentTypeName), school: p.school, admissionNo: p.student.admissionNo, ...content, clearance: await clearanceFor(p.student._id), needsClearance: KINDS[kind].needsClearance };
 }
 
 /**
@@ -259,7 +273,7 @@ export async function generate(actor, requestId, body = {}) {
   const serialNo = await nextRef(KINDS[kind].prefix);
   const verificationCode = crypto.randomBytes(5).toString('hex').toUpperCase();
   const me = await Profile.findById(actor.profileId).select('displayName').lean();
-  const title = KINDS[kind].title ?? r.documentTypeName;
+  const title = titleFor(kind, r.documentTypeName);
 
   // Write the PDF where uploads live and record it as this person's upload,
   // so the request's own issue path (checks, versions, audit, notice) attaches it.

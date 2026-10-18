@@ -116,6 +116,31 @@ export async function seedHealth({ section, attempt, who, tenantId }) {
       // eslint-disable-next-line no-await-in-loop
       await attempt('immunisation', () => health.addEntry(nurse, { studentId: sid, kind: 'IMMUNISATION', on: ymdIst(new Date(Date.now() - 200 * DAY)), vaccine: 'Td (tetanus, diphtheria) booster', doseNo: '1', givenAt: 'School health camp' }));
     }
+    // Part 5 (QA): enough history for the nurse's dashboard and Health Watch: earlier weeks of visits with
+    // varied reasons, a possible fever cluster in one class, a frequent visitor, an immunisation falling due,
+    // one expired stock item, and a parent-shared care note in the demo teacher's own class.
+    const history = [
+      [5, kid(6), 'Fever and body ache', 'SENT_HOME'], [6, kid(7), 'High temperature, chills', 'SENT_HOME'], [6, kid(8), 'Fever since morning', 'REST'],
+      [9, kid(3), 'Cough and sore throat', 'RETURNED_TO_CLASS'], [12, kid(9), 'Itchy rash on the arms', 'REFERRED'], [13, kid(3), 'Headache in the sun', 'REST'],
+      [16, kid(10), 'Red, sticky eye', 'SENT_HOME'], [19, kid(3), 'Stomach ache after lunch', 'REST'], [23, kid(11), 'Vomited once in class', 'SENT_HOME'],
+      [26, kid(3), 'Feeling dizzy', 'RETURNED_TO_CLASS'], [33, kid(1), 'Runny nose and cough', 'RETURNED_TO_CLASS'], [40, kid(2), 'Toothache', 'REFERRED'],
+    ];
+    for (const [d, studentId, complaint, outcome] of history) {
+      // eslint-disable-next-line no-await-in-loop
+      const v = await attempt('health visit (history)', () => health.recordVisit(nurse, { studentId, arrivedAt: atIst(d, '10:10'), leftAt: atIst(d, '10:40'), complaint, action: 'Seen and recorded (sample)', outcome, injury: false, medicineGiven: false }));
+      if (v) made += 1;
+    }
+    await attempt('immunisation due', () => health.addEntry(nurse, { studentId: kid(4), kind: 'IMMUNISATION', on: ymdIst(new Date(Date.now() - 170 * DAY)), vaccine: 'Hepatitis B', doseNo: '2', givenAt: 'School health camp', nextDueOn: ymdIst(new Date(Date.now() + 12 * DAY)) }));
+    await attempt('stock expired', () => health.addStock(nurse, { name: 'Antiseptic cream 20 g', kind: 'FIRST_AID', quantity: 3, unit: 'tubes', reorderLevel: 2, expiresOn: ymdIst(new Date(Date.now() - 5 * DAY)), batchNo: 'AC-077' }));
+    if (classmates[0]) {
+      const guardian = await StudentGuardian.findOne({ studentId: classmates[0] }).lean();
+      const gProfile = guardian ? await Profile.findById(guardian.guardianProfileId).lean() : null;
+      const pRole = await Role.findOne({ key: 'PARENT' }).lean();
+      if (gProfile && pRole) {
+        const g = { accountId: String(gProfile.accountId), profileId: String(gProfile._id), displayName: gProfile.displayName, roleKey: 'PARENT', permissions: buildPermissionMap(pRole), tenantId };
+        await attempt('care note for the class teacher', () => health.createCareNote(g, { studentId: classmates[0], text: 'Wears glasses; please seat near the board', severity: 'INFO', share: true }));
+      }
+    }
     return `${made} visits, ${plans} medication plans with doses, ${stock.length} stock items (one expiring soon, as a task), care notes, screenings and immunisations`;
   });
 }

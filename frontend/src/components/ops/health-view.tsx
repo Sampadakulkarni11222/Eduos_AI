@@ -8,6 +8,7 @@ import {
   type CareNoteDto, type DoseDueDto, type FamilyChildDto, type HealthVisitDto, type MedicationPlanDto, type StockDto,
 } from '@/lib/health-api';
 import { AttachUpload } from './attach';
+import { RoleDashboard } from './role-dashboard';
 import { DataNote, ErrorNote, KeyValues, Loadable, SectionCard, StatusPill, Tabs, Tile, fmtDate, humanize, isoDay, useAction, useLoad } from './kit';
 
 /**
@@ -189,7 +190,7 @@ function CareNoteModal({ studentId, family, onClose, onDone }: { studentId: stri
 }
 
 // ── the nurse ───────────────────────────────────────────────────────────
-type NurseTab = 'today' | 'visits' | 'medication' | 'stock' | 'notes' | 'records' | 'settings';
+type NurseTab = 'today' | 'insights' | 'visits' | 'medication' | 'stock' | 'notes' | 'records' | 'settings';
 
 function VisitRow({ v, showStudent = true, onLeft }: { v: HealthVisitDto; showStudent?: boolean; onLeft?: () => void }) {
   return (
@@ -268,7 +269,7 @@ function NurseDesk() {
   return (
     <div className="ops-stack">
       <Tabs<NurseTab> value={tab} onChange={setTab} tabs={[
-        { key: 'today', label: 'Today', count: today.data?.visits.length ?? null }, { key: 'visits', label: 'Visits' }, { key: 'medication', label: 'Medication' },
+        { key: 'today', label: 'Today', count: today.data?.visits.length ?? null }, { key: 'insights', label: 'Insights' }, { key: 'visits', label: 'Visits' }, { key: 'medication', label: 'Medication' },
         { key: 'stock', label: 'Stock', count: today.data ? today.data.stock.expired + today.data.stock.expiringSoon : null }, { key: 'notes', label: 'Care notes' }, { key: 'records', label: 'Health cards' }, { key: 'settings', label: 'Settings' },
       ]} />
       <ErrorNote error={error} />
@@ -290,6 +291,7 @@ function NurseDesk() {
           </>
         )}</Loadable>
       )}
+      {tab === 'insights' && <RoleDashboard />}
       {tab === 'visits' && <VisitsTab onNew={() => setVisitOpen(true)} />}
       {tab === 'medication' && <MedicationTab />}
       {tab === 'stock' && <StockTab />}

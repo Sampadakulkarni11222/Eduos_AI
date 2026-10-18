@@ -12,6 +12,7 @@ import {
   nextRef, requireProfile, assertObjectId, pushHistory, parseDate, requireText, optionalText, oneOf, escapeRegex,
 } from '../ops/common.js';
 import { istYmd } from '../ptm/relations.js';
+import { plural } from '../../utils/plural.js';
 
 /**
  * HR's recruitment pipeline and staff exits (part 4, HR audit).
@@ -413,14 +414,14 @@ export async function settlementEstimate(actor, id, body = {}) {
   const dues = (x.clearances ?? []).reduce((n, c) => n + (c.duesPaise ?? 0), 0);
 
   const lines = [
-    { name: 'Gratuity', amountPaise: gratuity, reason: eligible ? `15/26 × ${inr(wage)} (basic + DA) × ${countedYears} year(s)${rawGratuity > cap ? `, capped at ${inr(cap)}` : ''}` : `Not payable: ${(serviceDays / 365.25).toFixed(1)} years of service (5 needed, except on death or disablement)` },
-    { name: 'Leave encashment', amountPaise: encashment, reason: `${elDays} earned-leave day(s) × ${inr(wage)} / ${divisor}` },
-    { name: 'Notice period recovery', amountPaise: noticeRecovery ? -noticeRecovery : 0, reason: shortfall ? `${shortfall} day(s) short of ${x.noticeDaysRequired} × ${inr(grossMonthly)} / 30` : 'Notice served or waived' },
+    { name: 'Gratuity', amountPaise: gratuity, reason: eligible ? `15/26 × ${inr(wage)} (basic + DA) × ${plural(countedYears, 'year')}${rawGratuity > cap ? `, capped at ${inr(cap)}` : ''}` : `Not payable: ${(serviceDays / 365.25).toFixed(1)} years of service (5 needed, except on death or disablement)` },
+    { name: 'Leave encashment', amountPaise: encashment, reason: `${plural(elDays, 'earned-leave day')} × ${inr(wage)} / ${divisor}` },
+    { name: 'Notice period recovery', amountPaise: noticeRecovery ? -noticeRecovery : 0, reason: shortfall ? `${plural(shortfall, 'day')} short of ${x.noticeDaysRequired} × ${inr(grossMonthly)} / 30` : 'Notice served or waived' },
     { name: 'Clearance dues', amountPaise: dues ? -dues : 0, reason: dues ? (x.clearances ?? []).filter((c) => c.duesPaise).map((c) => `${c.department.toLowerCase()} ${inr(c.duesPaise)}`).join(', ') : 'None' },
   ];
   const net = lines.reduce((n, l) => n + l.amountPaise, 0);
   const warnings = [];
-  if (x.clearances.some((c) => c.status === 'PENDING')) warnings.push(`${x.clearances.filter((c) => c.status === 'PENDING').length} department clearance(s) are still pending; dues may change.`);
+  if (x.clearances.some((c) => c.status === 'PENDING')) warnings.push(`${plural(x.clearances.filter((c) => c.status === 'PENDING').length, 'department clearance')} still pending; dues may change.`);
   if (!daC) warnings.push('No DA component on the pay structure: wages for gratuity are basic only.');
   if (gratuity > 0) warnings.push('Gratuity above ₹5,00,000 may be taxable beyond the exemption in s.10(10); the school\'s tax adviser computes TDS.');
   warnings.push('Salary for the days worked in the last month is paid in that month\'s regular run (the exit date prorates it).');

@@ -1,6 +1,8 @@
 # Requirements ledger — institution operations
 
-Branch `feat/education-erp-operations`. Last updated 2026-10-13.
+Started on branch `feat/education-erp-operations`; later rounds continued on the `feat/platform-*` branches (current: `feat/platform-part-4`). Last updated 2026-10-17.
+
+Rounds 1 to 5 record the operations work of 2026-10-13 to 2026-10-14. The "Added in the sixth round" section summarises the platform work since. For the full row-by-row list of what the owner asked for and where it stands, see `PENDING-REQUIREMENTS-2026-10-17.md`; for the platform modules, see `PLATFORM-COVERAGE-MATRIX.md`.
 
 ## How to read the status column
 
@@ -51,7 +53,7 @@ Every API below is **Tested** unless noted; every screen is **Built**.
 |---|---|---|
 | 27 | Campus World visible to every profile from day one: sample campus created automatically, daylight view, top-bar button and home-page card on every portal, room buttons, links from a room to related pages | Tested (API) and checked in a browser as every profile |
 | 28 | Scheduler for reminders, held messages, expiry checks and notice watching | Tested |
-| 29 | Read-only assistant tools for the new modules; assistant turned on for the five new roles | Tested |
+| 29 | Assistant tools for the new modules (read-only at the time; confirmed writes were added later, see the sixth round); assistant turned on for the five new roles | Tested |
 | 30 | Driver background-check status on transport routes | Tested |
 | 31 | Course credits on subjects | Tested |
 | 32 | Accreditation evidence tracker (NAAC, NBA, inspection, custom) | Tested (API); screen built and loads |
@@ -89,16 +91,42 @@ Every API below is **Tested** unless noted; every screen is **Built**.
 |---|---|---|
 | 50 | Reverse-engineering, ownership, load, query-plan and database-integrity testing, with the tools kept in the repo (`npm run qa:*`, `npm run db:audit`) | Run; results in QA-TESTING.md |
 | 51 | About 110 confirmed problems from seven role audits, fixed with regression tests (finance, payroll, newsroom, academics, library, hostel, marketing, compliance, governance, student and parent) | Tested |
-| 52 | The assistant no longer decides anything; confirmations bound to their channel; every filing confirmed | Tested |
+| 52 | The assistant never decides anything; confirmations are bound to their channel; every filing is confirmed. Approvals and decisions are made by the approver on the website | Tested |
 | 53 | Absence and late alerts to guardians from the day register | Tested |
 | 54 | Parents apply for leave and request certificates for their own children | Tested |
+
+## Added in the sixth round (platform parts 2 to 5, 2026-10-14 to 2026-10-17)
+
+Detail and evidence for each module are in `PLATFORM-COVERAGE-MATRIX.md`; role-by-role findings are in `profile-audits/`. Status words are those of the matrix.
+
+| # | Item | Status |
+|---|---|---|
+| 55 | The assistant now reads and writes. The generated catalogue (`docs/MCP-TOOLS.md`, `docs/mcp-tools.json`) lists 470 tools: 243 reads (GET) and 227 that create, change, delete or perform an action. Writes need confirmation: the tool returns a summary and a token and runs only when the person approves; some calls are conditional (a dry run does not need it). What a role sees is computed from its live permissions. The assistant never decides: approvals, payment checks, admission decisions and filings are done by the approver on the website. Thirteen capabilities are deliberately not exposed (raw database access, arbitrary HTTP, online payment execution, bulk messages and others; see the Blocked section of the catalogue) | Tested |
+| 56 | Analytics workspace (46 metrics in 8 departments, period comparison, saved views, CSV/PDF export), quarterly reports, common tasks and reminders, bills and renewals, labs, fleet and trips, PTM and parent review calls, staff leave and cover, report cards, clubs, showcase, alumni, support plans, portfolios, sustainability, library barcodes, health room and nurse role, shifts, teacher qualifications, universal search | Built; most also Tested in the API suites. Browser re-check of the parts 3 and 4 pages as every role is not complete |
+| 57 | Live campus: time slider and date, students shown only during scheduled hours, one dynamic detail page, collapsible panels, "my campus" view for parents, teachers and students | Built; browser-checked for the principal. Parent, teacher and student views tested through the API only |
+| 58 | Marketing connectors (Meta, Google, LinkedIn, X), live ad sync and social posting, Meta lead-ads webhook, offline campaigns with QR short links | Simulated until a provider app is configured and the school connects its account. Not verified against live providers (`INTEGRATIONS-SETUP.md`) |
+| 59 | Camera event review, GPS telemetry for buses, ID checkpoints and gate/pickup | Simulated. Camera observations stay unverified until a person reviews them; no real camera, tracker or card reader is connected |
+| 60 | Generated UI panels (`modules/genui`, `components/genui`) using an in-house OpenUI Lang subset and zod; the `@openuidev/*` packages are not installed | Built; the substitution is awaiting the owner's confirmation |
+| 61 | Opportunities newsletter: curated catalogue of competitions, exams and research opportunities, eligibility matching, weekly and monthly editions with flashcards, quiz, poll and map, unsubscribe page, scheduled job | Built. Email is simulated until a provider is set. The catalogue is curated, not refreshed from the web. Google Alerts feeds and AI extraction/polish are in progress in the working tree (`newsletterAi.model.js`, `newsletter/ai`) and are not finished or tested |
+| 62 | Profile audits for every role (11 files in `profile-audits/`) with fixes | Done; remaining findings are listed in each file and summarised in `PENDING-REQUIREMENTS-2026-10-17.md` |
+| 63 | Mobile and speed pass (responsive layout, request de-duplication, caching, indexes) | Partly done. Some chart text, bars and scroll tables remain; cold portal load is about 4 s on a desktop |
+
+## How to run the demo
+
+1. In `backend`, run `npm run demo` (add `-- --build` after changing the frontend, or on the first run).
+2. Open `http://localhost:3000/oakridge`.
+3. Staff sign in with `role@schoolerp.com` (for example `principal@schoolerp.com`, `teacher@schoolerp.com`, `hr@schoolerp.com`); the shared demo password is `ChangeMe@123!` (used by the API login; the demo page also accepts the email with the OTP shown on screen).
+4. Parent, student and alumnus sign in by phone number with an OTP; in development the code is shown on the screen. Phones: student `+910000003001`, parent `+910000004001`, alumnus `+910000000033`.
+
+The database is in memory and fictional; it is lost when the script stops. Email, WhatsApp, SMS, ads, social posting, cameras, GPS and card readers are simulated; nothing is sent, filed or paid.
 
 ## Not done
 
 - **Pressing every button on every screen.** The browser test proves pages load; forms were not all exercised by hand.
-- **AI that drafts or summarises** (reply drafts, notice summaries, minutes). The assistant's tools only read and report. It needs an AI model key, which is not configured.
+- **Real AI text.** Drafts (`/ai/drafts`), the quarterly report narrative and free-form assistant understanding need an AI model key, which is not configured. Without one, drafts are template text labelled "Template draft (no AI key configured)" and the assistant answers by built-in question matching.
 - **Instant push to the campus map.** The map asks the server every 30 seconds, so a register a teacher has just taken appears within half a minute, not at once.
 - **Poster and creative generation.** Marketing material is uploaded and approved, not designed in the system.
+- **Live provider checks.** Email, WhatsApp, SMS, ad sync, social posting, GPS, camera and ID readers are built against the providers' documented API shapes or recorded test adapters and have never run against a live provider. They stay simulated until a provider is connected.
 - **Direct filing with boards or government**: no public API exists (see docs/research/board-submission-channels.md).
 - **Meeting-service integration**: EduOS does not create meetings inside Google Meet, Zoom or Teams, or read their attendance; the host pastes the link.
 - **College academics beyond credits and accreditation evidence**: credit-based grading, semester promotion, outcome mapping.

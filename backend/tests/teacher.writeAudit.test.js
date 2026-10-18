@@ -155,31 +155,38 @@ describe('1. every Teacher write the Web offers is exposed, and nothing else', (
   // review calls, conversations, report-card remarks, clubs, sustainability,
   // labs, tasks, staff leave, facilities and purchasing each mirror a screen.
   const WRITES = [
-    'add_bank_question', 'add_ptm_availability', 'add_review_call_note', 'answer_newsletter_quiz', 'apply_staff_leave',
-    'build_question_paper', 'bulk_mark_attendance', 'cancel_due_item', 'cancel_online_class', 'cancel_staff_leave',
-    'complete_due_item', 'create_announcement', 'create_assignment', 'create_course_material', 'create_due_item',
-    'create_purchase_request', 'create_quiz_draft', 'delete_assignment', 'delete_document', 'draft_lab_reorder',
-    'enter_marks', 'grade_submission', 'issue_lab_stock', 'log_cpd_hours', 'log_eco_activity', 'log_plant_check',
-    'log_review_call_attempt', 'log_syllabus_progress', 'make_quiz_from_paper', 'mark_attendance',
-    'mark_club_attendance', 'mark_lesson_taught', 'open_review_call', 'pin_dashboard_panel', 'plan_practical_session',
-    'plan_syllabus_module', 'receive_lab_stock', 'record_lab_calibration', 'record_lab_stock_use',
-    'record_trip_boarding', 'reply_to_ticket', 'report_lab_incident', 'report_repair', 'request_facility_reservation',
-    'save_co_scholastic_grades', 'save_lesson_plan', 'save_opportunity', 'save_report_card_component_marks',
-    'save_term_report_remarks', 'schedule_online_class', 'send_conversation_message', 'set_my_message_preferences',
-    'snooze_due_item', 'suggest_opportunity', 'unpin_dashboard_panel', 'update_assignment', 'update_course_material',
-    'update_my_digest_interests', 'update_review_call_schedule', 'verify_eco_activity',
+    'acknowledge_my_training', 'acknowledge_policy', 'add_bank_question', 'add_eco_planting', 'add_ptm_availability',
+    'add_quiz_question', 'add_review_call_action', 'add_review_call_note', 'answer_newsletter_quiz',
+    'apply_staff_leave', 'block_ptm_slot', 'build_question_paper', 'bulk_mark_attendance', 'cancel_club_fixture',
+    'cancel_club_session', 'cancel_due_item', 'cancel_online_class', 'cancel_staff_leave', 'check_in_ptm_meeting',
+    'close_conversation', 'close_review_call', 'complete_due_item', 'complete_review_call_action',
+    'create_announcement', 'create_assignment', 'create_course_material', 'create_due_item',
+    'create_purchase_request', 'create_quiz_draft', 'delete_assignment', 'delete_document', 'delete_quiz',
+    'delete_syllabus_module', 'draft_lab_reorder', 'enter_marks', 'finish_online_class', 'grade_submission',
+    'issue_lab_stock', 'log_cpd_hours', 'log_eco_activity', 'log_plant_check', 'log_review_call_attempt',
+    'log_syllabus_progress', 'make_quiz_from_paper', 'mark_attendance', 'mark_club_attendance', 'mark_lesson_taught',
+    'mark_ptm_no_show', 'open_review_call', 'pin_dashboard_panel', 'plan_practical_session', 'plan_syllabus_module',
+    'receive_lab_stock', 'record_club_fixture_result', 'record_lab_calibration', 'record_lab_stock_use',
+    'record_ptm_outcome', 'record_trip_boarding', 'reopen_review_call', 'reply_to_ticket', 'report_lab_incident',
+    'report_repair', 'request_facility_reservation', 'reschedule_online_class', 'save_co_scholastic_grades',
+    'save_lesson_plan', 'save_opportunity', 'save_report_card_component_marks', 'save_term_report_remarks',
+    'schedule_club_fixture', 'schedule_club_session', 'schedule_online_class', 'send_conversation_message',
+    'set_conversation_office_hours', 'set_my_message_preferences', 'snooze_due_item', 'suggest_opportunity',
+    'unblock_ptm_slot', 'unpin_dashboard_panel', 'update_assignment', 'update_course_material',
+    'update_my_digest_interests', 'update_quiz', 'update_review_call_schedule', 'update_syllabus_module',
+    'verify_eco_activity',
   ];
   // Publishing marks and deciding leave, registrations and student requests
   // are decisions the teacher makes on their screens (mcp/decisions.js).
 
-  it('27 CREATE, 11 UPDATE, 4 DELETE, 18 ACTION -- 60 writes, and no decision', () => {
+  it('31 CREATE, 16 UPDATE, 8 DELETE, 31 ACTION -- 86 writes, and no decision', () => {
     const offered = mcpToolsFor(actorForRole('TEACHER')).map((t) => t.name);
     const index = Object.fromEntries(capabilityIndex().map((c) => [c.name, c]));
     const writes = offered.filter((name) => index[name].operation !== 'GET').sort();
     expect(writes).toEqual([...WRITES].sort());
     const by = (op) => writes.filter((name) => index[name].operation === op).length;
-    expect([by('CREATE'), by('UPDATE'), by('DELETE'), by('ACTION')]).toEqual([27, 11, 4, 18]);
-    expect(offered).toHaveLength(161);
+    expect([by('CREATE'), by('UPDATE'), by('DELETE'), by('ACTION')]).toEqual([31, 16, 8, 31]);
+    expect(offered).toHaveLength(189);
     expect(offered).toContain('get_pending_items_for_me');
     // No decision: nothing named approve_/reject_/decide_/review_/publish_/refund_.
     for (const name of offered) expect(isDecidingToolName(name), name).toBe(false);

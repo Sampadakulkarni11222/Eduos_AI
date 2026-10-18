@@ -7,6 +7,7 @@ import { recordAudit } from '../../utils/auditTrail.js';
 import { nextRef, pushHistory } from '../ops/common.js';
 import { upsertFromSource, resolveSource } from '../tasks/tasks.service.js';
 import { licenceStatus, trainingCoverage } from './compliance.service.js';
+import { plural } from '../../utils/plural.js';
 
 /**
  * Data protection and statutory committees, part 4: what the compliance
@@ -280,7 +281,7 @@ export async function readiness({ now = new Date() } = {}) {
     if (c && !(c.members ?? []).length) problems.push('no members listed');
     if (c && c.reviewDueOn && new Date(c.reviewDueOn) < now) problems.push('review overdue');
     if (c && !c.displayedOnWebsite && ['POCSO', 'ICC_POSH', 'GRIEVANCE'].includes(req.kind)) problems.push('not marked as displayed on the website');
-    items.push({ area: 'Committees', item: req.label, state: !c ? 'MISSING' : problems.length ? 'ACTION' : 'OK', evidence: c ? `${c.members?.length ?? 0} member(s)${problems.length ? `; ${problems.join(', ')}` : ''}` : `Not recorded (${req.basis})`, where: '/compliance/data-protection?tab=committees' });
+    items.push({ area: 'Committees', item: req.label, state: !c ? 'MISSING' : problems.length ? 'ACTION' : 'OK', evidence: c ? `${plural(c.members?.length ?? 0, 'member')}${problems.length ? `; ${problems.join(', ')}` : ''}` : `Not recorded (${req.basis})`, where: '/compliance/data-protection?tab=committees' });
   }
   const overdueReq = openRequests.filter((r) => new Date(r.dueAt) < now);
   items.push({ area: 'Data protection', item: 'Data principal requests answered in time', state: overdueReq.length ? 'ACTION' : 'OK', evidence: `${openRequests.length} open, ${overdueReq.length} past the response date${overdueReq.length ? ` (${overdueReq.map((r) => r.refNo).join(', ')})` : ''}`, where: '/compliance/data-protection' });

@@ -245,7 +245,7 @@ export async function feeStatement(actor, { fy, studentId } = {}) {
     children: out,
     totalPaise: out.reduce((s, c) => s + c.totalPaise, 0),
     tuitionPaise: out.reduce((s, c) => s + c.tuitionPaise, 0),
-    note: 'Worked out from the school\'s receipts. Section 80C covers tuition fees only (not transport, development or other charges), for up to two children. For a signed certificate, request a Fee certificate from Certificates.',
+    note: 'Worked out from the school\'s receipts. Section 80C covers tuition fees only (not transport, development or other charges), for up to two children. For a signed certificate, request a Fee Certificate from Documents.',
   };
 }
 

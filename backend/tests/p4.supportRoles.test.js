@@ -149,6 +149,16 @@ describe('library desk: reading programme and suggestions', () => {
     expect(mine[0]).toMatchObject({ read: 2, completed: true });
   });
 
+  it('a whole-school challenge counts students on roll only, not former pupils (part 5)', async () => {
+    const { Enrollment } = await import('../src/models/student.model.js');
+    await inOak(() => Enrollment.updateOne({ _id: s.aman.enrollment._id }, { $set: { status: 'GRADUATED' } }));
+    const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+    const c = await inOak(() => desk.createChallenge(L(), { title: 'Whole school', startsOn: today, endsOn: today, targetBooks: 1 }));
+    const p = await inOak(() => desk.challengeProgress(c.id));
+    expect(p.rows.map((r) => r.name)).not.toContain('Aman Gupta');
+    expect(p.participants).toBe(3); // Rahul, Priya and Riya are on roll
+  });
+
   it('suggests unread books with reasons', async () => {
     const read = await book({ title: 'Malgudi Days', category: 'Fiction', totalCopies: 2, availableCopies: 2 });
     await book({ title: 'Swami and Friends', category: 'Fiction', totalCopies: 2, availableCopies: 2 });

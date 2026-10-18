@@ -20,7 +20,7 @@ export const fmtDate = (d: string | Date | null | undefined) =>
   d ? new Date(d).toLocaleDateString('en-IN', { ...IST, day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 export const fmtDateTime = (d: string | Date | null | undefined) =>
   d ? new Date(d).toLocaleString('en-IN', { ...IST, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
-export const money = (paise: number | null | undefined) => (paise === null || paise === undefined ? '—' : rupees(paise));
+export const money = (paise: number | null | undefined) => (paise === null || paise === undefined ? '—' : paise < 0 ? `−${rupees(-paise)}` : rupees(paise));
 export const humanize = (s: string | null | undefined) => (s ? s.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase()) : '—');
 /** `YYYY-MM-DD` for date inputs, in India time. */
 export const isoDay = (d: Date = new Date()) => new Date(d.getTime() + 330 * 60_000).toISOString().slice(0, 10);

@@ -56,6 +56,16 @@ describe('support plans, family view', () => {
   });
 });
 
+describe('support plans, student view (part 5)', () => {
+  it('speaks to the student about their own plans, not "your own child"', async () => {
+    role.value = 'STUDENT';
+    api.support.family.mockResolvedValue({ items: [] });
+    inApp(<SupportPlansView />);
+    expect(await screen.findByText(/Plans your school has shared with you/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/your own child/);
+  });
+});
+
 describe('portfolio', () => {
   it('shows rubric levels and the source of each evidence item, with a PDF', async () => {
     api.portfolio.students.mockResolvedValue([{ studentId: 's1', name: 'Rahul Sharma', admissionNo: 'OAK-1', className: 'Class 6 A' }]);

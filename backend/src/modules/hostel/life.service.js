@@ -11,6 +11,7 @@ import { nextRef, pushHistory } from '../ops/common.js';
 import { profilesWithPermission } from '../safety/shared.js';
 import { sendOperational } from '../messaging/messaging.service.js';
 import { upsertFromSource, resolveSource } from '../tasks/tasks.service.js';
+import { plural } from '../../utils/plural.js';
 
 /**
  * Hostel life, part 4: the warden's evening and morning beyond rooms and
@@ -163,7 +164,7 @@ export async function submitRollCall(actor, id) {
       link: '/warden/hostel-life', idempotencyKey: `hostel-roll:${r._id}`, relatedEntityType: 'HostelRollCall', relatedEntityId: r._id,
     }).catch(() => {});
     await upsertFromSource({
-      sourceKey: `hostel-roll:${r._id}`, title: `Find ${missing.length} resident(s) not accounted for at ${r.session.toLowerCase()} roll call ${r.date}`,
+      sourceKey: `hostel-roll:${r._id}`, title: `Find ${plural(missing.length, 'resident')} not accounted for at ${r.session.toLowerCase()} roll call ${r.date}`,
       department: 'HOSTEL', category: 'OTHER', severity: 'CRITICAL', dueAt: new Date(Date.now() + 30 * 60_000),
       description: missing.map((m) => `${m.name} (room ${m.roomNo ?? '—'})`).join(', '), ownerProfileId: actor?.profileId ?? null,
       source: { entityType: 'HostelRollCall', entityId: r._id, link: '/warden/hostel-life' },
@@ -324,10 +325,10 @@ export async function briefing({ now = new Date() } = {}) {
   const pending = await OutPass.countDocuments({ status: 'PENDING_WARDEN' });
   const lastDto = last ? rollDto(last) : null;
   const lines = [
-    `${people.length} resident(s); ${count.away} away on an out-pass tonight; ${count.meals} dinner(s) to cook.`,
+    `${plural(people.length, 'resident')}; ${count.away} away on an out-pass tonight; ${plural(count.meals, 'dinner')} to cook.`,
     lastDto ? `Last roll call: ${lastDto.session.toLowerCase()} ${lastDto.date}${lastDto.submittedAt ? `, ${lastDto.counts.PRESENT + lastDto.counts.LATE} present, ${lastDto.unaccounted} not accounted for` : ', still open (not submitted)'}.` : 'No roll call has been taken yet.',
-    `${late.length} out-pass(es) past their return time; ${pending} waiting for your decision.`,
-    `${openIncidents} open incident(s).`,
+    `${plural(late.length, 'out-pass', 'out-passes')} past their return time; ${pending} waiting for your decision.`,
+    `${plural(openIncidents, 'open incident')}.`,
   ];
   const tonightTaken = Boolean(last && last.date === today && last.session === 'NIGHT');
   return { lines, tonightTaken, evidence: { residents: people.length, away: count.away, meals: count.meals, lateReturns: late.length, outpassesPending: pending, openIncidents, lastRollCallId: lastDto?.id ?? null } };

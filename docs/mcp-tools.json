@@ -1,18 +1,18 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 470,
+    "total": 517,
     "byOperation": {
-      "GET": 243,
-      "CREATE": 100,
-      "UPDATE": 52,
-      "DELETE": 16,
-      "ACTION": 59
+      "GET": 247,
+      "CREATE": 114,
+      "UPDATE": 60,
+      "DELETE": 23,
+      "ACTION": 73
     },
     "byRisk": {
-      "LOW": 317,
-      "HIGH": 41,
-      "MEDIUM": 111,
+      "LOW": 335,
+      "HIGH": 42,
+      "MEDIUM": 139,
       "CRITICAL": 1
     }
   },
@@ -19115,6 +19115,136 @@
       "wrapsAgentTool": null
     },
     {
+      "name": "add_google_alert_feed",
+      "module": "Newsletter",
+      "operation": "CREATE",
+      "description": "Editor: add a Google Alert to the newsletter's alert feeds. Give the alert's RSS feed address (in Google Alerts: Show options → Deliver to: RSS feed → copy the RSS link; it starts https://www.google.com/alerts/feeds/), a name, and optional tags: domains, level, region, and the words the alert watches. EduOS reads it hourly; items become candidates in the review queue (nothing is published). This is Google Alerts' RSS delivery, not an API. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "feedAddress": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "The Google Alerts RSS feed address, https://www.google.com/alerts/feeds/<number>/<number>"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "A name for the feed, e.g. \"Science olympiads India\""
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The words the alert watches (for reference)"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "SCIENCE",
+                "MATHS",
+                "CODING_AI",
+                "ROBOTICS",
+                "ENVIRONMENT",
+                "ARTS",
+                "SPORTS",
+                "COMMERCE",
+                "HUMANITIES",
+                "ENTREPRENEURSHIP"
+              ]
+            },
+            "maxItems": 5
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "SCHOOL",
+              "DISTRICT",
+              "STATE",
+              "NATIONAL",
+              "INTERNATIONAL"
+            ]
+          },
+          "region": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "A state, for state-level alerts"
+          }
+        },
+        "required": [
+          "feedAddress",
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "digest.manage",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "newsletter/alerts.service.addSource()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_newsletter_review_queue",
+      "module": "Newsletter",
+      "operation": "GET",
+      "description": "Editor: what is waiting in the newsletter review queue: how many items from staff, the starter list, approved feeds and alert feeds (Google Alerts RSS), the newest candidates with how they were extracted (AI or auto, each detail with its source text on the desk), and feed items not yet processed. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "Default 10"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "digest.manage",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "newsletter/alerts.service.reviewQueue()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "regenerate_newsletter_hook",
+      "module": "Newsletter",
+      "operation": "UPDATE",
+      "description": "Editor: write a fresh opening hook for this week's (default) or this month's DRAFT newsletter. With an AI key it is written from the edition's published items and checked against them (otherwise the template writes another). A published edition is never changed, and nothing is sent: the editor reviews and publishes on the Newsletter desk. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "WEEKLY",
+              "MONTHLY"
+            ],
+            "description": "Default WEEKLY"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "digest.manage",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "newsletter/editionsAi.service.regenerateSection()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
       "name": "get_my_alumni_profile",
       "module": "Alumni",
       "operation": "GET",
@@ -19671,6 +19801,2167 @@
       "service": "planner.service.getPlanner().board",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
+    },
+    {
+      "name": "schedule_club_session",
+      "module": "Clubs",
+      "operation": "CREATE",
+      "description": "For the teacher in charge of a club: schedule a practice or rehearsal session on a day and time, once or weekly for up to 20 weeks, at a room or ground from the facilities list (it is booked there) or a place written out. A clash leaves that week out and says why. Members see it. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "club": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The (first) day"
+          },
+          "from": {
+            "type": "string",
+            "maxLength": 12,
+            "description": "Start time, e.g. 15:30"
+          },
+          "to": {
+            "type": "string",
+            "maxLength": 12,
+            "description": "End time, e.g. 16:30"
+          },
+          "venue": {
+            "type": "string",
+            "maxLength": 160,
+            "description": "A room or ground by name, or a place written out (default the club's home venue)"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "repeatWeeks": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20,
+            "description": "How many more weeks at the same time (default 0)"
+          }
+        },
+        "required": [
+          "club",
+          "date",
+          "from",
+          "to"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "clubs.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "clubs.service.listClubs() + sessions.service.createSessions()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "cancel_club_session",
+      "module": "Clubs",
+      "operation": "DELETE",
+      "description": "For the teacher in charge: cancel a planned club session on a day (and time), with the reason; members are told and the venue booking is released. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "club": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The session day"
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 12,
+            "description": "Its start time, when the club meets twice that day"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "club",
+          "date",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "clubs.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "sessions.service.listSessions() + cancelSession()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "schedule_club_fixture",
+      "module": "Clubs",
+      "operation": "CREATE",
+      "description": "Schedule a fixture: a match inside the school or against another school for a club or team the caller runs, or an inter-house event between named houses. Its day, start time, opponent, level and venue. The team sheet is picked on the Clubs page. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "INTERNAL",
+              "EXTERNAL",
+              "HOUSE"
+            ],
+            "description": "INTERNAL within the school, EXTERNAL against other schools, HOUSE between houses"
+          },
+          "club": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The club or team (not for a house fixture)"
+          },
+          "houses": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "description": "The houses taking part (house fixture)"
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The day"
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 12,
+            "description": "Start time"
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "minimum": 15,
+            "maximum": 720
+          },
+          "opponent": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "SCHOOL",
+              "INTER_SCHOOL",
+              "DISTRICT",
+              "STATE",
+              "NATIONAL",
+              "INTERNATIONAL"
+            ]
+          },
+          "venue": {
+            "type": "string",
+            "maxLength": 160,
+            "description": "A room or ground by name, or a place written out"
+          }
+        },
+        "required": [
+          "title",
+          "kind",
+          "date",
+          "time"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "clubs.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "fixtures.service.listHouses() + createFixture()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "record_club_fixture_result",
+      "module": "Clubs",
+      "operation": "ACTION",
+      "description": "For the teacher running a fixture that has started: record its result (a summary, won/lost/drawn/placed, and for a house event each house's position and points). The result counts only after ANOTHER teacher approves it on the Clubs page; the assistant never approves it. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "fixture": {
+            "type": "string",
+            "maxLength": 160,
+            "description": "Its title or reference, e.g. FIX-2026-0003"
+          },
+          "club": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "WON",
+              "LOST",
+              "DRAWN",
+              "PLACED",
+              "PARTICIPATED"
+            ]
+          },
+          "placements": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "properties": {
+                "house": {
+                  "type": "string",
+                  "maxLength": 60
+                },
+                "position": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 20
+                },
+                "points": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1000
+                }
+              },
+              "required": [
+                "house",
+                "position"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "summary"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "clubs.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "fixtures.service.listFixtures() + recordResult()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "cancel_club_fixture",
+      "module": "Clubs",
+      "operation": "DELETE",
+      "description": "For the teacher running it: cancel a scheduled fixture with the reason; its venue booking is released. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "fixture": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "club": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "clubs.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "fixtures.service.listFixtures() + cancelFixture()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "withdraw_club_membership",
+      "module": "Clubs",
+      "operation": "DELETE",
+      "description": "For a student or parent: take the student (or the parent's child) out of a club, or withdraw a request to join that is still waiting. A freed seat goes to the waiting list. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "club": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "For a parent with several children"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "club"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "clubs.join",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "clubs.service.myMemberships() + leave()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "create_club",
+      "module": "Clubs",
+      "operation": "CREATE",
+      "description": "For administration or the principal: set up a new club or team: name, category, activity, seats, when it meets and whether it takes requests to join. It needs a teacher in charge, named from the staff list; grades and the home venue are set on the Clubs page. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "CLUB",
+              "TEAM"
+            ]
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "SPORTS",
+              "ARTS",
+              "ACADEMIC",
+              "SERVICE",
+              "OTHER"
+            ]
+          },
+          "activity": {
+            "type": "string",
+            "enum": [
+              "CRICKET",
+              "FOOTBALL",
+              "BASKETBALL",
+              "VOLLEYBALL",
+              "BADMINTON",
+              "TABLE_TENNIS",
+              "ATHLETICS",
+              "SWIMMING",
+              "KABADDI",
+              "KHO_KHO",
+              "CHESS",
+              "YOGA",
+              "MARTIAL_ARTS",
+              "DANCE",
+              "MUSIC",
+              "SINGING",
+              "DRAMA",
+              "VISUAL_ARTS",
+              "DEBATE",
+              "QUIZ",
+              "ROBOTICS",
+              "SCIENCE",
+              "ECO",
+              "OTHER"
+            ]
+          },
+          "capacity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2000
+          },
+          "meetingPattern": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "e.g. \"Tuesdays 3:30 pm\""
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "joinOpen": {
+            "type": "boolean"
+          },
+          "teacherInCharge": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "The teacher who runs it, by name"
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "teacherInCharge"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "clubs.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "clubs.service.createClub()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "join_ptm_waitlist",
+      "module": "PTM",
+      "operation": "CREATE",
+      "description": "For a parent: when a teacher has no free PTM slot left, put their child on that teacher's waiting list. If a slot frees up it is held for them and they are told; take it with accept_ptm_slot_offer. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "round": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "teacherName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Name, subject (\"maths teacher\") or \"class teacher\""
+          }
+        },
+        "required": [
+          "teacherName"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "ptm.book",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "ptm.service.bookingOptions() + joinWaitlist()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "accept_ptm_slot_offer",
+      "module": "PTM",
+      "operation": "CREATE",
+      "description": "For a parent: take the PTM slot that was freed and held for their child from a teacher's waiting list, before the hold runs out. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "round": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "teacherName": {
+            "type": "string",
+            "maxLength": 80
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "ptm.book",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "ptm.service.bookingOptions() + acceptOffer()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "cancel_ptm_waitlist_entry",
+      "module": "PTM",
+      "operation": "DELETE",
+      "description": "For a parent: take their child off a teacher's PTM waiting list (a slot held for them goes to the next family). Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "round": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "teacherName": {
+            "type": "string",
+            "maxLength": 80
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "ptm.book",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "ptm.service.bookingOptions() + leaveWaitlist()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "check_in_ptm_meeting",
+      "module": "PTM",
+      "operation": "ACTION",
+      "description": "For the teacher: check a family in for one of their own PTM meetings (from two hours before it). Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "bookingRef": {
+            "type": "string",
+            "maxLength": 30,
+            "description": "The booking reference, e.g. PTB-0004"
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The pupil the meeting is about"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "ptm.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "ptm.service.myBookings() + checkIn()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "mark_ptm_no_show",
+      "module": "PTM",
+      "operation": "ACTION",
+      "description": "For the teacher: mark one of their own PTM meetings as a no-show after its start time, when nobody came. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "bookingRef": {
+            "type": "string",
+            "maxLength": 30,
+            "description": "The booking reference, e.g. PTB-0004"
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The pupil the meeting is about"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "ptm.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "ptm.service.myBookings() + markNoShow()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "record_ptm_outcome",
+      "module": "PTM",
+      "operation": "UPDATE",
+      "description": "For the teacher, after one of their own PTM meetings: record what was discussed, the actions agreed (the teacher's own become tasks with a due date; the family's are noted) and the next follow-up date. A safeguarding concern never goes here. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "bookingRef": {
+            "type": "string",
+            "maxLength": 30,
+            "description": "The booking reference, e.g. PTB-0004"
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The pupil the meeting is about"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "actions": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "owner": {
+                  "type": "string",
+                  "enum": [
+                    "ME",
+                    "PARENT"
+                  ],
+                  "description": "Default ME"
+                },
+                "dueOn": {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                  "description": "Needed for the teacher's own actions"
+                }
+              },
+              "required": [
+                "title"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextFollowUpOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "When to follow up with the family"
+          }
+        },
+        "required": [
+          "summary"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "ptm.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "ptm.service.myBookings() + recordOutcome()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "block_ptm_slot",
+      "module": "PTM",
+      "operation": "ACTION",
+      "description": "For a teacher: take one of their own open, unbooked PTM slots out of use (a break, a clash), by its time (and day). Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "round": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 12,
+            "description": "Slot start time"
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        },
+        "required": [
+          "time"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "ptm.manage",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "ptm.service.listSlots() + blockSlot()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "unblock_ptm_slot",
+      "module": "PTM",
+      "operation": "ACTION",
+      "description": "For a teacher: reopen one of their own blocked PTM slots (offered first to a family on the waiting list). Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "round": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 12,
+            "description": "Slot start time"
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        },
+        "required": [
+          "time"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "ptm.manage",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "ptm.service.listSlots() + unblockSlot()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "create_ptm_round",
+      "module": "PTM",
+      "operation": "CREATE",
+      "description": "For the principal or administration: set up a parent–teacher meeting round: title, days, in person or online, slot length, the classes it covers (default every class), when booking closes and the venue. It goes on the school calendar and opens for booking; teachers then add their availability. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "startsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "First day"
+          },
+          "endsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Last day (default the first day)"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "IN_PERSON",
+              "ONLINE",
+              "BOTH"
+            ]
+          },
+          "slotMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 120
+          },
+          "bufferMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 60
+          },
+          "bookingClosesOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Last day families can book (default the evening before)"
+          },
+          "venue": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Default venue"
+          },
+          "classes": {
+            "type": "array",
+            "maxItems": 40,
+            "items": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "description": "Classes it covers, e.g. \"Class 6 A\"; default all"
+          }
+        },
+        "required": [
+          "title",
+          "startsOn"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "ptm.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "ptm.service.createRound()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "update_ptm_round",
+      "module": "PTM",
+      "operation": "UPDATE",
+      "description": "For the principal or administration: change a PTM round: its title, days, mode, slot length, booking close date, venue, or open/close it for booking. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "round": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The round to change"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "startsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "First day"
+          },
+          "endsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Last day (default the first day)"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "IN_PERSON",
+              "ONLINE",
+              "BOTH"
+            ]
+          },
+          "slotMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 120
+          },
+          "bufferMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 60
+          },
+          "bookingClosesOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Last day families can book (default the evening before)"
+          },
+          "venue": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Default venue"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "OPEN",
+              "CLOSED"
+            ]
+          }
+        },
+        "required": [
+          "round"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "ptm.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "ptm.service.listRounds() + updateRound()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "cancel_ptm_round",
+      "module": "PTM",
+      "operation": "DELETE",
+      "description": "For the principal or administration: cancel a whole PTM round with the reason. Every family's booking in it is cancelled and they are told; it leaves the calendar. Confirmed on the website.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "round": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "round",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "ptm.manage",
+      "scope": "ALL",
+      "risk": "HIGH",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "ptm.service.listRounds() + cancelRound()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "add_review_call_action",
+      "module": "Review calls",
+      "operation": "ACTION",
+      "description": "Record an action agreed on a review call: what, by when, and whether the caller or the family does it. The caller's own action becomes a task on their list. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "caseRef": {
+            "type": "string",
+            "maxLength": 30,
+            "description": "The review call reference, e.g. RVC-0003"
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The pupil the call is about"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "dueOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "By when"
+          },
+          "owner": {
+            "type": "string",
+            "enum": [
+              "ME",
+              "PARENT"
+            ],
+            "description": "Default ME"
+          }
+        },
+        "required": [
+          "title",
+          "dueOn"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "reviewcalls.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "reviewcalls.service.list() + addAction()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "complete_review_call_action",
+      "module": "Review calls",
+      "operation": "ACTION",
+      "description": "Mark an agreed action on a review call as done (its task is closed), with an optional note. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "caseRef": {
+            "type": "string",
+            "maxLength": 30,
+            "description": "The review call reference, e.g. RVC-0003"
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The pupil the call is about"
+          },
+          "actionTitle": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Which action; default the only open one"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "reviewcalls.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "reviewcalls.service.list() + completeAction()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "close_review_call",
+      "module": "Review calls",
+      "operation": "ACTION",
+      "description": "Close a review call with its outcome (resolved, improving, referred, no contact, other) and a closing note; its follow-up reminder stops. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "caseRef": {
+            "type": "string",
+            "maxLength": 30,
+            "description": "The review call reference, e.g. RVC-0003"
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The pupil the call is about"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "RESOLVED",
+              "IMPROVING",
+              "REFERRED",
+              "NO_CONTACT",
+              "OTHER"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "outcome",
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "reviewcalls.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "reviewcalls.service.list() + close()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "reopen_review_call",
+      "module": "Review calls",
+      "operation": "ACTION",
+      "description": "Reopen a closed review call, with the reason. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "caseRef": {
+            "type": "string",
+            "maxLength": 30,
+            "description": "The review call reference, e.g. RVC-0003"
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The pupil the call is about"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "reviewcalls.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "reviewcalls.service.list() + reopen()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "close_conversation",
+      "module": "Conversations",
+      "operation": "ACTION",
+      "description": "For the teacher or principal in a parent conversation: close it, with an optional closing message to the parent. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "parentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Who the conversation is with"
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "The child it is about"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "A last message to the parent"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "conversations.use",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "conversations.service.list() + close()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "set_conversation_office_hours",
+      "module": "Conversations",
+      "operation": "UPDATE",
+      "description": "For staff: set (or clear) the office-hours note parents see when they message the caller, e.g. \"I reply on school days between 3 and 5 pm\". Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "Empty clears it"
+          }
+        },
+        "required": [
+          "note"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "conversations.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "conversations.service.setSettings()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "add_quiz_question",
+      "module": "Quizzes",
+      "operation": "CREATE",
+      "description": "Add multiple-choice questions to one of the teacher's quizzes that nobody has attempted yet (question, options, which is correct, marks). Publishing stays on the Quizzes page. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "quiz": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The quiz title; default the only draft"
+          },
+          "questions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 30,
+            "items": {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                },
+                "options": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 6,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 300
+                  }
+                },
+                "correctOption": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 6
+                },
+                "marks": {
+                  "type": "number",
+                  "minimum": 0.5,
+                  "maximum": 20
+                }
+              },
+              "required": [
+                "question",
+                "options",
+                "correctOption"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "questions"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "assignments.manage",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "quiz.service.list() + addQuestion()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "update_quiz",
+      "module": "Quizzes",
+      "operation": "UPDATE",
+      "description": "Change one of the teacher's quizzes: its title, instructions or time limit. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "quiz": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The quiz to change"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The new title"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 180
+          }
+        },
+        "required": [
+          "quiz"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "assignments.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "quiz.service.list() + update()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "delete_quiz",
+      "module": "Quizzes",
+      "operation": "DELETE",
+      "description": "Delete one of the teacher's quizzes that no student has attempted (one that was taken is kept; unpublish it on the Quizzes page instead). Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "quiz": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "quiz"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "assignments.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "quiz.service.list() + remove()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "update_syllabus_module",
+      "module": "Syllabus",
+      "operation": "UPDATE",
+      "description": "Change a module in one of the teacher's syllabus plans: its title, planned start or end date, description, or add topics to it. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "module": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The module as it is called now"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "The new title"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "plannedStart": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "plannedEnd": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "addTopics": {
+            "type": "array",
+            "maxItems": 40,
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        },
+        "required": [
+          "module"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "syllabus.manage",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "syllabus.service.myOfferings() + plan() + updateModule()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "delete_syllabus_module",
+      "module": "Syllabus",
+      "operation": "DELETE",
+      "description": "Remove a module from one of the teacher's syllabus plans; a module with lessons recorded against it is kept. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "module": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The class as a person names it, e.g. \"Class 5 A\", \"Class 5-A\" or \"5-A\""
+          }
+        },
+        "required": [
+          "module"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "syllabus.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "syllabus.service.myOfferings() + plan() + removeModule()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "reschedule_online_class",
+      "module": "Lectures",
+      "operation": "UPDATE",
+      "description": "Change an online class the caller hosts that has not started: move it to another day or time, change its length or title. A move is announced to everyone invited. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The class as it is called now"
+          },
+          "onDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Its current day, when the title repeats"
+          },
+          "newTitle": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The new day"
+          },
+          "time": {
+            "type": "string",
+            "maxLength": 12,
+            "description": "The new start time"
+          },
+          "durationMinutes": {
+            "type": "integer",
+            "minimum": 5,
+            "maximum": 480
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "lectures.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "lecture.service.list() + update()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "finish_online_class",
+      "module": "Lectures",
+      "operation": "ACTION",
+      "description": "After an online class the caller hosts: mark it over, with an optional summary and a link to its recording. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "onDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 6000
+          },
+          "recordingLink": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "https:// link to the recording"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "lectures.manage",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "lecture.service.list() + finish()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_my_policies",
+      "module": "Policies",
+      "operation": "GET",
+      "description": "The school policies addressed to the caller's role (code, title, version, summary) and whether they have acknowledged the current version. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "compliance.service.myPolicies()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "acknowledge_policy",
+      "module": "Policies",
+      "operation": "ACTION",
+      "description": "Record that the caller has read and accepts the current version of a school policy addressed to them (their own acknowledgement). Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "policy": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Its title or code"
+          }
+        },
+        "required": [
+          "policy"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "compliance.service.myPolicies() + acknowledgePolicy()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_my_trainings",
+      "module": "Policies",
+      "operation": "GET",
+      "description": "The trainings the caller is invited to (POCSO, fire safety, first aid ...): when and where, whether mandatory, their attendance and whether they have acknowledged it. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "compliance.service.myTrainings()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "acknowledge_my_training",
+      "module": "Policies",
+      "operation": "ACTION",
+      "description": "Record that the caller has seen a training they are invited to (their own acknowledgement; attendance is marked by the organiser). Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "training": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Its title or reference"
+          }
+        },
+        "required": [
+          "training"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "compliance.service.myTrainings() + acknowledgeTraining()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "add_eco_planting",
+      "module": "Sustainability",
+      "operation": "CREATE",
+      "description": "Record a planting for the greenery register: species, how many, the date, where, and the class, house or club that planted it (a teacher records only for their own team). Survival checks follow with log_plant_check. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "species": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "commonName": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "TREE",
+              "SHRUB",
+              "PLANT",
+              "HERB",
+              "CLIMBER"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5000
+          },
+          "plantedOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Default today"
+          },
+          "locationNote": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "Where on campus"
+          },
+          "team": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The class, house or club that planted it"
+          }
+        },
+        "required": [
+          "species"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "sustainability.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "sustainability.service.listTeams() + createPlant()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "log_correspondence",
+      "module": "Correspondence",
+      "operation": "CREATE",
+      "description": "Enter a letter in the correspondence register: an incoming letter received (from the board, a government office, a vendor ...) or an outgoing letter started as a draft, with subject, sender or addressee, their reference, how it came and a reply-by date. Dispatching and approving replies stay on the Correspondence page. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": [
+              "INWARD",
+              "OUTWARD"
+            ]
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "counterpartyName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Who it is from (incoming) or to (outgoing)"
+          },
+          "counterpartyType": {
+            "type": "string",
+            "enum": [
+              "GOVERNMENT",
+              "BOARD",
+              "UNIVERSITY",
+              "REGULATOR",
+              "DISTRICT_OFFICE",
+              "LOCAL_AUTHORITY",
+              "TRUSTEE",
+              "VENDOR",
+              "PARENT",
+              "INTERNAL",
+              "OTHER"
+            ]
+          },
+          "theirReference": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "POST",
+              "EMAIL",
+              "PORTAL",
+              "HAND",
+              "WHATSAPP",
+              "COURIER",
+              "OTHER"
+            ]
+          },
+          "receivedOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Incoming: the day it arrived (default today)"
+          },
+          "dueOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Reply or action due by"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 10000
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 20000,
+            "description": "Outgoing: the letter text"
+          }
+        },
+        "required": [
+          "direction",
+          "subject",
+          "counterpartyName",
+          "counterpartyType"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "correspondence.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "correspondence.service.register()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "draft_correspondence_reply",
+      "module": "Correspondence",
+      "operation": "ACTION",
+      "description": "Save a draft reply to a letter in the correspondence register that the caller owns or is assigned (or any, for the office). It stays a draft: sending it for approval, approving and dispatching happen on the Correspondence page. Use get_ai_draft first to have a letter drafted. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "letter": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "Its reference (INW-...) or subject"
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          }
+        },
+        "required": [
+          "letter",
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "correspondence.read",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "correspondence.service.list() + saveDraft()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "add_compliance_obligation",
+      "module": "Compliance",
+      "operation": "CREATE",
+      "description": "Add an obligation to the compliance register (a return, licence, disclosure, inspection ...): code, title, authority, category, how often and when next due. It starts as \"under review\"; deciding whether it applies and filing it stay on the Compliance page. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "authority": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "RETURN",
+              "LICENCE",
+              "POLICY",
+              "TRAINING",
+              "DISCLOSURE",
+              "COMMITTEE",
+              "INSPECTION",
+              "OTHER"
+            ]
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "ONE_TIME",
+              "MONTHLY",
+              "QUARTERLY",
+              "HALF_YEARLY",
+              "ANNUAL",
+              "EVENT_DRIVEN"
+            ]
+          },
+          "dueRule": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "e.g. \"By 30 April each year\""
+          },
+          "nextDueOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "sourceLink": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "https:// link to the rule"
+          }
+        },
+        "required": [
+          "code",
+          "title",
+          "authority",
+          "category"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "compliance.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "compliance.service.createObligation()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "draft_budget",
+      "module": "Budgets",
+      "operation": "CREATE",
+      "description": "Draft a budget for a financial year with its lines (code, head, department, operating or capital, planned amount in rupees). It is saved as a draft; submitting it for approval and every approval stay on the Budgets page. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "fiscalYear": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}$",
+            "description": "e.g. 2026-27"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "lines": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 30
+                },
+                "head": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "department": {
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "OPEX",
+                    "CAPEX"
+                  ]
+                },
+                "planned": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10000000000,
+                  "description": "Planned amount in rupees"
+                }
+              },
+              "required": [
+                "code",
+                "head",
+                "planned"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "fiscalYear",
+          "name",
+          "lines"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "budget.manage",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "procurement.service.createBudget()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "update_library_copy_status",
+      "module": "Library",
+      "operation": "UPDATE",
+      "description": "For the librarian: mark a book copy (by accession number) lost, damaged, withdrawn or back on the shelf, and/or move it to a shelf, with a note. A copy on loan must be returned first. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "accessionNo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "AVAILABLE",
+              "LOST",
+              "DAMAGED",
+              "WITHDRAWN"
+            ]
+          },
+          "shelf": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "accessionNo"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "library.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "library.copies.scan() + updateCopy()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "generate_library_accession_numbers",
+      "module": "Library",
+      "operation": "CREATE",
+      "description": "For the librarian: give a title's copies accession numbers (every copy without one, or a number of new copies), optionally with a prefix and a shelf. Printing the labels is done on the Library page. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "book": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The title (or ISBN)"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "description": "New copies; default every copy still without a number"
+          },
+          "prefix": {
+            "type": "string",
+            "pattern": "^[A-Za-z]{1,6}$"
+          },
+          "shelf": {
+            "type": "string",
+            "maxLength": 60
+          }
+        },
+        "required": [
+          "book"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "library.manage",
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "library.copies.generateCopies()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "add_portfolio_reflection",
+      "module": "Portfolios",
+      "operation": "CREATE",
+      "description": "For a student: write a reflection in their own competency portfolio (what they learned, tried or would do differently), optionally under a competency such as communication or creativity. Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "competency": {
+            "type": "string",
+            "enum": [
+              "COMMUNICATION",
+              "CRITICAL_THINKING",
+              "COLLABORATION",
+              "CREATIVITY",
+              "DIGITAL",
+              "LIFE_SKILLS",
+              "LANGUAGE",
+              "MATHEMATICAL",
+              "SCIENTIFIC",
+              "SOCIAL_SCIENCE"
+            ]
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "portfolios.reflect",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "portfolios.service.reflect()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_health_room_summary",
+      "module": "Health room",
+      "operation": "GET",
+      "description": "Health-room figures as counts only, for the principal and administrators: visits today and over a period (by outcome: returned to class, rested, first aid, sent home, referred), injuries, active medication plans, missed or refused doses, and first-aid stock alerts. Never names a student or says why anyone visited. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 366,
+            "description": "The period in days, counting back from today (default 30; \"this week\" is 7)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "health.summary.read",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "health.service.summary()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
     }
   ],
   "roleMatrix": [
@@ -19691,13 +21982,13 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 429,
-      "GET": 223,
-      "CREATE": 91,
-      "UPDATE": 46,
-      "ACTION": 54,
-      "DELETE": 15,
-      "highRiskActions": 40,
+      "total": 471,
+      "GET": 227,
+      "CREATE": 102,
+      "UPDATE": 54,
+      "ACTION": 68,
+      "DELETE": 20,
+      "highRiskActions": 41,
       "highRiskActionNames": [
         "add_guardian",
         "update_enrollment_status",
@@ -19738,9 +22029,10 @@
         "send_fee_reminders",
         "start_staff_exit",
         "log_data_breach",
-        "update_data_breach"
+        "update_data_breach",
+        "cancel_ptm_round"
       ],
-      "confirmationRequired": 206,
+      "confirmationRequired": 244,
       "names": [
         "search_students",
         "get_student",
@@ -20169,20 +22461,62 @@
         "answer_newsletter_quiz",
         "draft_newsletter",
         "get_newsletter_analytics",
+        "add_google_alert_feed",
+        "get_newsletter_review_queue",
+        "regenerate_newsletter_hook",
         "list_alumni_batches",
-        "list_alumni_opportunities"
+        "list_alumni_opportunities",
+        "schedule_club_session",
+        "cancel_club_session",
+        "schedule_club_fixture",
+        "record_club_fixture_result",
+        "cancel_club_fixture",
+        "create_club",
+        "check_in_ptm_meeting",
+        "mark_ptm_no_show",
+        "record_ptm_outcome",
+        "block_ptm_slot",
+        "unblock_ptm_slot",
+        "create_ptm_round",
+        "update_ptm_round",
+        "cancel_ptm_round",
+        "add_review_call_action",
+        "complete_review_call_action",
+        "close_review_call",
+        "reopen_review_call",
+        "close_conversation",
+        "set_conversation_office_hours",
+        "add_quiz_question",
+        "update_quiz",
+        "delete_quiz",
+        "update_syllabus_module",
+        "delete_syllabus_module",
+        "reschedule_online_class",
+        "finish_online_class",
+        "get_my_policies",
+        "acknowledge_policy",
+        "get_my_trainings",
+        "acknowledge_my_training",
+        "add_eco_planting",
+        "log_correspondence",
+        "draft_correspondence_reply",
+        "add_compliance_obligation",
+        "draft_budget",
+        "update_library_copy_status",
+        "generate_library_accession_numbers",
+        "get_health_room_summary"
       ]
     },
     {
       "role": "PRINCIPAL",
       "custom": false,
-      "total": 244,
-      "GET": 159,
-      "CREATE": 38,
-      "UPDATE": 21,
-      "ACTION": 23,
-      "DELETE": 3,
-      "highRiskActions": 12,
+      "total": 278,
+      "GET": 163,
+      "CREATE": 44,
+      "UPDATE": 27,
+      "ACTION": 37,
+      "DELETE": 7,
+      "highRiskActions": 13,
       "highRiskActionNames": [
         "transition_fee_plan",
         "create_announcement",
@@ -20195,9 +22529,10 @@
         "record_concession_decision",
         "record_outpass_decision",
         "record_staff_leave_decision",
-        "share_news_to_social"
+        "share_news_to_social",
+        "cancel_ptm_round"
       ],
-      "confirmationRequired": 85,
+      "confirmationRequired": 115,
       "names": [
         "search_students",
         "get_student",
@@ -20441,19 +22776,53 @@
         "answer_newsletter_quiz",
         "draft_newsletter",
         "get_newsletter_analytics",
+        "add_google_alert_feed",
+        "get_newsletter_review_queue",
+        "regenerate_newsletter_hook",
         "list_alumni_batches",
-        "list_alumni_opportunities"
+        "list_alumni_opportunities",
+        "schedule_club_session",
+        "cancel_club_session",
+        "schedule_club_fixture",
+        "record_club_fixture_result",
+        "cancel_club_fixture",
+        "create_club",
+        "check_in_ptm_meeting",
+        "mark_ptm_no_show",
+        "record_ptm_outcome",
+        "block_ptm_slot",
+        "unblock_ptm_slot",
+        "create_ptm_round",
+        "update_ptm_round",
+        "cancel_ptm_round",
+        "add_review_call_action",
+        "complete_review_call_action",
+        "close_review_call",
+        "reopen_review_call",
+        "close_conversation",
+        "set_conversation_office_hours",
+        "update_syllabus_module",
+        "delete_syllabus_module",
+        "reschedule_online_class",
+        "finish_online_class",
+        "get_my_policies",
+        "acknowledge_policy",
+        "get_my_trainings",
+        "acknowledge_my_training",
+        "add_eco_planting",
+        "draft_correspondence_reply",
+        "get_health_room_summary"
       ]
     },
     {
       "role": "TEACHER",
       "custom": false,
-      "total": 161,
-      "GET": 101,
-      "CREATE": 27,
-      "UPDATE": 11,
-      "ACTION": 18,
-      "DELETE": 4,
+      "total": 189,
+      "GET": 103,
+      "CREATE": 31,
+      "UPDATE": 16,
+      "ACTION": 31,
+      "DELETE": 8,
       "highRiskActions": 6,
       "highRiskActionNames": [
         "mark_attendance",
@@ -20463,7 +22832,7 @@
         "delete_document",
         "verify_eco_activity"
       ],
-      "confirmationRequired": 60,
+      "confirmationRequired": 86,
       "names": [
         "search_students",
         "get_student",
@@ -20625,25 +22994,53 @@
         "get_newsletter_flashcards",
         "answer_newsletter_quiz",
         "list_alumni_batches",
-        "list_alumni_opportunities"
+        "list_alumni_opportunities",
+        "schedule_club_session",
+        "cancel_club_session",
+        "schedule_club_fixture",
+        "record_club_fixture_result",
+        "cancel_club_fixture",
+        "check_in_ptm_meeting",
+        "mark_ptm_no_show",
+        "record_ptm_outcome",
+        "block_ptm_slot",
+        "unblock_ptm_slot",
+        "add_review_call_action",
+        "complete_review_call_action",
+        "close_review_call",
+        "reopen_review_call",
+        "close_conversation",
+        "set_conversation_office_hours",
+        "add_quiz_question",
+        "update_quiz",
+        "delete_quiz",
+        "update_syllabus_module",
+        "delete_syllabus_module",
+        "reschedule_online_class",
+        "finish_online_class",
+        "get_my_policies",
+        "acknowledge_policy",
+        "get_my_trainings",
+        "acknowledge_my_training",
+        "add_eco_planting"
       ]
     },
     {
       "role": "PARENT",
       "custom": false,
-      "total": 118,
+      "total": 122,
       "GET": 89,
-      "CREATE": 13,
+      "CREATE": 15,
       "UPDATE": 5,
       "ACTION": 5,
-      "DELETE": 6,
+      "DELETE": 8,
       "highRiskActions": 3,
       "highRiskActionNames": [
         "upsert_medical_record",
         "remove_medical_record",
         "record_outpass_consent"
       ],
-      "confirmationRequired": 29,
+      "confirmationRequired": 33,
       "names": [
         "search_students",
         "get_student",
@@ -20762,23 +23159,27 @@
         "get_newsletter_flashcards",
         "answer_newsletter_quiz",
         "get_my_planner",
-        "get_board_registration_details"
+        "get_board_registration_details",
+        "withdraw_club_membership",
+        "join_ptm_waitlist",
+        "accept_ptm_slot_offer",
+        "cancel_ptm_waitlist_entry"
       ]
     },
     {
       "role": "STUDENT",
       "custom": false,
-      "total": 112,
+      "total": 114,
       "GET": 85,
-      "CREATE": 13,
+      "CREATE": 14,
       "UPDATE": 2,
       "ACTION": 5,
-      "DELETE": 7,
+      "DELETE": 8,
       "highRiskActions": 1,
       "highRiskActionNames": [
         "record_outpass_consent"
       ],
-      "confirmationRequired": 27,
+      "confirmationRequired": 29,
       "names": [
         "search_students",
         "get_student",
@@ -20891,17 +23292,19 @@
         "list_alumni_opportunities",
         "express_interest_in_opportunity",
         "get_my_planner",
-        "get_board_registration_details"
+        "get_board_registration_details",
+        "withdraw_club_membership",
+        "add_portfolio_reflection"
       ]
     },
     {
       "role": "FINANCE",
       "custom": false,
-      "total": 113,
-      "GET": 71,
-      "CREATE": 19,
-      "UPDATE": 9,
-      "ACTION": 12,
+      "total": 120,
+      "GET": 73,
+      "CREATE": 20,
+      "UPDATE": 10,
+      "ACTION": 15,
       "DELETE": 2,
       "highRiskActions": 13,
       "highRiskActionNames": [
@@ -20919,7 +23322,7 @@
         "send_fee_reminders",
         "update_payroll_inputs"
       ],
-      "confirmationRequired": 42,
+      "confirmationRequired": 47,
       "names": [
         "search_students",
         "get_student",
@@ -21033,23 +23436,30 @@
         "suggest_opportunity",
         "get_newsletter_edition",
         "get_newsletter_flashcards",
-        "answer_newsletter_quiz"
+        "answer_newsletter_quiz",
+        "reschedule_online_class",
+        "finish_online_class",
+        "get_my_policies",
+        "acknowledge_policy",
+        "get_my_trainings",
+        "acknowledge_my_training",
+        "draft_budget"
       ]
     },
     {
       "role": "LIBRARIAN",
       "custom": false,
-      "total": 92,
-      "GET": 59,
-      "CREATE": 13,
-      "UPDATE": 6,
-      "ACTION": 10,
+      "total": 100,
+      "GET": 61,
+      "CREATE": 14,
+      "UPDATE": 8,
+      "ACTION": 13,
       "DELETE": 4,
       "highRiskActions": 1,
       "highRiskActionNames": [
         "delete_book"
       ],
-      "confirmationRequired": 33,
+      "confirmationRequired": 39,
       "names": [
         "search_students",
         "get_student",
@@ -21142,23 +23552,31 @@
         "suggest_opportunity",
         "get_newsletter_edition",
         "get_newsletter_flashcards",
-        "answer_newsletter_quiz"
+        "answer_newsletter_quiz",
+        "reschedule_online_class",
+        "finish_online_class",
+        "get_my_policies",
+        "acknowledge_policy",
+        "get_my_trainings",
+        "acknowledge_my_training",
+        "update_library_copy_status",
+        "generate_library_accession_numbers"
       ]
     },
     {
       "role": "WARDEN",
       "custom": false,
-      "total": 93,
-      "GET": 57,
+      "total": 99,
+      "GET": 59,
       "CREATE": 14,
-      "UPDATE": 11,
-      "ACTION": 9,
+      "UPDATE": 12,
+      "ACTION": 12,
       "DELETE": 2,
       "highRiskActions": 1,
       "highRiskActionNames": [
         "record_outpass_decision"
       ],
-      "confirmationRequired": 36,
+      "confirmationRequired": 40,
       "names": [
         "search_students",
         "get_student",
@@ -21252,23 +23670,29 @@
         "suggest_opportunity",
         "get_newsletter_edition",
         "get_newsletter_flashcards",
-        "answer_newsletter_quiz"
+        "answer_newsletter_quiz",
+        "reschedule_online_class",
+        "finish_online_class",
+        "get_my_policies",
+        "acknowledge_policy",
+        "get_my_trainings",
+        "acknowledge_my_training"
       ]
     },
     {
       "role": "NURSE",
       "custom": false,
-      "total": 62,
-      "GET": 42,
+      "total": 69,
+      "GET": 45,
       "CREATE": 11,
-      "UPDATE": 5,
-      "ACTION": 2,
+      "UPDATE": 6,
+      "ACTION": 5,
       "DELETE": 2,
       "highRiskActions": 1,
       "highRiskActionNames": [
         "log_medicine_dose"
       ],
-      "confirmationRequired": 20,
+      "confirmationRequired": 24,
       "names": [
         "search_students",
         "get_student",
@@ -21331,17 +23755,24 @@
         "translate_school_notice",
         "set_my_message_preferences",
         "get_my_cpd_hours",
-        "log_cpd_hours"
+        "log_cpd_hours",
+        "reschedule_online_class",
+        "finish_online_class",
+        "get_my_policies",
+        "acknowledge_policy",
+        "get_my_trainings",
+        "acknowledge_my_training",
+        "get_health_room_summary"
       ]
     },
     {
       "role": "HR",
       "custom": false,
-      "total": 89,
-      "GET": 55,
+      "total": 95,
+      "GET": 57,
       "CREATE": 16,
-      "UPDATE": 7,
-      "ACTION": 9,
+      "UPDATE": 8,
+      "ACTION": 12,
       "DELETE": 2,
       "highRiskActions": 4,
       "highRiskActionNames": [
@@ -21350,7 +23781,7 @@
         "update_payroll_inputs",
         "start_staff_exit"
       ],
-      "confirmationRequired": 34,
+      "confirmationRequired": 38,
       "names": [
         "get_announcements",
         "get_calendar_events",
@@ -21440,17 +23871,23 @@
         "suggest_opportunity",
         "get_newsletter_edition",
         "get_newsletter_flashcards",
-        "answer_newsletter_quiz"
+        "answer_newsletter_quiz",
+        "reschedule_online_class",
+        "finish_online_class",
+        "get_my_policies",
+        "acknowledge_policy",
+        "get_my_trainings",
+        "acknowledge_my_training"
       ]
     },
     {
       "role": "MARKETING",
       "custom": false,
-      "total": 83,
-      "GET": 54,
+      "total": 89,
+      "GET": 56,
       "CREATE": 15,
-      "UPDATE": 5,
-      "ACTION": 7,
+      "UPDATE": 6,
+      "ACTION": 10,
       "DELETE": 2,
       "highRiskActions": 3,
       "highRiskActionNames": [
@@ -21458,7 +23895,7 @@
         "send_social_post",
         "share_news_to_social"
       ],
-      "confirmationRequired": 29,
+      "confirmationRequired": 33,
       "names": [
         "list_classes",
         "list_subjects",
@@ -21542,17 +23979,23 @@
         "get_newsletter_flashcards",
         "answer_newsletter_quiz",
         "list_alumni_batches",
-        "list_alumni_opportunities"
+        "list_alumni_opportunities",
+        "reschedule_online_class",
+        "finish_online_class",
+        "get_my_policies",
+        "acknowledge_policy",
+        "get_my_trainings",
+        "acknowledge_my_training"
       ]
     },
     {
       "role": "COMPLIANCE",
       "custom": false,
-      "total": 92,
-      "GET": 59,
-      "CREATE": 18,
-      "UPDATE": 8,
-      "ACTION": 5,
+      "total": 101,
+      "GET": 61,
+      "CREATE": 20,
+      "UPDATE": 9,
+      "ACTION": 9,
       "DELETE": 2,
       "highRiskActions": 3,
       "highRiskActionNames": [
@@ -21560,7 +24003,7 @@
         "log_data_breach",
         "update_data_breach"
       ],
-      "confirmationRequired": 33,
+      "confirmationRequired": 40,
       "names": [
         "get_announcements",
         "get_calendar_events",
@@ -21653,7 +24096,16 @@
         "suggest_opportunity",
         "get_newsletter_edition",
         "get_newsletter_flashcards",
-        "answer_newsletter_quiz"
+        "answer_newsletter_quiz",
+        "reschedule_online_class",
+        "finish_online_class",
+        "get_my_policies",
+        "acknowledge_policy",
+        "get_my_trainings",
+        "acknowledge_my_training",
+        "add_eco_planting",
+        "draft_correspondence_reply",
+        "add_compliance_obligation"
       ]
     },
     {
@@ -21836,55 +24288,126 @@
   "blocked": [
     {
       "capability": "execute_sql / run_query / raw database access",
-      "reason": "By design. Every tool calls an existing EduOS service; no tool accepts a query, collection, model or update document (enforced by tests/mcp.architecture.test.js)."
+      "reason": "By design. Every tool calls an existing EduOS service; no tool accepts a query, collection, model or update document (enforced by tests/mcp.architecture.test.js).",
+      "mustNotExist": [
+        "execute_sql",
+        "run_query"
+      ]
     },
     {
       "capability": "arbitrary HTTP / API call, shell",
-      "reason": "By design. No tool accepts a URL to call or a command to run."
+      "reason": "By design. No tool accepts a URL to call or a command to run.",
+      "mustNotExist": [
+        "http_request",
+        "run_command"
+      ]
     },
     {
       "capability": "arbitrary field update",
-      "reason": "By design. update_student, update_ticket, update_book and update_hostel_room apply explicit field allow-lists; student.service.update() enforces its own for every caller."
+      "reason": "By design. update_student, update_ticket, update_book and update_hostel_room apply explicit field allow-lists; student.service.update() enforces its own for every caller.",
+      "mustNotExist": [
+        "update_any_field"
+      ]
     },
     {
       "capability": "online payment execution (payOnline / verifyCheckout)",
-      "reason": "Charging a family from a chat message is not something confirm-before-commit makes safe enough. Families pay through the payment link; staff record payments with record_payment."
+      "reason": "Charging a family from a chat message is not something confirm-before-commit makes safe enough. Families pay through the payment link (get_payment_link). Recording, approving or refunding a fee payment is a decision made on the Payments screen: decisions.js refuses record_payment and every approve_/reject_/refund_ tool name at boot.",
+      "mustNotExist": [
+        "pay_online",
+        "verify_checkout",
+        "record_payment",
+        "refund_payment"
+      ]
+    },
+    {
+      "capability": "approving, rejecting, publishing or refunding anything on the assistant's own initiative",
+      "reason": "By design (assistant automation rule). The assistant drafts and the same person confirms. The few approver decisions it can record (staff leave, concessions, out-passes, bill payments, eco activities) need the approver's own words, are HIGH risk and are confirmed on the website only; publishing marks, report cards, showcase editions or a quiz, and second-person approvals (fixture results, campaigns) stay on their screens.",
+      "mustNotExist": [
+        "publish_marks",
+        "publish_report_cards",
+        "publish_quiz",
+        "approve_fixture_result"
+      ]
     },
     {
       "capability": "bulk WhatsApp / email to all parents",
-      "reason": "announcement.service.dispatch() writes a log line for the email and WhatsApp channels and sends nothing, and Meta requires approved templates for business-initiated messages. A tool would report a delivery that never happened. One-to-one send_whatsapp_message exists."
+      "reason": "announcement.service.dispatch() still logs the email and WhatsApp fan-out rather than sending it, and Meta requires approved templates for business-initiated messages, so a tool would report a delivery that never happened. Operational notices that do go out (fee and library reminders, PTM, club and online-class notices) use messaging.sendOperational, which records SIMULATED until a provider is configured. One-to-one send_whatsapp_message exists.",
+      "mustNotExist": [
+        "broadcast_whatsapp",
+        "send_bulk_message"
+      ]
     },
     {
       "capability": "update a phone number",
-      "reason": "No service writes Account.phoneE164 after creation; phone lives on the Account, not the Student. Would need new business logic."
+      "reason": "No service writes Account.phoneE164 after creation; phone lives on the Account, not the Student. Would need new business logic.",
+      "mustNotExist": [
+        "update_phone_number"
+      ]
     },
     {
-      "capability": "send_email",
-      "reason": "Only OTP email exists, and EMAIL_PROVIDER=console logs rather than sends."
-    },
-    {
-      "capability": "generate_certificate / transfer certificate",
-      "reason": "No generator exists; the PDF generators that do exist stream to an HTTP response and return nothing reusable."
+      "capability": "send_email (free-form, to any address)",
+      "reason": "Email goes out only as the system's own notices through messaging.sendOperational (EMAIL_PROVIDER=resend when configured, otherwise logged as SIMULATED). There is no free-form email to an arbitrary address from a chat.",
+      "mustNotExist": [
+        "send_email"
+      ]
     },
     {
       "capability": "promote_student / transfer_student",
-      "reason": "No service; updateEnrollmentStatus() only sets one enrolment's status (exposed as update_enrollment_status)."
+      "reason": "No service; updateEnrollmentStatus() only sets one enrolment's status (exposed as update_enrollment_status). Transfer certificates are requested (request_certificate) and issued by the office (generate_certificate).",
+      "mustNotExist": [
+        "promote_student",
+        "transfer_student"
+      ]
     },
     {
-      "capability": "generate_fee_report / export",
-      "reason": "No report service; MCP returns the data (get_fee_statistics, get_pending_fees), not a file."
+      "capability": "file exports and downloads (accounts export, receipts, invoice and report-card PDFs, library labels)",
+      "reason": "A chat has no file channel. The assistant returns the figures (get_fee_statistics, get_fee_collections, get_gst_summary, get_fee_receipt_flags) and names the page where the file is downloaded.",
+      "mustNotExist": [
+        "generate_fee_report",
+        "export_accounts",
+        "download_receipt"
+      ]
     },
     {
       "capability": "delete_student (hard delete)",
-      "reason": "Only soft delete (archive_student) and irreversible anonymisation (anonymise_student) exist, both confirmed. Correct as-is."
+      "reason": "Only soft delete (archive_student) and irreversible anonymisation (anonymise_student) exist, both confirmed. Correct as-is.",
+      "mustNotExist": [
+        "delete_student"
+      ]
     },
     {
-      "capability": "regularize_attendance",
-      "reason": "The permission exists in the catalog but no route or service implements it."
+      "capability": "regularize_attendance (a separate tool)",
+      "reason": "Not needed: an older register is corrected through mark_attendance, and attendance.service accepts a date older than ATTENDANCE_BACKDATE_DAYS (default 3) only from someone holding attendance.regularize.",
+      "mustNotExist": [
+        "regularize_attendance"
+      ]
     },
     {
-      "capability": "HR / payroll / inventory / events",
-      "reason": "The modules do not exist."
+      "capability": "individual pay, payroll approval and payment",
+      "reason": "By design. Payroll runs can be read as totals, their inputs updated and a run calculated (tools/p4FinanceHrNurse.js); approving or paying a run, payslips and any one person's salary stay on the Payroll screen.",
+      "mustNotExist": [
+        "approve_payroll_run",
+        "pay_payroll_run",
+        "get_payslip"
+      ]
+    },
+    {
+      "capability": "background-verification findings and decisions; safeguarding cases",
+      "reason": "By design. Verification counts are readable (get_verification_counts); findings and the final decision stay with HR and the principal on the Verification screen. Safeguarding is never handled in chat: concerns go straight to the designated lead.",
+      "mustNotExist": [
+        "decide_verification",
+        "list_safeguarding_cases",
+        "get_safeguarding_case"
+      ]
+    },
+    {
+      "capability": "credentials, roles, permissions, platform administration",
+      "reason": "By design. Connecting social or ad accounts, creating users, changing roles or permissions, domains and seat pricing would let a conversation widen its own authority; they stay on their screens.",
+      "mustNotExist": [
+        "create_user",
+        "update_role_permissions",
+        "connect_social_account"
+      ]
     }
   ]
 }

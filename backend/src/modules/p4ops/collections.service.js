@@ -7,6 +7,7 @@ import { periodFromDates, localDate, DEFAULT_TZ } from '../../utils/periods.js';
 import { sendOperational } from '../messaging/messaging.service.js';
 import { assertObjectId, optionalText, profileNames, pushHistory, requireProfile } from '../ops/common.js';
 import { classLabel, studentLabel, istYmd, istHm } from '../ptm/relations.js';
+import { plural } from '../../utils/plural.js';
 
 /**
  * The bursar's reports (part 4, finance audit). Everything here is computed on
@@ -149,7 +150,7 @@ export async function collectionReport(actor, query = {}) {
     notes: [
       'Collected = payments credited to the ledger (published), dated by when the money was received.',
       'Fee-head amounts split each receipt pro rata over its invoice lines (after concession, with tax).',
-      pending.length ? `${pending.length} payment(s) of ${inr(pending.reduce((n, p) => n + p.amountPaise, 0))} are awaiting approval and are not counted yet.` : null,
+      pending.length ? `${plural(pending.length, 'payment')} of ${inr(pending.reduce((n, p) => n + p.amountPaise, 0))} ${pending.length === 1 ? 'is' : 'are'} awaiting approval and are not counted yet.` : null,
     ].filter(Boolean),
   };
 }

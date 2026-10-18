@@ -117,6 +117,11 @@ describe('student planner', () => {
     await classWork();
     const own = await inOak(() => planner.getPlanner(s.people.PARENT.actor));
     expect(own.student.name).toBe('Rahul Sharma');
+    // Part 5: the plan speaks about the child to the parent, not "your marks".
+    expect(own.plan.note).toContain('Rahul’s homework');
+    expect(JSON.stringify(own.plan)).not.toMatch(/Your published marks|your own published/);
+    const mine = await inOak(() => planner.getPlanner(s.people.STUDENT.actor));
+    expect(mine.plan.note).toContain('your own published marks');
     await expect(inOak(() => planner.getPlanner(s.people.PARENT.actor, { studentId: String(s.priya.student._id) }))).rejects.toMatchObject({ code: 'STUDENT_NOT_LINKED' });
     await expect(inOak(() => planner.getPlanner(s.people.TEACHER.actor))).rejects.toMatchObject({ code: 'ROLE_NOT_PERMITTED' });
   });

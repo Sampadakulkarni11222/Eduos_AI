@@ -171,7 +171,8 @@ export function CampusWorldView() {
   // Folded panels, and the reader's own corner of the campus (their child's class, their own class, their next class).
   const panels = usePanelState();
   const [childId, setChildId] = useState<string | null>(null);
-  const my = usePoll(() => opsApi.campusMyView(childId), [childId], 15);
+  // A staff preview of another time (the time slider) shows the reader's own classes at that time too.
+  const my = usePoll(() => opsApi.campusMyView(childId, at || date ? { at, date } : undefined), [childId, at, date], 15);
   useEffect(() => { try { if (localStorage.getItem('eduos.campus.hud') === '0') setHud(false); } catch { /* storage unavailable */ } }, []);
   const toggleHud = useCallback((on: boolean) => { setHud(on); try { localStorage.setItem('eduos.campus.hud', on ? '1' : '0'); } catch { /* ignore */ } }, []);
 

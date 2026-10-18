@@ -9,6 +9,7 @@ import {
   type Edition, type EditionSummary, type Flashcard, type MatchGroup, type Opportunity, type Preferences, type QuizQuestion, type PollResults, type Reaction, type Verdict, type EligibilityOut,
 } from '@/lib/newsletter-api';
 import { DataNote, ErrorNote, Loadable, PromptModal, SectionCard, StatusPill, Tabs, Tile, fmtDate, fmtDateTime, humanize, useAction, useLoad, useQueryParam } from './kit';
+import { SixtySeconds, DeadlineRadar, BadgeStrip, ChallengeBlock, SectionNoteLine, ExtractionDetails, RegenerateBar, DeskAlerts } from './newsletter-ai-views';
 
 /**
  * Opportunities and the weekly / monthly newsletter.
@@ -381,10 +382,14 @@ function MapBlock() {
 
 // ── the interactive edition ────────────────────────────────────────────
 
-const SECTIONS = ['hook', 'foryou', 'closing', 'items', 'cards', 'quiz', 'poll', 'map', 'spotlight', 'comments'] as const;
+const SECTIONS = ['hook', 'sixty', 'foryou', 'closing', 'radar', 'items', 'cards', 'quiz', 'poll', 'map', 'spotlight', 'comments'] as const;
+// Part 5: which editor's note goes under which section.
+const NOTE_FOR: Partial<Record<(typeof SECTIONS)[number], string>> = { items: 'items', closing: 'deadlines', cards: 'flashcards', quiz: 'quiz', poll: 'poll' };
 
 function EditionReader({ id, kids, onChanged }: { id: string; kids: Array<{ studentId: string; name: string }>; onChanged?: () => void }) {
   const ed = useLoad(() => newsletterApi.edition(id), [id]);
+  // Part 5: 60-second cards, deadline radar, "because" per item, badges, challenges (optional: the edition reads without them).
+  const extras = useLoad(() => Promise.resolve().then(() => newsletterApi.extras(id)).catch(() => null), [id]);
   const [lang, setLang] = useState<Lang>('en');
   const [size, setSize] = useState<'S' | 'M' | 'L'>('M');
   const [reactions, setReactions] = useState<Edition['reactions']>({});
@@ -438,6 +443,7 @@ function EditionReader({ id, kids, onChanged }: { id: string; kids: Array<{ stud
         <section id={`nl-${id}-${key}`} data-section={key} className="nl-section" aria-labelledby={`nl-${id}-${key}-h`}>
           <h2 id={`nl-${id}-${key}-h`} className="nl-section-title">{title}</h2>
           {sub && <p className="nl-section-sub">{sub}</p>}
+          {NOTE_FOR[key] && <SectionNoteLine note={e.sectionNotes?.find((n) => n.section === NOTE_FOR[key])} />}
           {children}
         </section>
       );
@@ -467,7 +473,7 @@ function EditionReader({ id, kids, onChanged }: { id: string; kids: Array<{ stud
               <span>{nearest ? (nearest.daysLeft === 1 ? 'day to the next deadline' : 'days to the next deadline') : 'opportunities'}</span>
             </div>
             <div className="nl-hook-main">
-              <p className="nl-hook-period">{e.title}, {e.periodLabel}</p>
+              <p className="nl-hook-period">{e.periodLabel && !e.title.includes(e.periodLabel) ? `${e.title}, ${e.periodLabel}` : e.title}</p>
               <p className="nl-hook-text">{lang === 'hi' && e.hook.textHi ? e.hook.textHi : e.hook.text}</p>
               {e.hook.question && <p className="nl-hook-q">{e.hook.question}</p>}
               {e.intro && <p className="nl-hook-intro">{e.intro}</p>}
@@ -481,6 +487,8 @@ function EditionReader({ id, kids, onChanged }: { id: string; kids: Array<{ stud
               </div>
             </div>
           </section>
+
+          {extras.data && extras.data.sixtySeconds.length > 1 && sec('sixty', e.cadence === 'MONTHLY' ? 'This month in 60 seconds' : 'This week in 60 seconds', <SixtySeconds extras={extras.data} />, 'One card per pick. Swipe or use Next.')}
 
           {e.forYou.some((g) => g.items.length) && sec('foryou', l.forYou, (
             <div className="ops-stack">
@@ -497,12 +505,22 @@ function EditionReader({ id, kids, onChanged }: { id: string; kids: Array<{ stud
             <ul className="nl-deadlines">{e.deadlines.map((d) => <li key={d.id}><span>{d.title}{d.saved ? ' (saved)' : ''}</span><Countdown days={d.daysLeft} l={l} /></li>)}</ul>
           ))}
 
+          {extras.data && sec('radar', 'Deadline radar', <DeadlineRadar extras={extras.data} />, 'What closes soon among this edition, your saves and your matches.')}
+
           {sec('items', l.items, (
-            <div className="nl-grid">{e.items.map((o) => <OpportunityCard key={o.id} o={o} l={l} editionId={id} kids={kids} reactions={reactions[o.id] ?? { counts: { USEFUL: 0, INSPIRING: 0, ENTERING: 0, CURIOUS: 0 }, mine: null }} onReact={(k) => void react(o.id, k)} />)}</div>
+            <div className="nl-grid">{e.items.map((o) => (
+              <div key={o.id} className="nl-because-wrap">
+                {extras.data?.because[o.id] && <p className={cx('nl-because', extras.data.because[o.id].notEligible && 'is-no')}>{extras.data.because[o.id].text}</p>}
+                <OpportunityCard o={o} l={l} editionId={id} kids={kids} reactions={reactions[o.id] ?? { counts: { USEFUL: 0, INSPIRING: 0, ENTERING: 0, CURIOUS: 0 }, mine: null }} onReact={(k) => void react(o.id, k)} />
+              </div>
+            ))}</div>
           ), 'Dates the school has not confirmed say "check": always check the official site before applying.')}
 
-          {e.flashcards.length > 0 && sec('cards', l.cards, <FlashcardDeck cards={e.flashcards} l={l} onReviewed={setStreak} />, 'Swipe right if you knew it, left to see it again. Cards come back on a schedule, so a few minutes a week is enough.')}
-          {e.quiz.questions.length > 0 && sec('quiz', l.quiz, <QuizBlock edition={e} l={l} onDone={() => { void ed.reload(); onChanged?.(); }} />)}
+          {e.flashcards.length > 0 && sec('cards', l.cards, <>{extras.data && <BadgeStrip extras={extras.data} />}<FlashcardDeck cards={e.flashcards} l={l} onReviewed={(st) => { setStreak(st); void extras.reload(); }} /></>, 'Swipe right if you knew it, left to see it again. Cards come back on a schedule, so a few minutes a week is enough.')}
+          {e.quiz.questions.length > 0 && sec('quiz', l.quiz, <>
+            <QuizBlock edition={e} l={l} onDone={() => { void ed.reload(); void extras.reload(); onChanged?.(); }} />
+            {extras.data?.challenges && <ChallengeBlock editionId={id} extras={extras.data} onChanged={() => void extras.reload()} />}
+          </>)}
           {e.poll && sec('poll', l.poll, <PollBlock edition={e} l={l} />)}
           {sec('map', l.map, <MapBlock />)}
           {e.spotlight.length > 0 && sec('spotlight', l.spotlight, (
@@ -840,10 +858,11 @@ function QueueTab({ status }: { status: 'SUBMITTED' | 'PUBLISHED' }) {
             <li key={o.id}>
               <div className="nl-desk-main">
                 <b>{o.title}</b>
-                <p className="ops-muted">{o.typeLabel}, {o.levelLabel.toLowerCase()}. From {o.source.kind === 'CATALOGUE' ? 'the starter list' : o.source.kind === 'FEED' ? `a feed (${o.source.sourceTitle ?? 'approved'})` : o.submittedByName ?? 'staff'}{o.clicks ? `. ${o.clicks} click(s)` : ''}</p>
+                <p className="ops-muted">{o.typeLabel}, {o.levelLabel.toLowerCase()}. From {o.source.kind === 'CATALOGUE' ? 'the starter list' : o.source.kind === 'FEED' ? `a feed (${o.source.sourceTitle ?? 'approved'})` : o.source.kind === 'ALERT' ? `an alert feed (${o.source.sourceTitle ?? 'Google Alert'})` : o.submittedByName ?? 'staff'}{o.clicks ? `. ${o.clicks} ${o.clicks === 1 ? 'click' : 'clicks'}` : ''}</p>
                 <p className={cx('nl-when', !o.datesConfirmed && 'is-unconfirmed')}>{o.dateText}</p>
                 {o.officialUrl ? <p className="ops-muted nl-break">{o.officialUrl}</p> : <p className="ops-muted">No link (school event)</p>}
                 {o.reviewNote && <p className="nl-reason">{o.reviewNote}</p>}
+                {o.extraction && <ExtractionDetails x={o.extraction} sourceLink={o.sourceLink} />}
               </div>
               <div className="nl-actions">
                 <Button small variant="soft" onClick={() => setEditing(o)}>Edit</Button>
@@ -866,6 +885,7 @@ function DeskEditions() {
   const [preview, setPreview] = useState<string | null>(fromLink);
   const [editing, setEditing] = useState<EditionSummary | null>(null);
   const [withdrawing, setWithdrawing] = useState<string | null>(null);
+  const [round, setRound] = useState(0);
   const toast = useToast();
   const { run, busy, error } = useAction();
   return (
@@ -892,7 +912,8 @@ function DeskEditions() {
                 {e.status !== 'PUBLISHED' && <Button small disabled={busy} onClick={() => void run(async () => { const r = await newsletterApi.publish(e.id); toast(r.delivered ? `Published: ${r.delivery?.inApp ?? 0} readers in the app, ${r.delivery?.emailQueued ?? 0} by email` : 'Published again (not re-sent)'); await list.reload(); })}>Publish</Button>}
                 {e.status === 'PUBLISHED' && <Button small variant="ghost" onClick={() => setWithdrawing(e.id)}>Withdraw</Button>}
               </div>
-              {preview === e.id && <div className="nl-preview"><EditionReader id={e.id} kids={[]} /></div>}
+              {preview === e.id && e.status === 'DRAFT' && <RegenerateBar editionId={e.id} writtenBy={e.ai?.sections ?? null} onDone={() => { setRound((n) => n + 1); void list.reload(); }} />}
+              {preview === e.id && <div className="nl-preview"><EditionReader key={`${e.id}:${round}`} id={e.id} kids={[]} /></div>}
             </li>
           ))}
         </ul>
@@ -1002,7 +1023,7 @@ function DeskAnalytics() {
 
 export function NewsletterDeskView() {
   const { permissions } = usePermissions();
-  const initial = (useQueryParam('tab') as 'queue' | 'catalogue' | 'editions' | 'comments' | 'sites' | 'analytics' | null) ?? 'queue';
+  const initial = (useQueryParam('tab') as 'queue' | 'catalogue' | 'editions' | 'alerts' | 'comments' | 'sites' | 'analytics' | null) ?? 'queue';
   const [tab, setTab] = useState(initial);
   const probe = useLoad(() => newsletterApi.opportunities({ status: 'SUBMITTED' }), []);
   if (isOff(probe.error)) return <EmptyState icon="⏻" title="Opportunities and the newsletter are switched off" sub="An administrator can switch them on in Settings, Features." />;
@@ -1011,7 +1032,7 @@ export function NewsletterDeskView() {
     <div className="ops-stack nl-root">
       <Tabs
         tabs={[
-          { key: 'queue' as const, label: 'Review queue', count: probe.data?.counts?.SUBMITTED ?? null }, { key: 'catalogue' as const, label: 'Published' }, { key: 'editions' as const, label: 'Editions' },
+          { key: 'queue' as const, label: 'Review queue', count: probe.data?.counts?.SUBMITTED ?? null }, { key: 'catalogue' as const, label: 'Published' }, { key: 'editions' as const, label: 'Editions' }, { key: 'alerts' as const, label: 'Google Alerts' },
           { key: 'comments' as const, label: 'Comments' }, { key: 'sites' as const, label: 'Official sites' }, { key: 'analytics' as const, label: 'Analytics' },
         ]}
         value={tab} onChange={setTab}
@@ -1019,6 +1040,7 @@ export function NewsletterDeskView() {
       {tab === 'queue' && <QueueTab status="SUBMITTED" />}
       {tab === 'catalogue' && <QueueTab status="PUBLISHED" />}
       {tab === 'editions' && <DeskEditions />}
+      {tab === 'alerts' && <DeskAlerts />}
       {tab === 'comments' && <DeskComments />}
       {tab === 'sites' && <DeskSites />}
       {tab === 'analytics' && <DeskAnalytics />}

@@ -124,9 +124,13 @@ const UNCOVERED = {
     category: 'D',
     why: 'Care notes a parent agreed to share with the class teacher are health data; they are read on the Health page (audited), and kept out of chat transcripts altogether.',
   },
-  'health.summary.read': {
+  // health.summary.read: now covered by get_health_room_summary (p5AskAi.js), counts only, at the lead's request.
+
+  /* ── D. part 5: a student's own act, granted school-wide to administration ── */
+  'portfolios.reflect': {
     category: 'D',
-    why: 'Health-room counts for the principal are shown on the Health page; health data, even as counts, is not offered through the assistant beyond what the health role reads.',
+    scopes: ['ALL'],
+    why: 'A portfolio reflection is written by the student in their own portfolio (add_portfolio_reflection, students only); portfolios.service.reflect() refuses anyone else, so an administrator holding the key school-wide is not offered a tool that can only fail.',
   },
 
   /* ── A. reachable under another permission key ─────────── */

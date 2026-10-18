@@ -1468,6 +1468,8 @@ export interface AgentReply {
   continuation?: AgentContinuation | null;
   /** The records this answer used ("Based on"), with links. */
   evidence?: Array<{ tool: string; text: string; link: string | null; count: number | null }>;
+  /** The server-side conversation this turn belongs to; sent back with the next message. */
+  conversationId?: string;
 }
 
 /**

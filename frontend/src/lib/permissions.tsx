@@ -96,6 +96,8 @@ for (const [slug, keys] of Object.entries(opsRoutes.portals as Record<string, st
   }
 }
 ROUTE_PERMISSIONS['/marketing/admissions'] = 'admissions.read';
+// HR is the alumni coordinator: it reviews alumni offers with alumni.manage (the API accepts either key).
+ROUTE_PERMISSIONS['/hr/give-back'] = 'alumni.manage';
 
 export function getRequiredPermission(pathname: string): string | null {
   for (const [route, perm] of Object.entries(ROUTE_PERMISSIONS)) {

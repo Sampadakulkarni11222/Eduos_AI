@@ -1,6 +1,10 @@
 # EduOS AI — AI-native School ERP
 
-EduOS AI is a multi-portal School/College ERP: one platform with dedicated, role-scoped portals for **Super Admin, Admin, Principal, Teacher, Parent, Student, Finance, Librarian, and Hostel Warden**, plus an AI copilot and agentic assistant, AI-powered tutoring (Study Help), WhatsApp assistant (simulation mode), online fee payments, file uploads, in-app notifications, student leave management, and a fully backend-enforced RBAC system.
+EduOS AI is a multi-portal School/College ERP: one platform with dedicated, role-scoped portals for **Super Admin, Admin, Principal, Teacher, Parent, Student, Finance, Librarian, and Hostel Warden**, plus an AI copilot and agentic assistant, AI-powered tutoring (Study Help), WhatsApp assistant (simulation mode), online fee payments (sandbox until a gateway is set), file uploads, in-app notifications, student leave management, and a fully backend-enforced RBAC system.
+
+Since the first release the platform has also gained portals and modules for HR, Marketing/Admissions, Compliance, Trustee, Nurse and Alumnus roles and operations modules (approvals, correspondence, governance, payroll, procurement, analytics, tasks and bills, labs, fleet, PTM, clubs, health room, a live 3D campus map, an opportunities newsletter and more). The section 6 table below lists the original portals; `docs/erp-operations/PLATFORM-COVERAGE-MATRIX.md` lists the modules, and `docs/erp-operations/PENDING-REQUIREMENTS-2026-10-17.md` states what is built, simulated or not built as of 2026-10-17.
+
+Email, WhatsApp, SMS, ad platforms, social networks, cameras, GPS trackers and ID readers are **simulated until a provider is connected**; nothing is sent to an outside party before then.
 
 ---
 
@@ -116,6 +120,15 @@ To load the full demo school into it, take the URI it printed:
 ```bash
 MONGO_URI="<printed URI>" npm run seed:school
 ```
+
+**Quickest way to see the product (the full sample school):**
+
+```bash
+cd backend
+npm run demo -- --build      # drop "-- --build" if the frontend is already built
+```
+
+Open `http://localhost:3000/oakridge`. Staff sign in with `role@schoolerp.com` (for example `principal@schoolerp.com`, `teacher@schoolerp.com`) and `ChangeMe@123!`; the sign-in page also offers an OTP, which is shown on screen in the demo. Parent, student and alumnus sign in by phone with an OTP shown on screen in development (student `+910000003001`, parent `+910000004001`, alumnus `+910000000033`). All data is fictional and in memory; it is gone when the script stops. Email, WhatsApp and the other providers are simulated.
 
 The in-memory server runs as a **single-node replica set**, not a standalone —
 the fee ledger and admission numbering use transactions, which MongoDB only
@@ -429,7 +442,7 @@ Everything below works out of the box in **safe development modes**; going live 
 | **Google Sign-In** | dev-only demo picker | set `GOOGLE_CLIENT_ID`(+`SECRET`), `NEXT_PUBLIC_GOOGLE_CLIENT_ID`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`; backend verifies the ID token audience via Google |
 | **Online payments** | `PAYMENT_PROVIDER=sandbox` — Pay Now captures instantly with `SANDBOX-…` refs on the **real** ledger, clearly labelled | add a gateway case in `src/providers/payment.provider.js` (Razorpay/Stripe), set `PAYMENT_PROVIDER`; `none` disables online payment cleanly |
 | **WhatsApp** | SIMULATION mode — the in-app phone frame drives the real bot brain as the logged-in user | set `WA_PHONE_NUMBER_ID`, `WA_ACCESS_TOKEN`, `WA_APP_SECRET`, point Meta's webhook at `/api/v1/whatsapp/webhook` |
-| **AI copilot / agent** | deterministic, data-grounded answers from the caller's own scoped data (attendance, fees, homework, timetable, exams), with confirm-before-commit on every write. **Needs no API key** | nothing — this is production behaviour, not a stub |
+| **AI copilot / agent** | answers from the caller's own permitted data through a catalogue of 470 tools (243 reads, 227 writes or actions; see `docs/MCP-TOOLS.md`). Every write returns a summary and needs the person's confirmation before it runs. The assistant never decides: approvals, payment checks and filings are done by the approver on the website. Without an AI model key it uses built-in question matching and template drafts | an AI model key (`AI_PROVIDER`) for free-form understanding and real AI text |
 | **AI-written answers** (tutor explanations, register OCR, intent fallback) | off unless a provider is configured | `AI_PROVIDER=gemini` + `GEMINI_API_KEY`, or `AI_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`. Nothing else is implemented. Without one, tutor returns a labelled study plan from real data and charges no credits |
 | **AI credits** | students/parents get `AI_FREE_MONTHLY_CREDITS` (default 50) free AI answers a month, then buy packs; staff are never metered | set `AI_FREE_MONTHLY_CREDITS=0` to sell credits outright; add a real gateway for the top-up charge |
 | **In-app notifications** | all roles receive notifications (new announcements, assignment grades, fee receipts, elective decisions, etc.) via `GET /api/v1/notifications`; unread badge count via `/notifications/unread-count` | nothing — works in dev by default |
@@ -645,6 +658,8 @@ real data**, since it creates accounts.
 | `npm run seed` | idempotent: permission catalog, system roles, demo users, demo books & hostel rooms |
 | `npm run migrate` | harmonizes/links demo data (enrollments, guardians, invoices, assignments, exams, timetable) |
 | `npm run seed:school` | full demo school: 12 divisions, 720 students, timetable, fees |
+| `npm run seed:operations` | sample data for every operations section (fictional) |
+| `npm run demo` (`-- --build`) | throwaway in-memory database, full sample school, API on :5000 and the site on :3000 (`/oakridge`) |
 | `npm run build` / `npm start` | esbuild bundle → `dist/`, run production build |
 | `npm run build:obfuscated` / `start:obfuscated` | obfuscated production bundle |
 | `npm test` / `npm run test:watch` | Vitest against an in-memory MongoDB replica set |

@@ -928,18 +928,23 @@ export const api = {
    * from the session on every turn, and sends these only to work out what a
    * follow-up ("what about last month?") refers to.
    */
-  agentAsk: (message: string, lang?: string, history?: AgentTurn[]) =>
-    request<AgentReply>('/ai/agent', { method: 'POST', body: JSON.stringify({ message, source: 'WEB', lang, history }) }),
+  /**
+   * One turn. `conversationId` names the server-side conversation (kept for
+   * 24 hours), so a follow-up resolves even after a page change or a reload;
+   * `history` is the fallback for a conversation the server has not seen.
+   */
+  agentAsk: (message: string, lang?: string, history?: AgentTurn[], conversationId?: string) =>
+    request<AgentReply>('/ai/agent', { method: 'POST', body: JSON.stringify({ message, source: 'WEB', lang, history, ...(conversationId && { conversationId }) }) }),
   /** The next window of a long answer ("Load more"). */
   agentContinue: (continuationToken: string, lang?: string) =>
     request<AgentReply>('/ai/agent/continue', {
       method: 'POST',
       body: JSON.stringify({ continuationToken, source: 'WEB', lang }),
     }),
-  agentConfirm: (confirmToken: string, accept: boolean, lang?: string) =>
+  agentConfirm: (confirmToken: string, accept: boolean, lang?: string, conversationId?: string) =>
     request<{ reply: string; executed?: boolean }>('/ai/agent/confirm', {
       method: 'POST',
-      body: JSON.stringify({ confirmToken, accept, source: 'WEB', lang }),
+      body: JSON.stringify({ confirmToken, accept, source: 'WEB', lang, ...(conversationId && { conversationId }) }),
     }),
   agentCapabilities: () => request<{ tools: AgentTool[] }>('/ai/agent/capabilities'),
 

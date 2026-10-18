@@ -3,6 +3,7 @@ import { sendSuccess } from '../../utils/response.js';
 import { AppError } from '../../utils/AppError.js';
 import * as agentCore from './agent/orchestrator.js';
 import { mcpToolsFor } from './mcp/registry.js';
+import { acceptableConversationId, rememberTurn } from './agent/memory.js';
 import * as tutorService from './tutor.service.js';
 import * as studyBuddyService from './studyBuddy/studyBuddy.service.js';
 import * as creditService from './aiCredit.service.js';
@@ -75,7 +76,7 @@ function sanitiseHistory(raw) {
 }
 
 export const agent = asyncHandler(async (req, res) => {
-  const { message, lang, history } = req.body;
+  const { message, lang, history, conversationId } = req.body;
   if (!message) throw new AppError('message is required', 400);
   sendSuccess(
     res,
@@ -91,6 +92,11 @@ export const agent = asyncHandler(async (req, res) => {
       // who was meant — while WhatsApp, which has always passed history,
       // resolved it. Same core, same behaviour now.
       history: sanitiseHistory(history),
+      // The server-side conversation (agent/memory.js). Only an id the server
+      // could have issued is accepted, and it finds a conversation only for
+      // this signed-in person in this school; the reply carries the id back
+      // so the browser can keep it across page changes and reloads.
+      conversationId: acceptableConversationId(conversationId),
     }), { message }),
     'Agent response'
   );
@@ -117,18 +123,18 @@ export const agentContinue = asyncHandler(async (req, res) => {
 });
 
 export const agentConfirm = asyncHandler(async (req, res) => {
-  const { confirmToken, accept, lang } = req.body;
-  sendSuccess(
-    res,
-    await agentCore.confirmAction({
-      confirmToken,
-      actor: req.actor,
-      accept: accept !== false,
-      source: WEB_CHANNEL,
-      lang,
-    }),
-    'Agent action processed'
-  );
+  const { confirmToken, accept, lang, conversationId } = req.body;
+  const result = await agentCore.confirmAction({
+    confirmToken,
+    actor: req.actor,
+    accept: accept !== false,
+    source: WEB_CHANNEL,
+    lang,
+  });
+  // The button's outcome is a turn of the conversation too ("Done", "Cancelled").
+  const id = acceptableConversationId(conversationId);
+  if (id) await rememberTurn({ actor: req.actor, source: WEB_CHANNEL, conversationId: id, message: null, result });
+  sendSuccess(res, id ? { ...result, conversationId: id } : result, 'Agent action processed');
 });
 
 /**

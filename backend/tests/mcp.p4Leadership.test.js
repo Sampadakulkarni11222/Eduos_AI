@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -65,6 +65,9 @@ describe('the leadership tools keep the contract', () => {
 });
 
 describe('through the real MCP server', () => {
+  // Attendance has nothing to report on a weekend ("No school today"), so these run on a fixed Wednesday (after the seed).
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T04:30:00Z')); });
+  afterEach(() => { vi.useRealTimers(); });
   it('the principal reads school attendance and workload; a teacher is refused', async () => {
     const a = await mcp(OAK, s.people.PRINCIPAL.actor, 'get_school_attendance_overview', {});
     expect(a.success, JSON.stringify(a.error)).toBe(true);

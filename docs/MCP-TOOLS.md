@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**470 tools** — 243 GET, 100 CREATE, 52 UPDATE, 16 DELETE, 59 ACTION.
+**517 tools** — 247 GET, 114 CREATE, 60 UPDATE, 23 DELETE, 73 ACTION.
 
-Risk mix: 317 LOW, 41 HIGH, 111 MEDIUM, 1 CRITICAL.
+Risk mix: 335 LOW, 42 HIGH, 139 MEDIUM, 1 CRITICAL.
 
-Status: 468 AVAILABLE, 2 PARTIAL (see below). 1 compatibility aliases, 1 deprecated implementation entry, 13 capabilities deliberately blocked.
+Status: 515 AVAILABLE, 2 PARTIAL (see below). 1 compatibility aliases, 1 deprecated implementation entry, 15 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -28,18 +28,18 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
 | `SUPER_ADMIN` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `ADMIN` | 429 | 223 | 91 | 46 | 54 | 15 | 40 | 206 |
-| `PRINCIPAL` | 244 | 159 | 38 | 21 | 23 | 3 | 12 | 85 |
-| `TEACHER` | 161 | 101 | 27 | 11 | 18 | 4 | 6 | 60 |
-| `PARENT` | 118 | 89 | 13 | 5 | 5 | 6 | 3 | 29 |
-| `STUDENT` | 112 | 85 | 13 | 2 | 5 | 7 | 1 | 27 |
-| `FINANCE` | 113 | 71 | 19 | 9 | 12 | 2 | 13 | 42 |
-| `LIBRARIAN` | 92 | 59 | 13 | 6 | 10 | 4 | 1 | 33 |
-| `WARDEN` | 93 | 57 | 14 | 11 | 9 | 2 | 1 | 36 |
-| `NURSE` | 62 | 42 | 11 | 5 | 2 | 2 | 1 | 20 |
-| `HR` | 89 | 55 | 16 | 7 | 9 | 2 | 4 | 34 |
-| `MARKETING` | 83 | 54 | 15 | 5 | 7 | 2 | 3 | 29 |
-| `COMPLIANCE` | 92 | 59 | 18 | 8 | 5 | 2 | 3 | 33 |
+| `ADMIN` | 471 | 227 | 102 | 54 | 68 | 20 | 41 | 244 |
+| `PRINCIPAL` | 278 | 163 | 44 | 27 | 37 | 7 | 13 | 115 |
+| `TEACHER` | 189 | 103 | 31 | 16 | 31 | 8 | 6 | 86 |
+| `PARENT` | 122 | 89 | 15 | 5 | 5 | 8 | 3 | 33 |
+| `STUDENT` | 114 | 85 | 14 | 2 | 5 | 8 | 1 | 29 |
+| `FINANCE` | 120 | 73 | 20 | 10 | 15 | 2 | 13 | 47 |
+| `LIBRARIAN` | 100 | 61 | 14 | 8 | 13 | 4 | 1 | 39 |
+| `WARDEN` | 99 | 59 | 14 | 12 | 12 | 2 | 1 | 40 |
+| `NURSE` | 69 | 45 | 11 | 6 | 5 | 2 | 1 | 24 |
+| `HR` | 95 | 57 | 16 | 8 | 12 | 2 | 4 | 38 |
+| `MARKETING` | 89 | 56 | 15 | 6 | 10 | 2 | 3 | 33 |
+| `COMPLIANCE` | 101 | 61 | 20 | 9 | 9 | 2 | 3 | 40 |
 | `TRUSTEE` | 46 | 35 | 3 | 5 | 2 | 1 | 1 | 11 |
 | `ALUMNUS` | 43 | 29 | 5 | 5 | 3 | 1 | 0 | 14 |
 | `COUNSELLOR (custom, example)` | 25 | 22 | 1 | 1 | 0 | 1 | 0 | 3 |
@@ -49,8 +49,8 @@ Custom roles are database rows, created per school, so none can be listed here i
 <details><summary>High-risk actions visible to each role</summary>
 
 - **SUPER_ADMIN** (0): _none_
-- **ADMIN** (40): `add_guardian`, `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `transition_fee_plan`, `create_fee_structure`, `enter_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`, `request_extra_seats`, `send_social_post`, `verify_eco_activity`, `record_bill_payment`, `verify_bill_payment`, `request_fee_adjustment`, `record_concession_decision`, `record_outpass_consent`, `record_outpass_decision`, `record_staff_leave_decision`, `share_news_to_social`, `generate_certificate`, `close_cash_day`, `send_fee_reminders`, `start_staff_exit`, `log_data_breach`, `update_data_breach`
-- **PRINCIPAL** (12): `transition_fee_plan`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_document`, `send_social_post`, `verify_eco_activity`, `record_concession_decision`, `record_outpass_decision`, `record_staff_leave_decision`, `share_news_to_social`
+- **ADMIN** (41): `add_guardian`, `update_enrollment_status`, `archive_student`, `anonymise_student`, `mark_attendance`, `bulk_mark_attendance`, `create_invoice`, `generate_invoices`, `create_fee_plan`, `update_fee_plan`, `update_payment`, `transition_fee_plan`, `create_fee_structure`, `enter_marks`, `update_admission_lead`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_book`, `upsert_medical_record`, `remove_medical_record`, `delete_document`, `request_extra_seats`, `send_social_post`, `verify_eco_activity`, `record_bill_payment`, `verify_bill_payment`, `request_fee_adjustment`, `record_concession_decision`, `record_outpass_consent`, `record_outpass_decision`, `record_staff_leave_decision`, `share_news_to_social`, `generate_certificate`, `close_cash_day`, `send_fee_reminders`, `start_staff_exit`, `log_data_breach`, `update_data_breach`, `cancel_ptm_round`
+- **PRINCIPAL** (13): `transition_fee_plan`, `create_announcement`, `update_announcement`, `notify_users`, `send_whatsapp_message`, `delete_document`, `send_social_post`, `verify_eco_activity`, `record_concession_decision`, `record_outpass_decision`, `record_staff_leave_decision`, `share_news_to_social`, `cancel_ptm_round`
 - **TEACHER** (6): `mark_attendance`, `bulk_mark_attendance`, `enter_marks`, `create_announcement`, `delete_document`, `verify_eco_activity`
 - **PARENT** (3): `upsert_medical_record`, `remove_medical_record`, `record_outpass_consent`
 - **STUDENT** (1): `record_outpass_consent`
@@ -71,13 +71,22 @@ Custom roles are database rows, created per school, so none can be listed here i
 
 | Tool | Module | Operation | Permission | Scope | Risk | Confirm | Status |
 |---|---|---|---|---|---|---|---|
+| `accept_ptm_slot_offer` | PTM | CREATE | `ptm.book` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `acknowledge_my_training` | Policies | ACTION | `ai.copilot.use` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
+| `acknowledge_policy` | Policies | ACTION | `ai.copilot.use` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `add_bank_question` | Question bank | CREATE | `syllabus.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `add_candidate` | Recruitment | CREATE | `org.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `add_candidate_scorecard` | Recruitment | CREATE | `org.manage` | ALL | LOW | REQUIRED | AVAILABLE |
+| `add_compliance_obligation` | Compliance | CREATE | `compliance.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `add_eco_planting` | Sustainability | CREATE | `sustainability.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `add_google_alert_feed` | Newsletter | CREATE | `digest.manage` | ALL | LOW | REQUIRED | AVAILABLE |
 | `add_guardian` | Students | CREATE | `students.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `add_health_entry` | Health room | CREATE | `health.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `add_lesson_plan_feedback` | Lesson plans | ACTION | `syllabus.manage` | ALL | LOW | REQUIRED | AVAILABLE |
+| `add_portfolio_reflection` | Portfolios | CREATE | `portfolios.reflect` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `add_ptm_availability` | PTM | CREATE | `ptm.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `add_quiz_question` | Quizzes | CREATE | `assignments.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
+| `add_review_call_action` | Review calls | ACTION | `reviewcalls.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `add_review_call_note` | Review calls | ACTION | `reviewcalls.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `add_visitor` | Safety | CREATE | `visitors.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `allocate_hostel_bed` | Hostel | ACTION | `hostel.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -90,6 +99,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `assign_cover` | Cover | CREATE | `cover.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `assign_teacher_to_subject` | Academics | ACTION | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `block_id_card` | Safety | ACTION | `checkpoints.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `block_ptm_slot` | PTM | ACTION | `ptm.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `build_dashboard_panel` | Analytics | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `build_question_paper` | Question bank | CREATE | `syllabus.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `bulk_mark_attendance` | Attendance | ACTION | `attendance.mark` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
@@ -97,6 +107,8 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `cancel_alumni_certificate_request` | Alumni | UPDATE | `alumni.directory.read` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `cancel_book_request` | Library | DELETE | `library.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `cancel_certificate_request` | Certificates | DELETE | `students.read` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
+| `cancel_club_fixture` | Clubs | DELETE | `clubs.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `cancel_club_session` | Clubs | DELETE | `clubs.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `cancel_cocurricular_request` | Student requests | DELETE | `cocurricular.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `cancel_cover` | Cover | ACTION | `cover.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `cancel_due_item` | Tasks | ACTION | `tasks.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
@@ -105,16 +117,22 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `cancel_outpass` | Hostel | ACTION | `hostel.outpass.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `cancel_profile_edit_request` | Student requests | DELETE | `profile.edit.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `cancel_ptm_booking` | PTM | DELETE | `ptm.book` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `cancel_ptm_round` | PTM | DELETE | `ptm.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
+| `cancel_ptm_waitlist_entry` | PTM | DELETE | `ptm.book` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `cancel_staff_leave` | Staff leave | ACTION | `staffleave.apply` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `cancel_transport_request` | Transport | DELETE | `transport.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `change_bill_status` | Bills | UPDATE | `bills.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `check_certificate_code` | Certificates | GET | `students.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `check_in_ptm_meeting` | PTM | ACTION | `ptm.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `check_opportunity_eligibility` | Newsletter | GET | `digest.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `check_question_paper` | Question bank | GET | `syllabus.manage` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `checkin_copy_by_accession` | Library | ACTION | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `close_cash_day` | Finance reports | ACTION | `fees.pay` | ALL | HIGH | REQUIRED | AVAILABLE |
+| `close_conversation` | Conversations | ACTION | `conversations.use` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `close_health_visit` | Health room | UPDATE | `health.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `close_review_call` | Review calls | ACTION | `reviewcalls.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `complete_due_item` | Tasks | UPDATE | `tasks.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
+| `complete_review_call_action` | Review calls | ACTION | `reviewcalls.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `complete_service_visit` | Bills | UPDATE | `bills.manage` | ALL | LOW | REQUIRED | AVAILABLE |
 | `confirm_pickup_delegation` | Safety | UPDATE | `transport.tracking.read` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `consent_to_club_join` | Clubs | ACTION | `clubs.join` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -125,6 +143,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `create_assignment` | Assignments | CREATE | `assignments.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_book` | Library | CREATE | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_calendar_event` | Communication | CREATE | `calendar.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `create_club` | Clubs | CREATE | `clubs.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_counselling_appointment` | Admissions | CREATE | `admissions.manage` | ALL | LOW | REQUIRED | AVAILABLE |
 | `create_course_material` | Documents | CREATE | `materials.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_due_item` | Tasks | CREATE | `tasks.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
@@ -138,6 +157,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `create_hostel_room` | Hostel | CREATE | `hostel.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_invoice` | Fees | CREATE | `fees.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `create_marketing_campaign` | Marketing | CREATE | `marketing.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `create_ptm_round` | PTM | CREATE | `ptm.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_purchase_request` | Procurement | CREATE | `procurement.request` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_quiz_draft` | Quizzes | CREATE | `assignments.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `create_reading_challenge` | Library | CREATE | `library.manage` | ALL | LOW | REQUIRED | AVAILABLE |
@@ -152,6 +172,10 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `delete_assignment` | Assignments | DELETE | `assignments.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `delete_book` | Library | DELETE | `library.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `delete_document` | Documents | DELETE | `materials.manage` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
+| `delete_quiz` | Quizzes | DELETE | `assignments.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `delete_syllabus_module` | Syllabus | DELETE | `syllabus.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `draft_budget` | Budgets | CREATE | `budget.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `draft_correspondence_reply` | Correspondence | ACTION | `correspondence.read` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `draft_lab_reorder` | Labs | CREATE | `labs.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `draft_newsletter` | Newsletter | CREATE | `digest.manage` | ALL | LOW | REQUIRED | AVAILABLE |
 | `draft_offer_letter` | Recruitment | ACTION | `org.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -164,10 +188,12 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `express_interest_in_opportunity` | Alumni | ACTION | `alumni.directory.read` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `find_library_copy` | Library | GET | `library.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `find_opportunities` | Newsletter | GET | `digest.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `finish_online_class` | Lectures | ACTION | `lectures.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `freeze_board_pack` | Governance | CREATE | `governance.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `generate_certificate` | Certificates | CREATE | `students.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `generate_homework` | Assignments | ACTION | `assignments.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `generate_invoices` | Fees | ACTION | `fees.manage` | ALL | HIGH | CONDITIONAL | AVAILABLE |
+| `generate_library_accession_numbers` | Library | CREATE | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `get_absent_students` | Attendance | GET | `attendance.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_ad_campaign_performance` | Marketing | GET | `marketing.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_admission_capacity` | Admissions | GET | `marketing.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -222,6 +248,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_followup_queue` | Admissions | GET | `admissions.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_growth_score` | Analytics | GET | `ai.insights.read` | ALL | LOW | NOT_REQUIRED | PARTIAL |
 | `get_gst_summary` | Fees | GET | `accounts.export` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_health_room_summary` | Health room | GET | `health.summary.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_health_visits_today` | Health room | GET | `health.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_health_watchlist` | Health room | GET | `health.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_hostel_night_briefing` | Hostel | GET | `hostel.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -256,15 +283,18 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_my_electives` | Registrations | GET | `registrations.apply` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_opportunity_offers` | Alumni | GET | `alumni.directory.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_planner` | Academics | GET | `assignments.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_my_policies` | Policies | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_profile` | Profile | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_profile_edit_requests` | Student requests | GET | `profile.edit.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_quiz_results` | Quizzes | GET | `submissions.submit` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_school_record` | Alumni | GET | `alumni.directory.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_term_report_cards` | Report cards | GET | `reportcards.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_my_trainings` | Policies | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_transport_requests` | Transport | GET | `transport.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_newsletter_analytics` | Newsletter | GET | `digest.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_newsletter_edition` | Newsletter | GET | `digest.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_newsletter_flashcards` | Newsletter | GET | `digest.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_newsletter_review_queue` | Newsletter | GET | `digest.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_organisation_structure` | Organisation | GET | `org.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_overdue_books` | Library | GET | `library.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_payment_change_requests` | Fees | GET | `fees.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -314,6 +344,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `issue_book` | Library | ACTION | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `issue_lab_stock` | Labs | ACTION | `labs.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `join_club` | Clubs | CREATE | `clubs.join` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
+| `join_ptm_waitlist` | PTM | CREATE | `ptm.book` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `lend_copy_by_accession` | Library | ACTION | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `lend_reserved_book` | Library | ACTION | `library.manage` | ALL | LOW | REQUIRED | AVAILABLE |
 | `list_academic_years` | Academics | GET | `academics.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -404,6 +435,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `list_vehicles` | Transport | GET | `transport.fleet.manage` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_verification_cases` | Verification | GET | `verification.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `log_admission_followup` | Admissions | UPDATE | `admissions.manage` | ALL | LOW | REQUIRED | AVAILABLE |
+| `log_correspondence` | Correspondence | CREATE | `correspondence.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `log_cpd_hours` | CPD | CREATE | `staffleave.apply` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `log_data_breach` | Compliance | CREATE | `compliance.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `log_data_request` | Compliance | CREATE | `compliance.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -424,6 +456,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `mark_club_attendance` | Clubs | ACTION | `clubs.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `mark_hostel_roll_call` | Hostel | UPDATE | `hostel.manage` | ALL | LOW | REQUIRED | AVAILABLE |
 | `mark_lesson_taught` | Lesson plans | ACTION | `syllabus.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
+| `mark_ptm_no_show` | PTM | ACTION | `ptm.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `mark_staff_absent` | Cover | CREATE | `cover.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `move_candidate` | Recruitment | UPDATE | `org.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `note_bill_flag` | Bills | UPDATE | `bills.manage` | ALL | LOW | REQUIRED | AVAILABLE |
@@ -439,18 +472,22 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `receive_lab_stock` | Labs | CREATE | `labs.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `record_bill` | Bills | CREATE | `bills.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `record_bill_payment` | Bills | CREATE | `bills.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
+| `record_club_fixture_result` | Clubs | ACTION | `clubs.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `record_concession_decision` | Fees | ACTION | `approvals.decide` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `record_lab_calibration` | Labs | UPDATE | `labs.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `record_lab_stock_use` | Labs | ACTION | `labs.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `record_outpass_consent` | Hostel | ACTION | `hostel.outpass.request` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `record_outpass_decision` | Hostel | ACTION | `hostel.outpass.manage` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `record_outpass_gate` | Hostel | ACTION | `hostel.outpass.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `record_ptm_outcome` | PTM | UPDATE | `ptm.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `record_staff_leave_decision` | Staff leave | ACTION | `staffleave.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `record_trip_boarding` | Transport | ACTION | `transport.trips.operate` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `regenerate_newsletter_hook` | Newsletter | UPDATE | `digest.manage` | ALL | LOW | REQUIRED | AVAILABLE |
 | `regenerate_quarterly_report` | Analytics | CREATE | `reports.quarterly.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `register_for_elective` | Registrations | CREATE | `registrations.apply` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `remove_medical_record` | Medical | DELETE | `medical.manage` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `renew_library_loan` | Library | UPDATE | `library.manage` | ALL | LOW | REQUIRED | AVAILABLE |
+| `reopen_review_call` | Review calls | ACTION | `reviewcalls.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `reply_to_ticket` | Tickets | ACTION | `tickets.respond` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `report_lab_incident` | Labs | CREATE | `labs.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `report_repair` | Facilities | CREATE | `facilities.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
@@ -466,6 +503,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `request_pickup_delegation` | Safety | CREATE | `transport.tracking.read` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `request_profile_edit` | Student requests | CREATE | `profile.edit.request` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `request_transport_route` | Transport | CREATE | `transport.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
+| `reschedule_online_class` | Lectures | UPDATE | `lectures.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `reschedule_ptm_booking` | PTM | UPDATE | `ptm.book` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `reserve_library_book` | Library | CREATE | `library.manage` | ALL | LOW | REQUIRED | AVAILABLE |
 | `reserve_ptm_slot` | PTM | CREATE | `ptm.book` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -481,6 +519,8 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `save_statutory_committee` | Compliance | CREATE | `compliance.manage` | ALL | LOW | REQUIRED | AVAILABLE |
 | `save_term_report_remarks` | Report cards | UPDATE | `reportcards.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `schedule_board_meeting` | Governance | CREATE | `governance.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `schedule_club_fixture` | Clubs | CREATE | `clubs.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `schedule_club_session` | Clubs | CREATE | `clubs.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `schedule_compliance_training` | Compliance | CREATE | `compliance.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `schedule_online_class` | Lectures | CREATE | `lectures.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `schedule_service_visit` | Bills | CREATE | `bills.manage` | ALL | LOW | REQUIRED | AVAILABLE |
@@ -493,6 +533,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `send_social_post` | Social | ACTION | `social.publish` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `send_whatsapp_message` | Communication | ACTION | `announcements.publish` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `set_board_agenda` | Governance | UPDATE | `governance.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `set_conversation_office_hours` | Conversations | UPDATE | `conversations.use` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `set_my_message_preferences` | Family | UPDATE | `ai.copilot.use` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `share_news_to_social` | Social | ACTION | `social.publish` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `snooze_due_item` | Tasks | UPDATE | `tasks.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
@@ -506,6 +547,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `sync_ad_data` | Marketing | ACTION | `marketing.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `transition_fee_plan` | Fees | ACTION | `fees.read` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `translate_school_notice` | Family | GET | `announcements.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `unblock_ptm_slot` | PTM | ACTION | `ptm.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `unpin_dashboard_panel` | Analytics | DELETE | `ai.copilot.use` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `update_admission_lead` | Admissions | ACTION | `admissions.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_announcement` | Communication | UPDATE | `announcements.publish` | ALL | HIGH | REQUIRED | AVAILABLE |
@@ -520,15 +562,19 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `update_health_stock` | Health room | UPDATE | `health.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_hostel_inquiry` | Hostel | UPDATE | `hostel.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_hostel_room` | Hostel | UPDATE | `hostel.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `update_library_copy_status` | Library | UPDATE | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_mess_menu` | Hostel | UPDATE | `hostel.manage` | ALL | LOW | REQUIRED | AVAILABLE |
 | `update_my_alumni_profile` | Alumni | UPDATE | `alumni.directory.read` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `update_my_digest_interests` | Digest | UPDATE | `digest.read` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `update_payment` | Fees | UPDATE | `fees.payments.approve` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `update_payroll_inputs` | Payroll | UPDATE | `payroll.prepare` | ALL | HIGH | REQUIRED | AVAILABLE |
+| `update_ptm_round` | PTM | UPDATE | `ptm.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `update_quiz` | Quizzes | UPDATE | `assignments.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_review_call_schedule` | Review calls | UPDATE | `reviewcalls.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_section` | Academics | UPDATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_student` | Students | UPDATE | `students.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_subject_offering` | Academics | UPDATE | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `update_syllabus_module` | Syllabus | UPDATE | `syllabus.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `update_ticket` | Tickets | UPDATE | `tickets.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_transport_route` | Transport | UPDATE | `transport.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_visitor` | Safety | UPDATE | `visitors.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
@@ -538,6 +584,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `verify_bill_payment` | Bills | ACTION | `bills.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `verify_eco_activity` | Sustainability | ACTION | `sustainability.verify` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
 | `who_is_absent_today` | Attendance | GET | `attendance.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `withdraw_club_membership` | Clubs | DELETE | `clubs.join` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `withdraw_elective_registration` | Registrations | DELETE | `registrations.apply` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `withdraw_fee_adjustment` | Fees | ACTION | `fees.concessions.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `withdraw_opportunity_offer` | Alumni | UPDATE | `alumni.directory.read` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
@@ -564,16 +611,18 @@ Custom roles are database rows, created per school, so none can be listed here i
 | execute_sql / run_query / raw database access | By design. Every tool calls an existing EduOS service; no tool accepts a query, collection, model or update document (enforced by tests/mcp.architecture.test.js). |
 | arbitrary HTTP / API call, shell | By design. No tool accepts a URL to call or a command to run. |
 | arbitrary field update | By design. update_student, update_ticket, update_book and update_hostel_room apply explicit field allow-lists; student.service.update() enforces its own for every caller. |
-| online payment execution (payOnline / verifyCheckout) | Charging a family from a chat message is not something confirm-before-commit makes safe enough. Families pay through the payment link; staff record payments with record_payment. |
-| bulk WhatsApp / email to all parents | announcement.service.dispatch() writes a log line for the email and WhatsApp channels and sends nothing, and Meta requires approved templates for business-initiated messages. A tool would report a delivery that never happened. One-to-one send_whatsapp_message exists. |
+| online payment execution (payOnline / verifyCheckout) | Charging a family from a chat message is not something confirm-before-commit makes safe enough. Families pay through the payment link (get_payment_link). Recording, approving or refunding a fee payment is a decision made on the Payments screen: decisions.js refuses record_payment and every approve_/reject_/refund_ tool name at boot. |
+| approving, rejecting, publishing or refunding anything on the assistant's own initiative | By design (assistant automation rule). The assistant drafts and the same person confirms. The few approver decisions it can record (staff leave, concessions, out-passes, bill payments, eco activities) need the approver's own words, are HIGH risk and are confirmed on the website only; publishing marks, report cards, showcase editions or a quiz, and second-person approvals (fixture results, campaigns) stay on their screens. |
+| bulk WhatsApp / email to all parents | announcement.service.dispatch() still logs the email and WhatsApp fan-out rather than sending it, and Meta requires approved templates for business-initiated messages, so a tool would report a delivery that never happened. Operational notices that do go out (fee and library reminders, PTM, club and online-class notices) use messaging.sendOperational, which records SIMULATED until a provider is configured. One-to-one send_whatsapp_message exists. |
 | update a phone number | No service writes Account.phoneE164 after creation; phone lives on the Account, not the Student. Would need new business logic. |
-| send_email | Only OTP email exists, and EMAIL_PROVIDER=console logs rather than sends. |
-| generate_certificate / transfer certificate | No generator exists; the PDF generators that do exist stream to an HTTP response and return nothing reusable. |
-| promote_student / transfer_student | No service; updateEnrollmentStatus() only sets one enrolment's status (exposed as update_enrollment_status). |
-| generate_fee_report / export | No report service; MCP returns the data (get_fee_statistics, get_pending_fees), not a file. |
+| send_email (free-form, to any address) | Email goes out only as the system's own notices through messaging.sendOperational (EMAIL_PROVIDER=resend when configured, otherwise logged as SIMULATED). There is no free-form email to an arbitrary address from a chat. |
+| promote_student / transfer_student | No service; updateEnrollmentStatus() only sets one enrolment's status (exposed as update_enrollment_status). Transfer certificates are requested (request_certificate) and issued by the office (generate_certificate). |
+| file exports and downloads (accounts export, receipts, invoice and report-card PDFs, library labels) | A chat has no file channel. The assistant returns the figures (get_fee_statistics, get_fee_collections, get_gst_summary, get_fee_receipt_flags) and names the page where the file is downloaded. |
 | delete_student (hard delete) | Only soft delete (archive_student) and irreversible anonymisation (anonymise_student) exist, both confirmed. Correct as-is. |
-| regularize_attendance | The permission exists in the catalog but no route or service implements it. |
-| HR / payroll / inventory / events | The modules do not exist. |
+| regularize_attendance (a separate tool) | Not needed: an older register is corrected through mark_attendance, and attendance.service accepts a date older than ATTENDANCE_BACKDATE_DAYS (default 3) only from someone holding attendance.regularize. |
+| individual pay, payroll approval and payment | By design. Payroll runs can be read as totals, their inputs updated and a run calculated (tools/p4FinanceHrNurse.js); approving or paying a run, payslips and any one person's salary stay on the Payroll screen. |
+| background-verification findings and decisions; safeguarding cases | By design. Verification counts are readable (get_verification_counts); findings and the final decision stay with HR and the principal on the Verification screen. Safeguarding is never handled in chat: concerns go straight to the designated lead. |
+| credentials, roles, permissions, platform administration | By design. Connecting social or ad accounts, creating users, changing roles or permissions, domains and seat pricing would let a conversation widen its own authority; they stay on their screens. |
 
 ## AI drafts
 
@@ -2877,6 +2926,30 @@ _(no arguments)_
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
 
+### `draft_budget`
+
+Draft a budget for a financial year with its lines (code, head, department, operating or capital, planned amount in rupees). It is saved as a draft; submitting it for approval and every approval stay on the Budgets page. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `budget.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `procurement.service.createBudget()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.draft_budget` |
+
+**Input**
+
+`fiscalYear`: string **(required)** — e.g. 2026-27<br>`name`: string **(required)**<br>`lines`: array **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## CPD
 
 ### `get_my_cpd_hours`
@@ -3360,6 +3433,174 @@ For the teacher in charge of a club: take the register for a session (default to
 **Input**
 
 `club`: string **(required)**<br>`date`: string — The session day; default today<br>`absent`: array — Names of members who were absent<br>`excused`: array
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `schedule_club_session`
+
+For the teacher in charge of a club: schedule a practice or rehearsal session on a day and time, once or weekly for up to 20 weeks, at a room or ground from the facilities list (it is booked there) or a place written out. A clash leaves that week out and says why. Members see it. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `clubs.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `clubs.service.listClubs() + sessions.service.createSessions()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.schedule_club_session` |
+
+**Input**
+
+`club`: string **(required)**<br>`date`: string **(required)** — The (first) day<br>`from`: string **(required)** — Start time, e.g. 15:30<br>`to`: string **(required)** — End time, e.g. 16:30<br>`venue`: string — A room or ground by name, or a place written out (default the club's home venue)<br>`title`: string<br>`repeatWeeks`: integer — How many more weeks at the same time (default 0)
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `cancel_club_session`
+
+For the teacher in charge: cancel a planned club session on a day (and time), with the reason; members are told and the venue booking is released. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | DELETE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `clubs.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `sessions.service.listSessions() + cancelSession()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.cancel_club_session` |
+
+**Input**
+
+`club`: string **(required)**<br>`date`: string **(required)** — The session day<br>`time`: string — Its start time, when the club meets twice that day<br>`reason`: string **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `schedule_club_fixture`
+
+Schedule a fixture: a match inside the school or against another school for a club or team the caller runs, or an inter-house event between named houses. Its day, start time, opponent, level and venue. The team sheet is picked on the Clubs page. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `clubs.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `fixtures.service.listHouses() + createFixture()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.schedule_club_fixture` |
+
+**Input**
+
+`title`: string **(required)**<br>`kind`: string **(required)** — one of: INTERNAL, EXTERNAL, HOUSE — INTERNAL within the school, EXTERNAL against other schools, HOUSE between houses<br>`club`: string — The club or team (not for a house fixture)<br>`houses`: array — The houses taking part (house fixture)<br>`date`: string **(required)** — The day<br>`time`: string **(required)** — Start time<br>`durationMinutes`: integer<br>`opponent`: string<br>`level`: string — one of: SCHOOL, INTER_SCHOOL, DISTRICT, STATE, NATIONAL, INTERNATIONAL<br>`venue`: string — A room or ground by name, or a place written out
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `record_club_fixture_result`
+
+For the teacher running a fixture that has started: record its result (a summary, won/lost/drawn/placed, and for a house event each house's position and points). The result counts only after ANOTHER teacher approves it on the Clubs page; the assistant never approves it. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `clubs.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `fixtures.service.listFixtures() + recordResult()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.record_club_fixture_result` |
+
+**Input**
+
+`fixture`: string — Its title or reference, e.g. FIX-2026-0003<br>`club`: string<br>`summary`: string **(required)**<br>`outcome`: string — one of: WON, LOST, DRAWN, PLACED, PARTICIPATED<br>`placements`: array
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `cancel_club_fixture`
+
+For the teacher running it: cancel a scheduled fixture with the reason; its venue booking is released. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | DELETE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `clubs.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `fixtures.service.listFixtures() + cancelFixture()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.cancel_club_fixture` |
+
+**Input**
+
+`fixture`: string<br>`club`: string<br>`reason`: string **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `withdraw_club_membership`
+
+For a student or parent: take the student (or the parent's child) out of a club, or withdraw a request to join that is still waiting. A freed seat goes to the waiting list. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | DELETE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `clubs.join` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `clubs.service.myMemberships() + leave()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.withdraw_club_membership` |
+
+**Input**
+
+`club`: string **(required)**<br>`studentName`: string — For a parent with several children<br>`reason`: string
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `create_club`
+
+For administration or the principal: set up a new club or team: name, category, activity, seats, when it meets and whether it takes requests to join. It needs a teacher in charge, named from the staff list; grades and the home venue are set on the Clubs page. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `clubs.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `clubs.service.createClub()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_club` |
+
+**Input**
+
+`name`: string **(required)**<br>`kind`: string — one of: CLUB, TEAM<br>`category`: string **(required)** — one of: SPORTS, ARTS, ACADEMIC, SERVICE, OTHER<br>`activity`: string — one of: CRICKET, FOOTBALL, BASKETBALL, VOLLEYBALL, BADMINTON, TABLE_TENNIS, ATHLETICS, SWIMMING, KABADDI, KHO_KHO, CHESS, YOGA, MARTIAL_ARTS, DANCE, MUSIC, SINGING, DRAMA, VISUAL_ARTS, DEBATE, QUIZ, ROBOTICS, SCIENCE, ECO, OTHER<br>`capacity`: integer<br>`meetingPattern`: string — e.g. "Tuesdays 3:30 pm"<br>`description`: string<br>`joinOpen`: boolean<br>`teacherInCharge`: string **(required)** — The teacher who runs it, by name
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -3849,6 +4090,30 @@ Schedule a training session (POCSO, POSH, fire safety, first aid, emergency dril
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+### `add_compliance_obligation`
+
+Add an obligation to the compliance register (a return, licence, disclosure, inspection ...): code, title, authority, category, how often and when next due. It starts as "under review"; deciding whether it applies and filing it stay on the Compliance page. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `compliance.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `compliance.service.createObligation()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.add_compliance_obligation` |
+
+**Input**
+
+`code`: string **(required)**<br>`title`: string **(required)**<br>`authority`: string **(required)**<br>`category`: string **(required)** — one of: RETURN, LICENCE, POLICY, TRAINING, DISCLOSURE, COMMITTEE, INSPECTION, OTHER<br>`frequency`: string — one of: ONE_TIME, MONTHLY, QUARTERLY, HALF_YEARLY, ANNUAL, EVENT_DRIVEN<br>`dueRule`: string — e.g. "By 30 April each year"<br>`nextDueOn`: string<br>`sourceLink`: string — https:// link to the rule
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Conversations
 
 ### `list_conversations`
@@ -3923,6 +4188,54 @@ Send a message about a child. A parent writes to their child's class teacher (th
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+### `close_conversation`
+
+For the teacher or principal in a parent conversation: close it, with an optional closing message to the parent. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `conversations.use` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `conversations.service.list() + close()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.close_conversation` |
+
+**Input**
+
+`parentName`: string — Who the conversation is with<br>`studentName`: string — The child it is about<br>`subject`: string<br>`note`: string — A last message to the parent
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `set_conversation_office_hours`
+
+For staff: set (or clear) the office-hours note parents see when they message the caller, e.g. "I reply on school days between 3 and 5 pm". Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | UPDATE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `conversations.use` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `conversations.service.setSettings()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.set_conversation_office_hours` |
+
+**Input**
+
+`note`: string **(required)** — Empty clears it
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Correspondence
 
 ### `list_open_correspondence`
@@ -3948,6 +4261,54 @@ _(no arguments)_
 **Output** — `{ success: true, data: { … } }`.
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `log_correspondence`
+
+Enter a letter in the correspondence register: an incoming letter received (from the board, a government office, a vendor ...) or an outgoing letter started as a draft, with subject, sender or addressee, their reference, how it came and a reply-by date. Dispatching and approving replies stay on the Correspondence page. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `correspondence.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `correspondence.service.register()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.log_correspondence` |
+
+**Input**
+
+`direction`: string **(required)** — one of: INWARD, OUTWARD<br>`subject`: string **(required)**<br>`counterpartyName`: string **(required)** — Who it is from (incoming) or to (outgoing)<br>`counterpartyType`: string **(required)** — one of: GOVERNMENT, BOARD, UNIVERSITY, REGULATOR, DISTRICT_OFFICE, LOCAL_AUTHORITY, TRUSTEE, VENDOR, PARENT, INTERNAL, OTHER<br>`theirReference`: string<br>`channel`: string — one of: POST, EMAIL, PORTAL, HAND, WHATSAPP, COURIER, OTHER<br>`receivedOn`: string — Incoming: the day it arrived (default today)<br>`dueOn`: string — Reply or action due by<br>`summary`: string<br>`body`: string — Outgoing: the letter text
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `draft_correspondence_reply`
+
+Save a draft reply to a letter in the correspondence register that the caller owns or is assigned (or any, for the office). It stays a draft: sending it for approval, approving and dispatching happen on the Correspondence page. Use get_ai_draft first to have a letter drafted. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `correspondence.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `correspondence.service.list() + saveDraft()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.draft_correspondence_reply` |
+
+**Input**
+
+`letter`: string **(required)** — Its reference (INW-...) or subject<br>`body`: string **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
 ## Cover
 
@@ -6065,6 +6426,30 @@ School nurse only: add an immunisation (vaccine, dose number, where given, next 
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+### `get_health_room_summary`
+
+Health-room figures as counts only, for the principal and administrators: visits today and over a period (by outcome: returned to class, rested, first aid, sent home, referred), injuries, active medication plans, missed or refused doses, and first-aid stock alerts. Never names a student or says why anyone visited. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `health.summary.read` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `health.service.summary()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_health_room_summary` |
+
+**Input**
+
+`days`: integer — The period in days, counting back from today (default 30; "this week" is 7)
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
 ## Hostel
 
 ### `get_hostel_summary`
@@ -7227,6 +7612,54 @@ Cancel an online class the caller hosts that has not finished; everyone invited 
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+### `reschedule_online_class`
+
+Change an online class the caller hosts that has not started: move it to another day or time, change its length or title. A move is announced to everyone invited. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | UPDATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `lectures.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `lecture.service.list() + update()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.reschedule_online_class` |
+
+**Input**
+
+`title`: string **(required)** — The class as it is called now<br>`onDate`: string — Its current day, when the title repeats<br>`newTitle`: string<br>`date`: string — The new day<br>`time`: string — The new start time<br>`durationMinutes`: integer
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `finish_online_class`
+
+After an online class the caller hosts: mark it over, with an optional summary and a link to its recording. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `lectures.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `lecture.service.list() + finish()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.finish_online_class` |
+
+**Input**
+
+`title`: string **(required)**<br>`onDate`: string<br>`summary`: string<br>`recordingLink`: string — https:// link to the recording
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Lesson plans
 
 ### `list_lesson_plans`
@@ -8071,6 +8504,54 @@ Progress in a reading challenge: participants, how many have started and complet
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
 
+### `update_library_copy_status`
+
+For the librarian: mark a book copy (by accession number) lost, damaged, withdrawn or back on the shelf, and/or move it to a shelf, with a note. A copy on loan must be returned first. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | UPDATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `library.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `library.copies.scan() + updateCopy()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.update_library_copy_status` |
+
+**Input**
+
+`accessionNo`: string **(required)**<br>`status`: string — one of: AVAILABLE, LOST, DAMAGED, WITHDRAWN<br>`shelf`: string<br>`notes`: string
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `generate_library_accession_numbers`
+
+For the librarian: give a title's copies accession numbers (every copy without one, or a number of new copies), optionally with a prefix and a shelf. Printing the labels is done on the Library page. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `library.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `library.copies.generateCopies()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.generate_library_accession_numbers` |
+
+**Input**
+
+`book`: string **(required)** — The title (or ISBN)<br>`count`: integer — New copies; default every copy still without a number<br>`prefix`: string<br>`shelf`: string
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Marketing
 
 ### `get_marketing_funnel`
@@ -8533,6 +9014,78 @@ _(no arguments)_
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
 
+### `add_google_alert_feed`
+
+Editor: add a Google Alert to the newsletter's alert feeds. Give the alert's RSS feed address (in Google Alerts: Show options → Deliver to: RSS feed → copy the RSS link; it starts https://www.google.com/alerts/feeds/), a name, and optional tags: domains, level, region, and the words the alert watches. EduOS reads it hourly; items become candidates in the review queue (nothing is published). This is Google Alerts' RSS delivery, not an API. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `digest.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `newsletter/alerts.service.addSource()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.add_google_alert_feed` |
+
+**Input**
+
+`feedAddress`: string **(required)** — The Google Alerts RSS feed address, https://www.google.com/alerts/feeds/<number>/<number><br>`title`: string **(required)** — A name for the feed, e.g. "Science olympiads India"<br>`query`: string — The words the alert watches (for reference)<br>`domains`: array<br>`level`: string — one of: SCHOOL, DISTRICT, STATE, NATIONAL, INTERNATIONAL<br>`region`: string — A state, for state-level alerts
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `get_newsletter_review_queue`
+
+Editor: what is waiting in the newsletter review queue: how many items from staff, the starter list, approved feeds and alert feeds (Google Alerts RSS), the newest candidates with how they were extracted (AI or auto, each detail with its source text on the desk), and feed items not yet processed. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `digest.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `newsletter/alerts.service.reviewQueue()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_newsletter_review_queue` |
+
+**Input**
+
+`limit`: integer — Default 10
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `regenerate_newsletter_hook`
+
+Editor: write a fresh opening hook for this week's (default) or this month's DRAFT newsletter. With an AI key it is written from the edition's published items and checked against them (otherwise the template writes another). A published edition is never changed, and nothing is sent: the editor reviews and publishes on the Newsletter desk. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | UPDATE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `digest.manage` |
+| **Scope** | ALL |
+| **Affects others** | No |
+| **EduOS service** | `newsletter/editionsAi.service.regenerateSection()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.regenerate_newsletter_hook` |
+
+**Input**
+
+`cadence`: string — one of: WEEKLY, MONTHLY — Default WEEKLY
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Newsroom
 
 ### `list_newsroom_posts`
@@ -8807,6 +9360,270 @@ For a teacher: open their own PTM meeting slots between two times on a PTM day; 
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+### `join_ptm_waitlist`
+
+For a parent: when a teacher has no free PTM slot left, put their child on that teacher's waiting list. If a slot frees up it is held for them and they are told; take it with accept_ptm_slot_offer. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ptm.book` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `ptm.service.bookingOptions() + joinWaitlist()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.join_ptm_waitlist` |
+
+**Input**
+
+`round`: string<br>`studentName`: string<br>`teacherName`: string **(required)** — Name, subject ("maths teacher") or "class teacher"
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `accept_ptm_slot_offer`
+
+For a parent: take the PTM slot that was freed and held for their child from a teacher's waiting list, before the hold runs out. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ptm.book` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `ptm.service.bookingOptions() + acceptOffer()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.accept_ptm_slot_offer` |
+
+**Input**
+
+`round`: string<br>`studentName`: string<br>`teacherName`: string
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `cancel_ptm_waitlist_entry`
+
+For a parent: take their child off a teacher's PTM waiting list (a slot held for them goes to the next family). Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | DELETE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ptm.book` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `ptm.service.bookingOptions() + leaveWaitlist()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.cancel_ptm_waitlist_entry` |
+
+**Input**
+
+`round`: string<br>`studentName`: string<br>`teacherName`: string
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `check_in_ptm_meeting`
+
+For the teacher: check a family in for one of their own PTM meetings (from two hours before it). Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ptm.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `ptm.service.myBookings() + checkIn()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.check_in_ptm_meeting` |
+
+**Input**
+
+`bookingRef`: string — The booking reference, e.g. PTB-0004<br>`studentName`: string — The pupil the meeting is about
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `mark_ptm_no_show`
+
+For the teacher: mark one of their own PTM meetings as a no-show after its start time, when nobody came. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ptm.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `ptm.service.myBookings() + markNoShow()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.mark_ptm_no_show` |
+
+**Input**
+
+`bookingRef`: string — The booking reference, e.g. PTB-0004<br>`studentName`: string — The pupil the meeting is about
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `record_ptm_outcome`
+
+For the teacher, after one of their own PTM meetings: record what was discussed, the actions agreed (the teacher's own become tasks with a due date; the family's are noted) and the next follow-up date. A safeguarding concern never goes here. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | UPDATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ptm.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `ptm.service.myBookings() + recordOutcome()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.record_ptm_outcome` |
+
+**Input**
+
+`bookingRef`: string — The booking reference, e.g. PTB-0004<br>`studentName`: string — The pupil the meeting is about<br>`summary`: string **(required)**<br>`actions`: array<br>`nextFollowUpOn`: string — When to follow up with the family
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `block_ptm_slot`
+
+For a teacher: take one of their own open, unbooked PTM slots out of use (a break, a clash), by its time (and day). Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ptm.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `ptm.service.listSlots() + blockSlot()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.block_ptm_slot` |
+
+**Input**
+
+`round`: string<br>`time`: string **(required)** — Slot start time<br>`date`: string
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `unblock_ptm_slot`
+
+For a teacher: reopen one of their own blocked PTM slots (offered first to a family on the waiting list). Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ptm.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `ptm.service.listSlots() + unblockSlot()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.unblock_ptm_slot` |
+
+**Input**
+
+`round`: string<br>`time`: string **(required)** — Slot start time<br>`date`: string
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `create_ptm_round`
+
+For the principal or administration: set up a parent–teacher meeting round: title, days, in person or online, slot length, the classes it covers (default every class), when booking closes and the venue. It goes on the school calendar and opens for booking; teachers then add their availability. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ptm.manage` |
+| **Scope** | ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `ptm.service.createRound()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_ptm_round` |
+
+**Input**
+
+`title`: string **(required)**<br>`description`: string<br>`startsOn`: string **(required)** — First day<br>`endsOn`: string — Last day (default the first day)<br>`mode`: string — one of: IN_PERSON, ONLINE, BOTH<br>`slotMinutes`: integer<br>`bufferMinutes`: integer<br>`bookingClosesOn`: string — Last day families can book (default the evening before)<br>`venue`: string — Default venue<br>`classes`: array — Classes it covers, e.g. "Class 6 A"; default all
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `update_ptm_round`
+
+For the principal or administration: change a PTM round: its title, days, mode, slot length, booking close date, venue, or open/close it for booking. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | UPDATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ptm.manage` |
+| **Scope** | ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `ptm.service.listRounds() + updateRound()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.update_ptm_round` |
+
+**Input**
+
+`round`: string **(required)** — The round to change<br>`title`: string<br>`description`: string<br>`startsOn`: string — First day<br>`endsOn`: string — Last day (default the first day)<br>`mode`: string — one of: IN_PERSON, ONLINE, BOTH<br>`slotMinutes`: integer<br>`bufferMinutes`: integer<br>`bookingClosesOn`: string — Last day families can book (default the evening before)<br>`venue`: string — Default venue<br>`status`: string — one of: DRAFT, OPEN, CLOSED
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `cancel_ptm_round`
+
+For the principal or administration: cancel a whole PTM round with the reason. Every family's booking in it is cancelled and they are told; it leaves the calendar. Confirmed on the website.
+
+| | |
+|---|---|
+| **Operation** | DELETE |
+| **Risk** | HIGH |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ptm.manage` |
+| **Scope** | ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `ptm.service.listRounds() + cancelRound()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.cancel_ptm_round` |
+
+**Input**
+
+`round`: string **(required)**<br>`reason`: string **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Payroll
 
 ### `list_payroll_runs`
@@ -8900,6 +9717,130 @@ Recalculate the payroll run in draft (or the one named) from the pay structures,
 **Input**
 
 `run`: string
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+## Policies
+
+### `get_my_policies`
+
+The school policies addressed to the caller's role (code, title, version, summary) and whether they have acknowledged the current version. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `ai.copilot.use` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `compliance.service.myPolicies()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_my_policies` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `acknowledge_policy`
+
+Record that the caller has read and accepts the current version of a school policy addressed to them (their own acknowledgement). Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ai.copilot.use` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `compliance.service.myPolicies() + acknowledgePolicy()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.acknowledge_policy` |
+
+**Input**
+
+`policy`: string **(required)** — Its title or code
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `get_my_trainings`
+
+The trainings the caller is invited to (POCSO, fire safety, first aid ...): when and where, whether mandatory, their attendance and whether they have acknowledged it. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `ai.copilot.use` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `compliance.service.myTrainings()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_my_trainings` |
+
+**Input**
+
+_(no arguments)_
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `acknowledge_my_training`
+
+Record that the caller has seen a training they are invited to (their own acknowledgement; attendance is marked by the organiser). Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `ai.copilot.use` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `compliance.service.myTrainings() + acknowledgeTraining()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.acknowledge_my_training` |
+
+**Input**
+
+`training`: string **(required)** — Its title or reference
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+## Portfolios
+
+### `add_portfolio_reflection`
+
+For a student: write a reflection in their own competency portfolio (what they learned, tried or would do differently), optionally under a competency such as communication or creativity. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `portfolios.reflect` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `portfolios.service.reflect()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.add_portfolio_reflection` |
+
+**Input**
+
+`text`: string **(required)**<br>`competency`: string — one of: COMMUNICATION, CRITICAL_THINKING, COLLABORATION, CREATIVITY, DIGITAL, LIFE_SKILLS, LANGUAGE, MATHEMATICAL, SCIENTIFIC, SOCIAL_SCIENCE
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -9172,6 +10113,78 @@ Create a draft online quiz for one of the teacher's classes with the multiple-ch
 **Input**
 
 `className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string **(required)** — The subject, e.g. "Maths"<br>`title`: string **(required)**<br>`durationMinutes`: integer<br>`questions`: array **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `add_quiz_question`
+
+Add multiple-choice questions to one of the teacher's quizzes that nobody has attempted yet (question, options, which is correct, marks). Publishing stays on the Quizzes page. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `assignments.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `quiz.service.list() + addQuestion()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.add_quiz_question` |
+
+**Input**
+
+`quiz`: string — The quiz title; default the only draft<br>`questions`: array **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `update_quiz`
+
+Change one of the teacher's quizzes: its title, instructions or time limit. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | UPDATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `assignments.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `quiz.service.list() + update()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.update_quiz` |
+
+**Input**
+
+`quiz`: string **(required)** — The quiz to change<br>`title`: string — The new title<br>`description`: string<br>`durationMinutes`: integer
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `delete_quiz`
+
+Delete one of the teacher's quizzes that no student has attempted (one that was taken is kept; unpublish it on the Quizzes page instead). Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | DELETE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `assignments.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `quiz.service.list() + remove()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.delete_quiz` |
+
+**Input**
+
+`quiz`: string **(required)**
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -9708,6 +10721,102 @@ Schedule a review call with the family: the day, the time and the channel. Needs
 **Input**
 
 `caseRef`: string — The review call reference, e.g. RVC-0003<br>`studentName`: string — The pupil the call is about<br>`date`: string **(required)** — The day of the call<br>`time`: string — e.g. 11:30; default 10:00<br>`channel`: string — one of: PHONE, WHATSAPP, VIDEO, IN_PERSON, EMAIL, SMS
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `add_review_call_action`
+
+Record an action agreed on a review call: what, by when, and whether the caller or the family does it. The caller's own action becomes a task on their list. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `reviewcalls.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `reviewcalls.service.list() + addAction()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.add_review_call_action` |
+
+**Input**
+
+`caseRef`: string — The review call reference, e.g. RVC-0003<br>`studentName`: string — The pupil the call is about<br>`title`: string **(required)**<br>`dueOn`: string **(required)** — By when<br>`owner`: string — one of: ME, PARENT — Default ME
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `complete_review_call_action`
+
+Mark an agreed action on a review call as done (its task is closed), with an optional note. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `reviewcalls.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `reviewcalls.service.list() + completeAction()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.complete_review_call_action` |
+
+**Input**
+
+`caseRef`: string — The review call reference, e.g. RVC-0003<br>`studentName`: string — The pupil the call is about<br>`actionTitle`: string — Which action; default the only open one<br>`note`: string
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `close_review_call`
+
+Close a review call with its outcome (resolved, improving, referred, no contact, other) and a closing note; its follow-up reminder stops. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `reviewcalls.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `reviewcalls.service.list() + close()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.close_review_call` |
+
+**Input**
+
+`caseRef`: string — The review call reference, e.g. RVC-0003<br>`studentName`: string — The pupil the call is about<br>`outcome`: string **(required)** — one of: RESOLVED, IMPROVING, REFERRED, NO_CONTACT, OTHER<br>`note`: string **(required)**
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `reopen_review_call`
+
+Reopen a closed review call, with the reason. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | ACTION |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `reviewcalls.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `reviewcalls.service.list() + reopen()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.reopen_review_call` |
+
+**Input**
+
+`caseRef`: string — The review call reference, e.g. RVC-0003<br>`studentName`: string — The pupil the call is about<br>`reason`: string **(required)**
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -11051,6 +12160,30 @@ Record a survival check on a tree or plant (alive, needs care, dead, replaced). 
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
 
+### `add_eco_planting`
+
+Record a planting for the greenery register: species, how many, the date, where, and the class, house or club that planted it (a teacher records only for their own team). Survival checks follow with log_plant_check. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `sustainability.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `sustainability.service.listTeams() + createPlant()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.add_eco_planting` |
+
+**Input**
+
+`species`: string **(required)**<br>`commonName`: string<br>`kind`: string — one of: TREE, SHRUB, PLANT, HERB, CLIMBER<br>`count`: integer<br>`plantedOn`: string — Default today<br>`locationNote`: string — Where on campus<br>`team`: string — The class, house or club that planted it
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Syllabus
 
 ### `get_syllabus_progress`
@@ -11120,6 +12253,54 @@ Add a module (chapter or unit) to the syllabus plan of one of the teacher's clas
 **Input**
 
 `className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string **(required)** — The subject, e.g. "Maths"<br>`title`: string **(required)**<br>`plannedStart`: string **(required)** — YYYY-MM-DD<br>`plannedEnd`: string **(required)** — YYYY-MM-DD<br>`plannedPeriods`: integer<br>`topics`: array
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `update_syllabus_module`
+
+Change a module in one of the teacher's syllabus plans: its title, planned start or end date, description, or add topics to it. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | UPDATE |
+| **Risk** | LOW |
+| **Confirmation** | REQUIRED |
+| **Permission** | `syllabus.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `syllabus.service.myOfferings() + plan() + updateModule()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.update_syllabus_module` |
+
+**Input**
+
+`module`: string **(required)** — The module as it is called now<br>`subject`: string<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`title`: string — The new title<br>`description`: string<br>`plannedStart`: string<br>`plannedEnd`: string<br>`addTopics`: array
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `delete_syllabus_module`
+
+Remove a module from one of the teacher's syllabus plans; a module with lessons recorded against it is kept. Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | DELETE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | `syllabus.manage` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `syllabus.service.myOfferings() + plan() + removeModule()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.delete_syllabus_module` |
+
+**Input**
+
+`module`: string **(required)**<br>`subject`: string<br>`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -12003,7 +13184,7 @@ Background-verification cases (staff, drivers, vendors) with their status and th
 
 ## Permission coverage
 
-133 of the 189 permissions in the catalog are reachable through MCP.
+137 of the 189 permissions in the catalog are reachable through MCP.
 
 Permissions **not** reachable through any tool:
 
@@ -12029,7 +13210,6 @@ Permissions **not** reachable through any tool:
 - `approvals.submit` — Raise an approval request
 - `approvals.configure` — Configure approval stages, thresholds and delegations
 - `institution.manage` — Edit the institution profile, campuses, affiliations and terminology
-- `correspondence.manage` — Register, assign, draft replies to and dispatch correspondence
 - `contracts.read` — View agreements and their obligations
 - `contracts.manage` — Draft, track and renew agreements
 - `verification.manage` — Run background verification checks and attach evidence
@@ -12040,7 +13220,6 @@ Permissions **not** reachable through any tool:
 - `safeguarding.manage` — Designated officer: handle safeguarding, POCSO, POSH and anti-ragging cases
 - `payroll.approve` — Approve a calculated payroll run
 - `procurement.manage` — Run procurement: quotes, orders, receipts, invoices and payment status
-- `budget.manage` — Prepare budgets and explain variances
 - `funding.read` — View funding proposals, grants and loans
 - `funding.manage` — Prepare funding proposals and compare offers
 - `community.post` — Draft newsroom stories and post in circles
@@ -12057,10 +13236,8 @@ Permissions **not** reachable through any tool:
 - `supportplans.referral.view` — See whether a support plan was referred to safeguarding (the flag only; the case stays in safeguarding)
 - `portfolios.read` — See competency portfolios (OWN: students you teach, your own child, or yourself)
 - `portfolios.manage` — Add evidence and rubric ratings to competency portfolios (OWN: students you teach)
-- `portfolios.reflect` — Write your own reflections in your competency portfolio
 - `scenarios.read` — See saved what-if projections (enrolment, fees, staffing, transport, budget)
 - `scenarios.manage` — Create, edit and compare what-if projections
 - `health.witness` — Countersign a controlled medicine dose as the second person
 - `health.carenotes.read` — See the short care notes parents agreed to share for the class you are class teacher of (e.g. a severe allergy)
-- `health.summary.read` — Health-room figures as counts only (no names, no details)
 

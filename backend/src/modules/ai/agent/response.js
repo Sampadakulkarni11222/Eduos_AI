@@ -2,6 +2,7 @@ import { generate, isLlmEnabled } from '../../../providers/ai.provider.js';
 import { t } from '../../../utils/language.js';
 import { logger } from '../../../utils/logger.js';
 import { presentOf, structureSentence } from './present.js';
+import { ungroundedFacts } from './grounding.js';
 
 /**
  * Turning MCP results into an answer.
@@ -186,7 +187,19 @@ export async function composeAnswer({ message, calls, lang = 'en' }) {
   try {
     const result = await generate({ system, message, maxTokens: 1024 });
     // A model that still answers with a run-on list is laid out like any other.
-    if (result.generated && result.text?.trim()) return structureSentence(result.text.trim());
+    if (result.generated && result.text?.trim()) {
+      // Every figure and name it wrote must be in the results (or in the
+      // deterministic rendering of them); a deed only when a tool did one.
+      // Otherwise its wording is not used at all -- the deterministic answer
+      // is, so nothing invented reaches the person.
+      const problems = ungroundedFacts(result.text, {
+        data: answered.map((c) => ({ data: c.result.data, action: c.result.action ?? null })),
+        texts: [deterministic, failureNote, message],
+        deeds: answered.some((c) => c.result?.action?.status === 'completed'),
+      });
+      if (!problems.length) return structureSentence(result.text.trim());
+      logger.warn(`Composed answer rejected (not in the results: ${problems.slice(0, 3).join(', ')}); using the deterministic reply`);
+    }
   } catch (err) {
     logger.warn(`Answer composition failed, using the deterministic reply: ${err.message}`);
   }

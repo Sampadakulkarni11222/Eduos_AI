@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui';
 import { opsApi } from '@/lib/ops-api';
 import { ApiError } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import type { CredentialPart, ShiftBellDto, ShiftDto, ShiftsDto, StaffCredentialDto, TeachersOfDto } from '@/lib/ops-types';
 import { DataNote, ErrorNote, Loadable, SectionCard, fmtDateTime, humanize, useAction, useLoad } from './kit';
 import { TeacherAbout } from '@/components/campus/campus-moment';
@@ -220,9 +221,13 @@ export function CredentialsEditor({ profile, onSaved, save }: { profile: StaffCr
 /** Every member of staff: their own professional profile and what families may see of it. */
 export function ProfessionalProfileView() {
   const state = useLoad(() => opsApi.myStaffProfile(), []);
+  const { me } = useAuth();
+  // Families see a staff profile only through the classes that person teaches.
+  const teaches = ['TEACHER', 'PRINCIPAL'].includes(me?.profile?.role ?? 'TEACHER');
   return (
     <div className="ops-stack">
       <DataNote>Each part has its own &quot;Show to families&quot; switch, off until you turn it on. Families of the classes you teach then see that part in Campus World, on the live class page and on their teacher cards. Colleagues in the school can see your profile.</DataNote>
+      {!teaches && <DataNote>Families see a staff profile only through the classes that person teaches, so these switches matter only if you take a class or period. Colleagues can always see it.</DataNote>}
       <Loadable state={state}>{(p) => <CredentialsEditor profile={p} save={(b) => opsApi.saveMyStaffProfile(b)} onSaved={() => void state.reload()} />}</Loadable>
     </div>
   );

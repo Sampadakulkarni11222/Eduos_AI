@@ -4,7 +4,7 @@ import { Button, EmptyState, Field, Modal, useToast } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { usePermissions } from '@/lib/permissions';
 import { api } from '@/lib/api';
-import { useSchoolHref } from '@/lib/school-path';
+import { usePortalPage, useSchoolHref } from '@/lib/school-path';
 import {
   p4Api, KIND_LABELS, AUDIENCE_LABELS, type Opportunity, type OpportunityKind, type OpportunityAudience, type PlannerDto,
 } from '@/lib/p4-student-alumnus-api';
@@ -34,20 +34,23 @@ const STAGE: Record<string, string> = {
 
 function Planner({ studentId }: { studentId?: string | null }) {
   const link = useSchoolHref();
+  const page = usePortalPage();
+  // Link a tile only to a page this portal has (a parent has no quizzes page).
+  const has = (href: string) => (page(href) ? href : undefined);
   const isStudent = !studentId;
   const state = useLoad(() => p4Api.planner(studentId ? { studentId } : {}), [studentId]);
   return (
     <Loadable state={state}>{(p: PlannerDto) => (
       <div className="ops-stack">
         <div className="kpi-grid">
-          <Tile label="Homework due" value={p.due.length} tone={p.due.some((d) => d.daysLeft <= 1) ? 'warn' : 'neutral'} href="/assignments" />
+          <Tile label="Homework due" value={p.due.length} tone={p.due.some((d) => d.daysLeft <= 1) ? 'warn' : 'neutral'} href={has('/assignments')} />
           <Tile label="Overdue" value={p.overdue.length} tone={p.overdue.length ? 'bad' : 'good'} />
-          <Tile label="Quizzes to take" value={p.quizzes.length} href="/quizzes" />
+          <Tile label="Quizzes to take" value={p.quizzes.length} href={has('/quizzes')} />
           <Tile label={`Exam papers (${p.window.days} days)`} value={p.exams.length} tone={p.exams.some((e) => e.daysLeft <= 7) ? 'warn' : 'neutral'} />
         </div>
 
         {p.board && (
-          <SectionCard title={`${p.board.exam}: check your registration details`} sub={p.board.guidance}>
+          <SectionCard title={`${p.board.exam}: check ${isStudent ? 'your' : `${p.student.name.split(' ')[0]}’s`} registration details`} sub={p.board.guidance}>
             <KeyValues rows={p.board.checks.map((c) => [c.label, c.missing ? <span className="p4-missing">Missing — ask for it to be added</span> : c.value ?? '—'])} />
             {p.board.deadlines.length > 0 && (
               <ul className="ops-list">{p.board.deadlines.map((d, i) => <li key={i} className="ops-row"><div className="ops-row-main"><div className="ops-row-title">{d.title}</div><div className="ops-row-sub">{fmtDate(d.date)}</div></div></li>)}</ul>
@@ -84,7 +87,7 @@ function Planner({ studentId }: { studentId?: string | null }) {
           )}
         </SectionCard>
 
-        <SectionCard title="Your subjects, from your own published marks" sub="Only your results are used. Nobody else's marks are shown or compared.">
+        <SectionCard title={isStudent ? 'Your subjects, from your own published marks' : `${p.student.name.split(' ')[0]}’s subjects, from published marks`} sub={isStudent ? "Only your results are used. Nobody else's marks are shown or compared." : "Only your child's own results are used. Nobody else's marks are shown or compared."}>
           {p.strengths.length === 0 ? <p className="ops-row-sub">No published marks yet.</p> : (
             <ul className="p4-bars">{p.strengths.map((s) => (
               <li key={s.subject}><span>{s.subject}</span><span className="p4-bar" aria-hidden="true"><span style={{ width: `${s.percentage ?? 0}%` }} /></span><span>{s.percentage ?? '—'}%</span></li>

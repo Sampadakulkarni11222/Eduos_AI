@@ -107,6 +107,9 @@ export function present(o, { now = Date.now(), editor = false } = {}) {
     ...(editor && {
       submittedByName: o.submittedByName ?? null, reviewedByName: o.reviewedByName ?? null, reviewedAt: o.reviewedAt ?? null, reviewNote: o.reviewNote ?? null,
       clicks: o.clicks ?? 0, history: o.history ?? [], catalogueKey: o.catalogueKey ?? null,
+      // Part 5: how an alert candidate was extracted (each field with the text it came from).
+      extraction: o.extraction?.method ? { method: o.extraction.method, label: o.extraction.label, fields: o.extraction.fields ?? [], dropped: o.extraction.dropped ?? [], page: o.extraction.page ?? null, at: o.extraction.at ?? null } : null,
+      sourceLink: o.source?.link ?? null,
     }),
   };
 }

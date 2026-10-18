@@ -19,7 +19,7 @@ export interface DashKpi { key: string; label: string; value: number | null; uni
 export interface DashListItem { text: string; sub?: string; link?: string; href?: string | null; tone?: DashTone; badge?: string; start?: string; end?: string }
 export interface DashList { key: string; title: string; link: string | null; items: DashListItem[]; empty: string }
 export interface RoleDashboardDto {
-  view: 'teacher' | 'parent' | 'student' | 'finance' | 'hr' | 'librarian' | 'warden' | 'marketing' | 'compliance' | 'trustee' | null;
+  view: 'teacher' | 'parent' | 'student' | 'finance' | 'hr' | 'librarian' | 'warden' | 'marketing' | 'compliance' | 'trustee' | 'nurse' | null;
   title?: string;
   period: { days: number; options: Array<{ days: number; label: string }> };
   children?: Array<{ id: string; name: string; className: string }>;

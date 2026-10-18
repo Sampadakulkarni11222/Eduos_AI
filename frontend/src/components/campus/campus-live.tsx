@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { opsApi } from '@/lib/ops-api';
 import { useAuth } from '@/lib/auth';
 import { usePortalHref, usePortalPage } from '@/lib/school-path';
@@ -217,7 +217,37 @@ export function LiveDetailView() {
   const params = useSearchParams();
   const kind = params?.get('kind') ?? 'room';
   const id = params?.get('id') ?? null;
+  // Opened from the menu with nothing chosen: show the reader's own corner instead of "Invalid id".
+  if (!params?.get('kind') && !id) return <LiveLanding />;
   return <LiveDetail kind={kind} id={id} />;
+}
+
+/** /<portal>/live with no choice yet: the reader's own class, classes or department, and where to pick anything else. */
+export function LiveLanding() {
+  const [studentId, setStudentId] = useState<string | null>(null);
+  const [data, setData] = useState<CampusMyViewDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const link = usePortalHref();
+  const page = usePortalPage();
+  const router = useRouter();
+  useEffect(() => {
+    let live = true;
+    opsApi.campusMyView(studentId).then((d) => { if (live) { setData(d); setError(null); } }).catch((e: unknown) => { if (live) setError(e instanceof Error ? e.message : 'Live details could not be loaded.'); });
+    return () => { live = false; };
+  }, [studentId]);
+  const campus = page('/campus');
+  return (
+    <div className="ops-stack">
+      <DataNote>Choose what to follow live: your own class or department below, or any room, class, bus or zone from Campus World. Details refresh every 15 seconds and show only what you may see.</DataNote>
+      {error ? <ErrorNote error={error} /> : !data ? <p className="ops-muted" aria-live="polite">Loading…</p> : (
+        <MyCampusPanel data={data} onGo={(facilityId) => router.push(link(`/live?kind=room&id=${encodeURIComponent(facilityId)}`))} onChild={setStudentId} onDept={(code) => router.push(link(`/live?kind=department&id=${encodeURIComponent(code)}`))} />
+      )}
+      <div className="ops-inline">
+        {campus && <Link className="btn btn-soft btn-sm" href={campus}>Open Campus World →</Link>}
+        {page('/gate') && <Link className="btn btn-ghost btn-sm" href={link('/live?kind=gate')}>The gate now →</Link>}
+      </div>
+    </div>
+  );
 }
 
 export function LiveDetail({ kind, id }: { kind: string; id: string | null }) {

@@ -1,6 +1,7 @@
 # Assistant automation: what a user can do by asking, and what is still a click
 
-Status as of 2026-10-15, branch `feat/platform-part-2`.
+Status as of 2026-10-15, branch `feat/platform-part-2`; updated 2026-10-17 on `feat/platform-part-4` with the
+part-4 role tools and the part-5 gap tools (see "Built in part 5" below). The catalogue now has **516 tools**.
 
 The product goal is that anything a signed-in person may do on a screen, they can ask Ask AI or the WhatsApp
 agent to do instead, within their own role and scope. Every write is first shown as a concrete draft and runs only
@@ -65,6 +66,38 @@ homework creation (`create_assignment`, `generate_homework`), attendance marking
 `update_ticket`), calendar events (`create_calendar_event`), notices (`create_announcement`; drafting with
 `get_ai_draft` CIRCULAR). Staff leave, cover, out-pass, pickup, labs, bills, fleet, analytics are in `platformOps.js`.
 
+## Built in part 5 (`tools/p5Gaps.js`, 43 tools)
+
+Every tool below calls the module's own service with the caller's actor and scope (so the module's rules decide:
+coach of this club, own child, own slot, own quiz, a second teacher approves a result), is behind the module's
+feature switch, and every write is a draft that runs only when the same person confirms it in the same channel.
+Tools marked *web* land on other people's records (`affectsOthers` or HIGH risk) and are confirmed on the website
+only. Proven in `tests/mcp.p5Gaps.test.js`; every one is reachable by its own name (`tests/mcp.reachability.test.js`).
+
+| Module | Read | Write (draft, then the same user confirms) |
+|---|---|---|
+| Clubs | — | `schedule_club_session` (*web*; weekly repeats; books a listed venue), `cancel_club_session` (*web*), `schedule_club_fixture` (*web*; club, team or houses), `record_club_fixture_result` (*web*; stays PENDING_APPROVAL until ANOTHER teacher approves on the Clubs page), `cancel_club_fixture` (*web*), `withdraw_club_membership` (student/parent, own child), `create_club` (admin/principal; names the teacher in charge) |
+| PTM | — | `join_ptm_waitlist`, `accept_ptm_slot_offer`, `cancel_ptm_waitlist_entry` (parent, own child); `check_in_ptm_meeting`, `mark_ptm_no_show` (*web*), `record_ptm_outcome` (*web*; staff actions become tasks; safeguarding refused), `block_ptm_slot`, `unblock_ptm_slot` (teacher, own slots); `create_ptm_round`, `update_ptm_round` (*web*), `cancel_ptm_round` (HIGH, *web*) for the principal/administration |
+| Review calls | — | `add_review_call_action`, `complete_review_call_action`, `close_review_call`, `reopen_review_call` |
+| Conversations | — | `close_conversation` (staff), `set_conversation_office_hours` (staff) |
+| Quizzes | — | `add_quiz_question`, `update_quiz`, `delete_quiz` (never one that was attempted). Publishing stays on the Quizzes page |
+| Syllabus | — | `update_syllabus_module` (title, dates, add topics), `delete_syllabus_module` (never one with lessons recorded) |
+| Online classes | — | `reschedule_online_class` (*web*; a move is announced), `finish_online_class` (summary, recording link) |
+| Policies (own) | `get_my_policies`, `get_my_trainings` | `acknowledge_policy`, `acknowledge_my_training` (staff, their own acknowledgement) |
+| Sustainability | — | `add_eco_planting` (a teacher only for their own eco team) |
+| Correspondence | — | `log_correspondence` (incoming letter or outgoing draft), `draft_correspondence_reply` (saved as a draft; approval and dispatch stay on screen) |
+| Compliance | — | `add_compliance_obligation` (starts "under review"; deciding applicability stays on screen) |
+| Budgets | — | `draft_budget` (DRAFT; submitting for approval stays on screen) |
+| Library | — | `update_library_copy_status` (lost, damaged, withdrawn, back on shelf), `generate_library_accession_numbers` (labels are printed on the page) |
+| Portfolios | — | `add_portfolio_reflection` (student, own portfolio) |
+
+Already built by the part-4 role tools and now closed in the tables below: report-card manual marks and
+co-scholastic grades (`save_report_card_component_marks`, `save_co_scholastic_grades`), quiz authoring
+(`create_quiz_draft`, `make_quiz_from_paper`), adding syllabus modules (`plan_syllabus_module`), messaging
+preferences (`set_my_message_preferences`), board meetings (`schedule_board_meeting`, `set_board_agenda`), marketing
+campaigns (`create_marketing_campaign`), compliance trainings and registers (`schedule_compliance_training`,
+`log_data_request`, `save_statutory_committee`), library desk tools (`p4Librarian.js`).
+
 ## Still not automatable, per role
 
 "Gap" = recommended next (safe, the user's own act). "By design" = stays on the screen.
@@ -72,46 +105,46 @@ homework creation (`create_assignment`, `generate_homework`), attendance marking
 ### Parent
 | Action on screen | Route | Status |
 |---|---|---|
-| Join the PTM waiting list / accept a freed slot | `POST /ptm/waitlist`, `/waitlist/:id/accept` | Gap |
-| Leave a club for a child | `POST /clubs/memberships/:id/leave` | Gap |
+| Join the PTM waiting list / accept a freed slot | `POST /ptm/waitlist`, `/waitlist/:id/accept` | **Built** (`join_ptm_waitlist`, `accept_ptm_slot_offer`, `cancel_ptm_waitlist_entry`) |
+| Leave a club for a child | `POST /clubs/memberships/:id/leave` | **Built** (`withdraw_club_membership`) |
 | Download a certificate, invoice or receipt PDF | `GET /document-requests/mine/:id/file`, `/fees/invoices/:id/pdf`, `/fees/payments/:id/pdf` | By design (file; the chat gives the link to the page) |
 | Pay a fee online | `POST /fees/pay` | By design (checkout cannot be completed in chat; `get_payment_link` instead) |
 | Record media consent for a child | `POST /community/consents` | Gap (own child; needs a careful consent wording) |
-| Acknowledge a support plan | `POST /support-plans/family/:id/acknowledge` | Gap (new module, not yet in the catalogue) |
+| Acknowledge a support plan | `POST /support-plans/family/:id/acknowledge` | Gap, held back: support plans are restricted data and parent access through the assistant awaits review |
 | Mark notifications read | `POST /notifications/read(-all)` | By design (no permission on the endpoint) |
-| Messaging preferences | `PUT /messaging/preferences` | Gap |
+| Messaging preferences | `PUT /messaging/preferences` | **Built** (`set_my_message_preferences`, part 4) |
 
 ### Student
 | Action | Route | Status |
 |---|---|---|
 | Take a quiz | `/quizzes/:id/start`, `/submit` | By design (timed, interactive; done on the Quizzes page) |
-| Leave a club | `POST /clubs/memberships/:id/leave` | Gap |
-| Write a portfolio reflection | `/portfolios/*` (`portfolios.reflect`) | Gap (new module) |
+| Leave a club | `POST /clubs/memberships/:id/leave` | **Built** (`withdraw_club_membership`) |
+| Write a portfolio reflection | `/portfolios/*` (`portfolios.reflect`) | **Built** (`add_portfolio_reflection`) |
 | Upload homework files | `POST /uploads` then `submit_assignment` | By design (no file channel; links to uploaded files work) |
 
 ### Teacher
 | Action | Route | Status |
 |---|---|---|
-| Block/unblock a PTM slot; check in, mark no-show, record a meeting outcome | `/ptm/slots/:id/block`, `/ptm/bookings/:id/check-in`, `/no-show`, `/outcome` | Gap (outcome creates tasks; next slice) |
-| Review-call actions: agree, complete, close, reopen | `/review-calls/:id/actions`, `/close`, `/reopen` | Gap |
-| Close a conversation; office-hours note | `POST /conversations/:id/close`, `PUT /conversations/settings` | Gap |
-| Term report card: manual marks, co-scholastic grades, discipline | `PATCH /report-cards/:id` | Gap (grids; remarks are done) |
+| Block/unblock a PTM slot; check in, mark no-show, record a meeting outcome | `/ptm/slots/:id/block`, `/ptm/bookings/:id/check-in`, `/no-show`, `/outcome` | **Built** (`block_ptm_slot`, `unblock_ptm_slot`, `check_in_ptm_meeting`, `mark_ptm_no_show`, `record_ptm_outcome`) |
+| Review-call actions: agree, complete, close, reopen | `/review-calls/:id/actions`, `/close`, `/reopen` | **Built** (`add_review_call_action`, `complete_review_call_action`, `close_review_call`, `reopen_review_call`) |
+| Close a conversation; office-hours note | `POST /conversations/:id/close`, `PUT /conversations/settings` | **Built** (`close_conversation`, `set_conversation_office_hours`) |
+| Term report card: manual marks, co-scholastic grades, discipline | `PATCH /report-cards/:id` | **Built** (part 4: `save_report_card_component_marks`, `save_co_scholastic_grades`) |
 | Approve a report card as class teacher | `POST /report-cards/:id/moderate` | By design (decision) |
-| Create club sessions, fixtures, results; equipment issue | `/clubs/:id/sessions`, `/clubs/fixtures*`, `/clubs/equipment*` | Gap |
+| Create club sessions, fixtures, results; equipment issue | `/clubs/:id/sessions`, `/clubs/fixtures*`, `/clubs/equipment*` | **Built** for sessions, fixtures and results (`schedule_club_session`, `cancel_club_session`, `schedule_club_fixture`, `record_club_fixture_result`, `cancel_club_fixture`; the result waits for a second teacher). Team sheets and equipment issue/return: Gap (students are picked from a list on screen) |
 | Approve/decline a club join request | `POST /clubs/memberships/:id/decision` | By design (decision) |
-| Plant a tree record (new plant) | `POST /sustainability/plants` | Gap |
-| Create/edit quizzes and questions; publish a quiz | `/quizzes*` | Gap (authoring) / publish by design |
-| Syllabus modules: create, edit, delete | `/syllabus/modules*` | Gap (progress is done) |
-| Online class: edit, finish | `PATCH /lectures/:id`, `/finish` | Gap |
+| Plant a tree record (new plant) | `POST /sustainability/plants` | **Built** (`add_eco_planting`) |
+| Create/edit quizzes and questions; publish a quiz | `/quizzes*` | **Built** for authoring (`create_quiz_draft`, `add_quiz_question`, `update_quiz`, `delete_quiz`); publishing by design |
+| Syllabus modules: create, edit, delete | `/syllabus/modules*` | **Built** (`plan_syllabus_module`, `update_syllabus_module`, `delete_syllabus_module`) |
+| Online class: edit, finish | `PATCH /lectures/:id`, `/finish` | **Built** (`reschedule_online_class`, `finish_online_class`) |
 | Attendance photo (OCR) draft | `POST /attendance/ocr/draft` | By design (file) |
 | Publish marks | `POST /exams/publish` | By design (decision) |
-| Support plans | `/support-plans*` | Gap (new module; restricted data rules apply) |
+| Support plans | `/support-plans*` | Gap, held back (restricted data; needs a privacy review before any chat access) |
 
 ### Principal / Admin
 | Action | Route | Status |
 |---|---|---|
-| PTM rounds: create, update, cancel; book for a family | `/ptm/rounds*`, `POST /ptm/bookings` (staff) | Gap |
-| Clubs, houses, house assignment | `POST /clubs`, `/clubs/houses*` | Gap |
+| PTM rounds: create, update, cancel; book for a family | `/ptm/rounds*`, `POST /ptm/bookings` (staff) | **Built** for rounds (`create_ptm_round`, `update_ptm_round`, `cancel_ptm_round` HIGH, web only). Booking on a family's behalf: Gap |
+| Clubs, houses, house assignment | `POST /clubs`, `/clubs/houses*` | **Built** for clubs (`create_club`); houses and house assignment: Gap |
 | Showcase editions; rank entries | `/showcase/editions*` | Gap (draft entry is done) |
 | Publish/withdraw a showcase edition; publish report cards; moderate alumni posts | various | By design (publishing/decisions) |
 | Alumni events and records, transitions | `/alumni/events`, `/alumni/records`, `/alumni/transitions` | Gap |
@@ -119,7 +152,7 @@ homework creation (`create_assignment`, `generate_homework`), attendance marking
 | Social accounts connect/disconnect | `/social/accounts*` | By design (credentials) |
 | Sustainability zones, teams, compost, sanitation duties | `/sustainability/*` | Gap |
 | Certificates office: review, issue, reject | `/document-requests/:id/*` | Issue = Gap (needs file); approve/reject by design |
-| Correspondence, compliance returns, governance meetings, contracts, org structure, budgets | `/correspondence/*`, `/compliance/*`, `/governance/*`, `/contracts/*`, `/org/*`, `/budgets/*` | Gap for drafting/logging (e.g. log an incoming letter, schedule a board meeting); submissions/decisions by design |
+| Correspondence, compliance returns, governance meetings, contracts, org structure, budgets | `/correspondence/*`, `/compliance/*`, `/governance/*`, `/contracts/*`, `/org/*`, `/budgets/*` | **Built**: `log_correspondence`, `draft_correspondence_reply`, `add_compliance_obligation`, `draft_budget`, board meetings (part 4). Gap: contracts and org-structure edits. Submissions, approvals and dispatch by design |
 | Users, roles, permissions, schools, domains, customization, seats pricing | `/users`, `/roles`, `/permissions`, `/schools`, `/domains`, `/customization`, `/seats` | By design (credentials, self-widening authorization, platform admin) |
 | Safeguarding cases | `/safeguarding/*` | By design (never in chat) |
 
@@ -129,10 +162,10 @@ homework creation (`create_assignment`, `generate_homework`), attendance marking
 | Finance | Approve, reject, refund, record payments; publish fee plans | By design |
 | Finance/HR | Payroll runs and compensation | By design (individual pay stays off chat; run totals are readable) |
 | HR | Background verification steps and decisions | By design (findings never in chat) |
-| Marketing | Campaigns and assets; growth connectors | Gap (campaign drafting) |
-| Compliance | Obligations, licences, policies, trainings, accreditation | Gap for record-keeping; submissions by design |
-| Everyone on staff | Acknowledge a policy or training | Gap (`/compliance/my/*/acknowledge`, the person's own act) |
-| Librarian | Generate accession numbers, print labels, mark a copy lost/damaged | Gap (`/library/copies/generate`, `PATCH /library/copies/:id`); labels are a file (by design) |
+| Marketing | Campaigns and assets; growth connectors | **Built** for campaign drafting (`create_marketing_campaign`, part 4); assets and connectors on screen |
+| Compliance | Obligations, licences, policies, trainings, accreditation | **Built**: `add_compliance_obligation`, `schedule_compliance_training`, registers (part 4). Licences, policy versions, accreditation: Gap; submissions by design |
+| Everyone on staff | Acknowledge a policy or training | **Built** (`get_my_policies`, `acknowledge_policy`, `get_my_trainings`, `acknowledge_my_training`) |
+| Librarian | Generate accession numbers, print labels, mark a copy lost/damaged | **Built** (`generate_library_accession_numbers`, `update_library_copy_status`); labels are a file (by design) |
 | Warden | Out-pass and hostel actions | In `platformOps.js` / existing hostel tools |
 
 ### Every role
@@ -152,3 +185,12 @@ Sign-in, OTP, profile switching, uploads, webhooks, device telemetry (`/fleet/te
   tools (asserted per role in `tests/mcp.platformPeople.test.js`).
 - Restricted data stays out: no private review-call notes, no safeguarding, no camera, no individual pay; digest
   headlines are external text quoted as data.
+
+## Still Gap after part 5
+
+Safe, the user's own act, not yet built: club team sheets and equipment issue/return (students are picked from a
+list on screen), houses and house assignment, booking a PTM slot on a family's behalf, showcase editions and
+ranking, alumni events/records/transitions, digest sources (SSRF-checked URLs), sustainability zones, teams,
+compost and sanitation duties, contracts and org-structure edits, licences and policy versions, media consent
+for a child (needs agreed consent wording), and support plans (restricted data; held back pending a privacy
+review). Everything marked "By design" stays on its screen.

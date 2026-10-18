@@ -623,6 +623,8 @@ const CONTENT: Record<string, OpsContent> = {
       'Flashcards: tap to flip, swipe right if you knew it and left to see it again. Cards come back on a schedule; review a few each day to keep your streak.',
       'Quick quiz: three questions, instant answers and explanations, one try per edition. Poll: vote to see the live results.',
       'For you, Explore (with this month\'s map by level and region), Saved and Questions keep everything in one place. Settings: weekly / monthly, the email version (parents and staff) and your interests.',
+      'This week in 60 seconds: swipe through one card per pick, each with its deadline and why it suits you ("Because ..."). The deadline radar shows what closes within 7, 14 and 30 days among the edition, your saves and your matches.',
+      'Badges and streak: flip cards on more days in a row to grow your streak and earn badges. Students can challenge a classmate (own class only) to the quiz; only the two of you see the scores, and challenges never leave EduOS.',
     ],
     tips: [
       'The email version has no tracking pixels and an unsubscribe link. Without an email service connected, the school\'s outbox records it as simulated.',
@@ -641,8 +643,17 @@ const CONTENT: Record<string, OpsContent> = {
       'Comments: approve or do not show comments from students and parents (teachers can also approve students\' comments).',
       'Official sites: an item\'s link must be on one of these domains; it is checked when saved and again when published.',
       'Analytics: delivered, emailed (sent or simulated), opens, read to the end, clicks, quiz players and average, poll votes and saves per edition.',
+      'Google Alerts: create an alert at google.com/alerts, choose Show options, set "Deliver to" to "RSS feed", create it, then copy the RSS link (it starts https://www.google.com/alerts/feeds/). Paste it under "Add a Google Alert" with a name and tags (domain, level, state). Suggested words to watch are listed per domain.',
+      'EduOS reads each feed every hour (a failing feed waits longer each time), unwraps Google\'s redirect links to the real article, skips what you already have, and reads the linked page only when its site is on the official-sites list and its robots.txt allows it.',
+      'Each find becomes a candidate in the review queue: "AI-extracted" (with an AI key) or "Auto-extracted, check before publishing". Open it to see every detail beside the text it came from. Dates are never confirmed for you.',
+      'Editions: on a draft\'s preview, "Regenerate this section" writes a fresh hook, section notes, flashcards, quiz or poll. With an AI key it is checked against the items; without one the template writes it again.',
+      'The Google Alerts tab also shows what each feed found and how accurate extraction was: the share of extracted details kept as they were when published.',
     ],
-    tips: ['Never type dates you have not checked: leave them blank and the item says "check dates on the official site".'],
+    tips: [
+      'Never type dates you have not checked: leave them blank and the item says "check dates on the official site".',
+      'Google Alerts has no API. EduOS reads an alert only through Google Alerts\' own RSS delivery, and never reads Google\'s web pages.',
+      'With an AI key, editions are written by AI from the published items only and checked: a section that states a number or name not in the items is replaced by the template version. Without a key everything is the template.',
+    ],
   },
   'profile-links': {
     category: 'Community',

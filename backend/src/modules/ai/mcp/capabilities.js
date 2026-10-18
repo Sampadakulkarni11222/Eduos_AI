@@ -100,6 +100,8 @@ const ENTITY_OF_MODULE = {
   'Lesson plans': 'lessonPlan',
   'Question bank': 'questionBank',
   CPD: 'cpd',
+  // Part 5 gaps (tools/p5Gaps.js): the policies and trainings addressed to the caller.
+  Policies: 'policy',
 };
 
 /**
@@ -492,6 +494,8 @@ export const ENTITY_VOCABULARY = [
   ['newsletter', /\bnewsletters?\b|\bsuggest(?:s|ed|ing)?\s+(?:an?\s+)?opportunit(?:y|ies)\b|\bfind\s+opportunit(?:y|ies)\b|\bsaved\s+opportunit(?:y|ies)\b|\bopportunity\s+eligibility\b/i],
   ['planner', /\bplanner\b|\bstudy\s+(?:plan|week|schedule)s?\b/i],
   ['boardRegistration', /\bboard\s+registrations?\b|\blist\s+of\s+candidates\b/i],
+  // Part 5 gaps (tools/p5Gaps.js): a person's own policies and trainings to acknowledge.
+  ['policy', /\bpolic(?:y|ies)\b|\bmy\s+trainings?\b/i],
   ['aiDraft', /\bai\s+drafts?\b|\bdraft(?:s|ing)?\s+(?:me\s+)?(?:a\s+|an\s+|the\s+)?(?:letter|circular|minutes|lesson\s+plan|documents?)\b/i],
 ];
 

@@ -81,7 +81,15 @@ export async function seedP2Gaps({ section, attempt, who, teachers = [], actorOf
     for (const t of teachers.slice(0, 8)) {
       for (const periodNo of [1, 2]) {
         // eslint-disable-next-line no-await-in-loop
-        if (await attempt(`check-in ${t.displayName} P${periodNo}`, () => camera.checkIn(actorOf(t, 'TEACHER'), { periodNo }))) n += 1;
+        const row = await attempt(`check-in ${t.displayName} P${periodNo}`, () => camera.checkIn(actorOf(t, 'TEACHER'), { periodNo }));
+        if (row) {
+          n += 1;
+          // Part 5: stamp the sample check-in a few minutes into its period (08:30 / 09:15 school time), not at seeding time.
+          const ist = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+          const at = new Date(`${ist}T${periodNo === 1 ? '08:33' : '09:17'}:00+05:30`);
+          // eslint-disable-next-line no-await-in-loop
+          if (row.id && at < new Date()) await ClassCheckIn.collection.updateOne({ _id: new (await import('mongoose')).default.Types.ObjectId(row.id) }, { $set: { checkedInAt: at, createdAt: at, updatedAt: at } });
+        }
       }
     }
     return `${n} check-in(s) for periods 1 and 2 (teachers with a lesson then)`;

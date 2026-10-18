@@ -370,7 +370,10 @@ export function directStep(message, actor, now = new Date()) {
   const STAFF_WORD = String.raw`(teachers?|principals?|librarians?|wardens?|parents?|administrators?|admins?|finance\s+staff|accountants?)`;
   const headcount = new RegExp(String.raw`\bhow\s+many\s+${STAFF_WORD}\b`, 'i').exec(text)?.[1]
     ?? new RegExp(String.raw`^\s*(?:please\s+)?(?:show|list|display)\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?${STAFF_WORD}\s*[?.!]*$`, 'i').exec(text)?.[1];
-  if (headcount && holds('list_users') && !WRITE_LEAD.test(text)) {
+  // ...but "how many teachers are absent / on leave today?" is not a headcount
+  // of the directory: answering it with the number of teachers stated a
+  // figure for a different question.
+  if (headcount && holds('list_users') && !WRITE_LEAD.test(text) && !/\b(?:absent|on\s+leave|away|off\s+today|present|late)\b/i.test(text)) {
     const word = headcount.toLowerCase();
     const ofRole = /^teacher/.test(word) ? 'TEACHER' : /^principal/.test(word) ? 'PRINCIPAL' : /^librarian/.test(word) ? 'LIBRARIAN'
       : /^warden/.test(word) ? 'WARDEN' : /^parent/.test(word) ? 'PARENT' : /^admin/.test(word) ? 'ADMIN' : 'FINANCE';

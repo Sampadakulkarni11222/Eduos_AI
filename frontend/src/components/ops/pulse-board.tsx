@@ -149,7 +149,7 @@ function MiniCampus() {
         <div className="pb-campus card">
           <div className="pb-chart-head">
             <MaybeLink href={page('/campus')} className="pb-chart-title">Campus now</MaybeLink>
-            <span className="pb-readout" aria-live="polite">{hovered ? <><b>{hovered.name}</b> · {busy(hovered)} of {roomsIn(hovered).length} rooms in use</> : <>{map.kpis.roomsInUse} rooms in use · {map.kpis.roomsFree} free · {map.kpis.eventsToday} events</>}</span>
+            <span className="pb-readout" aria-live="polite">{hovered ? <><b>{hovered.name}</b> · {busy(hovered)} of {roomsIn(hovered).length} {roomsIn(hovered).length === 1 ? 'room' : 'rooms'} in use</> : <>{map.kpis.roomsInUse} {map.kpis.roomsInUse === 1 ? 'room' : 'rooms'} in use · {map.kpis.roomsFree} free · {map.kpis.eventsToday} events</>}</span>
           </div>
           <Link href={page('/campus') ?? '#'} aria-label="Open Campus World" className="mc-link">
             <svg viewBox={box.join(' ')} className="mc-svg" role="img" aria-label={`Campus: ${buildings.map((b) => `${b.name}, ${busy(b)} rooms in use`).join('; ')}`}>

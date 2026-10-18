@@ -17,6 +17,7 @@ import { HOOKS } from './catalogue.js';
 import { TYPE_LABELS, LEVEL_LABELS, daysLeft } from './matching.js';
 import { renderEditionEmail } from './emailHtml.js';
 import * as opps from './opportunities.service.js';
+import { aiEditionContent } from './ai/editionWriter.js';
 
 /**
  * Weekly and monthly newsletter editions.
@@ -118,7 +119,7 @@ async function pickItems(cadence, now) {
   return out;
 }
 
-function buildHook(items, periodKey) {
+export function buildHook(items, periodKey) {
   const count = {};
   for (const o of items) for (const d of o.domains ?? []) if (HOOKS[d]) count[d] = (count[d] ?? 0) + 1;
   const domain = Object.entries(count).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'SCIENCE';
@@ -129,7 +130,7 @@ function buildHook(items, periodKey) {
 
 const firstSentence = (s, max = 220) => { const t = String(s ?? '').split(/(?<=[.!?])\s/)[0]; return t.length > max ? `${t.slice(0, max - 1)}…` : t; };
 
-function buildFlashcards(items) {
+export function buildFlashcards(items) {
   const cards = [];
   for (const o of items) {
     cards.push({ key: `o-${o._id}`, front: `What is "${o.title}"?`, back: firstSentence(o.summary), domain: o.domains?.[0] ?? null, opportunityId: o._id });
@@ -138,7 +139,7 @@ function buildFlashcards(items) {
   return cards.slice(0, 12);
 }
 
-function buildQuiz(items, periodKey) {
+export function buildQuiz(items, periodKey) {
   const seed = seedOf(periodKey);
   const pool = shuffled(items, seed);
   const quiz = [];
@@ -178,7 +179,7 @@ function buildQuiz(items, periodKey) {
   return quiz.slice(0, 3).map((q, i) => ({ ...q, key: `q${i + 1}` }));
 }
 
-function buildPoll(items) {
+export function buildPoll(items) {
   const teamy = ['INNOVATION_CHALLENGE', 'HACKATHON', 'SCIENCE_FAIR', 'COMPETITION', 'MUN_DEBATE', 'OLYMPIAD'];
   const pick = [...items.filter((o) => o.audience !== 'TEACHERS' && teamy.includes(o.type)), ...items.filter((o) => o.audience !== 'TEACHERS' && !teamy.includes(o.type))].slice(0, 3);
   if (pick.length < 2) return { question: null, options: [] };
@@ -214,7 +215,10 @@ export async function generate({ cadence, now = new Date(), by = 'SCHEDULER', ac
   const { key } = periodOf(c, now);
   const existing = await NewsletterEdition.findOne({ cadence: c, periodKey: key });
   if (existing && !(force && existing.status === 'DRAFT')) return { edition: existing.toObject(), created: false };
-  const content = await contentFor(c, now);
+  // Part 5: with an AI key the hook, section notes, flashcards, quiz and poll are written by the
+  // model from the published items and checked against them; any section that fails (or no key)
+  // keeps the template's version.
+  const content = await aiEditionContent(await contentFor(c, now), { cadence: c, now });
   if (existing) {
     Object.assign(existing, content);
     pushHistory(existing, actor, 'REBUILT');
@@ -269,7 +273,7 @@ export async function updateDraft(actor, id, body = {}) {
 
 const appUrl = () => String(process.env.APP_URL || String(env.CORS_ORIGIN ?? '').split(',')[0] || 'http://localhost:3000').replace(/\/$/, '');
 
-async function itemsOf(e) {
+export async function itemsOf(e) {
   const rows = await Opportunity.find({ _id: { $in: e.opportunityIds }, status: 'PUBLISHED' }).lean();
   const byId = new Map(rows.map((o) => [String(o._id), o]));
   return e.opportunityIds.map((x) => byId.get(String(x))).filter(Boolean);
@@ -340,11 +344,12 @@ export async function withdraw(actor, id, body = {}) {
 
 // ── reading ────────────────────────────────────────────────────────────
 
-function editorView(e) {
+export function editorView(e) {
   return {
     id: String(e._id), cadence: e.cadence, periodKey: e.periodKey, periodLabel: e.periodLabel, title: e.title, status: e.status, hook: e.hook, intro: e.intro,
     opportunityIds: (e.opportunityIds ?? []).map(String), flashcards: e.flashcards?.length ?? 0, quiz: e.quiz?.length ?? 0, poll: e.poll?.question ?? null,
     generatedBy: e.generatedBy, publishedAt: e.publishedAt, publishedByName: e.publishedByName ?? null, delivery: e.delivery ?? null, createdAt: e.createdAt, history: e.history ?? [],
+    sectionNotes: e.sectionNotes ?? [], ai: e.ai ?? null,
   };
 }
 
@@ -441,15 +446,17 @@ export async function read(actor, id, query = {}, { now = new Date() } = {}) {
   return {
     id: String(e._id), cadence: e.cadence, periodLabel: e.periodLabel, title: e.title, status: e.status, intro: e.intro, publishedAt: e.publishedAt,
     hook: e.hook,
+    sectionNotes: (e.sectionNotes ?? []).map((n) => ({ section: n.section, note: n.note, evidence: (n.evidence ?? []).map((x) => ({ opportunityId: String(x.opportunityId), title: x.title, url: x.url })) })),
+    writtenBy: e.ai?.sections ?? null,
     items: items.map((o) => ({ ...opps.present(o, { now: t }), saved: savedIds.has(String(o._id)) })),
     forYou: personal.contexts.map((c) => ({ ...c, items: c.items.map((i) => ({ ...i, inEdition: inEdition.has(i.id), saved: savedIds.has(i.id) })) })),
     deadlines,
     flashcards: (e.flashcards ?? []).map((c) => {
       const r = reviews.get(`${e._id}:${c.key}`);
-      return { key: `${e._id}:${c.key}`, front: c.front, back: c.back, domain: c.domain, box: r?.box ?? null, lastResult: r?.lastResult ?? null };
+      return { key: `${e._id}:${c.key}`, front: c.front, back: c.back, domain: c.domain, box: r?.box ?? null, lastResult: r?.lastResult ?? null, opportunityId: c.opportunityId ? String(c.opportunityId) : null };
     }),
     quiz: {
-      questions: (e.quiz ?? []).map((q, i) => ({ key: q.key, question: q.question, options: q.options, ...(answered && { answerIndex: q.answerIndex, explain: q.explain, yourAnswer: readRow.quiz.answers?.[i] ?? null }) })),
+      questions: (e.quiz ?? []).map((q, i) => ({ key: q.key, question: q.question, options: q.options, opportunityId: q.opportunityId ? String(q.opportunityId) : null, ...(answered && { answerIndex: q.answerIndex, explain: q.explain, yourAnswer: readRow.quiz.answers?.[i] ?? null }) })),
       answered, score: answered ? readRow.quiz.score : null, onBoard: Boolean(readRow?.quiz?.onBoard),
       canJoinBoard: actor.roleKey === 'STUDENT', boardOptIn: Boolean(reader.leaderboardOptIn),
     },

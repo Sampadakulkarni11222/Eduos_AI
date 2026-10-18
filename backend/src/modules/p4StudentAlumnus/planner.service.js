@@ -140,6 +140,10 @@ export async function getPlanner(actor, { studentId = null, days = 21, now = new
     return dow === 0 || holidays.some((h) => h.startsAt <= new Date(d.getTime() + DAY - 1) && h.endsAt >= d);
   };
 
+  // A parent reads the plan about their child, so it names the child instead of saying "your".
+  const forParent = actor?.roleKey === 'PARENT';
+  const whose = forParent ? `${student.firstName ?? 'Your child'}’s` : 'your';
+  const Whose = forParent ? whose : 'Your';
   const minutes = dailyMinutesFor(gradeNo);
   const block = gradeNo !== null && gradeNo <= 5 ? 15 : gradeNo !== null && gradeNo <= 8 ? 30 : 45;
   const plan = [];
@@ -151,14 +155,14 @@ export async function getPlanner(actor, { studentId = null, days = 21, now = new
     for (const a of due.filter((x) => x.daysLeft === i + 1)) blocks.push({ subject: a.subject, minutes: block, kind: 'HOMEWORK', reason: `“${a.title}” is due ${i === 0 ? 'tomorrow' : `on ${niceDay(a.dueAt)}`}` });
     // 2. Revision for exams within ten days, nearest first.
     for (const e of exams.filter((x) => x.daysLeft > i && x.daysLeft - i <= 10).slice(0, 2)) {
-      blocks.push({ subject: e.subject, minutes: block, kind: 'REVISION', reason: `${e.exam} ${e.subject} paper in ${e.daysLeft - i} day${e.daysLeft - i === 1 ? '' : 's'}${weakest.includes(e.subject) ? ' — and your marks show this subject needs the most work' : ''}` });
+      blocks.push({ subject: e.subject, minutes: block, kind: 'REVISION', reason: `${e.exam} ${e.subject} paper in ${e.daysLeft - i} day${e.daysLeft - i === 1 ? '' : 's'}${weakest.includes(e.subject) ? ` — and ${whose} marks show this subject needs the most work` : ''}` });
     }
     // 3. Fill the rest of the day with practice, rotating through the lowest subjects.
     for (let k = 0; k < weakest.length && blocks.reduce((n, b) => n + b.minutes, 0) + block <= minutes; k += 1) {
       const sub = weakest[(i + k) % weakest.length];
       if (blocks.some((b) => b.subject === sub)) continue;
       const p = strengths.find((x) => x.subject === sub);
-      blocks.push({ subject: sub, minutes: block, kind: 'PRACTICE', reason: `Your published marks in ${sub} average ${p?.percentage ?? '—'}%${sub === weakest[0] ? ', your lowest' : ''}` });
+      blocks.push({ subject: sub, minutes: block, kind: 'PRACTICE', reason: `${Whose} published marks in ${sub} average ${p?.percentage ?? '—'}%${sub === weakest[0] ? `, ${forParent ? 'the' : 'your'} lowest` : ''}` });
     }
     let used = 0; const fitted = [];
     for (const b of blocks) { if (used + b.minutes > minutes) break; fitted.push(b); used += b.minutes; }
@@ -175,7 +179,7 @@ export async function getPlanner(actor, { studentId = null, days = 21, now = new
     due, overdue, quizzes: openQuizzes, exams,
     events: events.map((e) => ({ title: e.title, type: e.type, startsAt: e.startsAt, endsAt: e.endsAt })),
     strengths,
-    plan: { dailyMinutes: minutes, days: plan, note: 'A suggestion built from your homework, exam dates and your own published marks. Change it to suit you; nothing is booked or sent.' },
+    plan: { dailyMinutes: minutes, days: plan, note: forParent ? `A suggestion built from ${whose} homework, exam dates and published marks. Change it together to suit the family; nothing is booked or sent.` : 'A suggestion built from your homework, exam dates and your own published marks. Change it to suit you; nothing is booked or sent.' },
     board,
   };
 }

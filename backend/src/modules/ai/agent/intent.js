@@ -3,7 +3,7 @@ import { generate, isLlmEnabled, classifyLlmError } from '../../../providers/ai.
 /** Enough for a reasoning model to think and then emit a small JSON object. */
 const ROUTING_MAX_TOKENS = 4096;
 import { toolsAvailableTo } from './tools.js';
-import { monthFromText, looksLikeMonth, writtenDatesIn, unreadableDatesIn } from '../../../utils/naturalDates.js';
+import { monthFromText, looksLikeMonth, writtenDatesIn, unreadableDatesIn, localToday } from '../../../utils/naturalDates.js';
 import { classFromText, refersToOwnClasses, classKey } from '../../../utils/classNames.js';
 import { subjectsMentionedIn } from '../../../utils/subjectNames.js';
 import { detectSelfCategory } from './profileIntent.js';
@@ -113,6 +113,9 @@ const WHO_IS_NOT_A_NAME = new RegExp(
   + ')\\b',
   'i',
 );
+
+/** "who is in H-101", "who stays in room 12", "residents of 204": the room is group 1, 2 or 3. */
+const HOSTEL_ROOM_OCCUPANTS = /\b(?:who(?:'s|\s+is|\s+are)?\s+(?:staying\s+|living\s+|sleeping\s+|allocated\s+)?in|(?:occupants?|residents?|students?)\s+(?:of|in))\s+(?:(?:hostel\s+)?room\s+([A-Z0-9][A-Z0-9-]{0,9})|([A-Z]{1,3}-\d{1,4}[A-Z]?)|(\d{3,4}))\b/i;
 
 const RULES = [
   /* ── Live-ERP lookups added with MCP ─────────────────────
@@ -263,6 +266,231 @@ const RULES = [
       if (!name || /^(my|his|her|their|child|son|daughter|student|school)$/i.test(name)) return {};
       return { search: name };
     },
+  },
+  {
+    // "Show overdue invoices", "unpaid invoices": the pending-fee read, which
+    // lists every unpaid invoice with what is owed and what is overdue. It used
+    // to reach the fee-ADJUSTMENT list on the word "invoices".
+    tool: 'get_pending_fees',
+    patterns: [
+      /\b(?:overdue|unpaid|outstanding|pending|due|late)\s+(?:fee\s+)?invoices?\b/i,
+      /\binvoices?\b[^?]*\b(?:overdue|unpaid|outstanding|not\s+(?:yet\s+)?paid)\b/i,
+    ],
+    exclude: [/\b(?:record|refund|cancel|void|remind|send|generate|create)\b/i, /\bINV-?\d/i],
+    requires: { permission: 'fees.read', scope: 'ALL' },
+    weight: 4,
+    // Decided by its own words, before the scorers weigh the nouns.
+    decisive: true,
+    args: () => ({}),
+  },
+  {
+    // An invoice named by its number -- "INV-1002", "what about INV-1002?" --
+    // is that invoice, never a student's admission number.
+    tool: 'get_invoice',
+    patterns: [/\bINV-?\d{2,}\b/i],
+    exclude: [/\b(?:pay|paid|record|refund|cancel|void|mark|remind|send|create|generate|waive|adjust|discount)\b/i],
+    requires: { permission: 'fees.read' },
+    weight: 6,
+    decisive: true,
+    args: (msg) => ({ invoiceNo: msg.match(/\bINV-?\d{2,}\b/i)[0].toUpperCase().replace(/^INV(?=\d)/, 'INV-') }),
+  },
+  {
+    // "Who is in H-101?", "residents of room 204": the bed allocations of
+    // that room. Only a room-shaped name (a dash, a 3-4 digit number, or the
+    // word "room") -- "who is in 6A" is a class, not a room.
+    tool: 'list_hostel_allocations',
+    patterns: [HOSTEL_ROOM_OCCUPANTS],
+    exclude: [/\bclass\b/i, /\b(?:allocate|vacate|move|assign|shift)\b/i],
+    requires: { permission: 'hostel.read', scope: 'ALL' },
+    weight: 5,
+    decisive: true,
+    args: (msg) => {
+      const m = HOSTEL_ROOM_OCCUPANTS.exec(msg);
+      const room = (m?.[1] ?? m?.[2] ?? m?.[3] ?? '').trim();
+      return room ? { roomNo: room } : {};
+    },
+  },
+  {
+    // "What jobs are posted?", "any internships?": the opportunities board.
+    tool: 'list_alumni_opportunities',
+    patterns: [/\b(?:jobs?|internships?|opportunit(?:y|ies)|openings?|career\s+talks?|scholarships?|mentoring\s+offers?)\b/i],
+    exclude: [/\b(?:recruit\w*|vacanc\w*|applicants?|hiring|candidates?|post\s+an?|create|add|share|offer\s+an?)\b/i],
+    requires: { permission: 'alumni.directory.read' },
+    weight: 2,
+    args: (msg) => {
+      const kind = /\binternships?\b/i.test(msg) ? 'INTERNSHIP' : /\bscholarships?\b/i.test(msg) ? 'SCHOLARSHIP'
+        : /\bjobs?\b/i.test(msg) ? 'JOB' : null;
+      return kind ? { kind } : {};
+    },
+  },
+  /* ── Questions the harness found answered "I'm not sure" (p5 Ask AI memory) ── */
+  {
+    // "How many students visited the health room this week?" from the
+    // principal: the counts-only health summary. It used to be refused as
+    // "no access to medical records", although the counts are theirs to read.
+    tool: 'get_health_room_summary',
+    patterns: [/\b(?:health[\s-]?room|sick[\s-]?bay|infirmary|nurse'?s?\s+(?:office|room)|health\s+(?:visits?|figures|summary|counts?))\b/i],
+    exclude: [/\b(?:log|record|add|give|mark|close)\b/i],
+    requires: { permission: 'health.summary.read', scope: 'ALL', unless: 'health.manage' },
+    weight: 5,
+    decisive: true,
+    ignores: ['range', 'date'],
+    args: (msg) => {
+      if (/\btoday\b/i.test(msg)) return { days: 1 };
+      if (/\b(?:this|last|past)\s+week\b|\bweekly\b/i.test(msg)) return { days: 7 };
+      const n = /\b(?:last|past)\s+(\d{1,3})\s+days?\b/i.exec(msg)?.[1];
+      if (n) return { days: Math.min(366, Math.max(1, Number(n))) };
+      if (/\b(?:this|last|past)\s+term\b/i.test(msg)) return { days: 90 };
+      return {};
+    },
+  },
+  {
+    // "How did Class 5 A do in Unit Test 2?"
+    tool: 'get_class_marks',
+    patterns: [/\bhow\s+(?:did|has|have|is|are)\s+(?:class\s+|grade\s+)?\d{1,2}(?:st|nd|rd|th)?\s*-?\s*[a-h]\b[^?]*\b(?:do|done|doing|perform(?:ed|ing)?|score[ds]?|fare[ds]?)\b/i],
+    requires: { permission: 'marks.read' },
+    weight: 5,
+    decisive: true,
+    args: (msg) => {
+      const spoken = classFromText(msg, { lenient: true });
+      return spoken && !spoken.gradeOnly ? { className: spoken.lenient ? `Class ${spoken.key.toUpperCase()}` : spoken.text } : {};
+    },
+  },
+  {
+    // "Any messages from parents?", "unread messages": the parent–teacher conversations.
+    tool: 'list_conversations',
+    patterns: [
+      /\b(?:messages?|conversations?|chats?)\s+(?:from|with)\s+(?:the\s+|my\s+|any\s+)?(?:parents?|guardians?|teachers?|families|class\s+teacher)\b/i,
+      /\b(?:any|new|unread)\s+(?:new\s+|unread\s+)?(?:messages?|replies)\b/i,
+    ],
+    exclude: [/\b(?:send|write|reply\s+to|message\s+(?:the|their|his|her)|tell|close|whatsapp)\b/i],
+    requires: { permission: 'conversations.use' },
+    weight: 4,
+    decisive: true,
+    args: (msg) => (/\b(?:any|new|unread)\b/i.test(msg) ? { unreadOnly: true } : {}),
+  },
+  {
+    // "How is my child doing this month?" -- the question the parent screen
+    // suggests -- answered from the child's attendance, results and homework.
+    tool: 'get_student_overview',
+    patterns: [/\bhow\s+(?:is|are|'s)\s+(?:my\s+)?(?:child|son|daughter|kid|ward|children|kids)\s+(?:doing|getting\s+on|performing|progressing)\b/i],
+    requires: { permission: 'students.read' },
+    weight: 5,
+    decisive: true,
+    ignores: ['range', 'date'],
+    args: () => ({ include: ['attendance', 'performance', 'assignments'] }),
+  },
+  {
+    // "Who teaches me maths?", "who is my science teacher?"
+    tool: 'get_subjects',
+    patterns: [/\bwho\s+(?:teaches|is\s+teaching)\s+(?:me|us|my\s+(?:child|son|daughter))\b/i, /\bwho\s+is\s+my\s+[\p{L} ]{2,30}?\s+teacher\b/iu],
+    exclude: [/\bclass\s+teacher\b/i],
+    requires: { permission: 'timetable.read' },
+    weight: 4,
+    decisive: true,
+    args: () => ({}),
+  },
+  {
+    // "Show today's visitors", "who is on site?"
+    tool: 'get_visitors_on_site',
+    patterns: [/\bvisitors?\b/i, /\bwho\s+is\s+on\s+(?:the\s+)?(?:site|campus)\b/i],
+    exclude: [/\b(?:add|register|sign\s+(?:in|out)|check\s+(?:in|out)|update|log)\b/i],
+    requires: { permission: 'visitors.manage' },
+    weight: 4,
+    decisive: true,
+    args: () => ({}),
+  },
+  {
+    // "Who is on outpass today?", "pending outpasses"
+    tool: 'list_outpasses',
+    patterns: [/\bout[\s-]?pass(?:es)?\b/i],
+    exclude: [/\b(?:approve|reject|decide|record|mark|apply|request)\b/i],
+    requires: { permission: 'hostel.outpass.manage' },
+    weight: 4,
+    decisive: true,
+    args: (msg) => {
+      if (/\boverdue|late\b/i.test(msg)) return { view: 'overdue' };
+      if (/\b(?:out\s+now|on\s+out[\s-]?pass|today|currently\s+out|who\s+is\s+out)\b/i.test(msg)) return { view: 'out' };
+      if (/\bapproved\b/i.test(msg)) return { view: 'approved' };
+      if (/\ball\b/i.test(msg)) return { view: 'all' };
+      return {};
+    },
+  },
+  {
+    // "Who is on leave today?", "staff on leave", "how many teachers are absent
+    // today?" -- staff leave, for those who see everyone's (HR, the principal).
+    tool: 'list_staff_leave',
+    patterns: [
+      /\bwho(?:'s|\s+is|\s+are)\s+on\s+leave\b/i,
+      /\b(?:staff|teachers?|employees?)\s+(?:on\s+leave|absent|away|off)\b/i,
+      /\bhow\s+many\s+(?:staff|teachers?|employees?)\s+(?:are\s+)?(?:on\s+leave|absent|away|off)\b/i,
+    ],
+    exclude: [/\b(?:apply|cancel|approve|reject|balance|students?)\b/i],
+    requires: { permission: 'staffleave.manage' },
+    weight: 5,
+    decisive: true,
+    args: (msg) => {
+      const when = periodArgs(msg);
+      return { date: when.date ?? localToday(), status: 'APPROVED' };
+    },
+  },
+  {
+    // "My leave balance" (one's own) and "leave balances" (everyone's, for HR).
+    tool: 'get_staff_leave_balance',
+    patterns: [/\bmy\s+(?:staff\s+)?leave\s+balance\b/i, /\bhow\s+many\s+(?:casual|sick|earned)?\s*leaves?\s+(?:do\s+i|have\s+i)\b/i],
+    requires: { permission: 'staffleave.apply' },
+    weight: 5,
+    decisive: true,
+    args: () => ({}),
+  },
+  {
+    tool: 'get_staff_leave_balances',
+    patterns: [/\b(?:staff\s+|all\s+|everyone'?s\s+)?leave\s+balances\b/i, /\bleave\s+balance\s+of\s+(?:all|every|each)\b/i],
+    exclude: [/\bmy\b/i],
+    requires: { permission: 'staffleave.manage', scope: 'ALL' },
+    weight: 5,
+    decisive: true,
+    args: () => ({}),
+  },
+  {
+    // "Show CPD hours" (everyone's, for HR and the principal).
+    tool: 'list_staff_cpd_hours',
+    patterns: [/\bcpd\b/i, /\bprofessional\s+development\s+hours\b/i],
+    exclude: [/\bmy\b/i, /\b(?:log|add|record)\b/i],
+    requires: { permission: 'staffleave.manage', scope: 'ALL' },
+    weight: 5,
+    decisive: true,
+    args: () => ({}),
+  },
+  {
+    // "Show the staff directory", "list all staff": the people with accounts.
+    tool: 'list_users',
+    patterns: [/\bstaff\s+(?:directory|list)\b/i, /\b(?:list|show)\s+(?:of\s+)?(?:all\s+)?(?:the\s+)?staff(?:\s+members)?\s*[?.!]*$/i],
+    requires: { permission: 'users.read' },
+    weight: 4,
+    decisive: true,
+    args: () => ({}),
+  },
+  {
+    // "Show tonight's roll call" -- the hostel's, not the class register.
+    tool: 'get_hostel_roll_call',
+    patterns: [/\broll[\s-]?call\b/i],
+    exclude: [/\b(?:start|mark|submit|begin|take)\b/i],
+    requires: { permission: 'hostel.read', scope: 'ALL' },
+    weight: 5,
+    decisive: true,
+    args: (msg) => (/\bmorning\b/i.test(msg) ? { session: 'MORNING' } : {}),
+  },
+  {
+    // "Show the fee structure for Class 6": the structures, never the pending list.
+    tool: 'get_fee_structures',
+    patterns: [/\bfee\s+structures?\b/i],
+    exclude: [/\b(?:create|add|new|update|change)\b/i],
+    requires: { permission: 'fees.read', scope: 'ALL' },
+    weight: 6,
+    decisive: true,
+    ignores: ['class'],
+    args: () => ({}),
   },
   {
     tool: 'get_fee_structures',
@@ -1164,6 +1392,9 @@ function satisfiesRequires(rule, actor) {
   const held = actor?.permissions?.[rule.requires.permission];
   if (!held) return false;
   if (rule.requires.scope === 'ALL' && held !== 'ALL') return false;
+  // A rule for those who hold one permission WITHOUT another (the principal's
+  // health counts, not the nurse's own visit lists).
+  if (rule.requires.unless && actor?.permissions?.[rule.requires.unless]) return false;
   return true;
 }
 
@@ -1783,6 +2014,16 @@ function decisiveStep(message, actor) {
  * reject the UPDATE it plainly asks for. It must still keep what was named.
  */
 function passesRule(rule, step, message, actor) {
+  // A whole-picture question ("how is my child doing this month?") is not a
+  // request to narrow a record by its period: the overview answers it.
+  // Likewise a list that is whole by nature ("the fee structure for Class 6":
+  // structures are listed whole, each naming its grade). Such a rule names
+  // the dimensions its capability answers without narrowing (`ignores`).
+  if (rule.ignores) {
+    const named = { ...dimensionsOf(String(message)) };
+    for (const dimension of rule.ignores) delete named[dimension];
+    return keepsWhatWasNamed(step, String(message), named);
+  }
   return rule.grammar
     ? keepsWhatWasNamed(step, String(message))
     : respectsSpecificity(step, String(message), actor);
@@ -2306,8 +2547,15 @@ function carrySubjectForward(steps, message, actor, { history = [], tools = null
     const props = tools?.find((t) => t.name === name)?.inputSchema?.properties;
     return Boolean(props && STUDENT_IDENTITY_KEYS.some((k) => k in props));
   };
-  const namesStudent = (args) => STUDENT_IDENTITY_KEYS.some((k) => args?.[k]);
-  if (!steps.some((s) => takesStudent(s.tool) && !namesStudent(s.args))) return steps;
+  const namesStudent = (args) => STUDENT_IDENTITY_KEYS.some((k) => args?.[k]) || Boolean(args?.search);
+  // A read about the caller's own records that has a per-student sibling:
+  // "and her fees?" after Riya's attendance is Riya's fees, not the caller's
+  // (for a parent of two, both children's) total presented as hers.
+  const sibling = (name) => {
+    const s = SUBJECT_SIBLING[name];
+    return s && tools?.some((t) => t.name === s.tool) ? s : null;
+  };
+  if (!steps.some((s) => (takesStudent(s.tool) || sibling(s.tool)) && !namesStudent(s.args))) return steps;
 
   let subject = null;
   for (const turn of [...history].reverse()) {
@@ -2319,8 +2567,20 @@ function carrySubjectForward(steps, message, actor, { history = [], tools = null
     if (subject) break;
   }
   if (!subject) return steps;
-  return steps.map((s) => (takesStudent(s.tool) && !namesStudent(s.args) ? { ...s, args: { ...s.args, ...subject } } : s));
+  const name = displayNameOf(subject);
+  return steps.map((s) => {
+    if (namesStudent(s.args)) return s;
+    if (takesStudent(s.tool)) return { ...s, args: { ...s.args, ...subject } };
+    const swap = sibling(s.tool);
+    return swap && name ? { tool: swap.tool, args: { [swap.key]: name } } : s;
+  });
 }
+
+/** Caller-wide reads and the per-student read that answers the same question about one student. */
+const SUBJECT_SIBLING = {
+  get_fees: { tool: 'get_pending_fees', key: 'search' },
+  get_attendance: { tool: 'get_student_attendance', key: 'studentName' },
+};
 
 /**
  * The answer to a question the assistant asked about an unfinished write.
@@ -2349,6 +2609,8 @@ const PROPOSAL_REPLY = /Shall I go ahead|Reply YES|क्या मैं आग
 // request, not a clarification.
 const ASKED_REPLY = new RegExp([
   '\\?', '\\bTell me\\b', 'I need a bit more', 'थोड़ी और जानकारी',
+  // "Name a student — by id, admission number or name." asks as plainly as a question.
+  '^\\s*Name (?:a|the) (?:student|child|class|book|room)\\b',
   '\\bI need (?:a|an|the|to know|more|some|your)\\b',
   '\\bPlease (?:provide|give|share|send|specify|enter|mention|tell|choose|pick)\\b',
   '\\b(?:Can|Could) you (?:please )?(?:provide|give|share|send|specify|tell|confirm)\\b',
@@ -2727,6 +2989,19 @@ function openWriteIn(conversation, message, actor) {
   return open ? { ...open, asked } : null;
 }
 
+/**
+ * The answer to a question about an unfinished write that the conversation
+ * MEMORY holds (agent/memory.js `openWrite`) rather than one the transcript
+ * can replay -- a write started from context, such as "message their
+ * parents". Read exactly as continuedWrite reads an answer; null when the
+ * message is a request of its own or supplies nothing.
+ */
+export function answerToOpenWrite(open, message, actor) {
+  if (!open?.tool || standsAlone(message, actor)) return null;
+  const answered = withAnswer({ tool: open.tool, args: open.args ?? {}, text: null }, message, actor, open.asked ?? '');
+  return answered ? { tool: answered.tool, args: answered.args } : null;
+}
+
 /** True when the conversation is waiting on an answer to an unfinished write. */
 export function hasOpenWrite(conversation, message, actor) {
   return Boolean(openWriteIn(conversation ?? [], message, actor));
@@ -2777,6 +3052,11 @@ function studentNamedBy(step) {
   if (step?.tool === 'search_students' && args.query && !classFromText(args.query) && NAME_SHAPED.test(args.query)) {
     return { studentName: args.query };
   }
+  // "Rahul's fees" names him through a fee search.
+  if (args.search && getMcpTool(step?.tool)?.inputSchema?.properties?.search && NAME_SHAPED.test(String(args.search))
+    && !classFromText(String(args.search))) {
+    return { studentName: String(args.search) };
+  }
   return null;
 }
 const displayNameOf = (identity) => identity?.studentName ?? identity?.admissionNo ?? null;
@@ -2790,7 +3070,11 @@ function couldBeAPerson(words, actor) {
   // Monday.
   if (TIME_WORDS.test(words) || TIME_ONLY.test(words) || looksLikeMonth(words) || classFromText(words)) return false;
   if (entitiesInText(words).length || subjectFromText(words)) return false;
-  return parsePlan(words, actor).length === 0;
+  const plan = parsePlan(words, actor);
+  // A bare full name the readers take as a lookup of that very person
+  // ("Aman Gupta" -> the student search) is still a person.
+  return plan.length === 0 || (plan.length === 1 && !isWrite(plan[0].tool)
+    && String(displayNameOf(studentNamedBy(plan[0])) ?? '').toLowerCase() === words.toLowerCase());
 }
 
 /** The previous request to re-ask, and every person the caller has named, newest last. */
@@ -2831,6 +3115,12 @@ function retarget(prior, person, actor) {
   const keep = Object.fromEntries(Object.entries(prior.args ?? {}).filter(([k]) => !STUDENT_IDENTITY_KEYS.includes(k)));
   if (props.studentName) return { tool: prior.tool, args: { ...keep, studentName: person } };
   if (prior.tool === 'search_students' && props.query) return { tool: prior.tool, args: { query: person } };
+  // A read that finds its student through a free search ("Rahul's fees" →
+  // get_pending_fees { search }): the same read, searched for the new person.
+  if (props.search && (!prior.args?.search || NAME_SHAPED.test(String(prior.args.search)))) {
+    const { search, ...rest } = keep;
+    return { tool: prior.tool, args: { ...rest, search: person } };
+  }
 
   // A class-level question ("who is absent in Class 6-A?") asked again about
   // one pupil: the caller's student-level read of the same entity.
@@ -2839,7 +3129,13 @@ function retarget(prior, person, actor) {
   const candidates = capabilitiesFor(actor, { entity, operation: 'GET' })
     .filter((c) => !c.supersededBy && c.schema?.properties?.studentName);
   const target = candidates.find((c) => c.resultShape === 'DETAIL') ?? candidates[0];
-  if (!target) return null;
+  if (!target) {
+    // A caller-wide read with a per-student sibling ("and her fees?" read as
+    // the caller's own fees, then "what about Rahul?").
+    const sibling = SUBJECT_SIBLING[prior.tool];
+    if (sibling && capabilitiesFor(actor).some((c) => c.name === sibling.tool)) return { tool: sibling.tool, args: { [sibling.key]: person } };
+    return null;
+  }
   const targetProps = target.schema.properties;
   const carried = Object.fromEntries(Object.entries(keep)
     .filter(([k]) => targetProps[k] && !CLASS_TARGET_ARGS.includes(k)));
@@ -2979,7 +3275,7 @@ const ATTENDANCE_GROUP_READS = new Set([
   'get_absent_students', 'who_is_absent_today', 'get_attendance', 'get_attendance_statistics',
   'get_attendance_roster', 'get_class_attendance_summary',
 ]);
-const ASKS_FOR_NAMES = /^\s*(?:(?:please\s+)?(?:show|list|give|tell|name)(?:\s+me)?\s+)?(?:(?:their|the|those|these|all\s+the(?:ir)?)\s+)?names?\b|^\s*who\s+(?:all\s+)?(?:are|were)\s+(?:they|those|absent)\b|^\s*which\s+(?:students?|ones|pupils?)\b|^\s*(?:name|list)\s+them\b|^\s*who\s*\??\s*$/i;
+const ASKS_FOR_NAMES = /^\s*(?:(?:please\s+)?(?:show|list|give|tell|name)(?:\s+me)?\s+)?(?:(?:their|the|those|these|all\s+the(?:ir)?)\s+)?names?\b|^\s*who\s+(?:all\s+)?(?:are|were|was|is)\s+(?:they|those|absent)\b|^\s*which\s+(?:students?|ones|pupils?)\b|^\s*(?:name|list)\s+them\b|^\s*who\s*\??\s*$/i;
 const ASKS_DUE_FIRST = /^\s*(?:and\s+)?(?:which|what)\s+(?:one|(?:assignment|homework|task)s?)?\s*(?:is|are)?\s*(?:due\s+)?(?:first|next|soonest|earliest)\b|^\s*(?:which|what)\s+(?:one\s+)?(?:is\s+)?(?:the\s+)?(?:first|earliest|next|soonest)\b/i;
 
 /**
@@ -3029,6 +3325,13 @@ function answeredRead(prior, reply, asked, actor, now = new Date()) {
     const admissionNo = admissionNoOf(text);
     if (admissionNo && props.admissionNo) { args.admissionNo = admissionNo; supplied = true; }
     else if (props.studentName && NAME_SHAPED.test(text) && !entitiesInText(text).length) { args.studentName = text; supplied = true; }
+    // "Which child?" asked by a caller-wide read (a parent of two asking for
+    // "my child's attendance"): the same question, about the child named.
+    else if (SUBJECT_SIBLING[prior.tool] && NAME_SHAPED.test(text) && !entitiesInText(text).length
+      && capabilitiesFor(actor).some((c) => c.name === SUBJECT_SIBLING[prior.tool].tool)) {
+      const sibling = SUBJECT_SIBLING[prior.tool];
+      return { tool: sibling.tool, args: { [sibling.key]: text } };
+    }
   }
   if (!supplied && props.subject && /\bwhich\s+subject\b/i.test(asked) && NAME_SHAPED.test(text)) {
     args.subject = text;
@@ -3067,6 +3370,11 @@ function followedRead(message, state, actor, now = new Date()) {
     if (props.className) {
       const { sectionId, ...kept } = prior.args ?? {};
       return { tool: prior.tool, args: { ...kept, className: onlyClass } };
+    }
+    // The student directory, asked again for one class ("how many students?"
+    // → "in 6A?"): its search takes a class as readily as a name.
+    if (prior.tool === 'search_students' && props.query) {
+      return { tool: prior.tool, args: { query: onlyClass } };
     }
     if (ATTENDANCE_GROUP_READS.has(prior.tool) && capabilitiesFor(actor).some((c) => c.name === 'get_attendance_roster')) {
       const when = prior.args?.date ? { date: prior.args.date } : prior.args?.month ? { month: prior.args.month } : {};
@@ -3358,7 +3666,10 @@ async function parseIntentCore(message, actor, { callModel, history = [], tools 
       return false;
     });
     if (!faithful.length) return fallback;
-    return { ...faithful[0], steps: faithful };
+    // The student the conversation is about, carried into the model's plan as
+    // into the rules' ("and her fees?" routed to the caller-wide fee read).
+    const carried = carrySubjectForward(faithful, message, actor, { history, tools });
+    return { ...carried[0], steps: carried };
   } catch (err) {
     // A model failure degrades to the deterministic reading rather than taking
     // the assistant offline.
