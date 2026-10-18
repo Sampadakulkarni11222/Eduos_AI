@@ -54,12 +54,24 @@ const monthText = (s) => { const m = /^(\d{4})-(\d{2})$/.exec(String(s)); return
 const cellOf = (v) => (v === null || v === undefined ? null : typeof v === 'number' ? (Number.isFinite(v) ? v : null) : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : typeof v === 'string' ? v.slice(0, 200) : null);
 const shown = (k) => !DENY.test(k);
 
+/**
+ * Numbers that NAME something rather than measure it: a weekday, a period or
+ * roll number, a year, a level, a position in a list. Charting one drew
+ * "Slots: Day of week" -- a bar per timetable slot all at the same height --
+ * for a timetable follow-up ("what about Tuesday?"). They stay in the table.
+ */
+const CATEGORICAL_NUMBER = /(?:^|_)(?:day|dow|weekday|period|slot|roll|rank|order|index|position|seq(?:uence)?|level|year|grade|section|version|no|num|number|code)$|dayOfWeek|periodNo|rollNo|No$|Number$|Index$|Order$|Year$|Level$/;
+
 /** Picks the columns of a row list worth showing, label first. */
 function columnsOf(rows) {
   const keys = [];
   for (const r of rows.slice(0, 8)) for (const [k, v] of Object.entries(r)) if (!keys.includes(k) && shown(k) && isScalar(v) && k !== 'link' && k !== 'href') keys.push(k);
   const label = LABEL_KEYS.find((k) => keys.includes(k) && rows.some((r) => typeof r[k] === 'string')) ?? keys.find((k) => rows.every((r) => typeof r[k] === 'string')) ?? null;
-  const numeric = keys.filter((k) => rows.some((r) => typeof r[k] === 'number'));
+  // A figure worth charting measures something and differs between rows: a
+  // categorical number, or one value repeated on every row, charts nothing.
+  const numeric = keys.filter((k) => rows.some((r) => typeof r[k] === 'number')
+    && !CATEGORICAL_NUMBER.test(k)
+    && new Set(rows.map((r) => r[k]).filter((v) => typeof v === 'number')).size > 1);
   const metric = numeric.find((k) => unitOf(k) === 'percent') ?? numeric.find((k) => /paise|amount|total|count|value|score|marks/i.test(k)) ?? numeric[0] ?? null;
   const ordered = [label, metric, ...keys.filter((k) => k !== label && k !== metric)].filter(Boolean);
   return { label, metric, columns: ordered.slice(0, MAX_COLS) };

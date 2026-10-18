@@ -264,7 +264,10 @@ export function directStep(message, actor, now = new Date()) {
     && holds('get_attendance_roster')
     && refersToOwnClasses(text)
     && (actor?.roleKey === 'TEACHER' || scopeOf(actor, 'attendance.read') === 'ALL')
-    && !CLASS_ATTENDANCE_RANKING.test(text)) {
+    && !CLASS_ATTENDANCE_RANKING.test(text)
+    // "Students with low attendance in my classes" is a list across every
+    // class (get_low_attendance_students), not one register asked "which class?".
+    && !/\b(?:low|poor|bad|short|weak)\s+attendance\b|\battendance\b[^?]*\b(?:below|under|less\s+than)\b/i.test(text)) {
     const period = periodArgs(text, now);
     return { tool: 'get_attendance_roster', args: { ...(period.date && { date: period.date }), ...(period.month && { month: period.month }) } };
   }

@@ -71,8 +71,11 @@ describe('the contract', () => {
 
   it('shows each role only its own acts', () => {
     const visible = (role) => mcpToolsFor(actorForRole(role)).map((t) => t.name).filter((n) => NAMES.includes(n)).sort();
-    expect(visible('PARENT')).toEqual(['accept_ptm_slot_offer', 'cancel_ptm_waitlist_entry', 'join_ptm_waitlist', 'withdraw_club_membership']);
-    expect(visible('STUDENT')).toEqual(['add_portfolio_reflection', 'withdraw_club_membership']);
+    // Policies and trainings are any role's own (part 6: the routes carry no role guard and the
+    // service returns only what is addressed to the caller, so families, trustees and alumni see theirs).
+    const OWN_POLICY = ['acknowledge_my_training', 'acknowledge_policy', 'get_my_policies', 'get_my_trainings'];
+    expect(visible('PARENT')).toEqual(['accept_ptm_slot_offer', 'cancel_ptm_waitlist_entry', 'join_ptm_waitlist', 'withdraw_club_membership', ...OWN_POLICY].sort());
+    expect(visible('STUDENT')).toEqual(['add_portfolio_reflection', 'withdraw_club_membership', ...OWN_POLICY].sort());
     const teacher = visible('TEACHER');
     expect(teacher).toEqual(expect.arrayContaining(['schedule_club_session', 'record_club_fixture_result', 'check_in_ptm_meeting', 'record_ptm_outcome', 'close_review_call', 'add_quiz_question', 'update_syllabus_module', 'acknowledge_policy']));
     for (const n of ['create_club', 'create_ptm_round', 'cancel_ptm_round', 'log_correspondence', 'draft_budget', 'add_compliance_obligation', 'generate_library_accession_numbers', 'withdraw_club_membership', 'join_ptm_waitlist']) {
@@ -80,7 +83,8 @@ describe('the contract', () => {
     }
     expect(visible('FINANCE')).toContain('draft_budget');
     expect(visible('LIBRARIAN')).toEqual(expect.arrayContaining(['update_library_copy_status', 'generate_library_accession_numbers']));
-    for (const role of ['SUPER_ADMIN', 'ALUMNUS', 'TRUSTEE']) expect(visible(role), role).not.toContain('acknowledge_policy');
+    expect(visible('SUPER_ADMIN')).not.toContain('acknowledge_policy');
+    for (const role of ['ALUMNUS', 'TRUSTEE']) expect(visible(role), role).toContain('acknowledge_policy');
   });
 });
 

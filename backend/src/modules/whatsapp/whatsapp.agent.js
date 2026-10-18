@@ -6,6 +6,8 @@ import { buildPermissionMap } from '../../utils/buildPermissionMap.js';
 import { logger } from '../../utils/logger.js';
 import { runAgentSafely, confirmAction, continueAnswer } from '../ai/agent/orchestrator.js';
 import { hasOpenWrite } from '../ai/agent/intent.js';
+import { loadMemory, historyFrom, rememberTurn } from '../ai/agent/memory.js';
+import { lastTurnProposed } from '../ai/agent/context.js';
 import { toWhatsAppText } from '../ai/agent/present.js';
 import { latestPendingFor, reissueToken } from '../ai/mcp/confirm.js';
 import { detectLanguage, t, LANGUAGE_NAMES } from '../../utils/language.js';
@@ -250,10 +252,22 @@ export async function handleInboundMessage({ from, text, conversation = null, in
  * in-app simulator (actor from the session), so the simulator is a true
  * preview rather than a lookalike.
  */
-export async function converse({ actor, multipleProfiles = false, roleLabel = '', text, history = [], continuationToken = null, conversationId = null }) {
+export async function converse({ actor, multipleProfiles = false, roleLabel = '', text, history: sentHistory = [], continuationToken = null, conversationId = null }) {
   const message = String(text ?? '').trim();
   const lang = await replyLanguage(message, actor);
   if (!message) return { reply: t('agent.sendText', lang), lang };
+
+  // The conversation as the server remembers it (agent/memory.js) -- the same
+  // 24 turns and structured context the website uses -- with the WhatsApp
+  // thread's own last messages only as the fallback for a session the memory
+  // does not hold yet. The turns answered here without the shared agent (the
+  // briefing, MORE, a YES/NO) are written into it too, so the next turn reads
+  // the conversation exactly as it happened.
+  const memory = conversationId ? await loadMemory({ actor, source: 'WHATSAPP', conversationId }) : null;
+  const history = memory ? historyFrom(memory, sentHistory) : sentHistory;
+  const remember = async (reply, extra = {}) => {
+    if (memory) await rememberTurn({ actor, source: 'WHATSAPP', conversationId: memory.conversationId, message, result: { reply, ...extra } });
+  };
 
   // Arrival. Someone who has just tapped through from the app says "Hi", and
   // the useful answer to that is not "what would you like?" -- it is their own
@@ -268,6 +282,7 @@ export async function converse({ actor, multipleProfiles = false, roleLabel = ''
     if (multipleProfiles) reply += `
 
 ${t('agent.actingAs', lang, { role: roleLabel })}`;
+    await remember(reply, { tools: briefing.tools });
     return { reply, lang, briefing: true, tools: briefing.tools };
   }
 
@@ -275,6 +290,7 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
   if (MORE.test(message) && continuationToken) {
     try {
       const next = await continueAnswer({ token: continuationToken, actor, source: 'WHATSAPP', lang });
+      await remember(next.reply, { tool: next.tool, continuation: next.continuation });
       return {
         reply: toWhatsAppText(next.reply) + moreLine(next.continuation),
         lang,
@@ -293,9 +309,15 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
   // request, so it goes to the shared agent, which asks for the dates again.
   const yesNo = YES.test(message) || NO.test(message);
   const pending = yesNo ? await latestPending(actor) : null;
-  if (yesNo && (pending || !hasOpenWrite(history, message, actor))) {
+  // With nothing pending and no draft just shown, "ok" / "no" is said to an
+  // answer: the shared agent acknowledges it, exactly as on the website. A
+  // plain YES still hears that there is nothing to confirm.
+  const saidYes = /^(y|yes|yeah|yep|confirm|confirmed|go ahead|do it|haan|haa|ha|ji)$/i.test(message);
+  if (yesNo && (pending || (!hasOpenWrite(history, message, actor) && (saidYes || lastTurnProposed(history))))) {
     if (!pending) {
-      return { reply: t('agent.nothingPending', lang), lang };
+      const nothing = t('agent.nothingPending', lang);
+      await remember(nothing);
+      return { reply: nothing, lang };
     }
     // The stored token is hashed, so re-issuing is not possible; confirm via
     // the action id path instead.
@@ -305,6 +327,7 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
       accept: YES.test(message),
       lang,
     });
+    await remember(result.reply, { executed: result.executed });
     return { reply: toWhatsAppText(result.reply), lang, executed: result.executed };
   }
 

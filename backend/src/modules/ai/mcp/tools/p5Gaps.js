@@ -936,7 +936,7 @@ const policyTools = {
     module: 'Policies', operation: 'GET', risk: RISK.LOW, resultShape: 'LIST',
     description: "The school policies addressed to the caller's role (code, title, version, summary) and whether they have acknowledged the current version. Read-only.",
     inputSchema: noArgs,
-    permission: 'ai.copilot.use', forRoles: STAFF,
+    permission: 'ai.copilot.use', // any role: the service returns only what is addressed to the caller
     service: 'compliance.service.myPolicies()',
     async run(ctx) {
       const rows = (await compliance.myPolicies(ctx.actor)).map((p) => ({ code: p.code, title: p.title, version: p.version, summary: p.summary ?? null, effectiveFrom: p.effectiveFrom ?? null, needsAcknowledgement: Boolean(p.requiresAcknowledgement), acknowledged: p.acknowledged }));
@@ -950,7 +950,7 @@ const policyTools = {
     module: 'Policies', operation: 'ACTION', risk: RISK.LOW, confirm: true,
     description: 'Record that the caller has read and accepts the current version of a school policy addressed to them (their own acknowledgement). Needs confirmation.',
     inputSchema: closed({ policy: { type: 'string', minLength: 1, maxLength: 200, description: 'Its title or code' } }, ['policy']),
-    permission: 'ai.copilot.use', forRoles: STAFF,
+    permission: 'ai.copilot.use', // any role: the service returns only what is addressed to the caller
     service: 'compliance.service.myPolicies() + acknowledgePolicy()',
     summarise: (_a, _actor, p) => `Acknowledge that you have read and accept "${p.title}" (version ${p.version})`,
     async prepare(ctx, args) {
@@ -970,7 +970,7 @@ const policyTools = {
     module: 'Policies', operation: 'GET', risk: RISK.LOW, resultShape: 'LIST',
     description: 'The trainings the caller is invited to (POCSO, fire safety, first aid ...): when and where, whether mandatory, their attendance and whether they have acknowledged it. Read-only.',
     inputSchema: noArgs,
-    permission: 'ai.copilot.use', forRoles: STAFF,
+    permission: 'ai.copilot.use', // any role: the service returns only what is addressed to the caller
     service: 'compliance.service.myTrainings()',
     async run(ctx) {
       const rows = (await compliance.myTrainings(ctx.actor)).map((t) => ({ refNo: t.refNo, title: t.title, topic: t.topic, mandatory: Boolean(t.mandatory), scheduledAt: t.scheduledAt, location: t.location ?? null, status: t.status, myStatus: t.myStatus ?? null, acknowledged: Boolean(t.acknowledgedAt) }));
@@ -983,7 +983,7 @@ const policyTools = {
     module: 'Policies', operation: 'ACTION', risk: RISK.LOW, confirm: true,
     description: 'Record that the caller has seen a training they are invited to (their own acknowledgement; attendance is marked by the organiser). Needs confirmation.',
     inputSchema: closed({ training: { type: 'string', minLength: 1, maxLength: 200, description: 'Its title or reference' } }, ['training']),
-    permission: 'ai.copilot.use', forRoles: STAFF,
+    permission: 'ai.copilot.use', // any role: the service returns only what is addressed to the caller
     service: 'compliance.service.myTrainings() + acknowledgeTraining()',
     summarise: (_a, _actor, p) => `Acknowledge the training "${p.title}" (${p.when})`,
     async prepare(ctx, args) {

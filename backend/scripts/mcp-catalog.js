@@ -133,6 +133,11 @@ function schemaSummary(schema) {
     .join('<br>');
 }
 
+/** The permission column: the tool's key, or every key its route accepts (anyOf). */
+const permissionOf = (tool) => (tool.anyOf
+  ? `any of ${tool.anyOf.map(([key, minScope]) => `\`${key}\`${minScope === 'ALL' ? ' (ALL)' : ''}`).join(' / ')}`
+  : `\`${tool.permission}\``);
+
 /** Per-role counts, computed from the permission map exactly as tools/list computes discovery. */
 function roleMatrix() {
   const rows = [
@@ -168,6 +173,7 @@ function toJson() {
       description: tool.description,
       input: tool.inputSchema,
       permission: tool.permission,
+      ...(tool.anyOf && { anyOf: tool.anyOf.map(([key, minScope]) => ({ key, minScope: minScope ?? null })) }),
       scope: scopeOf(tool),
       risk: tool.risk,
       confirmation: confirmationOf(tool),
@@ -252,7 +258,7 @@ function toMarkdown() {
   lines.push('| Tool | Module | Operation | Permission | Scope | Risk | Confirm | Status |');
   lines.push('|---|---|---|---|---|---|---|---|');
   for (const [name, tool] of Object.entries(MCP_TOOLS).sort(([a], [b]) => a.localeCompare(b))) {
-    lines.push(`| \`${name}\` | ${tool.module} | ${tool.operation} | \`${tool.permission}\` | ${scopeOf(tool)} | ${tool.risk} | ${confirmationOf(tool)} | ${statusOf(name)} |`);
+    lines.push(`| \`${name}\` | ${tool.module} | ${tool.operation} | ${permissionOf(tool)} | ${scopeOf(tool)} | ${tool.risk} | ${confirmationOf(tool)} | ${statusOf(name)} |`);
   }
   lines.push('');
 
@@ -293,7 +299,7 @@ function toMarkdown() {
       lines.push(`| **Operation** | ${tool.operation} |`);
       lines.push(`| **Risk** | ${tool.risk} |`);
       lines.push(`| **Confirmation** | ${confirmationOf(tool)} |`);
-      lines.push(`| **Permission** | \`${tool.permission}\` |`);
+      lines.push(`| **Permission** | ${permissionOf(tool)} |`);
       lines.push(`| **Scope** | ${scopeOf(tool)} |`);
       lines.push(`| **Affects others** | ${tool.affectsOthers ? 'Yes' : 'No'} |`);
       lines.push(`| **EduOS service** | \`${tool.service}\` |`);

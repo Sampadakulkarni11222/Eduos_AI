@@ -1054,6 +1054,8 @@ const fleetTools = {
     description: "Where my child's bus is today: their trip, its status, their stop, the estimated arrival (an estimate), and whether they have boarded, got off or been handed over. Only the caller's own child (or own trips); never other children. Read-only.",
     inputSchema: closed({ childName: text(80) }),
     permission: 'transport.tracking.read',
+    // GET /fleet/my-trips: a parent (tracking.read) or a student (transport.request); the service returns only their own.
+    anyOf: [['transport.tracking.read'], ['transport.request']],
     service: 'trips.service.myTrips()',
     async run(ctx, args) {
       const mine = await trips.myTrips(ctx.actor);
@@ -1100,6 +1102,8 @@ const fleetTools = {
     description: "Bus trips on a day (default today): vehicle, status, seats used and free, and how many have boarded, got off or not shown up. A teacher on bus duty sees only their own trips. Read-only.",
     inputSchema: closed({ date: dateStr('YYYY-MM-DD') }),
     permission: 'transport.trips.operate',
+    // GET /fleet/trips: requireAnyOf(fleet.manage, tracking.read ALL, trips.operate); ctx.scope is the best of them, as req.scope.
+    anyOf: [['transport.fleet.manage'], ['transport.tracking.read', 'ALL'], ['transport.trips.operate']],
     service: 'trips.service.list()',
     async run(ctx, args) {
       const rows = (await trips.list(ctx.actor, ctx.scope, { date: args.date ?? todayIst() })).map((t) => ({ ref: t.refNo, title: t.title, kind: t.kindLabel, status: t.status, vehicle: t.registrationNo, seatsAllocated: t.seatsAllocated ?? 0, seatsFree: t.seatsFree, boarded: t.counts?.BOARDED ?? 0, alighted: t.counts?.ALIGHTED ?? 0, noShow: t.counts?.NO_SHOW ?? 0 }));
@@ -1138,6 +1142,8 @@ const fleetTools = {
     description: 'School vehicles with status, capacity, and papers (permit, insurance, fitness, PUC) expired or expiring within 30 days, plus safety checks and service due. Read-only.',
     inputSchema: closed({ show: { type: 'string', enum: ['papers_due', 'off_road', 'all'] } }),
     permission: 'transport.fleet.manage',
+    // GET /fleet/vehicles: requireAnyOf(fleet.manage, tracking.read ALL, trips.operate ALL, transport.read ALL).
+    anyOf: [['transport.fleet.manage'], ['transport.tracking.read', 'ALL'], ['transport.trips.operate', 'ALL'], ['transport.read', 'ALL']],
     service: 'vehicles.service.list()',
     async run(_ctx, args) {
       let rows = (await vehicles.list({})).map((v) => ({
@@ -1278,6 +1284,8 @@ const safetyTools = {
     description: "Who should be on campus now, for an evacuation or emergency count: students marked present and not released or out on a pass (by class), released today, on out-pass, and visitors checked in. A roster to account for people in person, not a location tracker; the named list is printed from the Gate screen. Read-only.",
     inputSchema: closed({}),
     permission: 'visitors.manage',
+    // GET /safety/emergency-roster: requireAnyOf(visitors.manage, checkpoints.read ALL).
+    anyOf: [['visitors.manage'], ['checkpoints.read', 'ALL']],
     service: 'pickup.service.emergencyRoster()',
     async run() {
       const r = await pickup.emergencyRoster();

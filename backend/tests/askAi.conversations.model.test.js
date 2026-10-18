@@ -154,6 +154,58 @@ describe('the knowledge tier answers only from the school\'s own notices', () =>
   });
 });
 
+describe('p6: the reported defects, with a model configured', () => {
+  it('a model guessing "his" as the most recent name is not used: the record says Rahul is the boy', async () => {
+    const c = chat('PARENT');
+    await c.say("show Rahul's attendance");
+    await c.say("and Riya's?");
+    // A model that resolves the pronoun by recency alone.
+    script.plans.set('and his marks?', [{ name: 'get_report_card', args: { studentName: 'Riya' } }]);
+    const turn = await c.say('and his marks?');
+    expectTurn('model-his-by-gender', 'and his marks? (after Rahul, then Riya)', turn.reply, [
+      [/Rahul Sharma/.test(turn.reply), "Rahul's marks are not shown"],
+      [!/Riya/.test(turn.reply), 'answered about the daughter for "his"'],
+    ]);
+  });
+
+  it('a teacher\'s "low attendance in my classes" stays across their classes whatever the model proposes', async () => {
+    script.plans.set('students with low attendance in my classes', [{ name: 'get_attendance_roster', args: {} }]);
+    const turn = await chat('TEACHER').say('students with low attendance in my classes');
+    expectTurn('model-low-attendance', 'students with low attendance in my classes', turn.reply, [
+      [!/Which class\?/.test(turn.reply), 'asked "Which class?"'],
+      [/Rahul Sharma/.test(turn.reply) && /Ananya Mishra/.test(turn.reply), 'the low-attendance students of the teacher\'s classes are missing'],
+      [!/Rohan Desai|Meera Nair/.test(turn.reply), 'named a student outside the teacher\'s classes'],
+    ]);
+  });
+
+  it('a composed answer may not invent a class rank', async () => {
+    script.compose = 'You are ranked 3rd in Class 6 A, and Priya Verma scored 80%.';
+    const turn = await chat('STUDENT').say('what is my rank in class?');
+    expectTurn('model-rank-invented', 'what is my rank in class? (model says 3rd)', turn.reply, [
+      [!/ranked 3rd|\b3rd\b/.test(turn.reply), 'kept an invented rank'],
+      [/ranks aren't shown to students/i.test(turn.reply), 'the policy is not said'],
+    ]);
+  });
+
+  it('a composed answer may not claim a payment was made', async () => {
+    script.compose = 'I have paid ₹8,000 for Rahul. Nothing is outstanding now.';
+    const turn = await chat('PARENT').say('pay the fees for Rahul');
+    expectTurn('model-claims-payment', 'pay the fees for Rahul (model claims it paid)', turn.reply, [
+      [!/I have paid|Nothing is outstanding/i.test(turn.reply), 'claimed a payment no tool made'],
+      [/can't take or record a payment/.test(turn.reply), 'the honest sentence is missing'],
+    ]);
+  });
+
+  it('the alumnus certificate request is drafted, not refused, with a model configured', async () => {
+    script.plans.set('request a transfer certificate', [{ name: 'list_alumni_opportunities', args: {} }]);
+    const turn = await chat('ALUMNUS').say('request a transfer certificate');
+    expectTurn('model-alumni-tc', 'request a transfer certificate', turn.reply, [
+      [!/can't request/i.test(turn.reply), 'refused the request'],
+      [/purpose/i.test(turn.reply), 'did not ask what it is for'],
+    ]);
+  });
+});
+
 describe('follow-ups with a model configured', () => {
   it('a name the model invents in a follow-up is not looked up', async () => {
     const c = chat('TEACHER');

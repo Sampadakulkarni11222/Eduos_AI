@@ -25,11 +25,13 @@ import { RISK, dateStr, theNamed } from './_shared.js';
  * document sent to a family).
  *
  * Every tool calls the same service as the screen, with the caller's actor and
- * scope. Left on the screen on purpose: approving minutes (the chair decides),
- * recording votes and resolutions (the secretary records them from the
- * meeting), approving or rejecting a certificate request (a decision), and
- * downloading files (no file channel in a chat). Names avoid the deciding
- * verbs the registry reserves.
+ * scope. Left on the screen on purpose: recording votes and resolutions (the
+ * secretary records them from the meeting) and downloading files (no file
+ * channel in a chat). Approving minutes and deciding a certificate request are
+ * recorded through the approver-confirmed part-6 tools (p6/office.js:
+ * record_board_minutes_approval, record_document_request_decision) -- only when
+ * the chair or the office states the decision and confirms it on the website.
+ * Names avoid the deciding verbs the registry reserves.
  */
 
 const text = (max, description) => ({ type: 'string', maxLength: max, ...(description && { description }) });

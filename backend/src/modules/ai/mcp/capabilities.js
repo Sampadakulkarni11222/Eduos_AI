@@ -102,6 +102,14 @@ const ENTITY_OF_MODULE = {
   CPD: 'cpd',
   // Part 5 gaps (tools/p5Gaps.js): the policies and trainings addressed to the caller.
   Policies: 'policy',
+  // Part 6 coverage (tools/p6/*.js): modules whose own name is not the word a person uses.
+  'Support plans': 'supportPlan',
+  Portfolios: 'portfolio',
+  'Health room': 'healthRoom',
+  Exits: 'staffExit',
+  Recruitment: 'recruitment',
+  'Finance reports': 'financeReport',
+  Safeguarding: 'safeguarding',
 };
 
 /**
@@ -138,6 +146,18 @@ const ENTITY_OF_TOOL = {
   // questions about a class ("show my planner" tied with the electives list and was asked back).
   get_my_planner: 'planner',
   get_board_registration_details: 'boardRegistration',
+  // Part 6: capabilities whose module is broader than the question they answer.
+  list_school_shifts: 'shift',
+  create_school_shift: 'shift',
+  update_school_shift: 'shift',
+  retire_school_shift: 'shift',
+  get_paper_results: 'questionBank',
+  list_my_class_check_ins: 'classCheckIn',
+  get_class_presence_board: 'classCheckIn',
+  check_in_to_class: 'classCheckIn',
+  search_everything: 'search',
+  get_role_dashboard: 'analytics',
+  get_announcement_preview: 'announcementPreview',
 };
 
 /** Argument names that name WHAT the request is about. */
@@ -383,11 +403,14 @@ export const ENTITY_VOCABULARY = [
   // no question about homework -- only work qualified by a state homework is in.
   ['homework', /\bhomework\b|\bassignments?\b|\bworksheets?\b|\bsubmissions?\b|\btasks?\b|\bclasswork\b|\b(?:pending|submitted|unsubmitted|overdue|completed)\s+work\b|गृहकार्य|होमवर्क/i],
   // "Notify" is announcing to named people: the verb is the entity's own word.
-  ['announcement', /\bannouncement|\bnotice|\bcircular|\bnews\b|\bnotify(?:ing)?\b/i],
+  // Part 6: who an announcement WOULD reach, before it is posted -- its own question, declared ahead of
+  // 'announcement' so "announcement preview" is this and every other sentence about announcements is not.
+  ['announcementPreview', /\bannouncement\s+preview\b|\bpreview\s+(?:the\s+|an?\s+|my\s+)?(?:announcement|notice|circular)\b/i],
+  ['announcement', /\bannouncement|\bnotice(?!\s+sourc)|\bcircular|\bnews\b|\bnotify(?:ing)?\b/i],
   // "Document" stays here: list_documents answers report cards, certificates
   // and letters as well as course material, so "which documents are due" is
   // rightly its question. (Generating an official document has no tool.)
-  ['material', /\bmaterial|\bcourse\s*material|\bnotes\b|\bhandout|\bdocument|\bresource/i],
+  ['material', /\bmaterial|\bcourse\s*material|\bnotes\b|\bhandout|\bdocument(?!\s+(?:typ(?:e|es)?|requests?)\b)|\bresource/i],
   // "What class do I have next?" asks for a period -- which is the timetable,
   // not the caller's section.
   // Not bare "schedule": that is the calendar's word ("the exam schedule",
@@ -436,23 +459,23 @@ export const ENTITY_VOCABULARY = [
   // Singular too: "what is pending my approval" named no entity at all.
   // "Pending for me" / "waiting for my decision" are the same question.
   // ("payments pending approval" stays a fee question: only MY approval is.)
-  ['approval', /\bapprovals\b|\b(?:my|your)\s+approval\b|\bapproval\s+(?:inbox|requests?)\b|\bpending\s+(?:for|on)\s+me\b|\bmy\s+decision\b/i],
-  ['compliance', /\bcompliance\b|\blicen[cs]es?\b|\bregulatory\s+returns?\b/i],
+  ['approval', /\bapproval\s+(?:polic(?:y|ies)|routes?|chains?|delegations?|summary)\b|\bdelegat(?:e|ed|ion|ions)\s+(?:my\s+)?approvals?\b|\bapprovals\b|\b(?:my|your)\s+approval\b|\bapproval\s+(?:inbox|requests?)\b|\bpending\s+(?:for|on)\s+me\b|\bmy\s+decision\b/i],
+  ['compliance', /\bcompliance\b|\blicen[cs]es?\b|\bregulatory\s+(?:returns?|notices?)\b|\bnotice\s+sourc\w*|\bdata\s+protection\b|\bpolicy\s+versions?\b|\bsend\s+(?:the\s+)?policy\b|\btraining\s+attendance\b/i],
   ['correspondence', /\bcorrespondence\b|\bofficial\s+letters?\b/i],
   ['governance', /\bboard\s+meetings?\b|\btrustee\s+meetings?\b|\bgoverning\s+body\b|\bcommittee\s+meetings?\b|\bboard\s+agendas?\b|\bboard\s+packs?\b|\bboard\s+actions?\b/i],
-  ['institutionEvent', /\bfests?\b/i],
-  ['maintenance', /\bmaintenance\b|\brepairs?\b|\bwork\s+orders?\b/i],
-  ['verification', /\bbackground\s+(?:verification|checks?)\b|\bverification\s+counts?\b/i],
+  ['institutionEvent', /\bfests?\b|\binstitution\s+events?\b/i],
+  ['maintenance', /\bmaintenance\b|\bfacilit(?:y|ies)\b|\brepairs?\b|\bwork\s+orders?\b/i],
+  ['verification', /\bbackground\s+(?:verification|checks?)\b|\bverification\s+(?:decisions?|cases?|clearance)\b|\bverification\s+counts?\b/i],
   ['procurement', /\bprocurement\b|\bpurchase\s+(?:requests?|orders?)\b/i],
   ['budget', /\bbudgets?\b/i],
   ['payroll', /\bpayroll\b/i],
-  ['marketing', /\bmarketing\b|\bmarket\s+funnel\b|\bcampaigns?\b/i],
+  ['marketing', /\bmarketing\b|\bmarket\s+(?:settings?|attribution)\b|\bmarket\s+funnel\b|\bcampaigns?\b/i],
   ['organisation', /\borgani[sz]ation\b|\bvacanc(?:y|ies)\b/i],
-  ['newsroom', /\bnewsroom\b/i],
+  ['newsroom', /\bnewsroom\b(?!\s+(?:social|stor))|\bcircles?\b|\btaggable\b|\bmedia\s+consents?\b/i],
   ['campus', /\bcampus\b/i],
   // Word boundaries written as \b: the pattern used to hold literal
   // backspace characters, so "syllabus progress" matched nothing at all.
-  ['syllabus', /\bsyllabus\b|\bmodule\s+(?:plan|progress)\b|\bportion\s+(?:covered|completed)\b/i],
+  ['syllabus', /\bsyllab(?:us|u)\b|\bmodule\s+(?:plan|progress)\b|\bportion\s+(?:covered|completed)\b/i],
   ['digitalLecture', /\bdigital\s+lectures?\b|\bonline\s+class(?:es)?\b|\blive\s+class(?:es)?\b|\bwebinars?\b/i],
   // ── School-platform operations (tools/platformOps.js) ──
   // Named by their own words only, so none takes a sentence from the entities
@@ -460,7 +483,7 @@ export const ENTITY_VOCABULARY = [
   ['dueItem', /\bdue\s+items?\b|\breminders?\b|\bsnooz(?:e|ed|ing)\b|\bto-?do\s+list\b/i],
   ['bill', /\bbills?\b|\bamc\b|\bservice\s+(?:visits?|contracts?)\b|\brenewals?\b|\butility\s+bills?\b/i],
   ['lab', /\blabs?\b|\blaborator(?:y|ies)\b|\bchemicals?\b|\breagents?\b|\bbeakers?\b|\bglassware\b|\bpracticals?\b|\bcalibrat(?:e|ed|ion|ions)\b/i],
-  ['safety', /\bvisitors?\b|\bcontractors?\b|\bid\s+cards?\b|\bcheckpoints?\b|\bemergency\s+roster\b|\bcamera\b|\bpick[\s-]?up\s+(?:delegat\w*|people|persons?|adults?)\b|\bdelegat\w*/i],
+  ['safety', /\bsafety\s+(?:alerts?|settings?|devices?)\b|\b(?:pick[\s-]?up|gate)\s+releas\w*|\bvisitors?\b|\bcontractors?\b|\bid\s+cards?\b|\bcheckpoints?\b|\bemergency\s+roster\b|\bcamera\b|\bpick[\s-]?up\s+(?:delegat\w*|people|persons?|adults?)\b|\bdelegat\w*/i],
   ['cover', /\bcover(?:s|ing|ed)?\b|\bsubstitut(?:e|es|ion)\b|\bproxy\s+(?:teacher|period)s?\b|\bstaff\s+absen(?:t|ce)\b/i],
   // ── School-platform people modules (tools/platformPeople.js) ──
   // Each named by its own words, so "report card" alone stays marks and
@@ -470,19 +493,19 @@ export const ENTITY_VOCABULARY = [
   ['reviewCall', /\breview\s+calls?\b/i],
   ['conversation', /\bconversations?\b|\bunread\s+messages?\b|\bmessages?\s+(?:to|from)\s+(?:my\s+|the\s+)?(?:child'?s?\s+)?(?:class\s+|subject\s+)?teachers?\b/i],
   ['termReport', /\bterm\s+reports?(?:\s+cards?)?\b|\bcbse\s+(?:report|card)s?\b|\breport[\s-]*card\s+remarks?\b/i],
-  ['club', /\bclubs?\b|\bsports?\s+teams?\b/i],
+  ['club', /\bclubs?\b|\bhous(?:e|es)?\b(?!\s*(?:keeping|hold|rent))|\bsports?\s+teams?\b/i],
   ['showcase', /\bshowcase\b/i],
-  ['alumni', /\balumn(?:i|us|a|ae)\b|\breunions?\b/i],
-  ['socialPost', /\bsocial(?:\s+media)?\s+posts?\b|\bsocial\s+media\b|\bfacebook\b|\binstagram\b|\blinkedin\b/i],
+  ['alumni', /\balumn(?:i|us|a|ae)\b|\bprofile\s+links?\b|\breunions?\b/i],
+  ['socialPost', /\bnewsroom\s+(?:social|stor(?:y|ies))\b|\bshareable\s+(?:newsroom\s+)?stor(?:y|ies)\b|\bsocial(?:\s+media)?\s+posts?\b|\bsocial\s+media\b|\bfacebook\b|\binstagram\b|\blinkedin\b/i],
   ['digest', /\bdigest\b|\bheadlines\b/i],
-  ['sustainability', /\beco\b|\beco[\s-]?points?\b|\bsustainab\w*|\bwaste\b|\bmeter\s+readings?\b|\bplant\s+checks?\b|\bcompost\w*/i],
-  ['certificate', /\bcertificates?\b|\bbonafide\b|\bcertificate\s+requests?\b/i],
+  ['sustainability', /\beco\b|\beco[\s-]?points?\b|\bsustainab\w*|\bwaste\b|\bmeter\s+readings?\b|\bplant\s+checks?\b|\bcompost\w*|\bsanitation\b/i],
+  ['certificate', /\bdocument\s+(?:typ(?:e|es)?|requests?)\b|\bcertificates?\b|\bbonafide\b|\bcertificate\s+requests?\b/i],
   ['quiz', /\bquiz(?:zes)?\b/i],
   // Teachers' professional profiles (tools/p3Campus.js).
-  ['staffProfile', /\bqualifications?\b|\bcertifications?\b|\bctet\b|\bteach(?:er|ing)\s+experience\b|\bteacher'?s?\s+(?:profile|bio)\b/i],
+  ['staffProfile', /\bqualifications?\b|\bcertifications?\b|\bctet\b|\bteach(?:er|ing)\s+experience\b|\bteacher'?s?\s+(?:profil(?:e|es)?|bio)\b/i],
   // ── Part 4 reachability (agent: p4 support-roles) ──
   ['lessonPlan', /\blesson\s+plans?\b|\blessons?\s+taught\b/i],
-  ['questionBank', /\bquestion\s+bank\b|\bbank\s+questions?\b|\b(?:build|check|set)\s+(?:a\s+|the\s+)?question\s+papers?\b|\bblueprint\b/i],
+  ['questionBank', /\bquestion\s+bank\b|\bquestion\s+papers?\b|\bpaper\s+results?\b|\bbank\s+questions?\b|\b(?:build|check|set)\s+(?:a\s+|the\s+)?question\s+papers?\b|\bblueprint\b/i],
   ['cpd', /\bcpd\b|\bprofessional\s+development\b/i],
   // Each by its own phrase, so none takes a sentence from the entities above. They sort by POSITION
   // (entitiesInTextByPosition), so "school attendance overview" is leadership because "school" comes
@@ -496,6 +519,19 @@ export const ENTITY_VOCABULARY = [
   ['boardRegistration', /\bboard\s+registrations?\b|\blist\s+of\s+candidates\b/i],
   // Part 5 gaps (tools/p5Gaps.js): a person's own policies and trainings to acknowledge.
   ['policy', /\bpolic(?:y|ies)\b|\bmy\s+trainings?\b/i],
+  // Part 6 coverage (tools/p6/*.js), each by its own phrase so none takes an older entity's sentence.
+  ['supportPlan', /\bsupport\s+plans?\b|\bintervention\s+plans?\b|\b(?:iep|ilp)s?\b/i],
+  ['portfolio', /\bportfolios?\b/i],
+  ['healthRoom', /\bhealth\s+(?:room|card|visits?|entries|settings|stock)\b|\bmedication\s+plans?\b|\bcare\s+not(?:e|es)?\b|\bmedicine\s+doses?\b/i],
+  ['staffExit', /\bstaff\s+exits?\b|\bexit\s+(?:interviews?|letters?|cases?)\b|\bresignations?\b/i],
+  ['recruitment', /\brecruitment\b|\bvacanc(?:y|ies)\b|(?<!\bof\s)\bcandidates?\b/i],
+  ['financeReport', /\bcash\s+closes?\b|\bday\s*book\b|\breminder\s+preview\b/i],
+  ['customization', /\bschool\s+(?:features?|modules?|theme)\b|\bmodule\s+switch\w*|\bsingle[\s-]approver\b|\bdropdown\s+(?:options|lists?)\b/i],
+  ['user', /\buser\s+accounts?\b|\blogin\s+accounts?\b/i],
+  ['shift', /\bschool\s+shifts?\b|\bshift\s+timings?\b|\bbell\s+schedules?\b/i],
+  ['classCheckIn', /\bclass\s+check[\s-]?ins?\b|\bpresence\s+board\b|\bcheck[\s-]?in\s+to\s+(?:a\s+|the\s+|my\s+)?class\b/i],
+  ['search', /\bsearch\s+(?:everything|everywhere|the\s+school|school\s+records?)\b|\buniversal\s+search\b/i],
+  ['safeguarding', /\bsafeguarding\b|\bchild\s+protection\b/i],
   ['aiDraft', /\bai\s+drafts?\b|\bdraft(?:s|ing)?\s+(?:me\s+)?(?:a\s+|an\s+|the\s+)?(?:letter|circular|minutes|lesson\s+plan|documents?)\b/i],
 ];
 

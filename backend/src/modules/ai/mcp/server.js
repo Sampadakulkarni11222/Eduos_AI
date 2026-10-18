@@ -1,6 +1,6 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { getMcpTool, mcpToolsFor, mutates, requiresConfirmation, confirmableOn } from './registry.js';
+import { getMcpTool, mcpToolsFor, mutates, requiresConfirmation, confirmableOn, toolScope } from './registry.js';
 import { resolveSession, STRIPPED_ARGS } from './session.js';
 import { validateArgs } from './validate.js';
 import { ok, fail, failFromError, needsConfirmation, MCP_ERROR } from './protocol.js';
@@ -281,15 +281,17 @@ function authorize(actor, tool) {
     return { error: fail(MCP_ERROR.FORBIDDEN, 'You are not authorized to use the assistant.') };
   }
 
-  const scope = actor?.permissions?.[tool.permission];
-  if (!scope) {
+  // The tool's permission at its minimum scope -- or any one of its `anyOf`
+  // grants, mirroring a route's requireAnyOf() (registry.toolScope).
+  const { scope, reason } = toolScope(actor, tool);
+  if (!scope && reason === 'MISSING') {
     return { error: fail(MCP_ERROR.FORBIDDEN, 'You are not authorized to access this information.') };
   }
   // The REST route's requireRole(), where the tool declares one (forRoles).
   if (Array.isArray(tool.forRoles) && !tool.forRoles.includes(actor?.roleKey)) {
     return { error: fail(MCP_ERROR.FORBIDDEN, 'That is not available to your role.') };
   }
-  if (tool.minScope === 'ALL' && scope !== 'ALL') {
+  if (!scope) {
     return {
       error: fail(
         MCP_ERROR.FORBIDDEN_SCOPE,

@@ -33,6 +33,8 @@ import { p4ComplianceTools } from './tools/p4Compliance.js';
 import { p4ParentTools } from './tools/p4Parent.js';
 import { p5GapTools } from './tools/p5Gaps.js';
 import { p5AskAiTools } from './tools/p5AskAi.js';
+import { p6CoverageTools } from './tools/p6Coverage.js';
+import { p6AskAiTools } from './tools/p6AskAi.js';
 import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 import { isDecidingToolName } from './decisions.js';
 
@@ -104,6 +106,8 @@ const ASSEMBLED = {
   ...p4StudentAlumnusTools,
   ...p5GapTools,
   ...p5AskAiTools,
+  ...p6AskAiTools,
+  ...p6CoverageTools,
 };
 
 /**
@@ -121,6 +125,55 @@ export const MCP_TOOLS = Object.freeze(Object.fromEntries(
 
 export function getMcpTool(name) {
   return Object.hasOwn(MCP_TOOLS, name) ? MCP_TOOLS[name] : null;
+}
+
+/**
+ * The grants that admit a caller to a tool.
+ *
+ * Normally one: `permission` at `minScope`, the route's requirePermission().
+ * A route that accepts any of several keys (requireAnyOf -- the principal
+ * reads trips by transport.tracking.read ALL, the transport office by
+ * transport.fleet.manage, a teacher on bus duty by transport.trips.operate)
+ * is mirrored by `anyOf: [[key, minScope?], ...]`; `permission` must be one
+ * of them, so the catalogue and the audit still name a primary key.
+ */
+export function toolGrants(tool) {
+  if (Array.isArray(tool?.anyOf) && tool.anyOf.length) return tool.anyOf.map(([key, minScope]) => [key, minScope ?? null]);
+  return [[tool?.permission, tool?.minScope ?? null]];
+}
+
+/**
+ * The scope this caller holds for this tool -- what req.scope would be on its
+ * route: ALL when any admitting grant is held at ALL, else OWN -- or null with
+ * the reason ('MISSING' no admitting key at all, 'SCOPE' held only at OWN where
+ * ALL is needed).
+ */
+export function toolScope(actor, tool) {
+  let best = null;
+  let ownOnly = false;
+  for (const [key, minScope] of toolGrants(tool)) {
+    const held = actor?.permissions?.[key];
+    if (!held) continue;
+    if (minScope === 'ALL' && held !== 'ALL') { ownOnly = true; continue; }
+    if (held === 'ALL') return { scope: 'ALL', reason: null };
+    best = best ?? held;
+  }
+  if (best) return { scope: best, reason: null };
+  return { scope: null, reason: ownOnly ? 'SCOPE' : 'MISSING' };
+}
+
+/** What is wrong with a tool's `anyOf`, if anything (checked at boot by validateMcpRegistry). */
+export function anyOfProblems(name, tool) {
+  if (tool?.anyOf === undefined) return [];
+  const grants = Array.isArray(tool.anyOf) ? tool.anyOf : [];
+  const wellFormed = grants.length >= 2 && grants.every((g) => Array.isArray(g) && g.length >= 1 && g.length <= 2
+    && typeof g[0] === 'string' && g[0] && (g[1] === undefined || g[1] === null || g[1] === 'ALL'));
+  if (!wellFormed) return [`${name} declares a malformed anyOf (two or more [key, minScope?] grants)`];
+  if (!grants.some(([k]) => k === tool.permission)) return [`${name} names a permission that is not one of its anyOf grants`];
+  if (tool.minScope !== undefined && !grants.some(([k, m]) => k === tool.permission && (m ?? null) === (tool.minScope ?? null))) {
+    return [`${name} declares a minScope that disagrees with its anyOf grant`];
+  }
+  return [];
 }
 
 /** True when a tool changes data. Derived, so it can never disagree with `operation`. */
@@ -183,13 +236,11 @@ export function mcpToolsFor(actor, { includeMutations = true } = {}) {
   return Object.entries(MCP_TOOLS)
     .filter(([, tool]) => {
       if (!includeMutations && mutates(tool)) return false;
-      const scope = actor?.permissions?.[tool.permission];
-      if (!scope) return false;
       // A route guarded by requireRole() as well as a permission (a family's
       // certificate requests) is mirrored by `forRoles`, so the capability is
       // shown to exactly the people its screen serves.
       if (Array.isArray(tool.forRoles) && !tool.forRoles.includes(actor?.roleKey)) return false;
-      return !(tool.minScope === 'ALL' && scope !== 'ALL');
+      return toolScope(actor, tool).scope !== null;
     })
     .map(([name, tool]) => ({
       name,
@@ -211,7 +262,7 @@ export function mcpToolsFor(actor, { includeMutations = true } = {}) {
 
 /** Every permission the catalog names — checked against the real catalog at boot. */
 export function mcpPermissionsUsed() {
-  return [...new Set(Object.values(MCP_TOOLS).map((t) => t.permission))];
+  return [...new Set(Object.values(MCP_TOOLS).flatMap((t) => toolGrants(t).map(([k]) => k)))];
 }
 
 /** Counts by operation, for the boot log and the docs. */
@@ -251,6 +302,7 @@ export function validateMcpRegistry() {
     if (!tool.operation) problems.push(`${name} declares no operation`);
     if (!tool.risk) problems.push(`${name} declares no risk level`);
     if (!tool.permission) problems.push(`${name} declares no permission`);
+    problems.push(...anyOfProblems(name, tool));
     if (typeof tool.run !== 'function') problems.push(`${name} has no run()`);
 
     // Every write must be able to describe itself before it happens. A

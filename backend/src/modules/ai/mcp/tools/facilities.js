@@ -1000,8 +1000,10 @@ export const facilityTools = {
     risk: RISK.LOW,
     description: 'Which students travel on which route, optionally for one section. Read-only.',
     inputSchema: { type: 'object', properties: { sectionId: objectId() }, additionalProperties: false },
-    permission: 'transport.read',
-    minScope: 'ALL',
+    // GET /transport/roster has no permission guard: the service scopes it (a
+    // teacher's own sections, a family's own children, everything only with
+    // transport.read), so any signed-in assistant user may ask.
+    permission: 'ai.copilot.use',
     service: 'transport.service.listTransportRoster()',
     async run(ctx, args) {
       const items = asList(await transport.listTransportRoster(ctx.actor, { sectionId: args.sectionId }));

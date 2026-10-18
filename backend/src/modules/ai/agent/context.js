@@ -234,7 +234,8 @@ export function groupWrite(message, { context = {}, heldTools = new Set() } = {}
     }
     return { clarify: "Whose parents should I write to? Tell me the student's name." };
   }
-  const remind = REMIND_THEM.exec(text);
+  // "send reminders" right after the list is the same request as "remind them".
+  const remind = REMIND_THEM.exec(text) ?? /^\s*(?:please\s+)?send\s+(?:them\s+)?(?:the\s+|a\s+)?(?:fee\s+|overdue\s+|payment\s+|library\s+)?reminders?\s*(?:to\s+(?:them|all|everyone))?\s*[.!]*\s*$/i.exec(text);
   if (remind) {
     const tool = REMINDER_AFTER[context.lastRead?.tool];
     if (tool && heldTools.has(tool)) return { tool, args: {} };

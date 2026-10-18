@@ -39,6 +39,9 @@ const COMMON = new Set(['The', 'This', 'That', 'These', 'Those', 'Your', 'You', 
 /** Claims of having done something. Only a tool result may say a thing was done. */
 const CLAIMS_A_DEED = /\bI(?:'ve|\s+have|\s+just|\s+went\s+ahead\s+and)?\s+(?:booked|sent|scheduled|paid|approved|rejected|created|registered|cancelled|canceled|submitted|applied|marked|updated|posted|published|notified|messaged|emailed|reserved|recorded|deleted|refunded)\b|\b(?:has|have)\s+been\s+(?:booked|scheduled|reserved|registered)\s+for\s+you\b/i;
 
+/** "ranked 3rd", "rank 2", "3rd in the class", "the topper". */
+const RANK_CLAIM = /\brank(?:ed)?\s*(?:is\s+|of\s+|#\s*)?\d+(?:st|nd|rd|th)?\b|\b\d+(?:st|nd|rd|th)\s+(?:in|of)\s+(?:the\s+|your\s+|his\s+|her\s+|my\s+)?class\b|\b(?:class\s+)?topper\b|\bfirst\s+in\s+(?:the\s+)?class\b/i;
+
 /**
  * The facts in `text` that the sources do not contain: `[]` when grounded.
  *
@@ -81,6 +84,10 @@ export function ungroundedFacts(text, { data = null, texts = [], deeds = false, 
   }
 
   if (!deeds && CLAIMS_A_DEED.test(reply)) problems.push('a claim that something was done');
+  // A class rank is a small number the structural allowance above would let
+  // through ("ranked 3rd"), and EduOS keeps none: only a source may state one.
+  const rank = RANK_CLAIM.exec(reply);
+  if (rank && !RANK_CLAIM.test(sourceText)) problems.push(`the rank "${rank[0]}"`);
   return problems;
 }
 

@@ -175,18 +175,40 @@ describe('1. every Teacher write the Web offers is exposed, and nothing else', (
     'unblock_ptm_slot', 'unpin_dashboard_panel', 'update_assignment', 'update_course_material',
     'update_my_digest_interests', 'update_quiz', 'update_review_call_schedule', 'update_syllabus_module',
     'verify_eco_activity',
-  ];
+    // Part 6 (tools/p6Coverage.js): every route a teacher can call has its tool.
+    'acknowledge_due_item', 'acknowledge_support_plan', 'add_club_equipment', 'add_lab_devices', 'add_lab_equipment', 'add_lab_item',
+    'add_lab_software', 'add_newsletter_comment', 'add_portfolio_evidence', 'add_support_plan_action', 'add_support_plan_goal', 'add_support_plan_note',
+    'allocate_enrolled_to_trip', 'answer_opportunity_question', 'archive_bank_question', 'bookmark_newsroom_post', 'cancel_facility_booking', 'send_newsletter_quiz_challenge',
+    'change_family_ptm_booking', 'change_my_newsroom_comment', 'check_in_to_class', 'dismiss_unread_notifications', 'close_lab_incident', 'add_newsroom_comment',
+    'complete_support_plan_action', 'duplicate_lesson_plan', 'create_community_circle', 'create_report_card_template', 'declare_vendor_conflict', 'delete_analytics_view',
+    'delete_cpd_entry', 'delete_lesson_plan', 'delete_question_paper', 'delete_quiz_question', 'discard_attendance_draft', 'draft_event_highlight_post',
+    'draft_newsroom_post', 'draft_question_paper', 'escalate_approval_request', 'finalise_question_paper', 'finish_newsletter_edition', 'generate_term_report_cards',
+    'join_online_class', 'join_or_leave_circle', 'lend_club_equipment', 'manage_circle_member', 'manage_family_ptm_waitlist', 'manage_trip_seat',
+    'mark_trip_stop', 'moderate_newsletter_comment', 'moderate_newsroom_comment', 'moderate_newsroom_post', 'open_support_plan', 'submit_approval_request', 'answer_newsletter_flashcard', 'react_to_newsletter', 'react_to_newsroom_post', 'record_circle_join_decision',
+    'record_class_report_card_moderation', 'record_club_join_decision', 'record_fixture_result_decision', 'record_lab_device_repair', 'record_lab_equipment_repair', 'record_lab_stocktake',
+    'record_mentoring_request_decision', 'record_practical_attendance', 'record_report_card_moderation', 'record_sanitation_check', 'record_support_plan_progress', 'record_support_plan_review',
+    'record_trip_handover', 'record_visitor_host_decision', 'release_quiz', 'remove_club_member', 'remove_portfolio_evidence', 'remove_saved_opportunity',
+    'reply_to_conversation', 'report_newsroom_content', 'reserve_ptm_slot_for_family', 'return_club_equipment', 'return_lab_stock', 'move_bus_trip',
+    'move_practical_session', 'save_analytics_view', 'save_attendance_draft', 'set_club_member_role', 'set_fixture_team_sheet', 'set_lab_batch_status',
+    'set_lab_software_seat', 'set_portfolio_rating', 'set_purchase_quotes', 'share_support_plan_with_family', 'suppress_trip_alerts',
+    'transition_newsroom_post', 'transition_purchase_request', 'transition_support_plan', 'update_accreditation_item', 'update_bank_question', 'update_club', 'update_lab', 'update_lab_device', 'update_lab_equipment', 'update_lab_item', 'update_lab_software',
+    'update_lesson_plan', 'update_my_approval_request', 'update_my_newsletter_preferences', 'update_my_staff_profile', 'update_newsroom_post',
+    'update_opportunity', 'update_practical_session', 'update_question_paper', 'update_quiz_question', 'update_report_card_template', 'update_review_call',
+    'update_safety_alert', 'update_support_plan', 'vote_newsletter_poll',
+  // Part 6 (tools/p6Coverage.js): every route a teacher can call has its tool.
+    'manage_mentoring', 'move_fest_plan', 'propose_fest_plan', 'submit_fest_plan', 'update_fest_plan',
+];
   // Publishing marks and deciding leave, registrations and student requests
   // are decisions the teacher makes on their screens (mcp/decisions.js).
 
-  it('31 CREATE, 16 UPDATE, 8 DELETE, 31 ACTION -- 86 writes, and no decision', () => {
+  it('60 CREATE, 49 UPDATE, 18 DELETE, 82 ACTION -- 209 writes, and no decision on its own', () => {
     const offered = mcpToolsFor(actorForRole('TEACHER')).map((t) => t.name);
     const index = Object.fromEntries(capabilityIndex().map((c) => [c.name, c]));
     const writes = offered.filter((name) => index[name].operation !== 'GET').sort();
     expect(writes).toEqual([...WRITES].sort());
     const by = (op) => writes.filter((name) => index[name].operation === op).length;
-    expect([by('CREATE'), by('UPDATE'), by('DELETE'), by('ACTION')]).toEqual([31, 16, 8, 31]);
-    expect(offered).toHaveLength(189);
+    expect([by('CREATE'), by('UPDATE'), by('DELETE'), by('ACTION')]).toEqual([60, 49, 18, 82]);
+    expect(offered).toHaveLength(439);
     expect(offered).toContain('get_pending_items_for_me');
     // No decision: nothing named approve_/reject_/decide_/review_/publish_/refund_.
     for (const name of offered) expect(isDecidingToolName(name), name).toBe(false);

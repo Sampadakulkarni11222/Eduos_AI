@@ -120,7 +120,8 @@ describe('every role reaches the one shared architecture', () => {
     expect(named('WARDEN', /hostel/).length).toBeGreaterThan(0);
     expect(named('WARDEN', /fee/)).toEqual([]);
     expect(named('FINANCE', /fee/).length).toBeGreaterThan(0);
-    expect(named('FINANCE', /hostel|book/)).toEqual([]);
+    // Library books, not facility bookings or newsroom bookmarks (part 6 gave Finance those through its own grants).
+    expect(named('FINANCE', /hostel|(?:^|_)books?(?:_|$)/)).toEqual([]);
   });
 });
 

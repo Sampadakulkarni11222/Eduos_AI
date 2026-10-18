@@ -4,7 +4,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { SYSTEM_ROLES, PERMISSION_CATALOG, PLATFORM_WITHHELD } from '../src/constants/permissions.js';
 import { buildPermissionMap } from '../src/utils/buildPermissionMap.js';
-import { MCP_TOOLS, mcpToolsFor, mutates } from '../src/modules/ai/mcp/registry.js';
+import { MCP_TOOLS, mcpToolsFor, mutates, toolGrants } from '../src/modules/ai/mcp/registry.js';
+
+/** Whether a role is admitted by one of a tool's grants: its permission at its scope, or any of its anyOf alternatives. */
+const admits = (actor, tool) => toolGrants(tool).some(([key, min]) => actor.permissions[key] && (min !== 'ALL' || actor.permissions[key] === 'ALL'));
 import { capabilitiesFor } from '../src/modules/ai/mcp/capabilities.js';
 import { validateArgs } from '../src/modules/ai/mcp/validate.js';
 
@@ -448,8 +451,8 @@ describe('write safety holds for every role, not only the ones with their own te
       const actor = actorFor(role);
       for (const { name } of mcpToolsFor(actor)) {
         const tool = MCP_TOOLS[name];
-        if (tool.minScope !== 'ALL') continue;
-        expect(actor.permissions[tool.permission], `${role} sees ${name} without ALL scope`).toBe('ALL');
+        if (!toolGrants(tool).some(([, min]) => min === 'ALL')) continue;
+        expect(admits(actor, tool), `${role} sees ${name} without ALL scope`).toBe(true);
       }
     }
   });
@@ -513,11 +516,7 @@ describe('every capability declares metadata the architecture can rely on', () =
       const actor = actorFor(role);
       for (const { name } of mcpToolsFor(actor)) {
         const tool = MCP_TOOLS[name];
-        const held = actor.permissions[tool.permission];
-        expect(held, `${role} sees ${name} without holding ${tool.permission}`).toBeTruthy();
-        if (tool.minScope === 'ALL') {
-          expect(held, `${role} sees school-wide ${name} at ${held} scope`).toBe('ALL');
-        }
+        expect(admits(actor, tool), `${role} sees ${name} without holding ${toolGrants(tool).map(([k, m]) => `${k}${m ? ` at ${m}` : ''}`).join(' or ')}`).toBe(true);
       }
     }
   });
@@ -527,7 +526,7 @@ describe('every capability declares metadata the architecture can rely on', () =
       const actor = actorFor(role);
       const visible = new Set(mcpToolsFor(actor).map((t) => t.name));
       for (const [name, tool] of Object.entries(MCP_TOOLS)) {
-        if (actor.permissions[tool.permission]) continue;
+        if (toolGrants(tool).some(([key]) => actor.permissions[key])) continue;
         expect(visible.has(name), `${role} sees ${name} but lacks ${tool.permission}`).toBe(false);
       }
     }

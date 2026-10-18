@@ -559,7 +559,8 @@ export async function simulate({ text, message }, actor) {
 
   // No tenant wrapper here: /simulate arrives through `authenticate`, which
   // has already scoped the request to the caller's school.
-  const result = await converse({ actor, text: body, history, continuationToken });
+  // The thread's session names the same server-side memory a real message uses.
+  const result = await converse({ actor, text: body, history, continuationToken, conversationId: conversation?.sessionId ?? null });
 
   if (conversation) {
     await markProcessed(inboundDoc, { status: 'PROCESSED', metadata: { simulated: true } });

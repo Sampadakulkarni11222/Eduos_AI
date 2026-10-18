@@ -147,11 +147,11 @@ describe('0. the no-model fallback path', () => {
     expect(isLlmEnabled()).toBe(false);
   });
 
-  it('Admin is offered 471 capabilities, 244 of them writes -- and none that decides', () => {
+  it('Admin is offered 1015 capabilities, 552 of them writes -- and none that decides', () => {
     const offered = mcpToolsFor(actorForRole('ADMIN')).map((t) => t.name);
     const writes = offered.filter((n) => index()[n].operation !== 'GET');
-    expect(offered).toHaveLength(471); // + get_health_room_summary (p5AskAi.js, counts only)
-    expect(writes).toHaveLength(244);
+    expect(offered).toHaveLength(1015); // part 6: every route an administrator can call has its tool (tools/p6Coverage.js)
+    expect(writes).toHaveLength(552);
     expect(offered.filter((n) => /^(?:approve|reject|decide|review|publish|refund)_|^record_payment$/.test(n))).toEqual([]);
   });
 });

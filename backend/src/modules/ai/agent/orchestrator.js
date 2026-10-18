@@ -23,7 +23,11 @@ import { loadMemory, rememberTurn, historyFrom, acceptableConversationId } from 
 import {
   isMoreRequest, AGREES, DECLINES, lastTurnProposed, looksLikeDraftEdit, applyDraftEdit, rewriteCorrection, groupWrite,
 } from './context.js';
-import { answerToOpenWrite } from './intent.js';
+import { answerToOpenWrite, hasOpenWrite } from './intent.js';
+import {
+  acknowledgement, rankTurn, alumniCertificateTurn, payFeesTurn, ordinalReference, itReference, unavailableFigureTurn, meetingTurn, opinionReply, isOrdinalOnly,
+} from './conversationAids.js';
+import { resolvePronoun } from './referents.js';
 import { asksSchoolWideFees, asksLeaveWithoutPermission, staffLeaveStep, staffLeaveQuestion, isStaffLeaveApplication } from './directIntents.js';
 import { impossibleDatesIn } from '../../../utils/naturalDates.js';
 import { entitiesFor, entitiesInTextByPosition } from '../mcp/capabilities.js';
@@ -598,13 +602,14 @@ export async function runAgentSafely(opts) {
 export async function runAgent({ message, actor, source = 'WEB', lang, history = [], conversationId = null } = {}) {
   if (!actor?.profileId) throw new AppError('Select a profile first', 403);
   // The conversation, from the server's memory (agent/memory.js): the website
-  // sends the id it was given, WhatsApp its session. On the website the stored
-  // turns are the transcript -- the browser's copy is lost on every page
-  // change, and is only the fallback for a client that sends no id. WhatsApp
-  // keeps its own transcript of record and uses the memory for what the turns
-  // were about.
+  // sends the id it was given, WhatsApp its session. On both channels the
+  // stored turns (the last 24, with what they were about) are the transcript;
+  // what the client sent -- the browser's copy, lost on every page change, or
+  // WhatsApp's last ten messages -- is only the fallback for a conversation
+  // the memory does not hold yet. WhatsApp therefore follows a conversation
+  // exactly as the website does (p6).
   const memory = await loadMemory({ actor, source, conversationId });
-  const transcript = source === 'WHATSAPP' ? (history ?? []) : historyFrom(memory, history);
+  const transcript = historyFrom(memory, history);
   let result;
   try {
     result = await runAgentTurn({ message, actor, source, lang, history: transcript, memory });
@@ -878,10 +883,50 @@ async function routeTurn({ mcpSession, message: spokenMessage, actor, source, la
   const open = memory?.context?.openWrite;
   if (open && held.has(open.tool) && lastReplyAsked(history)) {
     const answered = answerToOpenWrite(open, message, actor);
+    // "for college admission", said to "what is it for?", is the purpose "college admission".
+    if (answered?.args?.purpose) answered.args.purpose = String(answered.args.purpose).replace(/^\s*for\s+(?:my\s+|a\s+|an\s+|the\s+)?/i, '') || answered.args.purpose;
     if (answered) return runMcpPlan({ mcpSession, steps: [answered], message, actor, source, lang });
   }
 
-  const intent = await parseIntentWithLlm(message, actor, { history, tools: mcpTools });
+  // p6: turns that were answered with something that was not an answer (see
+  // agent/conversationAids.js). "ok" / "thanks" after an answer is
+  // acknowledged -- unless the assistant is waiting on an answer to a question.
+  if (!lastReplyAsked(history) && !hasOpenWrite(history, message, actor)) {
+    const ack = acknowledgement(rawMessage);
+    if (ack) return { reply: ack, lang, action: null, smallTalk: true };
+    const opinion = history.length ? opinionReply(rawMessage) : null;
+    if (opinion) return { reply: opinion, lang, action: null, refused: 'NOT_AVAILABLE' };
+  }
+  // A former student asking for a certificate: drafted, or told why that kind is not offered.
+  const certificate = alumniCertificateTurn(message, actor, held);
+  if (certificate?.reply) return { reply: certificate.reply, lang, action: null, ...(certificate.needsInput && { needsInput: true }) };
+  if (certificate?.step) return runMcpPlan({ mcpSession, steps: [certificate.step], message, actor, source, lang });
+  // Booking a meeting with a teacher (never a library book).
+  const meeting = meetingTurn(message, actor, held);
+  if (meeting?.reply) return { reply: meeting.reply, lang, action: null, refused: 'NOT_OFFERED' };
+  if (meeting?.step) return runMcpPlan({ mcpSession, steps: [meeting.step], message, actor, source, lang });
+  // A figure or a detail the assistant does not have: said, never swapped for another.
+  const unavailableFigure = unavailableFigureTurn(message);
+  if (unavailableFigure) return { reply: unavailableFigure, lang, action: null, refused: 'NOT_AVAILABLE' };
+  // A class rank, which students and families are not shown; paying a fee, which the assistant cannot do.
+  const noted = rankTurn(message, actor, held) ?? payFeesTurn(message, actor, held);
+  if (noted) return notedPlan(noted, { mcpSession, message, actor, source, lang });
+
+  // "The 2nd one": the person the last answer listed in that place. "Her",
+  // "him": the person the conversation and the student record say it is
+  // (agent/referents.js) -- or a question when it could be two.
+  // Not while a question is open: "the second one" then answers it (continuedWrite / answeredRead).
+  const asked = lastReplyAsked(history);
+  const ordinal = asked ? null : (ordinalReference(message, memory?.context?.students) ?? itReference(message, memory?.context));
+  const referent = ordinal ? null : await resolvePronoun({ message, actor, history, context: memory?.context ?? {} });
+  if (referent?.clarify) return { reply: referent.clarify, lang, action: null, clarification: true };
+  // "The first one" when the last answer listed no people to count: which one is asked, not guessed.
+  if (!ordinal && !asked && history.length && isOrdinalOnly(message)) {
+    return { reply: 'Which one do you mean? Tell me its name (or the student\'s name) and what you would like to see.', lang, action: null, clarification: true };
+  }
+  const routed = ordinal ?? referent?.message ?? message;
+
+  const intent = await parseIntentWithLlm(routed, actor, { history, tools: mcpTools });
 
   // A follow-up whose subject the conversation does not settle ("What about
   // him?" after two people, "What about Aman?" with nothing before it): ask,
@@ -1168,6 +1213,25 @@ function deniedTopic(message, actor) {
   const about = spoken.find((entity) => DENIED_TOPICS[entity]);
   if (!about) return null;
   return new Set(entitiesFor(actor)).has(about) ? null : DENIED_TOPICS[about];
+}
+
+/**
+ * A sentence the assistant owes the person (a policy, or what it cannot do),
+ * followed by the read that answers what they CAN have. The read goes through
+ * the MCP server like any other; if it cannot be answered, the sentence stands
+ * alone with the reason -- never an invented figure in its place.
+ */
+async function notedPlan({ note, steps = [], offer = null }, { mcpSession, message, actor, source, lang }) {
+  const join = (...parts) => parts.filter(Boolean).join('\n\n');
+  if (!steps.length) return { reply: join(note, offer), lang, action: null };
+  try {
+    const ran = await runMcpPlan({ mcpSession, steps, message, actor, source, lang });
+    if (ran.action) return ran;
+    return { ...ran, reply: join(note, ran.reply, ran.needsInput ? null : offer) };
+  } catch (err) {
+    if (!isMeaningfulRefusal(err)) throw err;
+    return { reply: join(note, err.message), lang, action: null };
+  }
 }
 
 /** "You can't approve a co-curricular request from your account." */
@@ -1523,7 +1587,9 @@ function needsInputReply(toolName, err, lang) {
   const missing = missingParameters(reported)
     // A field inside a list item ("students[0].status") is asked for by its
     // own name: the person named the pupil, and is missing only the status.
-    .map((field) => FRIENDLY_FIELDS[field] ?? FRIENDLY_FIELDS[field.split(/[.[\]:\s]/).filter(Boolean).at(-1)]
+    // A NEW record's admission number is a number to give, not a student to name.
+    .map((field) => (field === 'admissionNo' && tool.operation === 'CREATE' ? 'the admission number' : null)
+      ?? FRIENDLY_FIELDS[field] ?? FRIENDLY_FIELDS[field.split(/[.[\]:\s]/).filter(Boolean).at(-1)]
       ?? describedField(tool, field))
     .filter(Boolean);
   const unique = [...new Set(missing)];
@@ -1608,6 +1674,12 @@ const FRIENDLY_FIELDS = {
   roomNo: 'the room number',
   capacity: 'how many beds it has',
   topic: 'what it is about',
+  // A former student's certificate request, and the nurse's visit log: both
+  // were answered with the bare "I need a bit more to do that".
+  purpose: 'the purpose (what it is for)',
+  certificate: 'which certificate',
+  complaint: 'the complaint (what is wrong)',
+  outcome: 'the outcome (returned to class, rest, first aid, sent home or referred)',
 };
 
 /**

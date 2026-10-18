@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import mongoose from 'mongoose';
-import { MCP_TOOLS, getMcpTool, mcpToolsFor, mutates, requiresConfirmation, confirmableOn, validateMcpRegistry } from '../src/modules/ai/mcp/registry.js';
+import { toolGrants, MCP_TOOLS, getMcpTool, mcpToolsFor, mutates, requiresConfirmation, confirmableOn, validateMcpRegistry } from '../src/modules/ai/mcp/registry.js';
 import { platformOpsTools, PLATFORM_APPROVER_TOOLS } from '../src/modules/ai/mcp/tools/platformOps.js';
 import { isDecidingToolName, decisionAskedFor, approverMayRecord, APPROVER_CONFIRMED } from '../src/modules/ai/mcp/decisions.js';
 import { asksLeaveWithoutPermission } from '../src/modules/ai/agent/directIntents.js';
@@ -110,7 +110,8 @@ describe('every platform-operations tool keeps the MCP contract', () => {
     for (const name of NAMES) {
       const tool = MCP_TOOLS[name];
       const actor = { ...person('ADMIN'), permissions: { ...person('ADMIN').permissions } };
-      delete actor.permissions[tool.permission];
+      // Every key that admits it (anyOf mirrors a route's requireAnyOf).
+      for (const [key] of toolGrants(tool)) delete actor.permissions[key];
       const res = await mcp(OAK, actor, name, {});
       expect(res.success, name).toBe(false);
       expect(res.error.code, name).toBe('FORBIDDEN');

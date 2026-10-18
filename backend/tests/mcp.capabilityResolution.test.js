@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
-import { MCP_TOOLS, mcpToolsFor, mutates } from '../src/modules/ai/mcp/registry.js';
+import { MCP_TOOLS, mcpToolsFor, mutates, toolGrants, getMcpTool } from '../src/modules/ai/mcp/registry.js';
 import {
   capabilityIndex, capabilitiesFor, entitiesFor, entitiesInText, orderToolsByRelevance, ENTITY_VOCABULARY,
 } from '../src/modules/ai/mcp/capabilities.js';
@@ -56,7 +56,8 @@ describe('1. teacher capability discovery', () => {
     const discovered = new Set(capabilitiesFor(teacher).map((c) => c.name));
 
     const unauthorized = Object.entries(MCP_TOOLS).filter(
-      ([, tool]) => !teacher.permissions[tool.permission],
+      // Held by none of the keys that admit it (its permission, or any anyOf alternative its route accepts).
+      ([, tool]) => !toolGrants(tool).some(([key]) => teacher.permissions[key]),
     );
     expect(unauthorized.length).toBeGreaterThan(0);
     for (const [name] of unauthorized) {
@@ -281,11 +282,10 @@ describe('7. scope is narrowed, never granted', () => {
   it('never offers an ALL-scoped capability to an actor holding the permission at OWN', () => {
     const actor = teacherActor();
     for (const c of capabilitiesFor(actor)) {
-      const held = actor.permissions[c.permission];
-      expect(held, `${c.name} offered without its permission`).toBeTruthy();
-      if (c.minScope === 'ALL') {
-        expect(held, `${c.name} is ALL-gated but was offered to an OWN holder`).toBe('ALL');
-      }
+      const grants = toolGrants(getMcpTool(c.name));
+      expect(grants.some(([key]) => actor.permissions[key]), `${c.name} offered without its permission`).toBe(true);
+      // Admitted through a grant held at the scope that grant requires.
+      expect(grants.some(([key, min]) => actor.permissions[key] && (min !== 'ALL' || actor.permissions[key] === 'ALL')), `${c.name} is ALL-gated but was offered to an OWN holder`).toBe(true);
     }
   });
 

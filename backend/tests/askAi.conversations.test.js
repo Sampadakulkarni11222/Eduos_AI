@@ -200,7 +200,9 @@ function judge(turn, out, calls, scenario, ctx) {
   if (out.status >= 500) problems.push(`HTTP ${out.status}`);
   problems.push(...ungrounded(out.reply, {
     data: out.data?.data,
-    sources: [out.action?.summary ?? '', ...(out.data?.evidence ?? []).map((e) => e.text ?? ''), ...ctx.said],
+    // What the turn's tools were ASKED for (the day "tomorrow" became, a class) is grounded too:
+    // "No homework found due 19 Oct" states the question's own date.
+    sources: [out.action?.summary ?? '', ...(out.data?.evidence ?? []).map((e) => e.text ?? ''), ...ctx.said, ...calls.map((c) => JSON.stringify(c.args ?? {}))],
     earlierReplies: ctx.replies,
     // No model here: a sentence a tool wrote from the database this turn (a
     // draft's preface, a WhatsApp reply) is grounded by construction even when

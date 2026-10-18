@@ -224,6 +224,41 @@ export const APPROVER_CONFIRMED = [
   // second person confirms, not the fee-payment decision on the Payments screen.
   { kind: 'payment', tool: 'record_bill_payment', permission: 'bills.manage', scope: 'ALL',
     words: /\bbills?\b|\belectricity\b|\bwater\s+bill\b|\binternet\b|\bamc\b|\butility\b|\bvendor\b/i, unless: /\binvoices?\b|\bfees?\b|\breceipts?\b|\bINV-/i },
+
+  /* Part 6 (tools/p6/*.js): every other decision a role makes on its screen.
+     Each tool is approverDecision (HIGH, website-confirmed, decision stated by
+     the approver); its service checks the approver exactly as the screen does.
+     Only requests the grammar above would otherwise hand back need an entry
+     ("approve the club join REQUEST"); the rest are listed too, so a wording
+     that happens to say "request" still reaches the tool rather than being
+     handed back. Money, marks, student leave, electives, co-curricular and
+     profile-edit requests, book and transport requests and admissions are NOT
+     here: those stay on their screens (HUMAN_DECISIONS). */
+  { kind: 'approval', tool: 'record_document_request_decision', permission: 'students.manage', scope: 'ALL',
+    words: /\bcertificates?\b|\bbona\s?fide\b|\bTC\b|\bdocument\s+requests?\b/i },
+  { kind: 'approval', tool: 'record_facility_booking_decision', permission: 'facilities.manage',
+    words: /\bbookings?\b|\b(?:room|hall|auditorium|ground|lab|venue)\s+(?:booking\s+)?requests?\b/i },
+  { kind: 'approval', tool: 'record_club_join_decision', permission: 'clubs.manage', words: /\bclubs?\b|\bteam\b/i },
+  { kind: 'approval', tool: 'record_circle_join_decision', permission: 'community.read', words: /\bcircles?\b/i },
+  { kind: 'approval', tool: 'record_mentoring_request_decision', permission: 'community.read', words: /\bmentor(?:ing|ship)?\b/i },
+  { kind: 'approval', tool: 'record_alumni_offer_decision', permission: 'alumni.manage', scope: 'ALL',
+    words: /\balumni\b[^.?!]*\b(?:offers?|internships?|opportunit(?:y|ies))\b|\binternship\s+offers?\b/i },
+  { kind: 'approval', tool: 'record_vendor_due_diligence', permission: 'procurement.manage',
+    words: /\bvendors?\b|\bsuppliers?\b/i, unless: /\bpayments?\b|\binvoices?\b/i },
+  { kind: 'approval', tool: 'record_offline_campaign_decision', permission: 'marketing.read', words: /\bcampaigns?\b/i },
+  { kind: 'approval', tool: 'record_marketing_asset_decision', permission: 'marketing.read', words: /\bposters?\b|\bcreatives?\b|\bmarketing\s+assets?\b|\bbrochures?\b/i },
+  { kind: 'approval', tool: 'record_showcase_entry_review', permission: 'showcase.publish', words: /\bshowcase\b/i },
+  { kind: 'approval', tool: 'moderate_newsroom_post', permission: 'community.read', words: /\bnewsroom\b|\bposts?\b/i },
+  { kind: 'approval', tool: 'moderate_alumni_post', permission: 'alumni.manage', scope: 'ALL', words: /\balumni\s+posts?\b/i },
+  { kind: 'approval', tool: 'moderate_newsletter_comment', permission: 'digest.read', words: /\bcomments?\b/i },
+  { kind: 'approval', tool: 'record_opportunity_decision', permission: 'digest.manage', scope: 'ALL', words: /\bopportunit(?:y|ies)\b|\breview\s+queue\b/i },
+  { kind: 'approval', tool: 'record_visitor_host_decision', permission: 'ai.copilot.use', words: /\bvisit(?:or|s)?\b/i },
+  { kind: 'approval', tool: 'record_verification_decision', permission: 'verification.decide',
+    words: /\bverification\b|\bBGV-\d+|\bbackground\s+checks?\b/i },
+  { kind: 'approval', tool: 'record_board_minutes_approval', permission: 'governance.read', words: /\bminutes\b/i },
+  { kind: 'approval', tool: 'record_cpd_verification', permission: 'staffleave.manage', scope: 'ALL', words: /\bCPD\b|\btraining\s+hours\b/i },
+  { kind: 'approval', tool: 'record_report_card_moderation', permission: 'reportcards.manage',
+    words: /\b(?:term\s+)?report\s*cards?\b/i, unless: /\bpublish|\brelease/i },
 ];
 
 /** Whether this request is one the actor may have recorded through an approver-confirmed tool. */

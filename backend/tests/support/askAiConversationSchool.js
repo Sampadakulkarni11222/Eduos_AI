@@ -1,4 +1,5 @@
-import { StudentGuardian } from '../../src/models/student.model.js';
+import { Student, StudentGuardian } from '../../src/models/student.model.js';
+import { DocumentType } from '../../src/models/documentRequest.model.js';
 import { Invoice, InvoiceLine } from '../../src/models/fee.model.js';
 import { StaffLeave, LeaveBalance } from '../../src/models/staffLeave.model.js';
 import { seedAskAiSchool } from './askAiSchool.js';
@@ -42,6 +43,17 @@ export async function seedConversationSchool() {
     const now = new Date();
     const startYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
     await LeaveBalance.create({ profileId: school.people.TEACHER.profile._id, leaveYear: `${startYear}-${String(startYear + 1).slice(2)}`, code: 'CL', entitled: 12 });
+    // p6: who is a girl and who is a boy, as the student record says -- what
+    // "her" and "him" are resolved by. Rahul and Aman are boys, Riya and Priya
+    // girls (so "her" from the parent of Rahul and Riya means Riya, and "her"
+    // after Riya and Priya were both named is asked about).
+    await Student.updateMany({ _id: { $in: [school.rahul.student._id, school.aman.student._id] } }, { $set: { gender: 'MALE' } });
+    await Student.updateMany({ _id: { $in: [school.riya.student._id, school.priya.student._id] } }, { $set: { gender: 'FEMALE' } });
+    // The certificates a former student can ask for, and one they cannot (bonafide certifies a current student).
+    for (const name of ['Transfer Certificate', 'Character Certificate', 'Bonafide Certificate']) {
+      // eslint-disable-next-line no-await-in-loop
+      await DocumentType.create({ name, requestEnabled: true, isActive: true });
+    }
     return { inv3, leave };
   });
   return { ...school, ...extra };

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { parseIntent } from '../src/modules/ai/agent/intent.js';
 import { capabilitiesFor } from '../src/modules/ai/mcp/capabilities.js';
 import { getMcpTool } from '../src/modules/ai/mcp/registry.js';
@@ -26,6 +26,10 @@ import { actorForRole } from './support/mcpSchool.js';
  * `get_student_overview` both do something with a student -- and demanding a
  * particular one of them would be asserting a preference, not reachability.
  */
+
+// Every capability of every role is parsed in its own words; with the whole catalogue
+// (part 6 covers every route) one pass takes longer than the 30-second default.
+vi.setConfig({ testTimeout: 180_000 });
 
 const ROLES = ['ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT', 'FINANCE', 'LIBRARIAN', 'WARDEN'];
 

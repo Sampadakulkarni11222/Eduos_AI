@@ -627,7 +627,11 @@ describe('8. the student catalogue matches the Web', () => {
     // student's own digest topics, their own saved opportunities, their own
     // quiz answers, their own question to a teacher and their own interest in
     // an alumni offer (each service writes only the caller's record).
-    const SELF_ONLY = ['update_my_digest_interests', 'save_opportunity', 'answer_newsletter_quiz', 'ask_teacher_about_opportunity', 'express_interest_in_opportunity'];
+    const SELF_ONLY = ['update_my_digest_interests', 'save_opportunity', 'answer_newsletter_quiz', 'ask_teacher_about_opportunity', 'express_interest_in_opportunity',
+      // Part 6 newsletter reader acts: digest.read is held school-wide by every reader, and each of these writes only the
+      // caller's own record (their preferences, saved list, reading progress, vote, reaction, comment, flashcard, challenge).
+      'update_my_newsletter_preferences', 'remove_saved_opportunity', 'finish_newsletter_edition', 'vote_newsletter_poll',
+      'react_to_newsletter', 'add_newsletter_comment', 'answer_newsletter_flashcard', 'send_newsletter_quiz_challenge'];
     for (const c of capabilitiesFor(me()).filter((x) => x.writes && !SELF_ONLY.includes(x.name))) {
       expect(actorForRole('STUDENT').permissions[c.permission], c.name).toBe('OWN');
     }

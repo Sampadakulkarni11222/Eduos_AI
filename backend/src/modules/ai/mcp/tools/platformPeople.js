@@ -1040,6 +1040,7 @@ const showcaseTools = {
   get_showcase: {
     module: 'Showcase',
     operation: 'GET',
+    resultShape: 'LIST', // the published entries; "show the showcase" asks for them (part 6)
     risk: RISK.LOW,
     description: "The school's published achievement and top-ranker showcase: each edition and its entries. Only published entries of children whose media consent allows it. Read-only.",
     inputSchema: noArgs,
