@@ -11,6 +11,7 @@ const force = process.argv.includes('--force');
 
 const VIEWS = {
   RoleHome: ["import { RoleHome } from '@/components/ops/role-home';", '<RoleHome />'],
+  AutomationsView: ["import { AutomationsView } from '@/components/ops/automations-view';", '<AutomationsView />'],
   ApprovalsView: ["import { ApprovalsView } from '@/components/ops/approvals-view';", '<ApprovalsView />'],
   CampusWorldView: ["import { CampusWorldView } from '@/components/campus/campus-world';", '<CampusWorldView />'],
   // One live page for a room, class, teacher, bus, lab, department, zone or the gate (?kind=&id=).

@@ -197,18 +197,20 @@ describe('1. every Teacher write the Web offers is exposed, and nothing else', (
     'update_safety_alert', 'update_support_plan', 'vote_newsletter_poll',
   // Part 6 (tools/p6Coverage.js): every route a teacher can call has its tool.
     'manage_mentoring', 'move_fest_plan', 'propose_fest_plan', 'submit_fest_plan', 'update_fest_plan',
+  // Part 7: bulk import from an attached sheet (tools/p7BulkImport.js) and personal automations (tools/p7Automation.js).
+    'run_import', 'create_my_reminder', 'stop_my_reminder', 'confirm_automation_draft', 'dismiss_automation_draft', 'set_my_automation_optin',
 ];
   // Publishing marks and deciding leave, registrations and student requests
   // are decisions the teacher makes on their screens (mcp/decisions.js).
 
-  it('60 CREATE, 49 UPDATE, 18 DELETE, 82 ACTION -- 209 writes, and no decision on its own', () => {
+  it('62 CREATE, 52 UPDATE, 18 DELETE, 83 ACTION -- 215 writes, and no decision on its own', () => {
     const offered = mcpToolsFor(actorForRole('TEACHER')).map((t) => t.name);
     const index = Object.fromEntries(capabilityIndex().map((c) => [c.name, c]));
     const writes = offered.filter((name) => index[name].operation !== 'GET').sort();
     expect(writes).toEqual([...WRITES].sort());
     const by = (op) => writes.filter((name) => index[name].operation === op).length;
-    expect([by('CREATE'), by('UPDATE'), by('DELETE'), by('ACTION')]).toEqual([60, 49, 18, 82]);
-    expect(offered).toHaveLength(439);
+    expect([by('CREATE'), by('UPDATE'), by('DELETE'), by('ACTION')]).toEqual([62, 52, 18, 83]);
+    expect(offered).toHaveLength(455); // part 7: +16 (2 multi-ask reads, 5 bulk import, 9 automations)
     expect(offered).toContain('get_pending_items_for_me');
     // No decision: nothing named approve_/reject_/decide_/review_/publish_/refund_.
     for (const name of offered) expect(isDecidingToolName(name), name).toBe(false);

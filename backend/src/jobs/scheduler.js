@@ -30,6 +30,8 @@ import { runScheduled as runNewsletter } from '../modules/newsletter/editions.se
 import { pollFeeds as pollAlertFeeds, extractPending as extractAlertItems } from '../modules/newsletter/alerts.service.js';
 import { syncAllConnected as runAdSync } from '../modules/integrations/adsync.service.js';
 import { refreshDue as refreshSocialEngagement } from '../modules/integrations/engagement.service.js';
+import { runSchoolAutomations } from '../modules/automations/automations.jobs.js';
+import { runPersonalDue } from '../modules/automations/personal.js';
 
 /**
  * The in-process scheduler for the operations modules.
@@ -108,6 +110,11 @@ export const JOBS = [
   // Gated inside run (not `feature:`) because both switches are off by default and the job is still listed for every school.
   { key: 'marketing.adsync', everyMinutes: 6 * 60, run: async (now) => ((await featureEnabled('adSync')) ? runAdSync({ now }) : { skipped: 'adSync is switched off' }) },
   // Likes, comments and shares read back for posts really sent in the last 30 days (simulated posts are never asked about).
+  // Part 7 automations: each school automation decides for itself whether it is on, due (its hour, its weekday, a school
+  // day) and outside the quiet window, and claims its day once (JobRun); every message goes through the outbox.
+  { key: 'automations.school', everyMinutes: 15, run: (now) => runSchoolAutomations({ now }) },
+  // A person's own reminders and reports (set up in Ask AI), each once per run time.
+  { key: 'automations.personal', everyMinutes: 15, run: (now) => runPersonalDue({ now }) },
   { key: 'social.engagement', everyMinutes: 6 * 60, run: async (now) => ((await featureEnabled('socialPublishing')) ? refreshSocialEngagement({ now }) : { skipped: 'socialPublishing is switched off' }) },
 ];
 

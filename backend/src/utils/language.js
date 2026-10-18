@@ -17,6 +17,8 @@
  * machine-translating this file.
  */
 
+import { EXTRA_CATALOGUES } from './languageCatalogues.js';
+
 /** Scripts that map 1:1 to a language in this market. */
 const SCRIPT_RANGES = [
   { lang: 'hi', re: /[ऀ-ॿ]/ }, // Devanagari — Hindi/Marathi (see note below)
@@ -259,7 +261,9 @@ const MESSAGES = {
  * to the raw key, which would surface `agent.unsure` to a parent.
  */
 export function t(key, lang = 'en', params = {}) {
-  const table = MESSAGES[lang] ?? MESSAGES.en;
+  // p7: the common answers in Marathi, Gujarati, Tamil, Telugu, Kannada,
+  // Bengali and Punjabi (utils/languageCatalogues.js); missing keys -> English.
+  const table = MESSAGES[lang] ?? EXTRA_CATALOGUES[lang] ?? MESSAGES.en;
   const template = table[key] ?? MESSAGES.en[key];
   if (!template) return null;
 
@@ -270,7 +274,7 @@ export function t(key, lang = 'en', params = {}) {
 
 /** True when canned replies exist in this language. */
 export function hasCatalogue(lang) {
-  return SUPPORTED_REPLY_LANGUAGES.includes(lang);
+  return SUPPORTED_REPLY_LANGUAGES.includes(lang) || Boolean(EXTRA_CATALOGUES[lang]);
 }
 
 /**

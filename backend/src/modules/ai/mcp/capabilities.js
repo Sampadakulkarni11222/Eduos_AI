@@ -110,6 +110,8 @@ const ENTITY_OF_MODULE = {
   Recruitment: 'recruitment',
   'Finance reports': 'financeReport',
   Safeguarding: 'safeguarding',
+  // Part 7: bulk import from a spreadsheet attached in Ask AI (tools/p7BulkImport.js).
+  Imports: 'bulkImport',
 };
 
 /**
@@ -532,6 +534,10 @@ export const ENTITY_VOCABULARY = [
   ['classCheckIn', /\bclass\s+check[\s-]?ins?\b|\bpresence\s+board\b|\bcheck[\s-]?in\s+to\s+(?:a\s+|the\s+|my\s+)?class\b/i],
   ['search', /\bsearch\s+(?:everything|everywhere|the\s+school|school\s+records?)\b|\buniversal\s+search\b/i],
   ['safeguarding', /\bsafeguarding\b|\bchild\s+protection\b/i],
+  // Part 7: bulk import -- named by its own words only ("import", a sheet, a template), so it takes no older sentence.
+  ['bulkImport', /\bbulk\s+imports?\b|\bimports?\s+(?:formats?|templates?|results?|files?|sheets?)\b|\b(?:preview|run|check)\s+(?:the\s+|my\s+|this\s+)?(?:import|upload)\b|\b(?:sample|template)\s+(?:sheets?|files?|csv|excel)\b|\b(?:import|upload)\s+(?:this|the|my|a)\s+(?:sheet|spreadsheet|excel|csv|file)\b/i],
+  // Part 7: automations and personal reminders (tools/p7Automation.js) -- their own words only.
+  ['automations', /\bautomations?\b|\bmy\s+(?:personal\s+)?reminders?\b|\bscheduled\s+reports?\b|\bwhat\s+needs\s+(?:me|my\s+attention)\b/i],
   ['aiDraft', /\bai\s+drafts?\b|\bdraft(?:s|ing)?\s+(?:me\s+)?(?:a\s+|an\s+|the\s+)?(?:letter|circular|minutes|lesson\s+plan|documents?)\b/i],
 ];
 

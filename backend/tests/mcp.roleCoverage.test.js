@@ -181,10 +181,9 @@ const UNCOVERED = {
     category: 'D',
     why: 'Registering cameras, their approved purposes, locations and retention, and rotating device secrets. Device credentials never travel through chat, and camera data stays off it: reviewers get only a count (get_camera_review_count).',
   },
-  'users.manage': {
-    category: 'D',
-    why: 'Creating and importing user accounts. Bulk import is a CSV upload and MCP has no file-upload channel, the same constraint that keeps attendance OCR unexposed; single creation mints credentials, which the assistant must not do. Reading the staff directory is available through list_users.',
-  },
+  // users.manage is covered since p7: bulk import of students and staff from a
+  // spreadsheet attached in Ask AI (preview_import / run_import, website-confirmed,
+  // no passwords are ever set by an import -- people sign in by phone OTP).
   'roles.manage': {
     category: 'D',
     why: 'Editing role grants. This is the authorization system that constrains the assistant, so a capability here would let the assistant widen its own reach.',

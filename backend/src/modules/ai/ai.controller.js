@@ -75,8 +75,18 @@ function sanitiseHistory(raw) {
     .map((turn) => ({ role: turn.role, text: turn.text.slice(0, MAX_HISTORY_TEXT) }));
 }
 
+/** An attached import file ({ fileId }) with an id this server could have issued, or null. */
+function acceptableAttachment(raw) {
+  const id = raw && typeof raw === 'object' ? String(raw.fileId ?? '') : '';
+  return /^[a-f0-9]{24}$/.test(id) ? { fileId: id } : null;
+}
+
 export const agent = asyncHandler(async (req, res) => {
-  const { message, lang, history, conversationId } = req.body;
+  const { message: typed, lang, history, conversationId } = req.body;
+  // p7: a spreadsheet uploaded to /imports/files and attached to this message.
+  // Only its id travels; the server finds it for this same person or not at all.
+  const attachment = acceptableAttachment(req.body.attachment);
+  const message = typed || (attachment ? 'Check this file' : typed);
   if (!message) throw new AppError('message is required', 400);
   sendSuccess(
     res,
@@ -97,6 +107,10 @@ export const agent = asyncHandler(async (req, res) => {
       // this signed-in person in this school; the reply carries the id back
       // so the browser can keep it across page changes and reloads.
       conversationId: acceptableConversationId(conversationId),
+      attachment,
+      // p7: the words came from the microphone (Web Speech API): what was
+      // heard is shown back with the answer. Only a flag -- no audio is sent.
+      heard: req.body.inputMode === 'voice',
     }), { message }),
     'Agent response'
   );

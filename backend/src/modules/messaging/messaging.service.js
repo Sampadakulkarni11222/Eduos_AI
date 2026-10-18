@@ -261,6 +261,48 @@ export const TEMPLATES = {
     subject: (v) => `Reminder: ${v.title}`,
     text: (v) => `Reminder: "${v.title}" ${v.when}. Open EduOS (Opportunities) for the details and the official link.`,
   },
+  // Part 7 automations (modules/automations). Each says that something needs attention; the page holds the detail.
+  REGISTER_NOT_MARKED: {
+    category: 'UTILITY',
+    subject: (v) => `Attendance not marked: ${v.classes}`,
+    text: (v) => `Today's attendance for ${v.classes} is not marked yet${v.time ? ` (as of ${v.time})` : ''}. Please take the register in EduOS.`,
+  },
+  HOMEWORK_DUE: {
+    category: 'UTILITY',
+    text: (v) => `Reminder: "${v.title}" (${v.subject}) is due ${v.when}${v.studentName ? ` for ${v.studentName}` : ''} and is not submitted yet. Open EduOS (Assignments).`,
+  },
+  BIRTHDAY_GREETING: {
+    category: 'UTILITY',
+    text: (v) => `Happy birthday, ${v.name}! Warm wishes from everyone at ${v.school || 'school'}.`,
+  },
+  DAILY_BRIEFING: {
+    category: 'UTILITY',
+    subject: (v) => `Your briefing for ${v.date}`,
+    text: (v) => `Good morning. Your briefing for ${v.date}: ${v.summary}. Open EduOS (Today) for the details.`,
+  },
+  WEEKLY_CHILD_DIGEST: {
+    category: 'UTILITY',
+    subject: (v) => `This week for ${v.studentName}`,
+    text: (v) => `This week for ${v.studentName}: ${v.summary}. Open EduOS for the details.`,
+  },
+  PERSONAL_REMINDER: {
+    category: 'UTILITY',
+    subject: (v) => `Reminder: ${v.text}`,
+    text: (v) => `Reminder you set in EduOS: ${v.text}`,
+  },
+  PERSONAL_REPORT: {
+    category: 'UTILITY',
+    subject: (v) => v.title,
+    text: (v) => `${v.title}: ${v.summary}`,
+  },
+  AUTOMATION_DRAFT_READY: {
+    category: 'UTILITY',
+    text: (v) => `A draft is ready for you to check: ${v.title}. Nothing has been done yet; open EduOS (Automations) to confirm or dismiss it.`,
+  },
+  FOLLOWUPS_DUE: {
+    category: 'UTILITY',
+    text: (v) => `Admissions follow-ups today: ${v.summary}. Open EduOS (Follow-ups) to call or message them.`,
+  },
 };
 
 const IST_OFFSET_MIN = 330;

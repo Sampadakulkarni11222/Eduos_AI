@@ -359,6 +359,16 @@ export const env = {
    * assistant comes to look broken.
    */
   AI_TIMEOUT_MS: Number(process.env.AI_TIMEOUT_MS) || 10_000,
+  // p7: speech-to-text for WhatsApp voice notes (modules/ai/speech/stt.js).
+  // STT_PROVIDER=auto (default) uses OpenAI Whisper when OPENAI_API_KEY (or
+  // OPENAI_STT_API_KEY) is set, else Google Speech-to-Text when
+  // GOOGLE_STT_API_KEY is set; with neither, voice notes are answered with
+  // "needs a speech service configured". Never faked.
+  STT_PROVIDER: String(process.env.STT_PROVIDER ?? 'auto').trim().toLowerCase(),
+  OPENAI_STT_API_KEY: process.env.OPENAI_STT_API_KEY ?? null,
+  OPENAI_STT_MODEL: process.env.OPENAI_STT_MODEL || 'whisper-1',
+  GOOGLE_STT_API_KEY: process.env.GOOGLE_STT_API_KEY ?? null,
+  STT_TIMEOUT_MS: Number(process.env.STT_TIMEOUT_MS) || 30_000,
   isDev: (process.env.NODE_ENV ?? 'development') === 'development',
   isProd: process.env.NODE_ENV === 'production',
 };

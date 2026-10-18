@@ -82,7 +82,9 @@ describe('a request for one student\'s details reaches the student\'s record', (
   it('does not answer a question about a facet of a student with the record itself', () => {
     // The counter-test for the rule that makes the above work: naming a person
     // says what the question is ABOUT only while it names nothing else.
-    expect(route('ADMIN', "show Rahul's performance")?.tool).toBe('get_performance');
+    // Part 7: "Rahul's performance" is the student's performance score (get_student_performance,
+    // agent/p7Rules.js) rather than the raw published marks (get_performance) -- a facet either way, never the record.
+    expect(route('ADMIN', "show Rahul's performance")?.tool).toBe('get_student_performance');
     expect(route('ADMIN', "Show Rahul's attendance")?.tool).toBe('get_student_attendance');
   });
 });

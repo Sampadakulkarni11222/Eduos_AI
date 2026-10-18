@@ -1,18 +1,18 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 1088,
+    "total": 1108,
     "byOperation": {
-      "GET": 496,
-      "CREATE": 194,
-      "UPDATE": 156,
+      "GET": 508,
+      "CREATE": 196,
+      "UPDATE": 160,
       "DELETE": 40,
-      "ACTION": 202
+      "ACTION": 204
     },
     "byRisk": {
-      "LOW": 653,
-      "HIGH": 125,
-      "MEDIUM": 309,
+      "LOW": 669,
+      "HIGH": 128,
+      "MEDIUM": 310,
       "CRITICAL": 1
     }
   },
@@ -2896,6 +2896,10 @@
             "type": "string",
             "maxLength": 60,
             "description": "Narrow to one exam, e.g. \"Unit Test 2\""
+          },
+          "scorers": {
+            "type": "boolean",
+            "description": "Also name the student(s) with the highest and the lowest marks on each paper (for \"who scored the highest\")"
           }
         },
         "additionalProperties": false
@@ -48041,6 +48045,1028 @@
       "service": "search.service.search()",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
+    },
+    {
+      "name": "get_student_performance",
+      "module": "Exams",
+      "operation": "GET",
+      "description": "A student's overall PERFORMANCE SCORE with its band, calculated by a fixed, versioned formula from attendance %, marks (and their trend against the previous test, subject-wise, with the class average where at least 5 classmates have marks), assignment completion and on-time rate, consistency across tests, co-scholastic grades and club participation -- whatever is recorded; components with no data are left out and the weights re-normalised. Returns each component's value and weight, the period, the data coverage, how it is calculated, and links to the records. Use for \"Rahul's performance\", \"performance score\", \"how is my child performing\". A parent: their own child; a teacher: a student they teach. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Start of the period (default: the start of the academic year)"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "End of the period (default: today)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "marks.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "metrics/studentPerformance.scorePerformance() over attendance, published marks, assignments, published report cards and club registers",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_enrolment_details",
+      "module": "Students",
+      "operation": "GET",
+      "description": "A student's class (grade and section), roll number and class teacher's name. Use for \"who is Rahul's class teacher\", \"which class is Riya in\", \"her class?\", \"my child's class teacher\". A parent: their own children; a teacher: their own pupils. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "studentId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "Preferred when known, e.g. from search_students"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Admission number, e.g. \"OAK-12\""
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Full or partial name; an ambiguous match is refused, never guessed"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "students.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "Enrollment (active) + Section.classTeacherId for a student at the caller's scope",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "count_staff",
+      "module": "Users",
+      "operation": "GET",
+      "description": "How many STAFF accounts the school has, by role -- counting only staff (teachers, administrators, office, finance, library, hostel, health and so on), never parents, students or former students. Use for \"how many staff are there\", \"staff strength\", \"number of employees\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "includeInactive": {
+            "type": "boolean",
+            "description": "Count inactive staff accounts too (default: active only)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "users.read",
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "Profile (this school) grouped by role, excluding STUDENT, PARENT and ALUMNUS",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_what_needs_me_today",
+      "module": "Automations",
+      "operation": "GET",
+      "description": "What needs the caller today, for any role: tasks due or overdue, approvals waiting, class registers still to take, periods without cover, automation drafts to confirm, their own reminders due today, and for a parent each child's homework and fees, for a student homework due soon. Use for \"what needs me today\", \"what is on my plate\", \"what should I do today\", \"anything pending for me today\", \"my to-do for today\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "automations.service.whatNeedsMe()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "list_my_reminders",
+      "module": "Automations",
+      "operation": "GET",
+      "description": "The caller's own scheduled reminders and reports (set up in Ask AI or on the Automations page), each with when it runs next. Use for \"show my reminders\", \"what reminders do I have\", \"my scheduled reports\", \"list my automations\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "automations/personal.listMine()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "create_my_reminder",
+      "module": "Automations",
+      "operation": "CREATE",
+      "description": "Set up a personal reminder or a scheduled report for the caller only: \"remind me every Friday to submit lesson plans\", \"remind me tomorrow at 3 pm to call the transport office\", \"every morning send me the list of absent staff\". kind REMINDER (with text) or REPORT (with reportKey: ABSENT_STAFF, ABSENT_STUDENTS, UNMARKED_REGISTERS, PENDING_TASKS, PENDING_APPROVALS, TODAY_BRIEFING, OVERDUE_FEES, LIBRARY_OVERDUE — only ones the caller may see). Delivered in the app (and WhatsApp if they opted in; reports also by email). Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "REMINDER",
+              "REPORT"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "What to be reminded about"
+          },
+          "reportKey": {
+            "type": "string",
+            "enum": [
+              "ABSENT_STAFF",
+              "ABSENT_STUDENTS",
+              "UNMARKED_REGISTERS",
+              "PENDING_TASKS",
+              "PENDING_APPROVALS",
+              "TODAY_BRIEFING",
+              "OVERDUE_FEES",
+              "LIBRARY_OVERDUE"
+            ]
+          },
+          "frequency": {
+            "type": "string",
+            "enum": [
+              "ONCE",
+              "DAILY",
+              "WEEKDAYS",
+              "WEEKLY",
+              "MONTHLY"
+            ],
+            "description": "How often"
+          },
+          "weekdays": {
+            "type": "array",
+            "maxItems": 7,
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 6
+            },
+            "description": "WEEKLY: 0 Sunday ... 6 Saturday"
+          },
+          "dayOfMonth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 28,
+            "description": "MONTHLY: the day"
+          },
+          "onDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "ONCE: YYYY-MM-DD"
+          },
+          "hour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23,
+            "description": "Hour of day, 24h (default 9)"
+          },
+          "minute": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 59
+          }
+        },
+        "required": [
+          "frequency"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "automations/personal.createMine()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "stop_my_reminder",
+      "module": "Automations",
+      "operation": "UPDATE",
+      "description": "Stop one of the caller's own reminders or scheduled reports: by words (\"the Friday reminder\", \"lesson plan reminder\", \"the absent staff report\"), by its number in \"show my reminders\", or all of them. Use for \"stop the Friday reminder\", \"cancel my lesson plan reminder\", \"delete reminder 2\", \"stop all my reminders\". Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "match": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Words that identify it"
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "all": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "automations/personal.stopMine()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "list_school_automations",
+      "module": "Automations",
+      "operation": "GET",
+      "description": "The school's automations (register-not-marked nudges, homework and fee reminders, library overdue, principal briefing, cover suggestions, low-stock purchase drafts, admissions follow-ups, health follow-ups, weekly parent digest, birthday greetings): on or off, when each runs, who it reaches, a sample of its message, and the ones that were already automatic. Give key for one. Use for \"show the school automations\", \"which automations are on\", \"preview the fee reminder message\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "attendanceRegisterNudge",
+              "homeworkDueReminders",
+              "feeReminders",
+              "libraryOverdueDaily",
+              "principalDailyBriefing",
+              "staffCoverSuggestions",
+              "lowStockPurchaseDrafts",
+              "admissionsFollowupReminder",
+              "healthVisitFollowups",
+              "weeklyParentDigest",
+              "birthdayGreetings"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "settings.manage",
+      "anyOf": [
+        {
+          "key": "settings.manage",
+          "minScope": "ALL"
+        },
+        {
+          "key": "institution.manage",
+          "minScope": "ALL"
+        }
+      ],
+      "scope": "ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "automations.service.listAutomations()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "set_school_automation",
+      "module": "Automations",
+      "operation": "UPDATE",
+      "description": "Change one school automation: switch it on or off, the hour it runs (7 to 20; never in quiet hours), the weekday of a weekly one, or who it reaches. Use for \"turn on fee reminders\", \"switch off birthday greetings\", \"send the principal briefing at 8\", \"run the parent digest on Saturdays\". Confirmed on the website.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "attendanceRegisterNudge",
+              "homeworkDueReminders",
+              "feeReminders",
+              "libraryOverdueDaily",
+              "principalDailyBriefing",
+              "staffCoverSuggestions",
+              "lowStockPurchaseDrafts",
+              "admissionsFollowupReminder",
+              "healthVisitFollowups",
+              "weeklyParentDigest",
+              "birthdayGreetings"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "hour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23
+          },
+          "weekday": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 6
+          },
+          "audience": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+              "type": "string",
+              "maxLength": 20
+            }
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "settings.manage",
+      "anyOf": [
+        {
+          "key": "settings.manage",
+          "minScope": "ALL"
+        },
+        {
+          "key": "institution.manage",
+          "minScope": "ALL"
+        }
+      ],
+      "scope": "ALL",
+      "risk": "HIGH",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "automations.service.updateAutomation()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "run_school_automation_now",
+      "module": "Automations",
+      "operation": "ACTION",
+      "description": "Run one school automation now instead of at its scheduled time (the \"Run now\" button on the Automations page): it sends what it would send today to the people it reaches. Idempotent: anything already sent today is not sent again. Use for \"run the fee reminders now\", \"send the principal briefing right away\". Confirmed on the website.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "attendanceRegisterNudge",
+              "homeworkDueReminders",
+              "feeReminders",
+              "libraryOverdueDaily",
+              "principalDailyBriefing",
+              "staffCoverSuggestions",
+              "lowStockPurchaseDrafts",
+              "admissionsFollowupReminder",
+              "healthVisitFollowups",
+              "weeklyParentDigest",
+              "birthdayGreetings"
+            ]
+          }
+        },
+        "required": [
+          "key"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "settings.manage",
+      "anyOf": [
+        {
+          "key": "settings.manage",
+          "minScope": "ALL"
+        },
+        {
+          "key": "institution.manage",
+          "minScope": "ALL"
+        }
+      ],
+      "scope": "ALL",
+      "risk": "HIGH",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "automations.service.runNow()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "list_automation_drafts",
+      "module": "Automations",
+      "operation": "GET",
+      "description": "Drafts an automation prepared for the caller to check: cover suggestions for absent teachers, purchase requests for low stock. Nothing in them has been done. Use for \"show my automation drafts\", \"any drafts to confirm\", \"show the cover suggestions\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "automations.service.listDrafts()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "confirm_automation_draft",
+      "module": "Automations",
+      "operation": "ACTION",
+      "description": "Carry out one automation draft the caller owns: assign the suggested substitute for each period of a cover draft, or create the DRAFT purchase request of a low-stock draft (which still goes for approval). By its number in \"show my automation drafts\" (or the only one). Confirmed on the website.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "draftId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "automations.service.confirmDraft()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "dismiss_automation_draft",
+      "module": "Automations",
+      "operation": "UPDATE",
+      "description": "Set aside an automation draft without doing anything it suggested. By its number in \"show my automation drafts\" (or the only one). Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "draftId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "automations.service.dismissDraft()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_my_automation_optins",
+      "module": "Automations",
+      "operation": "GET",
+      "description": "The automations the caller can opt in to (a parent: the weekly digest; a student or parent: birthday greetings), whether they are opted in, and whether the school has each switched on. Use for \"show my automation opt-ins\", \"am I getting the weekly digest\", \"what have I opted in to\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "automations.service.myOptIns()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "set_my_automation_optin",
+      "module": "Automations",
+      "operation": "UPDATE",
+      "description": "Opt the caller in or out of an automation that needs their consent: weeklyParentDigest (a parent: one short summary per child each week) or birthdayGreetings (a student or parent: a birthday greeting in the app). Use for \"send me a weekly summary of my child\", \"turn on birthday greetings\", \"stop the weekly digest\". Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "enum": [
+              "weeklyParentDigest",
+              "birthdayGreetings"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "enabled"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "ai.copilot.use",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "automations.service.setMyOptIn()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "describe_import_formats",
+      "module": "Imports",
+      "operation": "GET",
+      "description": "What can be bulk-imported from a spreadsheet in Ask AI (attach a CSV or Excel file), and the columns each import needs: new students, staff, admission enquiries, classes, sections, subjects, class placements, fee invoices, hostel rooms and allocations, library books and issues, bus routes, stops and riders, attendance, exam marks -- only those this account may import. Use for \"what can I import\", \"bulk import formats\", \"what columns does the student sheet need\", \"how do I upload students in bulk\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "One import, e.g. \"students\", \"library books\", \"marks\""
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "users.manage",
+      "anyOf": [
+        {
+          "key": "users.manage",
+          "minScope": null
+        },
+        {
+          "key": "admissions.manage",
+          "minScope": null
+        },
+        {
+          "key": "academics.structure.manage",
+          "minScope": null
+        },
+        {
+          "key": "enrollments.manage",
+          "minScope": null
+        },
+        {
+          "key": "fees.manage",
+          "minScope": null
+        },
+        {
+          "key": "hostel.manage",
+          "minScope": null
+        },
+        {
+          "key": "library.manage",
+          "minScope": null
+        },
+        {
+          "key": "transport.manage",
+          "minScope": null
+        },
+        {
+          "key": "attendance.mark",
+          "minScope": null
+        },
+        {
+          "key": "marks.enter",
+          "minScope": null
+        }
+      ],
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "imports.service.describeFormats",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_import_template",
+      "module": "Imports",
+      "operation": "GET",
+      "description": "The sample sheet (template) for one bulk import, to fill in and upload in Ask AI: the column headers, an example row and a Notes sheet with what each column accepts. Excel (.xlsx) or CSV. Use for \"give me the template for students\", \"sample sheet for marks import\", \"download the library books format\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "Which import, e.g. \"students\", \"staff\", \"fee invoices\", \"attendance\", \"marks\", \"library books\""
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "xlsx",
+              "csv"
+            ],
+            "description": "Excel (default) or CSV"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "users.manage",
+      "anyOf": [
+        {
+          "key": "users.manage",
+          "minScope": null
+        },
+        {
+          "key": "admissions.manage",
+          "minScope": null
+        },
+        {
+          "key": "academics.structure.manage",
+          "minScope": null
+        },
+        {
+          "key": "enrollments.manage",
+          "minScope": null
+        },
+        {
+          "key": "fees.manage",
+          "minScope": null
+        },
+        {
+          "key": "hostel.manage",
+          "minScope": null
+        },
+        {
+          "key": "library.manage",
+          "minScope": null
+        },
+        {
+          "key": "transport.manage",
+          "minScope": null
+        },
+        {
+          "key": "attendance.mark",
+          "minScope": null
+        },
+        {
+          "key": "marks.enter",
+          "minScope": null
+        }
+      ],
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "imports.service.template",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "preview_import",
+      "module": "Imports",
+      "operation": "GET",
+      "description": "Checks an uploaded spreadsheet before importing it (writes nothing): works out where it goes from the request and the header row, matches the columns, and checks every row (missing values, wrong formats, unknown classes or students, duplicates), answering \"N rows ready, M with problems\" with each problem's row, column and fix. Use after a file is attached: \"upload this sheet of new students\", \"import marks from this file\", \"is this file in the right format?\". With no fileId, the latest file this person uploaded.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "The uploaded file (from the attach button)"
+          },
+          "target": {
+            "type": "string",
+            "enum": [
+              "students",
+              "staff",
+              "admission_enquiries",
+              "classes",
+              "sections",
+              "subjects",
+              "enrollments",
+              "fee_invoices",
+              "hostel_rooms",
+              "hostel_allocations",
+              "library_books",
+              "library_issues",
+              "transport_routes",
+              "transport_stops",
+              "transport_riders",
+              "attendance",
+              "marks"
+            ],
+            "description": "Where it goes, when the person said so"
+          },
+          "hint": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "What the person said about the file"
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The class the rows are for when the sheet has no class column, e.g. \"Class 6 A\""
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The date for an attendance sheet with no date column"
+          },
+          "exam": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The exam for a marks sheet with no exam column, e.g. \"Unit Test 1\""
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The subject for a marks sheet with no subject column"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "users.manage",
+      "anyOf": [
+        {
+          "key": "users.manage",
+          "minScope": null
+        },
+        {
+          "key": "admissions.manage",
+          "minScope": null
+        },
+        {
+          "key": "academics.structure.manage",
+          "minScope": null
+        },
+        {
+          "key": "enrollments.manage",
+          "minScope": null
+        },
+        {
+          "key": "fees.manage",
+          "minScope": null
+        },
+        {
+          "key": "hostel.manage",
+          "minScope": null
+        },
+        {
+          "key": "library.manage",
+          "minScope": null
+        },
+        {
+          "key": "transport.manage",
+          "minScope": null
+        },
+        {
+          "key": "attendance.mark",
+          "minScope": null
+        },
+        {
+          "key": "marks.enter",
+          "minScope": null
+        }
+      ],
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "imports.service.previewImport",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "run_import",
+      "module": "Imports",
+      "operation": "CREATE",
+      "description": "Imports a checked spreadsheet into its target (students, staff, enquiries, classes, fees, hostel, library, transport, attendance, marks) through that module's own bulk import, after the person confirms on the website. Idempotent: the same file is never imported twice, and rows already imported are skipped. With validOnly, imports the rows without problems and leaves the rest for the error report. Use after preview_import, for \"import it\", \"go ahead and import\", \"import only the valid rows\".",
+      "input": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "The checked file; defaults to the latest one previewed"
+          },
+          "target": {
+            "type": "string",
+            "enum": [
+              "students",
+              "staff",
+              "admission_enquiries",
+              "classes",
+              "sections",
+              "subjects",
+              "enrollments",
+              "fee_invoices",
+              "hostel_rooms",
+              "hostel_allocations",
+              "library_books",
+              "library_issues",
+              "transport_routes",
+              "transport_stops",
+              "transport_riders",
+              "attendance",
+              "marks"
+            ],
+            "description": "Where it goes (defaults to what the preview settled on)"
+          },
+          "validOnly": {
+            "type": "boolean",
+            "description": "Import only the rows without problems"
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The class the rows are for when the sheet has no class column, e.g. \"Class 6 A\""
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "The date for an attendance sheet with no date column"
+          },
+          "exam": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The exam for a marks sheet with no exam column, e.g. \"Unit Test 1\""
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The subject for a marks sheet with no subject column"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "users.manage",
+      "anyOf": [
+        {
+          "key": "users.manage",
+          "minScope": null
+        },
+        {
+          "key": "admissions.manage",
+          "minScope": null
+        },
+        {
+          "key": "academics.structure.manage",
+          "minScope": null
+        },
+        {
+          "key": "enrollments.manage",
+          "minScope": null
+        },
+        {
+          "key": "fees.manage",
+          "minScope": null
+        },
+        {
+          "key": "hostel.manage",
+          "minScope": null
+        },
+        {
+          "key": "library.manage",
+          "minScope": null
+        },
+        {
+          "key": "transport.manage",
+          "minScope": null
+        },
+        {
+          "key": "attendance.mark",
+          "minScope": null
+        },
+        {
+          "key": "marks.enter",
+          "minScope": null
+        }
+      ],
+      "scope": "OWN or ALL",
+      "risk": "HIGH",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "imports.service.runImport",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_import_result",
+      "module": "Imports",
+      "operation": "GET",
+      "description": "How a bulk import went: rows imported, left out and refused, with the problems -- the latest import this person ran (or checked), or one file. Use for \"did my import work\", \"how did the upload go\", \"show the import result\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$",
+            "description": "The file; defaults to the latest one"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "users.manage",
+      "anyOf": [
+        {
+          "key": "users.manage",
+          "minScope": null
+        },
+        {
+          "key": "admissions.manage",
+          "minScope": null
+        },
+        {
+          "key": "academics.structure.manage",
+          "minScope": null
+        },
+        {
+          "key": "enrollments.manage",
+          "minScope": null
+        },
+        {
+          "key": "fees.manage",
+          "minScope": null
+        },
+        {
+          "key": "hostel.manage",
+          "minScope": null
+        },
+        {
+          "key": "library.manage",
+          "minScope": null
+        },
+        {
+          "key": "transport.manage",
+          "minScope": null
+        },
+        {
+          "key": "attendance.mark",
+          "minScope": null
+        },
+        {
+          "key": "marks.enter",
+          "minScope": null
+        }
+      ],
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "imports.service.getResult",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
     }
   ],
   "roleMatrix": [
@@ -48061,13 +49087,13 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 1015,
-      "GET": 463,
-      "CREATE": 179,
-      "UPDATE": 147,
-      "ACTION": 190,
+      "total": 1035,
+      "GET": 475,
+      "CREATE": 181,
+      "UPDATE": 151,
+      "ACTION": 192,
       "DELETE": 36,
-      "highRiskActions": 118,
+      "highRiskActions": 121,
       "highRiskActionNames": [
         "add_guardian",
         "update_enrollment_status",
@@ -48186,9 +49212,12 @@
         "set_admission_capacity",
         "update_offline_campaign",
         "record_offline_campaign_decision",
-        "send_quarterly_report"
+        "send_quarterly_report",
+        "set_school_automation",
+        "run_school_automation_now",
+        "run_import"
       ],
-      "confirmationRequired": 552,
+      "confirmationRequired": 560,
       "names": [
         "search_students",
         "get_student",
@@ -49204,19 +50233,39 @@
         "get_campus_live_detail",
         "get_facility_detail",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "get_student_performance",
+        "get_enrolment_details",
+        "count_staff",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_school_automations",
+        "set_school_automation",
+        "run_school_automation_now",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin",
+        "describe_import_formats",
+        "get_import_template",
+        "preview_import",
+        "run_import",
+        "get_import_result"
       ]
     },
     {
       "role": "PRINCIPAL",
       "custom": false,
-      "total": 666,
-      "GET": 374,
-      "CREATE": 86,
-      "UPDATE": 73,
-      "ACTION": 115,
+      "total": 686,
+      "GET": 386,
+      "CREATE": 88,
+      "UPDATE": 77,
+      "ACTION": 117,
       "DELETE": 18,
-      "highRiskActions": 64,
+      "highRiskActions": 67,
       "highRiskActionNames": [
         "transition_fee_plan",
         "create_announcement",
@@ -49281,9 +50330,12 @@
         "transition_newsletter_edition",
         "record_marketing_asset_decision",
         "record_offline_campaign_decision",
-        "send_quarterly_report"
+        "send_quarterly_report",
+        "set_school_automation",
+        "run_school_automation_now",
+        "run_import"
       ],
-      "confirmationRequired": 292,
+      "confirmationRequired": 300,
       "names": [
         "search_students",
         "get_student",
@@ -49950,19 +51002,39 @@
         "get_campus_live_detail",
         "get_facility_detail",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "get_student_performance",
+        "get_enrolment_details",
+        "count_staff",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_school_automations",
+        "set_school_automation",
+        "run_school_automation_now",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin",
+        "describe_import_formats",
+        "get_import_template",
+        "preview_import",
+        "run_import",
+        "get_import_result"
       ]
     },
     {
       "role": "TEACHER",
       "custom": false,
-      "total": 439,
-      "GET": 230,
-      "CREATE": 60,
-      "UPDATE": 49,
-      "ACTION": 82,
+      "total": 455,
+      "GET": 240,
+      "CREATE": 62,
+      "UPDATE": 52,
+      "ACTION": 83,
       "DELETE": 18,
-      "highRiskActions": 22,
+      "highRiskActions": 23,
       "highRiskActionNames": [
         "mark_attendance",
         "bulk_mark_attendance",
@@ -49985,9 +51057,10 @@
         "moderate_newsroom_comment",
         "record_circle_join_decision",
         "record_mentoring_request_decision",
-        "moderate_newsletter_comment"
+        "moderate_newsletter_comment",
+        "run_import"
       ],
-      "confirmationRequired": 209,
+      "confirmationRequired": 215,
       "names": [
         "search_students",
         "get_student",
@@ -50427,17 +51500,33 @@
         "get_campus_live_detail",
         "get_facility_detail",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "get_student_performance",
+        "get_enrolment_details",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin",
+        "describe_import_formats",
+        "get_import_template",
+        "preview_import",
+        "run_import",
+        "get_import_result"
       ]
     },
     {
       "role": "PARENT",
       "custom": false,
-      "total": 247,
-      "GET": 180,
-      "CREATE": 21,
-      "UPDATE": 12,
-      "ACTION": 24,
+      "total": 258,
+      "GET": 186,
+      "CREATE": 22,
+      "UPDATE": 15,
+      "ACTION": 25,
       "DELETE": 10,
       "highRiskActions": 10,
       "highRiskActionNames": [
@@ -50452,7 +51541,7 @@
         "record_medication_consent_decision",
         "record_care_note_sharing_decision"
       ],
-      "confirmationRequired": 67,
+      "confirmationRequired": 72,
       "names": [
         "search_students",
         "get_student",
@@ -50700,17 +51789,28 @@
         "get_campus_live_detail",
         "get_facility_detail",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "get_student_performance",
+        "get_enrolment_details",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin"
       ]
     },
     {
       "role": "STUDENT",
       "custom": false,
-      "total": 235,
-      "GET": 169,
-      "CREATE": 22,
-      "UPDATE": 11,
-      "ACTION": 24,
+      "total": 246,
+      "GET": 175,
+      "CREATE": 23,
+      "UPDATE": 14,
+      "ACTION": 25,
       "DELETE": 9,
       "highRiskActions": 5,
       "highRiskActionNames": [
@@ -50720,7 +51820,7 @@
         "record_circle_join_decision",
         "record_mentoring_request_decision"
       ],
-      "confirmationRequired": 66,
+      "confirmationRequired": 71,
       "names": [
         "search_students",
         "get_student",
@@ -50956,19 +52056,30 @@
         "get_campus_live_detail",
         "get_facility_detail",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "get_student_performance",
+        "get_enrolment_details",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin"
       ]
     },
     {
       "role": "FINANCE",
       "custom": false,
-      "total": 276,
-      "GET": 159,
-      "CREATE": 39,
-      "UPDATE": 26,
-      "ACTION": 45,
+      "total": 291,
+      "GET": 168,
+      "CREATE": 41,
+      "UPDATE": 29,
+      "ACTION": 46,
       "DELETE": 7,
-      "highRiskActions": 31,
+      "highRiskActions": 32,
       "highRiskActionNames": [
         "create_invoice",
         "generate_invoices",
@@ -51000,9 +52111,10 @@
         "moderate_newsroom_comment",
         "record_circle_join_decision",
         "record_mentoring_request_decision",
-        "moderate_newsletter_comment"
+        "moderate_newsletter_comment",
+        "run_import"
       ],
-      "confirmationRequired": 117,
+      "confirmationRequired": 123,
       "names": [
         "search_students",
         "get_student",
@@ -51279,19 +52391,34 @@
         "get_campus_live_detail",
         "get_facility_detail",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "get_enrolment_details",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin",
+        "describe_import_formats",
+        "get_import_template",
+        "preview_import",
+        "run_import",
+        "get_import_result"
       ]
     },
     {
       "role": "LIBRARIAN",
       "custom": false,
-      "total": 214,
-      "GET": 126,
-      "CREATE": 25,
-      "UPDATE": 19,
-      "ACTION": 37,
+      "total": 229,
+      "GET": 135,
+      "CREATE": 27,
+      "UPDATE": 22,
+      "ACTION": 38,
       "DELETE": 7,
-      "highRiskActions": 9,
+      "highRiskActions": 10,
       "highRiskActionNames": [
         "delete_book",
         "set_purchase_quotes",
@@ -51301,9 +52428,10 @@
         "moderate_newsroom_comment",
         "record_circle_join_decision",
         "record_mentoring_request_decision",
-        "moderate_newsletter_comment"
+        "moderate_newsletter_comment",
+        "run_import"
       ],
-      "confirmationRequired": 88,
+      "confirmationRequired": 94,
       "names": [
         "search_students",
         "get_student",
@@ -51518,19 +52646,34 @@
         "get_campus_live_detail",
         "get_facility_detail",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "get_enrolment_details",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin",
+        "describe_import_formats",
+        "get_import_template",
+        "preview_import",
+        "run_import",
+        "get_import_result"
       ]
     },
     {
       "role": "WARDEN",
       "custom": false,
-      "total": 223,
-      "GET": 131,
-      "CREATE": 26,
-      "UPDATE": 24,
-      "ACTION": 37,
+      "total": 238,
+      "GET": 140,
+      "CREATE": 28,
+      "UPDATE": 27,
+      "ACTION": 38,
       "DELETE": 5,
-      "highRiskActions": 10,
+      "highRiskActions": 11,
       "highRiskActionNames": [
         "record_outpass_decision",
         "set_purchase_quotes",
@@ -51541,9 +52684,10 @@
         "moderate_newsroom_comment",
         "record_circle_join_decision",
         "record_mentoring_request_decision",
-        "moderate_newsletter_comment"
+        "moderate_newsletter_comment",
+        "run_import"
       ],
-      "confirmationRequired": 92,
+      "confirmationRequired": 98,
       "names": [
         "search_students",
         "get_student",
@@ -51767,17 +52911,32 @@
         "get_campus_live_detail",
         "get_facility_detail",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "get_enrolment_details",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin",
+        "describe_import_formats",
+        "get_import_template",
+        "preview_import",
+        "run_import",
+        "get_import_result"
       ]
     },
     {
       "role": "NURSE",
       "custom": false,
-      "total": 167,
-      "GET": 100,
-      "CREATE": 22,
-      "UPDATE": 14,
-      "ACTION": 26,
+      "total": 177,
+      "GET": 105,
+      "CREATE": 23,
+      "UPDATE": 17,
+      "ACTION": 27,
       "DELETE": 5,
       "highRiskActions": 10,
       "highRiskActionNames": [
@@ -51792,7 +52951,7 @@
         "update_health_room_settings",
         "cancel_medication_plan"
       ],
-      "confirmationRequired": 67,
+      "confirmationRequired": 72,
       "names": [
         "search_students",
         "get_student",
@@ -51960,17 +53119,27 @@
         "get_campus_live_detail",
         "get_facility_detail",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "get_enrolment_details",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin"
       ]
     },
     {
       "role": "HR",
       "custom": false,
-      "total": 271,
-      "GET": 148,
-      "CREATE": 37,
-      "UPDATE": 29,
-      "ACTION": 49,
+      "total": 281,
+      "GET": 153,
+      "CREATE": 38,
+      "UPDATE": 32,
+      "ACTION": 50,
       "DELETE": 8,
       "highRiskActions": 26,
       "highRiskActionNames": [
@@ -52001,7 +53170,7 @@
         "move_to_alumni",
         "moderate_newsletter_comment"
       ],
-      "confirmationRequired": 123,
+      "confirmationRequired": 128,
       "names": [
         "get_announcements",
         "get_calendar_events",
@@ -52273,19 +53442,29 @@
         "get_campus_live_detail",
         "get_facility_detail",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "count_staff",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin"
       ]
     },
     {
       "role": "MARKETING",
       "custom": false,
-      "total": 250,
-      "GET": 143,
-      "CREATE": 31,
-      "UPDATE": 28,
-      "ACTION": 42,
+      "total": 264,
+      "GET": 151,
+      "CREATE": 33,
+      "UPDATE": 31,
+      "ACTION": 43,
       "DELETE": 6,
-      "highRiskActions": 20,
+      "highRiskActions": 21,
       "highRiskActionNames": [
         "update_admission_lead",
         "send_social_post",
@@ -52306,9 +53485,10 @@
         "record_marketing_asset_decision",
         "set_admission_capacity",
         "update_offline_campaign",
-        "record_offline_campaign_decision"
+        "record_offline_campaign_decision",
+        "run_import"
       ],
-      "confirmationRequired": 107,
+      "confirmationRequired": 113,
       "names": [
         "list_classes",
         "list_subjects",
@@ -52559,17 +53739,31 @@
         "get_campus_live_detail",
         "get_facility_detail",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin",
+        "describe_import_formats",
+        "get_import_template",
+        "preview_import",
+        "run_import",
+        "get_import_result"
       ]
     },
     {
       "role": "COMPLIANCE",
       "custom": false,
-      "total": 304,
-      "GET": 171,
-      "CREATE": 47,
-      "UPDATE": 31,
-      "ACTION": 49,
+      "total": 314,
+      "GET": 176,
+      "CREATE": 48,
+      "UPDATE": 34,
+      "ACTION": 50,
       "DELETE": 6,
       "highRiskActions": 19,
       "highRiskActionNames": [
@@ -52593,7 +53787,7 @@
         "record_mentoring_request_decision",
         "moderate_newsletter_comment"
       ],
-      "confirmationRequired": 133,
+      "confirmationRequired": 138,
       "names": [
         "get_announcements",
         "get_calendar_events",
@@ -52898,17 +54092,27 @@
         "get_campus_live_detail",
         "get_facility_detail",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "count_staff",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin"
       ]
     },
     {
       "role": "TRUSTEE",
       "custom": false,
-      "total": 152,
-      "GET": 105,
-      "CREATE": 10,
-      "UPDATE": 12,
-      "ACTION": 22,
+      "total": 161,
+      "GET": 109,
+      "CREATE": 11,
+      "UPDATE": 15,
+      "ACTION": 23,
       "DELETE": 3,
       "highRiskActions": 8,
       "highRiskActionNames": [
@@ -52921,7 +54125,7 @@
         "record_mentoring_request_decision",
         "moderate_newsletter_comment"
       ],
-      "confirmationRequired": 47,
+      "confirmationRequired": 52,
       "names": [
         "get_announcements",
         "get_calendar_events",
@@ -53074,17 +54278,26 @@
         "get_campus_live_detail",
         "get_facility_detail",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin"
       ]
     },
     {
       "role": "ALUMNUS",
       "custom": false,
-      "total": 125,
-      "GET": 79,
-      "CREATE": 13,
-      "UPDATE": 12,
-      "ACTION": 19,
+      "total": 134,
+      "GET": 83,
+      "CREATE": 14,
+      "UPDATE": 15,
+      "ACTION": 20,
       "DELETE": 2,
       "highRiskActions": 4,
       "highRiskActionNames": [
@@ -53093,7 +54306,7 @@
         "record_circle_join_decision",
         "record_mentoring_request_decision"
       ],
-      "confirmationRequired": 46,
+      "confirmationRequired": 51,
       "names": [
         "get_transport_roster",
         "list_notifications",
@@ -53219,21 +54432,30 @@
         "get_campus_live_detail",
         "get_facility_detail",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin"
       ]
     },
     {
       "role": "COUNSELLOR (custom, example)",
       "custom": true,
-      "total": 46,
-      "GET": 39,
-      "CREATE": 1,
-      "UPDATE": 2,
-      "ACTION": 3,
+      "total": 56,
+      "GET": 44,
+      "CREATE": 2,
+      "UPDATE": 5,
+      "ACTION": 4,
       "DELETE": 1,
       "highRiskActions": 0,
       "highRiskActionNames": [],
-      "confirmationRequired": 7,
+      "confirmationRequired": 12,
       "names": [
         "search_students",
         "get_student",
@@ -53280,7 +54502,17 @@
         "dismiss_unread_notifications",
         "get_my_ai_credits",
         "get_role_dashboard",
-        "search_everything"
+        "search_everything",
+        "get_enrolment_details",
+        "get_what_needs_me_today",
+        "list_my_reminders",
+        "create_my_reminder",
+        "stop_my_reminder",
+        "list_automation_drafts",
+        "confirm_automation_draft",
+        "dismiss_automation_draft",
+        "get_my_automation_optins",
+        "set_my_automation_optin"
       ]
     }
   ],

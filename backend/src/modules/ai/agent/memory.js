@@ -133,6 +133,32 @@ export function studentsIn(data) {
   return out.slice(0, MAX_STUDENTS);
 }
 
+const CLASS_LABEL = /^(?:class|grade)\s+\d{1,2}(?:\s*-?\s*[A-Z])?$/i;
+
+/**
+ * The classes an answer listed, in its order, by label ("Class 10 B"): from
+ * ranked rows first, then any row carrying a class label. From the tool's own
+ * data, never from the prose.
+ */
+export function classesIn(data) {
+  const out = [];
+  const add = (v) => {
+    const label = String(v ?? '').replace(/\s+-\s+/, ' ').trim();
+    if (CLASS_LABEL.test(label) && !out.includes(label)) out.push(label);
+  };
+  const single = Array.isArray(data) ? null : data;
+  const rows = Array.isArray(single?.ranked) ? single.ranked : null;
+  const visit = (value, depth = 0) => {
+    if (!value || depth > 3 || out.length >= 20) return;
+    if (Array.isArray(value)) { value.forEach((v) => visit(v, depth + 1)); return; }
+    if (typeof value !== 'object') return;
+    for (const k of ['class', 'className', 'label', 'section']) if (typeof value[k] === 'string') add(value[k]);
+    for (const v of Object.values(value)) if (v && typeof v === 'object') visit(v, depth + 1);
+  };
+  if (rows) visit(rows); else visit(data);
+  return out;
+}
+
 /** What this turn leaves the conversation about. */
 function contextAfter(previous, result) {
   const next = { ...(previous ?? {}) };
@@ -142,7 +168,19 @@ function contextAfter(previous, result) {
     next.lastRead = { tool: lastRead.tool, args: lastRead.args ?? {} };
     const students = studentsIn(result.data);
     next.students = students;
+    // p7: the classes the answer listed, in its order ("show ITS students"
+    // after "which class has the lowest attendance" is the first of them).
+    next.classes = classesIn(result.data);
   }
+  // p7: the answer-validation verdict of the last answer, with the provenance of
+  // each figure and name it stated (agent/verify.js) -- kept with the
+  // conversation, so what an answer was based on can be shown later.
+  // (Never for a restricted answer, whose text is not kept either.)
+  if (result?.verification && !touchesRestricted(result)) {
+    next.verification = { ...result.verification, provenance: (result.provenance ?? []).slice(0, 40), at: new Date().toISOString() };
+  }
+  // p7: drafts of a multi-part message still to be proposed, one at a time ("next").
+  if (Array.isArray(result?.queuedWrites)) next.queuedWrites = result.queuedWrites.slice(0, 10);
   // A write the tool could not prepare yet and asked about: finished by the next answer.
   const intended = result?.needsInput && result?.intendedTool && getMcpTool(result.intendedTool)?.operation !== 'GET'
     ? result.intendedTool : null;

@@ -1060,6 +1060,16 @@ const CONTENT: Record<string, OpsContent> = {
     ],
     steps: ['Press Log hours after a training.', 'Choose external or in-house and the NPST area, add the hours and a certificate link.', 'Check Still to do this year for what is short.'],
   },
+  automations: {
+    category: 'Command Centre',
+    summary: 'The routine work the school runs for you: what needs you today, drafts an automation prepared for you to confirm, your own reminders and reports, and the school\'s automations.',
+    highlights: [
+      { label: 'You confirm', text: 'Cover suggestions and purchase requests arrive as drafts. Nothing is assigned or ordered until you press Confirm.' },
+      { label: 'Ask AI does it too', text: 'Say "remind me every Friday to submit lesson plans", "every morning send me the list of absent staff", "show my reminders" or "stop the Friday reminder".' },
+      { label: 'Quiet and consented', text: 'Nothing is sent between 21:00 and 07:00. WhatsApp goes only to people who opted in; without a provider, messages are marked Simulated and still appear in the app.' },
+    ],
+    steps: ['Check What needs you today and the drafts.', 'Add a reminder or a report, or ask Ask AI to set one up.', 'If you manage school settings, switch each automation on or off, choose its hour and who it reaches, and read the message preview.'],
+  },
 };
 
 const PAGES = opsRoutes.pages as Record<string, { title: string; icon: string; hidden?: boolean }>;

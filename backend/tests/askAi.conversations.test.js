@@ -198,6 +198,8 @@ function judge(turn, out, calls, scenario, ctx) {
   for (const name of scenario.forbid ?? []) if (out.reply.includes(name)) problems.push(`mentions ${name}, outside this person's scope`);
   for (const leak of INTERNAL_LEAKS) if (leak.test(out.reply)) problems.push(`leaks internals (${leak.source})`);
   if (out.status >= 500) problems.push(`HTTP ${out.status}`);
+  // p7: the answer-validation layer traced every figure, name and claimed action (agent/verify.js).
+  if (out.data?.verification?.ok === false) problems.push(`answer validation could not trace ${out.data.verification.unsupported.join(', ')}`);
   problems.push(...ungrounded(out.reply, {
     data: out.data?.data,
     // What the turn's tools were ASKED for (the day "tomorrow" became, a class) is grounded too:

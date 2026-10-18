@@ -144,7 +144,11 @@ describe('a student asking for one month, end to end', () => {
     expect(res.status).toBe(200);
     expect(res.reply).not.toMatch(/I need a bit more|not in the expected format/);
     const call = await lastCall();
-    expect(call).toMatchObject({ tool: 'get_student_attendance', status: 'READ' });
+    // Since part 7 the language layer corrects "attendence" before routing, so
+    // the rules answer it exactly as they answer the correctly spelt question
+    // above; with the layer off (ASSISTANT_LANGUAGE_LAYER=off) the model does.
+    expect(call.status).toBe('READ');
+    expect(call.tool).toMatch(/^get_(?:student_)?attendance$/);
     expect(call.args.month).toMatch(/^\d{4}-07$/);
   });
 

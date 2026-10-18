@@ -10,8 +10,11 @@
  * showing one that does nothing.
  *
  * Note this covers the *web* surface only. WhatsApp voice notes arrive as
- * audio files on the webhook and cannot use a browser API; transcribing those
- * needs a server-side STT provider and is not built.
+ * audio files on the webhook and cannot use a browser API; they are
+ * transcribed server-side by the speech adapter (backend ai/speech/stt.js:
+ * OpenAI Whisper or Google Speech-to-Text, when the school configures a key).
+ *
+ * Replies can also be read aloud (SpeechSynthesis), in the same language.
  */
 
 export interface SpeechLanguage {
@@ -135,4 +138,52 @@ export function startDictation(languageCode: string, handlers: DictationHandlers
   }
 
   return () => recogniser.stop();
+}
+
+/* ── Read-aloud (SpeechSynthesis) ───────────────────────────────────────── */
+
+export function isSynthesisSupported(): boolean {
+  return typeof window !== 'undefined' && 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function';
+}
+
+/** Markdown to plain speakable text: no asterisks, pipes or link targets read out. */
+export function speakableText(markdown: string): string {
+  return String(markdown ?? '')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[*_`#>|]+/g, ' ')
+    .replace(/^\s*[-–]\s+/gm, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+    .slice(0, 4000);
+}
+
+/** Reads text aloud in the given BCP-47 language (en-IN, hi-IN …). Returns false when unsupported. */
+export function speak(text: string, languageCode: string): boolean {
+  if (!isSynthesisSupported()) return false;
+  const words = speakableText(text);
+  if (!words) return false;
+  try {
+    window.speechSynthesis.cancel();
+    const u = new window.SpeechSynthesisUtterance(words);
+    u.lang = languageCode;
+    // A voice for the language when the device has one; otherwise the default voice reads it.
+    const voice = window.speechSynthesis.getVoices().find((v) => v.lang?.toLowerCase().startsWith(languageCode.slice(0, 2).toLowerCase()));
+    if (voice) u.voice = voice;
+    window.speechSynthesis.speak(u);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function stopSpeaking(): void {
+  if (isSynthesisSupported()) {
+    try { window.speechSynthesis.cancel(); } catch { /* nothing to stop */ }
+  }
+}
+
+/** The offered language for a backend language code ("hi" -> हिन्दी / hi-IN), or null. */
+export function speechLanguageFor(lang?: string | null): SpeechLanguage | null {
+  return SPEECH_LANGUAGES.find((l) => l.lang === lang) ?? null;
 }

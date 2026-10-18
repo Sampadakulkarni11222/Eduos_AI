@@ -1698,3 +1698,32 @@ body.role-nurse{--accent:#1f5a52;--accent-2:#2c7368;--sidebar-text:#DDEEEA;--sid
   .fam-label { font-size: 12px; }
   .fee-tax-totals span { font-size: 12px; }
 }
+
+/* ── Part 7: automations (automations-view.tsx) and assistant next-step chips ── */
+.automation-cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.automation-card { border: 1px solid var(--border, #e5e7eb); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; min-width: 0; }
+.automation-card-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.automation-card-head > div { min-width: 0; }
+.automation-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; color: var(--muted, #6b7280); }
+.automation-preview { margin: 0; padding: 8px 12px; border-left: 3px solid var(--accent, #4f46e5); background: var(--surface-2, rgba(79, 70, 229, 0.06)); border-radius: 6px; font-size: 13px; overflow-wrap: anywhere; }
+.automation-controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.automation-inline { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.automation-inline select.input { width: auto; min-height: 36px; }
+.automation-switch { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; cursor: pointer; }
+.automation-switch input { width: 18px; height: 18px; }
+.automation-audience { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; }
+.automation-audience legend { font-size: 12px; color: var(--muted, #6b7280); margin-right: 6px; float: left; }
+.automation-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.automation-draft-lines { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.automation-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 12px; align-items: end; margin-top: 12px; }
+.automation-form .input { width: 100%; }
+.ai-next-steps { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.ai-next-step { border: 1px solid var(--accent, #4f46e5); color: var(--accent, #4f46e5); background: transparent; border-radius: 999px; padding: 4px 10px; font-size: 12px; cursor: pointer; min-height: 32px; }
+.ai-next-step:hover, .ai-next-step:focus-visible { background: var(--accent, #4f46e5); color: #fff; }
+.ai-next-step:disabled { opacity: 0.5; cursor: default; }
+@media (max-width: 480px) {
+  .automation-card-head { flex-direction: column; }
+  .automation-controls { flex-direction: column; align-items: stretch; }
+  .automation-inline select.input { width: 100%; }
+  .ai-next-step { min-height: 40px; }
+}

@@ -12,7 +12,10 @@ import {
 import { detectLanguage, t } from '../../../utils/language.js';
 import { currentTenantId } from '../../../tenancy/tenantContext.js';
 import { handleRagFallback } from './rag.js';
-import { composeAnswer, answerIsModelWritten } from './response.js';
+import { composeAnswer, answerIsModelWritten, joinResults } from './response.js';
+import { applyVerification } from './verify.js';
+import { planAsks, runMultiAsk, NEXT_DRAFT } from './multiAsk.js';
+import { classFollowUp } from './p7FollowUps.js';
 import { evidenceFor } from './evidence.js';
 import { presentOf } from './present.js';
 import { withMcpSession, listTools as listMcpTools, callTool as callMcpTool } from '../mcp/client.js';
@@ -32,9 +35,13 @@ import { asksSchoolWideFees, asksLeaveWithoutPermission, staffLeaveStep, staffLe
 import { impossibleDatesIn } from '../../../utils/naturalDates.js';
 import { entitiesFor, entitiesInTextByPosition } from '../mcp/capabilities.js';
 import { decisionAskedFor, humanDecisionReply, approverMayRecord } from '../mcp/decisions.js';
+import { prepareTurn, languageLayerOff } from './language/prepare.js';
+import { localiseResult, label as replyLabel } from './language/replies.js';
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { env } from '../../../config/env.js';
+import { automationTurn, withNextSteps } from './p7Automation.js';
+import { importTurn } from './importTurn.js';
 
 /* ── Continuing a long answer ────────────────────────────────
    A tool answers a very long list a window at a time (mcp/tools/_shared.js).
@@ -599,7 +606,7 @@ export async function runAgentSafely(opts) {
  *   earlier in a thread can widen what this one may do. Empty by default, so
  *   callers that pass none (the web assistant) behave exactly as before.
  */
-export async function runAgent({ message, actor, source = 'WEB', lang, history = [], conversationId = null } = {}) {
+export async function runAgent({ message, actor, source = 'WEB', lang, history = [], conversationId = null, attachment = null, heard = false } = {}) {
   if (!actor?.profileId) throw new AppError('Select a profile first', 403);
   // The conversation, from the server's memory (agent/memory.js): the website
   // sends the id it was given, WhatsApp its session. On both channels the
@@ -612,7 +619,8 @@ export async function runAgent({ message, actor, source = 'WEB', lang, history =
   const transcript = historyFrom(memory, history);
   let result;
   try {
-    result = await runAgentTurn({ message, actor, source, lang, history: transcript, memory });
+    // p7: every final answer passes the answer-validation layer (agent/verify.js).
+    result = applyVerification(await runAgentTurn({ message, actor, source, lang, history: transcript, memory, attachment, heard }), { message });
   } catch (err) {
     // A refusal is still a turn of the conversation ("Class 9 B is not one of
     // your classes" is what "and 9 B?" must follow on from).
@@ -620,11 +628,42 @@ export async function runAgent({ message, actor, source = 'WEB', lang, history =
     throw err;
   }
   await rememberTurn({ actor, source, conversationId: memory.conversationId, message, result });
-  return { ...result, conversationId: memory.conversationId };
+  // p7: "suggested next steps" chips that fit the answer, only for capabilities this person holds.
+  return { ...withNextSteps(result, actor, mcpToolsFor(actor).map((tool) => tool.name)), conversationId: memory.conversationId };
 }
 
-/** One turn, with the conversation already loaded. */
-async function runAgentTurn({ message, actor, source = 'WEB', lang: langOverride, history = [], memory = { turns: [], context: {} } } = {}) {
+/**
+ * One turn, with the conversation already loaded.
+ *
+ * p7 (language): the request is first read in English -- an Indian language
+ * from the curated lexicon or, with an AI key, the model; spelling corrected
+ * where that is unambiguous -- and the reply language settled, before anything
+ * routes, so every tool benefits (agent/language/prepare.js). The memory still
+ * keeps the person's own words (runAgent remembers `message`). A misspelling
+ * that could be two words is asked about, never guessed. The answer is then
+ * given in the person's language (agent/language/replies.js).
+ */
+async function runAgentTurn(opts = {}) {
+  const { message, actor, lang: langOverride, heard = false } = opts;
+  if (detectInjection(message).detected || languageLayerOff()) return runAgentTurnCore(opts);
+  const prepared = await prepareTurn(message, { actor, override: langOverride ?? null, heard, history: opts.history ?? [] });
+  // (Not with a sheet attached: the sheet is checked whatever its caption says -- p7 bulk import.)
+  if (prepared.clarify && !opts.attachment) {
+    checkAgentRate(actor.profileId);
+    return { reply: prepared.clarify, lang: prepared.lang, action: null, clarification: true, understood: { from: prepared.original, text: prepared.text } };
+  }
+  const result = await runAgentTurnCore({ ...opts, message: prepared.text, lang: prepared.lang });
+  const localised = prepared.romanised ? result : await localiseResult(result, prepared);
+  // Spoken on the website: what was heard is shown back with the answer (and
+  // above any draft, which still needs the Confirm button). WhatsApp adds it
+  // itself (whatsapp.agent.js converse), around its own YES/NO wording.
+  if (heard && opts.source !== 'WHATSAPP' && localised?.reply) {
+    return { ...localised, heard: prepared.original, reply: `_${replyLabel(prepared.lang, 'heard')}: “${prepared.original}”_\n\n${localised.reply}` };
+  }
+  return localised;
+}
+
+async function runAgentTurnCore({ message, actor, source = 'WEB', lang: langOverride, history = [], memory = { turns: [], context: {} }, attachment = null } = {}) {
 
   // An explicit language (from the voice picker or a UI preference) wins over
   // detection — a user who has chosen Hindi should not be flipped back to
@@ -685,7 +724,9 @@ async function runAgentTurn({ message, actor, source = 'WEB', lang: langOverride
   // "Show more": the next window of the last long list -- through the same
   // signed continuation the website's "Load more" button redeems -- or, when
   // the last answer was already complete, an honest "that was everything".
-  if (isMoreRequest(message)) {
+  // (Not "next" while drafts of a multi-part message are queued: that is the next draft -- p7.)
+  const draftsQueued = Array.isArray(memory?.context?.queuedWrites) && memory.context.queuedWrites.length > 0 && NEXT_DRAFT.test(String(message ?? ''));
+  if (!draftsQueued && isMoreRequest(message)) {
     const token = memory?.context?.continuation;
     if (token) {
       try {
@@ -709,7 +750,8 @@ async function runAgentTurn({ message, actor, source = 'WEB', lang: langOverride
   // never land on something proposed elsewhere or long ago. Confirming goes
   // through confirmAction, the website button's own path; a change is proposed
   // again through the MCP tool and confirmed like the first draft.
-  const draft = await draftReply({ message, actor, source, lang, history, memory });
+  // (Not when a sheet is attached: that message is about the sheet -- p7 bulk import.)
+  const draft = attachment ? null : await draftReply({ message, actor, source, lang, history, memory });
   if (draft) return draft;
 
   // Everything from here runs with an MCP session open. The handle is the only
@@ -717,7 +759,7 @@ async function runAgentTurn({ message, actor, source = 'WEB', lang: langOverride
   // and it — not anything in the message or the model's output — is what tells
   // the MCP server who is asking.
   return withMcpSession({ actor, channel: source }, (mcpSession) =>
-    routeTurn({ mcpSession, message, actor, source, lang, history, memory })
+    routeTurn({ mcpSession, message, actor, source, lang, history, memory, attachment })
   );
 }
 
@@ -764,7 +806,7 @@ async function draftReply({ message, actor, source, lang, history, memory }) {
  * Split out from runAgent so the session's lifetime is one visible
  * `withMcpSession` block rather than a handle threaded through early returns.
  */
-async function routeTurn({ mcpSession, message: spokenMessage, actor, source, lang, history, memory = { context: {} } }) {
+async function routeTurn({ mcpSession, message: spokenMessage, actor, source, lang, history, memory = { context: {} }, attachment = null }) {
   // A correction ("no, I meant yesterday") or a return to an earlier topic
   // ("go back to the 5A attendance") is read as the plain request it is: a
   // follow-up of the last question, or that question asked again.
@@ -792,6 +834,15 @@ async function routeTurn({ mcpSession, message: spokenMessage, actor, source, la
   if (asksBeyondOwnSchool(message)) {
     return { reply: t('agent.otherSchool', lang), lang, action: null, refused: 'OUT_OF_SCOPE' };
   }
+
+  // p7: a spreadsheet attached to this message, or a turn about one -- preview,
+  // "import the valid rows", templates (agent/importTurn.js). Null otherwise.
+  const sheetTurn = await importTurn({
+    mcpSession, message: rawMessage, actor, source, lang, attachment,
+    held: new Set(mcpTools.map((tool) => tool.name)),
+    runPlan: (steps) => runMcpPlan({ mcpSession, steps, message, actor, source, lang }),
+  });
+  if (sheetTurn) return sheetTurn;
 
   // Other people's records, asked by a student. Everything a student can
   // reach answers about themselves, so "who is absent today?" would come back
@@ -877,6 +928,18 @@ async function routeTurn({ mcpSession, message: spokenMessage, actor, source, la
   if (group?.clarify) return { reply: group.clarify, lang, action: null, clarification: true };
   if (group?.tool) return runMcpPlan({ mcpSession, steps: [group], message, actor, source, lang });
 
+  // p7: "next" -- the next queued draft of an earlier multi-part message, proposed
+  // for confirmation like the first (only one proposal stands at a time).
+  const queue = Array.isArray(memory?.context?.queuedWrites) ? memory.context.queuedWrites : [];
+  if (queue.length && NEXT_DRAFT.test(String(rawMessage ?? ''))) {
+    const [nextStep, ...rest] = queue;
+    if (held.has(nextStep.tool)) {
+      const ran = await runMcpPlan({ mcpSession, steps: [{ tool: nextStep.tool, args: nextStep.args ?? {} }], message, actor, source, lang });
+      const more = rest.length ? `\n\n_${rest.length} more draft(s) queued — say "next" after this one._` : '';
+      return { ...ran, reply: `${ran.reply}${more}`, ...(ran.preface !== undefined && { preface: ran.preface }), queuedWrites: rest };
+    }
+  }
+
   // The answer to a question asked about a write the transcript alone cannot
   // replay (it was started by a turn read from the memory, such as "message
   // their parents"): finished from the stored step.
@@ -905,6 +968,10 @@ async function routeTurn({ mcpSession, message: spokenMessage, actor, source, la
   const meeting = meetingTurn(message, actor, held);
   if (meeting?.reply) return { reply: meeting.reply, lang, action: null, refused: 'NOT_OFFERED' };
   if (meeting?.step) return runMcpPlan({ mcpSession, steps: [meeting.step], message, actor, source, lang });
+  // p7: personal reminders and reports in words, "what needs me today", automation drafts and switches (agent/p7Automation.js).
+  const automation = automationTurn(rawMessage, actor, held, history);
+  if (automation?.reply) return { reply: automation.reply, lang, action: null, ...(automation.needsInput && { needsInput: true }) };
+  if (automation?.step) return runMcpPlan({ mcpSession, steps: [automation.step], message: rawMessage, actor, source, lang });
   // A figure or a detail the assistant does not have: said, never swapped for another.
   const unavailableFigure = unavailableFigureTurn(message);
   if (unavailableFigure) return { reply: unavailableFigure, lang, action: null, refused: 'NOT_AVAILABLE' };
@@ -924,7 +991,20 @@ async function routeTurn({ mcpSession, message: spokenMessage, actor, source, la
   if (!ordinal && !asked && history.length && isOrdinalOnly(message)) {
     return { reply: 'Which one do you mean? Tell me its name (or the student\'s name) and what you would like to see.', lang, action: null, clarification: true };
   }
-  const routed = ordinal ?? referent?.message ?? message;
+  const referred = ordinal ?? referent?.message ?? message;
+
+  // p7: several asks in one message -- planned, run (reads in parallel) and
+  // answered in sections, one per ask (agent/multiAsk.js). Never when the
+  // message answers a question the assistant asked ("Science, Class 6 B").
+  const answering = asked || hasOpenWrite(history, message, actor);
+  const asks = answering ? null : planAsks(referred, actor);
+  if (asks) return runMultiAsk({ mcpSession, asks, actor, source, lang, message: referred });
+
+  // p7: a follow-up about the class the conversation is on ("Who scored the
+  // highest?", "Show its students"), or the policy that answers it for a family.
+  const followed = classFollowUp(referred, { actor, context: memory?.context ?? {}, history });
+  if (followed?.reply) return { reply: followed.reply, lang, action: null, refused: followed.refused };
+  const routed = followed?.message ?? referred;
 
   const intent = await parseIntentWithLlm(routed, actor, { history, tools: mcpTools });
 
@@ -1340,6 +1420,8 @@ async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
         },
         tool: step.tool,
         via: 'MCP',
+        // For the answer-validation layer (agent/verify.js); stripped before the reply leaves.
+        _calls: [...calls, { tool: step.tool, args: step.args ?? {}, result }],
       };
     }
     calls.push({ tool: step.tool, args: step.args ?? {}, result });
@@ -1458,6 +1540,10 @@ async function runMcpPlan({ mcpSession, steps, message, actor, source, lang }) {
     ...(succeeded.length === 1 && calls.length === 1 && {
       continuation: continuationFor(steps[0], succeeded[0].result, actor) ?? undefined,
     }),
+    // For the answer-validation layer (agent/verify.js); stripped before the reply leaves.
+    _calls: calls,
+    _deterministic: [joinResults(succeeded.map((c) => c.result), lang),
+      ...calls.filter((c) => !c.result?.success).map((c) => c.result?.error?.message)].filter(Boolean).join('\n\n'),
   };
 }
 

@@ -20,6 +20,10 @@ import { kindOfProperty, extractEnum, extractNumber, extractArgument, FOUND } fr
 import { nameFromText } from '../../../utils/peopleNames.js';
 import { directStep, refineStep, settleStep, periodArgs, namesOnlyAPronoun, PERCENTAGE_QUESTION } from './directIntents.js';
 import { hinglishToEnglish } from './hinglish.js';
+import { automationStep } from './p7Automation.js';
+import { routingEnglish } from './language/prepare.js';
+import { P7_RULES } from './p7Rules.js';
+import { IMPORT_RULES } from './importRules.js';
 import { admissionNoFromText as admissionNoOf } from '../../../utils/studentIdentifiers.js';
 
 /** A sentence that opens by asking for something to be changed. */
@@ -495,6 +499,10 @@ const RULES = [
     ignores: ['class'],
     args: () => ({}),
   },
+  // p7: performance score, a student's class / class teacher, staff count, top scorers (agent/p7Rules.js).
+  ...P7_RULES,
+  // p7: the bulk-import capabilities in their own words (agent/importRules.js).
+  ...IMPORT_RULES,
   /* ── Questions the p6 harness found misrouted ── */
   {
     // "Students with low attendance in my classes", from a teacher: across
@@ -2105,7 +2113,10 @@ export function normaliseQuery(message) {
  * 5A?" after "aaj 6A mein kaun absent hai?" continues that read.
  */
 export function routingText(message) {
-  return hinglishToEnglish(normaliseQuery(message));
+  // p7: an Indian-language sentence read from the lexicon, and unambiguous
+  // spelling slips corrected (agent/language/prepare.js routingEnglish), so an
+  // earlier turn reads the same way it did when it was asked.
+  return hinglishToEnglish(normaliseQuery(routingEnglish(message)));
 }
 
 /** Rule-based parse. Returns { tool, args } or null. */
@@ -2286,6 +2297,10 @@ function chooseStep(message, actor) {
   // See agent/directIntents.js. Only ever a capability the caller holds.
   const direct = directStep(message, actor);
   if (direct) return direct;
+
+  // p7: personal reminders and reports, "what needs me today", automation drafts and switches (agent/p7Automation.js).
+  const automation = automationStep(message, actor);
+  if (automation) return automation;
 
   // Before every other tier: "month wise" is the whole point of the question,
   // and the tiers below read it as the overall summary.
@@ -2895,6 +2910,8 @@ function pickedStudent(offered, answer) {
     .replace(/\s+/g, ' ').trim();
   if (!said) return null;
   const { options } = offered;
+  // p7: "yes" to "Did you mean: Aarav Mishra (OAK-51)?" -- ONE name offered -- is that name.
+  if (options.length === 1 && /^(?:yes|yeah|yep|yup|ok|okay|correct|right|haan|han|ha|ji|y)$/.test(said)) return options[0];
   const one = (hits) => (hits.length === 1 ? hits[0] : null);
   const exact = options.filter((o) => o.name.toLowerCase() === said || (o.code && o.code.toLowerCase() === said));
   if (exact.length) return one(exact);

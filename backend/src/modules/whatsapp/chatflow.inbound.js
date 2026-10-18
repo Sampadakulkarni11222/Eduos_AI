@@ -87,6 +87,19 @@ export function parseChatflowEvent(payload) {
       timestamp: message.timestamp ?? payload.sentAt ?? null,
       projectId: payload.workspaceId ?? null,
       conversationId: data.conversationId ?? null,
+      // p7: a voice note's media (Chatflow forwards a URL); fetched only for a known sender.
+      ...((rawType === 'AUDIO' || rawType === 'VOICE') && (message.mediaUrl || message.media?.url) && {
+        media: { url: String(message.mediaUrl ?? message.media.url), mimeType: message.mimeType ?? message.media?.mimeType ?? null },
+      }),
+      // p7: a document (a spreadsheet to import): the URL only, fetched for a known sender from allowed hosts.
+      ...(rawType === 'DOCUMENT' && (message.mediaUrl || message.media?.url) && {
+        media: {
+          url: String(message.mediaUrl ?? message.media.url),
+          mimeType: message.mimeType ?? message.media?.mimeType ?? null,
+          filename: message.filename ?? message.fileName ?? message.media?.filename ?? null,
+          caption: message.caption ?? message.media?.caption ?? null,
+        },
+      }),
       metadata: { deliveryId: payload.id ?? null, event: payload.event },
     },
   ];

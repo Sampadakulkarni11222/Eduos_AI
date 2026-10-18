@@ -760,6 +760,8 @@ export const academicTools = {
         sectionId: objectId('The class section, when the id is already known'),
         subject: { type: 'string', maxLength: 80, description: 'Narrow to one subject, e.g. "Mathematics"' },
         exam: { type: 'string', maxLength: 60, description: 'Narrow to one exam, e.g. "Unit Test 2"' },
+        // p7: "who scored the highest?" -- the same sheet, with the names said.
+        scorers: { type: 'boolean', description: 'Also name the student(s) with the highest and the lowest marks on each paper (for "who scored the highest")' },
       },
       additionalProperties: false,
     },
@@ -828,6 +830,9 @@ export const academicTools = {
           averagePct: scored.length ? Math.round((total / (scored.length * maxMarks)) * 100) : null,
           highest: scored.length ? Math.max(...scored.map((r) => r.marks)) : null,
           lowest: scored.length ? Math.min(...scored.map((r) => r.marks)) : null,
+          // p7: who got the highest and the lowest mark (ties named together).
+          highestBy: scored.length ? scored.filter((r) => r.marks === Math.max(...scored.map((x) => x.marks))).map((r) => r.studentName) : [],
+          lowestBy: scored.length ? scored.filter((r) => r.marks === Math.min(...scored.map((x) => x.marks))).map((r) => r.studentName) : [],
           rows,
         });
       }
@@ -835,7 +840,8 @@ export const academicTools = {
       const spoken = grids
         .map((g) => {
           if (!g.marked) return `${g.subject} (${g.exam}): no marks entered yet for ${g.students} student(s)`;
-          return `${g.subject} (${g.exam}): average ${g.averagePct}%, highest ${g.highest}/${g.maxMarks}, lowest ${g.lowest}/${g.maxMarks}` +
+          const by = (names) => (args.scorers && names?.length ? ` (${names.join(' and ')})` : '');
+          return `${g.subject} (${g.exam}): average ${g.averagePct}%, highest ${g.highest}/${g.maxMarks}${by(g.highestBy)}, lowest ${g.lowest}/${g.maxMarks}${by(g.lowestBy)}` +
             `${g.unmarked ? `, ${g.unmarked} still unmarked` : ''}`;
         })
         .join('; ');

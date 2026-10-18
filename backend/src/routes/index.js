@@ -47,9 +47,11 @@ import seatRoutes from '../modules/seats/seat.routes.js';
 import customizationRoutes from '../modules/customization/customization.routes.js';
 import domainRoutes from '../modules/domains/domain.routes.js';
 import uploadRoutes from '../modules/uploads/upload.routes.js';
+import importRoutes from '../modules/imports/imports.routes.js';
 // Institution operations (see docs/erp-operations).
 import approvalRoutes from '../modules/approvals/approval.routes.js';
 import messagingRoutes from '../modules/messaging/messaging.routes.js';
+import automationRoutes from '../modules/automations/automations.routes.js';
 import { institutionRouter, orgRouter } from '../modules/institution/institution.routes.js';
 import {
   correspondenceRouter, facilitiesRouter, eventsRouter, contractsRouter, verificationRouter,
@@ -222,8 +224,12 @@ router.use('/seats', seatRoutes);
 router.use('/customization', customizationRoutes);
 router.use('/domains', domainRoutes);
 router.use('/uploads', uploadRoutes);
+// Part 7: bulk import through Ask AI (sheet upload, templates, error reports).
+router.use('/imports', importRoutes);
 router.use('/approvals', approvalRoutes);
 router.use('/messaging', messagingRoutes);
+// Part 7: school automations, drafts, opt-ins, personal reminders and "what needs you today".
+router.use('/automations', automationRoutes);
 router.use('/institution', institutionRouter);
 router.use('/org', orgRouter);
 router.use('/correspondence', correspondenceRouter);

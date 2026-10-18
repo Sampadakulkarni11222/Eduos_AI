@@ -1,4 +1,6 @@
 import { toIsoDate, weekdayDateIn } from '../../src/utils/naturalDates.js';
+import { P7_SCENARIOS } from './askAiP7Scenarios.js';
+import { LANGUAGE_SCENARIOS } from './askAiLanguageScenarios.js';
 
 /**
  * Realistic multi-turn Ask AI conversations, one role at a time, replayed by
@@ -843,7 +845,10 @@ export const SCENARIOS = [
     role: 'HR',
     title: '"how many staff do we have?" reads the directory, not "I\'m not sure"',
     forbid: OTHER_SCHOOL,
-    turns: [{ say: 'how many staff do we have?', tool: 'list_users', notReply: UNSURE }],
+    // p7: staff accounts only (count_staff) -- the directory read counted parents,
+    // students and former students as "users". Fixture staff: admin, principal,
+    // finance, teacher, librarian, warden, HR and nurse = 8.
+    turns: [{ say: 'how many staff do we have?', tool: 'count_staff', reply: /\b8 active staff/, notReply: [UNSURE, /PARENT|STUDENT|ALUMNUS/] }],
   },
   {
     id: 'p6-admin-new-student',
@@ -947,6 +952,12 @@ export const SCENARIOS = [
       { say: 'aur 5A?', reply: /Ananya Mishra/ },
     ],
   },
+
+  // p7: multi-part messages, per role (support/askAiP7Scenarios.js).
+  ...P7_SCENARIOS,
+
+  // p7: Indian languages and misspellings (support/askAiLanguageScenarios.js).
+  ...LANGUAGE_SCENARIOS,
 
   /* ───────────────────────────── WhatsApp (same core) ───────────────────────────── */
   {

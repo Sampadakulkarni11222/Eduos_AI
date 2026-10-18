@@ -722,15 +722,16 @@ describe('G — a ticket keeps its whole title', () => {
 describe('A — a sentence that asks two things is answered twice', () => {
   it('answers both halves of two questions', async () => {
     const turn = await as('ADMIN').say("Show today's absent students and fee collection");
-    expect(turn.tools).toEqual(['get_absent_students', 'get_fee_statistics']);
+    // p7: independent reads run in parallel, so the audit order is not the order asked.
+    expect([...turn.tools].sort()).toEqual(['get_absent_students', 'get_fee_statistics']);
     expect(turn.reply).toMatch(/absent today/);
     expect(turn.reply).toMatch(/collected of ₹13,000 billed/);
   });
 
   it('carries the person the first half named into the second', async () => {
     const turn = await as('ADMIN').say("Show Rahul Sharma's attendance and fees");
-    expect(turn.tools).toEqual(['get_student_attendance', 'get_pending_fees']);
-    expect(turn.calls[1].args).toEqual({ search: 'Rahul Sharma' });
+    expect([...turn.tools].sort()).toEqual(['get_pending_fees', 'get_student_attendance']);
+    expect(turn.calls.find((c) => c.tool === 'get_pending_fees').args).toEqual({ search: 'Rahul Sharma' });
     expect(turn.reply).toMatch(/Rahul Sharma — Attendance Summary/);
     expect(turn.reply).toMatch(/8,000/);
   });
@@ -738,29 +739,30 @@ describe('A — a sentence that asks two things is answered twice', () => {
   it('gives every part the person or the class the sentence names, wherever it names them', async () => {
     // Named at the END: it is still who both halves are about.
     const pupil = await as('TEACHER').say('Show attendance and marks of Aarav Mishra');
-    expect(pupil.calls.map((c) => [c.tool, c.args])).toEqual([
-      ['get_student_attendance', { studentName: 'Aarav Mishra' }],
+    const byTool = (turn) => turn.calls.map((c) => [c.tool, c.args]).sort((a, b) => a[0].localeCompare(b[0]));
+    expect(byTool(pupil)).toEqual([
       ['get_report_card', { studentName: 'Aarav Mishra' }],
+      ['get_student_attendance', { studentName: 'Aarav Mishra' }],
     ]);
     expect(pupil.reply).toMatch(/Aarav Mishra — Attendance Summary/);
     expect(pupil.reply).toMatch(/Aarav Mishra scored 90%/);
 
     const klass = await as('TEACHER').say('Show attendance and marks for Class 5 A');
-    expect(klass.calls.map((c) => [c.tool, c.args])).toEqual([
+    expect(byTool(klass)).toEqual([
       ['get_attendance_roster', { className: 'Class 5 A' }],
       ['get_class_marks', { className: 'Class 5 A' }],
     ]);
 
     // A pronoun in the second half is the person named in the first.
     const pronoun = await as('ADMIN').say("What is Rahul Sharma's attendance and what are his fees?");
-    expect(pronoun.calls.map((c) => c.tool)).toEqual(['get_student_attendance', 'get_pending_fees']);
-    expect(pronoun.calls[1].args).toEqual({ search: 'Rahul Sharma' });
+    expect(pronoun.calls.map((c) => c.tool).sort()).toEqual(['get_pending_fees', 'get_student_attendance']);
+    expect(pronoun.calls.find((c) => c.tool === 'get_pending_fees').args).toEqual({ search: 'Rahul Sharma' });
   });
 
   it('counts both populations of "how many students and how many teachers"', async () => {
     const turn = await as('ADMIN').say('How many students are there and how many teachers?');
-    expect(turn.tools).toEqual(['search_students', 'list_users']);
-    expect(turn.calls[1].args).toEqual({ ofRole: 'TEACHER' });
+    expect([...turn.tools].sort()).toEqual(['list_users', 'search_students']);
+    expect(turn.calls.find((c) => c.tool === 'list_users').args).toEqual({ ofRole: 'TEACHER' });
     expect(turn.reply).toMatch(/11 students/);
     expect(turn.reply).toMatch(/1 user\(s\) with the teacher role/);
   });

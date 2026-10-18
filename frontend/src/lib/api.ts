@@ -16,6 +16,7 @@ import { SESSION_MARKER } from './session-cookie';
 import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, SchoolThemeDto, SchoolDropdownDto, SchoolCustomizationDto, SchoolCustomizationSummaryDto, SchoolCustomizationInput, DomainListDto, SchoolDomainDetailDto, DomainChangeDto, DomainCheckDto, SeatSummaryDto, SeatRequestDto, SeatHistoryEntryDto, SeatPaymentStartDto, SeatPriceListDto, SeatPriceDto, SchoolSeatPriceDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AgentTurn, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, LearnStatusDto, LearnReplyDto, LearnModeKey,AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto, AnnouncementDraft, AnnouncementPreviewDto, TransportRosterRow, LibraryResourceKind, LeaveRequestDto, LeaveStatus, BookRequestDto, TransportRequestDto, AvailableRoutesDto, RequestStatus } from './types';
 import type { QuizListItem, QuizDetail, QuizInput, QuizQuestionInput, QuizResults, QuizOverview, QuizPaper, QuizResult, QuizMyAttempt } from './quiz-types';
 import type { RequestableDocumentType, DocumentTypeDto, DocumentTypeInput, DocumentRequestDto, AdminDocumentRequestDto, NewDocumentRequest, DocumentRequestFilters } from './document-request-types';
+import type { AgentDownload, ImportUpload } from './types';
 
 /**
  * A document exactly as the API returns it, before this layer normalises it.
@@ -224,6 +225,46 @@ async function uploadFile(file: File): Promise<UploadResult> {
   const json = await res.json();
   invalidateCache();
   return (json?.data ?? json) as UploadResult;
+}
+
+/**
+ * A spreadsheet for a bulk import through Ask AI (p7). The raw bytes go to
+ * /imports/files, which keeps them for at most 24 hours; only the returned id
+ * is attached to the chat message.
+ */
+async function importUpload(file: File): Promise<ImportUpload> {
+  const res = await fetch(`${BACKEND_URL}/api/v1/imports/files`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'x-filename': encodeURIComponent(file.name),
+      ...authHeaders(),
+    },
+    body: file,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body?.error?.code ?? 'UPLOAD_FAILED', body?.message ?? 'Upload failed');
+  }
+  const json = await res.json();
+  return (json?.data ?? json) as ImportUpload;
+}
+
+/** Downloads a protected file (an error report, a sample sheet) under its own name. */
+async function downloadProtectedFile(path: string, filename: string): Promise<void> {
+  const res = await fetch(`${BACKEND_URL}/api/v1${path}`, { headers: authHeaders() });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body?.error?.code ?? 'FILE_ERROR', body?.message ?? 'Could not download this file.');
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /** Multipart CSV upload (bulk imports). Extra non-file fields go alongside the file. */
@@ -933,8 +974,11 @@ export const api = {
    * 24 hours), so a follow-up resolves even after a page change or a reload;
    * `history` is the fallback for a conversation the server has not seen.
    */
-  agentAsk: (message: string, lang?: string, history?: AgentTurn[], conversationId?: string) =>
-    request<AgentReply>('/ai/agent', { method: 'POST', body: JSON.stringify({ message, source: 'WEB', lang, history, ...(conversationId && { conversationId }) }) }),
+  agentAsk: (message: string, lang?: string, history?: AgentTurn[], conversationId?: string, attachment?: { fileId: string }, opts?: { inputMode?: 'voice' }) =>
+    request<AgentReply>('/ai/agent', { method: 'POST', body: JSON.stringify({ message, source: 'WEB', lang, history, ...(conversationId && { conversationId }), ...(attachment && { attachment }), ...(opts?.inputMode && { inputMode: opts.inputMode }) }) }),
+  /** p7 bulk import: upload a sheet for Ask AI to check, and download its reports and templates. */
+  importUpload,
+  downloadProtectedFile,
   /** The next window of a long answer ("Load more"). */
   agentContinue: (continuationToken: string, lang?: string) =>
     request<AgentReply>('/ai/agent/continue', {
@@ -942,7 +986,7 @@ export const api = {
       body: JSON.stringify({ continuationToken, source: 'WEB', lang }),
     }),
   agentConfirm: (confirmToken: string, accept: boolean, lang?: string, conversationId?: string) =>
-    request<{ reply: string; executed?: boolean }>('/ai/agent/confirm', {
+    request<{ reply: string; executed?: boolean; data?: { downloads?: AgentDownload[]; link?: string | null } | null }>('/ai/agent/confirm', {
       method: 'POST',
       body: JSON.stringify({ confirmToken, accept, source: 'WEB', lang, ...(conversationId && { conversationId }) }),
     }),

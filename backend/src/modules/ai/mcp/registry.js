@@ -35,6 +35,9 @@ import { p5GapTools } from './tools/p5Gaps.js';
 import { p5AskAiTools } from './tools/p5AskAi.js';
 import { p6CoverageTools } from './tools/p6Coverage.js';
 import { p6AskAiTools } from './tools/p6AskAi.js';
+import { p7BulkImportTools } from './tools/p7BulkImport.js';
+import { p7AutomationTools } from './tools/p7Automation.js';
+import { p7MultiTools } from './tools/p7Multi.js';
 import { AI_ASSISTANT_PERMISSION } from '../../../constants/permissions.js';
 import { isDecidingToolName } from './decisions.js';
 
@@ -108,6 +111,9 @@ const ASSEMBLED = {
   ...p5AskAiTools,
   ...p6AskAiTools,
   ...p6CoverageTools,
+  ...p7MultiTools,
+  ...p7AutomationTools,
+  ...p7BulkImportTools,
 };
 
 /**

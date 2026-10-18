@@ -13,29 +13,29 @@ The owner's requirement: every action a person can take on a screen (read, creat
 
 ## Totals
 
-- Routes: **1346** (GET 580, POST 608, PATCH 88, DELETE 32, PUT 38); public 33; Super-Admin-only 37; callable by a school role 1276.
-- Routes performed by at least one tool: before **538**, after **1125**.
-- Tools: before 517, after 1088.
-- Status of every route: SCREEN 156, TOOL 1125, PLATFORM 37, COVERED 7, EXCEPTION 21.
+- Routes: **1363** (GET 589, POST 613, PATCH 88, DELETE 33, PUT 40); public 33; Super-Admin-only 37; callable by a school role 1293.
+- Routes performed by at least one tool: before **538**, after **1140**.
+- Tools: before 517, after 1108.
+- Status of every route: SCREEN 142, TOOL 1140, COVERED 23, PLATFORM 37, EXCEPTION 21.
 
 ### Per role (routes the role can call / performed by a tool in that role's catalogue)
 
 | Role | Routes callable | Matched before | Matched after | Screen-only / exception / not for this role | Unaccounted |
 |---|---:|---:|---:|---:|---:|
-| ADMIN | 1194 | 487 (41%) | 1060 (89%) | 134 | 0 |
-| PRINCIPAL | 771 | 281 (36%) | 681 (88%) | 90 | 0 |
-| TEACHER | 557 | 198 (36%) | 471 (85%) | 86 | 0 |
-| PARENT | 312 | 121 (39%) | 250 (80%) | 62 | 0 |
-| STUDENT | 312 | 115 (37%) | 239 (77%) | 73 | 0 |
-| FINANCE | 376 | 126 (34%) | 291 (77%) | 85 | 0 |
-| LIBRARIAN | 284 | 108 (38%) | 228 (80%) | 56 | 0 |
-| WARDEN | 300 | 109 (36%) | 240 (80%) | 60 | 0 |
-| NURSE | 236 | 76 (32%) | 180 (76%) | 56 | 0 |
-| HR | 355 | 98 (28%) | 285 (80%) | 70 | 0 |
-| MARKETING | 328 | 96 (29%) | 263 (80%) | 65 | 0 |
-| COMPLIANCE | 387 | 107 (28%) | 323 (83%) | 64 | 0 |
-| TRUSTEE | 216 | 49 (23%) | 158 (73%) | 58 | 0 |
-| ALUMNUS | 190 | 47 (25%) | 133 (70%) | 57 | 0 |
+| ADMIN | 1211 | 487 (40%) | 1075 (89%) | 136 | 0 |
+| PRINCIPAL | 788 | 281 (36%) | 696 (88%) | 92 | 0 |
+| TEACHER | 572 | 198 (35%) | 483 (84%) | 89 | 0 |
+| PARENT | 327 | 121 (37%) | 259 (79%) | 68 | 0 |
+| STUDENT | 327 | 115 (35%) | 248 (76%) | 79 | 0 |
+| FINANCE | 391 | 126 (32%) | 303 (77%) | 88 | 0 |
+| LIBRARIAN | 299 | 108 (36%) | 240 (80%) | 59 | 0 |
+| WARDEN | 315 | 109 (35%) | 252 (80%) | 63 | 0 |
+| NURSE | 251 | 76 (30%) | 189 (75%) | 62 | 0 |
+| HR | 370 | 98 (26%) | 294 (79%) | 76 | 0 |
+| MARKETING | 343 | 96 (28%) | 275 (80%) | 68 | 0 |
+| COMPLIANCE | 402 | 107 (27%) | 332 (83%) | 70 | 0 |
+| TRUSTEE | 231 | 49 (21%) | 167 (72%) | 64 | 0 |
+| ALUMNUS | 205 | 47 (23%) | 142 (69%) | 63 | 0 |
 
 Super Admin is excluded by design: the platform operator has no `ai.copilot.use` and no school assistant.
 
@@ -47,11 +47,17 @@ Kept to what cannot or must not happen in a chat. The assistant still explains t
 - **Credentials and access: sign-in, OTP, sessions and the profile switcher, user accounts, roles and permission grants, OAuth connections, API and webhook secrets, device secrets** (31): `POST /auth/register`, `POST /auth/otp/request`, `POST /auth/otp/email/request`, `POST /auth/otp/email/verify`, `POST /auth/google`, `POST /auth/otp/verify`, `POST /auth/login`, `POST /auth/profile/select`, `POST /auth/refresh`, `POST /auth/logout`, `GET /roles/`, `POST /roles/`, `GET /roles/:id`, `PATCH /roles/:id`, `DELETE /roles/:id`, `POST /roles/:id/permissions`, `DELETE /roles/:id/permissions/:key`, `GET /profiles/`, `POST /users/`, `PATCH /users/:id`, `GET /permissions/`, `POST /safety/devices`, `POST /safety/devices/:id/rotate-secret`, `POST /social/accounts`, `POST /social/accounts/:id/disconnect`, `PUT /marketing-growth/connectors/:platform/credentials`, `POST /integrations/oauth/complete`, `POST /integrations/:provider/connect`, `PUT /integrations/:provider/assets`, `POST /integrations/:provider/refresh-assets`, `POST /integrations/:provider/disconnect`
 - **Restricted data kept out of chat by product rule: payroll and individual pay, safeguarding reports, case files, outcomes and referrals, camera observations, devices and metrics, health data outside the health role** (35): `GET /hostel/life/mess/diet`, `GET /hostel/medical-lookup/:studentId`, `POST /safeguarding/reports`, `GET /safeguarding/reports/mine`, `GET /safeguarding/cases`, `GET /safeguarding/cases/:id`, `PATCH /safeguarding/cases/:id`, `GET /payroll/payslips/mine`, `GET /payroll/rules`, `POST /payroll/rules`, `POST /payroll/rules/seed`, `POST /payroll/rules/:id/verify`, `GET /payroll/compensation`, `PUT /payroll/compensation`, `POST /payroll/runs`, `POST /payroll/runs/:id/submit`, `POST /payroll/runs/:id/reopen`, `GET /payroll/runs/:id/bank-file.csv`, `POST /payroll/runs/:id/payment-initiated`, `POST /payroll/runs/:id/payment-confirmed`, `GET /payroll/runs/:id/statutory/:code.csv`, `GET /payroll/runs/:id/statutory/EPF_ECR.txt`, `POST /payroll/runs/:id/statutory`, `POST /payroll/runs/:id/close`, `GET /camera/status`, `GET /camera/devices`, `GET /camera/observations`, `GET /camera/observations/:id`, `POST /camera/observations/:id/review`, `POST /camera/observations/:id/link-case`, `GET /camera/metrics`, `POST /support-plans/:id/referral`, `GET /health/class-care-notes`, `POST /health/doses/:id/countersign`, `POST /exits/:id/settlement/payroll`
 - **Money through a payment gateway: fee checkout, AI credit and seat purchases** (6): `POST /fees/pay`, `POST /fees/pay/verify`, `POST /ai/credits/purchase`, `POST /ai/credits/purchase/verify`, `POST /seats/requests/:id/pay`, `POST /seats/payments/verify`
-- **Bulk spreadsheet imports (the single-record tool is the assistant path)** (17): `POST /users/bulk`, `POST /academics/grades/bulk`, `POST /academics/sections/bulk`, `POST /academics/subjects/bulk`, `POST /enrollments/bulk`, `POST /fees/invoices/bulk`, `POST /admissions/leads/bulk`, `POST /library/books/bulk`, `POST /library/issues/bulk`, `POST /hostel/rooms/bulk`, `POST /hostel/allocations/bulk`, `POST /transport/routes/bulk`, `POST /transport/stops/bulk`, `POST /transport/enroll/bulk`, `POST /analytics/views/import`, `POST /marketing-growth/connectors/:platform/import`, `POST /marketing-growth/connectors/:platform/import-leads`
+- **Bulk spreadsheet imports (the single-record tool is the assistant path)** (3): `POST /analytics/views/import`, `POST /marketing-growth/connectors/:platform/import`, `POST /marketing-growth/connectors/:platform/import-leads`
 - **Files: uploads, downloads, PDFs, CSV exports, printing and labels (the same data is readable through a tool where one exists)** (25): `PATCH /students/:id/photo`, `GET /students/:id/id-card`, `POST /attendance/ocr/draft`, `GET /document-requests/mine/:id/file`, `POST /document-requests/:id/issue`, `GET /document-requests/:id/file`, `GET /fees/payments/:id/pdf`, `GET /library/copies/labels`, `POST /library/copies/labels/printed`, `GET /documents/:id/file`, `POST /uploads/`, `GET /correspondence/:id/document`, `GET /compliance/returns/:id/export.csv`, `GET /compliance/returns/:id/document`, `GET /analytics/export.csv`, `GET /analytics/reports/:id/download.csv`, `GET /analytics/reports/:id/download.pdf`, `POST /labs/devices/:id/decommission`, `GET /sustainability/packs/:key/csv`, `GET /alumni-services/documents/:id/file`, `GET /newsletter/opportunities/:id/calendar`, `GET /finance-reports/day-book.csv`, `GET /finance-reports/ageing.csv`, `GET /health-insights/register.csv`, `GET /marketing-growth/attribution.csv`
 - **The assistant's own endpoints (the chat, tutor, WhatsApp link, generated panels) and platform observability** (15): `POST /ai/agent`, `POST /ai/agent/confirm`, `POST /ai/agent/continue`, `GET /ai/agent/capabilities`, `GET /ai/tutor/status`, `GET /ai/tutor/syllabus`, `POST /ai/tutor`, `GET /ai/tutor/learn/status`, `POST /ai/tutor/learn`, `POST /whatsapp/simulate`, `GET /whatsapp/assistant-link`, `POST /whatsapp/assistant-link/click`, `GET /observability/metrics`, `POST /genui/ask`, `GET /genui/panels/:id`
 
 Each route's own reason is in its row of the table below.
+
+## Via Ask AI (file attach)
+
+Moved in part 7 (16 routes): bulk spreadsheet imports are no longer screen-only. The person attaches a CSV/Excel file in Ask AI (or sends it as a WhatsApp document); `preview_import` recognises the target, maps the columns and checks every row; `run_import` imports through the same bulk service after one confirmation on the website (WhatsApp hands off with a link). Exam marks per paper (`POST /exams/marks`) and the attendance register (`POST /attendance/mark/bulk`) can also come from a sheet. Registry: `backend/src/modules/imports/schemas.js`.
+
+`POST /users/bulk`, `POST /academics/grades/bulk`, `POST /academics/sections/bulk`, `POST /academics/subjects/bulk`, `POST /enrollments/bulk`, `POST /fees/invoices/bulk`, `POST /admissions/leads/bulk`, `POST /library/books/bulk`, `POST /library/issues/bulk`, `POST /hostel/rooms/bulk`, `POST /hostel/allocations/bulk`, `POST /transport/routes/bulk`, `POST /transport/stops/bulk`, `POST /transport/enroll/bulk`, `POST /imports/files`, `GET /imports/files/:id/:report`
 
 ## Decisions kept on their screen (EXCEPTION)
 
@@ -180,7 +186,7 @@ Roles: AD admin, PR principal, TE teacher, PA parent, ST student, FI finance, LI
 |---|---|---|---|---|
 | GET | `/users/` | `users.read` | SA AD PR HR CO | `list_users`, `get_user_account` |
 | POST | `/users/` | `users.manage` | SA AD | **SCREEN** — user account creation (credentials) |
-| POST | `/users/bulk` | `users.manage` | SA AD | **SCREEN** — bulk spreadsheet import of users |
+| POST | `/users/bulk` | `users.manage` | SA AD | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | GET | `/users/:id` | `users.read` | SA AD PR HR CO | `get_user_account` |
 | PATCH | `/users/:id` | `users.manage` | SA AD | **SCREEN** — user account editing (credentials) |
 
@@ -216,15 +222,15 @@ Roles: AD admin, PR principal, TE teacher, PA parent, ST student, FI finance, LI
 | POST | `/academics/terms` | `academics.structure.manage` | SA AD PR | `create_term` |
 | GET | `/academics/grades` | `academics.read` | SA AD PR TE FI LI WA NU MK | `list_classes` |
 | POST | `/academics/grades` | `academics.structure.manage` | SA AD PR | `create_grade` |
-| POST | `/academics/grades/bulk` | `academics.structure.manage` | SA AD PR | **SCREEN** — bulk spreadsheet import; single grade creation is the assistant path |
+| POST | `/academics/grades/bulk` | `academics.structure.manage` | SA AD PR | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | GET | `/academics/sections/mine` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `get_my_classes`, `get_my_profile` |
 | GET | `/academics/sections` | `academics.read` | SA AD PR TE FI LI WA NU MK | `list_classes` |
 | POST | `/academics/sections` | `academics.structure.manage` | SA AD PR | `create_section` |
 | PATCH | `/academics/sections/:id` | `academics.structure.manage` | SA AD PR | `update_section` |
-| POST | `/academics/sections/bulk` | `academics.structure.manage` | SA AD PR | **SCREEN** — bulk spreadsheet import; single section creation is the assistant path |
+| POST | `/academics/sections/bulk` | `academics.structure.manage` | SA AD PR | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | GET | `/academics/subjects` | `academics.read` | SA AD PR TE FI LI WA NU MK | `list_subjects` |
 | POST | `/academics/subjects` | `academics.structure.manage` | SA AD PR | `create_subject` |
-| POST | `/academics/subjects/bulk` | `academics.structure.manage` | SA AD PR | **SCREEN** — bulk spreadsheet import; create_subject is the assistant path |
+| POST | `/academics/subjects/bulk` | `academics.structure.manage` | SA AD PR | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | GET | `/academics/offerings/mine` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `get_my_classes`, `get_subjects`, `get_my_profile` |
 | GET | `/academics/offerings` | `academics.read` | SA AD PR TE FI LI WA NU MK | `list_subjects` |
 | POST | `/academics/offerings` | `academics.structure.manage` | SA AD PR | `assign_teacher_to_subject` |
@@ -253,7 +259,7 @@ Roles: AD admin, PR principal, TE teacher, PA parent, ST student, FI finance, LI
 | GET | `/enrollments/` | `students.read` | SA AD PR TE PA ST FI LI WA NU | `get_student`, `list_enrollments`, `get_attendance_roster`, `get_attendance_draft` |
 | GET | `/enrollments/next-roll-no` | `students.read` | SA AD PR TE PA ST FI LI WA NU | `get_next_roll_number` |
 | POST | `/enrollments/` | `enrollments.manage` | SA AD | `enroll_student` |
-| POST | `/enrollments/bulk` | `enrollments.manage` | SA AD | **SCREEN** — bulk import; enroll_student is the single-record path |
+| POST | `/enrollments/bulk` | `enrollments.manage` | SA AD | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | PATCH | `/enrollments/:id/status` | `enrollments.manage` | SA AD | `update_enrollment_status` |
 
 ### /timetable
@@ -402,7 +408,7 @@ Roles: AD admin, PR principal, TE teacher, PA parent, ST student, FI finance, LI
 | POST | `/fees/invoices` | `fees.manage` | SA AD FI | `create_invoice` |
 | GET | `/fees/invoices/:id` | `fees.read` | SA AD PR PA ST FI | `get_invoice` |
 | GET | `/fees/invoices/:id/pdf` | `fees.read` | SA AD PR PA ST FI | `get_invoice` |
-| POST | `/fees/invoices/bulk` | `fees.manage` | SA AD FI | **SCREEN** — bulk CSV invoice import; create_invoice / generate_invoices are the single-record path |
+| POST | `/fees/invoices/bulk` | `fees.manage` | SA AD FI | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | GET | `/fees/summary` | `fees.read` | SA AD PR PA ST FI | `get_pending_fees`, `get_fee_statistics`, `get_fees` |
 | POST | `/fees/payments` | `fees.pay` | SA AD PA ST FI | **EXCEPTION** — recording a fee payment stays on the Payments screen |
 | GET | `/fees/payments` | `fees.read` | SA AD PR PA ST FI | `get_payment_history` |
@@ -503,7 +509,7 @@ Roles: AD admin, PR principal, TE teacher, PA parent, ST student, FI finance, LI
 | GET | `/admissions/online/:id` | `admissions.read` | SA AD MK | `get_online_application` |
 | GET | `/admissions/pipeline` | `admissions.read` | SA AD MK | `get_admissions` |
 | POST | `/admissions/leads` | `admissions.manage` | SA AD MK | `create_admission_lead` |
-| POST | `/admissions/leads/bulk` | `admissions.manage` | SA AD MK | **SCREEN** — bulk CSV enquiry import; create_admission_lead is the single-record path |
+| POST | `/admissions/leads/bulk` | `admissions.manage` | SA AD MK | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | POST | `/admissions/leads/update` | `admissions.manage` | SA AD MK | `update_admission_lead` |
 | GET | `/admissions/leads/:id` | `admissions.read` | SA AD MK | `get_admission_lead` |
 | GET | `/admissions/followups/` | `admissions.read` | SA AD MK | `get_followup_queue` |
@@ -595,14 +601,14 @@ Roles: AD admin, PR principal, TE teacher, PA parent, ST student, FI finance, LI
 | GET | `/library/summary` | `library.read` | SA AD PA ST LI | `get_library_summary` — not in catalogue for PA ST (get_library_summary: drop minScope 'ALL' (route is library.read with no minimum scope; it returns school-wide counts to any library.read holder)) |
 | GET | `/library/books` | `library.read` (checked in handler); `students.read` (checked in handler) | SA AD PR TE PA ST FI LI WA NU | `list_books`, `get_book`, `list_book_issues` — not in catalogue for PR TE FI WA NU (libraryRead admits only library.read holders or a PARENT with students.read; PR/TE/FI/WA/NU hold neither) |
 | POST | `/library/books` | `library.manage` | SA AD LI | `create_book` |
-| POST | `/library/books/bulk` | `library.manage` | SA AD LI | **SCREEN** — bulk CSV import (create_book is the single-record path) |
+| POST | `/library/books/bulk` | `library.manage` | SA AD LI | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | GET | `/library/books/facets` | `library.read` (checked in handler); `students.read` (checked in handler) | SA AD PR TE PA ST FI LI WA NU | `list_library_shelf_categories` — not in catalogue for PR TE FI WA NU (list_library_shelf_categories) |
 | GET | `/library/books/:id` | `library.read` (checked in handler); `students.read` (checked in handler) | SA AD PR TE PA ST FI LI WA NU | `get_book`, `list_book_issues` — not in catalogue for PR TE FI WA NU (same libraryRead guard as /library/books) |
 | PATCH | `/library/books/:id` | `library.manage` | SA AD LI | `update_book` |
 | DELETE | `/library/books/:id` | `library.manage` | SA AD LI | `delete_book` |
 | GET | `/library/issues` | `library.read` (checked in handler); `students.read` (checked in handler) | SA AD PR TE PA ST FI LI WA NU | `get_overdue_books`, `list_book_issues` — not in catalogue for PR TE FI WA NU (same libraryRead guard as /library/books) |
 | POST | `/library/issues` | `library.manage` | SA AD LI | `issue_book` |
-| POST | `/library/issues/bulk` | `library.manage` | SA AD LI | **SCREEN** — bulk CSV import (issue_book is the single-record path) |
+| POST | `/library/issues/bulk` | `library.manage` | SA AD LI | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | PATCH | `/library/issues/:id/return` | `library.manage` | SA AD LI | `return_book` |
 | GET | `/library/requests/mine` | `library.request` | SA AD PA ST | `get_my_book_requests` |
 | GET | `/library/requests/review` | `library.manage` | SA AD LI | `get_book_requests` |
@@ -633,12 +639,12 @@ Roles: AD admin, PR principal, TE teacher, PA parent, ST student, FI finance, LI
 | GET | `/hostel/summary` | `hostel.read` | SA AD WA | `get_hostel_summary` |
 | GET | `/hostel/rooms` | `hostel.read` | SA AD WA | `list_hostel_rooms`, `list_hostel_allocations` |
 | POST | `/hostel/rooms` | `hostel.manage` | SA AD WA | `create_hostel_room` |
-| POST | `/hostel/rooms/bulk` | `hostel.manage` | SA AD WA | **SCREEN** — bulk CSV import (create_hostel_room is the single-record path) |
+| POST | `/hostel/rooms/bulk` | `hostel.manage` | SA AD WA | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | GET | `/hostel/rooms/:id` | `hostel.read` | SA AD WA | `get_hostel_room` |
 | PATCH | `/hostel/rooms/:id` | `hostel.manage` | SA AD WA | `update_hostel_room` |
 | GET | `/hostel/allocations` | `hostel.read` | SA AD WA | `list_hostel_allocations` |
 | POST | `/hostel/allocations` | `hostel.manage` | SA AD WA | `allocate_hostel_bed` |
-| POST | `/hostel/allocations/bulk` | `hostel.manage` | SA AD WA | **SCREEN** — bulk CSV import (allocate_hostel_bed is the single-record path) |
+| POST | `/hostel/allocations/bulk` | `hostel.manage` | SA AD WA | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | PATCH | `/hostel/allocations/:id/vacate` | `hostel.manage` | SA AD WA | `vacate_hostel_bed` |
 | GET | `/hostel/students` | `hostel.read` | SA AD WA | `get_hostel_residents` |
 | GET | `/hostel/medical-lookup/:studentId` | `hostel.read`; `medical.read` | SA AD WA | **SCREEN** — health data (medical record) for the warden; privacy rule: health data only to the health role / own parent |
@@ -742,15 +748,15 @@ Roles: AD admin, PR principal, TE teacher, PA parent, ST student, FI finance, LI
 |---|---|---|---|---|
 | GET | `/transport/routes` | `transport.read` | SA AD | `list_transport_routes` |
 | POST | `/transport/routes` | `transport.manage` | SA AD | `create_transport_route` |
-| POST | `/transport/routes/bulk` | `transport.manage` | SA AD | **SCREEN** — bulk CSV import (create_transport_route) |
+| POST | `/transport/routes/bulk` | `transport.manage` | SA AD | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | PATCH | `/transport/routes/:routeId` | `transport.manage` | SA AD | `update_transport_route` |
 | GET | `/transport/routes/:routeId/stops` | `transport.read` | SA AD | `list_transport_stops` |
 | POST | `/transport/stops` | `transport.manage` | SA AD | `create_transport_stop` |
-| POST | `/transport/stops/bulk` | `transport.manage` | SA AD | **SCREEN** — bulk CSV import (create_transport_stop) |
+| POST | `/transport/stops/bulk` | `transport.manage` | SA AD | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | GET | `/transport/my-bus` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `get_my_bus` — not in catalogue for PR TE FI LI WA NU HR MK CO TR AL (getOwnBus answers only for a student's/parent's own child; staff have no implicit subject) |
 | GET | `/transport/roster` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `get_transport_roster` |
 | POST | `/transport/enroll` | `transport.manage` | SA AD | `enroll_in_transport` |
-| POST | `/transport/enroll/bulk` | `transport.manage` | SA AD | **SCREEN** — bulk CSV import (enroll_in_transport) |
+| POST | `/transport/enroll/bulk` | `transport.manage` | SA AD | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | GET | `/transport/routes/available` | `transport.request` | SA AD PA ST | `get_transport_routes` |
 | GET | `/transport/requests/mine` | `transport.request` | SA AD PA ST | `get_my_transport_requests` |
 | GET | `/transport/requests/review` | `transport.manage` | SA AD | `get_transport_requests` |
@@ -826,6 +832,16 @@ Roles: AD admin, PR principal, TE teacher, PA parent, ST student, FI finance, LI
 |---|---|---|---|---|
 | POST | `/uploads/` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | **SCREEN** — file upload |
 
+### /imports
+
+| Method | Path | Permission (min scope) | Roles | Tools / status |
+|---|---|---|---|---|
+| POST | `/imports/files` | `ai.copilot.use` | AD PR TE PA ST FI LI WA NU HR MK CO TR AL | **COVERED** — via Ask AI (file attach): the Ask AI attach button (and a WhatsApp document) stores the sheet here; preview_import and run_import then work on it. |
+| GET | `/imports/formats` | `ai.copilot.use` | AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `describe_import_formats` — not in catalogue for PA ST NU HR CO TR AL (A role with no import target (parent, student, nurse, HR, compliance, trustee, alumnus) gets an empty list on the screen too; the import tools are offered to the roles that can import something.) |
+| GET | `/imports/templates/:name` | `ai.copilot.use` | AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `get_import_template` — not in catalogue for PA ST NU HR CO TR AL (A role with no import target (parent, student, nurse, HR, compliance, trustee, alumnus) has no template to download; the import tools are offered to the roles that can import something.) |
+| GET | `/imports/files/:id` | `ai.copilot.use` | AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `get_import_result` — not in catalogue for PA ST NU HR CO TR AL (A role with no import target (parent, student, nurse, HR, compliance, trustee, alumnus) never has an import file to read; the import tools are offered to the roles that can import something.) |
+| GET | `/imports/files/:id/:report` | `ai.copilot.use` | AD PR TE PA ST FI LI WA NU HR MK CO TR AL | **COVERED** — via Ask AI (file attach): the error report is a download link run_import and get_import_result return with the result. |
+
 ### /approvals
 
 | Method | Path | Permission (min scope) | Roles | Tools / status |
@@ -856,6 +872,23 @@ Roles: AD admin, PR principal, TE teacher, PA parent, ST student, FI finance, LI
 | GET | `/messaging/channels` | `messaging.read` | SA AD PR | `get_messaging_channels` |
 | GET | `/messaging/outbox` | `messaging.read` | SA AD PR | `list_message_outbox` |
 | POST | `/messaging/outbox/release` | `messaging.manage` | SA AD | `release_deferred_messages` |
+
+### /automations
+
+| Method | Path | Permission (min scope) | Roles | Tools / status |
+|---|---|---|---|---|
+| GET | `/automations/` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `list_school_automations` — not in catalogue for TE PA ST FI LI WA NU HR MK CO TR AL (Everyone sees the school list read-only on the page; in Ask AI a non-manager reads their own opt-ins (get_my_automation_optins), reminders and drafts, and the school-wide settings read (list_school_automations) goes to settings managers.) |
+| PUT | `/automations/:key` | any of `settings.manage` (ALL) / `institution.manage` (ALL) | SA AD PR | `set_school_automation` |
+| POST | `/automations/:key/run` | any of `settings.manage` (ALL) / `institution.manage` (ALL) | SA AD PR | `run_school_automation_now` |
+| GET | `/automations/me/today` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `get_what_needs_me_today` |
+| GET | `/automations/me/drafts` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `list_automation_drafts` |
+| POST | `/automations/me/drafts/:id/confirm` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `confirm_automation_draft` |
+| POST | `/automations/me/drafts/:id/dismiss` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `dismiss_automation_draft` |
+| GET | `/automations/me/opt-ins` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `get_my_automation_optins` |
+| PUT | `/automations/me/opt-ins/:key` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `set_my_automation_optin` |
+| GET | `/automations/me/reminders` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `list_my_reminders` |
+| POST | `/automations/me/reminders` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `create_my_reminder` |
+| DELETE | `/automations/me/reminders/:id` | signed in (checked in service) | SA AD PR TE PA ST FI LI WA NU HR MK CO TR AL | `stop_my_reminder` |
 
 ### /institution
 

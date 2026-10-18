@@ -1470,7 +1470,17 @@ export interface AgentReply {
   evidence?: Array<{ tool: string; text: string; link: string | null; count: number | null }>;
   /** The server-side conversation this turn belongs to; sent back with the next message. */
   conversationId?: string;
+  /** Sheets the answer offers to download (bulk import: error report, sample template). */
+  downloads?: AgentDownload[];
+  /** A website link the answer points to (e.g. where a WhatsApp import is confirmed). */
+  link?: string;
 }
+
+/** A file an assistant answer offers (an API path behind sign-in, fetched with the session). */
+export interface AgentDownload { label: string; path: string; filename: string }
+
+/** A spreadsheet uploaded for a bulk import through Ask AI. */
+export interface ImportUpload { fileId: string; name: string; size: number }
 
 /**
  * The way to the next window of a long answer. The token is the server's own
