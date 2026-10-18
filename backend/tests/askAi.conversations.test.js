@@ -33,6 +33,7 @@ const { inSchool, OAK } = await import('./support/mcpSchool.js');
 const { INTERNAL_LEAKS } = await import('./support/askAiSchool.js');
 const { seedConversationSchool, FIXTURE_PEOPLE } = await import('./support/askAiConversationSchool.js');
 const { SCENARIOS, CHECKS, UNSURE } = await import('./support/askAiConversations.scenarios.js');
+const { P7_SETUPS } = await import('./support/askAiP7Scenarios.js');
 
 let api;
 let school;
@@ -223,6 +224,8 @@ async function callsSince(before) {
 }
 
 async function play(scenario) {
+  // p7: a scenario that needs people the shared fixture does not have (a parent of two children called Diya).
+  if (scenario.setup) await P7_SETUPS[scenario.setup]({ school, inSchool, OAK });
   const person = school.people[scenario.role];
   const chat = scenario.channel === 'WHATSAPP' ? whatsappChat(person) : websiteChat(person);
   const ctx = { said: [], replies: [] };

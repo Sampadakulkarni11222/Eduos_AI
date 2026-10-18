@@ -191,3 +191,105 @@ export const P7_SCENARIOS = [
     turns: [{ say: 'show pending fees and the fee collection', reply: [/\*\*1\. /, /\*\*2\. /, /8,000/] }],
   },
 ];
+
+/* ── A parent of two children who share a first name (live bugs, 4a335be) ── */
+
+/**
+ * Setups a scenario names (`setup`), run by the harness before its first turn:
+ * people the shared fixture does not have, so no other scenario's counts move.
+ */
+export const P7_SETUPS = {
+  /**
+   * DIYA_PARENT: mother of Diya Sharma (Class 5 A, roll 3; Unit Test 2 Maths
+   * 40/50; one past 5 A worksheet handed in on time) and Diya Singh (Class 6 A,
+   * roll 9; Unit Test 2 Maths 20/50). Class 5 A's work still due: Plant cell
+   * diagram, Fractions worksheet; Class 6 A's: Algebra set 1.
+   */
+  async diyaFamily({ school, inSchool, OAK }) {
+    const { Student, Enrollment, StudentGuardian } = await import('../../src/models/student.model.js');
+    const { ExamSubject, Mark } = await import('../../src/models/exam.model.js');
+    const { Assignment, Submission } = await import('../../src/models/assignment.model.js');
+    const { seedPerson } = await import('./mcpSchool.js');
+    const parent = await seedPerson({ roleKey: 'PARENT', roleId: school.roleIds.PARENT, displayName: 'Diya parent' });
+    school.people.DIYA_PARENT = parent;
+    await inSchool(OAK, async () => {
+      const child = async (admissionNo, lastName, section, rollNo) => {
+        const student = await Student.create({ admissionNo, firstName: 'Diya', lastName, gender: 'FEMALE' });
+        const enrollment = await Enrollment.create({ studentId: student._id, sectionId: section._id, academicYearId: school.year._id, status: 'ACTIVE', rollNo });
+        await StudentGuardian.create({ studentId: student._id, guardianProfileId: parent.profile._id, relation: 'MOTHER' });
+        return enrollment;
+      };
+      const sharma = await child('OAK-D1', 'Sharma', school.c5a, 3);
+      const singh = await child('OAK-D2', 'Singh', school.sectionA, 9);
+      const p5 = await ExamSubject.findOne({ subjectOfferingId: school.offerings.m5._id });
+      await Mark.create({ examSubjectId: p5._id, enrollmentId: sharma._id, marks: 40, status: 'PUBLISHED' });
+      const p6 = await ExamSubject.findOne({ subjectOfferingId: school.offerings.m6a._id });
+      await Mark.create({ examSubjectId: p6._id, enrollmentId: singh._id, marks: 20, status: 'PUBLISHED' });
+      const past = await Assignment.create({ subjectOfferingId: school.offerings.m5._id, title: 'Past worksheet 5A', dueAt: new Date(Date.now() - 4 * 86_400_000) });
+      await Submission.create({ assignmentId: past._id, enrollmentId: sharma._id, status: 'SUBMITTED', submittedAt: new Date(Date.now() - 5 * 86_400_000) });
+    });
+  },
+};
+
+const NOT_DIYA = ['Rahul Sharma', 'Aman Gupta', 'Priya Verma', 'Aarav Mishra', 'Ananya Mishra', 'Riya Kapoor', 'Rahul Riverside'];
+
+P7_SCENARIOS.push(
+  {
+    id: 'p7-diya-named-child-four-parts',
+    role: 'DIYA_PARENT',
+    setup: 'diyaFamily',
+    title: 'two children called Diya: "Diya Sharma score, performance, assignments and who is the class teacher" -- every part about Diya Sharma only',
+    forbid: NOT_DIYA,
+    turns: [{
+      say: 'Diya Sharma score, performance, assignments and who is the class teacher',
+      reply: [heading(1, 'Diya Sharma score'), /Diya Sharma scored 80%/, heading(2, 'Performance'), /Diya Sharma \(Class 5 A\) — performance score 88\/100/,
+        /1 of 1 submitted/, heading(3, 'Assignments'), /Still to submit — Diya Sharma \(2\)/, /Plant cell diagram/, heading(4, 'Who is the class teacher'), /Diya Sharma is in Class 5 A/],
+      notReply: [/Which class/, /Algebra set 1/, /Diya Singh/, /Could not be done/],
+    }],
+  },
+  {
+    id: 'p7-diya-my-child-asks-once',
+    role: 'DIYA_PARENT',
+    setup: 'diyaFamily',
+    title: 'two children, none named: "Which child?" once for the whole message, then every part for the child chosen',
+    forbid: NOT_DIYA,
+    turns: [
+      { say: 'show my child performance and who is the class teacher', noCall: true, reply: /Which child do you mean — Diya (?:Sharma|Singh) or Diya (?:Sharma|Singh)\? .*all 2 parts/ },
+      { say: 'Diya Singh', reply: [/Diya Singh \(Class 6 A\) — performance score 40\/100/, /Diya Singh is in Class 6 A/], notReply: [/You have \d+ class/, /Diya Sharma/] },
+    ],
+  },
+  {
+    id: 'p7-diya-shared-first-name',
+    role: 'DIYA_PARENT',
+    setup: 'diyaFamily',
+    title: 'a first name two children share ("Diya") is asked about once, for the whole message',
+    forbid: NOT_DIYA,
+    turns: [
+      { say: "Diya's score, performance and who is the class teacher", noCall: true, reply: /Which Diya do you mean — Diya (?:Sharma|Singh) or Diya (?:Sharma|Singh)\?/ },
+      { say: 'Diya Sharma', reply: [/Diya Sharma scored 80%/, /performance score 88\/100/, /Diya Sharma is in Class 5 A/], notReply: /Diya Singh/ },
+    ],
+  },
+  {
+    id: 'p7-diya-single-asks',
+    role: 'DIYA_PARENT',
+    setup: 'diyaFamily',
+    title: '"Diya\'s marks" asks which Diya; "Diya Sharma\'s assignments" is a new question, about her work only',
+    forbid: NOT_DIYA,
+    turns: [
+      { say: "Diya's marks", reply: /More than one student matches "Diya"/ },
+      { say: "Diya Sharma's assignments", tool: 'get_assignments', args: { studentName: 'Diya Sharma' }, reply: /Still to submit — Diya Sharma \(2\)/, notReply: /Algebra set 1/ },
+    ],
+  },
+  {
+    id: 'p7-diya-whatsapp',
+    role: 'DIYA_PARENT',
+    channel: 'WHATSAPP',
+    setup: 'diyaFamily',
+    title: 'WhatsApp: two children, none named -- one "Which child?", then both parts for her',
+    forbid: NOT_DIYA,
+    turns: [
+      { say: 'show my child performance and who is the class teacher', reply: /Which child do you mean/ },
+      { say: 'Diya Sharma', reply: [/\*1\. /, /performance score 88\/100/, /Diya Sharma is in Class 5 A/], notReply: /Diya Singh/ },
+    ],
+  },
+);

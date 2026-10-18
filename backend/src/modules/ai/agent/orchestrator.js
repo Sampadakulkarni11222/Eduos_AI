@@ -14,7 +14,7 @@ import { currentTenantId } from '../../../tenancy/tenantContext.js';
 import { handleRagFallback } from './rag.js';
 import { composeAnswer, answerIsModelWritten, joinResults } from './response.js';
 import { applyVerification } from './verify.js';
-import { planAsks, runMultiAsk, NEXT_DRAFT } from './multiAsk.js';
+import { planAsks, runMultiAsk, NEXT_DRAFT, familyOf, childNamedIn, withChild } from './multiAsk.js';
 import { classFollowUp } from './p7FollowUps.js';
 import { evidenceFor } from './evidence.js';
 import { presentOf } from './present.js';
@@ -996,6 +996,15 @@ async function routeTurn({ mcpSession, message: spokenMessage, actor, source, la
   // p7: several asks in one message -- planned, run (reads in parallel) and
   // answered in sections, one per ask (agent/multiAsk.js). Never when the
   // message answers a question the assistant asked ("Science, Class 6 B").
+  // The answer to "Which child?" asked about a multi-part message: the whole
+  // message again, about that child.
+  const pendingMulti = memory?.context?.pendingMultiAsk;
+  if (pendingMulti?.message && asked) {
+    const child = childNamedIn(rawMessage, await familyOf(actor));
+    const resumed = child ? withChild(pendingMulti.message, child.name, pendingMulti.term ?? null) : null;
+    const resumedAsks = resumed ? planAsks(resumed, actor) : null;
+    if (resumedAsks) return runMultiAsk({ mcpSession, asks: resumedAsks, actor, source, lang, message: resumed });
+  }
   const answering = asked || hasOpenWrite(history, message, actor);
   const asks = answering ? null : planAsks(referred, actor);
   if (asks) return runMultiAsk({ mcpSession, asks, actor, source, lang, message: referred });

@@ -195,3 +195,33 @@ export function applyVerification(result, { message = '' } = {}) {
     provenance: verdict.provenance,
   };
 }
+
+/**
+ * A per-child answer that carries ANOTHER child's records (p7): a parent of
+ * several children asked about one of them, and the result names a sibling,
+ * or lists rows from a class the named child is not in (a merged list). The
+ * reason, or null when the answer holds only that child's records.
+ *
+ * @param {{ data: unknown, child: { name: string, class: string }, siblings: Array<{ name: string, class: string }> }} input
+ */
+export function crossChildViolation({ data, child, siblings = [] }) {
+  if (!data || !child) return null;
+  const text = JSON.stringify(data).toLowerCase();
+  const sibling = siblings.find((s) => s.name && s.name.toLowerCase() !== child.name.toLowerCase() && text.includes(s.name.toLowerCase()));
+  if (sibling) return `it names ${sibling.name}`;
+  const key = (c) => String(c ?? '').toLowerCase().replace(/\bclass\b/g, '').replace(/[\s-]+/g, '');
+  const own = key(child.class);
+  if (!own) return null;
+  const otherClasses = new Set(siblings.map((s) => key(s.class)).filter((k) => k && k !== own));
+  const rows = [];
+  const visit = (v, depth = 0) => {
+    if (!v || depth > 4) return;
+    if (Array.isArray(v)) { v.forEach((x) => visit(x, depth + 1)); return; }
+    if (typeof v !== 'object') return;
+    if (typeof v.class === 'string') rows.push(v.class);
+    Object.values(v).forEach((x) => (x && typeof x === 'object' ? visit(x, depth + 1) : null));
+  };
+  visit(Array.isArray(data) ? data : (data.assignments ?? data.items ?? data.rows ?? data));
+  const foreign = rows.find((c) => otherClasses.has(key(c)));
+  return foreign ? `it lists ${String(foreign).replace(/\s+-\s+/, ' ')} work, which is another child's class` : null;
+}

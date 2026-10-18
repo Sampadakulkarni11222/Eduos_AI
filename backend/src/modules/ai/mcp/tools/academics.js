@@ -11,6 +11,7 @@ import {
 } from './_shared.js';
 import { classKey } from '../../../../utils/classNames.js';
 import { sameSubject } from '../../../../utils/subjectNames.js';
+import { Submission } from '../../../../models/assignment.model.js';
 import {
   resolveGrade, resolveYear, resolveTerm, resolveSubject, resolveStaff, resolveOfferingRef, resolveExam,
 } from './_names.js';
@@ -1174,6 +1175,10 @@ export const academicTools = {
         dueFrom: dateStr('Only work due on or after this day'),
         dueTo: dateStr('Only work due on or before this day'),
         first: { type: 'boolean', description: 'true for "which one is due first / next": only the assignment with the earliest due date that has not passed' },
+        // p7: a parent of several children names the one they mean; the list
+        // is then that child's class's work with THAT child's submissions only.
+        studentName: { type: 'string', maxLength: 80, description: "A parent: which child (by name). Only that child's work and submissions are listed" },
+        admissionNo: { type: 'string', maxLength: 40, description: "A parent: which child, by admission number" },
       },
       additionalProperties: false,
     },
@@ -1201,8 +1206,23 @@ export const academicTools = {
         ? await resolveSection(ctx, { sectionId: args.sectionId, className: args.className })
         : null;
 
-      const all = await assignments.list(ctx.actor, ctx.scope, {});
+      let all = await assignments.list(ctx.actor, ctx.scope, {});
       const wantedSubject = args.subject ? String(args.subject).toLowerCase() : null;
+
+      // p7: one named child of a family (resolved at the caller's own scope,
+      // so a parent reaches only their own children): their class's work, and
+      // the submission status from that child's own submissions -- never a
+      // sibling's rows or a sibling's hand-ins merged in.
+      let child = null;
+      if (isFamily && (args.studentName || args.admissionNo)) {
+        const named = await resolveStudentEnrollment(ctx, { studentName: args.studentName, admissionNo: args.admissionNo });
+        const subs = await Submission.find({ enrollmentId: named.enrollmentId, assignmentId: { $in: all.map((a) => a.id) } }).lean();
+        const mine = new Map(subs.map((x) => [String(x.assignmentId), x]));
+        all = all
+          .filter((a) => String(a.sectionId) === String(named.sectionId))
+          .map((a) => { const own = mine.get(String(a.id)); return { ...a, mySubmission: own ? { status: own.status, submittedAt: own.submittedAt ?? null, marks: own.marks ?? null } : null }; });
+        child = { name: named.name, class: String(named.class ?? '').replace(/\s+-\s+/, ' ') };
+      }
 
       let rows = all;
       if (wantedSubject) rows = rows.filter((a) => sameSubject(args.subject, a.subject));
@@ -1263,7 +1283,7 @@ export const academicTools = {
       const scopeLabel = [[args.subject, section?.label].filter(Boolean).join(' for '), windowLabel].filter(Boolean).join(', ');
       if (firstNote) {
         return ok(
-          { assignments: shown, count: shown.length, first: true },
+          { assignments: shown, count: shown.length, first: true, ...(child && { student: child }) },
           { speak: firstNote },
         );
       }
@@ -1271,7 +1291,7 @@ export const academicTools = {
 
       if (!ordered.length) {
         return ok(
-          { assignments: [], count: 0, ...(section && { class: section.label }), ...(args.subject && { subject: args.subject }) },
+          { assignments: [], count: 0, ...(section && { class: section.label }), ...(args.subject && { subject: args.subject }), ...(child && { student: child }) },
           {
             speak: scopeLabel
               ? `No homework found ${scopeLabel.startsWith('due') ? scopeLabel : `for ${scopeLabel}`}.`
@@ -1283,11 +1303,12 @@ export const academicTools = {
         {
           assignments: shown,
           count: ordered.length,
+          ...(child && { student: child }),
           ...(section && { class: section.label }),
           ...(args.subject && { subject: args.subject }),
         },
         {
-          speak: `${ordered.length} ${pendingOnly ? 'still to submit' : isFamily && args.status === 'SUBMITTED' ? 'submitted' : 'homework item(s)'}${scopeLabel ? (scopeLabel.startsWith('due') ? ` ${scopeLabel}` : ` for ${scopeLabel}`) : ''}: ${view.list}${view.more ? ', …' : ''}.`,
+          speak: `${child ? `${child.name}: ` : ''}${ordered.length} ${pendingOnly ? 'still to submit' : isFamily && args.status === 'SUBMITTED' ? 'submitted' : 'homework item(s)'}${scopeLabel ? (scopeLabel.startsWith('due') ? ` ${scopeLabel}` : ` for ${scopeLabel}`) : ''}: ${view.list}${view.more ? ', …' : ''}.`,
           // A table (agent/present.js). The class is shown whenever the rows
           // span more than one: "Chapter 1 Assignment" four times over was
           // four different classes, indistinguishable in a sentence.
@@ -1295,9 +1316,10 @@ export const academicTools = {
             type: 'assignments.list',
             audience: isFamily ? 'family' : 'staff',
             kind: pendingOnly ? 'pending' : isFamily && args.status === 'SUBMITTED' ? 'submitted' : 'all',
-            scope: scopeLabel || null,
+            scope: [child?.name, scopeLabel].filter(Boolean).join(', ') || null,
             total: ordered.length,
-            showClass: !isFamily && new Set(shown.map((a) => a.class)).size > 1,
+            // (A family whose children are in different classes sees which class each row is.)
+            showClass: new Set(shown.map((a) => a.class)).size > 1,
             items: shown.map((a) => ({
               title: a.title,
               subject: a.subject ?? null,

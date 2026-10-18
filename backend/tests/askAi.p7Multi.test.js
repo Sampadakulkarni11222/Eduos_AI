@@ -168,6 +168,15 @@ describe('every figure, name and claimed action must trace to a tool result or a
     expect(out._deterministic).toBeUndefined();
   });
 
+  it("a per-child answer holding another child's records is caught", async () => {
+    const { crossChildViolation } = await import('../src/modules/ai/agent/verify.js');
+    const child = { name: 'Diya Sharma', class: 'Class 5 A' };
+    const siblings = [{ name: 'Diya Singh', class: 'Class 6 A' }];
+    expect(crossChildViolation({ data: { student: child, assignments: [{ class: 'Class 5 - A' }] }, child, siblings })).toBeNull();
+    expect(crossChildViolation({ data: { assignments: [{ class: 'Class 5 - A' }, { class: 'Class 6 - A' }] }, child, siblings })).toMatch(/Class 6 A work/);
+    expect(crossChildViolation({ data: { rows: [{ studentName: 'Diya Singh' }] }, child, siblings })).toMatch(/names Diya Singh/);
+  });
+
   it('what the person typed grounds itself', () => {
     expect(verifyAnswer({ reply: 'No homework due on 2026-11-30.', calls: [{ tool: 'get_assignments', args: {}, result: { success: true, data: { items: [] } } }], message: 'homework due on 2026-11-30' }).ok).toBe(true);
   });

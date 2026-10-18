@@ -181,6 +181,8 @@ function contextAfter(previous, result) {
   }
   // p7: drafts of a multi-part message still to be proposed, one at a time ("next").
   if (Array.isArray(result?.queuedWrites)) next.queuedWrites = result.queuedWrites.slice(0, 10);
+  // p7: a multi-part message waiting for "which child?" -- answered by the next turn only.
+  next.pendingMultiAsk = result?.pendingMultiAsk ?? null;
   // A write the tool could not prepare yet and asked about: finished by the next answer.
   const intended = result?.needsInput && result?.intendedTool && getMcpTool(result.intendedTool)?.operation !== 'GET'
     ? result.intendedTool : null;

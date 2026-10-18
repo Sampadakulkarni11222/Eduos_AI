@@ -11,6 +11,9 @@ import { studentsIn } from './memory.js';
 import { t } from '../../../utils/language.js';
 import { logger } from '../../../utils/logger.js';
 import { classFollowUp } from './p7FollowUps.js';
+import { crossChildViolation } from './verify.js';
+import { Enrollment } from '../../../models/student.model.js';
+import { getGuardianStudentIds } from '../../../utils/scope.js';
 
 /**
  * Multi-operation prompts (p7): one message, several asks, every part answered.
@@ -126,6 +129,11 @@ function wholeAsk(piece, index, shared, lead) {
   const own = OWN_LEAD.test(text) || (index === 0 && !lead);
   if (!own && lead) text = `${lead} ${text}`;
   const has = (phrase) => text.toLowerCase().includes(String(phrase).toLowerCase());
+  // "Diya Sharma score": the person said without "'s" before what is asked about.
+  if (shared.person) {
+    const esc = shared.person.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    text = text.replace(new RegExp(`\\b(${esc})\\s+(?=(?:score|scores|marks|results?|performance|attendance|homework|assignments?|fees?|report\\s+card|class\\s+teacher|timetable|grades?)\\b)`, 'i'), "$1's ");
+  }
   // A piece that names its own person ("Riya's fees and Rahul's attendance") keeps that person.
   const ownPerson = dimensionsOf(text).student;
   const selfAsk = /\b(?:my|me|mine|i)\b/i.test(text) && !/\bmy\s+(?:child|son|daughter|kid|ward)\b/i.test(text);
@@ -161,7 +169,8 @@ function readAsk(piece, index, shared, lead, actor) {
   if (policy?.reply) return { kind: 'note', text: whole, note: policy.reply };
   const step = parseIntent(whole, actor);
   if (!step || step.steps || step.clarify) return { kind: 'none', text: whole };
-  return { kind: isWrite(step.tool) ? 'write' : 'read', text: whole, step: { tool: step.tool, args: step.args ?? {} } };
+  const person = step.args?.studentName ?? step.args?.admissionNo ?? dimensionsOf(whole).student ?? null;
+  return { kind: isWrite(step.tool) ? 'write' : 'read', text: whole, step: { tool: step.tool, args: step.args ?? {} }, person };
 }
 
 /**
@@ -282,7 +291,60 @@ function absenceNote(name, data) {
  * @returns the same shape runMcpPlan returns (reply, data, tools, plan, evidence,
  *   action when a draft awaits confirmation), plus `multiAsk` and `queuedWrites`.
  */
+/** A parent's children with their classes, at the parent's own link (StudentGuardian), or []. */
+export async function familyOf(actor) {
+  if (actor?.roleKey !== 'PARENT' || !actor?.profileId) return [];
+  const ids = await getGuardianStudentIds(actor.profileId);
+  if (!ids.length) return [];
+  const rows = await Enrollment.find({ studentId: { $in: ids }, status: 'ACTIVE' })
+    .populate('studentId', 'firstName lastName').populate({ path: 'sectionId', select: 'name gradeId', populate: { path: 'gradeId', select: 'name' } }).lean();
+  return rows.map((e) => ({
+    name: `${e.studentId?.firstName ?? ''} ${e.studentId?.lastName ?? ''}`.trim(),
+    class: `${e.sectionId?.gradeId?.name ?? ''} ${e.sectionId?.name ?? ''}`.trim(),
+  }));
+}
+
+/** The child of `family` a person's words name: the full name, or a word only one child's name has. */
+export function childNamedIn(text, family) {
+  const said = ` ${String(text ?? '').toLowerCase().replace(/[^\p{L}\s]/gu, ' ')} `;
+  const full = family.filter((c) => said.includes(` ${c.name.toLowerCase()} `));
+  if (full.length === 1) return full[0];
+  const byWord = family.filter((c) => c.name.toLowerCase().split(/\s+/).some((w) => w.length > 2 && said.includes(` ${w} `)
+    && family.filter((o) => o.name.toLowerCase().split(/\s+/).includes(w)).length === 1));
+  return byWord.length === 1 ? byWord[0] : null;
+}
+
+/** A part about ONE child: a per-student capability, or words about a child's records. */
+const PER_CHILD = /(?:class\s+teacher|performance|marks|scores?|results?|report\s+card|attendance|homework|assignments?|timetable|grades?|absent|progress)/i;
+const perChild = (a) => Boolean(a.step && ['studentName', 'admissionNo', 'studentId'].some((k) => k in (getMcpTool(a.step.tool)?.inputSchema?.properties ?? {})))
+  || PER_CHILD.test(a.ask);
+
 export async function runMultiAsk({ mcpSession, asks, actor, source, lang, message = '' }) {
+  // A parent of several children who names none: one question for the whole
+  // message ("Which child?"), never a different question -- or a different
+  // child -- per part. The answer resumes the message (orchestrator).
+  const family = await familyOf(actor);
+  // A first name two of the children share ("Diya"): asked once, for the whole message.
+  const firstOf = (n) => String(n ?? '').toLowerCase().trim().split(/\s+/)[0];
+  const shared = family.length > 1 ? asks.find((a) => a.person && !childNamedIn(a.person, family)
+    && String(a.person).trim().split(/\s+/).length === 1 && family.filter((c) => firstOf(c.name) === firstOf(a.person)).length > 1) : null;
+  if (shared) {
+    const names = family.filter((c) => firstOf(c.name) === firstOf(shared.person)).map((c) => c.name);
+    return {
+      reply: `Which ${shared.person} do you mean — ${names.slice(0, -1).join(', ')} or ${names.at(-1)}? Tell me and I'll answer all ${asks.length} parts for them.`,
+      lang, action: null, clarification: true, needsInput: true,
+      pendingMultiAsk: { message: String(message).slice(0, 600), term: shared.person },
+    };
+  }
+  if (family.length > 1 && asks.some(perChild) && !asks.some((a) => a.person) && !childNamedIn(message, family)) {
+    const names = family.map((c) => c.name);
+    return {
+      reply: `Which child do you mean — ${names.slice(0, -1).join(', ')} or ${names.at(-1)}? Tell me and I'll answer all ${asks.length} parts for them.`,
+      lang, action: null, clarification: true, needsInput: true,
+      pendingMultiAsk: { message: String(message).slice(0, 600) },
+      multiAsk: { parts: asks.map((a) => ({ ask: a.heading, kind: a.kind })) },
+    };
+  }
   // Reads first, in parallel, one call per distinct request.
   const key = (s) => `${s.tool}:${JSON.stringify(s.args ?? {})}`;
   const reads = new Map();
@@ -297,6 +359,20 @@ export async function runMultiAsk({ mcpSession, asks, actor, source, lang, messa
     }
   }));
   const calls = [...reads.entries()].map(([k, step]) => ({ tool: step.tool, args: step.args ?? {}, result: readResults.get(k) }));
+
+  // p7 (answer validation): a part about one named child must hold that
+  // child's records only -- never a sibling's name or a sibling's class's rows.
+  const rejected = new Map();
+  if (family.length > 1) {
+    for (const [i, a] of asks.entries()) {
+      if (a.kind !== 'read' || !a.person) continue;
+      const child = childNamedIn(a.person, family);
+      const result = readResults.get(key(a.step));
+      if (!child || !result?.success) continue;
+      const problem = crossChildViolation({ data: result.data, child, siblings: family.filter((c) => c !== child) });
+      if (problem) rejected.set(i, problem);
+    }
+  }
 
   // What the reads found that a write may point back to ("their parents").
   const absentData = calls.map((c) => c.result?.data).find((d) => d && Array.isArray(d.absent));
@@ -346,7 +422,10 @@ export async function runMultiAsk({ mcpSession, asks, actor, source, lang, messa
     else if (a.kind === 'note') { body = a.note; failed.push({ index: i, ask: a.heading, reason: 'not shown to your account by school policy' }); }
     else if (a.kind === 'read') {
       const result = readResults.get(key(a.step));
-      if (result?.success) body = sectionText(a, result, lang);
+      if (rejected.has(i)) {
+        const why = `this answer included another child's records (${rejected.get(i)}), so it is not shown. Ask it on its own for ${a.person}.`;
+        body = `_Not shown: ${why}_`; failed.push({ index: i, ask: a.heading, reason: why });
+      } else if (result?.success) body = sectionText(a, result, lang);
       else { const why = failureOf(result, actor, a.ask); body = `_${why.text}_`; failed.push({ index: i, ask: a.heading, reason: why.text, topic: why.topic }); }
     } else {
       const notes = writeNotes.get(i);
@@ -412,3 +491,25 @@ export async function runMultiAsk({ mcpSession, asks, actor, source, lang, messa
 
 /** "next": the next queued draft of an earlier multi-part message. */
 export const NEXT_DRAFT = /^\s*(?:next|next\s+(?:one|draft|message|please)|(?:draft|prepare|show)\s+the\s+next(?:\s+(?:one|draft|message))?|continue\s+with\s+the\s+next(?:\s+one)?)\s*[.!]*\s*$/i;
+
+/** The message a "Which child?" was asked about, now about the child named. */
+export function withChild(message, name, term = null) {
+  const text = String(message ?? '');
+  if (term) {
+    // Each bare use of the shared first name becomes the full name chosen.
+    const words = text.split(/(\s+)/);
+    const surname = String(name).split(/\s+/).slice(1).join(' ').toLowerCase();
+    let changed = false;
+    for (let i = 0; i < words.length; i += 1) {
+      const bare = words[i].replace(/['’]s$/i, '');
+      if (bare.toLowerCase() !== String(term).toLowerCase()) continue;
+      const next = (words[i + 2] ?? '').toLowerCase().replace(/['’]s$/, '');
+      if (surname && next === surname.split(' ')[0]) continue;
+      words[i] = words[i].replace(bare, name);
+      changed = true;
+    }
+    if (changed) return words.join('');
+  }
+  const kin = /\b(?:my|our)\s+(?:child|kid|son|daughter|ward)(?:['’]s)?\b/i;
+  return kin.test(text) ? text.replace(kin, `${name}'s`) : `${name}'s ${text}`;
+}

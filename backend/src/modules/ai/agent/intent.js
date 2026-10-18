@@ -3537,6 +3537,11 @@ function answeredRead(prior, reply, asked, actor, now = new Date()) {
     const picked = pickedStudent(offered, reply);
     const chosen = picked ? withStudentChosen(prior.args ?? {}, offered.term, picked.name) : null;
     if (chosen) return { tool: prior.tool, args: chosen };
+    // p7: an offered name WITH a request of its own ("Diya Sharma's assignments")
+    // is a new question about that child, not the old one asked again.
+    const said = String(reply ?? '').toLowerCase();
+    const named = offered.options.find((o) => said.includes(o.name.toLowerCase()));
+    if (!picked && named && said.replace(named.name.toLowerCase(), '').replace(/['’]s\b/g, '').replace(/[^\p{L}]+/gu, ' ').trim()) return null;
     if (!picked && NAME_SHAPED.test(String(reply).trim().replace(/[\s.!?]+$/, ''))) return { tool: prior.tool, args: { ...(prior.args ?? {}) } };
   }
   const text = String(reply ?? '').replace(/^\s*(?:for|in|of|it(?:'s| is)|its|the)\s+/i, '').replace(/[\s?.!]+$/, '').trim();

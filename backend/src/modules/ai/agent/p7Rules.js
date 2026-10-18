@@ -76,6 +76,17 @@ export const P7_RULES = [
     args: (msg) => (spokenClass(msg) ? {} : withStudent(msg)),
   },
   {
+    // A parent's "who is the class teacher?": their child's class teacher (asked
+    // which child when there are two) -- never the parent's own "classes".
+    tool: 'get_enrolment_details',
+    patterns: [/\b(?:who\s+is|who's|whos|name\s+of)\s+(?:the\s+)?class\s+teacher\b/i, /^\s*(?:and\s+)?(?:the\s+)?class\s+teacher\s*[?.!]*\s*$/i],
+    exclude: [/\b(?:make|assign|change|set|update|appoint|replace)\b/i, /\bclass\s+teachers\b/i, /\bclass\s+teacher\s+of\s+(?:class\s+)?\d/i],
+    requires: { permission: 'students.read', roles: ['PARENT'] },
+    weight: 7,
+    decisive: true,
+    args: withStudent,
+  },
+  {
     // "How many staff are there?" -- staff accounts only, never every user.
     tool: 'count_staff',
     patterns: [
