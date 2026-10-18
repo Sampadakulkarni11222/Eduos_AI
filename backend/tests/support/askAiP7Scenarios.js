@@ -293,3 +293,21 @@ P7_SCENARIOS.push(
     ],
   },
 );
+
+P7_SCENARIOS.push(
+  {
+    id: 'p7-diya-homework-per-child',
+    role: 'DIYA_PARENT',
+    setup: 'diyaFamily',
+    title: 'two children, a single read naming neither ("show homework"): one section per child, each her own list -- never merged, no question',
+    forbid: NOT_DIYA,
+    turns: [
+      {
+        say: 'show homework',
+        reply: [/\*\*Diya Sharma \(Class 5 A\)\*\*/, /Still to submit — Diya Sharma \(2\)/, /Fractions worksheet/, /\*\*Diya Singh \(Class 6 A\)\*\*/, /Still to submit — Diya Singh \(1\)/, /Algebra set 1/],
+        notReply: [/Which child/, /\(3\)/],
+      },
+      { say: 'show marks', reply: [/\*\*Diya Sharma \(Class 5 A\)\*\*\nDiya Sharma scored 80%/, /\*\*Diya Singh \(Class 6 A\)\*\*\nDiya Singh scored 40%/], notReply: /Which child/ },
+    ],
+  },
+);

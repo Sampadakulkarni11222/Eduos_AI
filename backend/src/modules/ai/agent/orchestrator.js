@@ -14,7 +14,7 @@ import { currentTenantId } from '../../../tenancy/tenantContext.js';
 import { handleRagFallback } from './rag.js';
 import { composeAnswer, answerIsModelWritten, joinResults } from './response.js';
 import { applyVerification } from './verify.js';
-import { planAsks, runMultiAsk, NEXT_DRAFT, familyOf, childNamedIn, withChild } from './multiAsk.js';
+import { planAsks, runMultiAsk, NEXT_DRAFT, familyOf, childNamedIn, withChild, perChildSteps, runPerChild } from './multiAsk.js';
 import { classFollowUp } from './p7FollowUps.js';
 import { evidenceFor } from './evidence.js';
 import { presentOf } from './present.js';
@@ -1200,6 +1200,11 @@ async function routeTurn({ mcpSession, message: spokenMessage, actor, source, la
     logger.error(`Agent plan named "${unknown.tool}", which is not an MCP tool`);
     throw new AppError('That capability is not available.', 400);
   }
+
+  // p7: one read about a child, from a parent of several who named none --
+  // answered for each child in its own section, never merged (agent/multiAsk.js).
+  const perChild = leaveNote ? null : await perChildSteps(steps, routed, actor);
+  if (perChild) return runPerChild({ mcpSession, plan: perChild, actor, lang });
 
   const ran = await runMcpPlan({ mcpSession, steps, message, actor, source, lang });
   const result = leaveNote ? { ...ran, reply: `${ran.reply}\n\n${leaveNote}`, declined: 'NOT_PERMITTED' } : ran;

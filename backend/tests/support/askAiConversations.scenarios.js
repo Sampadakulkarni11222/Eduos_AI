@@ -201,11 +201,13 @@ export const SCENARIOS = [
   {
     id: 'parent-which-child',
     role: 'PARENT',
-    title: 'two children: the assistant asks which, and the answer finishes the question',
+    // p7 (lead decision): a single read naming neither child is answered for EACH
+    // child in its own section -- never merged, and no question asked.
+    title: "two children: \"show my child's attendance\" is answered for each child, in a section of its own",
     forbid: NOT_PARENTS,
     turns: [
-      { say: "show my child's attendance", reply: ASKS },
-      { say: 'Riya', tool: 'get_student_attendance', args: { studentName: 'Riya' }, reply: /Riya Kapoor/, notReply: /Rahul/ },
+      { say: "show my child's attendance", tool: 'get_student_attendance', reply: [/\*\*Rahul Sharma \(Class 6 A\)\*\*/, /\*\*Riya Kapoor \(Class 6 B\)\*\*/], notReply: /Which child/ },
+      { say: "Riya's attendance", tool: 'get_student_attendance', args: { studentName: 'Riya' }, reply: /Riya Kapoor/, notReply: /Rahul/ },
     ],
   },
   {
@@ -746,7 +748,8 @@ export const SCENARIOS = [
     title: '"how much do I owe?", then "pay the fees for Rahul" -- what is due, and never a claimed payment',
     forbid: NOT_PARENTS,
     turns: [
-      { say: 'how much do I owe?', tool: 'get_fees', reply: /10,500/, notReply: UNSURE },
+      // p7 (lead decision): per child -- Rahul ₹8,000, Riya ₹2,500 -- each in its own section.
+      { say: 'how much do I owe?', tool: 'get_pending_fees', reply: [/\*\*Rahul Sharma \(Class 6 A\)\*\*[^*]*8,000/, /\*\*Riya Kapoor \(Class 6 B\)\*\*[^*]*2,500/], notReply: UNSURE },
       { say: 'pay the fees for Rahul', tool: 'get_pending_fees', reply: [/can't take or record a payment/, /8,000/], notReply: /\b(?:paid|payment)\s+(?:has\s+been|was)\s+(?:made|recorded)/i, executed: false },
     ],
   },

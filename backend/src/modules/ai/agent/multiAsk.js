@@ -513,3 +513,79 @@ export function withChild(message, name, term = null) {
   const kin = /\b(?:my|our)\s+(?:child|kid|son|daughter|ward)(?:['’]s)?\b/i;
   return kin.test(text) ? text.replace(kin, `${name}'s`) : `${name}'s ${text}`;
 }
+
+/* ── A single per-child read from a parent of several children (p7) ──────
+   "show homework", "attendance this month", "marks", "fees due" from a parent
+   of two who names neither: answered PER CHILD -- one section per child,
+   headed with the child's name, each from a call made for that child alone
+   (studentName), so statuses and figures are that child's own and never a
+   merged list. No question is asked for a single read (lead decision). */
+
+/** The family read, as the per-student read that answers it for one child. */
+const PER_CHILD_READS = {
+  get_assignments: { tool: 'get_assignments', key: 'studentName' },
+  get_attendance: { tool: 'get_student_attendance', key: 'studentName', map: (a) => ({ ...(a.month && { month: a.month }), ...(a.date && { from: a.date, to: a.date }) }) },
+  get_student_attendance: { tool: 'get_student_attendance', key: 'studentName' },
+  get_fees: { tool: 'get_pending_fees', key: 'search', map: () => ({}) },
+  get_results: { tool: 'get_report_card', key: 'studentName' },
+  get_report_card: { tool: 'get_report_card', key: 'studentName' },
+  get_performance: { tool: 'get_performance', key: 'studentName' },
+  get_performance_history: { tool: 'get_performance_history', key: 'studentName' },
+  get_student_performance: { tool: 'get_student_performance', key: 'studentName' },
+  get_enrolment_details: { tool: 'get_enrolment_details', key: 'studentName' },
+  get_attendance_trend: { tool: 'get_attendance_trend', key: 'studentName' },
+  get_subject_attendance: { tool: 'get_subject_attendance', key: 'studentName' },
+  get_attendance_calendar: { tool: 'get_attendance_calendar', key: 'studentName' },
+};
+const NAMES_A_CHILD = ['studentName', 'admissionNo', 'studentId', 'enrollmentId', 'search'];
+
+/**
+ * The steps for each child, or null when this is not that case: a parent of
+ * two or more, one read step about one child's records, nobody named.
+ */
+export async function perChildSteps(steps, message, actor) {
+  if (actor?.roleKey !== 'PARENT' || steps?.length !== 1) return null;
+  const [step] = steps;
+  const plan = PER_CHILD_READS[step.tool];
+  if (!plan || NAMES_A_CHILD.some((k) => step.args?.[k])) return null;
+  const family = await familyOf(actor);
+  if (family.length < 2 || childNamedIn(message, family)) return null;
+  const props = getMcpTool(plan.tool)?.inputSchema?.properties ?? {};
+  const carried = plan.map ? plan.map(step.args ?? {})
+    : Object.fromEntries(Object.entries(step.args ?? {}).filter(([k]) => k in props));
+  return { family, steps: family.map((child) => ({ child, tool: plan.tool, args: { ...carried, [plan.key]: child.name } })) };
+}
+
+/** Runs the per-child reads (in parallel) and answers in one section per child. */
+export async function runPerChild({ mcpSession, plan, actor, lang }) {
+  const results = await Promise.all(plan.steps.map(async (s) => {
+    try { return await callMcpTool(mcpSession, s.tool, s.args); } catch (err) {
+      logger.warn(`Per-child read ${s.tool} failed: ${err.message}`);
+      return { success: false, error: { message: 'That lookup is not available right now.' } };
+    }
+  }));
+  const calls = plan.steps.map((s, i) => ({ tool: s.tool, args: s.args, result: results[i] }));
+  const sections = plan.steps.map((s, i) => {
+    const r = results[i];
+    const others = plan.family.filter((c) => c !== s.child);
+    const crossed = r?.success ? crossChildViolation({ data: r.data, child: s.child, siblings: others }) : null;
+    const body = crossed ? `_Not shown: this answer included another child's records (${crossed})._`
+      : r?.success ? (presentOf(r, lang)?.trim() || 'Nothing to show.')
+        : `_Not answered: ${r?.error?.message ?? 'it could not be completed.'}_`;
+    return `**${s.child.name}${s.child.class ? ` (${s.child.class})` : ''}**\n${body}`;
+  });
+  const succeeded = calls.filter((c) => c.result?.success);
+  return {
+    reply: sections.join('\n\n'),
+    lang,
+    action: null,
+    tool: calls.at(-1)?.tool ?? null,
+    tools: calls.map((c) => c.tool),
+    plan: calls.map((c) => ({ tool: c.tool, args: c.args })),
+    via: 'MCP',
+    data: succeeded.map((c) => ({ tool: c.tool, student: c.args.studentName ?? c.args.search, data: c.result.data })),
+    evidence: evidenceFor(calls),
+    perChild: plan.steps.map((s) => s.child.name),
+    _calls: calls,
+  };
+}

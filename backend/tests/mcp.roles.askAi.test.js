@@ -345,7 +345,7 @@ describe('a parent is confined to their own child', () => {
     expect(other).not.toMatch(/8,000/);      // not Rahul's
   }, 60000);
 
-  it('asks which child rather than guessing, when a parent has more than one', async () => {
+  it('answers each child separately rather than guessing or merging, when a parent has more than one', async () => {
     // The same parent, given a second child. selfStudentId deliberately
     // resolves only when there is exactly one: with two, whose record to open
     // is a real question and guessing it would disclose the wrong child.
@@ -357,10 +357,16 @@ describe('a parent is confined to their own child', () => {
     }));
 
     const reply = say(await api.ask(person('PARENT'), "How is my child's attendance?"));
-    // Whatever it says, it must not quietly pick one of the two.
-    const namedRahul = /Rahul/.test(reply);
-    const namedAman = /Aman/.test(reply);
-    expect(namedRahul && namedAman, 'answered about both children at once').toBe(false);
+    // p7 (lead decision): never one child picked quietly, and never a merged
+    // answer -- each child in a section of its own, headed with the child's
+    // name, holding only that child's figures.
+    const sections = reply.split(/\n(?=\*\*[A-Z][a-z]+ [A-Z][a-z]+ \(Class)/);
+    const rahul = sections.find((s) => s.startsWith('**Rahul Sharma'));
+    const aman = sections.find((s) => s.startsWith('**Aman Gupta'));
+    expect(rahul, reply).toBeTruthy();
+    expect(aman, reply).toBeTruthy();
+    expect(rahul).not.toMatch(/Aman/);
+    expect(aman).not.toMatch(/Rahul/);
     expectNoCatalogLeak(reply);
   }, 60000);
 });
