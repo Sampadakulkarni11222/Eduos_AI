@@ -1945,7 +1945,7 @@ export async function listPaymentAcademicYears(actor, scope) {
  * years" a property of the endpoint rather than of four separate calls the
  * page has to keep in step.
  */
-export async function getStudentPaymentOverview(actor, scope, { academicYearId } = {}) {
+export async function getStudentPaymentOverview(actor, scope, { academicYearId, page, pageSize } = {}) {
   const years = await listPaymentAcademicYears(actor, scope);
   if (!years.length) {
     return { years: [], academicYearId: null, summary: null, plans: [], invoices: [], payments: [] };
@@ -1963,13 +1963,20 @@ export async function getStudentPaymentOverview(actor, scope, { academicYearId }
   // imports would be a cycle.
   const { listFeePlans } = await import('./plan.service.js');
 
+  // A family's year is a handful of rows and the page shows them all. At ALL
+  // scope the same call covers the whole school (up to 500 invoices and 500
+  // payments, megabytes in one response), so staff get pages of 50 unless
+  // they ask for another size.
+  const paging = pageSize || scope !== 'OWN' ? { page, pageSize: pageSize || 50 } : {};
+
   const [invoices, payments, plans, summary] = await Promise.all([
-    listInvoices(actor, scope, { academicYearId: selected.id }),
-    listPayments(actor, scope, { academicYearId: selected.id }),
+    listInvoices(actor, scope, { academicYearId: selected.id, ...paging }),
+    listPayments(actor, scope, { academicYearId: selected.id, ...paging }),
     listFeePlans(actor, scope, { academicYearId: selected.id }),
     getSummary(actor, scope, { academicYearId: selected.id }),
   ]);
 
+  const pageInfo = (list) => (Array.isArray(list) ? undefined : { page: list.page, pageSize: list.pageSize, total: list.total, totalPages: list.totalPages });
   return {
     years,
     academicYearId: selected.id,
@@ -1978,6 +1985,7 @@ export async function getStudentPaymentOverview(actor, scope, { academicYearId }
     plans,
     invoices: Array.isArray(invoices) ? invoices : invoices.items,
     payments: Array.isArray(payments) ? payments : payments.items,
+    ...(pageInfo(invoices) ? { invoicesPage: pageInfo(invoices), paymentsPage: pageInfo(payments) } : {}),
   };
 }
 

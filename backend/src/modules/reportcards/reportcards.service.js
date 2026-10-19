@@ -317,11 +317,14 @@ export async function generate(actor, scope, body = {}) {
   return { sectionId: String(sectionId), className: classLabel(ctx.section), termKey: term.key, templateId: String(tpl._id), created, refreshed, students: enrolments.length };
 }
 
-async function presentCard(card, { tpl = null, names = null } = {}) {
+// `pre` carries records a list has already loaded in bulk (student, section,
+// enrol: each may be null when the record is gone); anything not passed is
+// looked up for this one card.
+async function presentCard(card, { tpl = null, names = null, pre = {} } = {}) {
   const t = tpl ?? await ReportCardTemplate.findById(card.templateId).lean();
-  const student = await Student.findById(card.studentId).select('firstName lastName admissionNo').lean();
-  const section = await Section.findById(card.sectionId).populate('gradeId', 'name').lean();
-  const enrol = await Enrollment.findById(card.enrollmentId).select('rollNo').lean();
+  const student = 'student' in pre ? pre.student : await Student.findById(card.studentId).select('firstName lastName admissionNo').lean();
+  const section = 'section' in pre ? pre.section : await Section.findById(card.sectionId).populate('gradeId', 'name').lean();
+  const enrol = 'enrol' in pre ? pre.enrol : await Enrollment.findById(card.enrollmentId).select('rollNo').lean();
   const term = t ? termOf(t, card.termKey) : null;
   return {
     id: String(card._id), templateId: String(card.templateId), templateName: t?.name ?? null, termKey: card.termKey, termName: term?.name ?? card.termKey,
@@ -352,10 +355,24 @@ export async function list(actor, scope, query = {}) {
   if (query.templateId) filter.templateId = assertObjectId(query.templateId, 'templateId');
   if (query.status) filter.status = oneOf(query.status, ['DRAFT', 'CLASS_TEACHER_APPROVED', 'PRINCIPAL_APPROVED', 'PUBLISHED'], 'status');
   const cards = await TermReportCard.find(filter).sort({ sectionId: 1, createdAt: 1 }).limit(500).lean();
-  const tpls = new Map((await ReportCardTemplate.find({ _id: { $in: [...new Set(cards.map((c) => String(c.templateId)))] } }).lean()).map((t) => [String(t._id), t]));
-  const out = [];
-  // eslint-disable-next-line no-await-in-loop
-  for (const c of cards) out.push(await presentCard(c, { tpl: tpls.get(String(c.templateId)) }));
+  // Four bulk reads instead of three per card: a whole school's cards took
+  // about 17 s as one query per student, class and enrolment.
+  const ids = (key) => [...new Set(cards.map((c) => String(c[key])))];
+  const byId = (rows) => new Map(rows.map((r) => [String(r._id), r]));
+  const [tpls, students, sections, enrols] = await Promise.all([
+    ReportCardTemplate.find({ _id: { $in: ids('templateId') } }).lean().then(byId),
+    Student.find({ _id: { $in: ids('studentId') } }).select('firstName lastName admissionNo').lean().then(byId),
+    Section.find({ _id: { $in: ids('sectionId') } }).populate('gradeId', 'name').lean().then(byId),
+    Enrollment.find({ _id: { $in: ids('enrollmentId') } }).select('rollNo').lean().then(byId),
+  ]);
+  const out = await Promise.all(cards.map((c) => presentCard(c, {
+    tpl: tpls.get(String(c.templateId)),
+    pre: {
+      student: students.get(String(c.studentId)) ?? null,
+      section: sections.get(String(c.sectionId)) ?? null,
+      enrol: enrols.get(String(c.enrollmentId)) ?? null,
+    },
+  })));
   return out.sort((a, b) => (a.rollNo ?? 999) - (b.rollNo ?? 999) || a.studentName.localeCompare(b.studentName));
 }
 

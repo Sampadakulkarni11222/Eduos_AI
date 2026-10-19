@@ -139,9 +139,9 @@ const shiftSpeak = (s) => `${s.name} (${s.code}): ${s.startsAt ?? '?'}-${s.endsA
 const enrolmentShiftTools = {
   get_next_roll_number: tool({
     module: 'Students', operation: 'GET',
-    description: 'For the office or a class teacher enrolling a pupil: the next free roll number in a class this academic year. Read-only.',
+    description: 'For the office enrolling a pupil: the next free roll number in a class this academic year. Read-only.',
     inputSchema: closed({ ...classIdentitySchema }, ['className']),
-    permission: 'students.read',
+    permission: 'students.read', minScope: 'ALL',
     service: 'student.service.nextRollNo()',
     async run(ctx, args) {
       const section = await sectionOf(ctx, args.className);

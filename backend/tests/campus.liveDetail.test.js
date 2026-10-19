@@ -8,6 +8,10 @@ import { Enrollment, Student, StudentGuardian } from '../src/models/student.mode
 import { CoverAssignment } from '../src/models/staffLeave.model.js';
 import { liveDetail, myView } from '../src/modules/campus/live-detail.service.js';
 import { istDay } from '../src/modules/ptm/relations.js';
+import { pinClock } from './support/clock.js';
+
+// Built around "today": runs on a school day (next Wednesday morning IST), not on whatever day CI runs.
+pinClock();
 
 /**
  * The live detail behind the 3D campus, and each reader's own campus view,

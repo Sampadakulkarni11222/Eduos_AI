@@ -3287,6 +3287,16 @@
           "first": {
             "type": "boolean",
             "description": "true for \"which one is due first / next\": only the assignment with the earliest due date that has not passed"
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "A parent: which child (by name). Only that child's work and submissions are listed"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "A parent: which child, by admission number"
           }
         },
         "additionalProperties": false
@@ -23841,7 +23851,7 @@
       "name": "get_next_roll_number",
       "module": "Students",
       "operation": "GET",
-      "description": "For the office or a class teacher enrolling a pupil: the next free roll number in a class this academic year. Read-only.",
+      "description": "For the office enrolling a pupil: the next free roll number in a class this academic year. Read-only.",
       "input": {
         "type": "object",
         "properties": {
@@ -23857,7 +23867,7 @@
         "additionalProperties": false
       },
       "permission": "students.read",
-      "scope": "OWN or ALL",
+      "scope": "ALL",
       "risk": "LOW",
       "confirmation": "NOT_REQUIRED",
       "affectsOthers": false,
@@ -51028,8 +51038,8 @@
     {
       "role": "TEACHER",
       "custom": false,
-      "total": 455,
-      "GET": 240,
+      "total": 454,
+      "GET": 239,
       "CREATE": 62,
       "UPDATE": 52,
       "ACTION": 83,
@@ -51258,7 +51268,6 @@
         "list_appointable_staff",
         "acknowledge_due_item",
         "list_staff_leave_policies",
-        "get_next_roll_number",
         "list_school_shifts",
         "get_attendance_draft",
         "save_attendance_draft",
@@ -51522,8 +51531,8 @@
     {
       "role": "PARENT",
       "custom": false,
-      "total": 258,
-      "GET": 186,
+      "total": 257,
+      "GET": 185,
       "CREATE": 22,
       "UPDATE": 15,
       "ACTION": 25,
@@ -51673,7 +51682,6 @@
         "get_my_hostel_room",
         "get_low_attendance_students",
         "list_my_child_teacher_profiles",
-        "get_next_roll_number",
         "list_school_shifts",
         "get_online_class_stats",
         "get_online_class",
@@ -51806,8 +51814,8 @@
     {
       "role": "STUDENT",
       "custom": false,
-      "total": 246,
-      "GET": 175,
+      "total": 245,
+      "GET": 174,
       "CREATE": 23,
       "UPDATE": 14,
       "ACTION": 25,
@@ -51945,7 +51953,6 @@
         "get_my_hostel_room",
         "get_low_attendance_students",
         "list_my_child_teacher_profiles",
-        "get_next_roll_number",
         "list_school_shifts",
         "get_quiz_to_take",
         "start_quiz",

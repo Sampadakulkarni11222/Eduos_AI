@@ -18,6 +18,11 @@ import * as editionsAi from './editionsAi.service.js';
  * tags:
  *   - name: Newsletter
  *     description: Opportunities (competitions, olympiads, scholarships, exams, programmes) with matching and eligibility, and the interactive weekly / monthly newsletter (flashcards, quiz, poll, comments), reviewed and published by an editor
+ */
+
+/*
+ * Kept out of the @swagger block above: swagger-jsdoc parses everything after
+ * the tag as YAML, and this prose made it drop the whole Newsletter section.
  *
  * Mounted at /newsletter. Readers need digest.read; the editor's desk
  * (review queue, sources allowlist, publishing, analytics) needs digest.manage

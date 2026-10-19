@@ -30,9 +30,9 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 | `SUPER_ADMIN` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | `ADMIN` | 1035 | 475 | 181 | 151 | 192 | 36 | 121 | 560 |
 | `PRINCIPAL` | 686 | 386 | 88 | 77 | 117 | 18 | 67 | 300 |
-| `TEACHER` | 455 | 240 | 62 | 52 | 83 | 18 | 23 | 215 |
-| `PARENT` | 258 | 186 | 22 | 15 | 25 | 10 | 10 | 72 |
-| `STUDENT` | 246 | 175 | 23 | 14 | 25 | 9 | 5 | 71 |
+| `TEACHER` | 454 | 239 | 62 | 52 | 83 | 18 | 23 | 215 |
+| `PARENT` | 257 | 185 | 22 | 15 | 25 | 10 | 10 | 72 |
+| `STUDENT` | 245 | 174 | 23 | 14 | 25 | 9 | 5 | 71 |
 | `FINANCE` | 291 | 168 | 41 | 29 | 46 | 7 | 32 | 123 |
 | `LIBRARIAN` | 229 | 135 | 27 | 22 | 38 | 7 | 10 | 94 |
 | `WARDEN` | 238 | 140 | 28 | 27 | 38 | 5 | 11 | 98 |
@@ -488,7 +488,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_newsroom_post` | Newsroom | GET | `community.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_newsroom_social_options` | Social | GET | `community.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_newsroom_story_social_status` | Social | GET | `social.publish` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
-| `get_next_roll_number` | Students | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_next_roll_number` | Students | GET | `students.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_offline_campaign` | Marketing | GET | `marketing.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_online_application` | Admissions | GET | `admissions.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_online_class` | Lectures | GET | `lectures.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -3911,7 +3911,7 @@ Homework and assignments. For a student or parent with no filters, the work stil
 
 **Input**
 
-`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — Narrow to one subject, e.g. "Mathematics"<br>`status`: string — one of: PENDING, SUBMITTED, ALL — For a student or parent: their work still to submit (PENDING), already handed in (SUBMITTED), or both<br>`dueFrom`: string — Only work due on or after this day<br>`dueTo`: string — Only work due on or before this day<br>`first`: boolean — true for "which one is due first / next": only the assignment with the earliest due date that has not passed
+`className`: string — The class as a person names it, e.g. "Class 5 A", "Class 5-A" or "5-A"<br>`subject`: string — Narrow to one subject, e.g. "Mathematics"<br>`status`: string — one of: PENDING, SUBMITTED, ALL — For a student or parent: their work still to submit (PENDING), already handed in (SUBMITTED), or both<br>`dueFrom`: string — Only work due on or after this day<br>`dueTo`: string — Only work due on or before this day<br>`first`: boolean — true for "which one is due first / next": only the assignment with the earliest due date that has not passed<br>`studentName`: string — A parent: which child (by name). Only that child's work and submissions are listed<br>`admissionNo`: string — A parent: which child, by admission number
 
 **Output** — `{ success: true, data: { … } }`.
 
@@ -25095,7 +25095,7 @@ IRREVERSIBLE. Permanently erase a student's personal data (name, date of birth, 
 
 ### `get_next_roll_number`
 
-For the office or a class teacher enrolling a pupil: the next free roll number in a class this academic year. Read-only.
+For the office enrolling a pupil: the next free roll number in a class this academic year. Read-only.
 
 | | |
 |---|---|
@@ -25103,7 +25103,7 @@ For the office or a class teacher enrolling a pupil: the next free roll number i
 | **Risk** | LOW |
 | **Confirmation** | NOT_REQUIRED |
 | **Permission** | `students.read` |
-| **Scope** | OWN or ALL |
+| **Scope** | ALL |
 | **Affects others** | No |
 | **EduOS service** | `student.service.nextRollNo()` |
 | **Status** | AVAILABLE |

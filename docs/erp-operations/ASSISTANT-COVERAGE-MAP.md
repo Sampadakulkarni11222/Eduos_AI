@@ -257,7 +257,7 @@ Roles: AD admin, PR principal, TE teacher, PA parent, ST student, FI finance, LI
 | Method | Path | Permission (min scope) | Roles | Tools / status |
 |---|---|---|---|---|
 | GET | `/enrollments/` | `students.read` | SA AD PR TE PA ST FI LI WA NU | `get_student`, `list_enrollments`, `get_attendance_roster`, `get_attendance_draft` |
-| GET | `/enrollments/next-roll-no` | `students.read` | SA AD PR TE PA ST FI LI WA NU | `get_next_roll_number` |
+| GET | `/enrollments/next-roll-no` | `students.read` (ALL) | SA AD PR FI LI WA NU | `get_next_roll_number` |
 | POST | `/enrollments/` | `enrollments.manage` | SA AD | `enroll_student` |
 | POST | `/enrollments/bulk` | `enrollments.manage` | SA AD | **COVERED** — via Ask AI (file attach): the person attaches the CSV/Excel sheet in Ask AI (or sends it as a WhatsApp document); preview_import recognises it, maps the columns and checks every row, run_import imports it through this same bulk service after one confirmation on the website. |
 | PATCH | `/enrollments/:id/status` | `enrollments.manage` | SA AD | `update_enrollment_status` |
