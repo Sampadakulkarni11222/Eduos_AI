@@ -34,7 +34,7 @@ import { getSettings, istMinutes, istWeekday, parseSchoolDay, profilesWithPermis
  * class check-in, cover arrangements and approved leave, which are the primary
  * record. A camera cannot tell whether good teaching happened.
  */
-const FORBIDDEN_TEXT = /toilet|washroom|restroom|bathroom|lavator|urinal|shower|changing|wc\b|dorm/i;
+export const FORBIDDEN_TEXT = /toilet|washroom|restroom|bathroom|lavator|urinal|shower|changing|wc\b|dorm/i;
 const REFUSED_FIELDS = ['faceId', 'faces', 'personId', 'personIds', 'identity', 'identities', 'studentId', 'studentIds', 'name', 'names', 'emotion', 'emotions', 'sentiment', 'score', 'behaviourScore', 'behaviorScore', 'image', 'imageBase64', 'frame', 'snapshot', 'video'];
 const TYPE_PURPOSE = { POSSIBLE_UNATTENDED_ROOM: 'UNATTENDED_CLASSROOM_CHECK', POSSIBLE_AGGRESSION: 'CORRIDOR_SAFETY', TEACHER_PRESENT_IN_ROOM: 'UNATTENDED_CLASSROOM_CHECK' };
 // Observations read against the timetable (which class, which teacher) for the reviewer.

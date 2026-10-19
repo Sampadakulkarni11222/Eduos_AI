@@ -1727,3 +1727,35 @@ body.role-nurse{--accent:#1f5a52;--accent-2:#2c7368;--sidebar-text:#DDEEEA;--sid
   .automation-inline select.input { width: 100%; }
   .ai-next-step { min-height: 40px; }
 }
+
+/* ── Live CCTV (cctv-view.tsx): view-only player with a watermark ───────── */
+.cctv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.cctv-tile{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:12px;border:1px solid var(--hairline-2);border-radius:12px;background:var(--surface,#fff);text-align:left;cursor:pointer;min-width:0}
+.cctv-tile:disabled{cursor:not-allowed;opacity:.7}
+.cctv-tile:hover:not(:disabled){border-color:var(--accent,#2563eb)}
+.cctv-tile-icon{font-size:20px}
+.cctv-tile-name{font-weight:700;font-size:13.5px;overflow-wrap:anywhere}
+.cctv-tile-sub{font-size:12px;color:var(--text-2)}
+.cctv-player{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;user-select:none;-webkit-user-select:none}
+.cctv-player:fullscreen{border-radius:0}
+.cctv-video{width:100%;height:100%;object-fit:contain;pointer-events:none}
+.cctv-watermark{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-around;align-items:center;pointer-events:none;transform:rotate(-18deg) scale(1.2);opacity:.28;color:#fff;font-weight:700;font-size:clamp(11px,2vw,18px);text-shadow:0 0 2px #000;white-space:nowrap}
+.cctv-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;text-align:center;color:#fff;background:rgba(0,0,0,.55);font-size:14px}
+.cctv-steps{margin:0 0 8px 18px;display:grid;gap:6px;font-size:13px}
+.cctv-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:0 14px}
+.campus-cctv-link{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;font-weight:600}
+@media (max-width:480px){.cctv-grid{grid-template-columns:1fr 1fr}}
+
+/* ── Exam halls, Rooms & Classes (exam-rooms-views.tsx) ───────────────── */
+.exr-chips{display:flex;flex-wrap:wrap;gap:6px}
+.exr-chip{border:1px solid var(--hairline-2);border-radius:999px;padding:4px 10px;background:var(--surface,#fff);font-size:12.5px;cursor:pointer;margin:2px}
+.exr-chip.on{border-color:var(--accent,#2563eb);background:color-mix(in srgb,var(--accent,#2563eb) 12%,transparent);font-weight:600}
+.exr-banner{margin-top:4px;padding:4px 8px;border-radius:8px;background:color-mix(in srgb,#f59e0b 16%,transparent);font-size:12.5px;font-weight:600}
+.exr-warn{color:var(--bad,#b91c1c);font-size:12.5px}
+.exr-seats{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px}
+.exr-seat{display:flex;flex-direction:column;gap:2px;align-items:flex-start;padding:6px 8px;border:1px solid var(--hairline-2);border-radius:8px;background:var(--surface,#fff);font-size:12px;text-align:left;min-width:0;overflow-wrap:anywhere}
+.exr-seat:disabled{cursor:default}
+.exr-toggle{display:inline-flex;align-items:center;gap:6px;font-size:12.5px}
+.exr-paper .ops-inline{flex-wrap:wrap}
+@media (max-width:480px){.exr-seats{grid-template-columns:1fr 1fr}}
+@media print{body *{visibility:hidden}.exr-print,.exr-print *{visibility:visible}.exr-print{position:absolute;inset:0}}

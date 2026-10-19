@@ -1,18 +1,18 @@
 {
   "generatedFrom": "backend/src/modules/ai/mcp/registry.js",
   "stats": {
-    "total": 1108,
+    "total": 1124,
     "byOperation": {
-      "GET": 508,
-      "CREATE": 196,
-      "UPDATE": 160,
+      "GET": 519,
+      "CREATE": 198,
+      "UPDATE": 163,
       "DELETE": 40,
       "ACTION": 204
     },
     "byRisk": {
-      "LOW": 669,
+      "LOW": 680,
       "HIGH": 128,
-      "MEDIUM": 310,
+      "MEDIUM": 315,
       "CRITICAL": 1
     }
   },
@@ -3287,6 +3287,16 @@
           "first": {
             "type": "boolean",
             "description": "true for \"which one is due first / next\": only the assignment with the earliest due date that has not passed"
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "A parent: which child (by name). Only that child's work and submissions are listed"
+          },
+          "admissionNo": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "A parent: which child, by admission number"
           }
         },
         "additionalProperties": false
@@ -28767,6 +28777,7 @@
                 "gpsTracking",
                 "idCheckpoints",
                 "visitors",
+                "cctvLive",
                 "ptm",
                 "conversations",
                 "staffCover",
@@ -28791,7 +28802,7 @@
                 "newsletterAlerts"
               ]
             },
-            "maxItems": 30
+            "maxItems": 31
           },
           "turnOff": {
             "type": "array",
@@ -28806,6 +28817,7 @@
                 "gpsTracking",
                 "idCheckpoints",
                 "visitors",
+                "cctvLive",
                 "ptm",
                 "conversations",
                 "staffCover",
@@ -28830,7 +28842,7 @@
                 "newsletterAlerts"
               ]
             },
-            "maxItems": 30
+            "maxItems": 31
           }
         },
         "additionalProperties": false
@@ -49067,6 +49079,732 @@
       "service": "imports.service.getResult",
       "status": "AVAILABLE",
       "wrapsAgentTool": null
+    },
+    {
+      "name": "list_cctv_cameras",
+      "module": "Safety",
+      "operation": "GET",
+      "description": "Live CCTV cameras the caller is allowed to watch, by zone, each with whether it is online, offline or not connected (from the school's video gateway). Use for \"which cameras are online\", \"list the CCTV cameras\", \"is the main gate camera working\", \"are any cameras offline\". Status only, never video. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ONLINE",
+              "OFFLINE",
+              "ALL"
+            ],
+            "description": "Only online or offline cameras (default all)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "camera.live.view",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "cctv.service.listStreams()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_cctv_view_log",
+      "module": "Safety",
+      "operation": "GET",
+      "description": "The live CCTV view log for a day: who opened which camera, when, for how long and the reason given. The principal and the safety officer see everyone's viewings; anyone else only their own. Use for \"show me the CCTV view log for today\", \"who watched the cameras today\", \"who opened the hostel camera yesterday\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "YYYY-MM-DD (default today)"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "camera.live.view",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "cctv.service.viewLog()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "open_cctv_camera",
+      "module": "Safety",
+      "operation": "GET",
+      "description": "A link that opens one camera on the Live CCTV page (\"open the main gate camera\", \"show me the bus bay camera\", \"live view of the hostel corridor\"). Returns the link only: the video plays on the page, watermarked and logged, never in chat or WhatsApp. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "camera": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "Camera or zone name, e.g. \"main gate\""
+          }
+        },
+        "required": [
+          "camera"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "camera.live.view",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "cctv.service.listStreams() → link",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_exam_hall",
+      "module": "Exam halls",
+      "operation": "GET",
+      "description": "Where and when a paper is sat: its exam hall or rooms, time (with any delay), status, seats used and invigilators. Use for \"where is the class 10 maths exam?\", \"which room is the class 9 science paper in\", \"exam hall for 8A English\". Parents and students get their own child's room and seat only. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "className": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The class or grade, e.g. \"10\" or \"10A\""
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The subject, e.g. \"maths\""
+          },
+          "exam": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The exam, e.g. \"Midterm\""
+          },
+          "date": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The day: \"today\", \"tomorrow\", a weekday, or YYYY-MM-DD"
+          },
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "A parent's child"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "timetable.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "examRooms/examHalls.service.findSittings()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "list_exam_timetable",
+      "module": "Exam halls",
+      "operation": "GET",
+      "description": "The exam timetable: each paper's date, time, classes, exam rooms with seats used, invigilators and status. Staff see the papers of their classes (the exam office: the school); optionally from a date or for a class. Parents and students get their own exam timetable. Use for \"show the exam timetable\", \"exam timetable for class 10\", \"exams next week\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The day: \"today\", \"tomorrow\", a weekday, or YYYY-MM-DD"
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "A class, e.g. \"10A\""
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "timetable.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "examRooms/examHalls.service.listSittings()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_my_exam_timetable",
+      "module": "Exam halls",
+      "operation": "GET",
+      "description": "A student's or parent's own exam timetable: each paper's date, time, room and the child's own seat number, with any change announced on the day. A parent with several children may name one. Use for \"show my exam timetable\", \"my exams\", \"where do I sit for maths\", \"my child's exam schedule\". Never shows another pupil's seat. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "studentName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "A parent's child"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "Only this subject"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "timetable.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "examRooms/examHalls.service.myExams()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "list_my_invigilation_duties",
+      "module": "Exam halls",
+      "operation": "GET",
+      "description": "The caller's own invigilation duties: date, time, paper, room, classes, seats and who else invigilates there. Use for \"my invigilation duties\", \"when am I invigilating\", \"my exam duty\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The day: \"today\", \"tomorrow\", a weekday, or YYYY-MM-DD"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "facilities.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "examRooms/examHalls.service.duties()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "create_class_test",
+      "module": "Exam halls",
+      "operation": "CREATE",
+      "description": "Schedule a class test (a teacher, for a subject they teach, in a free room; they invigilate) or, for the exam office, any paper: class, subject, day, start and end time, and room (default: the class's home room if free). The room and invigilator are checked for clashes and the class is seated by roll number. Use for \"schedule a maths class test for 7B tomorrow at 10 to 10:40 in room 204\", \"create class test\". Needs confirmation.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "className": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The class, e.g. \"7B\""
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The subject"
+          },
+          "date": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The day: \"today\", \"tomorrow\", a weekday, or YYYY-MM-DD"
+          },
+          "startTime": {
+            "type": "string",
+            "maxLength": 10,
+            "description": "Start, e.g. \"10:00\""
+          },
+          "endTime": {
+            "type": "string",
+            "maxLength": 10,
+            "description": "End, e.g. \"10:40\""
+          },
+          "room": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The room, e.g. \"204\""
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "A title, e.g. \"Fractions test\""
+          }
+        },
+        "required": [
+          "className",
+          "subject"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "exams.schedule",
+      "anyOf": [
+        {
+          "key": "exams.schedule",
+          "minScope": null
+        },
+        {
+          "key": "exams.manage",
+          "minScope": "ALL"
+        }
+      ],
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": false,
+      "readOnly": false,
+      "service": "examRooms/examHalls.service.createSitting()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "change_exam_hall",
+      "module": "Exam halls",
+      "operation": "UPDATE",
+      "description": "Move a paper to another exam hall or room (or replace one of its rooms): the room is checked for clashes, the candidates are re-seated, and the students, their parents and the invigilators are told, with a banner on the day. Use for \"change the exam hall for class 9 science to the auditorium\", \"move the class 10 maths exam to room 204\". Needs confirmation on the website.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "className": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The class or grade"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The subject"
+          },
+          "exam": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The exam name"
+          },
+          "date": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The day: \"today\", \"tomorrow\", a weekday, or YYYY-MM-DD"
+          },
+          "toRoom": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The new room or hall, e.g. \"auditorium\""
+          },
+          "fromRoom": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "Only this one of its rooms"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Why (told to families)"
+          }
+        },
+        "required": [
+          "toRoom"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "exams.schedule",
+      "anyOf": [
+        {
+          "key": "exams.schedule",
+          "minScope": null
+        },
+        {
+          "key": "exams.manage",
+          "minScope": "ALL"
+        }
+      ],
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "examRooms/examHalls.service.changeVenue()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "update_exam_hall_status",
+      "module": "Exam halls",
+      "operation": "UPDATE",
+      "description": "Change a paper on the day: delay it by some minutes, postpone it (optionally to a new date), cancel it, or mark it started or finished. Delays are checked for room and invigilator clashes; students, parents and invigilators are told. Use for \"delay the class 10 maths exam by 30 minutes\", \"postpone the class 9 science paper to Monday because of rain\". Needs confirmation on the website.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "className": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The class or grade"
+          },
+          "subject": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The subject"
+          },
+          "exam": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The exam name"
+          },
+          "date": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The day: \"today\", \"tomorrow\", a weekday, or YYYY-MM-DD"
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "DELAY",
+              "POSTPONE",
+              "CANCEL",
+              "START",
+              "FINISH",
+              "RESUME"
+            ],
+            "description": "What to do"
+          },
+          "delayMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 600
+          },
+          "newDate": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The day: \"today\", \"tomorrow\", a weekday, or YYYY-MM-DD"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Why (told to families)"
+          }
+        },
+        "required": [
+          "change"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "exams.schedule",
+      "anyOf": [
+        {
+          "key": "exams.schedule",
+          "minScope": null
+        },
+        {
+          "key": "exams.manage",
+          "minScope": "ALL"
+        }
+      ],
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "examRooms/examHalls.service.setStatus()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "get_section_room",
+      "module": "Room allocation",
+      "operation": "GET",
+      "description": "Which room a class is in on a day: each period with its room (a room shift shows the room it moved to and why), its home room, and any paper it sits. Use for \"which room is 7B in today?\", \"where is class 8A now\", \"7B room tomorrow\". Parents and students may ask about their own child's class. Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "className": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The class, e.g. \"7B\""
+          },
+          "date": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The day: \"today\", \"tomorrow\", a weekday, or YYYY-MM-DD"
+          }
+        },
+        "required": [
+          "className"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "timetable.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "examRooms/rooms.service.sectionRoomOn()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "list_rooms_and_classes",
+      "module": "Room allocation",
+      "operation": "GET",
+      "description": "Rooms & Classes: each class's home room against its strength (over capacity flagged), classes without a room, free classrooms, each room's occupant, and today's room shifts. Use for \"show rooms and classes\", \"home rooms\", \"which classes have no room\", \"free classrooms\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The day: \"today\", \"tomorrow\", a weekday, or YYYY-MM-DD"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "timetable.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "examRooms/rooms.service.roomsAndClasses()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "list_free_rooms",
+      "module": "Room allocation",
+      "operation": "GET",
+      "description": "Rooms free on a day for a time window, or for a class's periods (big enough for the class): no lesson, paper, booking or maintenance then. Use for \"free rooms for 7B period 3 tomorrow\", \"which rooms are free at 11 today\", \"empty classrooms now\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The day: \"today\", \"tomorrow\", a weekday, or YYYY-MM-DD"
+          },
+          "startTime": {
+            "type": "string",
+            "maxLength": 10,
+            "description": "From, e.g. \"11:00\""
+          },
+          "endTime": {
+            "type": "string",
+            "maxLength": 10,
+            "description": "To"
+          },
+          "className": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "A class (its size and periods)"
+          },
+          "periods": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "description": "Periods, e.g. [3]. Leave out for the whole day."
+          },
+          "minCapacity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2000
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "timetable.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "examRooms/rooms.service.freeRooms()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "list_room_shifts",
+      "module": "Room allocation",
+      "operation": "GET",
+      "description": "Room shifts: classes moved to another room (temporary or permanent), with dates, periods, reason and status, including teachers' requests waiting for the administrator or principal. Use for \"show room shifts\", \"room changes this week\", \"pending room shift requests\". Read-only.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "REQUESTED",
+              "APPLIED",
+              "REJECTED",
+              "CANCELLED",
+              "ALL"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The day: \"today\", \"tomorrow\", a weekday, or YYYY-MM-DD"
+          }
+        },
+        "additionalProperties": false
+      },
+      "permission": "timetable.read",
+      "scope": "OWN or ALL",
+      "risk": "LOW",
+      "confirmation": "NOT_REQUIRED",
+      "affectsOthers": false,
+      "readOnly": true,
+      "service": "examRooms/rooms.service.listShifts()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "create_room_shift",
+      "module": "Room allocation",
+      "operation": "CREATE",
+      "description": "Move a class to another room for some periods, a day, a date range, or permanently, with a reason. Checked against the timetable, exams, bookings and maintenance; a busy room is refused with free rooms that fit. The administrator or principal applies it; a teacher's request (their own class or the periods they teach) goes to them for approval, or is applied at once for one period when the school allows teachers to self-shift. The class teacher, subject teachers, students and parents are told. Use for \"move 7B to the science lab for period 3 tomorrow because of painting\", \"shift 8A to room 204 from Monday to Friday\", \"move 6C to room 110 permanently\". Needs confirmation on the website.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "className": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The class, e.g. \"7B\""
+          },
+          "toRoom": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The room, e.g. \"science lab\", \"204\""
+          },
+          "date": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The day: \"today\", \"tomorrow\", a weekday, or YYYY-MM-DD"
+          },
+          "endDate": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The day: \"today\", \"tomorrow\", a weekday, or YYYY-MM-DD"
+          },
+          "periods": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 20
+            },
+            "description": "Periods, e.g. [3]. Leave out for the whole day."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "TEMPORARY",
+              "PERMANENT"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Why, e.g. \"painting\""
+          }
+        },
+        "required": [
+          "className",
+          "toRoom"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "facilities.request",
+      "anyOf": [
+        {
+          "key": "facilities.request",
+          "minScope": null
+        },
+        {
+          "key": "facilities.manage",
+          "minScope": "ALL"
+        },
+        {
+          "key": "timetable.manage",
+          "minScope": "ALL"
+        }
+      ],
+      "scope": "OWN or ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "examRooms/rooms.service.createShift()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
+    },
+    {
+      "name": "assign_home_room",
+      "module": "Room allocation",
+      "operation": "UPDATE",
+      "description": "Make a room a class's home room (kept in the room history; the timetable periods that named the old room follow). A room another class calls home is refused unless \"move them out\" is said. Administrator or principal. Use for \"assign room 204 to 8A\", \"make the science lab 9B's home room\", \"give room 110 to 6C\". Needs confirmation on the website.",
+      "input": {
+        "type": "object",
+        "properties": {
+          "className": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "The class, e.g. \"8A\""
+          },
+          "room": {
+            "type": "string",
+            "maxLength": 60,
+            "description": "The room, e.g. \"204\""
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Why"
+          },
+          "displace": {
+            "type": "boolean",
+            "description": "Move the class that has it now out"
+          }
+        },
+        "required": [
+          "className",
+          "room"
+        ],
+        "additionalProperties": false
+      },
+      "permission": "facilities.manage",
+      "anyOf": [
+        {
+          "key": "facilities.manage",
+          "minScope": "ALL"
+        },
+        {
+          "key": "timetable.manage",
+          "minScope": "ALL"
+        }
+      ],
+      "scope": "ALL",
+      "risk": "MEDIUM",
+      "confirmation": "REQUIRED",
+      "affectsOthers": true,
+      "readOnly": false,
+      "service": "examRooms/rooms.service.assignHomeRoom()",
+      "status": "AVAILABLE",
+      "wrapsAgentTool": null
     }
   ],
   "roleMatrix": [
@@ -49087,10 +49825,10 @@
     {
       "role": "ADMIN",
       "custom": false,
-      "total": 1035,
-      "GET": 475,
-      "CREATE": 181,
-      "UPDATE": 151,
+      "total": 1047,
+      "GET": 482,
+      "CREATE": 183,
+      "UPDATE": 154,
       "ACTION": 192,
       "DELETE": 36,
       "highRiskActions": 121,
@@ -49217,7 +49955,7 @@
         "run_school_automation_now",
         "run_import"
       ],
-      "confirmationRequired": 560,
+      "confirmationRequired": 565,
       "names": [
         "search_students",
         "get_student",
@@ -50253,16 +50991,28 @@
         "get_import_template",
         "preview_import",
         "run_import",
-        "get_import_result"
+        "get_import_result",
+        "get_exam_hall",
+        "list_exam_timetable",
+        "list_my_invigilation_duties",
+        "create_class_test",
+        "change_exam_hall",
+        "update_exam_hall_status",
+        "get_section_room",
+        "list_rooms_and_classes",
+        "list_free_rooms",
+        "list_room_shifts",
+        "create_room_shift",
+        "assign_home_room"
       ]
     },
     {
       "role": "PRINCIPAL",
       "custom": false,
-      "total": 686,
-      "GET": 386,
-      "CREATE": 88,
-      "UPDATE": 77,
+      "total": 701,
+      "GET": 396,
+      "CREATE": 90,
+      "UPDATE": 80,
       "ACTION": 117,
       "DELETE": 18,
       "highRiskActions": 67,
@@ -50335,7 +51085,7 @@
         "run_school_automation_now",
         "run_import"
       ],
-      "confirmationRequired": 300,
+      "confirmationRequired": 305,
       "names": [
         "search_students",
         "get_student",
@@ -51022,16 +51772,31 @@
         "get_import_template",
         "preview_import",
         "run_import",
-        "get_import_result"
+        "get_import_result",
+        "list_cctv_cameras",
+        "get_cctv_view_log",
+        "open_cctv_camera",
+        "get_exam_hall",
+        "list_exam_timetable",
+        "list_my_invigilation_duties",
+        "create_class_test",
+        "change_exam_hall",
+        "update_exam_hall_status",
+        "get_section_room",
+        "list_rooms_and_classes",
+        "list_free_rooms",
+        "list_room_shifts",
+        "create_room_shift",
+        "assign_home_room"
       ]
     },
     {
       "role": "TEACHER",
       "custom": false,
-      "total": 455,
-      "GET": 240,
-      "CREATE": 62,
-      "UPDATE": 52,
+      "total": 466,
+      "GET": 247,
+      "CREATE": 64,
+      "UPDATE": 54,
       "ACTION": 83,
       "DELETE": 18,
       "highRiskActions": 23,
@@ -51060,7 +51825,7 @@
         "moderate_newsletter_comment",
         "run_import"
       ],
-      "confirmationRequired": 215,
+      "confirmationRequired": 219,
       "names": [
         "search_students",
         "get_student",
@@ -51516,14 +52281,25 @@
         "get_import_template",
         "preview_import",
         "run_import",
-        "get_import_result"
+        "get_import_result",
+        "get_exam_hall",
+        "list_exam_timetable",
+        "list_my_invigilation_duties",
+        "create_class_test",
+        "change_exam_hall",
+        "update_exam_hall_status",
+        "get_section_room",
+        "list_rooms_and_classes",
+        "list_free_rooms",
+        "list_room_shifts",
+        "create_room_shift"
       ]
     },
     {
       "role": "PARENT",
       "custom": false,
-      "total": 258,
-      "GET": 186,
+      "total": 265,
+      "GET": 193,
       "CREATE": 22,
       "UPDATE": 15,
       "ACTION": 25,
@@ -51800,14 +52576,21 @@
         "confirm_automation_draft",
         "dismiss_automation_draft",
         "get_my_automation_optins",
-        "set_my_automation_optin"
+        "set_my_automation_optin",
+        "get_exam_hall",
+        "list_exam_timetable",
+        "get_my_exam_timetable",
+        "get_section_room",
+        "list_rooms_and_classes",
+        "list_free_rooms",
+        "list_room_shifts"
       ]
     },
     {
       "role": "STUDENT",
       "custom": false,
-      "total": 246,
-      "GET": 175,
+      "total": 253,
+      "GET": 182,
       "CREATE": 23,
       "UPDATE": 14,
       "ACTION": 25,
@@ -52067,15 +52850,22 @@
         "confirm_automation_draft",
         "dismiss_automation_draft",
         "get_my_automation_optins",
-        "set_my_automation_optin"
+        "set_my_automation_optin",
+        "get_exam_hall",
+        "list_exam_timetable",
+        "get_my_exam_timetable",
+        "get_section_room",
+        "list_rooms_and_classes",
+        "list_free_rooms",
+        "list_room_shifts"
       ]
     },
     {
       "role": "FINANCE",
       "custom": false,
-      "total": 291,
-      "GET": 168,
-      "CREATE": 41,
+      "total": 293,
+      "GET": 169,
+      "CREATE": 42,
       "UPDATE": 29,
       "ACTION": 46,
       "DELETE": 7,
@@ -52114,7 +52904,7 @@
         "moderate_newsletter_comment",
         "run_import"
       ],
-      "confirmationRequired": 123,
+      "confirmationRequired": 124,
       "names": [
         "search_students",
         "get_student",
@@ -52406,15 +53196,17 @@
         "get_import_template",
         "preview_import",
         "run_import",
-        "get_import_result"
+        "get_import_result",
+        "list_my_invigilation_duties",
+        "create_room_shift"
       ]
     },
     {
       "role": "LIBRARIAN",
       "custom": false,
-      "total": 229,
-      "GET": 135,
-      "CREATE": 27,
+      "total": 231,
+      "GET": 136,
+      "CREATE": 28,
       "UPDATE": 22,
       "ACTION": 38,
       "DELETE": 7,
@@ -52431,7 +53223,7 @@
         "moderate_newsletter_comment",
         "run_import"
       ],
-      "confirmationRequired": 94,
+      "confirmationRequired": 95,
       "names": [
         "search_students",
         "get_student",
@@ -52661,15 +53453,17 @@
         "get_import_template",
         "preview_import",
         "run_import",
-        "get_import_result"
+        "get_import_result",
+        "list_my_invigilation_duties",
+        "create_room_shift"
       ]
     },
     {
       "role": "WARDEN",
       "custom": false,
-      "total": 238,
-      "GET": 140,
-      "CREATE": 28,
+      "total": 240,
+      "GET": 141,
+      "CREATE": 29,
       "UPDATE": 27,
       "ACTION": 38,
       "DELETE": 5,
@@ -52687,7 +53481,7 @@
         "moderate_newsletter_comment",
         "run_import"
       ],
-      "confirmationRequired": 98,
+      "confirmationRequired": 99,
       "names": [
         "search_students",
         "get_student",
@@ -52926,15 +53720,17 @@
         "get_import_template",
         "preview_import",
         "run_import",
-        "get_import_result"
+        "get_import_result",
+        "list_my_invigilation_duties",
+        "create_room_shift"
       ]
     },
     {
       "role": "NURSE",
       "custom": false,
-      "total": 177,
-      "GET": 105,
-      "CREATE": 23,
+      "total": 179,
+      "GET": 106,
+      "CREATE": 24,
       "UPDATE": 17,
       "ACTION": 27,
       "DELETE": 5,
@@ -52951,7 +53747,7 @@
         "update_health_room_settings",
         "cancel_medication_plan"
       ],
-      "confirmationRequired": 72,
+      "confirmationRequired": 73,
       "names": [
         "search_students",
         "get_student",
@@ -53129,15 +53925,17 @@
         "confirm_automation_draft",
         "dismiss_automation_draft",
         "get_my_automation_optins",
-        "set_my_automation_optin"
+        "set_my_automation_optin",
+        "list_my_invigilation_duties",
+        "create_room_shift"
       ]
     },
     {
       "role": "HR",
       "custom": false,
-      "total": 281,
-      "GET": 153,
-      "CREATE": 38,
+      "total": 283,
+      "GET": 154,
+      "CREATE": 39,
       "UPDATE": 32,
       "ACTION": 50,
       "DELETE": 8,
@@ -53170,7 +53968,7 @@
         "move_to_alumni",
         "moderate_newsletter_comment"
       ],
-      "confirmationRequired": 128,
+      "confirmationRequired": 129,
       "names": [
         "get_announcements",
         "get_calendar_events",
@@ -53452,15 +54250,17 @@
         "confirm_automation_draft",
         "dismiss_automation_draft",
         "get_my_automation_optins",
-        "set_my_automation_optin"
+        "set_my_automation_optin",
+        "list_my_invigilation_duties",
+        "create_room_shift"
       ]
     },
     {
       "role": "MARKETING",
       "custom": false,
-      "total": 264,
-      "GET": 151,
-      "CREATE": 33,
+      "total": 266,
+      "GET": 152,
+      "CREATE": 34,
       "UPDATE": 31,
       "ACTION": 43,
       "DELETE": 6,
@@ -53488,7 +54288,7 @@
         "record_offline_campaign_decision",
         "run_import"
       ],
-      "confirmationRequired": 113,
+      "confirmationRequired": 114,
       "names": [
         "list_classes",
         "list_subjects",
@@ -53753,15 +54553,17 @@
         "get_import_template",
         "preview_import",
         "run_import",
-        "get_import_result"
+        "get_import_result",
+        "list_my_invigilation_duties",
+        "create_room_shift"
       ]
     },
     {
       "role": "COMPLIANCE",
       "custom": false,
-      "total": 314,
-      "GET": 176,
-      "CREATE": 48,
+      "total": 319,
+      "GET": 180,
+      "CREATE": 49,
       "UPDATE": 34,
       "ACTION": 50,
       "DELETE": 6,
@@ -53787,7 +54589,7 @@
         "record_mentoring_request_decision",
         "moderate_newsletter_comment"
       ],
-      "confirmationRequired": 138,
+      "confirmationRequired": 139,
       "names": [
         "get_announcements",
         "get_calendar_events",
@@ -54102,7 +54904,12 @@
         "confirm_automation_draft",
         "dismiss_automation_draft",
         "get_my_automation_optins",
-        "set_my_automation_optin"
+        "set_my_automation_optin",
+        "list_cctv_cameras",
+        "get_cctv_view_log",
+        "open_cctv_camera",
+        "list_my_invigilation_duties",
+        "create_room_shift"
       ]
     },
     {

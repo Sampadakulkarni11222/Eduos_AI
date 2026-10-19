@@ -16,6 +16,7 @@ import { STATE_COLORS, stateOf } from './campus-state';
 import { CampusLayersPanel, DepartmentTasks, RoomLayerFacts, availableLayers } from './campus-layers';
 import { CollapsePanel, FoldButton, LiveNowBlock, MyCampusPanel, SeeDetailsLink, usePanelState, usePoll } from './campus-live';
 import { MomentBanner } from './campus-moment';
+import { RoomCameraLink } from './campus-cctv';
 
 /** The panels over the 3D view that fold into chips (remembered per user). */
 const PANEL_IDS = ['mine', 'kpis', 'depts', 'ops', 'room', 'dept', 'tracker', 'table'];
@@ -645,6 +646,7 @@ export function CampusWorldView() {
                       {sel.openWorkOrders !== undefined && <><dt>Open repairs</dt><dd>{sel.openWorkOrders}{sel.urgentWorkOrders ? ` (${sel.urgentWorkOrders} urgent)` : ''}</dd></>}
                     </dl>
                     <RoomLayerFacts data={ops.data} facilityId={sel.id} />
+                    <RoomCameraLink facilityId={sel.id} name={sel.name} />
                     {sel.kind === 'BUILDING' && (() => {
                       const sum = buildingSummary.get(sel.id);
                       return (

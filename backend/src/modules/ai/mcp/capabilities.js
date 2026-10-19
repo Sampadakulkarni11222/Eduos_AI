@@ -112,6 +112,9 @@ const ENTITY_OF_MODULE = {
   Safeguarding: 'safeguarding',
   // Part 7: bulk import from a spreadsheet attached in Ask AI (tools/p7BulkImport.js).
   Imports: 'bulkImport',
+  // Part 8: exam halls and Rooms & Classes (tools/p8ExamRooms.js).
+  'Exam halls': 'examHall',
+  'Room allocation': 'roomAllocation',
 };
 
 /**
@@ -387,6 +390,11 @@ export function entitiesFor(actor) {
  * drew. Stems and plurals are matched, so inflections need no new entries.
  */
 export const ENTITY_VOCABULARY = [
+  // Part 8 (tools/p8ExamRooms.js), first so a tie at the same word goes to them; each by its own phrase only.
+  // Where a paper is sat, who invigilates, seating -- not marks, and not the calendar.
+  ['examHall', /\bexam(?:ination)?\s+(?:halls?|rooms?|venues?|seat(?:s|ing)?|time\s*tables?|duty|duties)\b|\bseating\s+(?:plans?|charts?)\b|\binvigilat\w*|\bclass\s+tests?\b|\bmy\s+exams\b|\bwhere\s+(?:is|are)\s+(?:the\s+|my\s+)?(?:class\s+)?[\w\s]{0,25}?\b(?:exams?|papers?)\b(?!\s+(?:marks?|results?))|\bexam\s+hall\s+status\b|\bdoor\s+lists?\b/i],
+  // A class's room: home rooms, room shifts, "which room is 7B in", free classrooms. Hostel rooms stay hostel.
+  ['roomAllocation', /\bhome\s+rooms?\b|\brooms?\s+(?:(?:and|&)\s+)?class(?:es)?\b|\broom\s+(?:shifts?|allocations?|swaps?)\b|\bsection\s+rooms?\b|\bwhich\s+room\s+(?:is|will)\s+(?:class\s+)?\d{1,2}\s*-?\s*[a-z]\b|\bwhere\s+is\s+(?:class\s+)?\d{1,2}\s*-?\s*[a-z]\s+(?:today|now|tomorrow|sitting)\b|\b(?:free|empty|available)\s+(?:class)?rooms?\b(?![^?.]*\bhostel)|\b(?:move|shift)\s+(?:class\s+)?\d{1,2}\s*-?\s*[a-z]\b[^?.]*\bto\b|\bassign\s+(?:room\s+\w+|the\s+[\w\s]{1,20}?(?:lab|room|hall|library))\s+to\b/i],
   // "Register" is the attendance register, not the verb: "register me for
   // the robotics elective" is an elective registration, and reading it as
   // attendance answered with a register nobody asked for.

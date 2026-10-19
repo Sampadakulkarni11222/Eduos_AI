@@ -161,6 +161,10 @@ const STAFF_KEY_SPACE: Record<string, Placement> = {
   sustainability: 'operations',
   shifts: 'operations',
   'teacher-presence': 'operations',
+  cctv: 'operations',
+  // Part 8: the exam timetable with teaching; a class's room with operations.
+  'exam-schedule': 'teaching',
+  'rooms-classes': 'operations',
   transport: 'operations',
   'transport-requests': 'operations',
   library: 'teaching',
@@ -183,6 +187,7 @@ const FAMILY_KEY_SPACE: Record<string, Placement> = {
   profile: 'help',
   documents: 'help',
   medical: 'school',
+  'my-exams': 'child',
 };
 
 // 3. Per portal, where a page means something different for that role.

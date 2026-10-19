@@ -21,6 +21,8 @@ import { nameFromText } from '../../../utils/peopleNames.js';
 import { directStep, refineStep, settleStep, periodArgs, namesOnlyAPronoun, PERCENTAGE_QUESTION } from './directIntents.js';
 import { hinglishToEnglish } from './hinglish.js';
 import { automationStep } from './p7Automation.js';
+import { examRoomStep } from './p8ExamRooms.js';
+import { cctvStep } from './p8Cctv.js';
 import { routingEnglish } from './language/prepare.js';
 import { P7_RULES } from './p7Rules.js';
 import { IMPORT_RULES } from './importRules.js';
@@ -2301,6 +2303,14 @@ function chooseStep(message, actor) {
   // p7: personal reminders and reports, "what needs me today", automation drafts and switches (agent/p7Automation.js).
   const automation = automationStep(message, actor);
   if (automation) return automation;
+
+  // p8: exam halls, a class's room, room shifts and home rooms (agent/p8ExamRooms.js).
+  const examRoom = examRoomStep(message, actor);
+  if (examRoom) return examRoom;
+
+  // p8: live CCTV status, the view log and "open the main gate camera" (agent/p8Cctv.js).
+  const camera = cctvStep(message, actor);
+  if (camera) return camera;
 
   // Before every other tier: "month wise" is the whole point of the question,
   // and the tiers below read it as the overall summary.

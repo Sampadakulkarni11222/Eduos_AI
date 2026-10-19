@@ -18,6 +18,7 @@ import * as pickupSvc from '../modules/safety/pickup.service.js';
 import * as outpassSvc from '../modules/hostel/outpass.service.js';
 import * as libraryDesk from '../modules/library/library.desk.js';
 import * as cameraSvc from '../modules/safety/camera.service.js';
+import * as cctvSvc from '../modules/cctv/cctv.service.js';
 import * as ptm from '../modules/ptm/ptm.service.js';
 import * as quarterlyReports from '../modules/analytics/quarterly.service.js';
 import { runLabsDue } from '../modules/labs/labs.due.js';
@@ -62,6 +63,10 @@ export const JOBS = [
   { key: 'hostel.outpass.late', everyMinutes: 15, feature: 'hostelOutpass', run: (now) => outpassSvc.alertLate({ now }) },
   // Not feature-gated: evidence past retention is purged even after a school switches cameras off.
   { key: 'camera.retention', everyMinutes: 24 * 60, run: (now) => cameraSvc.purgeEvidence({ now }) },
+  // Live CCTV: idle or over-long viewings are ended (not gated, so switching the feature off still closes them);
+  // camera health is probed on the school's gateway (no video is fetched).
+  { key: 'cctv.sessions', everyMinutes: 5, run: (now) => cctvSvc.sweepSessions({ now }) },
+  { key: 'cctv.health', everyMinutes: 15, run: (now) => cctvSvc.scheduledHealthCheck({ now }) },
   { key: 'tasks.reminders', everyMinutes: 60, feature: 'tasks', run: (now) => tasks.runReminders({ now }) },
   // PTM: day-before and hour-before reminders to families (once each), and waiting-list offers that ran out passed on.
   { key: 'ptm.reminders', everyMinutes: 15, feature: 'ptm', run: (now) => ptm.runReminders({ now }) },

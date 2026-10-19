@@ -12,7 +12,8 @@ export const rateLimiter = rateLimit({
   // Session refreshes all arrive from the frontend server's address, so a
   // per-IP budget is a platform-wide one for them; they have their own
   // per-session limiter instead (refreshRateLimiter below).
-  skip: (req) => req.method === 'POST' && /^\/(api\/)?v1\/auth\/refresh\/?$/.test(req.path),
+  // Live CCTV playback (a playlist and a segment every few seconds) has its own per-viewing limiter.
+  skip: (req) => (req.method === 'POST' && /^\/(api\/)?v1\/auth\/refresh\/?$/.test(req.path)) || /^\/(api\/)?v1\/cctv\/play\//.test(req.path),
   handler: (_req, res) =>
     sendError(res, 'Too many requests, please try again later.', 429, [], 'RATE_LIMITED'),
 });

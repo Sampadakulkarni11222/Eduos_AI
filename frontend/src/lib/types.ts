@@ -150,7 +150,7 @@ export interface AssignmentDto {
 }
 export interface SubmissionRow { enrollmentId: string; rollNo: number | null; studentName: string; status: string; submittedAt: string | null; marks: number | null; feedback: string | null; attachments: string[] }
 export interface SubmissionRoster { assignment: { id: string; title: string; dueAt: string | null; maxMarks: number | null }; rows: SubmissionRow[] }
-export interface TimetableSlotDto { id: string; dayOfWeek: number; periodNo: number; startTime: string; endTime: string; subject: string | null; teacher: string | null; subjectOfferingId: string | null; isBreak: boolean; room: string | null; liveClassLink: string | null }
+export interface TimetableSlotDto { id: string; dayOfWeek: number; periodNo: number; startTime: string; endTime: string; subject: string | null; teacher: string | null; subjectOfferingId: string | null; isBreak: boolean; room: string | null; liveClassLink: string | null; effectiveRoom?: string | null; roomShift?: { room: string | null; roomCode: string | null; date: string; refNo: string; reason: string } | null }
 export interface TimetableDto { sectionId: string; slots: TimetableSlotDto[] }
 export interface PerformanceDto {
   student: { name: string; class: string };

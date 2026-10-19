@@ -33,6 +33,8 @@ import { p6CoverageTools } from '../src/modules/ai/mcp/tools/p6Coverage.js';
 import { p7BulkImportTools } from '../src/modules/ai/mcp/tools/p7BulkImport.js';
 import { p7AutomationTools } from '../src/modules/ai/mcp/tools/p7Automation.js';
 import { p7MultiTools } from '../src/modules/ai/mcp/tools/p7Multi.js';
+import { p8ExamRoomsTools } from '../src/modules/ai/mcp/tools/p8ExamRooms.js'; // exercised in tests/mcp.p8ExamRooms.test.js
+import { p8CctvTools } from '../src/modules/ai/mcp/tools/p8Cctv.js'; // read-only; tests/cctv.live.test.js
 import { resetMcpClient } from '../src/modules/ai/mcp/client.js';
 import { env } from '../src/config/env.js';
 import { Student, Enrollment, StudentGuardian } from '../src/models/student.model.js';
@@ -739,7 +741,7 @@ async function attempt(tenant, actor, name, args) {
 
 describe('the write-tool matrix', () => {
   it('has a case for every one of the 76 write tools', () => {
-    const ownSuite = new Set([...Object.keys(platformPeopleTools), ...Object.keys(platformGapTools), ...Object.keys(platformOpsTools), ...Object.keys(campusTools), ...Object.keys(healthTools), ...Object.keys(integrationTools), ...Object.keys(openuiTools), ...Object.keys(teacherP4Tools), ...Object.keys(leadershipTools), ...Object.keys(p4FinanceHrNurseTools), ...Object.keys(p4LibrarianTools), ...Object.keys(p4WardenTools), ...Object.keys(p4MarketingTools), ...Object.keys(p4ComplianceTools), ...Object.keys(p4ParentTools), ...Object.keys(newsletterP4Tools), ...Object.keys(p4StudentAlumnusTools), ...Object.keys(p5GapTools), ...Object.keys(newsletterP5Tools), ...Object.keys(p6CoverageTools), ...Object.keys(p7BulkImportTools), ...Object.keys(p7AutomationTools), ...Object.keys(p7MultiTools)]);
+    const ownSuite = new Set([...Object.keys(platformPeopleTools), ...Object.keys(platformGapTools), ...Object.keys(platformOpsTools), ...Object.keys(campusTools), ...Object.keys(healthTools), ...Object.keys(integrationTools), ...Object.keys(openuiTools), ...Object.keys(teacherP4Tools), ...Object.keys(leadershipTools), ...Object.keys(p4FinanceHrNurseTools), ...Object.keys(p4LibrarianTools), ...Object.keys(p4WardenTools), ...Object.keys(p4MarketingTools), ...Object.keys(p4ComplianceTools), ...Object.keys(p4ParentTools), ...Object.keys(newsletterP4Tools), ...Object.keys(p4StudentAlumnusTools), ...Object.keys(p5GapTools), ...Object.keys(newsletterP5Tools), ...Object.keys(p6CoverageTools), ...Object.keys(p7BulkImportTools), ...Object.keys(p7AutomationTools), ...Object.keys(p7MultiTools), ...Object.keys(p8ExamRoomsTools), ...Object.keys(p8CctvTools)]);
     const writeTools = Object.entries(MCP_TOOLS).filter(([n, t]) => mutates(t) && !ownSuite.has(n)).map(([n]) => n).sort();
     expect(writeTools).toHaveLength(76);
     expect([...new Set(CASES.map((c) => c.tool))].sort()).toEqual(writeTools);

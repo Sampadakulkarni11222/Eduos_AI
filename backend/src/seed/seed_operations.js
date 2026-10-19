@@ -1349,6 +1349,16 @@ async function seedOperations() {
   // deterministic extractor: candidates in the review queue, a duplicate and a skip. See seed_p5_newsletter_ai.js.
   await (await import('./seed_p5_newsletter_ai.js')).seedP5NewsletterAi({ section, attempt, who });
 
+  // ── Exam halls, Rooms & Classes and room shifts (part 8) ──
+  // Next week's papers with rooms, seating and invigilators, a class test, the room history, a shift applied today
+  // and a teacher's request waiting: see seed_p8_exam_rooms.js.
+  await (await import('./seed_p8_exam_rooms.js')).seedP8ExamRooms({ section, attempt, who });
+
+  // ── Live CCTV (agent: p8 cctv) ──
+  // Five fictional cameras at allowed places, the warden granted the hostel group, the feature on for the demo school and
+  // no gateway connected, so the page shows "No camera connected" and the setup steps: see seed_p8_cctv.js.
+  await (await import('./seed_p8_cctv.js')).seedP8Cctv({ section, attempt, who });
+
   // ── What came out ────────────────────────────────────────────────────────
   const pending = await ApprovalRequest.countDocuments({ status: 'PENDING' }).catch(() => 0);
   // Printed directly, so the summary shows whatever the log level is.

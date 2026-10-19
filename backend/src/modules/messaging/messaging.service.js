@@ -303,6 +303,17 @@ export const TEMPLATES = {
     category: 'UTILITY',
     text: (v) => `Admissions follow-ups today: ${v.summary}. Open EduOS (Follow-ups) to call or message them.`,
   },
+  // Part 8: exam halls and room shifts.
+  EXAM_CHANGED: {
+    category: 'UTILITY',
+    subject: (v) => `Exam update: ${v.title}`,
+    text: (v) => `Exam update: ${v.title} on ${v.date}: ${v.change}. Open EduOS for the room and seat.`,
+  },
+  ROOM_SHIFTED: {
+    category: 'UTILITY',
+    subject: (v) => `Room change: ${v.className}`,
+    text: (v) => `Room change: ${v.className} will be in ${v.room} ${v.when}${v.reason ? ` (${v.reason})` : ''}. Open EduOS for the timetable.`,
+  },
 };
 
 const IST_OFFSET_MIN = 330;
