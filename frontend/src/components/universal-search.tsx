@@ -18,14 +18,25 @@ import { matchPages, resultHref, searchApi, type SearchGroup } from '@/lib/searc
  */
 type Row = { key: string; title: string; subtitle: string | null; href: string | null; group: string; icon?: string };
 
+/** Fired by anything that wants the palette open, e.g. the sidebar's "Jump to…". */
+export const OPEN_SEARCH_EVENT = 'eduos:open-search';
+export function openUniversalSearch(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(OPEN_SEARCH_EVENT));
+}
+
 export function UniversalSearch({ portalSlug, school }: { portalSlug: string; school: string | null }) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); setOpen((v) => !v); }
     };
+    const onOpen = () => setOpen(true);
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener(OPEN_SEARCH_EVENT, onOpen);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener(OPEN_SEARCH_EVENT, onOpen);
+    };
   }, []);
   return (
     <>
