@@ -28,6 +28,8 @@ import { JOBS } from '../src/jobs/scheduler.js';
 // Monday 19 Oct 2026 in India (UTC+5:30).
 const IST = (ymd, hh, mm = 0) => new Date(Date.UTC(...ymd.split('-').map((n, i) => (i === 1 ? Number(n) - 1 : Number(n))), hh, mm) - 330 * 60_000);
 const MONDAY = '2026-10-19';
+// The shared seed marks a register on the real today, so the register tests use a Monday that can't be today.
+const REGISTER_MONDAY = '2026-10-12';
 const oak = (fn) => inSchool(OAK, fn);
 let school;
 
@@ -41,11 +43,11 @@ const outbox = (filter) => oak(() => MessageOutbox.find(filter).lean());
 describe('register not marked: nudge, escalation, timing and consent', () => {
   it('reminds the class teacher once, after the hour, on a school day, outside quiet hours', async () => {
     const teacher = school.people.TEACHER.actor.profileId;
-    expect((await oak(() => jobs.runRegisterNudge(IST(MONDAY, 9, 0)))).skipped).toBe('not yet time');
-    expect((await oak(() => jobs.runRegisterNudge(IST('2026-10-18', 11, 0)))).skipped).toBe('not a school day');
-    expect((await oak(() => jobs.runRegisterNudge(IST(MONDAY, 22, 0)))).skipped).toBe('quiet hours');
+    expect((await oak(() => jobs.runRegisterNudge(IST(REGISTER_MONDAY, 9, 0)))).skipped).toBe('not yet time');
+    expect((await oak(() => jobs.runRegisterNudge(IST('2026-10-11', 11, 0)))).skipped).toBe('not a school day');
+    expect((await oak(() => jobs.runRegisterNudge(IST(REGISTER_MONDAY, 22, 0)))).skipped).toBe('quiet hours');
 
-    const out = await oak(() => jobs.runRegisterNudge(IST(MONDAY, 10, 30)));
+    const out = await oak(() => jobs.runRegisterNudge(IST(REGISTER_MONDAY, 10, 30)));
     expect(out.ran).toBe(true);
     expect(out.unmarked).toBe(2); // 6 A and 6 B have no marks on Monday
     expect(out.nudged).toBe(1); // only 6 A has a class teacher
@@ -57,11 +59,11 @@ describe('register not marked: nudge, escalation, timing and consent', () => {
     expect(await oak(() => Notification.countDocuments({ recipientProfileId: teacher, title: /Class 6 A/ }))).toBe(1);
 
     // Again the same day: claimed, nothing new.
-    expect((await oak(() => jobs.runRegisterNudge(IST(MONDAY, 11, 0)))).skipped).toBe('already ran');
+    expect((await oak(() => jobs.runRegisterNudge(IST(REGISTER_MONDAY, 11, 0)))).skipped).toBe('already ran');
     expect(await oak(() => MessageOutbox.countDocuments({ templateKey: 'REGISTER_NOT_MARKED', recipientProfileId: teacher }))).toBe(1);
 
     // Two hours after the nudge hour the principal gets one list, in the app.
-    const later = await oak(() => jobs.runRegisterNudge(IST(MONDAY, 12, 15)));
+    const later = await oak(() => jobs.runRegisterNudge(IST(REGISTER_MONDAY, 12, 15)));
     expect(later.escalation.ran).toBe(true);
     const p = await outbox({ templateKey: 'REGISTER_NOT_MARKED', recipientProfileId: school.people.PRINCIPAL.actor.profileId });
     expect(p).toHaveLength(0); // in-app only (no channel rows)...
@@ -70,12 +72,12 @@ describe('register not marked: nudge, escalation, timing and consent', () => {
 
   it('a teacher who opted in to WhatsApp gets it SIMULATED (no provider in tests), and a switched-off school gets nothing', async () => {
     await oak(() => messaging.updatePreferences(school.people.TEACHER.actor, { whatsappOptIn: true }));
-    await oak(() => jobs.runRegisterNudge(IST(MONDAY, 10, 30)));
+    await oak(() => jobs.runRegisterNudge(IST(REGISTER_MONDAY, 10, 30)));
     const [row] = await outbox({ templateKey: 'REGISTER_NOT_MARKED' });
     expect(row.status).toBe('SIMULATED');
 
     await oak(() => service.updateAutomation(school.people.ADMIN.actor, 'attendanceRegisterNudge', { enabled: false }));
-    expect((await oak(() => jobs.runRegisterNudge(IST('2026-10-20', 10, 30)))).skipped).toBe('switched off');
+    expect((await oak(() => jobs.runRegisterNudge(IST('2026-10-13', 10, 30)))).skipped).toBe('switched off');
   });
 
   it('runs inside one school only', async () => {
