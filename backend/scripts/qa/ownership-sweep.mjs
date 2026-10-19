@@ -18,7 +18,12 @@ const who = { STUDENT: await fam(process.env.QA_STUDENT ?? '+910000003021'), PAR
 const me = JSON.parse((await j('/students/', who.STUDENT)).text).data[0];
 const all = JSON.parse((await j('/students/?pageSize=200', admin)).text).data;
 const list = all.items ?? all;
-const victim = list.find((s) => s.id !== me.id && (s.enrollment?.sectionId ?? s.sectionId) !== (me.enrollment?.sectionId ?? me.sectionId)) ?? list.find((s) => s.id !== me.id);
+// Only a pupil with a current class: the demo data also has former students
+// (the alumnus) with no section, and testing with one of them proves nothing
+// about another class's records.
+const sectionOf = (s) => s.enrollment?.sectionId ?? s.sectionId;
+const victim = list.find((s) => s.id !== me.id && sectionOf(s) && sectionOf(s) !== sectionOf(me)) ?? list.find((s) => s.id !== me.id && sectionOf(s));
+if (!victim) throw new Error('No other enrolled pupil to test with: seed the demo school first.');
 const vDetail = JSON.parse((await j(`/students/${victim.id}`, admin)).text).data;
 const v = {
   studentId: victim.id,

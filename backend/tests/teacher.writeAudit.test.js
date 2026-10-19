@@ -210,7 +210,7 @@ describe('1. every Teacher write the Web offers is exposed, and nothing else', (
     expect(writes).toEqual([...WRITES].sort());
     const by = (op) => writes.filter((name) => index[name].operation === op).length;
     expect([by('CREATE'), by('UPDATE'), by('DELETE'), by('ACTION')]).toEqual([62, 52, 18, 83]);
-    expect(offered).toHaveLength(455); // part 7: +16 (2 multi-ask reads, 5 bulk import, 9 automations)
+    expect(offered).toHaveLength(454); // part 7: +16 (2 multi-ask reads, 5 bulk import, 9 automations); -1 get_next_roll_number (office only)
     expect(offered).toContain('get_pending_items_for_me');
     // No decision: nothing named approve_/reject_/decide_/review_/publish_/refund_.
     for (const name of offered) expect(isDecidingToolName(name), name).toBe(false);

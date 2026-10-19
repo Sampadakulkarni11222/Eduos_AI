@@ -53,7 +53,9 @@ router.get('/', requirePermission('students.read'), controller.listEnrollments);
  *       200:
  *         description: Next roll number
  */
-router.get('/next-roll-no', requirePermission('students.read'), controller.getNextRollNo);
+// Only for whoever enrols pupils (the office, at ALL scope): a family or a
+// teacher holding students.read for their own records has no use for it.
+router.get('/next-roll-no', requirePermission('students.read', 'ALL'), controller.getNextRollNo);
 
 router.post('/', requirePermission('enrollments.manage'), controller.enroll);
 

@@ -11,6 +11,10 @@ import { AttendanceRecord } from '../src/models/attendanceRecord.model.js';
 import { ClassCheckIn } from '../src/models/safety.model.js';
 import { IdempotencyRecord } from '../src/models/idempotencyRecord.model.js';
 import { routeKind } from '../src/middleware/idempotency.js';
+import { pinClock } from './support/clock.js';
+
+// Built around "today": runs on a school day (next Wednesday morning IST), not on whatever day CI runs.
+pinClock();
 
 /**
  * Offline queue replays: a write sent with an Idempotency-Key runs once; the

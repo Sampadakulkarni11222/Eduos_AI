@@ -9,6 +9,10 @@ import { Announcement } from '../src/models/announcement.model.js';
 import * as family from '../src/modules/family/family.service.js';
 import { converse } from '../src/modules/whatsapp/whatsapp.agent.js';
 import { signAccessToken } from '../src/utils/jwt.js';
+import { pinClock } from './support/clock.js';
+
+// Built around "today": runs on a school day (next Wednesday morning IST), not on whatever day CI runs.
+pinClock();
 
 /**
  * Part 4, the parent: the family desk (today across every child and what is

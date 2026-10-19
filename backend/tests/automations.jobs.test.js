@@ -16,6 +16,12 @@ import * as service from '../src/modules/automations/automations.service.js';
 import * as personal from '../src/modules/automations/personal.js';
 import { inQuietWindow } from '../src/modules/automations/automations.runtime.js';
 import { JOBS } from '../src/jobs/scheduler.js';
+import { pinClock } from './support/clock.js';
+
+// The jobs below run at fixed times on Monday 19 and Tuesday 20 Oct 2026, but the fixture
+// marks today's register from the clock: run on one of those days for real, 6 A looked
+// marked. The pinned day is always a Wednesday, so it never collides.
+pinClock();
 
 /**
  * Part 7 school automations: each runs once per school per day (or week) at

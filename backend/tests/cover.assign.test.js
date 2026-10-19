@@ -6,6 +6,10 @@ import { MessageOutbox } from '../src/models/messaging.model.js';
 import * as leave from '../src/modules/staff/staffLeave.service.js';
 import * as cover from '../src/modules/staff/cover.service.js';
 import * as attendance from '../src/modules/attendance/attendance.service.js';
+import { pinClock } from './support/clock.js';
+
+// Built around "today": runs on a school day (next Wednesday morning IST), not on whatever day CI runs.
+pinClock();
 
 /**
  * Substitute cover: an absence produces the affected periods; candidates are
@@ -15,10 +19,12 @@ import * as attendance from '../src/modules/attendance/attendance.service.js';
  */
 let s;
 const inOak = (fn) => inSchool(OAK, fn);
-const today = ymdIn(0);
+// Read per test, after the clock is pinned: a value taken when the file loads
+// is the real date, not the pinned school day the services see.
+let today;
 const P = () => s.people.PRINCIPAL.actor;
 
-beforeEach(async () => { s = await seedFamilySchool(); });
+beforeEach(async () => { today = ymdIn(0); s = await seedFamilySchool(); });
 
 const absent = (who) => inOak(() => cover.markAbsent(P(), 'ALL', { profileId: s.people[who].actor.profileId, date: today, reason: 'Unwell' }));
 const assign = (body) => inOak(() => cover.assign(P(), 'ALL', { date: today, ...body }));
