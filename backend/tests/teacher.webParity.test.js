@@ -16,6 +16,11 @@ import { parseIntent } from '../src/modules/ai/agent/intent.js';
 import { mcpToolsFor } from '../src/modules/ai/mcp/registry.js';
 import { startApi } from './support/mcpHttp.js';
 import { seedSchool, seedPerson, inSchool, actorForRole, mcp, proposeAndConfirm, todayKey, OAK } from './support/mcpSchool.js';
+import { pinClock } from './support/clock.js';
+
+// Built around "today" and "yesterday": runs on a school day (next Wednesday morning IST), so
+// "yesterday" is never a Sunday, when attendance is closed and the correction is rightly refused.
+pinClock();
 
 /**
  * Teacher: the Web ERP is the source of truth, and the assistant is the same
@@ -366,14 +371,15 @@ describe('4. another teacher\'s class and another school stay out of reach', () 
 /* ── 5. Writes ────────────────────────────────────────────── */
 
 /** A due date a week ahead, and yesterday in the school's time zone, so the suite does not expire with the calendar. */
-const AHEAD = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
-const YESTERDAY = (() => {
+// Read when a test runs, not when the file loads: the pinned clock starts in beforeAll.
+const ahead = () => new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+const yesterday = () => {
   const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' })
     .formatToParts(new Date(Date.now() - 864e5)).map((p) => [p.type, p.value]));
   const month = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].indexOf(parts.month);
   const key = new Date(Date.UTC(Number(parts.year), month, Number(parts.day)));
   return { words: `${parts.day} ${parts.month} ${parts.year}`, key, iso: key.toISOString().slice(0, 10) };
-})();
+};
 
 const auditOf = (tool, status) => inSchool(OAK, () => AuditLog.findOne({ action: `agent.${tool}`, 'after.status': status }).lean());
 
@@ -397,7 +403,7 @@ describe('5. writes are proposed, confirmed, re-authorized, written and audited'
   }, 90000);
 
   it('homework: proposed on the website, written only on confirmation, audited', async () => {
-    const message = `Create Mathematics homework for Class 6-A on fractions due ${AHEAD}`;
+    const message = `Create Mathematics homework for Class 6-A on fractions due ${ahead()}`;
     const res = await api.ask(teacher(), message);
     expect(res.action).toMatchObject({ tool: 'create_assignment' });
     expect(await inSchool(OAK, () => Assignment.countDocuments({ title: 'fractions' }))).toBe(0);
@@ -413,7 +419,7 @@ describe('5. writes are proposed, confirmed, re-authorized, written and audited'
   it('homework on WhatsApp: the same capability, but a class homework is confirmed on the website', async () => {
     // Setting work for a class lands on other people, which WhatsApp does not
     // confirm (registry.js confirmableOn): the teacher is sent to the website.
-    const proposal = await api.whatsapp(teacher(), `Create Mathematics homework for Class 6-A on decimals due ${AHEAD}`);
+    const proposal = await api.whatsapp(teacher(), `Create Mathematics homework for Class 6-A on decimals due ${ahead()}`);
     expect(proposal.reply).toMatch(/EduOS website/);
     await api.whatsapp(teacher(), 'YES');
     expect(await inSchool(OAK, () => Assignment.countDocuments({ title: 'decimals' }))).toBe(0);
@@ -495,6 +501,7 @@ describe('6. gaps closed after the first pass', () => {
   it('a correction for an earlier day re-marks that day, not today', async () => {
     // Yesterday: inside the back-dating window a teacher may correct without
     // attendance.regularize (attendance.service assertMarkableDate).
+    const YESTERDAY = yesterday();
     const message = `Change attendance of Rahul Sharma to absent on ${YESTERDAY.words}`;
     const step = parseIntent(message, teacher().actor);
     expect(step).toMatchObject({ tool: 'mark_attendance', args: { date: YESTERDAY.iso, students: [{ studentName: 'Rahul Sharma', status: 'ABSENT' }] } });
