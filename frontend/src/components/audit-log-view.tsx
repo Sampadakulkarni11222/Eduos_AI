@@ -19,7 +19,7 @@ import type { AuditLogDto } from '@/lib/types';
 /** Roles worth filtering by. Blank means the server's default staff view. */
 const ROLE_OPTIONS = [
   'TEACHER', 'ADMIN', 'PRINCIPAL', 'STUDENT', 'PARENT',
-  'FINANCE', 'LIBRARIAN', 'WARDEN', 'SUPER_ADMIN',
+  'FINANCE', 'LIBRARIAN', 'WARDEN', 'HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'NURSE', 'SUPER_ADMIN',
 ];
 
 const titleCase = (key: string) =>

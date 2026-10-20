@@ -4,7 +4,7 @@ import { Role } from '../src/models/role.model.js';
 import { Account } from '../src/models/account.model.js';
 import { Profile } from '../src/models/profile.model.js';
 import { School } from '../src/models/school.model.js';
-import { PERMISSION_CATALOG, SYSTEM_ROLES, SUPER_ADMIN_ONLY, AI_ASSISTANT_PERMISSION } from '../src/constants/permissions.js';
+import { PERMISSION_CATALOG, SYSTEM_ROLES, SUPER_ADMIN_ONLY, AI_ASSISTANT_PERMISSION, PLATFORM_WITHHELD } from '../src/constants/permissions.js';
 import { buildPermissionMap } from '../src/utils/buildPermissionMap.js';
 import { requirePermission } from '../src/middleware/permission.js';
 import * as schools from '../src/modules/schools/school.service.js';
@@ -79,7 +79,8 @@ describe('existing roles are unchanged', () => {
     const superAdmin = buildPermissionMap(roleByKey.get('SUPER_ADMIN'));
     for (const p of PERMISSION_CATALOG) {
       if (p.key === AI_ASSISTANT_PERMISSION) continue;
-      expect(superAdmin[p.key], p.key).toBe('ALL');
+      // Safeguarding cases and individual pay stay with the school.
+      expect(superAdmin[p.key], p.key).toBe(PLATFORM_WITHHELD.includes(p.key) ? undefined : 'ALL');
     }
     expect(superAdmin[AI_ASSISTANT_PERMISSION]).toBeUndefined();
     expect(SUPER_ADMIN_ONLY.every((k) => superAdmin[k] === 'ALL')).toBe(true);

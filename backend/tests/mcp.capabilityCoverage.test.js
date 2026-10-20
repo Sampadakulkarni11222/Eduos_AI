@@ -218,9 +218,9 @@ describe('the capabilities left unexposed are still unexposed, for the recorded 
     expect(names()).not.toContain('make_payment');
     // The safe equivalent is present, and is a read.
     expect(MCP_TOOLS.get_payment_link.operation).toBe('GET');
-    // And the finance ledger write stays school-wide, so a family cannot reach
-    // it even though they hold fees.pay.
-    expect(MCP_TOOLS.record_payment.minScope).toBe('ALL');
+    // And there is no ledger write at all: recording a payment is a decision
+    // made on the Payments screen (mcp/decisions.js), so nobody can reach one.
+    expect(MCP_TOOLS.record_payment).toBeUndefined();
   });
 
   it('calendar creation remains school-wide only: CalendarEvent has no section', () => {

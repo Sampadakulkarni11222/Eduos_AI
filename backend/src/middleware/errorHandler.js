@@ -4,7 +4,7 @@ import { AppError } from '../utils/AppError.js';
 import { sendError } from '../utils/response.js';
 import { env } from '../config/env.js';
 
-export function errorHandler(err, req, res, next) {
+export function errorHandler(err, req, res, _next) {
   let error = err;
 
   // Mongoose cast error (invalid ObjectId)

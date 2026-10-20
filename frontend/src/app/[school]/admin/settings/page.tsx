@@ -4,6 +4,8 @@ import { PortalShell } from '@/components/shell';
 import { Card, Pill, SkeletonRows } from '@/components/ui';
 import { api, fileHref } from '@/lib/api';
 import type { SchoolCustomizationDto, SchoolDomainDetailDto } from '@/lib/types';
+import { FeaturesSection } from '@/components/ops/features-section';
+import { ApproverModeSection } from '@/components/ops/approver-mode-section';
 
 export default function AdminSettings() {
   const [ctx, setCtx] = useState<{ tenantName: string; tenantId: string } | null>(null);
@@ -47,6 +49,8 @@ export default function AdminSettings() {
       )}
       {look && look !== 'error' && <SchoolLook config={look} />}
       {address && <SchoolAddress detail={address} />}
+      <div style={{ marginTop: 16 }}><FeaturesSection /></div>
+      <div style={{ marginTop: 16 }}><ApproverModeSection /></div>
     </PortalShell>
   );
 }

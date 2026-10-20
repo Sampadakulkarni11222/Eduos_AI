@@ -32,6 +32,7 @@
  * own scope.
  */
 
+import { DECIDING_VERBS } from '../mcp/decisions.js';
 import { classFromText } from '../../../utils/classNames.js';
 import { monthFromText, toIsoDate, writtenDatesIn, weekdayDateIn } from '../../../utils/naturalDates.js';
 import { nameFromText } from '../../../utils/peopleNames.js';
@@ -201,7 +202,9 @@ const NOT_A_SUBJECT = new Set([
 /** The verb every capability name opens with -- record_, publish_, enter_ ... */
 let verbsOfCatalogue = null;
 function catalogueVerbs() {
-  verbsOfCatalogue ??= new Set(capabilityIndex().map((c) => String(c.name).split('_')[0]));
+  // Plus the verbs of deciding, which name acts though no capability performs
+  // them any more (mcp/decisions.js): "Record marks" names no subject "Record".
+  verbsOfCatalogue ??= new Set([...capabilityIndex().map((c) => String(c.name).split('_')[0]), ...DECIDING_VERBS]);
   return verbsOfCatalogue;
 }
 

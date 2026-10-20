@@ -4,6 +4,7 @@ import { PortalShell } from '@/components/shell';
 import { Card, EmptyState, SkeletonRows, StatCard } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { MyBusDto, StudentListItem } from '@/lib/types';
+import { ChildTransportRequest } from '@/components/family-requests';
 
 export default function ParentTransport() {
   const [kids, setKids] = useState<StudentListItem[] | null>(null);
@@ -80,6 +81,8 @@ export default function ParentTransport() {
           </Card>
         </>
       )}
+      {/* Part 4: a parent asks for a bus place for this child. */}
+      {!loading && kid && <ChildTransportRequest studentId={kid.id} firstName={kid.name.split(' ')[0]} />}
     </PortalShell>
   );
 }

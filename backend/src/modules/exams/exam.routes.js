@@ -196,4 +196,16 @@ router.post('/marks', requirePermission('marks.enter'), controller.enterMarks);
  */
 router.post('/publish', requirePermission('marks.publish'), controller.publishMarks);
 
+/**
+ * @swagger
+ * /exams/unpublish:
+ *   post:
+ *     summary: Reopen a published paper's marks for correction (reason required, audited)
+ *     tags: [Exams]
+ *     responses:
+ *       200:
+ *         description: Marks reopened for correction
+ */
+router.post('/unpublish', requirePermission('marks.publish'), controller.unpublishMarks);
+
 export default router;

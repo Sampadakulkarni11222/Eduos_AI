@@ -1,11 +1,33 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
+import { AppError } from '../../utils/AppError.js';
 import { csvUploadSingle } from '../../utils/csvImport.js';
 import * as controller from './library.controller.js';
 
 const router = Router();
 router.use(authenticate);
+
+/**
+ * `library.read`, or a parent reading on behalf of their own children.
+ *
+ * The parent portal has a Library page, but the PARENT role was never granted
+ * `library.read`, so /library/books and /library/issues answered 403 and the
+ * page showed "No books matched". A parent who can read their children's
+ * records (`students.read`) is let through at OWN scope, never ALL: the
+ * service then narrows lending records to the linked children
+ * (resolveOwnBorrowerIds), whatever studentId the caller sends. The proper
+ * long-term fix is a `library.read: OWN` grant on PARENT in permissions.js;
+ * once that exists, the first branch handles parents and this fallback is inert.
+ */
+const libraryRead = (req, res, next) => {
+  if (req.actor?.permissions?.['library.read']) return requirePermission('library.read')(req, res, next);
+  if (req.actor?.roleKey === 'PARENT' && req.actor?.permissions?.['students.read']) {
+    req.scope = 'OWN';
+    return next();
+  }
+  throw new AppError('Missing permission: library.read', 403);
+};
 
 /**
  * @swagger
@@ -58,7 +80,7 @@ router.get('/summary', requirePermission('library.read'), controller.getSummary)
  *       201:
  *         description: Book created successfully
  */
-router.get('/books', requirePermission('library.read'), controller.listBooks);
+router.get('/books', libraryRead, controller.listBooks);
 router.post('/books', requirePermission('library.manage'), controller.createBook);
 router.post('/books/bulk', requirePermission('library.manage'), csvUploadSingle('file'), controller.bulkCreateBooks);
 
@@ -121,9 +143,9 @@ router.post('/books/bulk', requirePermission('library.manage'), csvUploadSingle(
  *         description: Filters fetched successfully
  */
 // Declared before /books/:id so "facets" is not read as a book id.
-router.get('/books/facets', requirePermission('library.read'), controller.listBookFacets);
+router.get('/books/facets', libraryRead, controller.listBookFacets);
 
-router.get('/books/:id', requirePermission('library.read'), controller.getBookById);
+router.get('/books/:id', libraryRead, controller.getBookById);
 router.patch('/books/:id', requirePermission('library.manage'), controller.updateBook);
 router.delete('/books/:id', requirePermission('library.manage'), controller.deleteBook);
 
@@ -148,7 +170,7 @@ router.delete('/books/:id', requirePermission('library.manage'), controller.dele
  *       201:
  *         description: Book issued successfully
  */
-router.get('/issues', requirePermission('library.read'), controller.listIssues);
+router.get('/issues', libraryRead, controller.listIssues);
 router.post('/issues', requirePermission('library.manage'), controller.issueBook);
 router.post('/issues/bulk', requirePermission('library.manage'), csvUploadSingle('file'), controller.bulkIssueBooks);
 

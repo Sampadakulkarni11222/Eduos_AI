@@ -9,7 +9,7 @@ import * as audit from '../../../audit/audit.service.js';
 import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
 import {
-  RISK, objectId, dateStr, noArgs, summarise, shortDate, resolveEnrollmentId, studentIdentitySchema,
+  RISK, objectId, dateStr, summarise, shortDate, resolveEnrollmentId, studentIdentitySchema,
   limitSchema, resultWindow, windowSlice, rangeOf, collectPages, collectCursor,
   resolveSection, classIdentitySchema,
   theNamed,
@@ -169,6 +169,10 @@ export const analyticsTools = {
       additionalProperties: false,
     },
     permission: 'ai.insights.read',
+    // growth.getScore() takes no actor and resolveEnrollmentId() passes a raw
+    // id through, so nothing below narrows the student to the caller's own.
+    // School-wide holders only, as get_at_risk_students.
+    minScope: 'ALL',
     service: 'growth.service.getScore()',
     async run(ctx, args) {
       const enrollmentId = await resolveEnrollmentId(ctx, args);
@@ -591,7 +595,7 @@ export const analyticsTools = {
     permission: 'materials.manage',
     affectsOthers: true,
     service: 'document.service.listForActor() + updateForActor()',
-    summarise: (args, _actor, prepared) => {
+    summarise: (args, _actor, _prepared) => {
       const changed = ['fileUrl', 'mimeType', 'visibleToRoles'].filter((f) => args[f] !== undefined);
       if (args.newTitle !== undefined || (args.documentId && args.title !== undefined)) changed.push('title');
       if (args.sectionId || args.className) changed.push('class');

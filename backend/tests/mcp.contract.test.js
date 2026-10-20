@@ -4,7 +4,7 @@ import { SYSTEM_ROLES } from '../src/constants/permissions.js';
 import { MCP_TOOLS, mcpToolsFor } from '../src/modules/ai/mcp/registry.js';
 import { resetMcpClient } from '../src/modules/ai/mcp/client.js';
 import { speakOf } from '../src/modules/ai/agent/response.js';
-import { seedSchool, mcp, readToolArgs, OAK } from './support/mcpSchool.js';
+import { seedSchool, seedPerson, mcp, readToolArgs, OAK, actorForRole } from './support/mcpSchool.js';
 
 /**
  * Every read tool, run for real, for every role that can see it.
@@ -29,6 +29,8 @@ const ACCEPTABLE_REFUSALS = new Set(['NOT_FOUND', 'NEEDS_INPUT', 'INVALID_INPUT'
 let school;
 beforeEach(async () => {
   school = await seedSchool();
+  // Part 3: the school nurse holds the health-room read tools (tools/p3Health.js).
+  school.people.NURSE = await seedPerson({ roleKey: 'NURSE', roleId: school.roleIds.NURSE });
 });
 afterAll(async () => {
   await resetMcpClient();
@@ -37,7 +39,7 @@ afterAll(async () => {
 const READ_TOOLS = Object.entries(MCP_TOOLS).filter(([, t]) => t.operation === 'GET').map(([n]) => n);
 
 describe('every read tool keeps its contract', () => {
-  const ROLES_WITH_PEOPLE = ['ADMIN', 'PRINCIPAL', 'FINANCE', 'TEACHER', 'LIBRARIAN', 'WARDEN', 'PARENT', 'STUDENT'];
+  const ROLES_WITH_PEOPLE = ['ADMIN', 'PRINCIPAL', 'FINANCE', 'TEACHER', 'LIBRARIAN', 'WARDEN', 'PARENT', 'STUDENT', 'NURSE'];
 
   it.each(ROLES_WITH_PEOPLE)('as %s', async (roleKey) => {
     const actor = school.people[roleKey].actor;
@@ -61,9 +63,11 @@ describe('every read tool keeps its contract', () => {
 
   it('covers every read tool with at least one role', () => {
     const covered = new Set(
-      ['ADMIN', 'PRINCIPAL', 'FINANCE', 'TEACHER', 'LIBRARIAN', 'WARDEN', 'PARENT', 'STUDENT']
+      ['ADMIN', 'PRINCIPAL', 'FINANCE', 'TEACHER', 'LIBRARIAN', 'WARDEN', 'PARENT', 'STUDENT', 'NURSE']
         .flatMap((k) => mcpToolsFor(school.people[k].actor).map((t) => t.name)),
     );
+    // The alumnus (no fixture person; a role's catalogue depends only on its grants).
+    for (const t of mcpToolsFor(actorForRole('ALUMNUS'))) covered.add(t.name);
     const uncovered = READ_TOOLS.filter((n) => !covered.has(n));
     expect(uncovered).toEqual([]);
   });

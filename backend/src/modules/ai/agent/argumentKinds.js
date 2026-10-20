@@ -48,7 +48,6 @@ const missing = () => ({ status: MISSING, value: undefined });
 const ambiguous = (candidates) => ({ status: AMBIGUOUS, value: undefined, candidates });
 const invalid = (reason) => ({ status: INVALID, value: undefined, reason });
 
-const OBJECT_ID = /^\^?\[a-f0-9\]\{24\}\$?$/;
 const isObjectIdPattern = (pattern) => typeof pattern === 'string' && pattern.includes('[a-f0-9]{24}');
 const isDatePattern = (pattern) => typeof pattern === 'string' && /\\d\{4\}-\\d\{2\}-\\d\{2\}/.test(pattern);
 const isMonthPattern = (pattern) => typeof pattern === 'string' && /\\d\{4\}-\\d\{2\}\$/.test(pattern) && !isDatePattern(pattern);

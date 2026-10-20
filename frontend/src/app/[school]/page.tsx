@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { SignIn } from '@/components/sign-in';
 import { Spinner } from '@/components/ui';
-import { api } from '@/lib/api';
-import { setActiveSchool } from '@/lib/school';
+import { api, ApiError } from '@/lib/api';
+import { rememberLastSchool, setActiveSchool } from '@/lib/school';
 import { themeStyle, useFavicon } from '@/lib/school-theme';
 import type { PublicSchoolDto } from '@/lib/types';
 
@@ -26,25 +26,57 @@ export default function SchoolEntryPage() {
 
   const [school, setSchool] = useState<PublicSchoolDto | null>(null);
   const [missing, setMissing] = useState(false);
+  // Any failure that is not a real 404 -- a 429 from the rate limiter, a 5xx,
+  // the network -- says nothing about whether the school exists. It used to be
+  // shown as "404 · No school at this address".
+  const [unreachable, setUnreachable] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   // A school is recognised at its door before it is recognised anywhere else.
   useFavicon(school?.faviconUrl ?? null);
 
   useEffect(() => {
     let cancelled = false;
     if (!slug) return;
+    setMissing(false);
+    setUnreachable(null);
 
     api.publicSchool(slug)
       .then((found) => {
         if (cancelled) return;
         setActiveSchool(found);
+        rememberLastSchool(found);
         setSchool(found);
       })
-      .catch(() => {
-        if (!cancelled) setMissing(true);
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (err instanceof ApiError && err.status === 404) setMissing(true);
+        else setUnreachable(lookupFailureMessage(err));
       });
 
     return () => { cancelled = true; };
-  }, [slug]);
+  }, [slug, attempt]);
+
+  if (unreachable) {
+    return (
+      <div role="alert" style={{
+        minHeight: '100vh', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24, textAlign: 'center',
+      }}>
+        <div style={{ fontFamily: 'Newsreader, serif', fontSize: 20, color: '#1a0a0d' }}>Can&apos;t reach the school right now</div>
+        <p style={{ fontSize: 13.5, color: '#7a6a60', maxWidth: 380, lineHeight: 1.6 }}>{unreachable}</p>
+        <button
+          type="button"
+          onClick={() => setAttempt((n) => n + 1)}
+          style={{
+            marginTop: 8, border: '1px solid #591620', borderRadius: 8, background: 'none', cursor: 'pointer',
+            padding: '6px 16px', fontFamily: 'Newsreader, serif', fontSize: 15, color: '#591620',
+          }}
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   if (missing) {
     return (
@@ -91,4 +123,14 @@ export default function SchoolEntryPage() {
       <SignIn school={school} />
     </div>
   );
+}
+
+/** What to tell someone whose school lookup failed for a reason other than "no such school". */
+function lookupFailureMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.status === 429) return 'Too many requests from this network just now. Wait a moment and try again.';
+    if (err.status >= 500) return 'The server had a problem loading this school. Try again in a moment.';
+    return 'Something went wrong loading this school. Try again.';
+  }
+  return 'Check your internet connection, then try again.';
 }

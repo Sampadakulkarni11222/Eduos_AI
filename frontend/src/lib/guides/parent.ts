@@ -1,5 +1,6 @@
 import type { RoleGuide } from './types';
 import { askAgentTopic, notificationsTopic, accessTip, signInTopic } from './shared';
+import { opsTopics } from './ops';
 
 export const parentGuide: RoleGuide = {
   slug: 'parent',
@@ -156,6 +157,7 @@ export const parentGuide: RoleGuide = {
       canDo: ['update your child\'s medical record', 'raise a ticket with the school'],
       examples: ['What are my child\'s pending fees?', 'How was my child\'s attendance this month?', 'What homework is due this week?'],
     }),
+    ...opsTopics('parent'),
     signInTopic(),
     { ...notificationsTopic, tips: [accessTip] },
   ],

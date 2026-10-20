@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import { MCP_TOOLS } from '../src/modules/ai/mcp/registry.js';
-import { Payment } from '../src/models/fee.model.js';
+import { Payment, Invoice } from '../src/models/fee.model.js';
+import { Announcement } from '../src/models/announcement.model.js';
 import { AttendanceRecord } from '../src/models/attendanceRecord.model.js';
 import { AgentAction } from '../src/models/agentAction.model.js';
 import { AuditLog } from '../src/models/auditLog.model.js';
@@ -46,6 +47,8 @@ afterEach(() => {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const auditWith = (tool, status) => inSchool(OAK, () => AuditLog.findOne({ action: `agent.${tool}`, 'after.status': status }).lean());
 const payments = () => inSchool(OAK, () => Payment.countDocuments({ invoiceId: school.inv1._id }));
+const ANNOUNCE = 'Post an announcement: Sports day moves to Friday';
+const announced = () => inSchool(OAK, () => Announcement.countDocuments({ title: 'Sports day moves to Friday' }));
 const actionRow = (id) => inSchool(OAK, () => AgentAction.findById(id).lean());
 
 async function eventually(fn, timeoutMs = 5000) {
@@ -99,35 +102,30 @@ describe('MCP_TOOL_TIMEOUT_MS', () => {
     await sleep(700); // let the abandoned read finish before the fixture is cleared
   });
 
-  it('a payment past the limit is reported as neither done nor failed, completes once, and is audited when it does', async () => {
-    const finance = school.people.FINANCE;
-    const proposal = await api.ask(finance, 'Record a payment of ₹5,000 against invoice INV-1001 in cash');
-    expect(proposal.action.tool).toBe('record_payment');
+  it('a write past the limit is reported as neither done nor failed, completes once, and is audited when it does', async () => {
+    const admin = school.people.ADMIN;
+    const proposal = await api.ask(admin, ANNOUNCE);
+    expect(proposal.action.tool).toBe('create_announcement');
 
     process.env.MCP_TOOL_TIMEOUT_MS = '100';
-    slowDown('record_payment', 600);
-    const res = await api.confirm(finance, proposal.action.confirmToken);
+    slowDown('create_announcement', 600);
+    const res = await api.confirm(admin, proposal.action.confirmToken);
     expect(res.status).toBe(200);
     expect(res.executed).toBe(false);
     expect(res.outcome).toBe('UNKNOWN');
     expect(res.reply).toMatch(/may still complete/);
-    expect(res.reply).not.toMatch(/Recorded|approval/);
-    expect(await auditWith('record_payment', 'TIMEOUT_OUTCOME_PENDING')).not.toBeNull();
+    expect(await auditWith('create_announcement', 'TIMEOUT_OUTCOME_PENDING')).not.toBeNull();
 
     // Still running: the proposal is held — not failed, and not redeemable again.
     expect((await actionRow(proposal.action.id)).status).toBe('EXECUTING');
-    const retry = await api.confirm(finance, proposal.action.confirmToken);
+    const retry = await api.confirm(admin, proposal.action.confirmToken);
     expect(retry.status).toBe(409);
 
-    const settled = await eventually(() => auditWith('record_payment', 'EXECUTED_AFTER_TIMEOUT'));
+    const settled = await eventually(() => auditWith('create_announcement', 'EXECUTED_AFTER_TIMEOUT'));
     expect(settled).not.toBeNull();
     expect(settled.after.confirmed).toBe(true);
-    // The invoice now lists the payment (pending approval) — the after-state was
-    // captured when the write really finished, not when the clock ran out.
-    expect(settled.after.state.paymentCount).toBe(1);
-    expect(settled.before.paymentCount).toBe(0);
     expect((await actionRow(proposal.action.id)).status).toBe('EXECUTED');
-    expect(await payments()).toBe(1);
+    expect(await announced()).toBe(1);
   });
 });
 
@@ -154,19 +152,19 @@ describe('concurrent calls', () => {
 
   it("two people's confirmations at the same moment both land, each exactly once", async () => {
     const teacher = school.people.TEACHER.actor;
-    const finance = school.people.FINANCE.actor;
-    const [mark, pay] = await Promise.all([
+    const admin = school.people.ADMIN.actor;
+    const [mark, post] = await Promise.all([
       mcp(OAK, teacher, 'mark_attendance', { students: [{ studentName: 'Rahul Sharma', status: 'PRESENT' }] }),
-      mcp(OAK, finance, 'record_payment', { invoiceNo: 'INV-1001', amountPaise: 100000, mode: 'CASH' }),
+      mcp(OAK, admin, 'create_announcement', { title: 'Sports day moves to Friday', content: 'See you there.' }),
     ]);
     const [a, b] = await Promise.all([
       mcp(OAK, teacher, 'mark_attendance', {}, { confirmationToken: mark.action.confirmationToken }),
-      mcp(OAK, finance, 'record_payment', {}, { confirmationToken: pay.action.confirmationToken }),
+      mcp(OAK, admin, 'create_announcement', {}, { confirmationToken: post.action.confirmationToken }),
     ]);
     expect([a.success, b.success]).toEqual([true, true]);
     const rahul = await inSchool(OAK, () => AttendanceRecord.findOne({ enrollmentId: school.rahul.enrollment._id, date: todayKey() }).lean());
     expect(rahul.status).toBe('PRESENT');
-    expect(await payments()).toBe(1);
+    expect(await announced()).toBe(1);
   });
 
   it('one request that needs two MCP calls makes both, and audits both', async () => {
@@ -205,45 +203,50 @@ describe('a failure is reported as a failure', () => {
   });
 
   it('missing arguments: asks for them, proposes nothing', async () => {
-    const res = await api.ask(school.people.FINANCE, 'Record a payment against invoice INV-1001');
+    const res = await api.ask(school.people.ADMIN, 'Create an announcement');
     expect(res.status).toBe(200);
-    expect(res.needsInput).toBe(true);
     expect(res.action ?? null).toBeNull();
+    expect(res.reply).toMatch(/need a bit more|\?/);
     expect(await inSchool(OAK, () => AgentAction.countDocuments())).toBe(0);
   });
 
-  it('permission denied: 403, and nothing written', async () => {
+  it('permission denied: said so, and nothing written', async () => {
     const res = await api.ask(school.people.TEACHER, 'Record a payment of ₹500 against invoice INV-1001');
-    expect(res.status).toBe(403);
-    expect(res.body.success).toBe(false);
+    expect(res.status).toBe(200);
+    expect(res.refused).toBe('NOT_PERMITTED');
     expect(await payments()).toBe(0);
+    const direct = await mcp(OAK, school.people.TEACHER.actor, 'generate_invoices', {});
+    expect(direct.error.code).toBe('FORBIDDEN');
   });
 
   it("tenant mismatch: another school's invoice does not exist for this caller", async () => {
-    const res = await api.ask(school.people.RIVER_ADMIN, 'Record a payment of ₹500 against invoice INV-1001 in cash');
-    expect(res.reply).toBe('No invoice numbered "INV-1001".');
-    expect(res.action ?? null).toBeNull();
+    const res = await mcp(RIVER, school.people.RIVER_ADMIN.actor, 'get_invoice', { invoiceNo: 'INV-1001' });
+    expect(res.success).toBe(false);
+    expect(res.error.code).toBe('NOT_FOUND');
     const byId = await mcp(RIVER, school.people.RIVER_ADMIN.actor, 'get_student', { studentId: String(school.rahul.student._id) });
     expect(byId.error.code).toBe('NOT_FOUND');
   });
 
   it('record not found: says which record', async () => {
-    const res = await api.ask(school.people.FINANCE, 'Record a payment of ₹500 against invoice NOPE-999');
-    expect(res.reply).toBe('No invoice numbered "NOPE-999".');
+    const res = await mcp(OAK, school.people.FINANCE.actor, 'get_invoice', { invoiceNo: 'NOPE-999' });
+    expect(res.error.code).toBe('NOT_FOUND');
+    expect(res.error.message).toMatch(/NOPE-999/);
   });
 
-  it('business rule: an overpayment is refused at execution, and the reply says why — not that it was recorded', async () => {
+  it('business rule: a duplicate invoice number is refused at execution, and the reply says why — not that it was raised', async () => {
     const admin = school.people.ADMIN;
-    const proposal = await api.ask(admin, 'Record a payment of ₹9,000 against invoice INV-1001 in cash');
-    expect(proposal.action.tool).toBe('record_payment');
-    const res = await api.confirm(admin, proposal.action.confirmToken);
+    const proposal = await mcp(OAK, admin.actor, 'create_invoice', {
+      enrollmentId: String(school.priya.enrollment._id), invoiceNo: 'INV-1001', dueOn: '2026-12-01',
+      lines: [{ description: 'Duplicate', amountPaise: 100 }],
+    });
+    expect(proposal.action.status).toBe('confirmation_required');
+    const res = await api.confirm(admin, proposal.action.confirmationToken);
     expect(res.status).toBe(409);
     expect(res.body.success).toBe(false);
-    expect(res.body.message).toMatch(/exceeds the outstanding balance/);
-    expect(JSON.stringify(res.body)).not.toMatch(/Recorded/);
-    expect(await payments()).toBe(0);
+    expect(JSON.stringify(res.body)).not.toMatch(/raised|created/i);
+    expect(await inSchool(OAK, () => Invoice.countDocuments({ invoiceNo: 'INV-1001' }))).toBe(1);
     expect((await actionRow(proposal.action.id)).status).toBe('FAILED');
-    expect((await auditWith('record_payment', 'FAILED')).after.code).toBe('CONFLICT');
+    expect((await auditWith('create_invoice', 'FAILED')).after.code).toBe('CONFLICT');
   });
 
   describe('external messaging failure', () => {

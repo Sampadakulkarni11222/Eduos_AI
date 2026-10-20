@@ -1,3 +1,4 @@
+import { forgetIdentity } from '../../middleware/auth.js';
 import { Account } from '../../models/account.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { Role } from '../../models/role.model.js';
@@ -308,6 +309,7 @@ export async function updateSchoolAdmin(slug, profileId, { status, displayName, 
       throw new AppError(`status must be one of ${PROFILE_STATUSES.join(', ')}`, 400);
     }
     profile.status = status;
+    forgetIdentity(String(profile.accountId));
   }
   if (displayName !== undefined) {
     const trimmed = String(displayName).trim();

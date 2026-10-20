@@ -3,7 +3,8 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { useRouter } from 'next/navigation';
 import { api, clearSession, hasSession, setSession } from './api';
 import { useSessionActivity } from './session-activity';
-import { portalHome } from './school-path';
+import { portalHome, schoolDoorOf, signInPathFor } from './school-path';
+import { getActiveSchool } from './school';
 import { invalidateCache } from './cache';
 import { clearActingSchool } from './acting-school';
 import type { Me, ProfileSummary } from './types';
@@ -81,6 +82,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
+    // The door this person is signed in through, read before anything is cleared:
+    // the school in the address, else the school remembered for this tab. A
+    // platform administrator has neither and returns to the platform sign-in.
+    const door = schoolDoorOf(typeof window === 'undefined' ? null : window.location.pathname)
+      ?? (typeof window !== 'undefined' && window.location.pathname.startsWith('/super-admin') ? null : getActiveSchool()?.slug ?? null);
     try {
       await api.logout();
     } catch {
@@ -95,7 +101,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // signing in on this tab can never be served the previous one's data.
     invalidateCache();
     setMe(null);
-    router.push('/login');
+    router.push(signInPathFor(door));
   }, [router]);
 
   return (
@@ -149,4 +155,9 @@ export function useAuth(): AuthState {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth outside AuthProvider');
   return ctx;
+}
+
+/** The session when there is one, or null outside AuthProvider (for widgets that only personalise, never gate). */
+export function useMaybeAuth(): AuthState | null {
+  return useContext(AuthContext);
 }

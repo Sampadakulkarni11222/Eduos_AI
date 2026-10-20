@@ -60,7 +60,8 @@
  * there is no branch, table or constant here naming a phrase, a role or a tool.
  */
 
-import { capabilitiesFor, capabilityIndex, entitiesInText, subjectEntityOf, namesARecord } from '../mcp/capabilities.js';
+import { DECIDING_VERBS } from '../mcp/decisions.js';
+import { capabilitiesFor, capabilityIndex, entitiesInText, subjectEntityOf, namesARecord, ENTITY_VOCABULARY } from '../mcp/capabilities.js';
 import { classFromText } from '../../../utils/classNames.js';
 import { monthFromText, writtenDatesIn } from '../../../utils/naturalDates.js';
 import { rangeFromText, monthBounds } from '../../../utils/dateRanges.js';
@@ -247,6 +248,13 @@ function verbIndex() {
       if (!verbsByOperation.has(verb)) verbsByOperation.set(verb, new Set());
       verbsByOperation.get(verb).add(c.operation);
     }
+    // The verbs of DECIDING (approve, reject, publish, record, refund ...) name
+    // acts even though no capability performs them any more (mcp/decisions.js):
+    // "Record Rahul as present" is still an instruction, not a question, and
+    // "approve the leave" must never be read as a request to list it.
+    for (const verb of DECIDING_VERBS) {
+      if (!verbsByOperation.has(verb)) verbsByOperation.set(verb, new Set(['ACTION']));
+    }
   }
   return verbsByOperation;
 }
@@ -275,7 +283,11 @@ const VERB_CUES = new Set([
 
 /** The words of a sentence that could be its verb. */
 export function verbPositions(text) {
-  const words = wordsOf(text);
+  // Quoted text is the person's own content -- "change its message to 'Submit
+  // the books'" -- and a verb inside it is not the act asked for (the same
+  // rule unavailableAction applies). A quote must open after a space and close
+  // before one, so the apostrophes of "can't ... what's" are never a pair.
+  const words = wordsOf(String(text ?? '').replace(/(^|\s)["“”']([^"“”']{2,500})["“”'](?=\s|[.,!?;:]|$)/g, '$1 '));
   const candidates = new Set();
   // An instruction opens with the verb's base form -- "mark", "record" --
   // never its third-person "-s" form. "Marks" at the head of a sentence is the
@@ -285,6 +297,10 @@ export function verbPositions(text) {
     if (!word) return;
     if (/[^s]s$/.test(word) && stem(word) !== word) return;
     candidates.add(stem(word));
+    // "Deleting", "updated": the stemmer drops the -ing/-ed and with it the
+    // base form's final e ("delet"), so the catalogue's own verb ("delete")
+    // was never recognised in a gerund. Added only when that verb exists.
+    if (/(?:ing|ed)$/.test(word) && verbIndex().has(`${stem(word)}e`)) candidates.add(`${stem(word)}e`);
   };
   add(words[0]);
   for (let i = 0; i < words.length - 1; i += 1) {
@@ -1348,6 +1364,10 @@ export function operationsNamed(verbCandidates, verbs, { requestMood = false, me
     const coarse = detectOperation(verb);
     if (coarse !== 'GET') operations.add(coarse);
     else for (const op of ops) operations.add(op);
+    // "Set" is both: "set homework" brings work into being, "set the board agenda" and "set my message
+    // preferences" change what is there. The coarse table reads it as CREATE only, which ruled out every
+    // set_ capability the catalogue declares (all UPDATEs), so the catalogue's own operations count too.
+    if (verb === 'set') for (const op of ops) operations.add(op);
   }
   if (operations.size) return correctionIsUpdate(operations, message);
 
@@ -2489,6 +2509,34 @@ export function unavailableAction(message, actor) {
   if ([...held].some((v) => DECISION_VERBS.has(v))) for (const v of DECISION_VERBS) held.add(v);
   const named = dimensionsOf(str);
   const subject = subjectEntityOf(withoutLeadingVerb(residualMessage(str, named)));
+  // Holding a verb counts only where it can touch the subject. A teacher
+  // holds apply_staff_leave, and "apply for leave" (a student's leave, which
+  // the teacher cannot apply for) used to pass for it, so the refusal never
+  // came. The verb is held for this sentence when a capability wearing it is
+  // about the subject, or when the caller does that kind of act to the
+  // subject by another name; with no subject, holding it anywhere is enough.
+  const heldFor = (verb) => {
+    if (!held.has(verb)) return false;
+    if (!subject) return true;
+    // Only when the subject is what the verb acts on -- named after it. In
+    // "show my timetable and apply for leave" the timetable is not applied for.
+    const vocabulary = ENTITY_VOCABULARY.find(([e]) => e === subject)?.[1];
+    const at = vocabulary ? str.search(vocabulary) : -1;
+    const verbAt = str.toLowerCase().search(new RegExp(String.raw`\b${surface(verb)}`));
+    if (at < 0 || verbAt < 0 || at < verbAt) return true;
+    const decision = DECISION_VERBS.has(verb);
+    const wearing = pool.filter((c) => {
+      const v = nameParts(c.name).verb;
+      return v === verb || (decision && DECISION_VERBS.has(v));
+    });
+    if (!wearing.length || wearing.some((c) => c.entity === subject)) return true;
+    // A capability wearing the verb and named by the sentence's own words
+    // ("request pickup delegation") is the act asked for, whatever the subject reads as.
+    const said = tokensOf(str);
+    if (wearing.some((c) => { const nouns = nameParts(c.name).nouns; return nouns.length > 0 && nouns.every((n) => spoke(said, n)); })) return true;
+    const operations = new Set(wearing.map((c) => c.operation));
+    return pool.some((c) => c.entity === subject && operations.has(c.operation));
+  };
 
   for (const verb of candidates) {
     if (READ_VERBS.has(verb) || !verbs.has(verb)) continue;
@@ -2498,8 +2546,12 @@ export function unavailableAction(message, actor) {
     // co-curricular request the student can make, whoever else's tool happens
     // to be named add_. Only a SPECIFIC act (approve, reply, mark, issue) is
     // refused for its verb alone.
-    if (detectOperation(surface(verb)) !== 'GET') continue;
-    if (!held.has(verb) && !actsBy(pool, subject, verb)) return { reason: 'NOT_PERMITTED', verb: baseVerb(surface(verb)), entity: subject };
+    // "Log" and "open" are generic too ("log what they handed over", "open a
+    // ticket": judged on their object, whoever else holds a log_ or open_
+    // tool) -- they are kept out of detectOperation, where "show the vehicle
+    // log" or "open the timetable" would read as writes.
+    if (/^(?:log|open)(?:s|ged|ging|ed|ing)?$/i.test(surface(verb)) || detectOperation(surface(verb)) !== 'GET') continue;
+    if (!heldFor(verb) && !actsBy(pool, subject, verb)) return { reason: 'NOT_PERMITTED', verb: baseVerb(surface(verb)), entity: subject };
   }
 
   // What the opening verb itself means, when it is a generic one: "update"
@@ -2513,7 +2565,9 @@ export function unavailableAction(message, actor) {
   const coarse = opening && !toTheSpeaker
     ? (fieldChangeFromText(str) && !renameFromText(str) ? 'UPDATE' : detectOperation(opening))
     : 'GET';
-  const wanted = coarse !== 'GET'
+  // "Set" opens both kinds of act (operationsNamed reads it that way too):
+  // "set homework" creates, "set my message preferences" changes.
+  const wanted = coarse !== 'GET' && opening !== 'set'
     ? new Set([coarse])
     : operationsNamed(candidates, verbs, { requestMood: named.requestMood, message: str });
   if (!wanted.size || !subject) return null;
@@ -2535,8 +2589,28 @@ export function unavailableAction(message, actor) {
   // Nor when the sentence names a capability of that kind by its own words --
   // "create subject" is create_subject, whatever entity the registry filed it
   // under. The finding is only ever that NOTHING offers the act.
-  if (pool.some((c) => performsAsked(c, wanted)
-    && nameParts(c.name).nouns.some((n) => (standsIn(c) ? tokens.has(n) : spoke(tokens, n))))) return null;
+  //
+  // Only a capability about the thing the sentence is about -- or about an
+  // entity the sentence itself names. A word shared with a capability about
+  // something else is not a way to do this act: "create a calendar EVENT" is
+  // not answered by rsvp_alumni_event, and "schedule a calendar event" not by
+  // update_review_call_SCHEDULE. Holding a verb or a noun for a different
+  // entity must not hide that nothing offers this act on this subject.
+  // So a noun that is itself a word for the SUBJECT counts only for a
+  // capability about that subject, or one whose own verb the sentence used
+  // ("create grade" is create_grade, though "grade" also reads as marks);
+  // any other shared noun counts as before.
+  // A capability about another entity is named only by all of its own words:
+  // "message" alone is not set_my_message_preferences, so "change its message"
+  // on an announcement must still find that nothing offers the act.
+  if (pool.some((c) => {
+    if (!performsAsked(c, wanted)) return false;
+    const { nouns, verb } = nameParts(c.name);
+    const hit = (n) => (standsIn(c) ? tokens.has(n) : spoke(tokens, n));
+    // (Its own verb spoken -- "apply for leave", "set my preferences" -- names it too.)
+    if (c.entity !== subject && !candidates.has(verb) && nouns.length > 1 && !nouns.every(hit)) return false;
+    return nouns.some((n) => hit(n) && (c.entity === subject || entityOfWord(n) !== subject || candidates.has(verb)));
+  })) return null;
   return { reason: 'NOT_OFFERED', verb: baseVerb(opening ?? [...wanted][0].toLowerCase()), entity: subject };
 }
 

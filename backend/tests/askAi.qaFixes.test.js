@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, afterEach } from 'vitest';
 import { AgentAction } from '../src/models/agentAction.model.js';
 import { AuditLog } from '../src/models/auditLog.model.js';
 import { AttendanceRecord } from '../src/models/attendanceRecord.model.js';
 import { LeaveApplication } from '../src/models/leaveApplication.model.js';
+import { StaffLeave } from '../src/models/staffLeave.model.js';
 import { resetMcpClient } from '../src/modules/ai/mcp/client.js';
 import { resetAgentThrottle } from '../src/modules/ai/agent/throttle.js';
 import { parsePlan } from '../src/modules/ai/agent/intent.js';
@@ -426,19 +427,17 @@ describe('B — the choice resumes the request it was asked about', () => {
     expect(next.action).toBeNull();
   });
 
-  it('works on WhatsApp: the choice, then YES, writes once', async () => {
+  it('on WhatsApp, the choice is asked, then the mark is sent to the website, and YES writes nothing', async () => {
     const teacher = school.people.TEACHER;
+    // The choice is asked for exactly as on the website; only the proposal
+    // itself is sent to the website (registry.js confirmableOn).
     const first = await wa(teacher, REQUEST);
     expect(first.reply).toMatch(/More than one student matches "Mishra"/);
     const second = await wa(teacher, 'Aarav Mishra');
-    expect(second.reply).toMatch(/Aarav Mishra → ABSENT in Class 5 - A/);
-    expect(second.reply).toMatch(/Reply YES to confirm or NO to cancel/);
-    const before = (await recordsOf(school.aarav)).filter((r) => r.status === 'ABSENT').length;
-    expect(before).toBe(0);
+    expect(second.reply).toMatch(/EduOS website/);
     await wa(teacher, 'YES');
-    expect((await recordsOf(school.aarav)).filter((r) => r.status === 'ABSENT')).toHaveLength(1);
-    await wa(teacher, 'YES');
-    expect((await recordsOf(school.aarav)).filter((r) => r.status === 'ABSENT')).toHaveLength(1);
+    expect((await recordsOf(school.aarav)).filter((r) => r.status === 'ABSENT')).toHaveLength(0);
+    expect(await count(AgentAction)).toBe(0);
   }, 120_000);
 
   it('on WhatsApp, NO after the choice writes nothing', async () => {
@@ -577,37 +576,44 @@ describe('C — a student-specific attendance question is answered about that st
    D. A leave request from an account that cannot apply
    ════════════════════════════════════════════════════════════ */
 
-describe('D — a leave application from staff is explained as unsupported, alone or in a joined sentence', () => {
-  const STAFF = /Applying for leave isn't enabled for your account — a leave application in EduOS is a student's leave of absence.*staff leave is not handled here.*show pending leave requests/s;
+describe('D — a leave application from staff is their own staff leave, alone or in a joined sentence', () => {
+  // Staff leave counts school days: on a weekend "tomorrow" would be a Sunday and
+  // nothing could be applied for, so these run on a fixed Wednesday (after the seed).
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T04:30:00Z')); });
+  afterEach(() => { vi.useRealTimers(); });
+  // Changed deliberately in part 3: a member of staff (staffleave.apply) asking to apply for leave
+  // means their OWN staff leave, so it reaches apply_staff_leave as a draft (or a question for the
+  // day, kind and reason) instead of the old "isn't enabled for your account" refusal.
+  const DRAFT = /Apply for sick leave on \d{4}-\d{2}-\d{2}: 1 working day\(s\).*fever.*Shall I go ahead\?/s;
 
-  it('TEACHER, alone: explained, nothing called', async () => {
+  it('TEACHER, alone: drafted as their own sick leave, nothing filed before yes', async () => {
     const turn = await as('TEACHER').say('Apply for leave tomorrow because of fever');
-    expect(turn.reply).toMatch(STAFF);
-    expect(turn.refused).toBe('NOT_PERMITTED');
-    expect(turn.calls).toEqual([]);
-    expect(turn.reply).not.toMatch(/not authorized to access this information/i);
+    expect(turn.reply).toMatch(DRAFT);
+    expect(turn.refused).toBeNull();
+    expect(turn.action?.tool).toBe('apply_staff_leave');
+    expect(turn.reply).not.toMatch(/not authorized to access this information|isn't enabled/i);
     expect(await count(LeaveApplication)).toBe(0);
+    expect(await count(StaffLeave)).toBe(0);
   });
 
-  it('TEACHER, joined to a question: the question is answered and the leave is explained -- not "not authorized"', async () => {
+  it('TEACHER, joined to a question: the question is answered and the staff leave is drafted -- not "not authorized"', async () => {
     const turn = await as('TEACHER').say('Show my timetable and apply for leave tomorrow because of fever');
     expect(turn.reply).toMatch(/Timetable/);
-    expect(turn.reply).toMatch(STAFF);
-    expect(turn.reply).not.toMatch(/not authorized to access this information/i);
-    expect(turn.action).toBeNull();
-    // The read ran; the leave was never attempted.
-    expect(turn.calls.map((c) => [c.tool, c.status])).toEqual([['get_timetable', 'READ']]);
+    expect(turn.reply).toMatch(DRAFT);
+    expect(turn.reply).not.toMatch(/not authorized to access this information|isn't enabled/i);
+    expect(turn.action?.tool).toBe('apply_staff_leave');
+    // The read ran; the leave waits for a yes.
     expect(await count(LeaveApplication)).toBe(0);
-    expect(await count(AgentAction)).toBe(0);
+    expect(await count(StaffLeave)).toBe(0);
     expectNoLeak(turn.reply);
   });
 
   it('TEACHER, with the leave said first', async () => {
     const turn = await as('TEACHER').say('Apply for leave tomorrow because of fever and show my timetable');
-    expect(turn.reply).toMatch(/isn't enabled for your account/);
-    expect(turn.reply).not.toMatch(/not authorized to access this information/i);
+    expect(turn.reply).not.toMatch(/isn't enabled for your account|not authorized to access this information/i);
+    expect(turn.action?.tool).toBe('apply_staff_leave');
     expect(await count(LeaveApplication)).toBe(0);
-    expect(await count(AgentAction)).toBe(0);
+    expect(await count(StaffLeave)).toBe(0);
   });
 
   it('the account that reviews leave can still see the requests it was pointed to', async () => {
@@ -616,18 +622,12 @@ describe('D — a leave application from staff is explained as unsupported, alon
     expect(turn.calls.at(-1)).toMatchObject({ tool: 'get_leave_requests', status: 'READ' });
   });
 
-  it('PARENT, alone and joined: the parent wording, no application', async () => {
-    const PARENT = /Applying for leave isn't enabled for your account — in this school's setup a leave application is made from the student's own account, or through the school office\./;
+  it('PARENT (who now holds leave.apply for their own child) is not told applying is unavailable, and nothing is filed without a yes', async () => {
+    // The role matrix grants a parent leave.apply at OWN scope
+    // (constants/permissions.js), so the "not enabled" wording no longer applies.
     const alone = await as('PARENT').say('Apply for leave tomorrow because of fever');
-    expect(alone.reply).toMatch(PARENT);
-    expect(alone.calls).toEqual([]);
-    const joined = await as('PARENT').say("Show my child's attendance and apply for leave tomorrow because of fever");
-    expect(joined.reply).toMatch(/Attendance Summary/);
-    expect(joined.reply).toMatch(PARENT);
-    expect(joined.reply).not.toMatch(/staff leave/);
-    expect(joined.calls.some((c) => c.tool === 'apply_for_leave')).toBe(false);
+    expect(alone.reply).not.toMatch(/isn't enabled for your account/);
     expect(await count(LeaveApplication)).toBe(0);
-    expect(await count(AgentAction)).toBe(0);
   });
 
   it('STUDENT (who holds leave.apply) is unaffected: proposed alone and joined, written only on yes', async () => {
@@ -647,7 +647,7 @@ describe('D — a leave application from staff is explained as unsupported, alon
 
   it('a genuine authorization failure keeps its own wording: a teacher asked to record a payment', async () => {
     const res = await ask(school.people.TEACHER, 'Record a payment of ₹500 against invoice INV-1001');
-    expect(JSON.stringify(res.body)).toMatch(/not authorized/i);
+    expect(JSON.stringify(res.body)).toMatch(/can't approve, record or refund payments/i);
     expect(JSON.stringify(res.body)).not.toMatch(/isn't enabled for your account/);
   });
 

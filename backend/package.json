@@ -12,8 +12,16 @@
     "obfuscate": "node obfuscate.config.js",
     "build:obfuscated": "npm run build && npm run obfuscate",
     "start:obfuscated": "node dist-obfuscated/app.js",
+    "demo": "node scripts/local-demo.mjs",
     "seed": "node src/seed/seed.js",
     "seed:school": "node src/seed/seed_school_data.js",
+    "seed:operations": "node src/seed/seed_operations.js",
+    "db:audit": "node scripts/db-audit.mjs",
+    "qa:routes": "node scripts/qa/list-routes.mjs",
+    "qa:sweep": "node scripts/qa/route-sweep.mjs",
+    "qa:ownership": "node scripts/qa/ownership-sweep.mjs",
+    "qa:load": "node scripts/qa/load-test.mjs",
+    "qa:plans": "node scripts/qa/query-plans.mjs",
     "superadmin:create": "node scripts/create-super-admin.js",
     "owner:drop": "node scripts/drop-owner-role.js",
     "schools:migrate": "node scripts/migrate-to-schools.js",
@@ -69,7 +77,8 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.17.0",
-    "winston-daily-rotate-file": "^5.0.0"
+    "winston-daily-rotate-file": "^5.0.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "eslint": "^8.57.1",

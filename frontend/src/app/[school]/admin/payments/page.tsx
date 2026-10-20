@@ -10,6 +10,7 @@ import { usePermissions } from '@/lib/permissions';
 import type { FeeSummary, InvoiceDto, PaymentReceiptDto, StudentListItem, GradeDto, SectionDto } from '@/lib/types';
 import { FeeStructuresPanel } from '@/components/fees/fee-structures-panel';
 import { RecordPaymentModal, PaymentRecordedNotice } from '@/components/fees/record-payment-modal';
+import { fmtDate } from '@/components/ops/kit';
 import { PaymentApprovalsPanel } from '@/components/fees/payment-approvals-panel';
 import { PaymentMethod, PaymentVerification } from '@/components/fees/payment-verification';
 import { FeePlanModal } from '@/components/fees/fee-plan-modal';
@@ -30,7 +31,7 @@ export default function AdminPayments() {
   const [showBulkCreate, setShowBulkCreate] = useState(false);
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<'invoices' | 'receipts' | 'plans' | 'approvals'>('invoices');
-  const [recorded, setRecorded] = useState<{ receiptNo: string; awaitingApproval: boolean } | null>(null);
+  const [recorded, setRecorded] = useState<{ receiptNo: string | null; awaitingApproval: boolean; warnings?: string[] } | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
 
   // Grade / Section / Student filter for the Invoices tab. All optional now —
@@ -270,7 +271,7 @@ export default function AdminPayments() {
                       <td data-label="Class">{i.class}</td>
                       <td data-label="Total">{rupees(i.totalPaise)}</td>
                       <td data-label="Paid">{rupees(i.paidPaise)}</td>
-                      <td data-label="Due On">{i.dueOn}</td>
+                      <td data-label="Due On">{fmtDate(i.dueOn)}</td>
                       <td data-label="Status"><Pill tone={STATUS_TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
                       <td data-label="Actions">{i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>}</td>
                     </tr>
@@ -425,6 +426,7 @@ export default function AdminPayments() {
         <PaymentRecordedNotice
           receiptNo={recorded.receiptNo}
           awaitingApproval={recorded.awaitingApproval}
+          warnings={recorded.warnings}
           onClose={() => setRecorded(null)}
         />
       )}

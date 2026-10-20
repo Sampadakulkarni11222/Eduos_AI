@@ -1,10 +1,29 @@
 import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
+import { AppError } from '../../utils/AppError.js';
 import * as controller from './leave.controller.js';
 
 const router = Router();
 router.use(authenticate);
+
+/**
+ * `leave.apply`, or a parent applying for one of their own children.
+ *
+ * In a K-12 school it is the parent who asks for a child's leave, but the
+ * PARENT role holds only `leave.read` (OWN). A parent holding that grant is
+ * let through at OWN scope; the service then refuses any child who is not
+ * linked to them (StudentGuardian). Once PARENT is granted `leave.apply: OWN`
+ * in permissions.js, the first branch covers parents and this fallback is inert.
+ */
+const leaveApply = (req, res, next) => {
+  if (req.actor?.permissions?.['leave.apply']) return requirePermission('leave.apply')(req, res, next);
+  if (req.actor?.roleKey === 'PARENT' && req.actor?.permissions?.['leave.read']) {
+    req.scope = 'OWN';
+    return next();
+  }
+  throw new AppError('Missing permission: leave.apply', 403);
+};
 
 /**
  * @swagger
@@ -23,7 +42,7 @@ router.use(authenticate);
  *       201:
  *         description: Leave application submitted
  */
-router.post('/apply', requirePermission('leave.apply'), controller.apply);
+router.post('/apply', leaveApply, controller.apply);
 
 /**
  * @swagger

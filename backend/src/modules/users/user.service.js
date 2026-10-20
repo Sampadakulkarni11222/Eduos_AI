@@ -1,3 +1,4 @@
+import { forgetIdentity } from '../../middleware/auth.js';
 import { Account } from '../../models/account.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { Role } from '../../models/role.model.js';
@@ -277,7 +278,8 @@ export async function getUserById(id) {
   };
 }
 
-const VALID_ROLE_KEYS = new Set(['ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT', 'FINANCE', 'LIBRARIAN', 'WARDEN']);
+const VALID_ROLE_KEYS = new Set(['ADMIN', 'PRINCIPAL', 'TEACHER', 'PARENT', 'STUDENT', 'FINANCE', 'LIBRARIAN', 'WARDEN',
+  'HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'ALUMNUS', 'NURSE']);
 const E164 = /^\+[1-9]\d{7,14}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -442,5 +444,7 @@ export async function updateUser(id, { status }) {
 
   if (status) account.status = status;
   await account.save();
+  // A suspension takes effect on the next request, not after the sign-in cache expires.
+  forgetIdentity(String(account._id));
   return getUserById(id);
 }

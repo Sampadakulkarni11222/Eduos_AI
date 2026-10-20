@@ -5,6 +5,7 @@ import { Button, Card, DateRangeFilter, EmptyState, FilterBar, Modal, SearchInpu
 import { RequestFacts, STATUS_OPTIONS, StatusPill, fmtDate, fmtSize } from '@/components/document-requests/shared';
 import { api, ApiError } from '@/lib/api';
 import type { AdminDocumentRequestDto } from '@/lib/document-request-types';
+import { CertificateGenerator, CertificateRegister } from '@/components/leadership/certificates';
 
 /**
  * School office: student document requests and the documents issued for them.
@@ -15,7 +16,7 @@ import type { AdminDocumentRequestDto } from '@/lib/document-request-types';
  * every document type.
  */
 
-type Tab = 'requests' | 'issued';
+type Tab = 'requests' | 'issued' | 'register';
 const errText = (e: unknown, fallback: string) => (e instanceof ApiError && e.message ? e.message : fallback);
 const emptyFilters = { q: '', status: '', documentTypeId: '', from: '', to: '' };
 
@@ -54,13 +55,14 @@ export default function AdminDocumentRequestsPage() {
   return (
     <PortalShell expectedSlug="admin" topbar={{ title: 'Document Requests', desc: 'Review student document requests and issue official documents.' }}>
       <div role="tablist" aria-label="Document views" style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-        {(['requests', 'issued'] as Tab[]).map((t) => (
+        {(['requests', 'issued', 'register'] as Tab[]).map((t) => (
           <Button key={t} role="tab" aria-selected={tab === t} variant={tab === t ? 'accent' : 'ghost'} small onClick={() => setTab(t)}>
-            {t === 'requests' ? 'Document Requests' : 'Issued Documents'}
+            {t === 'requests' ? 'Document Requests' : t === 'issued' ? 'Issued Documents' : 'Certificate Register'}
           </Button>
         ))}
       </div>
 
+      {tab === 'register' ? <CertificateRegister /> : (<>
       <FilterBar actions={hasFilters ? <Button variant="ghost" small onClick={() => setFilters(emptyFilters)}>Clear filters</Button> : undefined}>
         <SearchInput label="Student" value={filters.q} onChange={(q) => setFilters((f) => ({ ...f, q }))} placeholder="Name or admission no…" />
         <Select label="Document type" value={filters.documentTypeId} onChange={(documentTypeId) => setFilters((f) => ({ ...f, documentTypeId }))} options={typeOptions} placeholder="All types" />
@@ -103,9 +105,11 @@ export default function AdminDocumentRequestsPage() {
           </table>
         </Card>
       )}
+      </>)}
 
       {open && (
         <RequestDetail
+          onGenerated={() => { setOpenId(null); load(); }}
           request={open}
           onClose={() => setOpenId(null)}
           onChanged={(next) => setItems((prev) => prev?.map((r) => (r.id === next.id ? next : r)) ?? prev)}
@@ -115,10 +119,10 @@ export default function AdminDocumentRequestsPage() {
   );
 }
 
-function RequestDetail({ request: r, onClose, onChanged }: {
-  request: AdminDocumentRequestDto; onClose: () => void; onChanged: (r: AdminDocumentRequestDto) => void;
+function RequestDetail({ request: r, onClose, onChanged, onGenerated }: {
+  request: AdminDocumentRequestDto; onClose: () => void; onChanged: (r: AdminDocumentRequestDto) => void; onGenerated: () => void;
 }) {
-  const [mode, setMode] = useState<'none' | 'approve' | 'reject' | 'upload'>('none');
+  const [mode, setMode] = useState<'none' | 'approve' | 'reject' | 'upload' | 'generate'>('none');
   const [text, setText] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -193,11 +197,16 @@ function RequestDetail({ request: r, onClose, onChanged }: {
         {decidable && <Button small disabled={busy} onClick={() => choose('approve')}>Approve</Button>}
         {decidable && <Button variant="ghost" small disabled={busy} onClick={() => choose('reject')}>Reject</Button>}
         {issuable && (
-          <Button small disabled={busy} onClick={() => choose('upload')}>{r.versions.length ? 'Replace document' : 'Upload document'}</Button>
+          <Button small disabled={busy} onClick={() => choose('generate')}>Generate from records</Button>
+        )}
+        {issuable && (
+          <Button small variant="soft" disabled={busy} onClick={() => choose('upload')}>{r.versions.length ? 'Replace document' : 'Upload document'}</Button>
         )}
       </div>
 
-      {mode !== 'none' && (
+      {mode === 'generate' && <CertificateGenerator requestId={r.id} documentTypeName={r.documentTypeName} onDone={onGenerated} onCancel={() => choose('none')} />}
+
+      {mode !== 'none' && mode !== 'generate' && (
         <form onSubmit={submit} style={{ borderTop: '1px solid var(--hairline)', marginTop: 14, paddingTop: 14 }}>
           {mode === 'upload' && (
             <>

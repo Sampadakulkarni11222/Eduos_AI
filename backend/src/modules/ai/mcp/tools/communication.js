@@ -59,6 +59,13 @@ function toOneClass(base) {
 const LEAD_STAGES = ['NEW', 'CONTACTED', 'TOUR_SCHEDULED', 'APPLICATION', 'ENROLLED', 'LOST'];
 
 /**
+ * The stages the assistant may move an enquiry to. ENROLLED approves an
+ * admission and LOST rejects it: those are decisions, made by a person on the
+ * admissions screen, never through the assistant (see ../decisions.js).
+ */
+const ASSISTANT_LEAD_STAGES = LEAD_STAGES.filter((s) => s !== 'ENROLLED' && s !== 'LOST');
+
+/**
  * The announcements this caller may correct.
  *
  * A school-wide publisher (admin, principal) runs school communications and
@@ -190,13 +197,13 @@ export const communicationTools = {
     risk: RISK.HIGH,
     confirm: true,
     description:
-      'Move an admission enquiry to a new stage, or change its notes, assignee or next action date. Setting the stage to ENROLLED is how an admission is approved; LOST is how it is rejected. Each stage change is written to the interaction history. Needs confirmation.',
+      'Move an admission enquiry along the pipeline (NEW, CONTACTED, TOUR_SCHEDULED, APPLICATION), or change its notes, assignee or next action date. Admitting (ENROLLED) or turning down (LOST) an applicant is a decision made on the admissions screen, never through the assistant. Each stage change is written to the interaction history. Needs confirmation.',
     inputSchema: {
       type: 'object',
       properties: {
         leadId: objectId(),
         childName: { type: 'string', maxLength: 120, description: 'The applicant child as a person names them, e.g. "Kabir Kapoor". Alternative to leadId.' },
-        stage: { type: 'string', enum: LEAD_STAGES, description: 'ENROLLED approves the admission; LOST rejects it' },
+        stage: { type: 'string', enum: ASSISTANT_LEAD_STAGES },
         notes: { type: 'string', maxLength: 1000 },
         assigneeProfileId: objectId(),
         nextActionAt: dateStr(),
@@ -210,12 +217,12 @@ export const communicationTools = {
     service: 'admission.service.updateLead()',
     summarise: (args, _actor, prepared) => {
       const which = prepared?.childName ? `${prepared.childName}'s admission enquiry` : `admission enquiry ${args.leadId}`;
-      return args.stage
-        ? `Move ${which} to ${args.stage}` +
-          (args.stage === 'ENROLLED' ? ' (approving the admission)' : args.stage === 'LOST' ? ' (rejecting it)' : '')
-        : `Update ${which}`;
+      return args.stage ? `Move ${which} to ${args.stage}` : `Update ${which}`;
     },
     async prepare(_ctx, args) {
+      if (args.stage !== undefined && !ASSISTANT_LEAD_STAGES.includes(args.stage)) {
+        throw new AppError('Admitting or turning down an applicant is decided on the admissions screen, not by the assistant.', 403, [], 'HUMAN_DECISION');
+      }
       const lead = await resolveLead({ leadId: args.leadId, childName: args.childName });
       if (args.stage === undefined && args.notes === undefined && args.assigneeProfileId === undefined && args.nextActionAt === undefined) {
         throw new AppError('What should change on the enquiry: its stage, notes, assignee or next action date?', 400, [], 'AGENT_NEEDS_INPUT');

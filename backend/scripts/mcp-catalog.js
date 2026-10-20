@@ -64,30 +64,45 @@ const DEPRECATED = [
   {
     name: 'record_fee_payment',
     where: 'backend/src/modules/ai/agent/tools.js',
-    status: 'Not in the MCP catalog and not reachable from either channel. Replaced by the MCP tool record_payment. Kept only because agent.bulkAuthorization.test.js exercises its permission metadata; safe to delete together with those assertions.',
+    status: 'Not in the MCP catalog and not reachable from either channel. Recording a payment is a decision made on the Payments screen; the assistant has no tool for it. Kept only because agent.bulkAuthorization.test.js exercises its permission metadata; safe to delete together with those assertions.',
   },
 ];
 
 /**
- * Capabilities deliberately NOT exposed, and why — from docs/MCP-AUDIT.md §L
- * and docs/MCP-SECURITY.md. None has a tool; asking for one gets an honest
- * "not available", never a simulated success.
+ * Capabilities deliberately NOT exposed, and why — from docs/MCP-AUDIT.md §L,
+ * docs/MCP-SECURITY.md and the assistant automation rule (decisions.js). None
+ * has a tool; asking for one gets an honest "not available" or a pointer to the
+ * screen where a person does it, never a simulated success.
+ *
+ * Each entry names the tool names that must NOT exist for the entry to stay
+ * true. The generator refuses to write the catalogue when one of them does, so
+ * this table cannot again claim that something is missing after it has been
+ * built (it once said HR, payroll and certificates did not exist, long after
+ * they did).
  */
 const BLOCKED = [
-  ['execute_sql / run_query / raw database access', 'By design. Every tool calls an existing EduOS service; no tool accepts a query, collection, model or update document (enforced by tests/mcp.architecture.test.js).'],
-  ['arbitrary HTTP / API call, shell', 'By design. No tool accepts a URL to call or a command to run.'],
-  ['arbitrary field update', 'By design. update_student, update_ticket, update_book and update_hostel_room apply explicit field allow-lists; student.service.update() enforces its own for every caller.'],
-  ['online payment execution (payOnline / verifyCheckout)', 'Charging a family from a chat message is not something confirm-before-commit makes safe enough. Families pay through the payment link; staff record payments with record_payment.'],
-  ['bulk WhatsApp / email to all parents', 'announcement.service.dispatch() writes a log line for the email and WhatsApp channels and sends nothing, and Meta requires approved templates for business-initiated messages. A tool would report a delivery that never happened. One-to-one send_whatsapp_message exists.'],
-  ['update a phone number', 'No service writes Account.phoneE164 after creation; phone lives on the Account, not the Student. Would need new business logic.'],
-  ['send_email', 'Only OTP email exists, and EMAIL_PROVIDER=console logs rather than sends.'],
-  ['generate_certificate / transfer certificate', 'No generator exists; the PDF generators that do exist stream to an HTTP response and return nothing reusable.'],
-  ['promote_student / transfer_student', 'No service; updateEnrollmentStatus() only sets one enrolment\'s status (exposed as update_enrollment_status).'],
-  ['generate_fee_report / export', 'No report service; MCP returns the data (get_fee_statistics, get_pending_fees), not a file.'],
-  ['delete_student (hard delete)', 'Only soft delete (archive_student) and irreversible anonymisation (anonymise_student) exist, both confirmed. Correct as-is.'],
-  ['regularize_attendance', 'The permission exists in the catalog but no route or service implements it.'],
-  ['HR / payroll / inventory / events', 'The modules do not exist.'],
+  ['execute_sql / run_query / raw database access', 'By design. Every tool calls an existing EduOS service; no tool accepts a query, collection, model or update document (enforced by tests/mcp.architecture.test.js).', ['execute_sql', 'run_query']],
+  ['arbitrary HTTP / API call, shell', 'By design. No tool accepts a URL to call or a command to run.', ['http_request', 'run_command']],
+  ['arbitrary field update', 'By design. update_student, update_ticket, update_book and update_hostel_room apply explicit field allow-lists; student.service.update() enforces its own for every caller.', ['update_any_field']],
+  ['online payment execution (payOnline / verifyCheckout)', 'Charging a family from a chat message is not something confirm-before-commit makes safe enough. Families pay through the payment link (get_payment_link). Recording, approving or refunding a fee payment is a decision made on the Payments screen: decisions.js refuses record_payment and every approve_/reject_/refund_ tool name at boot.', ['pay_online', 'verify_checkout', 'record_payment', 'refund_payment']],
+  ['approving, rejecting, publishing or refunding anything on the assistant\'s own initiative', 'By design (assistant automation rule). The assistant drafts and the same person confirms. The few approver decisions it can record (staff leave, concessions, out-passes, bill payments, eco activities) need the approver\'s own words, are HIGH risk and are confirmed on the website only; publishing marks, report cards, showcase editions or a quiz, and second-person approvals (fixture results, campaigns) stay on their screens.', ['publish_marks', 'publish_report_cards', 'publish_quiz', 'approve_fixture_result']],
+  ['bulk WhatsApp / email to all parents', 'announcement.service.dispatch() still logs the email and WhatsApp fan-out rather than sending it, and Meta requires approved templates for business-initiated messages, so a tool would report a delivery that never happened. Operational notices that do go out (fee and library reminders, PTM, club and online-class notices) use messaging.sendOperational, which records SIMULATED until a provider is configured. One-to-one send_whatsapp_message exists.', ['broadcast_whatsapp', 'send_bulk_message']],
+  ['update a phone number', 'No service writes Account.phoneE164 after creation; phone lives on the Account, not the Student. Would need new business logic.', ['update_phone_number']],
+  ['send_email (free-form, to any address)', 'Email goes out only as the system\'s own notices through messaging.sendOperational (EMAIL_PROVIDER=resend when configured, otherwise logged as SIMULATED). There is no free-form email to an arbitrary address from a chat.', ['send_email']],
+  ['promote_student / transfer_student', 'No service; updateEnrollmentStatus() only sets one enrolment\'s status (exposed as update_enrollment_status). Transfer certificates are requested (request_certificate) and issued by the office (generate_certificate).', ['promote_student', 'transfer_student']],
+  ['file exports and downloads (accounts export, receipts, invoice and report-card PDFs, library labels)', 'A chat has no file channel. The assistant returns the figures (get_fee_statistics, get_fee_collections, get_gst_summary, get_fee_receipt_flags) and names the page where the file is downloaded.', ['generate_fee_report', 'export_accounts', 'download_receipt']],
+  ['delete_student (hard delete)', 'Only soft delete (archive_student) and irreversible anonymisation (anonymise_student) exist, both confirmed. Correct as-is.', ['delete_student']],
+  ['regularize_attendance (a separate tool)', 'Not needed: an older register is corrected through mark_attendance, and attendance.service accepts a date older than ATTENDANCE_BACKDATE_DAYS (default 3) only from someone holding attendance.regularize.', ['regularize_attendance']],
+  ['individual pay, payroll approval and payment', 'By design. Payroll runs can be read as totals, their inputs updated and a run calculated (tools/p4FinanceHrNurse.js); approving or paying a run, payslips and any one person\'s salary stay on the Payroll screen.', ['approve_payroll_run', 'pay_payroll_run', 'get_payslip']],
+  ['background-verification findings and decisions; safeguarding cases', 'By design. Verification counts are readable (get_verification_counts); findings and the final decision stay with HR and the principal on the Verification screen. Safeguarding is never handled in chat: concerns go straight to the designated lead.', ['decide_verification', 'list_safeguarding_cases', 'get_safeguarding_case']],
+  ['credentials, roles, permissions, platform administration', 'By design. Connecting social or ad accounts, creating users, changing roles or permissions, domains and seat pricing would let a conversation widen its own authority; they stay on their screens.', ['create_user', 'update_role_permissions', 'connect_social_account']],
 ];
+
+/** Entries whose "not exposed" claim is no longer true because one of their tools now exists. */
+function staleBlocked() {
+  return BLOCKED.filter(([, , absent = []]) => absent.some((n) => Object.hasOwn(MCP_TOOLS, n)))
+    .map(([capability, , absent]) => `${capability} (now has ${absent.filter((n) => Object.hasOwn(MCP_TOOLS, n)).join(', ')})`);
+}
 
 function confirmationOf(tool) {
   if (tool.confirmWhen) return 'CONDITIONAL';
@@ -117,6 +132,11 @@ function schemaSummary(schema) {
     })
     .join('<br>');
 }
+
+/** The permission column: the tool's key, or every key its route accepts (anyOf). */
+const permissionOf = (tool) => (tool.anyOf
+  ? `any of ${tool.anyOf.map(([key, minScope]) => `\`${key}\`${minScope === 'ALL' ? ' (ALL)' : ''}`).join(' / ')}`
+  : `\`${tool.permission}\``);
 
 /** Per-role counts, computed from the permission map exactly as tools/list computes discovery. */
 function roleMatrix() {
@@ -153,6 +173,7 @@ function toJson() {
       description: tool.description,
       input: tool.inputSchema,
       permission: tool.permission,
+      ...(tool.anyOf && { anyOf: tool.anyOf.map(([key, minScope]) => ({ key, minScope: minScope ?? null })) }),
       scope: scopeOf(tool),
       risk: tool.risk,
       confirmation: confirmationOf(tool),
@@ -171,7 +192,7 @@ function toJson() {
       removableWhen: `No AgentAction row with tool "${legacy}" is PENDING or EXECUTING, and at least ${CONFIRM_TTL_MINUTES} minutes have passed since the first MCP deployment.`,
     })),
     deprecated: DEPRECATED,
-    blocked: BLOCKED.map(([capability, reason]) => ({ capability, reason })),
+    blocked: BLOCKED.map(([capability, reason, absent = []]) => ({ capability, reason, mustNotExist: absent })),
   };
 }
 
@@ -237,7 +258,7 @@ function toMarkdown() {
   lines.push('| Tool | Module | Operation | Permission | Scope | Risk | Confirm | Status |');
   lines.push('|---|---|---|---|---|---|---|---|');
   for (const [name, tool] of Object.entries(MCP_TOOLS).sort(([a], [b]) => a.localeCompare(b))) {
-    lines.push(`| \`${name}\` | ${tool.module} | ${tool.operation} | \`${tool.permission}\` | ${scopeOf(tool)} | ${tool.risk} | ${confirmationOf(tool)} | ${statusOf(name)} |`);
+    lines.push(`| \`${name}\` | ${tool.module} | ${tool.operation} | ${permissionOf(tool)} | ${scopeOf(tool)} | ${tool.risk} | ${confirmationOf(tool)} | ${statusOf(name)} |`);
   }
   lines.push('');
 
@@ -278,7 +299,7 @@ function toMarkdown() {
       lines.push(`| **Operation** | ${tool.operation} |`);
       lines.push(`| **Risk** | ${tool.risk} |`);
       lines.push(`| **Confirmation** | ${confirmationOf(tool)} |`);
-      lines.push(`| **Permission** | \`${tool.permission}\` |`);
+      lines.push(`| **Permission** | ${permissionOf(tool)} |`);
       lines.push(`| **Scope** | ${scopeOf(tool)} |`);
       lines.push(`| **Affects others** | ${tool.affectsOthers ? 'Yes' : 'No'} |`);
       lines.push(`| **EduOS service** | \`${tool.service}\` |`);
@@ -315,6 +336,8 @@ function toMarkdown() {
 }
 
 const problems = validateMcpRegistry();
+const stale = staleBlocked();
+if (stale.length) problems.push(...stale.map((x) => `BLOCKED table is out of date: ${x}`));
 if (problems.length) {
   console.error('Registry is inconsistent:\n  ' + problems.join('\n  '));
   process.exit(1);

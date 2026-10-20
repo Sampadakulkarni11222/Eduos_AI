@@ -4,12 +4,14 @@ import { AcademicYear } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { Enrollment } from '../../models/student.model.js';
 import { getOwnStudentId, getGuardianStudentIds, getTeacherSectionIds } from '../../utils/scope.js';
+import { requestingStudentFor, familyStudentIds } from '../../utils/familyStudent.js';
 import { insertRows, rowError } from '../../utils/csvImport.js';
 import { TransportRequest } from '../../models/transportRequest.model.js';
 import { recordAudit } from '../../utils/auditTrail.js';
 import { paginate, mapPage } from '../../utils/paginate.js';
 import { notify } from '../notifications/notification.service.js';
 import { createInvoice } from '../fees/fee.service.js';
+import { clearanceFor } from '../administration/verification.service.js';
 
 /* ── Routes, stops and bus enrolment ─────────────────────────
    Moved here from transport.controller.js, which used to write the models
@@ -17,8 +19,26 @@ import { createInvoice } from '../fees/fee.service.js';
    implementation instead of the tools having to copy the controller's. The
    behaviour is unchanged: same validation, same defaults, same upsert. */
 
-/** Active routes with their stop and enrolment counts. */
-export async function listRoutes() {
+/**
+ * Whether the named driver holds a current background clearance, for the
+ * people who run transport or handle verification. It is matched on the
+ * driver's name as recorded on the route, so a route with no driver named, or
+ * a name that differs from the verification record, reads as "no record".
+ */
+async function driverClearance(driverName) {
+  if (!driverName) return { status: 'NO_DRIVER', reason: 'No driver is named on this route.' };
+  const c = await clearanceFor({ subjectName: driverName.trim(), subjectType: 'DRIVER' });
+  if (c.cleared) return { status: 'CLEARED', reason: c.conditions ?? null };
+  return { status: c.caseId ? 'NOT_CLEARED' : 'NO_RECORD', reason: c.reason };
+}
+
+/**
+ * Active routes with their stop and enrolment counts. A caller who manages
+ * transport or reads verification also gets each driver's clearance; nobody
+ * else does, so a family never sees why a driver is not cleared.
+ */
+export async function listRoutes(actor = null) {
+  const showClearance = Boolean(actor?.permissions?.['transport.manage'] || actor?.permissions?.['verification.read']);
   const routes = await TransportRoute.find({ status: 'ACTIVE' }).sort({ name: 1 }).lean();
   return Promise.all(routes.map(async (route) => {
     const [stopsCount, enrollmentsCount] = await Promise.all([
@@ -36,7 +56,10 @@ export async function listRoutes() {
       // on them costs nothing until one is set.
       fareAmountPaise: route.fareAmountPaise ?? 0,
       stopsCount,
+      // The transport screen reads this name.
+      stopCount: stopsCount,
       enrollmentsCount,
+      ...(showClearance ? { driverClearance: await driverClearance(route.driverName) } : {}),
     };
   }));
 }
@@ -152,14 +175,16 @@ export async function getRoute(routeId) {
   return { id: String(route._id), name: route.name, vehicleNo: route.vehicleNo ?? null, status: route.status };
 }
 
-export async function createStop({ routeId, name, sequenceNo, etaMinutesFromStart } = {}) {
+export async function createStop({ routeId, name, sequenceNo, etaMinutesFromStart, lat, lng } = {}) {
   if (!routeId || !name || sequenceNo === undefined) {
     throw new AppError('routeId, name, and sequenceNo are required', 400);
   }
   // A stop used to be created against whatever routeId arrived, so a stop could
   // point at another school's route, or at none. The route must exist here.
   await getRoute(routeId);
-  return TransportStop.create({ routeId, name, sequenceNo, etaMinutesFromStart: etaMinutesFromStart || 0 });
+  // Optional coordinates (used by trips for arrival, off-route and ETA estimates).
+  const coord = (v, max) => (v === undefined || v === null || v === '' || !Number.isFinite(Number(v)) || Math.abs(Number(v)) > max ? null : Number(v));
+  return TransportStop.create({ routeId, name, sequenceNo, etaMinutesFromStart: etaMinutesFromStart || 0, lat: coord(lat, 90), lng: coord(lng, 180) });
 }
 
 /**
@@ -590,11 +615,9 @@ export async function bulkEnrollStudents(rows) {
  * twice over: a bus place is per academic year, and the invoice for the fare
  * is raised against the enrolment.
  */
-async function requestingStudentContext(actor) {
-  const studentId = await getOwnStudentId(actor?.profileId);
-  if (!studentId) {
-    throw new AppError('No student record is linked to this account', 404, [], 'STUDENT_NOT_LINKED');
-  }
+async function requestingStudentContext(actor, forStudentId = null) {
+  // A student asks for themselves; a parent for one of their own children (utils/familyStudent.js).
+  const studentId = await requestingStudentFor(actor, forStudentId);
   const enrollment = await Enrollment.findOne({ studentId, status: 'ACTIVE' })
     .select('_id academicYearId')
     .lean();
@@ -646,8 +669,8 @@ const toTransportRequestDto = (req) => {
  * entitlement here is simply being a student of this school, which the tenant
  * plugin settles.
  */
-export async function listRoutesForStudent(actor) {
-  const { studentId, enrollment } = await requestingStudentContext(actor);
+export async function listRoutesForStudent(actor, { studentId: forStudentId = null } = {}) {
+  const { studentId, enrollment } = await requestingStudentContext(actor, forStudentId);
 
   const routes = await TransportRoute.find({ status: 'ACTIVE' }).sort({ name: 1 }).lean();
   const routeIds = routes.map((r) => r._id);
@@ -692,8 +715,8 @@ export async function listRoutesForStudent(actor) {
 }
 
 /** A student asks for a place. Lands as PENDING for transport staff to decide. */
-export async function requestRoute(actor, { routeId, stopId, direction = 'BOTH' } = {}) {
-  const { studentId, enrollment } = await requestingStudentContext(actor);
+export async function requestRoute(actor, { routeId, stopId, direction = 'BOTH', studentId: forStudentId = null } = {}) {
+  const { studentId, enrollment } = await requestingStudentContext(actor, forStudentId);
 
   const route = await TransportRoute.findById(routeId);
   if (!route) throw new AppError('Route not found', 404);
@@ -756,9 +779,9 @@ export async function requestRoute(actor, { routeId, stopId, direction = 'BOTH' 
 }
 
 /** Every transport request the signed-in student has made, newest first. */
-export async function listMyTransportRequests(actor) {
-  const { studentId } = await requestingStudentContext(actor);
-  const requests = await TransportRequest.find({ studentId })
+export async function listMyTransportRequests(actor, { studentId: forStudentId = null } = {}) {
+  const ids = await familyStudentIds(actor, forStudentId);
+  const requests = await TransportRequest.find({ studentId: { $in: ids } })
     .sort({ createdAt: -1 })
     .populate('routeId', 'name vehicleNo fareAmountPaise')
     .populate('stopId', 'name sequenceNo')
@@ -768,9 +791,9 @@ export async function listMyTransportRequests(actor) {
 
 /** A student withdraws their own request, while it is still pending. */
 export async function cancelTransportRequest(actor, requestId) {
-  const { studentId } = await requestingStudentContext(actor);
+  const ids = await familyStudentIds(actor);
 
-  const request = await TransportRequest.findOne({ _id: requestId, studentId });
+  const request = await TransportRequest.findOne({ _id: requestId, studentId: { $in: ids } });
   if (!request) throw new AppError('Request not found', 404);
   if (request.status !== 'PENDING') {
     throw new AppError(`This request was already ${request.status.toLowerCase()}`, 409, [], 'NOT_CANCELLABLE');
@@ -905,10 +928,12 @@ export async function decideTransportRequest(actor, requestId, { status, note = 
   });
 
   const student = await Student.findById(request.studentId).select('profileId').lean();
-  if (student?.profileId) {
+  // A parent who asked on their child's behalf is told too (Part 4: parents make requests).
+  const toldIds = [student?.profileId, request.requestedByProfileId].filter(Boolean).map(String);
+  if (toldIds.length) {
     const routeName = request.routeId?.name ?? 'the route you asked for';
     await notify({
-      recipientProfileIds: [student.profileId],
+      recipientProfileIds: [...new Set(toldIds)],
       type: 'TRANSPORT',
       title: status === 'APPROVED'
         ? `You have a place on ${routeName}`

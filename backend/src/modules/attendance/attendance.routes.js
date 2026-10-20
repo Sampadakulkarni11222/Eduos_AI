@@ -3,6 +3,9 @@ import { authenticate } from '../../middleware/auth.js';
 import { requirePermission } from '../../middleware/permission.js';
 import { csvUploadSingle } from '../../utils/csvImport.js';
 import * as controller from './attendance.controller.js';
+import * as drafts from './draft.service.js';
+import { asyncHandler } from '../../utils/asyncHandler.js';
+import { sendSuccess } from '../../utils/response.js';
 
 const router = Router();
 router.use(authenticate);
@@ -199,5 +202,25 @@ router.get('/trend', requirePermission('attendance.read'), controller.getTrend);
  *         description: Lecture attendance fetched
  */
 router.get('/lectures', requirePermission('attendance.read'), controller.getLectures);
+
+/**
+ * @swagger
+ * /attendance/drafts:
+ *   get:
+ *     summary: The caller's saved, unsubmitted flashcard register for a section/date/period (null if none)
+ *     tags: [Attendance]
+ *   put:
+ *     summary: Save flashcard progress (optimistic — send the version you last loaded; 409 on conflict)
+ *     tags: [Attendance]
+ *   delete:
+ *     summary: Discard the caller's draft (after submitting, or to start over)
+ *     tags: [Attendance]
+ */
+router.get('/drafts', requirePermission('attendance.mark'), asyncHandler(async (req, res) =>
+  sendSuccess(res, await drafts.getDraft(req.actor, req.scope, req.query))));
+router.put('/drafts', requirePermission('attendance.mark'), asyncHandler(async (req, res) =>
+  sendSuccess(res, await drafts.saveDraft(req.actor, req.scope, req.body), 'Draft saved')));
+router.delete('/drafts', requirePermission('attendance.mark'), asyncHandler(async (req, res) =>
+  sendSuccess(res, await drafts.discardDraft(req.actor, req.scope, req.query), 'Draft discarded')));
 
 export default router;

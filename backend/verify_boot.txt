@@ -1,0 +1,23 @@
+﻿[2026-10-02 19:45:04] [32minfo[39m: [32mΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü[39m
+[2026-10-02 19:45:04] [32minfo[39m: [32m  School ERP Backend  ΓÇö  starting up[39m
+[2026-10-02 19:45:04] [32minfo[39m: [32mΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü[39m
+[2026-10-02 19:45:04] [32minfo[39m: [32mConnecting to MongoDBΓÇª (target=mongodb+srv://[credentials-redacted]@cluster0.alhw4up.mongodb.net/school_erp?appName=Cluster0, source=MONGO_URI, NODE_ENV=development)[39m
+[2026-10-02 19:45:04] [33mwarn[39m: [33mMONGO_URI_ATLAS is set but was IGNORED ΓÇö Atlas is only used when NODE_ENV=production. Using the local MONGO_URI instead.[39m
+[2026-10-02 19:45:05] [32minfo[39m: [32mΓ£ö  MongoDB connected  ΓåÆ  ac-ynbfscd-shard-00-01.alhw4up.mongodb.net:27017/school_erp  [ATLAS (remote)][39m
+[2026-10-02 19:45:11] [32minfo[39m: [32mΓ£ö  System roles and permissions auto-synced with DB[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32mΓ£ö  Agent tool permissions validated against the catalog[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32mΓ£ö  MCP server ready  ΓåÆ  173 ERP tools (84 GET, 33 CREATE, 15 UPDATE, 10 DELETE, 31 ACTION)[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32mΓ£ö  Logger initialized  ΓåÆ  level: info, dir: logs/[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32mΓ£ö  Rate limiter active  ΓåÆ  2000 req / 15 min per IP[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32mΓ£ö  CORS enabled  ΓåÆ  origin: http://localhost:3000,http://127.0.0.1:3000[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32mΓ£ö  WhatsApp live  ΓåÆ  inbound webhook signatures verified[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32mΓ£ö  Swagger UI enabled[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32mΓ£ö  Static files mounted  ΓåÆ  public/[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32mΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32m  Environment  :  development[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32m  API          :  http://0.0.0.0:5000/api/v1[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32m  Status page  :  http://0.0.0.0:5000/status.html[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32m  API Docs     :  http://0.0.0.0:5000/api-docs[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32mΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32m  Server is ready to accept connections  ≡ƒÜÇ[39m
+[2026-10-02 19:45:11] [32minfo[39m: [32mΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöüΓöü[39m

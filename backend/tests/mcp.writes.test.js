@@ -225,24 +225,27 @@ describe('transition_fee_plan checks the step before anyone is asked', () => {
     return { plan, status };
   }
 
-  it('finance may not approve: refused at once, with no proposal and no change', async () => {
+  it('approving is not a step the assistant offers: refused by the schema, with no proposal and no change', async () => {
     const { plan, status } = await planAwaitingApproval();
-    const finance = school.people.FINANCE.actor;
-    expect(finance.permissions['fees.plan.approve']).toBeUndefined();
-    const res = await mcp(OAK, finance, 'transition_fee_plan', { planId: String(plan._id), step: 'approve' });
-    expect(res.error.code).toBe('FORBIDDEN');
+    for (const step of ['approve', 'reject', 'review']) {
+      const res = await mcp(OAK, school.people.ADMIN.actor, 'transition_fee_plan', { planId: String(plan._id), step, reason: 'x' });
+      expect(res.success, step).toBe(false);
+      expect(res.error.code, step).toBe('INVALID_INPUT');
+    }
     expect(await countIn(OAK, AgentAction)).toBe(0);
     expect(await status()).toBe('PENDING_ADMIN_APPROVAL');
   });
 
-  it('an administrator approves after a prompt that names the plan and the change', async () => {
-    const { plan, status } = await planAwaitingApproval();
-    const { proposal, done } = await proposeAndConfirm(OAK, school.people.ADMIN.actor, 'transition_fee_plan', {
-      planId: String(plan._id), step: 'approve',
+  it('finance submits a draft after a prompt that names the plan and the change', async () => {
+    const { FeePlan } = await import('../src/models/fee.model.js');
+    const { plan } = await planAwaitingApproval();
+    await inSchool(OAK, () => FeePlan.updateOne({ _id: plan._id }, { $set: { status: 'DRAFT' } }));
+    const { proposal, done } = await proposeAndConfirm(OAK, school.people.FINANCE.actor, 'transition_fee_plan', {
+      planId: String(plan._id), step: 'submit',
     });
-    expect(proposal.action.summary).toBe('Approve fee plan "Rahul — 3 installments" (PENDING_ADMIN_APPROVAL → APPROVED)');
+    expect(proposal.action.summary).toBe('Submit fee plan "Rahul — 3 installments" (DRAFT → PENDING_FINANCE_REVIEW)');
     expect(done.success, JSON.stringify(done.error)).toBe(true);
-    expect(await status()).toBe('APPROVED');
+    expect((await inSchool(OAK, () => FeePlan.findById(plan._id).lean())).status).toBe('PENDING_FINANCE_REVIEW');
     expect((await executedAudit('transition_fee_plan')).after.confirmed).toBe(true);
   });
 

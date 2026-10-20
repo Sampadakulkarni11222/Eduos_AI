@@ -3,6 +3,7 @@ import { FormEvent, useRef, useState } from 'react';
 import { Button, DateField, Pill, rupees } from '../ui';
 import { api, ApiError, errorMessage } from '@/lib/api';
 import type { InvoiceDto } from '@/lib/types';
+import { isoDay } from '../ops/kit';
 
 /**
  * Registering a payment against an invoice.
@@ -19,7 +20,7 @@ import type { InvoiceDto } from '@/lib/types';
  * the payment is done.
  */
 
-type Mode = 'CASH' | 'CHEQUE' | 'DD' | 'BANK';
+type Mode = 'CASH' | 'CHEQUE' | 'DD' | 'BANK' | 'UPI';
 
 /**
  * What each method calls its fields. One shape, three vocabularies — a cheque
@@ -34,6 +35,8 @@ type MethodFields = {
   date: string;
   proof: string;
   hint: string;
+  /** UPI: only the UTR is required; bank, date and screenshot are optional. */
+  onlyNumberRequired?: boolean;
 };
 
 const METHOD_FIELDS: Record<Mode, null | MethodFields> = {
@@ -54,6 +57,11 @@ const METHOD_FIELDS: Record<Mode, null | MethodFields> = {
     proof: 'Transfer proof',
     hint: 'Both the transaction ID and the bank’s UTR are required — a reconciliation months later matches on the UTR.',
   },
+  UPI: {
+    number: 'UPI UTR / reference (12 digits)', reference: null, bank: 'Bank / UPI app (optional)', date: 'Transfer date (optional)', proof: 'Screenshot (optional)',
+    hint: 'The 12-digit UTR shown in the payer’s UPI app is required — the bank statement is reconciled on it.',
+    onlyNumberRequired: true,
+  },
 };
 
 const PROOF_ACCEPT = '.pdf,.png,.jpg,.jpeg,.webp';
@@ -61,14 +69,15 @@ const PROOF_MAX_BYTES = 10 * 1024 * 1024;
 
 const Req = () => <span aria-hidden="true" style={{ color: 'var(--red)' }}> *</span>;
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+// Today in India time: toISOString() is UTC, so before 05:30 IST it gave yesterday.
+const todayIso = () => isoDay();
 
 export function RecordPaymentModal({
   invoice, onClose, onDone,
 }: {
   invoice: InvoiceDto;
   onClose: () => void;
-  onDone: (result: { receiptNo: string; awaitingApproval: boolean }) => void;
+  onDone: (result: { receiptNo: string | null; awaitingApproval: boolean; warnings?: string[] }) => void;
 }) {
   const remaining = invoice.totalPaise - invoice.paidPaise;
 
@@ -126,7 +135,9 @@ export function RecordPaymentModal({
     if (!Number.isFinite(amountPaise) || amountPaise <= 0) missing.push('A payment amount');
     if (amountPaise > remaining) missing.push(`An amount no greater than the ${rupees(remaining)} outstanding`);
     if (!paidOn) missing.push('The payment date');
-    if (fields) {
+    if (fields?.onlyNumberRequired) {
+      if (!/^\d{12}$/.test(number.replace(/\s+/g, ''))) missing.push(fields.number);
+    } else if (fields) {
       if (!number.trim()) missing.push(fields.number);
       if (fields.reference && !referenceNo.trim()) missing.push(fields.reference);
       if (!bankName.trim()) missing.push(fields.bank);
@@ -154,16 +165,16 @@ export function RecordPaymentModal({
         receiptNo: receiptNo.trim() || undefined,
         instrument: fields
           ? {
-            number: number.trim(),
+            number: fields.onlyNumberRequired ? number.replace(/\s+/g, '') : number.trim(),
             referenceNo: referenceNo.trim() || undefined,
-            bankName: bankName.trim(),
-            instrumentDate,
-            proofUrl: proof!.url,
-            proofName: proof!.name,
+            bankName: bankName.trim() || undefined,
+            instrumentDate: instrumentDate || undefined,
+            proofUrl: proof?.url,
+            proofName: proof?.name,
           }
           : undefined,
       });
-      onDone({ receiptNo: res.receiptNo, awaitingApproval: res.awaitingApproval === true });
+      onDone({ receiptNo: res.receiptNo ?? null, awaitingApproval: res.awaitingApproval === true, warnings: (res as { warnings?: string[] }).warnings ?? [] });
     } catch (e: unknown) {
       // The server names the specific failure — the outstanding balance, or
       // exactly which instrument fields are missing — better than we could.
@@ -234,6 +245,7 @@ export function RecordPaymentModal({
             <option value="CASH">Cash</option>
             <option value="CHEQUE">Cheque</option>
             <option value="DD">DD / Demand Draft</option>
+            <option value="UPI">UPI (QR / VPA)</option>
             <option value="BANK">Online / Bank transfer</option>
           </select>
 
@@ -243,7 +255,7 @@ export function RecordPaymentModal({
               <div className="pay-form-grid">
                 <div>
                   <div className="field-label">{fields.number}<Req /></div>
-                  <input className="field-input" value={number} onChange={(e) => setNumber(e.target.value)} required />
+                  <input className="field-input" value={number} onChange={(e) => setNumber(e.target.value)} required inputMode={fields.onlyNumberRequired ? 'numeric' : undefined} />
                 </div>
                 {fields.reference && (
                   <div>
@@ -257,21 +269,21 @@ export function RecordPaymentModal({
                   </div>
                 )}
                 <div>
-                  <div className="field-label">{fields.bank}<Req /></div>
-                  <input className="field-input" value={bankName} onChange={(e) => setBankName(e.target.value)} required />
+                  <div className="field-label">{fields.bank}{!fields.onlyNumberRequired && <Req />}</div>
+                  <input className="field-input" value={bankName} onChange={(e) => setBankName(e.target.value)} required={!fields.onlyNumberRequired} />
                 </div>
               </div>
 
-              <div className="field-label">{fields.date}<Req /></div>
+              <div className="field-label">{fields.date}{!fields.onlyNumberRequired && <Req />}</div>
               <DateField
                 inputClassName="field-input"
                 ariaLabel={fields.date}
-                required
+                required={!fields.onlyNumberRequired}
                 value={instrumentDate}
                 onChange={setInstrumentDate}
               />
 
-              <div className="field-label">{fields.proof}<Req /></div>
+              <div className="field-label">{fields.proof}{!fields.onlyNumberRequired && <Req />}</div>
               <input
                 ref={fileRef}
                 type="file"
@@ -307,7 +319,7 @@ export function RecordPaymentModal({
               {/* Cash leaves no instrument behind, so the only trace is the
                   receipt the office wrote out. Optional: left blank the server
                   issues its own number. */}
-              <div className="field-label">Receipt / reference number (optional)</div>
+              <div className="field-label">Counterfoil / paper receipt number (optional)</div>
               <input
                 className="field-input"
                 value={receiptNo}
@@ -324,6 +336,13 @@ export function RecordPaymentModal({
             onChange={(e) => setNotes(e.target.value)}
             placeholder="e.g. collected at the front office"
           />
+
+          {mode === 'CASH' && amountPaise >= 20_000_000 && (
+            <p className="pay-instrument-hint" role="note" style={{ color: 'var(--amber)' }}>
+              Cash of ₹2,00,000 or more from one payer in a day is barred by s.269ST of the Income-tax Act. You can still record it, but the
+              warning is kept on the payment — ask for a cheque, DD, UPI or transfer for the balance.
+            </p>
+          )}
 
           {fieldErrors.length > 0 && (
             <div className="pay-error" role="alert">
@@ -349,10 +368,11 @@ export function RecordPaymentModal({
 
 /** Confirmation shown after a successful registration. */
 export function PaymentRecordedNotice({
-  receiptNo, awaitingApproval, onClose,
+  receiptNo, awaitingApproval, warnings = [], onClose,
 }: {
-  receiptNo: string;
+  receiptNo: string | null;
   awaitingApproval: boolean;
+  warnings?: string[];
   onClose: () => void;
 }) {
   return (
@@ -369,8 +389,17 @@ export function PaymentRecordedNotice({
             : 'The payment has been recorded and credited to the invoice.'}
         </p>
         <div style={{ marginBottom: 16 }}>
-          <Pill tone={awaitingApproval ? 'amber' : 'green'}>Receipt {receiptNo}</Pill>
+          {/* The receipt number is issued when the money is credited, so a
+              payment awaiting approval does not have one yet. */}
+          <Pill tone={awaitingApproval ? 'amber' : 'green'}>
+            {receiptNo ? `Receipt ${receiptNo}` : 'Receipt number issued on approval'}
+          </Pill>
         </div>
+        {warnings.length > 0 && (
+          <div role="alert" style={{ textAlign: 'left', fontSize: 12.5, color: 'var(--amber)', marginBottom: 14 }}>
+            {warnings.map((w) => <p key={w} style={{ margin: '0 0 6px' }}>{w.replace(/^CASH_LIMIT_269ST:\s*/, '')}</p>)}
+          </div>
+        )}
         <Button onClick={onClose} className="btn-block">Done</Button>
       </div>
     </div>

@@ -1,5 +1,7 @@
 # Running and testing the WhatsApp assistant
 
+What the assistant is: it reads, and it makes changes only after the person confirms (a proposal with a summary first, then YES). It works from a catalogue of 470 tools filtered by the person's role (`docs/MCP-TOOLS.md`). It never decides: approvals, payment checks, admission decisions and filings are done by the approver on the website. Until WhatsApp credentials are set, replies are simulated and nothing reaches a phone. The fastest way to try it with sample data is `npm run demo -- --build` in `backend` (site at `http://localhost:3000/oakridge`; staff `role@schoolerp.com` / `ChangeMe@123!`; parent, student and alumnus by phone OTP shown on screen in development).
+
 Everything below is done from the repo. Ask the team lead for `backend/.env` —
 it holds all the secrets and is not in git. Nothing in this file is a secret.
 

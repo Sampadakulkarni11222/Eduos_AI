@@ -1,4 +1,6 @@
 import { AuditLog } from '../models/auditLog.model.js';
+import { Profile } from '../models/profile.model.js';
+import { currentTenantId } from '../tenancy/tenantContext.js';
 
 // The audit trail stores request bodies verbatim, so credential-bearing fields
 // would otherwise be written to the database in plaintext (POST /auth/login
@@ -21,6 +23,18 @@ const SENSITIVE_FIELDS = new Set([
 export function isMedicalAuditEntry({ entityType, action } = {}) {
   return entityType === 'MedicalRecord' || /medical/i.test(String(action ?? ''));
 }
+
+/**
+ * Routes whose request bodies must never be copied into the audit trail:
+ * safeguarding reports (encrypted at rest), background-verification evidence,
+ * and pay structures / bank details. The action is still logged; the payload
+ * is replaced, for the same reason as medical records above.
+ */
+const RESTRICTED_PAYLOAD_PATHS = /^\/?(api\/v1\/)?(safeguarding|verification|camera|pickup|class-check-ins|payroll\/compensation|payroll\/employees)(\/|$|\?)/;
+export function isRestrictedPayloadPath(url) {
+  return RESTRICTED_PAYLOAD_PATHS.test(String(url ?? '').replace(/^\/+/, ''));
+}
+export const RESTRICTED_PAYLOAD_WITHHELD = Object.freeze({ redacted: 'restricted payload is not kept in the audit trail' });
 
 export const MEDICAL_PAYLOAD_WITHHELD = Object.freeze({ redacted: 'medical record contents are not kept in the audit trail' });
 
@@ -204,9 +218,22 @@ export const auditLogger = (req, res, next) => {
           }
 
           const ip = req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
-          const safeBody = isMedicalAuditEntry({ entityType, action }) ? MEDICAL_PAYLOAD_WITHHELD : redact(req.body);
+          const safeBody = isMedicalAuditEntry({ entityType, action })
+            ? MEDICAL_PAYLOAD_WITHHELD
+            : isRestrictedPayloadPath(req.originalUrl || req.url) ? RESTRICTED_PAYLOAD_WITHHELD : redact(req.body);
+
+          // A sign-in runs before any school is chosen, so the entry would carry
+          // no school and never appear in that school's audit log. It belongs
+          // to the school of the profile that signed in.
+          let tenantId;
+          if (!currentTenantId() && actorProfileId) {
+            tenantId = resData?.profile?.tenantId
+              ?? (await Profile.findById(actorProfileId).select('tenantId').lean().catch(() => null))?.tenantId
+              ?? undefined;
+          }
 
           await AuditLog.create({
+            ...(tenantId ? { tenantId } : {}),
             actorProfileId,
             action,
             entityType,

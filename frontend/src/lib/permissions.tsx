@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { useAuth } from './auth';
 import type { PermissionMap, RoleKey } from './types';
+import opsRoutes from './ops-routes.json';
 
 /**
  * Server-trusted permission layer.
@@ -86,6 +87,17 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   '/admin/document-requests': 'students.manage',
   '/admin/document-types': 'settings.manage',
 };
+
+// Institution-operations pages: the same keys their APIs require.
+for (const [slug, keys] of Object.entries(opsRoutes.portals as Record<string, string[]>)) {
+  for (const key of keys) {
+    const perm = (opsRoutes.pages as Record<string, { permission: string | null }>)[key]?.permission;
+    if (perm) ROUTE_PERMISSIONS[`/${slug}/${key}`] = perm;
+  }
+}
+ROUTE_PERMISSIONS['/marketing/admissions'] = 'admissions.read';
+// HR is the alumni coordinator: it reviews alumni offers with alumni.manage (the API accepts either key).
+ROUTE_PERMISSIONS['/hr/give-back'] = 'alumni.manage';
 
 export function getRequiredPermission(pathname: string): string | null {
   for (const [route, perm] of Object.entries(ROUTE_PERMISSIONS)) {

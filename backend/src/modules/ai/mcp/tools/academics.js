@@ -6,11 +6,12 @@ import * as timetable from '../../../timetable/timetable.service.js';
 import { AppError } from '../../../../utils/AppError.js';
 import { ok, action } from '../protocol.js';
 import {
-  RISK, objectId, dateStr, noArgs, summarise, shortDate, wrapAgentTool, resolveEnrollmentId, resolveEnrollmentIdOrAsk,
+  RISK, objectId, dateStr, summarise, shortDate, wrapAgentTool, resolveEnrollmentId, resolveEnrollmentIdOrAsk,
   studentIdentitySchema, resolveSection, classIdentitySchema, theNamed, resolveStudentId, resolveStudentEnrollment,
 } from './_shared.js';
 import { classKey } from '../../../../utils/classNames.js';
 import { sameSubject } from '../../../../utils/subjectNames.js';
+import { Submission } from '../../../../models/assignment.model.js';
 import {
   resolveGrade, resolveYear, resolveTerm, resolveSubject, resolveStaff, resolveOfferingRef, resolveExam,
 } from './_names.js';
@@ -760,6 +761,8 @@ export const academicTools = {
         sectionId: objectId('The class section, when the id is already known'),
         subject: { type: 'string', maxLength: 80, description: 'Narrow to one subject, e.g. "Mathematics"' },
         exam: { type: 'string', maxLength: 60, description: 'Narrow to one exam, e.g. "Unit Test 2"' },
+        // p7: "who scored the highest?" -- the same sheet, with the names said.
+        scorers: { type: 'boolean', description: 'Also name the student(s) with the highest and the lowest marks on each paper (for "who scored the highest")' },
       },
       additionalProperties: false,
     },
@@ -828,6 +831,9 @@ export const academicTools = {
           averagePct: scored.length ? Math.round((total / (scored.length * maxMarks)) * 100) : null,
           highest: scored.length ? Math.max(...scored.map((r) => r.marks)) : null,
           lowest: scored.length ? Math.min(...scored.map((r) => r.marks)) : null,
+          // p7: who got the highest and the lowest mark (ties named together).
+          highestBy: scored.length ? scored.filter((r) => r.marks === Math.max(...scored.map((x) => x.marks))).map((r) => r.studentName) : [],
+          lowestBy: scored.length ? scored.filter((r) => r.marks === Math.min(...scored.map((x) => x.marks))).map((r) => r.studentName) : [],
           rows,
         });
       }
@@ -835,7 +841,8 @@ export const academicTools = {
       const spoken = grids
         .map((g) => {
           if (!g.marked) return `${g.subject} (${g.exam}): no marks entered yet for ${g.students} student(s)`;
-          return `${g.subject} (${g.exam}): average ${g.averagePct}%, highest ${g.highest}/${g.maxMarks}, lowest ${g.lowest}/${g.maxMarks}` +
+          const by = (names) => (args.scorers && names?.length ? ` (${names.join(' and ')})` : '');
+          return `${g.subject} (${g.exam}): average ${g.averagePct}%, highest ${g.highest}/${g.maxMarks}${by(g.highestBy)}, lowest ${g.lowest}/${g.maxMarks}${by(g.lowestBy)}` +
             `${g.unmarked ? `, ${g.unmarked} still unmarked` : ''}`;
         })
         .join('; ');
@@ -886,7 +893,7 @@ export const academicTools = {
       const subjects = args.examId ? await exams.listExamSubjects(ctx.actor, ctx.scope, args.examId) : [];
       return ok(
         {
-          exams: list.map((e) => ({ examId: String(e._id), name: e.name, startsOn: e.startsOn })),
+          exams: list.map((e) => ({ examId: String(e.id ?? e._id), name: e.name, startsOn: e.startsOn })),
           examSubjects: subjects.map((s) => ({
             examSubjectId: String(s._id ?? s.id),
             subject: s.subjectId?.name ?? s.subject ?? null,
@@ -1142,34 +1149,8 @@ export const academicTools = {
     },
   },
 
-  publish_marks: {
-    module: 'Exams',
-    operation: 'ACTION',
-    risk: RISK.HIGH,
-    confirm: true,
-    description:
-      'Publish the marks for one exam subject, making them visible to students and parents. This is what families see, and it is hard to walk back, so it always needs confirmation.',
-    inputSchema: {
-      type: 'object',
-      properties: { examSubjectId: objectId('The exam paper, when the id is already known'), ...examPaperSchema },
-      additionalProperties: false,
-    },
-    permission: 'marks.publish',
-    affectsOthers: true,
-    service: 'exam.service.publishMarks()',
-    summarise: (args, _actor, prepared) =>
-      `Publish the marks for ${prepared?.label ?? `exam subject ${prepared?.examSubjectId ?? args.examSubjectId}`} to students and parents`,
-    /** Which paper, resolved before the proposal so the confirmation names it. */
-    async prepare(ctx, args) {
-      const paper = await resolveExamPaper(ctx, args);
-      return { examSubjectId: paper.id, label: paper.label };
-    },
-    async run(ctx, args, prepared) {
-      const plan = prepared ?? (await this.prepare(ctx, args));
-      const result = await exams.publishMarks(ctx.actor, ctx.scope, plan.examSubjectId);
-      return action({ type: 'marks_published', id: plan.examSubjectId, data: result, speak: 'The marks are now published and visible to families.' });
-    },
-  },
+  // publish_marks is deliberately absent: deciding is done by a person on the
+  // screen, never by the assistant. See HUMAN_DECISIONS in ../decisions.js.
 
   /* ── Assignments ─────────────────────────────────────── */
   get_assignments: {
@@ -1194,6 +1175,10 @@ export const academicTools = {
         dueFrom: dateStr('Only work due on or after this day'),
         dueTo: dateStr('Only work due on or before this day'),
         first: { type: 'boolean', description: 'true for "which one is due first / next": only the assignment with the earliest due date that has not passed' },
+        // p7: a parent of several children names the one they mean; the list
+        // is then that child's class's work with THAT child's submissions only.
+        studentName: { type: 'string', maxLength: 80, description: "A parent: which child (by name). Only that child's work and submissions are listed" },
+        admissionNo: { type: 'string', maxLength: 40, description: "A parent: which child, by admission number" },
       },
       additionalProperties: false,
     },
@@ -1221,8 +1206,23 @@ export const academicTools = {
         ? await resolveSection(ctx, { sectionId: args.sectionId, className: args.className })
         : null;
 
-      const all = await assignments.list(ctx.actor, ctx.scope, {});
+      let all = await assignments.list(ctx.actor, ctx.scope, {});
       const wantedSubject = args.subject ? String(args.subject).toLowerCase() : null;
+
+      // p7: one named child of a family (resolved at the caller's own scope,
+      // so a parent reaches only their own children): their class's work, and
+      // the submission status from that child's own submissions -- never a
+      // sibling's rows or a sibling's hand-ins merged in.
+      let child = null;
+      if (isFamily && (args.studentName || args.admissionNo)) {
+        const named = await resolveStudentEnrollment(ctx, { studentName: args.studentName, admissionNo: args.admissionNo });
+        const subs = await Submission.find({ enrollmentId: named.enrollmentId, assignmentId: { $in: all.map((a) => a.id) } }).lean();
+        const mine = new Map(subs.map((x) => [String(x.assignmentId), x]));
+        all = all
+          .filter((a) => String(a.sectionId) === String(named.sectionId))
+          .map((a) => { const own = mine.get(String(a.id)); return { ...a, mySubmission: own ? { status: own.status, submittedAt: own.submittedAt ?? null, marks: own.marks ?? null } : null }; });
+        child = { name: named.name, class: String(named.class ?? '').replace(/\s+-\s+/, ' ') };
+      }
 
       let rows = all;
       if (wantedSubject) rows = rows.filter((a) => sameSubject(args.subject, a.subject));
@@ -1283,7 +1283,7 @@ export const academicTools = {
       const scopeLabel = [[args.subject, section?.label].filter(Boolean).join(' for '), windowLabel].filter(Boolean).join(', ');
       if (firstNote) {
         return ok(
-          { assignments: shown, count: shown.length, first: true },
+          { assignments: shown, count: shown.length, first: true, ...(child && { student: child }) },
           { speak: firstNote },
         );
       }
@@ -1291,7 +1291,7 @@ export const academicTools = {
 
       if (!ordered.length) {
         return ok(
-          { assignments: [], count: 0, ...(section && { class: section.label }), ...(args.subject && { subject: args.subject }) },
+          { assignments: [], count: 0, ...(section && { class: section.label }), ...(args.subject && { subject: args.subject }), ...(child && { student: child }) },
           {
             speak: scopeLabel
               ? `No homework found ${scopeLabel.startsWith('due') ? scopeLabel : `for ${scopeLabel}`}.`
@@ -1303,11 +1303,12 @@ export const academicTools = {
         {
           assignments: shown,
           count: ordered.length,
+          ...(child && { student: child }),
           ...(section && { class: section.label }),
           ...(args.subject && { subject: args.subject }),
         },
         {
-          speak: `${ordered.length} ${pendingOnly ? 'still to submit' : isFamily && args.status === 'SUBMITTED' ? 'submitted' : 'homework item(s)'}${scopeLabel ? (scopeLabel.startsWith('due') ? ` ${scopeLabel}` : ` for ${scopeLabel}`) : ''}: ${view.list}${view.more ? ', …' : ''}.`,
+          speak: `${child ? `${child.name}: ` : ''}${ordered.length} ${pendingOnly ? 'still to submit' : isFamily && args.status === 'SUBMITTED' ? 'submitted' : 'homework item(s)'}${scopeLabel ? (scopeLabel.startsWith('due') ? ` ${scopeLabel}` : ` for ${scopeLabel}`) : ''}: ${view.list}${view.more ? ', …' : ''}.`,
           // A table (agent/present.js). The class is shown whenever the rows
           // span more than one: "Chapter 1 Assignment" four times over was
           // four different classes, indistinguishable in a sentence.
@@ -1315,9 +1316,10 @@ export const academicTools = {
             type: 'assignments.list',
             audience: isFamily ? 'family' : 'staff',
             kind: pendingOnly ? 'pending' : isFamily && args.status === 'SUBMITTED' ? 'submitted' : 'all',
-            scope: scopeLabel || null,
+            scope: [child?.name, scopeLabel].filter(Boolean).join(', ') || null,
             total: ordered.length,
-            showClass: !isFamily && new Set(shown.map((a) => a.class)).size > 1,
+            // (A family whose children are in different classes sees which class each row is.)
+            showClass: new Set(shown.map((a) => a.class)).size > 1,
             items: shown.map((a) => ({
               title: a.title,
               subject: a.subject ?? null,

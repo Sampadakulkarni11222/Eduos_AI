@@ -221,7 +221,7 @@ export function TimeGrid({
                           </div>
                           {height > 58 && !slot.isBreak && (slot.teacher || slot.room) && (
                             <div style={{ fontSize: 9.5, opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {[slot.teacher, slot.room].filter(Boolean).join(' · ')}
+                              {[slot.teacher, slot.effectiveRoom ? `${slot.effectiveRoom} (moved)` : slot.room].filter(Boolean).join(' · ')}
                             </div>
                           )}
                         </>

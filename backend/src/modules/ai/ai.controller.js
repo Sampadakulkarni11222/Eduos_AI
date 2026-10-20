@@ -3,9 +3,12 @@ import { sendSuccess } from '../../utils/response.js';
 import { AppError } from '../../utils/AppError.js';
 import * as agentCore from './agent/orchestrator.js';
 import { mcpToolsFor } from './mcp/registry.js';
+import { acceptableConversationId, rememberTurn } from './agent/memory.js';
 import * as tutorService from './tutor.service.js';
 import * as studyBuddyService from './studyBuddy/studyBuddy.service.js';
 import * as creditService from './aiCredit.service.js';
+// Generated UI (OpenUI Lang panel) for website answers that carry data; WhatsApp keeps text.
+import { withGeneratedUi } from '../genui/agentUi.js';
 
 /* ── AI credits ─────────────────────────────────────────────
    Metering for AI-generated answers. Staff are not metered; students and
@@ -46,8 +49,11 @@ export const creditOrders = asyncHandler(async (req, res) => {
 });
 
 /* ── Agentic layer ──────────────────────────────────────────
-   Shared by the in-app assistant and WhatsApp; `source` only affects the
-   audit trail, never the authorization. */
+   Shared by the in-app assistant and WhatsApp. These routes are the WEBSITE:
+   the channel is fixed here and never read from the request body, so a web
+   user cannot have their actions recorded -- or confirmed -- as WhatsApp's.
+   Only whatsapp.agent.js passes WHATSAPP. */
+const WEB_CHANNEL = 'WEB';
 /* Recent turns only, and trimmed: the transcript is a routing aid, not a
    transport for arbitrary client-supplied text. */
 const MAX_HISTORY_TURNS = 10;
@@ -69,24 +75,43 @@ function sanitiseHistory(raw) {
     .map((turn) => ({ role: turn.role, text: turn.text.slice(0, MAX_HISTORY_TEXT) }));
 }
 
+/** An attached import file ({ fileId }) with an id this server could have issued, or null. */
+function acceptableAttachment(raw) {
+  const id = raw && typeof raw === 'object' ? String(raw.fileId ?? '') : '';
+  return /^[a-f0-9]{24}$/.test(id) ? { fileId: id } : null;
+}
+
 export const agent = asyncHandler(async (req, res) => {
-  const { message, source, lang, history } = req.body;
+  const { message: typed, lang, history, conversationId } = req.body;
+  // p7: a spreadsheet uploaded to /imports/files and attached to this message.
+  // Only its id travels; the server finds it for this same person or not at all.
+  const attachment = acceptableAttachment(req.body.attachment);
+  const message = typed || (attachment ? 'Check this file' : typed);
   if (!message) throw new AppError('message is required', 400);
   sendSuccess(
     res,
     // Safe variant: a provider outage degrades to the rule-based answer rather
     // than a 500 the client can only render as "could not reach the assistant".
-    await agentCore.runAgentSafely({
+    await withGeneratedUi(await agentCore.runAgentSafely({
       message,
       actor: req.actor,
-      source: source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB',
+      source: WEB_CHANNEL,
       lang,
       // Without this the website had no conversation at all: every turn was a
       // first turn, so a follow-up that named nobody was answered by asking
       // who was meant — while WhatsApp, which has always passed history,
       // resolved it. Same core, same behaviour now.
       history: sanitiseHistory(history),
-    }),
+      // The server-side conversation (agent/memory.js). Only an id the server
+      // could have issued is accepted, and it finds a conversation only for
+      // this signed-in person in this school; the reply carries the id back
+      // so the browser can keep it across page changes and reloads.
+      conversationId: acceptableConversationId(conversationId),
+      attachment,
+      // p7: the words came from the microphone (Web Speech API): what was
+      // heard is shown back with the answer. Only a flag -- no audio is sent.
+      heard: req.body.inputMode === 'voice',
+    }), { message }),
     'Agent response'
   );
 });
@@ -97,33 +122,33 @@ export const agent = asyncHandler(async (req, res) => {
  * caller, authorized and audited like the first.
  */
 export const agentContinue = asyncHandler(async (req, res) => {
-  const { continuationToken, source, lang } = req.body;
+  const { continuationToken, lang } = req.body;
   if (!continuationToken) throw new AppError('continuationToken is required', 400);
   sendSuccess(
     res,
-    await agentCore.continueAnswer({
+    await withGeneratedUi(await agentCore.continueAnswer({
       token: continuationToken,
       actor: req.actor,
-      source: source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB',
+      source: WEB_CHANNEL,
       lang,
-    }),
+    })),
     'Agent response continued'
   );
 });
 
 export const agentConfirm = asyncHandler(async (req, res) => {
-  const { confirmToken, accept, source, lang } = req.body;
-  sendSuccess(
-    res,
-    await agentCore.confirmAction({
-      confirmToken,
-      actor: req.actor,
-      accept: accept !== false,
-      source: source === 'WHATSAPP' ? 'WHATSAPP' : 'WEB',
-      lang,
-    }),
-    'Agent action processed'
-  );
+  const { confirmToken, accept, lang, conversationId } = req.body;
+  const result = await agentCore.confirmAction({
+    confirmToken,
+    actor: req.actor,
+    accept: accept !== false,
+    source: WEB_CHANNEL,
+    lang,
+  });
+  // The button's outcome is a turn of the conversation too ("Done", "Cancelled").
+  const id = acceptableConversationId(conversationId);
+  if (id) await rememberTurn({ actor: req.actor, source: WEB_CHANNEL, conversationId: id, message: null, result });
+  sendSuccess(res, id ? { ...result, conversationId: id } : result, 'Agent action processed');
 });
 
 /**

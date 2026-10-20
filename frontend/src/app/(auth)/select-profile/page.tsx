@@ -3,13 +3,15 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth, readLoginProfiles } from '@/lib/auth';
 import { hasSession } from '@/lib/api';
-import { portalHome } from '@/lib/school-path';
+import { portalHome, signInPathFor } from '@/lib/school-path';
+import { getActiveSchool } from '@/lib/school';
 import { Spinner } from '@/components/ui';
 import type { ProfileSummary } from '@/lib/types';
 
 const ROLE_GLYPH: Record<string, string> = {
   SUPER_ADMIN: '🛡️', ADMIN: '🏛️', PRINCIPAL: '🎓', TEACHER: '👩‍🏫', PARENT: '👨‍👩‍👧',
   STUDENT: '🎒', FINANCE: '💰', LIBRARIAN: '📚', WARDEN: '🔑',
+  HR: '🧑‍💼', MARKETING: '📣', COMPLIANCE: '🛡', TRUSTEE: '🏛', ALUMNUS: '🎓', NURSE: '✚',
 };
 
 function roleLabel(role: string) {
@@ -30,14 +32,14 @@ export default function SelectProfilePage() {
       return;
     }
     if (!hasSession()) {
-      router.replace('/login');
+      router.replace(signInPathFor(getActiveSchool()?.slug));
       return;
     }
     const stashed = readLoginProfiles();
     if (stashed.length === 0 && !loading && !me) {
       // Pre-session but nothing to pick from (e.g. hard reload after storage
       // was cleared) — restart the sign-in flow.
-      router.replace('/login');
+      router.replace(signInPathFor(getActiveSchool()?.slug));
       return;
     }
     setProfiles(stashed);
@@ -116,7 +118,7 @@ export default function SelectProfilePage() {
         </div>
 
         <button
-          onClick={() => router.replace('/login')}
+          onClick={() => router.replace(signInPathFor(getActiveSchool()?.slug))}
           style={{
             display: 'block', margin: '18px auto 0', background: 'none', border: 'none',
             fontSize: 12.5, color: '#9a8a7a', cursor: 'pointer', textDecoration: 'underline', fontFamily: 'inherit',

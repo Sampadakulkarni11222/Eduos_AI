@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { PERMISSION_CATALOG, SYSTEM_ROLES, SUPER_ADMIN_ONLY, AI_ASSISTANT_PERMISSION } from '../src/constants/permissions.js';
+import { PERMISSION_CATALOG, SYSTEM_ROLES, SUPER_ADMIN_ONLY, AI_ASSISTANT_PERMISSION, PLATFORM_WITHHELD } from '../src/constants/permissions.js';
 import { buildPermissionMap } from '../src/utils/buildPermissionMap.js';
 import { requirePermission, requireRole } from '../src/middleware/permission.js';
 
@@ -71,7 +71,8 @@ describe('platform vs school boundary', () => {
     // tool that would otherwise answer across schools. See
     // tests/ai.superAdminExcluded.test.js and the note in constants/permissions.js.
     for (const key of CATALOG_KEYS) {
-      if (key === AI_ASSISTANT_PERMISSION) continue;
+      // PLATFORM_WITHHELD: safeguarding cases and individual pay stay with the school.
+      if (key === AI_ASSISTANT_PERMISSION || PLATFORM_WITHHELD.includes(key)) continue;
       expect(can('SUPER_ADMIN', key), `SUPER_ADMIN must hold ${key}`).toBe(true);
     }
     expect(can('SUPER_ADMIN', AI_ASSISTANT_PERMISSION)).toBe(false);

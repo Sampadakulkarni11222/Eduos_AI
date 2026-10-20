@@ -208,8 +208,37 @@ export async function list(actor, scope, query = {}) {
     };
   });
 
-  if (!paginate) return items;
+  // The full list (no pageSize) is what a teacher's My Classes reads: it is a
+  // roll call, so it comes in class order -- grade, section, then roll number
+  // -- not in the order the records were created (which read 54, 59, 56, 53).
+  // The paged directory keeps its own sort above.
+  if (!paginate) return sortByRoll(items, enrollmentMap);
   return { items, total, page, pageSize, totalPages: totalPagesCalc, nextCursor: null };
+}
+
+/** Grade order, then section name, then roll number; students with no class last, by name. */
+export function sortByRoll(items, enrollmentMap) {
+  const key = (item) => {
+    const e = enrollmentMap.get(item.id);
+    const grade = e?.sectionId?.gradeId;
+    return {
+      none: e ? 0 : 1,
+      level: Number.isFinite(grade?.level) ? grade.level : Number.MAX_SAFE_INTEGER,
+      grade: grade?.name ?? '',
+      section: e?.sectionId?.name ?? '',
+      roll: Number.isFinite(e?.rollNo) ? e.rollNo : Number.MAX_SAFE_INTEGER,
+    };
+  };
+  const collate = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+  return items
+    .map((item) => ({ item, k: key(item) }))
+    .sort((a, b) => (a.k.none - b.k.none)
+      || (a.k.level - b.k.level)
+      || collate(a.k.grade, b.k.grade)
+      || collate(a.k.section, b.k.section)
+      || (a.k.roll - b.k.roll)
+      || collate(a.item.name, b.item.name))
+    .map(({ item }) => item);
 }
 
 /**

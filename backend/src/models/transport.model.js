@@ -29,6 +29,11 @@ const transportStopSchema = new Schema(
     name: { type: String, required: true },
     sequenceNo: { type: Number, required: true },
     etaMinutesFromStart: { type: Number, default: 0 },
+    // Optional coordinates: trips copy them to detect arrival (geofence),
+    // off-route travel and to estimate an ETA. A stop without them still works;
+    // its ETA falls back to the planned time.
+    lat: { type: Number, min: -90, max: 90, default: null },
+    lng: { type: Number, min: -180, max: 180, default: null },
   },
   { timestamps: true }
 );

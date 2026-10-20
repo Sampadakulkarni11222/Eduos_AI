@@ -1,9 +1,13 @@
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/response.js';
 import * as service from './timetable.service.js';
+import { weekOverrides } from '../examRooms/rooms.service.js';
+import { logger } from '../../utils/logger.js';
 
 export const getTimetable = asyncHandler(async (req, res) => {
   const slots = await service.getTimetable(req.actor, req.scope, req.query.sectionId);
+  // Part 8: a room shift this week shows as the effective room; the base slot is unchanged.
+  const moved = await weekOverrides(slots, { weekOf: req.query.weekOf || null }).catch((err) => { logger.warn(`Timetable room shifts unavailable: ${err.message}`); return new Map(); });
   const dtos = slots.map(s => {
     // A slot with no subjectOfferingId is a break by definition (see
     // timetableSlot.model.js) — there is no separate isBreak field.
@@ -19,6 +23,8 @@ export const getTimetable = asyncHandler(async (req, res) => {
       subjectOfferingId: s.subjectOfferingId?._id?.toString() ?? null,
       isBreak,
       room: s.room ?? null,
+      effectiveRoom: moved.get(String(s._id))?.room ?? null,
+      roomShift: moved.get(String(s._id)) ?? null,
       liveClassLink: s.liveClassLink ?? null,
     };
   });

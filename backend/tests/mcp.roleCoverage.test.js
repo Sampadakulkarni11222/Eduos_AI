@@ -2,9 +2,12 @@ import { describe, it, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { SYSTEM_ROLES, PERMISSION_CATALOG } from '../src/constants/permissions.js';
+import { SYSTEM_ROLES, PERMISSION_CATALOG, PLATFORM_WITHHELD } from '../src/constants/permissions.js';
 import { buildPermissionMap } from '../src/utils/buildPermissionMap.js';
-import { MCP_TOOLS, mcpToolsFor, mutates } from '../src/modules/ai/mcp/registry.js';
+import { MCP_TOOLS, mcpToolsFor, mutates, toolGrants } from '../src/modules/ai/mcp/registry.js';
+
+/** Whether a role is admitted by one of a tool's grants: its permission at its scope, or any of its anyOf alternatives. */
+const admits = (actor, tool) => toolGrants(tool).some(([key, min]) => actor.permissions[key] && (min !== 'ALL' || actor.permissions[key] === 'ALL'));
 import { capabilitiesFor } from '../src/modules/ai/mcp/capabilities.js';
 import { validateArgs } from '../src/modules/ai/mcp/validate.js';
 
@@ -70,13 +73,70 @@ function uncoveredFor(roleKey) {
  *     feature does not exist in the backend at all.
  * D — deliberately unavailable to the assistant.
  */
+/**
+ * Institution-operations permissions that no capability declares.
+ *
+ * The read side of these modules is covered by tools/operations.js. What is
+ * left is of two kinds, and both are deliberate:
+ *   - the keys that decide, approve, manage or configure. The assistant reports
+ *     on operations and never approves, files, pays, clears or decides, so
+ *     these acts stay on their own screens behind the approval engine;
+ *   - the reads withheld from a chat transcript altogether: individual pay,
+ *     and anything to do with a safeguarding case.
+ */
+const OPERATIONS_PREFIX = /^(approvals|governance|institution|org|correspondence|compliance|contracts|verification|events|facilities|safeguarding|payroll|procurement|budget|funding|marketing|community|mentoring|campus|messaging|lectures|syllabus)\./;
+const DECLARED_BY_A_TOOL = new Set(Object.values(MCP_TOOLS).map((t) => t.permission));
+const OPERATIONS_KEYS = PERMISSION_CATALOG.map((p) => p.key).filter((key) => OPERATIONS_PREFIX.test(key) && !DECLARED_BY_A_TOOL.has(key));
+const OPERATIONS_WHY = 'Institution-operations act or restricted read. The assistant reports on operations through read-only tools and never approves, files, pays, clears or decides; safeguarding and individual pay are kept out of chat altogether.';
+
+/**
+ * Permission keys added for the school-platform completion
+ * (feat/school-platform-complete). Each feature is built in slices; until its
+ * assistant capability exists, its keys are recorded here as category C so
+ * the ledger stays exact. When a slice adds a read-only tool for one, the
+ * "now has a capability" check forces its removal from this list.
+ */
+const PLATFORM_PENDING = [
+  // Analytics, tasks, labs, bills, fleet, safety, out-pass, staff leave/cover,
+  // concessions and the accounts export are now covered by tools/platformOps.js.
+  'alumni.manage', 'digest.manage', 'social.connect',
+  // Part 2 gaps: support plans, competency portfolios, scenario planning (screens and API first).
+  'supportplans.read', 'supportplans.manage', 'supportplans.referral.view', 'portfolios.read', 'portfolios.manage', 'portfolios.reflect', 'scenarios.read', 'scenarios.manage',
+].filter((key) => !DECLARED_BY_A_TOOL.has(key));
+const PLATFORM_WHY = 'School-platform completion: the feature is being built in slices (see docs/erp-operations/PLATFORM-COVERAGE-MATRIX.md). Its screens and API come first; an assistant capability, read-only, follows where it is useful.';
+
 const UNCOVERED = {
-  /* ── A. reachable under another permission key ─────────── */
-  'reportcards.read': {
-    category: 'A',
-    via: 'get_report_card',
-    why: 'Report cards are served by exam.service.getReportCard(); the tool gates on marks.read, the same key the exams report-card route requires.',
+  ...Object.fromEntries(PLATFORM_PENDING.map((key) => [key, { category: 'C', why: PLATFORM_WHY }])),
+  /* ── D. institution operations: acts and restricted reads ── */
+  ...Object.fromEntries(OPERATIONS_KEYS.map((key) => [key, { category: 'D', why: OPERATIONS_WHY }])),
+
+  'payroll.read': {
+    category: 'D',
+    scopes: ['OWN'],
+    why: 'list_payroll_runs reports school-wide run totals, so it needs school-wide scope. A holder at OWN scope may see only their own payslips, and individual pay is deliberately kept out of chat: it is read on My Payslips.',
   },
+
+  /* ── D. part 3 health room: restricted, kept to the Health page ── */
+  // The assistant reads only what the nurse or a parent for their own child may
+  // (tools/p3Health.js: health.read, health.manage). These three stay on the page.
+  'health.witness': {
+    category: 'D',
+    why: 'Countersigning a controlled medicine is the second person checking at the cabinet; it is done on the Health page by that person, never proposed through chat.',
+  },
+  'health.carenotes.read': {
+    category: 'D',
+    why: 'Care notes a parent agreed to share with the class teacher are health data; they are read on the Health page (audited), and kept out of chat transcripts altogether.',
+  },
+  // health.summary.read: now covered by get_health_room_summary (p5AskAi.js), counts only, at the lead's request.
+
+  /* ── D. part 5: a student's own act, granted school-wide to administration ── */
+  'portfolios.reflect': {
+    category: 'D',
+    scopes: ['ALL'],
+    why: 'A portfolio reflection is written by the student in their own portfolio (add_portfolio_reflection, students only); portfolios.service.reflect() refuses anyone else, so an administrator holding the key school-wide is not offered a tool that can only fail.',
+  },
+
+  /* ── A. reachable under another permission key ─────────── */
   'fees.plan.review': {
     category: 'A',
     via: 'transition_fee_plan',
@@ -95,20 +155,35 @@ const UNCOVERED = {
   'analytics.child.read': {
     category: 'A',
     via: 'get_dashboard',
-    why: 'Child-level figures for a parent are the parent dashboard view, alongside get_growth_score.',
+    scopes: ['ALL'],
+    why: 'A parent (OWN) reaches it through get_child_growth_view (tools/p4Parent.js, enforced in growth.routes). At school-wide scope the child-level figures are the dashboard views and get_growth_score, which carry their own permissions.',
   },
 
   /* ── C. blocked ────────────────────────────────────────── */
   'attendance.regularize': {
-    category: 'C',
-    why: 'No regularization route, controller or service exists anywhere in src. The permission is granted to roles but enforced nowhere, so there is nothing to wrap.',
+    category: 'D',
+    why: 'Now enforced by attendance.service (assertMarkableDate): marking a date older than the back-dating window needs it. mark_attendance gates on attendance.mark and the service applies this finer key, so a holder regularizes through the same capability.',
   },
 
   /* ── D. deliberately unavailable ───────────────────────── */
-  'users.manage': {
+  // Deciding is done by a person on the screen, never by the assistant
+  // (mcp/decisions.js). These keys exist only to decide, so no capability
+  // holds them; get_pending_items_for_me tells their holders what is waiting.
+  ...Object.fromEntries(['fees.payments.refund', 'fees.plan.approve', 'leave.review', 'marks.publish', 'profile.edit.review'].map((key) => [key, {
     category: 'D',
-    why: 'Creating and importing user accounts. Bulk import is a CSV upload and MCP has no file-upload channel, the same constraint that keeps attendance OCR unexposed; single creation mints credentials, which the assistant must not do. Reading the staff directory is available through list_users.',
+    why: 'A decision (approve, reject, publish or refund). The assistant never decides: it lists what is waiting with get_pending_items_for_me and points to the screen where the holder decides.',
+  }])),
+  'analytics.export': {
+    category: 'D',
+    why: 'Downloading the analytics workspace as CSV is a file, and MCP has no file channel in a chat. The same figures, at the same scope, are read through get_analytics_overview (analytics.workspace.read); the file is downloaded on the Analytics screen.',
   },
+  'camera.devices.manage': {
+    category: 'D',
+    why: 'Registering cameras, their approved purposes, locations and retention, and rotating device secrets. Device credentials never travel through chat, and camera data stays off it: reviewers get only a count (get_camera_review_count).',
+  },
+  // users.manage is covered since p7: bulk import of students and staff from a
+  // spreadsheet attached in Ask AI (preview_import / run_import, website-confirmed,
+  // no passwords are ever set by an import -- people sign in by phone OTP).
   'roles.manage': {
     category: 'D',
     why: 'Editing role grants. This is the authorization system that constrains the assistant, so a capability here would let the assistant widen its own reach.',
@@ -146,6 +221,11 @@ describe('every role the authorization system defines', () => {
     expect(ALL_ROLES.length).toBeGreaterThanOrEqual(9);
   });
 
+  it('serves exactly the roles that hold the assistant permission', () => {
+    const withoutAssistant = SYSTEM_ROLES.filter((r) => !r.grants.some((g) => g.key === 'ai.copilot.use')).map((r) => r.key);
+    expect(withoutAssistant.sort()).toEqual([...EXCLUDED_ROLES].sort());
+  });
+
   it('excludes SUPER_ADMIN from the assistant, by permission rather than by name', () => {
     const superAdmin = actorFor('SUPER_ADMIN');
     // The whole exclusion: it does not hold the assistant permission, which
@@ -159,7 +239,8 @@ describe('every role the authorization system defines', () => {
     // permission in the catalog, the platform-only ones included.
     const catalog = PERMISSION_CATALOG.map((p) => p.key);
     const held = Object.keys(superAdmin.permissions);
-    expect(held.sort()).toEqual(catalog.filter((k) => k !== 'ai.copilot.use').sort());
+    // Bar the keys the platform never holds: safeguarding cases and individual pay.
+    expect(held.sort()).toEqual(catalog.filter((k) => k !== 'ai.copilot.use' && !PLATFORM_WITHHELD.includes(k)).sort());
     expect(superAdmin.permissions['schools.manage']).toBe('ALL');
     expect(superAdmin.permissions['ai.insights.read']).toBe('ALL');
   });
@@ -282,8 +363,7 @@ describe('permissions granted but enforced nowhere in the backend', () => {
    * knows a capability is expected along with it.
    */
   const DEAD = [
-    'analytics.child.read', 'analytics.class.read', 'analytics.school.read',
-    'attendance.regularize', 'reportcards.read',
+    'analytics.class.read', 'analytics.school.read',
   ];
 
   const sources = (() => {
@@ -301,7 +381,9 @@ describe('permissions granted but enforced nowhere in the backend', () => {
   })();
 
   it('is exactly the recorded set, with no additions', () => {
-    const dead = PERMISSION_CATALOG.map((p) => p.key).filter((key) => !sources.includes(key)).sort();
+    // Platform keys whose feature has not landed yet are expected here too.
+    const pendingDead = PLATFORM_PENDING.filter((key) => !sources.includes(key));
+    const dead = PERMISSION_CATALOG.map((p) => p.key).filter((key) => !sources.includes(key) && !pendingDead.includes(key)).sort();
     // If this grows, a permission was added to the catalog and never wired up.
     expect(dead).toEqual([...DEAD].sort());
   });
@@ -368,8 +450,8 @@ describe('write safety holds for every role, not only the ones with their own te
       const actor = actorFor(role);
       for (const { name } of mcpToolsFor(actor)) {
         const tool = MCP_TOOLS[name];
-        if (tool.minScope !== 'ALL') continue;
-        expect(actor.permissions[tool.permission], `${role} sees ${name} without ALL scope`).toBe('ALL');
+        if (!toolGrants(tool).some(([, min]) => min === 'ALL')) continue;
+        expect(admits(actor, tool), `${role} sees ${name} without ALL scope`).toBe(true);
       }
     }
   });
@@ -433,11 +515,7 @@ describe('every capability declares metadata the architecture can rely on', () =
       const actor = actorFor(role);
       for (const { name } of mcpToolsFor(actor)) {
         const tool = MCP_TOOLS[name];
-        const held = actor.permissions[tool.permission];
-        expect(held, `${role} sees ${name} without holding ${tool.permission}`).toBeTruthy();
-        if (tool.minScope === 'ALL') {
-          expect(held, `${role} sees school-wide ${name} at ${held} scope`).toBe('ALL');
-        }
+        expect(admits(actor, tool), `${role} sees ${name} without holding ${toolGrants(tool).map(([k, m]) => `${k}${m ? ` at ${m}` : ''}`).join(' or ')}`).toBe(true);
       }
     }
   });
@@ -447,7 +525,7 @@ describe('every capability declares metadata the architecture can rely on', () =
       const actor = actorFor(role);
       const visible = new Set(mcpToolsFor(actor).map((t) => t.name));
       for (const [name, tool] of Object.entries(MCP_TOOLS)) {
-        if (actor.permissions[tool.permission]) continue;
+        if (toolGrants(tool).some(([key]) => actor.permissions[key])) continue;
         expect(visible.has(name), `${role} sees ${name} but lacks ${tool.permission}`).toBe(false);
       }
     }
@@ -473,7 +551,17 @@ describe('role-specific figures are reachable by the role they describe', () => 
       TEACHER: 'teacher', STUDENT: 'student', PARENT: 'parent',
       WARDEN: 'warden', LIBRARIAN: 'librarian',
     };
-    for (const role of ROLES) {
+    // The institution-operations roles have no dashboard view of their own:
+    // their figures are their role home, which get_my_day reads and which
+    // gates on institution.read, a key every one of them holds.
+    // NURSE (part 3) is one of them too: its work is the Health page.
+    const HOME_INSTEAD = ['HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'ALUMNUS', 'NURSE'];
+    for (const role of HOME_INSTEAD) {
+      const actor = actorFor(role);
+      expect(mcpToolsFor(actor).some((t) => t.name === 'get_my_day'), `${role} cannot see get_my_day`).toBe(true);
+      expect(actor.permissions[MCP_TOOLS.get_my_day.permission], `${role} cannot read its own home`).toBeTruthy();
+    }
+    for (const role of ROLES.filter((r) => !HOME_INSTEAD.includes(r))) {
       const actor = actorFor(role);
       const view = ROLE_VIEW[role];
       expect(view, `${role} has no dashboard view`).toBeTruthy();

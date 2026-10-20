@@ -191,8 +191,10 @@ describe('3. a write the model proposes is confirmed and re-authorized like any 
   // Names the class and subject itself -- a model may only use identities the
   // person actually wrote (see section 2) -- and is not a sentence the
   // deterministic tiers can read, so the model's proposal is what runs.
-  const message = 'Class 6-A needs Mathematics sums practice done by 2026-10-09';
-  const plan = [{ tool: 'create_assignment', args: { className: 'Class 6-A', subject: 'Mathematics', title: 'Sums practice', dueAt: '2026-10-09' } }];
+  // A due date ahead of today, whenever the suite runs.
+  const DUE = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+  const message = `Class 6-A needs Mathematics sums practice done by ${DUE}`;
+  const plan = [{ tool: 'create_assignment', args: { className: 'Class 6-A', subject: 'Mathematics', title: 'Sums practice', dueAt: DUE } }];
 
   async function seedOffering() {
     const { Subject, SubjectOffering, Term } = await import('../src/models/academics.model.js');
@@ -235,8 +237,8 @@ describe('3. a write the model proposes is confirmed and re-authorized like any 
 
   it('a model-proposed write for another teacher\'s class is refused before anything is proposed', async () => {
     await seedOffering();
-    const other = 'Class 6-B needs Mathematics sums practice done by 2026-10-09';
-    script.plans.set(other, [{ tool: 'create_assignment', args: { className: 'Class 6-B', subject: 'Mathematics', title: 'Sums practice', dueAt: '2026-10-09' } }]);
+    const other = `Class 6-B needs Mathematics sums practice done by ${DUE}`;
+    script.plans.set(other, [{ tool: 'create_assignment', args: { className: 'Class 6-B', subject: 'Mathematics', title: 'Sums practice', dueAt: DUE } }]);
     const res = await api.ask(teacher(), other);
     expect(script.calls).toContain(other);
     expect(res.action ?? null).toBeNull();

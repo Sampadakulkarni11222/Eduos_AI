@@ -32,9 +32,9 @@ const schemaOf = (tool, arg) => MCP_TOOLS[tool].inputSchema.properties[arg];
 
 describe('1. an argument kind comes from its schema, not from a declaration', () => {
   it('reads each kind off the schema that states it', () => {
-    expect(kindOfProperty('invoiceId', schemaOf('record_payment', 'invoiceId'))).toBe('identifier');
-    expect(kindOfProperty('mode', schemaOf('record_payment', 'mode'))).toBe('enum');
-    expect(kindOfProperty('amountPaise', schemaOf('record_payment', 'amountPaise'))).toBe('money');
+    expect(kindOfProperty('invoiceId', schemaOf('get_payment_link', 'invoiceId'))).toBe('identifier');
+    expect(kindOfProperty('mode', schemaOf('update_payment', 'mode'))).toBe('enum');
+    expect(kindOfProperty('amountPaise', schemaOf('update_payment', 'amountPaise'))).toBe('money');
     expect(kindOfProperty('attendanceBelowPct', schemaOf('get_at_risk_students', 'attendanceBelowPct'))).toBe('percentage');
     expect(kindOfProperty('dueAt', schemaOf('generate_homework', 'dueAt'))).toBe('date');
     expect(kindOfProperty('maxMarks', schemaOf('generate_homework', 'maxMarks'))).toBe('number');
@@ -121,7 +121,7 @@ describe('3. enum values are the schema\'s own', () => {
 
   it('works for any enum in the catalog without naming one', () => {
     // Same extractor, a different tool's enum.
-    expect(extractEnum('paid by cash', schemaOf('record_payment', 'mode'))).toMatchObject({ status: FOUND, value: 'CASH' });
+    expect(extractEnum('paid by cash', schemaOf('update_payment', 'mode'))).toMatchObject({ status: FOUND, value: 'CASH' });
   });
 });
 
@@ -201,7 +201,7 @@ describe('6. supplied text', () => {
 
 describe('7. a write is never filled from a guess', () => {
   it('refuses an ambiguous value on a write and supplies nothing', () => {
-    const schema = schemaOf('record_payment', 'invoiceId');
+    const schema = schemaOf('get_payment_link', 'invoiceId');
     const result = extractArgument('invoiceId', schema, 'pay 5f4d3c2b1a0908070605f4d3 or 1111111111111111111111aa', { write: true });
     expect(result.status).toBe(AMBIGUOUS);
     expect(result.value).toBeUndefined();
@@ -252,7 +252,6 @@ describe('8. every argument the legacy rules extract is representable', () => {
     ['apply_for_leave', ['fromDate', 'toDate', 'reason']],
     ['get_payment_link', ['invoiceId']],
     ['generate_homework', ['topic', 'dueAt', 'subject', 'className', 'maxMarks']],
-    ['record_payment', ['invoiceId', 'invoiceNo', 'amountPaise', 'mode']],
     ['create_announcement', ['title', 'content']],
     ['mark_attendance', ['sectionId', 'date']],
   ];

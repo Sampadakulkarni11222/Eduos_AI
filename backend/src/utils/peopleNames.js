@@ -19,6 +19,7 @@
 
 import { looksLikeMonth } from './naturalDates.js';
 import { classFromText } from './classNames.js';
+import { phoneticSimilarity } from '../modules/ai/agent/language/spelling.js';
 
 /**
  * Words that look like a name in the grammar but are not one.
@@ -386,7 +387,12 @@ export function nameSimilarity(query, candidate) {
   });
   const coverage = perWord.reduce((sum, x) => sum + x, 0) / queryWords.length;
 
-  return Math.max(whole, coverage * 0.95);
+  // p7: how the name SOUNDS, so the spellings of one Indian name meet --
+  // "Sarma"/"Sharma", "Puja"/"Pooja", "Kapur"/"Kapoor" (agent/language/spelling.js).
+  // Only ever ranks suggestions; nothing here picks a person.
+  const sound = phoneticSimilarity(a, b) * 0.96;
+
+  return Math.max(whole, coverage * 0.95, sound);
 }
 
 /**

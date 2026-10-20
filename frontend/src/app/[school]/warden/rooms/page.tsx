@@ -248,8 +248,10 @@ export default function WardenRooms() {
                 {(rooms ?? []).map((r) => {
                   const left = r.capacity - occupantsOf(r._id).length;
                   return (
-                    <option key={r._id} value={r._id} disabled={left <= 0}>
-                      {r.roomNo} ({r.block}) — {left} bed{left === 1 ? '' : 's'} left
+                    // The room type is shown because the server refuses a boy in a
+                    // girls' room (and the reverse); closed rooms take nobody.
+                    <option key={r._id} value={r._id} disabled={left <= 0 || r.status !== 'ACTIVE'}>
+                      {r.roomNo} ({r.block}) · {r.type === 'BOYS' ? 'Boys' : r.type === 'GIRLS' ? 'Girls' : r.type === 'STAFF' ? 'Staff' : 'Any'} — {r.status !== 'ACTIVE' ? r.status.toLowerCase() : `${left} bed${left === 1 ? '' : 's'} left`}
                     </option>
                   );
                 })}

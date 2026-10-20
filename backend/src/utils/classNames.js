@@ -66,6 +66,9 @@ export function classLabel(gradeName, sectionName) {
  * Returns both the text as written -- so a reply can quote the person's own
  * words -- and the canonical key for matching.
  */
+/** Words that make a sentence about a class's records (see the compact "6A" form below). */
+const SCHOOL_RECORD_WORD = /\b(?:attendance|register|roster|students?|pupils?|class(?:es)?|section|timetable|schedule|homework|assignments?|marks|results?|scores?|grades|absent|absentees|present|fees?|exams?|syllabus|teachers?|strength)\b/i;
+
 export function classFromText(text, { lenient = false } = {}) {
   const str = String(text ?? '');
 
@@ -86,6 +89,17 @@ export function classFromText(text, { lenient = false } = {}) {
   // "5-A" / "9 - B": a grade and a section joined by a dash.
   const dashed = /\b([0-9]{1,2})\s*(?:-|–|—)\s*([a-z])\b/i.exec(str);
   if (dashed) return { text: dashed[0].trim(), key: classKey(`${dashed[1]} ${dashed[2]}`) };
+
+  // "6A attendance", "students of 10B": a grade and its section written as
+  // one word, in a sentence about school records. Glued together like that it
+  // is no ordinary word, and next to "attendance" or "students" it is a class
+  // -- "show 6A attendance" used to be answered "Which class?". Kept to
+  // sections A-H and to sentences that name a school record, so a stray "5a"
+  // elsewhere is still not read as one.
+  const compact = /(?<![\w-])([0-9]{1,2})([a-hA-H])(?![\w-])/.exec(str);
+  if (compact && SCHOOL_RECORD_WORD.test(str)) {
+    return { text: compact[0], key: classKey(`${compact[1]} ${compact[2]}`) };
+  }
 
   // "Class 5" on its own — a grade with no section named.
   const gradeOnly = /\b(?:class|grade|std|standard)\s*([0-9]{1,2})(?:st|nd|rd|th)?\b/i.exec(str);

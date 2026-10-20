@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { handleInboundMessage, resolveActorByPhone, converse } from './whatsapp.agent.js';
+import { handleInboundMessage, resolveActorByPhone, converse, converseWithDocument } from './whatsapp.agent.js';
 import { t } from '../../utils/language.js';
 import { env, isWhatsappLive, isWhatsappSignatureConfigured } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
@@ -232,6 +232,27 @@ export function extractMessages(payload) {
           type: msg.type,
           text: msg.text?.body ?? msg.button?.text ?? msg.interactive?.button_reply?.title ?? null,
           id: msg.id,
+          // p7: a document (a spreadsheet to import). The media id, never the
+          // bytes: they are fetched from Meta only for a known sender.
+          ...(msg.type === 'document' && msg.document && {
+            document: {
+              id: msg.document.id ?? null,
+              filename: msg.document.filename ?? null,
+              mimeType: msg.document.mime_type ?? null,
+              caption: msg.document.caption ?? null,
+              ...(msg.document.simulatedBase64 && { simulatedBase64: msg.document.simulatedBase64 }),
+            },
+          }),
+          // p7: a voice note. The media id only; the audio is fetched and
+          // transcribed only for a known sender (whatsapp.agent.js).
+          ...((msg.type === 'audio' || msg.type === 'voice') && (msg.audio || msg.voice) && {
+            audio: {
+              id: (msg.audio ?? msg.voice).id ?? null,
+              mimeType: (msg.audio ?? msg.voice).mime_type ?? null,
+              voice: Boolean((msg.audio ?? msg.voice).voice ?? msg.type === 'voice'),
+              ...((msg.audio ?? msg.voice).simulatedTranscript && { simulatedTranscript: String((msg.audio ?? msg.voice).simulatedTranscript) }),
+            },
+          }),
         });
       }
     }
@@ -295,7 +316,11 @@ async function handleOne(msg, channel = META_CHANNEL) {
     type: msg.type,
   });
 
-  if (!msg.text) {
+  // p7: a spreadsheet sent as a document is checked for a bulk import (its
+  // caption, if any, is what the person said about it).
+  const document = msg.type === 'document' && msg.document ? msg.document : null;
+  const voice = (msg.type === 'audio' || msg.type === 'voice') && msg.audio ? msg.audio : null;
+  if (!msg.text && !document && !voice) {
     // No text to detect a language from, so English is the only honest default.
     const reply =
       msg.type === 'image' ? t('agent.imageNotSupported', 'en') : t('agent.sendText', 'en');
@@ -307,9 +332,11 @@ async function handleOne(msg, channel = META_CHANNEL) {
   try {
     const result = await handleInboundMessage({
       from: msg.from,
-      text: msg.text,
+      text: msg.text ?? document?.caption ?? '',
       conversation,
       inboundMessageId: inboundDoc?._id ?? null,
+      ...(document && { document }),
+      ...(voice && { voice }),
     });
 
     // Recorded after the turn, from what the number actually resolved to.
@@ -395,7 +422,15 @@ async function deliver(conversation, to, text, metadata = null, channel = META_C
 export async function receiveWebhook(payload) {
   const messages = extractMessages(payload);
   if (!messages.length) {
-    // Delivery receipts and status callbacks land here too; acknowledge them.
+    // Delivery receipts and status callbacks land here too. They move the
+    // operational outbox forward (sent → delivered → read); a failure to do so
+    // is logged, never surfaced to Meta, which would only redeliver.
+    try {
+      const { applyProviderStatuses } = await import('../messaging/messaging.service.js');
+      await applyProviderStatuses(payload);
+    } catch (err) {
+      logger.error(`WhatsApp status callback could not be applied: ${err.message}`);
+    }
     return { received: true, handled: 0 };
   }
 
@@ -439,6 +474,12 @@ export async function receiveChatflowEvent(payload) {
   const replies = [];
   for (const normalised of messages) {
     const msg = { from: normalised.phoneNumber, id: normalised.messageId, type: normalised.type, text: normalised.text };
+    // p7: a Chatflow-forwarded voice note.
+    if (normalised.media && (msg.type === 'audio' || msg.type === 'voice')) msg.audio = { chatflowMedia: normalised.media };
+    // p7: a Chatflow-forwarded document (a spreadsheet to import).
+    if (normalised.media && msg.type === 'document') {
+      msg.document = { filename: normalised.media.filename, mimeType: normalised.media.mimeType, caption: normalised.media.caption, chatflowMedia: normalised.media };
+    }
     try {
       const outcome = await handleOne(msg, chatflowChannel(normalised));
       if (outcome.reply !== null) replies.push({ to: outcome.to, reply: outcome.reply, ...(outcome.parts && { parts: outcome.parts }) });
@@ -519,8 +560,18 @@ const SUGGESTIONS = [
  * what an admin previews here is exactly what a parent would get on their
  * phone — including confirmation prompts for anything that writes.
  */
-export async function simulate({ text, message }, actor) {
-  const body = text ?? message ?? '';
+export async function simulate({ text, message, document = null, voice = null }, actor) {
+  // p7: the simulator can send a voice note as a stand-in transcript
+  // ({ voice: { transcript } }) -- it never reaches a speech service, and the
+  // reply says it was simulated. The words then go through the same voice path
+  // as a real note ("I heard: …", a typed YES for any change).
+  const voiceTranscript = voice && typeof voice.transcript === 'string' ? voice.transcript.trim().slice(0, 1000) : null;
+  const body = voiceTranscript ?? text ?? message ?? '';
+  // p7: the simulator can send a spreadsheet as a document ({ filename, base64 }),
+  // exercising the same import pipeline a real WhatsApp document goes through.
+  const simulatedDocument = document && document.filename && document.base64
+    ? { filename: String(document.filename), simulatedBase64: String(document.base64) }
+    : null;
 
   // The simulator shares the real thread for this person's number, so a
   // preview exercises the same persisted memory a real conversation would --
@@ -551,7 +602,10 @@ export async function simulate({ text, message }, actor) {
 
   // No tenant wrapper here: /simulate arrives through `authenticate`, which
   // has already scoped the request to the caller's school.
-  const result = await converse({ actor, text: body, history, continuationToken });
+  // The thread's session names the same server-side memory a real message uses.
+  const result = simulatedDocument
+    ? await converseWithDocument({ actor, text: body, document: simulatedDocument, history, conversationId: conversation?.sessionId ?? null })
+    : await converse({ actor, text: body, history, continuationToken, conversationId: conversation?.sessionId ?? null, heard: Boolean(voiceTranscript) });
 
   if (conversation) {
     await markProcessed(inboundDoc, { status: 'PROCESSED', metadata: { simulated: true } });
@@ -578,5 +632,6 @@ export async function simulate({ text, message }, actor) {
     awaitingConfirmation: Boolean(result.awaitingConfirmation),
     mode: isLiveMode() ? 'LIVE' : 'SIMULATION',
     isStandIn: !isLiveMode(),
+    ...(voiceTranscript && { voice: { transcript: voiceTranscript, simulated: true } }),
   };
 }

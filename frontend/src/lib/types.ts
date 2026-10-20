@@ -1,7 +1,11 @@
 export type RoleKey =
   | 'SUPER_ADMIN'
   | 'ADMIN' | 'PRINCIPAL' | 'TEACHER' | 'PARENT'
-  | 'STUDENT' | 'FINANCE' | 'LIBRARIAN' | 'WARDEN';
+  | 'STUDENT' | 'FINANCE' | 'LIBRARIAN' | 'WARDEN'
+  // Institution operations roles.
+  | 'HR' | 'MARKETING' | 'COMPLIANCE' | 'TRUSTEE' | 'ALUMNUS'
+  // Part 3: the school nurse (health room).
+  | 'NURSE';
 
 export interface ProfileSummary {
   id: string;
@@ -81,7 +85,7 @@ export interface PageResult<T> {
 export interface SectionDto { id: string; name: string; gradeName: string; classTeacher?: string | null; classTeacherId?: string | null; classRepresentativeId?: string | null }
 export interface OfferingDto { id: string; subject: string; subjectId?: string; sectionId: string; sectionName: string; gradeName?: string; teacherId?: string | null; teacherName?: string | null; isElective?: boolean; capacity?: number | null }
 export interface GradeDto { id: string; name: string; level: number }
-export interface SubjectDto { id: string; name: string; code?: string | null }
+export interface SubjectDto { id: string; name: string; code?: string | null; /** Course credits, where the institution uses them. */ credits?: number | null }
 export interface TermDto { id: string; academicYearId: string; name: string; startsOn: string; endsOn: string }
 
 // Actual shape of GET /users (account + nested profiles) — distinct from the
@@ -96,7 +100,7 @@ export interface StaffAccountDto {
   email?: string | null;
   status?: string | null;
 }
-export interface RosterRow { enrollmentId: string; rollNo: number | null; studentName: string; status: AttStatus | null; note: string | null }
+export interface RosterRow { enrollmentId: string; rollNo: number | null; studentName: string; status: AttStatus | null; note: string | null; admissionNo?: string | null; photoUrl?: string | null }
 export type AttStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY';
 export interface TimetabledPeriod {
   periodNo: number;
@@ -146,7 +150,7 @@ export interface AssignmentDto {
 }
 export interface SubmissionRow { enrollmentId: string; rollNo: number | null; studentName: string; status: string; submittedAt: string | null; marks: number | null; feedback: string | null; attachments: string[] }
 export interface SubmissionRoster { assignment: { id: string; title: string; dueAt: string | null; maxMarks: number | null }; rows: SubmissionRow[] }
-export interface TimetableSlotDto { id: string; dayOfWeek: number; periodNo: number; startTime: string; endTime: string; subject: string | null; teacher: string | null; subjectOfferingId: string | null; isBreak: boolean; room: string | null; liveClassLink: string | null }
+export interface TimetableSlotDto { id: string; dayOfWeek: number; periodNo: number; startTime: string; endTime: string; subject: string | null; teacher: string | null; subjectOfferingId: string | null; isBreak: boolean; room: string | null; liveClassLink: string | null; effectiveRoom?: string | null; roomShift?: { room: string | null; roomCode: string | null; date: string; refNo: string; reason: string } | null }
 export interface TimetableDto { sectionId: string; slots: TimetableSlotDto[] }
 export interface PerformanceDto {
   student: { name: string; class: string };
@@ -378,7 +382,7 @@ export type WhatsappAssistantLink =
   | { enabled: false; reason: string };
 
 // ── Phase 8: Transport ──
-export interface TransportRouteDto { id: string; name: string; operatorName: string | null; vehicleNo: string | null; driverName: string | null; driverPhone: string | null; status: string; stopCount: number; /** Yearly fare in paise; 0 means the route carries no charge. */ fareAmountPaise?: number }
+export interface TransportRouteDto { id: string; name: string; operatorName: string | null; vehicleNo: string | null; driverName: string | null; driverPhone: string | null; status: string; stopCount: number; /** Yearly fare in paise; 0 means the route carries no charge. */ fareAmountPaise?: number; /** Background-check status of the named driver; sent only to people who manage transport or read verification. */ driverClearance?: { status: 'CLEARED' | 'NOT_CLEARED' | 'NO_RECORD' | 'NO_DRIVER'; reason: string | null } }
 export interface TransportStopDto { id: string; routeId: string; name: string; sequenceNo: number; etaMinutesFromStart: number }
 export interface MyBusDto { route: Omit<TransportRouteDto, 'stopCount'>; stop: TransportStopDto; direction: string; nextEta: string | null }
 
@@ -1248,6 +1252,8 @@ export interface ParentDashboardDto {
 }
 export interface WardenDashboardDto {
   hostelStudents: number; occupiedRooms: number; vacantBeds: number; totalCapacity: number; occupancyRate: number;
+  /** Rooms that are not closed, and beds taken by active allotments. */
+  totalRooms: number; occupiedBeds: number;
   maintenanceRooms: number; maintenanceRequests: number; openInquiries: number;
   openTickets: Array<{ id: string; subject: string; status: string; priority: string | null; raisedBy: string | null; createdAt: string }>;
   pendingLeaveCount: number;
@@ -1460,7 +1466,21 @@ export interface AgentReply {
   suggestions?: string[];
   /** Present when the answer holds part of a longer list: how to load the next rows. */
   continuation?: AgentContinuation | null;
+  /** The records this answer used ("Based on"), with links. */
+  evidence?: Array<{ tool: string; text: string; link: string | null; count: number | null }>;
+  /** The server-side conversation this turn belongs to; sent back with the next message. */
+  conversationId?: string;
+  /** Sheets the answer offers to download (bulk import: error report, sample template). */
+  downloads?: AgentDownload[];
+  /** A website link the answer points to (e.g. where a WhatsApp import is confirmed). */
+  link?: string;
 }
+
+/** A file an assistant answer offers (an API path behind sign-in, fetched with the session). */
+export interface AgentDownload { label: string; path: string; filename: string }
+
+/** A spreadsheet uploaded for a bulk import through Ask AI. */
+export interface ImportUpload { fileId: string; name: string; size: number }
 
 /**
  * The way to the next window of a long answer. The token is the server's own

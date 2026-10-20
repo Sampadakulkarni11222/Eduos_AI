@@ -108,6 +108,20 @@ const proposals = () => inSchool(OAK, () => AgentAction.countDocuments());
 const rahul = () => inSchool(OAK, () => Student.findById(school.rahul.student._id).lean());
 const rahulToday = () => inSchool(OAK, () => AttendanceRecord.findOne({ enrollmentId: school.rahul.enrollment._id, date: todayKey() }).lean());
 
+/**
+ * On WhatsApp, a change that is HIGH risk or lands on somebody else's record is
+ * not proposed at all: the person is sent to the website (registry.js
+ * confirmableOn). The scenario then proves nothing was written and that the
+ * same tool was the one refused.
+ */
+async function refusedOnWhatsApp(channel, said, tool) {
+  expect(said.reply).toMatch(/EduOS website/);
+  expect(await proposals()).toBe(0);
+  const call = await lastMcpCall(channel);
+  expect(call).toMatchObject({ tool, status: 'CONFIRM_ON_WEB' });
+  expect(await writesOn(channel)).toBe(0);
+}
+
 /** Which tool each scenario ran on each channel — compared at the end. */
 const toolsUsed = { WEB: {}, WHATSAPP: {} };
 
@@ -139,6 +153,8 @@ describe.each([['Website', 'WEB'], ['WhatsApp', 'WHATSAPP']])('%s', (_label, cha
   it('CREATE — "Create an announcement saying tomorrow is a holiday."', async () => {
     const count = () => inSchool(OAK, () => Announcement.countDocuments({ title: /tomorrow is a holiday/i }));
     const said = await say(school.people.ADMIN, 'Create an announcement saying tomorrow is a holiday.');
+    toolsUsed[channel].create = 'create_announcement';
+    if (channel === 'WHATSAPP') return refusedOnWhatsApp(channel, said, 'create_announcement');
     expect(said.reply).toMatch(/tomorrow is a holiday/i);
     expect(await count()).toBe(0);
 
@@ -180,6 +196,8 @@ describe.each([['Website', 'WEB'], ['WhatsApp', 'WHATSAPP']])('%s', (_label, cha
     const message = "Change Rahul's address to 12 MG Road";
     script.plans.set(message, [{ name: 'update_student', args: { studentName: 'Rahul', fields: { address: '12 MG Road' } } }]);
     const said = await say(school.people.ADMIN, message);
+    toolsUsed[channel].update = 'update_student';
+    if (channel === 'WHATSAPP') return refusedOnWhatsApp(channel, said, 'update_student');
     expect(said.reply).toMatch(/12 MG Road/);
     expect((await rahul()).address ?? null).toBeNull();
 
@@ -194,6 +212,12 @@ describe.each([['Website', 'WEB'], ['WhatsApp', 'WHATSAPP']])('%s', (_label, cha
   it('ACTION — "Mark Rahul absent."', async () => {
     await inSchool(OAK, () => AttendanceRecord.updateOne({ enrollmentId: school.rahul.enrollment._id, date: todayKey() }, { $set: { status: 'PRESENT' } }));
     const said = await say(school.people.TEACHER, 'Mark Rahul absent.');
+    toolsUsed[channel].action = 'mark_attendance';
+    if (channel === 'WHATSAPP') {
+      await refusedOnWhatsApp(channel, said, 'mark_attendance');
+      expect((await rahulToday()).status).toBe('PRESENT');
+      return;
+    }
     expect(said.reply).toMatch(/Rahul Sharma → ABSENT/);
     expect((await rahulToday()).status).toBe('PRESENT');
 
@@ -206,29 +230,22 @@ describe.each([['Website', 'WEB'], ['WhatsApp', 'WHATSAPP']])('%s', (_label, cha
     toolsUsed[channel].action = 'mark_attendance';
   });
 
-  it('FINANCIAL — "Record Rahul\'s payment." asks how much and against which invoice, and records nothing', async () => {
+  it('FINANCIAL — "Record Rahul\'s payment." is a decision made on the Payments screen: nothing is proposed', async () => {
     const said = await say(school.people.FINANCE, "Record Rahul's payment.");
-    // It asks (in the tool's own words) — and does not claim anything was recorded.
-    expect(said.reply).toMatch(/^I need a bit more to do that\./);
+    expect(said.reply).toMatch(/Payments screen|website/);
     expect(said.reply).not.toMatch(/Recorded ₹|It is pending admin approval\./);
     expect(await proposals()).toBe(0);
     expect(await inSchool(OAK, () => Payment.countDocuments())).toBe(0);
-    const call = await lastMcpCall(channel);
-    expect(call).toMatchObject({ tool: 'record_payment', status: 'INVALID_INPUT' });
-    toolsUsed[channel].financialIncomplete = call.tool;
+    toolsUsed[channel].financialIncomplete = null;
   });
 
-  it('FINANCIAL — a complete payment is proposed, confirmed and recorded pending approval', async () => {
+  it('FINANCIAL — a complete payment is not recorded by the assistant either', async () => {
     const said = await say(school.people.FINANCE, 'Record a payment of ₹5,000 against invoice INV-1001 in cash');
-    expect(said.reply).toMatch(/Record a ₹5,000 CASH payment against invoice INV-1001/);
+    expect(said.reply).toMatch(/Payments screen|website/);
+    expect(said.token).toBeNull();
     expect(await inSchool(OAK, () => Payment.countDocuments())).toBe(0);
-
-    const done = await yes(school.people.FINANCE, said);
-    expect(done).toMatch(/pending admin approval/);
-    const payment = await inSchool(OAK, () => Payment.findOne({ invoiceId: school.inv1._id }).lean());
-    expect(payment).toMatchObject({ amountPaise: 500000, mode: 'CASH', recordStatus: 'PENDING_ADMIN_APPROVAL' });
-    expect((await executedOn(channel, 'record_payment')).after.confirmed).toBe(true);
-    toolsUsed[channel].financial = 'record_payment';
+    expect(await writesOn(channel)).toBe(0);
+    toolsUsed[channel].financial = null;
   });
 
   describe('HIGH RISK — external messages', () => {
@@ -274,6 +291,12 @@ describe.each([['Website', 'WEB'], ['WhatsApp', 'WHATSAPP']])('%s', (_label, cha
         name: 'send_whatsapp_message', args: { to: school.people.PARENT.phone, text: 'The bus is late today.' },
       }]);
       const said = await say(school.people.ADMIN, message);
+      toolsUsed[channel].singleMessage = 'send_whatsapp_message';
+      if (channel === 'WHATSAPP') {
+        await refusedOnWhatsApp(channel, said, 'send_whatsapp_message');
+        expect(sentTo(school.people.PARENT.phone)).toEqual([]);
+        return;
+      }
       if (channel === 'WEB') expect(said.risk).toBe('HIGH');
       expect(sentTo(school.people.PARENT.phone)).toEqual([]);
 
@@ -297,6 +320,12 @@ describe.each([['Website', 'WEB'], ['WhatsApp', 'WHATSAPP']])('%s', (_label, cha
     script.plans.set(message, [{ name: 'delete_document', args: { documentId: String(doc._id) } }]);
 
     const said = await say(school.people.ADMIN, message);
+    toolsUsed[channel].delete = 'delete_document';
+    if (channel === 'WHATSAPP') {
+      await refusedOnWhatsApp(channel, said, 'delete_document');
+      expect(await inSchool(OAK, () => Document.countDocuments())).toBe(1);
+      return;
+    }
     expect(said.reply).toMatch(/Permanently delete .*"Old bus circular"/);
     if (channel === 'WEB') expect(said.risk).toBe('HIGH');
     expect(await inSchool(OAK, () => Document.countDocuments())).toBe(1);

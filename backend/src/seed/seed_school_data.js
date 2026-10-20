@@ -2,6 +2,7 @@
 // Seeds a complete, realistic, multi-role school dataset (students, parents, teachers, wardens, admins,
 // academic terms, subjects, subject offerings, timetables, attendance, exams, marks, assignments, submissions, invoices).
 
+import { nextReceiptNo } from '../modules/fees/fee.service.js';
 import 'dotenv/config';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
@@ -11,6 +12,8 @@ import { logger } from '../utils/logger.js';
 // Import Models
 import { Account } from '../models/account.model.js';
 import { School } from '../models/school.model.js';
+import { createSampleCampus } from '../modules/administration/facility.service.js';
+import { Facility } from '../models/facility.model.js';
 import { runWithTenant } from '../tenancy/tenantContext.js';
 import { Profile } from '../models/profile.model.js';
 import { Role } from '../models/role.model.js';
@@ -21,6 +24,7 @@ import { AttendanceRecord } from '../models/attendanceRecord.model.js';
 import { MedicalRecord } from '../models/medicalRecord.model.js';
 import { encrypt } from '../utils/crypto.js';
 import { Exam, ExamSubject, Mark } from '../models/exam.model.js';
+import { gradeForPercentage, percentage } from '../utils/grading.js';
 import { Assignment, Submission } from '../models/assignment.model.js';
 import { Invoice, InvoiceLine, Payment } from '../models/fee.model.js';
 import { TimetableSlot } from '../models/timetableSlot.model.js';
@@ -39,6 +43,8 @@ const DEMO_PASSWORD = 'ChangeMe@123!';
  * written with no school would be invisible to every portal. The demo data is
  * Oakridge's; override with SEED_SCHOOL_SLUG / SEED_SCHOOL_NAME.
  */
+const FATHER_NAMES = ['Rajesh', 'Amit', 'Suresh', 'Vikram', 'Prakash', 'Manoj', 'Sanjay', 'Ashok'];
+const MOTHER_NAMES = ['Sunita', 'Kavita', 'Anita', 'Meena', 'Lata', 'Rekha', 'Pooja', 'Neeta'];
 const SEED_SCHOOL_SLUG = (process.env.SEED_SCHOOL_SLUG || 'oakridge').toLowerCase();
 const SEED_SCHOOL_NAME = process.env.SEED_SCHOOL_NAME || 'Oakridge Academy';
 
@@ -89,7 +95,7 @@ async function seedSchool() {
     'assignments', 'submissions', 'invoices', 'invoicelines', 'payments',
     'timetableslots', 'hostelrooms', 'hostelallocations', 'transportroutes',
     'transportstops', 'busenrollments', 'calendarevents', 'medicalrecords',
-    'subjectregistrations'
+    'subjectregistrations', 'facilities', 'facilitybookings', 'workorders'
   ];
   for (const c of collectionsToClear) {
     await mongoose.connection.db.collection(c).deleteMany({});
@@ -132,7 +138,7 @@ async function seedSchool() {
     endsOn: new Date('2026-11-30'),
   });
 
-  const finalTerm = await Term.create({
+  await Term.create({
     academicYearId: acYear._id,
     name: 'Finals',
     startsOn: new Date('2026-12-01'),
@@ -147,6 +153,10 @@ async function seedSchool() {
     { key: 'FINANCE', name: 'Demo Finance', phone: '+910000000004', email: 'finance@schoolerp.com' },
     { key: 'LIBRARIAN', name: 'Demo Librarian', phone: '+910000000005', email: 'librarian@schoolerp.com' },
     { key: 'WARDEN', name: 'Demo Warden', phone: '+910000000006', email: 'warden@schoolerp.com' },
+    { key: 'HR', name: 'Demo HR Manager', phone: '+910000000010', email: 'hr@schoolerp.com' },
+    { key: 'MARKETING', name: 'Demo Admissions Lead', phone: '+910000000030', email: 'marketing@schoolerp.com' },
+    { key: 'COMPLIANCE', name: 'Demo Compliance Officer', phone: '+910000000031', email: 'compliance@schoolerp.com' },
+    { key: 'TRUSTEE', name: 'Demo Trustee', phone: '+910000000032', email: 'trustee@schoolerp.com' },
   ];
   for (const staff of staffToCreate) {
     const acc = await Account.create({
@@ -337,7 +347,6 @@ async function seedSchool() {
   for (let sIdx = 0; sIdx < sections.length; sIdx++) {
     const section = sections[sIdx];
     const grade = grades.find((g) => g._id.toString() === section.gradeId.toString());
-    const gradeLabel = grade ? grade.name : 'Class';
 
     for (let i = 1; i <= 60; i++) {
       count++;
@@ -371,7 +380,7 @@ async function seedSchool() {
         _id: sProfId,
         accountId: sAccId,
         roleId: roleMap.get('STUDENT'),
-        displayName: `${displayName} (${gradeLabel}–${section.name} #${i})`,
+        displayName,
         // Without this the profile falls back to the schema default
         // ('eduos-demo-tenant') while this student's Student, Enrollment and
         // AttendanceRecord rows are all stamped with the seed school. The
@@ -415,6 +424,10 @@ async function seedSchool() {
       const pProfId = new mongoose.Types.ObjectId();
 
       const pPhone = `+910000004${String(count).padStart(3, '0')}`;
+      // A fictional guardian with the family's surname, not "Parent of Diya".
+      // The relation below is FATHER for even i, MOTHER for odd: the name follows it.
+      const guardianPool = i % 2 === 0 ? FATHER_NAMES : MOTHER_NAMES;
+      const guardianName = `${guardianPool[count % guardianPool.length]} ${last}`;
       const pEmail = `parent.${count}@schoolerp.com`;
 
       accountsToInsert.push({
@@ -431,7 +444,7 @@ async function seedSchool() {
         _id: pProfId,
         accountId: pAccId,
         roleId: roleMap.get('PARENT'),
-        displayName: `Parent of ${first}`,
+        displayName: guardianName,
         tenantId: SEED_SCHOOL_SLUG,
         tenantName: SEED_SCHOOL_NAME,
         createdAt: new Date(),
@@ -469,7 +482,7 @@ async function seedSchool() {
         bloodGroup: bloodGroups[Math.floor(Math.random() * bloodGroups.length)],
         heightCm,
         weightKg,
-        emergencyContactEnc: encrypt({ name: `Parent of ${first}`, phone: pPhone, relation }),
+        emergencyContactEnc: encrypt({ name: guardianName, phone: pPhone, relation }),
         // allergies/medications are always string[] (never null) per MedicalDto —
         // the panel does rec.medications.length unconditionally, matching how
         // the normal save flow always sends an array (possibly empty).
@@ -486,7 +499,7 @@ async function seedSchool() {
   logger.info(`Inserting ${accountsToInsert.length} accounts...`);
   await Account.insertMany(accountsToInsert);
   logger.info(`Inserting ${profilesToInsert.length} profiles...`);
-  const studentProfiles = await Profile.insertMany(profilesToInsert);
+  await Profile.insertMany(profilesToInsert);
   logger.info(`Inserting ${studentsToInsert.length} students...`);
   await Student.insertMany(studentsToInsert);
   logger.info(`Inserting ${enrollmentsToInsert.length} enrollments...`);
@@ -559,27 +572,39 @@ async function seedSchool() {
   // 10. Seed Attendance Records (Last 10 days)
   logger.info('Seeding 10 days of attendance history for all students...');
   const attendanceStatuses = ['PRESENT', 'PRESENT', 'PRESENT', 'PRESENT', 'LATE', 'PRESENT', 'PRESENT', 'ABSENT'];
-  for (let dOffset = 0; dOffset < 10; dOffset++) {
+  // Written in one bulk insert per day (one create per record took minutes).
+  // Registers are keyed by the school's local calendar day at UTC midnight, the
+  // same key the attendance service and analytics use. Today is left to
+  // seed_operations ("Today's attendance"), which marks most classes and
+  // leaves two unmarked on purpose.
+  for (let dOffset = 1; dOffset < 10; dOffset++) {
     const date = new Date();
     date.setDate(date.getDate() - dOffset);
     if (date.getDay() === 0 || date.getDay() === 6) continue; // Skip weekends
-    
-    for (const enrollment of enrollments) {
+    const day = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    await AttendanceRecord.insertMany(enrollments.map((enrollment) => {
       const status = attendanceStatuses[Math.floor(Math.random() * attendanceStatuses.length)];
-      await AttendanceRecord.create({
+      return {
         enrollmentId: enrollment._id,
-        date: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
+        date: day,
         periodNo: null,
         status,
         note: status === 'LATE' ? 'Late bus' : status === 'ABSENT' ? 'Fever' : '',
         source: 'WEB',
         markedByProfileId: teacherProfiles[0]._id, // Demo Teacher marked it
-      });
-    }
+      };
+    }));
   }
 
   // 11. Seed Invoices & Payments
   logger.info('Seeding school fee invoices and bank payments...');
+  // Bulk-inserted (one create per row took the better part of a minute). The
+  // invoices were raised on 1 September and the payments came in over the
+  // following six weeks, as a real collection would.
+  const invoiceDocs = [];
+  const lineDocs = [];
+  const paymentDocs = [];
+  const termOneRaised = new Date('2026-09-01T04:30:00Z');
   for (let i = 0; i < enrollments.length; i++) {
     const enrollment = enrollments[i];
     const invoiceNo = `INV-2026-${String(i + 1).padStart(4, '0')}`;
@@ -587,37 +612,42 @@ async function seedSchool() {
     const status = i % 3 === 0 ? 'PENDING' : i % 3 === 1 ? 'PAID' : 'PARTIAL';
     const paidPaise = status === 'PAID' ? totalPaise : status === 'PARTIAL' ? 2000000 : 0;
 
-    const invoice = await Invoice.create({
+    const invoiceId = new mongoose.Types.ObjectId();
+    invoiceDocs.push({
+      _id: invoiceId,
       enrollmentId: enrollment._id,
       invoiceNo,
       dueOn: new Date('2026-10-15'),
       status,
       totalPaise,
       paidPaise,
+      createdAt: termOneRaised,
+      updatedAt: termOneRaised,
     });
-
-    await InvoiceLine.create({
-      invoiceId: invoice._id,
-      description: 'Term 1 Tuition Fee',
-      amountPaise: 4000000,
-    });
-
-    await InvoiceLine.create({
-      invoiceId: invoice._id,
-      description: 'Library & Laboratory Fee',
-      amountPaise: 50000,
-    });
+    lineDocs.push(
+      { invoiceId, description: 'Term 1 Tuition Fee', amountPaise: 4000000 },
+      { invoiceId, description: 'Library & Laboratory Fee', amountPaise: 500000 },
+    );
 
     if (paidPaise > 0) {
-      await Payment.create({
-        invoiceId: invoice._id,
+      const paidOn = new Date(Math.min(Date.now() - 86_400_000, termOneRaised.getTime() + ((i * 37) % 42 + 2) * 86_400_000));
+      paymentDocs.push({
+        invoiceId,
         amountPaise: paidPaise,
+        // From the school's receipt series, as a real collection would have.
+        receiptNo: await nextReceiptNo({ at: paidOn }),
         mode: 'BANK',
         gatewayRef: `TXN-${Math.floor(Math.random() * 100000000)}`,
         status: 'SUCCESS',
+        paidOn,
+        createdAt: paidOn,
+        updatedAt: paidOn,
       });
     }
   }
+  await Invoice.insertMany(invoiceDocs, { timestamps: false });
+  await InvoiceLine.insertMany(lineDocs);
+  await Payment.insertMany(paymentDocs, { timestamps: false });
 
   // 12. Seed Exams & Exam Marks
   // Two exams on purpose: "Midterm Evaluation" is fully published (so the
@@ -643,13 +673,14 @@ async function seedSchool() {
 
     // Find enrolled students in the section
     const secEnrollments = enrollments.filter(e => e.sectionId.toString() === offering.sectionId.toString());
-    for (const e of secEnrollments) {
+    // One bulk insert per paper (one create per mark took the better part of a minute).
+    await Mark.insertMany(secEnrollments.map((e) => {
       const marks = Math.floor(Math.random() * 35) + 65; // Generate realistic grades 65 - 100
-      let gradeLabel = 'A';
-      if (marks < 75) gradeLabel = 'C';
-      else if (marks < 90) gradeLabel = 'B';
+      // The same CBSE scale the report card and enterMarks use (A1..E), so a
+      // dashboard and a report card never name the same score differently.
+      const gradeLabel = gradeForPercentage(percentage(marks, 100))?.label ?? null;
 
-      await Mark.create({
+      return {
         examSubjectId: examSubject._id,
         enrollmentId: e._id,
         marks,
@@ -658,8 +689,8 @@ async function seedSchool() {
         status: 'PUBLISHED',
         publishedAt: new Date(),
         enteredByProfileId: offering.teacherId || teacherProfiles[0]._id,
-      });
-    }
+      };
+    }));
   }
 
   const unitTestExam = await Exam.create({
@@ -678,6 +709,7 @@ async function seedSchool() {
     });
 
     const secEnrollments = enrollments.filter(e => e.sectionId.toString() === offering.sectionId.toString());
+    const draftMarks = [];
     for (let i = 0; i < secEnrollments.length; i++) {
       // Every 3rd student: no Mark row at all (still PENDING — not entered),
       // so "Enter marks" also has genuinely blank rows to fill in, not just
@@ -685,16 +717,17 @@ async function seedSchool() {
       if (i % 3 === 2) continue;
       const e = secEnrollments[i];
       const marks = Math.floor(Math.random() * 20) + 30; // 30 - 50
-      await Mark.create({
+      draftMarks.push({
         examSubjectId: examSubject._id,
         enrollmentId: e._id,
         marks,
-        gradeLabel: marks >= 45 ? 'A' : marks >= 38 ? 'B' : 'C',
+        gradeLabel: gradeForPercentage(percentage(marks, 50))?.label ?? null,
         remarks: 'Good effort',
         status: 'DRAFT',
         enteredByProfileId: offering.teacherId || teacherProfiles[0]._id,
       });
     }
+    await Mark.insertMany(draftMarks);
   }
 
   // 13. Seed Assignments & Submissions
@@ -729,9 +762,10 @@ async function seedSchool() {
 
     // Find enrolled students in the section
     const secEnrollments = enrollments.filter(e => e.sectionId.toString() === offering.sectionId.toString());
+    const submissionDocs = [];
     for (const [i, e] of secEnrollments.entries()) {
       const marks = Math.floor(Math.random() * 8) + 12; // 12 - 20 marks
-      await Submission.create({
+      submissionDocs.push({
         assignmentId: assignment._id,
         enrollmentId: e._id,
         status: 'GRADED',
@@ -744,7 +778,7 @@ async function seedSchool() {
       // the teacher's grading queue is non-empty; the rest have nothing
       // recorded, so those students can actually submit.
       if (i % 3 === 0) {
-        await Submission.create({
+        submissionDocs.push({
           assignmentId: openAssignment._id,
           enrollmentId: e._id,
           status: 'SUBMITTED',
@@ -753,6 +787,8 @@ async function seedSchool() {
         });
       }
     }
+    // One bulk insert per subject (one create per submission took half a minute).
+    await Submission.insertMany(submissionDocs);
   }
 
   // 14. Seed Hostel Rooms & Allocations
@@ -867,6 +903,21 @@ async function seedSchool() {
       audience: { all: true },
     },
   ]);
+
+  // A labelled sample campus, so the 3D Campus World has buildings to show.
+  logger.info('Seeding a sample campus layout for Campus World...');
+  await createSampleCampus({ institutionType: 'SCHOOL' });
+  // Give each class section a home classroom, so its timetable shows as
+  // scheduled use of that room on the map.
+  const [homeRooms, allSections] = await Promise.all([
+    Facility.find({ kind: 'CLASSROOM' }).sort({ code: 1 }),
+    Section.find({}).sort({ _id: 1 }).lean(),
+  ]);
+  for (const [i, room] of homeRooms.entries()) {
+    if (!allSections[i]) break;
+    room.sectionId = allSections[i]._id;
+    await room.save();
+  }
 
   logger.info('====================================================');
   logger.info('  FULL SCHOOL SEEDING COMPLETED SUCCESSFULLY!  🚀');

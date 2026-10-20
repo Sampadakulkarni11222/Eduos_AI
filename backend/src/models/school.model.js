@@ -18,6 +18,8 @@ const schoolSchema = new Schema(
     },
     name: { type: String, required: true, trim: true },
     status: { type: String, enum: ['ACTIVE', 'SUSPENDED'], default: 'ACTIVE' },
+    // Feature switches the school has set (see constants/features.js); unset keys use the default.
+    features: { type: Map, of: Boolean, default: {} },
   },
   { timestamps: true }
 );

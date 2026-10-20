@@ -1,7 +1,8 @@
+import { notifyGuardiansOfAbsence } from '../attendance-alerts/alerts.service.js';
 import mongoose from 'mongoose';
 import { AttendanceRecord } from '../../models/attendanceRecord.model.js';
 import { Enrollment } from '../../models/student.model.js';
-import { Section } from '../../models/academics.model.js';
+import { Section, AcademicYear } from '../../models/academics.model.js';
 // Registered, not assumed: the roster populates the class teacher's and the
 // subject teacher's profiles, and populate needs the model present even when a
 // caller has imported only the attendance module.
@@ -10,6 +11,8 @@ import { TimetableSlot } from '../../models/timetableSlot.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 import { rowError } from '../../utils/csvImport.js';
+// A confirmed substitute may take one period's register (modules/staff cover).
+import { hasConfirmedCover } from '../staff/coverAccess.js';
 
 /** Every status a register can hold. Anything else is not a mark and is not counted. */
 export const ATTENDANCE_STATUSES = ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY'];
@@ -70,7 +73,7 @@ export function parseDateToMidnight(dateStr) {
  * /attendance/summary, /calendar and /trend, which resolve the enrollment
  * from the caller's identity (see resolveSummaryEnrollmentIds).
  */
-async function assertSectionAccess(actor, scope, sectionId) {
+async function assertSectionAccess(actor, scope, sectionId, cover = null) {
   // Only an explicit school-wide grant is unrestricted. Testing `!== 'OWN'`
   // meant any other value — including an absent scope, which is what a role
   // holding no attendance.mark at all resolves to — read as unrestricted and
@@ -80,6 +83,8 @@ async function assertSectionAccess(actor, scope, sectionId) {
   if (actor.roleKey === 'TEACHER') {
     const sectionIds = await getTeacherSectionIds(actor.profileId);
     if (!sectionIds.includes(String(sectionId))) {
+      // A substitute confirmed for this period may open this period's roster only.
+      if (cover && await hasConfirmedCover(actor.profileId, sectionId, cover.day, cover.periodNo)) return;
       throw new AppError('You do not teach this section', 403);
     }
     return;
@@ -112,7 +117,10 @@ export async function getRoster(actor, scope, sectionId, date, periodNo = null) 
   const period = periodNo === null || periodNo === undefined || periodNo === '' ? null : Number(periodNo);
   if (period !== null && !Number.isInteger(period)) throw new AppError('periodNo must be a whole number', 400);
 
-  await assertSectionAccess(actor, scope, sectionId);
+  await assertSectionAccess(actor, scope, sectionId, period === null ? null : { day, periodNo: period });
+  const covering = period !== null && actor?.roleKey === 'TEACHER' && scope !== 'ALL'
+    ? await hasConfirmedCover(actor.profileId, sectionId, day, period)
+    : false;
 
   const section = await Section.findById(sectionId).populate('gradeId').populate('classTeacherId', 'displayName');
   if (!section) throw new AppError('Section not found', 404);
@@ -151,7 +159,7 @@ export async function getRoster(actor, scope, sectionId, date, periodNo = null) 
         subjectTeacher: teacher?.displayName ?? null,
         startTime: s.startTime ?? null,
         endTime: s.endTime ?? null,
-        canMark: scope === 'ALL' || mine || isClassTeacher,
+        canMark: scope === 'ALL' || mine || isClassTeacher || (covering && s.periodNo === period),
       };
     });
 
@@ -170,6 +178,9 @@ export async function getRoster(actor, scope, sectionId, date, periodNo = null) 
     enrollmentId: e._id.toString(),
     rollNo: e.rollNo ?? null,
     studentName: e.studentId ? `${e.studentId.firstName} ${e.studentId.lastName || ''}`.trim() : 'Unknown',
+    // Shown on attendance flashcards to tell apart students who share a name.
+    admissionNo: e.studentId?.admissionNo ?? null,
+    photoUrl: e.studentId?.photoUrl ?? null,
     status: recordByEnrollment.get(e._id.toString())?.status ?? null,
     note: recordByEnrollment.get(e._id.toString())?.note ?? null,
   }));
@@ -212,11 +223,19 @@ export async function getRoster(actor, scope, sectionId, date, periodNo = null) 
  * A school-wide grant is unaffected, and so is the class teacher, who reaches
  * their own periods through the second rule anyway.
  */
-async function assertMarkAccess(actor, scope, sectionId, periodNo, day) {
+export async function assertMarkAccess(actor, scope, sectionId, periodNo, day) {
   if (scope === 'ALL') return;
 
   if (actor?.roleKey !== 'TEACHER') {
     throw new AppError('You are not allowed to mark this register', 403);
+  }
+
+  // A confirmed cover assignment lets the substitute mark exactly that period
+  // of that class on that day. It never opens the whole-day register, another
+  // period, or another day; every other check below is unchanged.
+  if (periodNo !== null && periodNo !== undefined && day && await hasConfirmedCover(actor.profileId, sectionId, day, periodNo)) {
+    const dowCover = day.getUTCDay() === 0 ? 7 : day.getUTCDay();
+    if (await TimetableSlot.exists({ sectionId, dayOfWeek: dowCover, periodNo })) return;
   }
 
   const sectionIds = await getTeacherSectionIds(actor.profileId);
@@ -260,6 +279,57 @@ async function assertMarkAccess(actor, scope, sectionId, periodNo, day) {
   }
 }
 
+/** How many days back a register may still be marked without `attendance.regularize`. */
+export function backdateDays() {
+  const raw = process.env.ATTENDANCE_BACKDATE_DAYS;
+  const n = raw === undefined || raw === '' ? NaN : Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : 3;
+}
+
+/** Today's calendar day (process-local, see config/env.js) at UTC midnight, as registers are stored. */
+function todayKey(now = new Date()) {
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Which days a register may be written for.
+ *
+ * Marking used to accept any date at all: a teacher could mark a register a
+ * year ahead, or seven years back. Now:
+ *   - never a future day;
+ *   - never before the current academic year began (when one is configured);
+ *   - back-dating up to ATTENDANCE_BACKDATE_DAYS (default 3) is ordinary
+ *     marking; anything older is a correction and needs `attendance.regularize`.
+ */
+export async function assertMarkableDate(actor, day) {
+  const today = todayKey();
+  if (day.getTime() > today.getTime()) {
+    throw new AppError('Attendance cannot be marked for a future date', 400, [], 'ATTENDANCE_FUTURE_DATE');
+  }
+
+  const year = await AcademicYear.findOne({ isCurrent: true }).select('startsOn').lean();
+  if (year?.startsOn) {
+    const start = parseDateToMidnight(year.startsOn.toISOString());
+    if (day.getTime() < start.getTime()) {
+      throw new AppError(
+        'That date is before the current academic year began',
+        400, [], 'ATTENDANCE_BEFORE_ACADEMIC_YEAR',
+      );
+    }
+  }
+
+  const ageDays = Math.round((today.getTime() - day.getTime()) / DAY_MS);
+  const limit = backdateDays();
+  if (ageDays > limit && !actor?.permissions?.['attendance.regularize']) {
+    throw new AppError(
+      `Registers older than ${limit} day${limit === 1 ? '' : 's'} can only be corrected by someone allowed to regularize attendance`,
+      403, [], 'ATTENDANCE_REGULARIZE_REQUIRED',
+    );
+  }
+}
+
 export async function markAttendance(actor, scope, { date, periodNo = null, records, entries, sectionId }) {
   if (!sectionId) throw new AppError('sectionId is required', 400);
   if (!date) throw new AppError('date is required', 400);
@@ -271,6 +341,8 @@ export async function markAttendance(actor, scope, { date, periodNo = null, reco
   // unrestricted; a teacher is checked against the exact slot being marked —
   // their own period, or their own class's day if they are its class teacher.
   await assertMarkAccess(actor, scope, sectionId, periodNo, day);
+  // Then whether the day itself is open for marking (see assertMarkableDate).
+  await assertMarkableDate(actor, day);
 
   const items = records || entries || [];
   if (items.length === 0) throw new AppError('No attendance records provided', 400);
@@ -339,6 +411,12 @@ export async function markAttendance(actor, scope, { date, periodNo = null, reco
       },
     }));
     await AttendanceRecord.bulkWrite(ops);
+    // Families hear about an absence or a late arrival on the day register.
+    // Sent once per child, day and status, through the outbox (consent, quiet
+    // hours and true delivery status apply); it never holds up the register.
+    if (periodNo === null || periodNo === undefined) {
+      await notifyGuardiansOfAbsence({ entries: changes, date: day, requestedBy: actor.profileId }).catch(() => {});
+    }
   }
   // Same period back, so the caller sees what it just wrote rather than the
   // whole-day roster.
@@ -376,6 +454,16 @@ export async function findExisting(sectionId, date, periodNo = null) {
  */
 export async function markAttendanceBulk(actor, scope, { date, periodNo = null, sectionId, rows }) {
   if (!sectionId) throw new AppError('sectionId is required', 400);
+  if (!date) throw new AppError('date is required', 400);
+  const day = parseDateToMidnight(date);
+  if (!day) throw new AppError('Invalid date format', 400);
+
+  // Authorize before reading the roster: matching rows first meant a caller
+  // with no right to this register still learned which admission and roll
+  // numbers belong to the section from the per-row "does not match" errors.
+  const period = periodNo === null || periodNo === undefined || periodNo === '' ? null : Number(periodNo);
+  await assertMarkAccess(actor, scope, sectionId, period, day);
+  await assertMarkableDate(actor, day);
 
   const enrollments = await Enrollment.find({ sectionId, status: 'ACTIVE' })
     .populate({ path: 'studentId', select: 'admissionNo' })
@@ -501,8 +589,14 @@ export async function getSummary(actor, scope, { enrollmentId, from, to, month }
 
   // Only real marks are counted: a row with no valid status or no date is not
   // attendance, whatever else it carries.
+  // Whole-day marks only (periodNo: null) -- the same rows the calendar and the
+  // trend count. Per-period rows used to be added in too, so one period's
+  // absence became an extra "working day" and an extra absence, and the same
+  // child showed different percentages on the calendar, the cards and the
+  // report card. Lecture-level figures live in getLectureAttendance.
   const match = {
     enrollmentId: { $in: enrollmentIds.map((id) => new mongoose.Types.ObjectId(id)) },
+    periodNo: null,
     status: { $in: ATTENDANCE_STATUSES },
   };
   if (dateFrom || dateTo) {

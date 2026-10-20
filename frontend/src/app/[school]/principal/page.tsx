@@ -18,6 +18,7 @@ import { api } from '@/lib/api';
 import { useSchoolHref } from '@/lib/school-path';
 import { RISK_CATEGORY_LABEL, RISK_LEVEL_TONE } from '@/lib/risk-labels';
 import type { FeeSummary, OfferingDto, RiskItem, RiskScan, SectionDto, StaffAccountDto } from '@/lib/types';
+import { PulseBoard } from '@/components/ops/pulse-board';
 
 export default function PrincipalDashboard() {
   // Links are written school-less; this adds the school in the URL.
@@ -65,6 +66,9 @@ export default function PrincipalDashboard() {
       desc: 'How the school is doing today, and where to look first.',
       actions: <Button variant="soft" onClick={runScan} disabled={loading}>{loading ? '↻ Scanning…' : '↻ Rescan'}</Button>,
     }}>
+      {/* The interactive board: briefing, departments, campus, charts and live activity. */}
+      <PulseBoard />
+
       {/* ── Risk headline ───────────────────────────────────────────
           Wording matches what the engine produces: it runs a check per
           student per signal, and only the ones crossing a threshold are

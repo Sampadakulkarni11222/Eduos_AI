@@ -3,7 +3,8 @@ import { Lead, LeadInteraction } from '../../models/lead.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { buildPermissionMap } from '../../utils/buildPermissionMap.js';
 import { tenantFilter } from '../../tenancy/tenantContext.js';
-import { Student } from '../../models/student.model.js';
+import { Student, Enrollment } from '../../models/student.model.js';
+import { Section, AcademicYear } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { runInTransaction } from '../../utils/transaction.js';
 import { nextSequence } from '../../utils/sequence.js';
@@ -134,10 +135,70 @@ async function nextAdmissionNo(session = null) {
   return `ADM-${year}-${String(seq).padStart(4, '0')}`;
 }
 
-async function ensureStudentForEnrolledLead(lead, session = null) {
-  if (lead.stage !== 'ENROLLED') return;
+/**
+ * Where an enrolled lead's child is placed: the section (class) they join and
+ * the current academic year. Null when no section was named.
+ */
+async function resolvePlacement(sectionId, session = null) {
+  if (sectionId === undefined || sectionId === null || sectionId === '') return null;
+  if (!mongoose.isValidObjectId(sectionId)) throw new AppError('sectionId is not a valid id', 400, [], 'INVALID_SECTION');
+  const section = await Section.findById(sectionId).session(session).lean();
+  if (!section) throw new AppError('That class section does not exist in this school', 404, [], 'SECTION_NOT_FOUND');
+  const year = await AcademicYear.findOne({ isCurrent: true }).session(session).lean();
+  if (!year) throw new AppError('Set the current academic year before enrolling into a class', 409, [], 'NO_CURRENT_YEAR');
+  return { sectionId: section._id, academicYearId: year._id };
+}
+
+/** Puts a lead-created student into their class for the year and makes them ACTIVE. */
+async function placeStudent(student, placement, session = null) {
+  const existing = await Enrollment.findOne({ studentId: student._id, academicYearId: placement.academicYearId }).session(session);
+  if (existing) {
+    existing.sectionId = placement.sectionId;
+    existing.status = 'ACTIVE';
+    await existing.save({ session });
+  } else {
+    // The roll-number index is unique on (section, year, rollNo) and a missing
+    // rollNo indexes as null, so every enrolment takes the next free number.
+    for (let attempt = 0; ; attempt++) {
+      const last = await Enrollment.findOne({ sectionId: placement.sectionId, academicYearId: placement.academicYearId, rollNo: { $ne: null } })
+        .sort({ rollNo: -1 }).select('rollNo').session(session).lean();
+      try {
+        await Enrollment.create([{ studentId: student._id, ...placement, rollNo: (last?.rollNo ?? 0) + 1, status: 'ACTIVE' }], { session });
+        break;
+      } catch (err) {
+        if (err?.code !== 11000 || !err.keyPattern?.rollNo || attempt >= 4) throw err;
+      }
+    }
+  }
+  if (student.status !== 'ACTIVE') {
+    student.status = 'ACTIVE';
+    await student.save({ session });
+  }
+}
+
+/**
+ * The student record behind an ENROLLED lead.
+ *
+ * Moving a lead to ENROLLED used to create an ACTIVE student with no class,
+ * guardian or fee -- a child "on roll" who appeared on no register -- and
+ * moving the lead to LOST afterwards left them active. Now:
+ *  - with a sectionId, the student is created (or re-activated) ACTIVE and
+ *    enrolled in that section for the current academic year;
+ *  - without one, the record is created INACTIVE: the admission number is
+ *    reserved and the child is not counted on any roll until somebody places
+ *    them (the same call again with a sectionId, or the student screens).
+ * Returns { studentId, needsPlacement }, or null when the lead is not ENROLLED.
+ */
+async function ensureStudentForEnrolledLead(lead, session = null, { sectionId } = {}) {
+  if (lead.stage !== 'ENROLLED') return null;
+  const placement = await resolvePlacement(sectionId, session);
   const existingStudent = await Student.findOne({ leadId: lead._id }).session(session);
-  if (!existingStudent) {
+  if (existingStudent) {
+    if (placement) await placeStudent(existingStudent, placement, session);
+    const placed = await Enrollment.exists({ studentId: existingStudent._id, status: 'ACTIVE' }).session(session);
+    return { studentId: existingStudent._id, needsPlacement: !placed || existingStudent.status !== 'ACTIVE' };
+  }
+  {
     const nameParts = lead.childName.trim().split(/\s+/);
     const firstName = nameParts[0];
     const lastName = nameParts.slice(1).join(' ') || '';
@@ -149,14 +210,15 @@ async function ensureStudentForEnrolledLead(lead, session = null) {
     for (let attempt = 0; attempt < ADMISSION_NO_ATTEMPTS; attempt++) {
       const admissionNo = await nextAdmissionNo(session);
       try {
-        await Student.create([{
+        const [student] = await Student.create([{
           admissionNo,
           firstName,
           lastName,
           leadId: lead._id,
-          status: 'ACTIVE',
+          status: placement ? 'ACTIVE' : 'INACTIVE',
         }], { session });
-        return;
+        if (placement) await placeStudent(student, placement, session);
+        return { studentId: student._id, needsPlacement: !placement };
       } catch (err) {
         if (err?.code !== 11000) throw err;
         lastErr = err;
@@ -173,6 +235,31 @@ async function ensureStudentForEnrolledLead(lead, session = null) {
       409, [], 'ADMISSION_NO_UNAVAILABLE'
     );
   }
+}
+
+/**
+ * A lead that leaves ENROLLED (lost, or moved back a stage) takes the student
+ * record it created off the roll: the record goes INACTIVE and any active
+ * enrolment is withdrawn. Nothing is deleted -- the admission number stays
+ * reserved and the history stays readable.
+ */
+async function deactivateStudentForLead(lead, session = null) {
+  const student = await Student.findOne({ leadId: lead._id }).session(session);
+  if (!student) return;
+  await Enrollment.updateMany({ studentId: student._id, status: 'ACTIVE' }, { $set: { status: 'WITHDRAWN' } }).session(session);
+  if (student.status !== 'INACTIVE') {
+    student.status = 'INACTIVE';
+    await student.save({ session });
+  }
+}
+
+/** Other enquiries with the same phone number (last 10 digits). */
+async function sameNumberLeads(phone, excludeId = null) {
+  const last10 = String(phone ?? '').replace(/\D/g, '').slice(-10);
+  if (last10.length < 10) return [];
+  const rows = await Lead.find({ phone: { $regex: last10 + '$' }, ...(excludeId ? { _id: { $ne: excludeId } } : {}) })
+    .select('childName guardianName stage createdAt').sort({ createdAt: 1 }).limit(10).lean();
+  return rows.map((r) => ({ id: r._id, childName: r.childName, guardianName: r.guardianName, stage: r.stage, createdAt: r.createdAt }));
 }
 
 const PHONE_RULE = 'phone must be a valid number, e.g. +919876543210 or a 10-digit local number';
@@ -200,6 +287,12 @@ export async function createLead(data) {
   const phone = leadPhone(rawPhone);
   if (!phone) throw new AppError(PHONE_RULE, 400, [], 'INVALID_PHONE');
 
+  // A family enquiring twice (or for a sibling) is common, so a repeat number
+  // is not refused -- but it is no longer accepted silently either: the new
+  // lead carries a note naming the earlier enquiries, and the response flags
+  // them so the counsellor can merge by hand.
+  const possibleDuplicates = await sameNumberLeads(phone);
+
   const lead = await Lead.create({
     childName: data.childName,
     guardianName: data.guardianName,
@@ -211,9 +304,23 @@ export async function createLead(data) {
     notes: data.notes ?? null,
   });
 
-  await ensureStudentForEnrolledLead(lead);
+  if (possibleDuplicates.length) {
+    await LeadInteraction.create({
+      leadId: lead._id,
+      type: 'NOTE',
+      body: `Possible duplicate: same phone as ${possibleDuplicates.map((d) => `${d.childName} (${d.stage.toLowerCase()})`).join(', ')}. Merge if it is the same family and child.`,
+      authorProfileId: data.actorProfileId ?? null,
+    });
+  }
 
-  return { id: lead._id };
+  const enrolment = await ensureStudentForEnrolledLead(lead, null, { sectionId: data.sectionId });
+
+  return {
+    id: lead._id,
+    possibleDuplicate: possibleDuplicates.length > 0,
+    possibleDuplicates,
+    ...(enrolment ? { studentId: enrolment.studentId, needsPlacement: enrolment.needsPlacement } : {}),
+  };
 }
 
 const LEAD_SOURCES = new Set(['WHATSAPP', 'WEB', 'WALK_IN', 'REFERRAL']);
@@ -346,7 +453,7 @@ async function resolveAssignee(assigneeProfileId) {
   return profile._id;
 }
 
-export async function updateLead({ leadId, stage, notes, assigneeProfileId, nextActionAt, actorProfileId }) {
+export async function updateLead({ leadId, stage, notes, assigneeProfileId, nextActionAt, actorProfileId, sectionId }) {
   const lead = await Lead.findById(leadId);
   if (!lead) throw new AppError('Lead not found', 404);
 
@@ -377,9 +484,14 @@ export async function updateLead({ leadId, stage, notes, assigneeProfileId, next
     });
   }
 
-  // Ensure student record exists if lead is ENROLLED
-  await ensureStudentForEnrolledLead(lead);
+  // ENROLLED: the student record exists (placed in a class when sectionId is
+  // given). Leaving ENROLLED: the record it created goes off the roll.
+  const enrolment = await ensureStudentForEnrolledLead(lead, null, { sectionId });
+  if (previousStage === 'ENROLLED' && lead.stage !== 'ENROLLED') await deactivateStudentForLead(lead);
 
-  return toLeadDto(lead);
+  return {
+    ...toLeadDto(lead),
+    ...(enrolment ? { studentId: enrolment.studentId, needsPlacement: enrolment.needsPlacement } : {}),
+  };
 }
 

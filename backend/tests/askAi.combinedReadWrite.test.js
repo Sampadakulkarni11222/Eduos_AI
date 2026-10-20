@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, afterEach } from 'vitest';
 import { AgentAction } from '../src/models/agentAction.model.js';
 import { AttendanceRecord } from '../src/models/attendanceRecord.model.js';
 import { LeaveApplication } from '../src/models/leaveApplication.model.js';
@@ -260,22 +260,18 @@ describe('website: the question is answered and the instruction is proposed', ()
 /* ── WhatsApp ─────────────────────────────────────────────── */
 
 describe('WhatsApp: the same sentence, the same two halves', () => {
-  it('sends the register and the YES/NO question in one message, then writes once on YES', async () => {
+  it('answers the register, and sends the write to the website: a YES writes nothing', async () => {
+    // Marking somebody else's attendance is not confirmed over WhatsApp
+    // (registry.js confirmableOn): the question is still answered.
     const first = await wa(teacher(), SENTENCE);
     expect(first.reply).toMatch(REGISTER);
-    expect(first.reply).toMatch(PROPOSAL);
-    expect(first.reply).toMatch(/Reply YES to confirm or NO to cancel/);
-    expect(first.reply.search(REGISTER)).toBeLessThan(first.reply.search(/Reply YES/));
+    expect(first.reply).toMatch(/EduOS website/);
+    expect(first.reply).not.toMatch(/Reply YES to confirm/);
     expectNoLeak(first.reply);
     expect(await amansRecords()).toHaveLength(0);
 
-    const yes = await wa(teacher(), 'YES');
-    expect(yes.reply).toMatch(/Aman Gupta → ABSENT/);
-    expect(await amansRecords()).toHaveLength(1);
-
-    // A second YES has nothing to confirm.
     await wa(teacher(), 'YES');
-    expect(await amansRecords()).toHaveLength(1);
+    expect(await amansRecords()).toHaveLength(0);
   }, 120_000);
 
   it('writes nothing on NO, and a later YES confirms nothing', async () => {
@@ -292,7 +288,8 @@ describe('WhatsApp: the same sentence, the same two halves', () => {
     const phone = await wa(teacher(), SENTENCE);
     const register = REGISTER.exec(web.reply)[0];
     expect(phone.reply).toContain(register);
-    expect(phone.reply).toMatch(PROPOSAL);
+    expect(web.reply).toMatch(PROPOSAL);
+    expect(phone.reply).toMatch(/EduOS website/);
   }, 120_000);
 });
 
@@ -400,6 +397,10 @@ describe('a refused question does not take the instruction down with it, or the 
 /* ── Another write ────────────────────────────────────────── */
 
 describe('the same shape with a different instruction', () => {
+  // Staff leave counts school days: on a weekend "tomorrow" would be a Sunday and
+  // nothing could be applied for, so these run on a fixed Wednesday (after the seed).
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T04:30:00Z')); });
+  afterEach(() => { vi.useRealTimers(); });
   it('shows a student their attendance and proposes their leave; nothing is applied before a yes', async () => {
     const student = school.people.STUDENT;
     const res = await ask(student, 'Show my attendance and apply for leave tomorrow because of fever');
@@ -411,17 +412,16 @@ describe('the same shape with a different instruction', () => {
     expect(await count(LeaveApplication)).toBe(1);
   });
 
-  it('a role that cannot apply for leave is shown its timetable and told why the leave was not made -- no proposal', async () => {
+  it('a member of staff is shown its timetable and their own staff leave is drafted -- not a student leave', async () => {
+    // Changed deliberately in part 3: a member of staff (staffleave.apply) asking to apply for leave
+    // means their OWN staff leave, so it reaches apply_staff_leave as a draft (or a question for the
+    // day, kind and reason) instead of the old "isn't enabled for your account" refusal.
     const turn = await as('TEACHER').say('Show my timetable and apply for leave tomorrow because of fever');
     expect(turn.reply).toMatch(/Timetable/);
-    // Explained as an operation this account does not have -- not the bare
-    // "not authorized to access this information" (askAi.qaFixes, defect D).
-    expect(turn.reply).toMatch(/Applying for leave isn't enabled for your account/);
-    expect(turn.reply).not.toMatch(/not authorized/i);
-    expect(turn.action).toBeNull();
-    // The leave is never attempted.
+    expect(turn.reply).not.toMatch(/not authorized|isn't enabled/i);
+    expect(turn.action?.tool).toBe('apply_staff_leave');
+    // The student leave of absence is never attempted, and nothing is filed before yes.
     expect(turn.calls.some((c) => c.tool === 'apply_for_leave')).toBe(false);
     expect(await count(LeaveApplication)).toBe(0);
-    expect(await count(AgentAction)).toBe(0);
   });
 });

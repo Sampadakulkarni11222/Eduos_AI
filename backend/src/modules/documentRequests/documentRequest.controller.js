@@ -32,7 +32,7 @@ export const createRequest = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.createRequest(req.actor, req.body), 'Document request submitted', 201);
 });
 export const listMine = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.listMine(req.actor), 'Document requests fetched');
+  sendSuccess(res, await service.listMine(req.actor, { studentId: req.query.studentId }), 'Document requests fetched');
 });
 export const getMine = asyncHandler(async (req, res) => {
   sendSuccess(res, await service.getMine(req.actor, req.params.id), 'Document request fetched');

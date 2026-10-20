@@ -228,7 +228,10 @@ describe('WhatsApp reaches the same MCP layer', () => {
     const viaWeb = await askWeb(resolved.actor, 'find student Rahul');
 
     expect(viaWhatsapp.tool).toBe(viaWeb.tool);
-    expect(viaWhatsapp.reply).toBe(viaWeb.reply);
+    // WhatsApp carries the "Based on" evidence as a closing line; the website shows it as a footer.
+    const basedOn = /\n\n_Based on: [^\n]*_$/;
+    expect(viaWhatsapp.reply.replace(basedOn, '')).toBe(viaWeb.reply);
+    expect(basedOn.test(viaWhatsapp.reply)).toBe(Boolean(viaWeb.modelWritten && viaWeb.evidence?.length));
   });
 
   it('applies the same authorization to a student on WhatsApp as on the web', async () => {

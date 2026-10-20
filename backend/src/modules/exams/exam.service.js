@@ -6,6 +6,52 @@ import { AppError } from '../../utils/AppError.js';
 import { getTeacherSectionIds, getGuardianStudentIds, getOwnStudentId } from '../../utils/scope.js';
 import { gradeForPercentage, percentage, summarise } from '../../utils/grading.js';
 import { notify } from '../notifications/notification.service.js';
+import { recordAudit } from '../../utils/auditTrail.js';
+
+/** Absence codes a mark can carry instead of a score. */
+export const ABSENCE_CODES = ['AB', 'ML'];
+
+/** Today's calendar day (process-local, see config/env.js) at UTC midnight. */
+function todayKey(now = new Date()) {
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
+/** The calendar day a paper is (or was) sat: its own date, else the exam's start. */
+function paperDay(examSubject) {
+  const when = examSubject.examDate ?? examSubject.examId?.startsOn ?? null;
+  if (!when) return null;
+  const d = new Date(when);
+  if (Number.isNaN(d.getTime())) return null;
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+/** True once the paper's date has arrived (a paper with no date is treated as held). */
+function paperHeld(examSubject) {
+  const day = paperDay(examSubject);
+  return !day || day.getTime() <= todayKey().getTime();
+}
+
+/**
+ * One entry's marks, read as either a score or an absence code.
+ * `marks: 'AB'` and `absence: 'AB'` are the same thing; `marks: null` with no
+ * absence clears a draft back to "not entered".
+ */
+function readMarkEntry(entry) {
+  const rawAbsence = entry.absence ?? (typeof entry.marks === 'string' && /^[a-z]+$/i.test(entry.marks.trim()) ? entry.marks : null);
+  if (rawAbsence !== null && rawAbsence !== undefined && rawAbsence !== '') {
+    const code = String(rawAbsence).trim().toUpperCase();
+    if (!ABSENCE_CODES.includes(code)) {
+      throw new AppError(`Invalid marks: ${rawAbsence}. Use a number, AB (absent) or ML (medical leave).`, 400, [], 'MARKS_INVALID');
+    }
+    return { marks: null, absence: code };
+  }
+  if (entry.marks === null || entry.marks === undefined || entry.marks === '') return { marks: null, absence: null };
+  const n = Number(entry.marks);
+  if (!Number.isFinite(n)) {
+    throw new AppError(`Invalid marks: ${entry.marks}. Use a number, AB (absent) or ML (medical leave).`, 400, [], 'MARKS_INVALID');
+  }
+  return { marks: n, absence: null };
+}
 
 /**
  * The term and the subject offering must exist in the acting school. These
@@ -145,6 +191,9 @@ export async function getMarksGrid(actor, scope, examSubjectId) {
         ? `${examSubject.subjectOfferingId.sectionId.gradeId?.name ?? ''} ${examSubject.subjectOfferingId.sectionId.name}`.trim()
         : 'Unknown',
       maxMarks: examSubject.maxMarks ?? 100,
+      examDate: paperDay(examSubject)?.toISOString().slice(0, 10) ?? null,
+      // Marks can be entered once the paper has been sat, not before.
+      held: paperHeld(examSubject),
     },
     rows: enrollments.map((e) => {
       const m = markMap[e._id.toString()];
@@ -154,6 +203,7 @@ export async function getMarksGrid(actor, scope, examSubjectId) {
         rollNo: e.rollNo ?? null,
         studentName: student ? `${student.firstName} ${student.lastName ?? ''}`.trim() : 'Unknown',
         marks: m?.marks ?? null,
+        absence: m?.absence ?? null,
         gradeLabel: m?.gradeLabel ?? null,
         remarks: m?.remarks ?? null,
         status: m?.status ?? 'PENDING',
@@ -276,6 +326,7 @@ export async function getPerformance(actor, scope, { enrollmentId }) {
       academicYearName: year?.name ?? null,
       subject: subjectName,
       marks: marksObtained,
+      absence: m.absence ?? null,
       maxMarks,
       pct,
     });
@@ -335,11 +386,13 @@ export async function getReportCard(actor, scope, { enrollmentId, exam }) {
       exam: r.exam,
       subject: r.subject,
       marks: r.marks,
+      absence: r.absence ?? null,
       maxMarks: r.maxMarks,
       percentage: pct,
-      grade: band?.label ?? null,
+      // An absent / medical-leave paper is shown as such, never as a grade.
+      grade: r.absence ?? band?.label ?? null,
       gradePoints: band?.points ?? null,
-      descriptor: band?.descriptor ?? null,
+      descriptor: r.absence === 'AB' ? 'Absent' : r.absence === 'ML' ? 'Medical leave' : band?.descriptor ?? null,
     };
   });
 
@@ -535,6 +588,14 @@ export async function getPerformanceHistory(actor, scope, { studentId } = {}) {
 export async function enterMarks(actor, scope, { examSubjectId, entries }) {
   const examSubject = await loadOwnedExamSubject(actor, scope, examSubjectId);
   const sectionId = examSubject.subjectOfferingId?.sectionId?._id;
+  if (!Array.isArray(entries)) throw new AppError('entries must be a list', 400);
+
+  // A paper that has not been sat has no marks. Accepting them let drafts be
+  // keyed in (and published) for an exam weeks away.
+  if (!paperHeld(examSubject)) {
+    const day = paperDay(examSubject).toISOString().slice(0, 10);
+    throw new AppError(`Marks can be entered from ${day}, when this paper is held`, 400, [], 'EXAM_NOT_HELD');
+  }
 
   // Never trust the client's enrollmentId list outright — an entry may only
   // reference a student actually enrolled in this exam subject's section.
@@ -547,7 +608,9 @@ export async function enterMarks(actor, scope, { examSubjectId, entries }) {
   const published = await Mark.find({ examSubjectId, status: 'PUBLISHED' }).select('enrollmentId');
   const publishedIds = new Set(published.map((m) => m.enrollmentId.toString()));
 
-  const validEntries = entries.filter((e) => allowedIds.has(String(e.enrollmentId)) && !publishedIds.has(String(e.enrollmentId)));
+  const validEntries = entries
+    .filter((e) => allowedIds.has(String(e?.enrollmentId)) && !publishedIds.has(String(e.enrollmentId)))
+    .map((e) => ({ ...e, ...readMarkEntry(e) }));
   if (validEntries.length === 0) throw new AppError('No valid mark entries for this class', 400);
 
   // A score above the paper's maximum (or below zero) is always a data-entry
@@ -568,13 +631,14 @@ export async function enterMarks(actor, scope, { examSubjectId, entries }) {
 
   // Letter grades are derived from the scale, never taken from the client, so
   // the same score can't carry different grades for different students.
-  const ops = validEntries.map(({ enrollmentId, marks, remarks }) => ({
+  const ops = validEntries.map(({ enrollmentId, marks, absence, remarks }) => ({
     updateOne: {
       filter: { examSubjectId, enrollmentId },
       update: {
         $set: {
           marks,
-          gradeLabel: gradeForPercentage(percentage(marks, maxMarks))?.label ?? null,
+          absence,
+          gradeLabel: absence ?? gradeForPercentage(percentage(marks, maxMarks))?.label ?? null,
           remarks,
           status: 'DRAFT',
           enteredByProfileId: actor.profileId,
@@ -589,6 +653,30 @@ export async function enterMarks(actor, scope, { examSubjectId, entries }) {
 
 export async function publishMarks(actor, scope, examSubjectId) {
   const examSubject = await loadOwnedExamSubject(actor, scope, examSubjectId);
+  const sectionId = examSubject.subjectOfferingId?.sectionId?._id;
+
+  // A result goes to families whole or not at all: every student on the roll
+  // has a score or is recorded AB / ML. Publishing whatever happened to be
+  // drafted sent parents a sheet with gaps, read as "no result" or as a fail.
+  const enrolled = await Enrollment.find({ sectionId, status: 'ACTIVE' })
+    .populate({ path: 'studentId', select: 'firstName lastName' })
+    .select('_id rollNo studentId')
+    .lean();
+  const recorded = await Mark.find({
+    examSubjectId,
+    $or: [{ marks: { $ne: null } }, { absence: { $in: ABSENCE_CODES } }],
+  }).select('enrollmentId').lean();
+  const done = new Set(recorded.map((m) => String(m.enrollmentId)));
+  const missing = enrolled.filter((e) => !done.has(String(e._id)));
+  if (missing.length) {
+    const names = missing.slice(0, 5).map((e) => (e.studentId ? `${e.studentId.firstName} ${e.studentId.lastName ?? ''}`.trim() : `Roll ${e.rollNo ?? '?'}`));
+    throw new AppError(
+      `${missing.length} student${missing.length === 1 ? ' has' : 's have'} no marks yet (${names.join(', ')}${missing.length > 5 ? ', …' : ''}). Enter a score, AB or ML for everyone before publishing.`,
+      400,
+      missing.map((e) => ({ enrollmentId: String(e._id), rollNo: e.rollNo ?? null })),
+      'MARKS_INCOMPLETE',
+    );
+  }
 
   // Capture who is affected before publishing — afterwards the "not yet
   // published" filter no longer identifies this batch.
@@ -600,8 +688,40 @@ export async function publishMarks(actor, scope, examSubjectId) {
   );
 
   await notifyMarksPublished(examSubject, publishing.map((m) => m.enrollmentId));
+  await recordAudit({
+    actor, action: 'MARKS_PUBLISHED', entityType: 'ExamSubject', entityId: examSubject._id,
+    after: { published: result.modifiedCount },
+  });
 
   return { matched: result.matchedCount, modified: result.modifiedCount };
+}
+
+/**
+ * Takes a published result back to draft so a mistake can be corrected.
+ *
+ * Published marks are otherwise locked (enterMarks will not touch them), so
+ * without this a wrong published mark could never be fixed. Same permission
+ * as publishing; a reason is required, and the withdrawal -- who, why and the
+ * marks as they stood -- is written to the audit trail.
+ */
+export async function unpublishMarks(actor, scope, { examSubjectId, reason } = {}) {
+  const why = typeof reason === 'string' ? reason.trim() : '';
+  if (why.length < 5) throw new AppError('Give a reason for the correction (at least 5 characters)', 400, [], 'REASON_REQUIRED');
+  const examSubject = await loadOwnedExamSubject(actor, scope, examSubjectId);
+
+  const before = await Mark.find({ examSubjectId, status: 'PUBLISHED' }).select('enrollmentId marks absence').lean();
+  if (!before.length) throw new AppError('Nothing is published for this paper', 400, [], 'NOT_PUBLISHED');
+
+  const result = await Mark.updateMany(
+    { examSubjectId, status: 'PUBLISHED' },
+    { $set: { status: 'DRAFT' }, $unset: { publishedAt: 1 } },
+  );
+  await recordAudit({
+    actor, action: 'MARKS_UNPUBLISHED', entityType: 'ExamSubject', entityId: examSubject._id,
+    before: { marks: before.map((m) => ({ enrollmentId: String(m.enrollmentId), marks: m.marks ?? null, absence: m.absence ?? null })) },
+    after: { status: 'DRAFT', reason: why },
+  });
+  return { reopened: result.modifiedCount, reason: why };
 }
 
 /**

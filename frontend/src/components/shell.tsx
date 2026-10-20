@@ -10,9 +10,12 @@ import { clearActingSchool, platformViewAllowed, setActingSchool, useActingSchoo
 import type { RoleKey, SchoolBrandingDto, SchoolSidebarConfigDto } from '@/lib/types';
 import { Spinner, cx } from './ui';
 import { usePermissions, getRequiredPermission } from '@/lib/permissions';
-import { portalHome, stripSchool, useSchoolSegment, withSchool } from '@/lib/school-path';
+import { portalHome, signInPathFor, stripSchool, useSchoolSegment, withSchool } from '@/lib/school-path';
 import { AskEduOS } from './ask-eduos';
+import { OfflineBanner } from './offline-banner';
 import { NotificationBell } from './notification-bell';
+import { UniversalSearch } from './universal-search';
+import { SidebarNav, MobileBottomBar } from './nav/sidebar-nav';
 import { ModalA11yBridge } from './modal-a11y-bridge';
 import { useSchoolTheme, useFavicon, themeStyle } from '@/lib/school-theme';
 
@@ -137,8 +140,9 @@ export function PortalShell({
 
   useEffect(() => {
     if (loading) return;
-    if (!me) return router.replace('/login');
-    if (!me.profile?.id || !me.profile?.role) return router.replace('/login');
+    // Back to this school's own sign-in: the platform one admits platform administrators only.
+    if (!me) return router.replace(signInPathFor(school));
+    if (!me.profile?.id || !me.profile?.role) return router.replace(signInPathFor(school));
 
     // Two things can be wrong with this URL: the portal (a teacher on /admin)
     // and the school (an Oakridge account on /nvmp/admin). The profile's own
@@ -237,7 +241,7 @@ export function PortalShell({
         )}
         <div className="topbar">
           <div className="topbar-headrow">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            <div style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', gap: 12, minWidth: 0 }}>
               <button className="hamburger-btn" onClick={() => setMobileOpen(true)} aria-label="Open Menu">
                 ☰
               </button>
@@ -253,6 +257,14 @@ export function PortalShell({
               </div>
             </div>
             <div className="topbar-ask" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* The campus map, one click from any page of a portal that has it. */}
+              {PORTALS[expectedSlug]?.nav.some((g) => g.items.some((i) => i.href === `/${expectedSlug}/campus`)) && hasAccess(me?.profile?.role, 'campus.map.read') && (
+                <Link className="btn btn-soft btn-sm topbar-campus" href={withSchool(school, `/${expectedSlug}/campus`)} title="Open the 3D campus map">
+                  <span aria-hidden="true">◈</span><span className="topbar-campus-text"> Campus</span>
+                </Link>
+              )}
+              {/* Universal search (Ctrl/Cmd+K): pages of this menu and records this person may see. */}
+              {expectedSlug !== 'super-admin' && <UniversalSearch portalSlug={expectedSlug} school={school} />}
               <NotificationBell portalSlug={expectedSlug} />
               <AskEduOS label="Ask Agent" />
             </div>
@@ -273,11 +285,16 @@ export function PortalShell({
                 </p>
               </div>
             ) : (
-              children
+              <>
+                <OfflineBanner />
+                {children}
+              </>
             )}
           </div>
         </div>
       </div>
+      {/* Phone only (CSS): Home, the role's key spaces and More. */}
+      <MobileBottomBar portal={portal} school={school} onMore={() => setMobileOpen(true)} />
     </div>
   );
 }
@@ -342,12 +359,6 @@ function Sidebar({
   collapsed: boolean;
   toggleCollapsed: () => void;
 }) {
-  const pathname = usePathname();
-  const { me } = useAuth();
-  const { hasAccess } = usePermissions();
-  // Nav hrefs are canonical (`/admin/users`); the school is added on render.
-  const here = stripSchool(pathname, school);
-
   return (
     <aside className={cx('sidebar', mobileOpen && 'mobile-open')}>
       <div className="sidebar-brand">
@@ -374,70 +385,16 @@ function Sidebar({
         <button className="sidebar-close-btn" onClick={() => setMobileOpen(false)} aria-label="Close Menu">
           ✕
         </button>
-        <button
-          type="button"
-          className="sidebar-collapse-btn"
-          onClick={toggleCollapsed}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          aria-expanded={!collapsed}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          <span aria-hidden="true">{collapsed ? '»' : '«'}</span>
-        </button>
       </div>
-      <nav className="sidebar-nav" aria-label={`${portal.label} navigation`}>
-        {portal.nav.map((group) => {
-          const visibleItems = group.items.filter((it) => {
-            const req = getRequiredPermission(it.href);
-            if (!req) return true;
-            return hasAccess(me?.profile?.role, req);
-          });
-
-          if (visibleItems.length === 0) return null;
-
-          return (
-            <div className="nav-group" key={group.title}>
-              <div className="nav-group-label">{group.title}</div>
-              {visibleItems.map((it) => {
-                const isActive = here === it.href;
-                const href = withSchool(school, it.href);
-                const content = (
-                  <>
-                    <span className="nav-icon" aria-hidden>{it.icon}</span>
-                    <span className="nav-label">{it.label}</span>
-                    {it.badge && <span className="nav-badge">{it.badge}</span>}
-                  </>
-                );
-                return it.ready ? (
-                  <Link
-                    key={it.href}
-                    href={href}
-                    className={cx('nav-item', isActive && 'active')}
-                    aria-current={isActive ? 'page' : undefined}
-                    onClick={() => setMobileOpen(false)}
-                    data-tooltip={it.label}
-                    // With the label hidden in rail mode the icon alone is not
-                    // an accessible name, so supply one explicitly.
-                    aria-label={collapsed ? it.label : undefined}
-                    title={collapsed ? it.label : undefined}
-                  >
-                    {content}
-                  </Link>
-                ) : (
-                  // Not a link and not focusable: there is nowhere to go yet.
-                  // The "soon" chip replaces a title tooltip that keyboard and
-                  // touch users could never see.
-                  <span key={it.href} className="nav-item not-ready" data-tooltip={`${it.label} (coming soon)`}>
-                    <span className="nav-icon" aria-hidden>{it.icon}</span>
-                    <span className="nav-label">{it.label}</span>
-                    <span className="nav-soon">Soon</span>
-                  </span>
-                );
-              })}
-            </div>
-          );
-        })}
-      </nav>
+      {/* The menu, organised into spaces (components/nav). PORTALS stays the
+          source of truth; this only decides where each item is shown. */}
+      <SidebarNav
+        portal={portal}
+        school={school}
+        collapsed={collapsed}
+        toggleCollapsed={toggleCollapsed}
+        onNavigate={() => setMobileOpen(false)}
+      />
       <RoleSwitcher />
     </aside>
   );

@@ -104,6 +104,20 @@ const priya = () => school.people.STUDENT;
 const me = () => priya().actor;
 const route = (message) => parseIntent(message, me());
 const replyOf = (res) => res.reply ?? res.body?.message ?? '';
+
+/**
+ * Files a request the way the student does now: every CREATE is proposed and
+ * waits for their yes (registry.js), so the request is asked for and then
+ * confirmed. Returns the proposal turn, which names the capability.
+ */
+async function fileAndConfirm(person, message) {
+  const asked = await api.ask(person, message);
+  expect(asked.action?.confirmToken, `${message} was not proposed: ${asked.reply ?? asked.body?.message}`).toBeTruthy();
+  const done = await api.confirm(person, asked.action.confirmToken);
+  expect(done.executed, JSON.stringify(done.body ?? done)).toBe(true);
+  resetAgentThrottle();
+  return asked;
+}
 const count = (Model, filter = {}) => inSchool(OAK, () => Model.countDocuments(filter));
 
 /** The last capability the MCP server recorded on a channel, with who ran it. */
@@ -318,7 +332,7 @@ describe('4. the library lifecycle', () => {
   it('requests a book by title, then withdraws it after a yes -- and a no changes nothing', async () => {
     const pending = () => count(BookRequest, { status: 'PENDING' });
 
-    const asked = await api.ask(priya(), 'Request the book MCP Test Book.');
+    const asked = await fileAndConfirm(priya(), 'Request the book MCP Test Book.');
     expect(asked.status).toBe(200);
     expect(asked.tool).toBe('request_book');
     expect(await pending()).toBe(1);
@@ -348,7 +362,7 @@ describe('4. the library lifecycle', () => {
 
 describe('4. the transport lifecycle', () => {
   it('requests a place from a named stop, then withdraws it after a yes', async () => {
-    const asked = await api.ask(priya(), 'Request a place on Route 2 from the Gandhi Nagar stop.');
+    const asked = await fileAndConfirm(priya(), 'Request a place on Route 2 from the Gandhi Nagar stop.');
     expect(asked.status).toBe(200);
     expect(asked.tool, replyOf(asked)).toBe('request_transport_route');
     expect(await count(TransportRequest, { status: 'PENDING' })).toBe(1);
@@ -373,7 +387,7 @@ describe('4. the co-curricular lifecycle', () => {
     expect(await count(CoCurricularActivity)).toBe(0);
 
     resetAgentThrottle();
-    const filed = await api.ask(priya(), 'Request to add the Basketball activity on 2026-09-10.');
+    const filed = await fileAndConfirm(priya(), 'Request to add the Basketball activity on 2026-09-10.');
     expect(filed.tool, replyOf(filed)).toBe('request_cocurricular');
     expect(await count(CoCurricularActivity, { status: 'PENDING' })).toBe(1);
 
@@ -393,7 +407,7 @@ describe('4. the profile-correction lifecycle', () => {
   });
 
   it('files a correction in words, then withdraws it after a yes', async () => {
-    const filed = await api.ask(priya(), 'Request to change my address to 12 Park Street.');
+    const filed = await fileAndConfirm(priya(), 'Request to change my address to 12 Park Street.');
     expect(filed.tool, replyOf(filed)).toBe('request_profile_edit');
     expect(await count(ProfileEditRequest, { status: 'PENDING' })).toBe(1);
 
@@ -482,7 +496,7 @@ describe('4. assignments', () => {
 
 describe('4. support tickets', () => {
   it('raises a ticket in words, which the student can then read', async () => {
-    const res = await api.ask(priya(), 'Create a support ticket saying I cannot access my timetable.');
+    const res = await fileAndConfirm(priya(), 'Create a support ticket saying I cannot access my timetable.');
     expect(res.tool).toBe('create_ticket');
     expect(await count(Ticket)).toBe(1);
     resetAgentThrottle();
@@ -496,7 +510,7 @@ describe('4. support tickets', () => {
 
 describe('5. a confirmation authorizes exactly one proposal, for exactly one person', () => {
   it('cannot be used by somebody else', async () => {
-    await api.ask(priya(), 'Request the book MCP Test Book.');
+    await fileAndConfirm(priya(), 'Request the book MCP Test Book.');
     const proposed = await api.ask(priya(), 'Cancel my pending book request for MCP Test Book.');
     const stolen = await api.confirm(school.people.ADMIN, proposed.action.confirmToken);
     expect(stolen.status).toBeGreaterThanOrEqual(400);
@@ -504,7 +518,7 @@ describe('5. a confirmation authorizes exactly one proposal, for exactly one per
   }, 60000);
 
   it('records a decline as a decline, not as an execution', async () => {
-    await api.ask(priya(), 'Request the book MCP Test Book.');
+    await fileAndConfirm(priya(), 'Request the book MCP Test Book.');
     const proposed = await api.ask(priya(), 'Cancel my pending book request for MCP Test Book.');
     await api.confirm(priya(), proposed.action.confirmToken, false);
     const executed = await inSchool(OAK, () => AuditLog.countDocuments({ action: 'agent.cancel_book_request', 'after.status': 'EXECUTED' }));
@@ -541,7 +555,7 @@ describe('6. a model proposal is held to what the student said', () => {
   it('cannot write without the confirmation the capability requires', async () => {
     // A bare follow-up is the model's to read, with the transcript. Whatever it
     // proposes, a withdrawal still stops at a proposal until the student says yes.
-    await api.ask(priya(), 'Request the book MCP Test Book.');
+    await fileAndConfirm(priya(), 'Request the book MCP Test Book.');
     const message = 'cancel that one';
     const history = [{ role: 'user', text: 'Show my book requests.' }];
     script.plans.set(message, [{ name: 'cancel_book_request', args: {} }]);
@@ -609,7 +623,16 @@ describe('8. the student catalogue matches the Web', () => {
   });
 
   it('keeps every write own-scoped', () => {
-    for (const c of capabilitiesFor(me()).filter((x) => x.writes)) {
+    // Writes keyed on the caller alone whatever the permission's scope: a
+    // student's own digest topics, their own saved opportunities, their own
+    // quiz answers, their own question to a teacher and their own interest in
+    // an alumni offer (each service writes only the caller's record).
+    const SELF_ONLY = ['update_my_digest_interests', 'save_opportunity', 'answer_newsletter_quiz', 'ask_teacher_about_opportunity', 'express_interest_in_opportunity',
+      // Part 6 newsletter reader acts: digest.read is held school-wide by every reader, and each of these writes only the
+      // caller's own record (their preferences, saved list, reading progress, vote, reaction, comment, flashcard, challenge).
+      'update_my_newsletter_preferences', 'remove_saved_opportunity', 'finish_newsletter_edition', 'vote_newsletter_poll',
+      'react_to_newsletter', 'add_newsletter_comment', 'answer_newsletter_flashcard', 'send_newsletter_quiz_challenge'];
+    for (const c of capabilitiesFor(me()).filter((x) => x.writes && !SELF_ONLY.includes(x.name))) {
       expect(actorForRole('STUDENT').permissions[c.permission], c.name).toBe('OWN');
     }
   });

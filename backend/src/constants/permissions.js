@@ -99,6 +99,9 @@ export const PERMISSION_CATALOG = [
 
   // exams & marks
   { key: 'exams.manage', group: 'academics', description: 'Create/update exams and exam subjects' },
+  // Part 8: the exam timetable and halls (times, rooms, seating, invigilators). ALL: every paper;
+  // OWN: a teacher's class tests for subjects they teach, in a free room.
+  { key: 'exams.schedule', group: 'academics', description: 'Schedule papers: time, exam rooms, seating and invigilators' },
   { key: 'marks.read', group: 'academics', description: 'View marks' },
   { key: 'marks.enter', group: 'academics', description: 'Enter marks' },
   { key: 'marks.publish', group: 'academics', description: 'Publish marks / report cards' },
@@ -178,6 +181,157 @@ export const PERMISSION_CATALOG = [
   { key: 'analytics.school.read', group: 'analytics', description: 'View school-wide analytics' },
   { key: 'analytics.class.read', group: 'analytics', description: 'View class-level analytics' },
   { key: 'analytics.child.read', group: 'analytics', description: "View a child's analytics" },
+
+  // ── Institution operations (see docs/erp-operations) ───────────────────
+  //
+  // Approvals. Who may decide a given stage is set by the stage itself (its
+  // approver role, or a named approver, or a delegate); `approvals.decide` is
+  // only the precondition for deciding anything at all. A requester can never
+  // decide their own request, whatever they hold.
+  { key: 'approvals.read', group: 'governance', description: 'View approval requests addressed to or raised by you (ALL: every request)' },
+  { key: 'approvals.submit', group: 'governance', description: 'Raise an approval request' },
+  { key: 'approvals.decide', group: 'governance', description: 'Approve, reject, return, delegate or escalate a request at a stage you are the approver of' },
+  { key: 'approvals.configure', group: 'governance', description: 'Configure approval stages, thresholds and delegations' },
+  { key: 'governance.read', group: 'governance', description: 'View board/committee meetings, agendas, minutes and resolutions you are invited to (ALL: every meeting)' },
+  { key: 'governance.manage', group: 'governance', description: 'Schedule meetings, prepare agendas, record minutes, resolutions and actions' },
+
+  // Institution profile and organization structure.
+  { key: 'institution.read', group: 'organization', description: 'View the institution profile, affiliations and public disclosures' },
+  { key: 'institution.manage', group: 'organization', description: 'Edit the institution profile, campuses, affiliations and terminology' },
+  { key: 'org.read', group: 'organization', description: 'View the organization structure map' },
+  { key: 'org.manage', group: 'organization', description: 'Manage departments, positions, reporting lines and appointments' },
+
+  // Administration department.
+  { key: 'correspondence.read', group: 'administration', description: 'View the inward/outward correspondence register (OWN: assigned items)' },
+  { key: 'correspondence.manage', group: 'administration', description: 'Register, assign, draft replies to and dispatch correspondence' },
+  { key: 'compliance.read', group: 'administration', description: 'View the compliance calendar, returns, licences, policies, notices and trainings' },
+  { key: 'compliance.manage', group: 'administration', description: 'Prepare returns, track licences, publish policies, review notices and run trainings' },
+  { key: 'contracts.read', group: 'administration', description: 'View agreements and their obligations' },
+  { key: 'contracts.manage', group: 'administration', description: 'Draft, track and renew agreements' },
+  { key: 'verification.read', group: 'administration', description: 'See clearance STATUS of staff, drivers and vendors (never the evidence)' },
+  { key: 'verification.manage', group: 'administration', description: 'Run background verification checks and attach evidence' },
+  { key: 'verification.decide', group: 'administration', description: 'Give the final institutional clearance decision' },
+  { key: 'events.read', group: 'administration', description: 'View institutional events and their plans' },
+  { key: 'events.manage', group: 'administration', description: 'Propose and run events, fests, meetings and visits' },
+  { key: 'facilities.read', group: 'administration', description: 'View facilities, bookings and work orders' },
+  { key: 'facilities.request', group: 'administration', description: 'Book a room or report a maintenance issue' },
+  { key: 'facilities.manage', group: 'administration', description: 'Manage facilities, confirm bookings and run work orders' },
+  // Raising a concern is open to every staff member and student; reading cases
+  // is for designated officers only. Reports are never shown to anyone else.
+  { key: 'safeguarding.report', group: 'sensitive', description: 'Report a safeguarding concern (you see only your own reports)' },
+  { key: 'safeguarding.manage', group: 'sensitive', description: 'Designated officer: handle safeguarding, POCSO, POSH and anti-ragging cases' },
+
+  // Finance operations.
+  { key: 'payroll.read', group: 'finance', description: 'View payroll runs and totals (OWN: your own payslips)' },
+  { key: 'payroll.prepare', group: 'finance', description: 'Maintain pay structures and statutory rules; calculate payroll runs' },
+  { key: 'payroll.approve', group: 'finance', description: 'Approve a calculated payroll run' },
+  { key: 'payroll.sensitive.read', group: 'sensitive', description: 'See salary components and bank details of other employees' },
+  { key: 'procurement.read', group: 'finance', description: 'View purchase requests, orders, receipts and invoices (OWN: your requests)' },
+  { key: 'procurement.request', group: 'finance', description: 'Raise a purchase request' },
+  { key: 'procurement.manage', group: 'finance', description: 'Run procurement: quotes, orders, receipts, invoices and payment status' },
+  { key: 'budget.read', group: 'finance', description: 'View budgets, commitments and actuals' },
+  { key: 'budget.manage', group: 'finance', description: 'Prepare budgets and explain variances' },
+  { key: 'funding.read', group: 'finance', description: 'View funding proposals, grants and loans' },
+  { key: 'funding.manage', group: 'finance', description: 'Prepare funding proposals and compare offers' },
+
+  // Marketing and admissions.
+  { key: 'marketing.read', group: 'admissions', description: 'View campaigns, creative assets and enrolment analytics' },
+  { key: 'marketing.manage', group: 'admissions', description: 'Plan campaigns and manage creative assets' },
+
+  // Newsroom and community.
+  { key: 'community.read', group: 'community', description: 'Read the institution newsroom and circles you belong to' },
+  { key: 'community.post', group: 'community', description: 'Draft newsroom stories and post in circles' },
+  { key: 'community.moderate', group: 'community', description: 'Review, publish, hide and take down posts and comments' },
+  { key: 'mentoring.participate', group: 'community', description: 'Offer or request mentoring from seniors and alumni' },
+
+  // Campus world.
+  { key: 'campus.map.read', group: 'campus', description: 'Open the campus map (layers are limited by your other permissions)' },
+
+  // Syllabus: modules, their timelines and what was taught.
+  { key: 'syllabus.read', group: 'academics', description: 'See module plans and progress (OWN: your own classes or those of your children; ALL: the whole school)' },
+  { key: 'syllabus.manage', group: 'academics', description: 'Plan modules and record what was taught (OWN: the subjects you teach)' },
+
+  // Digital lectures and online meetings.
+  { key: 'lectures.read', group: 'academics', description: 'See and join online classes and meetings you are invited to (ALL: every one in the school)' },
+  { key: 'lectures.manage', group: 'academics', description: 'Schedule, change and cancel online classes and meetings (OWN: the ones you host)' },
+
+  // Outbound messaging (WhatsApp/SMS/email) log and preferences.
+  { key: 'messaging.read', group: 'communication', description: 'View the outbound message log and delivery states' },
+  { key: 'messaging.manage', group: 'communication', description: 'Configure message templates and send operational notifications' },
+  // ── School platform completion (feat/school-platform-complete) ──
+  // Analytics workspace and quarterly decision reports.
+  { key: 'analytics.workspace.read', group: 'analytics', description: 'Open the analytics workspace: department figures, custom periods and comparisons (ALL: every department; OWN: your own department or classes)' },
+  { key: 'analytics.export', group: 'analytics', description: 'Download analytics tables as CSV or PDF (exports respect the same scope as the screen)' },
+  { key: 'reports.quarterly.read', group: 'analytics', description: 'Read the quarterly decision reports addressed to you' },
+  { key: 'reports.quarterly.manage', group: 'analytics', description: 'Configure, regenerate and distribute quarterly reports' },
+  // Shared tasks and reminders (bills, renewals, services, inspections, follow-ups).
+  { key: 'tasks.read', group: 'operations', description: 'See due items and reminders (OWN: assigned to you or your department; ALL: the whole school)' },
+  { key: 'tasks.manage', group: 'operations', description: 'Create, assign, snooze, complete and escalate due items' },
+  // Bills and service lifecycles.
+  { key: 'bills.read', group: 'finance', description: 'See recurring bills, service contracts and their due dates' },
+  { key: 'bills.manage', group: 'finance', description: 'Record bills, payments against them and service visits; configure recurrence' },
+  // Science and computer laboratories.
+  { key: 'labs.read', group: 'labs', description: 'See laboratories, stock, equipment and practical sessions (OWN: labs you are in charge of or sessions you teach)' },
+  { key: 'labs.manage', group: 'labs', description: 'Run a lab: stock receipts, issue/return, stocktakes, equipment, calibration and practical sessions (OWN: labs you are in charge of)' },
+  // Transport fleet, trips and checkpoints.
+  { key: 'transport.fleet.manage', group: 'transport', description: 'Manage vehicles, their capacity, documents, services and breakdowns' },
+  { key: 'transport.trips.operate', group: 'transport', description: 'Run trips: allocate seats, record boarding, alighting and safe handover (OWN: trips you are assigned to)' },
+  { key: 'transport.tracking.read', group: 'transport', description: 'See live trip position and ETA (OWN: your own child\'s active trip only)' },
+  { key: 'checkpoints.read', group: 'safety', description: 'See ID checkpoint events (gate, bus, lab, library) (OWN: your own child)' },
+  { key: 'checkpoints.manage', group: 'safety', description: 'Manage ID cards and checkpoint devices; revoke lost cards' },
+  { key: 'visitors.manage', group: 'safety', description: 'Register visitors and contractors, issue and close passes, authorise pickups' },
+  // Optional camera event review (off until a school configures it).
+  { key: 'camera.devices.manage', group: 'safety', description: 'Register cameras, approved locations and purposes, retention and health' },
+  { key: 'camera.events.review', group: 'sensitive', description: 'Review unverified camera observations and decide on them (trained staff only)' },
+  { key: 'camera.live.view', group: 'sensitive', description: 'Watch live CCTV through the school gateway, view-only and logged (OWN: only the camera groups granted to your role). Never parents, students or alumni' },
+  // PTM, review calls and parent–teacher conversations.
+  { key: 'ptm.read', group: 'engagement', description: 'See PTM rounds and slots (OWN: your own bookings or your own slots)' },
+  { key: 'ptm.manage', group: 'engagement', description: 'Create PTM rounds, set availability and run meetings (OWN: your own slots)' },
+  { key: 'ptm.book', group: 'engagement', description: 'Book, reschedule or cancel a PTM slot for your own child' },
+  { key: 'reviewcalls.manage', group: 'engagement', description: 'Open and follow up parent review calls and agreed actions (OWN: assigned to you)' },
+  { key: 'conversations.use', group: 'engagement', description: 'Message about a child: parents with their child\'s teachers, teachers with the parents of their pupils' },
+  // Staff cover and leave.
+  { key: 'staffleave.apply', group: 'people', description: 'Apply for your own staff leave and see your balance' },
+  { key: 'staffleave.manage', group: 'people', description: 'Approve staff leave, set leave policies and balances' },
+  { key: 'cover.manage', group: 'people', description: 'Arrange substitute cover for absent teachers' },
+  // Clubs, sports, arts and showcases.
+  { key: 'clubs.read', group: 'activities', description: 'See clubs, teams, sessions and fixtures (OWN: the ones you belong to or your child\'s)' },
+  { key: 'clubs.manage', group: 'activities', description: 'Run clubs and teams: sessions, attendance, fixtures and results (OWN: the ones you coach)' },
+  { key: 'clubs.join', group: 'activities', description: 'Ask to join a club or team (for yourself or your child)' },
+  { key: 'showcase.publish', group: 'activities', description: 'Prepare and publish achievement and top-ranker showcases' },
+  // Alumni, digests and external publishing.
+  { key: 'alumni.directory.read', group: 'community', description: 'Browse the alumni directory (only people who chose to be listed)' },
+  { key: 'alumni.manage', group: 'community', description: 'Verify alumni, manage batches, reunions and transitions to alumni access' },
+  { key: 'digest.read', group: 'community', description: 'Read the daily learning and trends digest' },
+  { key: 'digest.manage', group: 'community', description: 'Choose approved sources and review digest items before they are published' },
+  { key: 'social.publish', group: 'community', description: 'Send approved public newsroom posts to the school\'s connected social accounts' },
+  { key: 'social.connect', group: 'community', description: 'Connect and disconnect the school\'s social media accounts' },
+  // Sustainability, sanitation and recognition.
+  { key: 'sustainability.read', group: 'sustainability', description: 'See greenery, waste, water and energy records and recognition progress' },
+  { key: 'sustainability.manage', group: 'sustainability', description: 'Record measurements, trees, waste and sanitation checks; run eco-club activities' },
+  { key: 'sustainability.verify', group: 'sustainability', description: 'Verify eco activities and award points' },
+  // Report cards, admissions form, hostel passes, finance extras, AI drafts.
+  { key: 'reportcards.manage', group: 'academics', description: 'Prepare, moderate and publish term report cards' },
+  { key: 'hostel.outpass.request', group: 'hostel', description: 'Request an out-pass for yourself or your child' },
+  { key: 'hostel.outpass.manage', group: 'hostel', description: 'Approve out-passes and record exit and return at the gate' },
+  { key: 'fees.concessions.manage', group: 'fees', description: 'Define fee concessions and apply them (with approval)' },
+  { key: 'accounts.export', group: 'finance', description: 'Export vouchers and GST summaries for the accountant (Tally-compatible)' },
+  { key: 'ai.drafts.use', group: 'ai', description: 'Ask the assistant for a draft (letter, minutes, lesson plan, remarks) that you review before using' },
+  // ── Part 2 gaps: student support plans, competency portfolios, scenario planning ──
+  { key: 'supportplans.read', group: 'students', description: 'See student support plans (OWN: students you teach or plans you own; families: the plan summary and goals for their own child, never internal notes)' },
+  { key: 'supportplans.manage', group: 'students', description: 'Open and run student support plans: goals, actions, reviews and closure (OWN: students you teach)' },
+  { key: 'supportplans.referral.view', group: 'sensitive', description: 'See whether a support plan was referred to safeguarding (the flag only; the case stays in safeguarding)' },
+  { key: 'portfolios.read', group: 'academics', description: 'See competency portfolios (OWN: students you teach, your own child, or yourself)' },
+  { key: 'portfolios.manage', group: 'academics', description: 'Add evidence and rubric ratings to competency portfolios (OWN: students you teach)' },
+  { key: 'portfolios.reflect', group: 'academics', description: 'Write your own reflections in your competency portfolio' },
+  { key: 'scenarios.read', group: 'analytics', description: 'See saved what-if projections (enrolment, fees, staffing, transport, budget)' },
+  { key: 'scenarios.manage', group: 'analytics', description: 'Create, edit and compare what-if projections' },
+  // ── Part 3: school health room (visits, medication, immunisation, screenings). Restricted: see RESTRICTED_BY_DEFAULT. ──
+  { key: 'health.read', group: 'sensitive', description: 'See health-room visits, medication plans and doses, immunisations and screenings (OWN: your own child only)' },
+  { key: 'health.manage', group: 'sensitive', description: 'School nurse: record health-room visits, medication plans and doses, first-aid stock, immunisations, screenings and care notes' },
+  { key: 'health.witness', group: 'sensitive', description: 'Countersign a controlled medicine dose as the second person' },
+  { key: 'health.carenotes.read', group: 'sensitive', description: 'See the short care notes parents agreed to share for the class you are class teacher of (e.g. a severe allergy)' },
+  { key: 'health.summary.read', group: 'analytics', description: 'Health-room figures as counts only (no names, no details)' },
 ];
 
 const grants = (pairs) => pairs.map(([key, scope]) => ({ key, scope }));
@@ -218,27 +372,152 @@ export const SUPER_ADMIN_ONLY = [
  */
 export const AI_ASSISTANT_PERMISSION = 'ai.copilot.use';
 
+/**
+ * Authorities no general-purpose role receives by default.
+ *
+ * The school ADMIN otherwise holds nearly every key, and the platform
+ * SUPER_ADMIN every key. These four are kept from both so that separation of
+ * duties holds out of the box: Finance/HR prepare payroll and the Principal
+ * approves it; salary and bank details stay with Finance/HR; safeguarding cases
+ * stay with the designated officer (COMPLIANCE); the final clearance of a staff
+ * member or driver is the Principal's. A school that wants otherwise grants the
+ * key deliberately through Access & Permissions, which is audited.
+ */
+export const RESTRICTED_BY_DEFAULT = [
+  'payroll.approve',
+  // Camera observations about children are reviewed only by named, trained staff.
+  'camera.events.review',
+  // Live CCTV is watched only by people the school names (principal and safety officer by default).
+  'camera.live.view',
+  // Preparing pay (structures, inputs, adjustments) belongs to finance and HR. An administrator
+  // holding it could add an adjustment to their own line and send the run for approval.
+  'payroll.prepare',
+  'payroll.sensitive.read',
+  'safeguarding.manage',
+  // Whether a support plan was referred to safeguarding is itself sensitive.
+  'supportplans.referral.view',
+  'verification.decide',
+  // Health records belong to the school nurse and the child's own family. An administrator sees the
+  // counts (health.summary.read) and grants these deliberately, audited, if the school wants otherwise.
+  'health.read',
+  'health.manage',
+  'health.witness',
+  'health.carenotes.read',
+];
+
+/** Keys every staff role holds for the shared operations surfaces. */
+const STAFF_OPERATIONS = [
+  ['approvals.read', 'OWN'],
+  ['approvals.submit', 'OWN'],
+  ['facilities.read', 'ALL'],
+  ['facilities.request', 'OWN'],
+  ['procurement.request', 'OWN'],
+  ['procurement.read', 'OWN'],
+  ['payroll.read', 'OWN'],
+  ['safeguarding.report', 'OWN'],
+  ['events.read', 'ALL'],
+  ['institution.read', 'ALL'],
+  ['org.read', 'ALL'],
+  ['community.read', 'ALL'],
+  ['community.post', 'OWN'],
+  ['campus.map.read', 'ALL'],
+  ['lectures.read', 'OWN'],
+  ['lectures.manage', 'OWN'],
+];
+
+/** Keys a student, parent or alumnus holds for the community surfaces. */
+const FAMILY_COMMUNITY = [
+  ['institution.read', 'ALL'],
+  ['community.read', 'OWN'],
+  ['campus.map.read', 'OWN'],
+  ['safeguarding.report', 'OWN'],
+  ['lectures.read', 'OWN'],
+];
+
+/** Later grants of the same key replace earlier ones. */
+const merge = (...lists) => {
+  const byKey = new Map();
+  for (const list of lists) for (const [key, scope] of list) byKey.set(key, scope);
+  return grants([...byKey.entries()]);
+};
+
 const ALL_EXCEPT = (...excluded) =>
   PERMISSION_CATALOG.filter((p) => !excluded.includes(p.key)).map((p) => ({ key: p.key, scope: 'ALL' }));
+
+/**
+ * Keys the platform role does not hold even though it holds the rest of the
+ * catalogue: child-protection case files and individual salary and bank
+ * details belong to the school, not to the platform operator.
+ */
+export const PLATFORM_WITHHELD = ['safeguarding.manage', 'payroll.sensitive.read', 'camera.events.review', 'camera.live.view',
+  // A child's health record belongs to the school and the family, not to the platform operator.
+  'health.read', 'health.manage', 'health.witness', 'health.carenotes.read'];
 
 export const SYSTEM_ROLES = [
   {
     key: 'SUPER_ADMIN',
     name: 'Super Admin',
     description: 'Platform administrator — manages schools and their School Admin accounts',
-    grants: ALL_EXCEPT(AI_ASSISTANT_PERMISSION),
+    // Platform support does not get child-protection cases or payroll
+    // internals by default either — see RESTRICTED_BY_DEFAULT.
+    grants: ALL_EXCEPT(AI_ASSISTANT_PERMISSION, ...PLATFORM_WITHHELD),
   },
   {
     key: 'ADMIN',
     name: 'Administrator',
     description: 'Manages day-to-day school operations',
-    grants: ALL_EXCEPT('permissions.manage', 'fees.payments.refund', ...SUPER_ADMIN_ONLY),
+    grants: ALL_EXCEPT('permissions.manage', 'fees.payments.refund', ...SUPER_ADMIN_ONLY, ...RESTRICTED_BY_DEFAULT),
   },
   {
     key: 'PRINCIPAL',
     name: 'Principal',
     description: 'Oversight across the whole school',
-    grants: grants([
+    grants: merge([
+      // Part 2 gaps.
+      ['supportplans.read', 'ALL'],
+      ['supportplans.manage', 'ALL'],
+      ['supportplans.referral.view', 'ALL'],
+      ['portfolios.read', 'ALL'],
+      ['portfolios.manage', 'ALL'],
+      ['scenarios.read', 'ALL'],
+      ['scenarios.manage', 'ALL'],
+      // Part 3: health-room figures, counts only.
+      ['health.summary.read', 'ALL'],
+      // School platform completion.
+      ['analytics.workspace.read', 'ALL'],
+      ['analytics.export', 'ALL'],
+      ['reports.quarterly.read', 'ALL'],
+      ['reports.quarterly.manage', 'ALL'],
+      ['tasks.read', 'ALL'],
+      ['tasks.manage', 'ALL'],
+      ['bills.read', 'ALL'],
+      ['labs.read', 'ALL'],
+      ['transport.tracking.read', 'ALL'],
+      ['checkpoints.read', 'ALL'],
+      ['visitors.manage', 'ALL'],
+      ['ptm.read', 'ALL'],
+      ['ptm.manage', 'ALL'],
+      ['reviewcalls.manage', 'ALL'],
+      ['conversations.use', 'ALL'],
+      ['staffleave.apply', 'OWN'],
+      ['staffleave.manage', 'ALL'],
+      ['cover.manage', 'ALL'],
+      ['clubs.read', 'ALL'],
+      ['clubs.manage', 'ALL'],
+      ['showcase.publish', 'ALL'],
+      ['alumni.directory.read', 'ALL'],
+      ['alumni.manage', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['digest.manage', 'ALL'],
+      ['social.publish', 'ALL'],
+      ['sustainability.read', 'ALL'],
+      ['sustainability.manage', 'ALL'],
+      ['sustainability.verify', 'ALL'],
+      ['reportcards.manage', 'ALL'],
+      ['hostel.outpass.manage', 'ALL'],
+      ['ai.drafts.use', 'ALL'],
+      ['camera.events.review', 'ALL'],
+      ['camera.live.view', 'ALL'],
       ['users.read', 'ALL'],
       ['students.read', 'ALL'],
       ['attendance.read', 'ALL'],
@@ -271,13 +550,73 @@ export const SYSTEM_ROLES = [
       ['cocurricular.read', 'ALL'],
       ['cocurricular.review', 'ALL'],
       ['profile.edit.review', 'ALL'],
+    ], STAFF_OPERATIONS, [
+      // The accountable approver. Decides at the stages addressed to the
+      // principal; never at a stage on their own request.
+      ['approvals.read', 'ALL'],
+      ['approvals.decide', 'ALL'],
+      ['approvals.configure', 'ALL'],
+      ['governance.read', 'ALL'],
+      ['governance.manage', 'ALL'],
+      ['institution.manage', 'ALL'],
+      ['correspondence.read', 'ALL'],
+      ['compliance.read', 'ALL'],
+      ['contracts.read', 'ALL'],
+      ['verification.read', 'ALL'],
+      ['verification.decide', 'ALL'],
+      ['events.manage', 'ALL'],
+      ['facilities.request', 'ALL'],
+      ['payroll.read', 'ALL'],
+      ['payroll.approve', 'ALL'],
+      ['procurement.read', 'ALL'],
+      ['budget.read', 'ALL'],
+      ['funding.read', 'ALL'],
+      ['marketing.read', 'ALL'],
+      ['community.read', 'ALL'],
+      ['community.post', 'ALL'],
+      ['community.moderate', 'ALL'],
+      ['messaging.read', 'ALL'],
+      ['lectures.read', 'ALL'],
+      ['lectures.manage', 'ALL'],
+      ['syllabus.read', 'ALL'],
+      ['syllabus.manage', 'ALL'],
+      // Part 8: the exam timetable, halls, seating and invigilators.
+      ['exams.schedule', 'ALL'],
     ]),
   },
   {
     key: 'TEACHER',
     name: 'Teacher',
     description: 'Manages their own classes',
-    grants: grants([
+    grants: merge([
+      // Part 2 gaps.
+      ['supportplans.read', 'OWN'],
+      ['supportplans.manage', 'OWN'],
+      ['portfolios.read', 'OWN'],
+      ['portfolios.manage', 'OWN'],
+      // School platform completion.
+      ['analytics.workspace.read', 'OWN'],
+      ['tasks.read', 'OWN'],
+      ['tasks.manage', 'OWN'],
+      ['labs.read', 'OWN'],
+      ['labs.manage', 'OWN'],
+      ['ptm.read', 'OWN'],
+      ['ptm.manage', 'OWN'],
+      ['reviewcalls.manage', 'OWN'],
+      ['conversations.use', 'OWN'],
+      ['staffleave.apply', 'OWN'],
+      ['clubs.read', 'ALL'],
+      ['clubs.manage', 'OWN'],
+      ['digest.read', 'ALL'],
+      ['sustainability.read', 'ALL'],
+      ['sustainability.manage', 'OWN'],
+      ['sustainability.verify', 'OWN'],
+      ['reportcards.manage', 'OWN'],
+      ['alumni.directory.read', 'ALL'],
+      ['ai.drafts.use', 'OWN'],
+      ['transport.trips.operate', 'OWN'],
+      ['syllabus.read', 'OWN'],
+      ['syllabus.manage', 'OWN'],
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
       ['attendance.mark', 'OWN'],
@@ -291,6 +630,8 @@ export const SYSTEM_ROLES = [
       ['marks.read', 'OWN'],
       ['marks.enter', 'OWN'],
       ['marks.publish', 'OWN'],
+      // Part 8: class tests for the subjects they teach, in a free room.
+      ['exams.schedule', 'OWN'],
       // Scoped OWN: the review queue and every decision are filtered to
       // electives in sections this teacher actually teaches.
       ['registrations.review', 'OWN'],
@@ -302,6 +643,8 @@ export const SYSTEM_ROLES = [
       // Read-only — allergy/emergency-contact visibility for a teacher's own
       // students; medical.manage stays parent/admin-only.
       ['medical.read', 'OWN'],
+      // Part 3: the short care notes parents agreed to share, for their own class only.
+      ['health.carenotes.read', 'OWN'],
       ['timetable.read', 'OWN'],
       ['announcements.read', 'ALL'],
       ['announcements.publish', 'OWN'],
@@ -315,16 +658,38 @@ export const SYSTEM_ROLES = [
       // school-wide by nature; what a teacher may *do* with a class is still
       // scoped OWN by every other permission above.
       ['academics.read', 'ALL'],
-    ]),
+    ], STAFF_OPERATIONS),
   },
   {
     key: 'PARENT',
     name: 'Parent',
     description: "Views their own children's records",
-    grants: grants([
+    grants: merge([
+      // Part 2 gaps.
+      ['supportplans.read', 'OWN'],
+      ['portfolios.read', 'OWN'],
+      // School platform completion.
+      ['ptm.read', 'OWN'],
+      ['ptm.book', 'OWN'],
+      ['conversations.use', 'OWN'],
+      ['transport.tracking.read', 'OWN'],
+      ['checkpoints.read', 'OWN'],
+      ['clubs.read', 'OWN'],
+      ['clubs.join', 'OWN'],
+      ['hostel.outpass.request', 'OWN'],
+      ['sustainability.read', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['syllabus.read', 'OWN'],
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
+      // A parent applies for leave and sees borrowed books for their own children only.
+      ['leave.apply', 'OWN'],
+      ['library.read', 'OWN'],
       ['leave.read', 'OWN'],
+      // Part 4: a parent asks for a library book or a bus place for their own child
+      // (the services check the child is theirs: utils/familyStudent.js).
+      ['library.request', 'OWN'],
+      ['transport.request', 'OWN'],
       ['assignments.read', 'OWN'],
       ['marks.read', 'OWN'],
       ['reportcards.read', 'OWN'],
@@ -338,15 +703,29 @@ export const SYSTEM_ROLES = [
       ['tickets.create', 'OWN'],
       ['medical.read', 'OWN'],
       ['medical.manage', 'OWN'],
+      // Part 3: their own child's health-room visits and medication log; consent to plans and care notes.
+      ['health.read', 'OWN'],
       ['ai.copilot.use', 'OWN'],
       ['analytics.child.read', 'OWN'],
-    ]),
+    ], FAMILY_COMMUNITY),
   },
   {
     key: 'STUDENT',
     name: 'Student',
     description: 'Views their own records',
-    grants: grants([
+    grants: merge([
+      // Part 2 gaps.
+      ['supportplans.read', 'OWN'],
+      ['portfolios.read', 'OWN'],
+      ['portfolios.reflect', 'OWN'],
+      // School platform completion.
+      ['clubs.read', 'OWN'],
+      ['clubs.join', 'OWN'],
+      ['sustainability.read', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['alumni.directory.read', 'ALL'],
+      ['hostel.outpass.request', 'OWN'],
+      ['syllabus.read', 'OWN'],
       ['students.read', 'OWN'],
       ['attendance.read', 'OWN'],
       ['leave.apply', 'OWN'],
@@ -376,13 +755,29 @@ export const SYSTEM_ROLES = [
       ['tickets.read', 'OWN'],
       ['tickets.create', 'OWN'],
       ['ai.copilot.use', 'OWN'],
-    ]),
+    ], FAMILY_COMMUNITY, [['community.post', 'OWN'], ['mentoring.participate', 'OWN']]),
   },
   {
     key: 'FINANCE',
     name: 'Finance',
     description: 'Manages fees and payments',
-    grants: grants([
+    grants: merge([
+      // Part 2 gaps.
+      ['scenarios.read', 'ALL'],
+      ['scenarios.manage', 'ALL'],
+      // School platform completion.
+      ['analytics.workspace.read', 'OWN'],
+      ['analytics.export', 'OWN'],
+      ['reports.quarterly.read', 'OWN'],
+      ['tasks.read', 'OWN'],
+      ['tasks.manage', 'OWN'],
+      ['bills.read', 'ALL'],
+      ['bills.manage', 'ALL'],
+      ['staffleave.apply', 'OWN'],
+      ['fees.concessions.manage', 'ALL'],
+      ['accounts.export', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['ai.drafts.use', 'OWN'],
       ['students.read', 'ALL'],
       ['fees.structure.manage', 'ALL'],
       ['fees.read', 'ALL'],
@@ -404,13 +799,35 @@ export const SYSTEM_ROLES = [
       ['ai.copilot.use', 'ALL'],
       // Fee structures are defined per academic year and grade.
       ['academics.read', 'ALL'],
+    ], STAFF_OPERATIONS, [
+      // Prepares and pays; never approves its own payroll (payroll.approve is
+      // the Principal's) — same separation as the fee approval workflow above.
+      ['approvals.read', 'ALL'],
+      ['approvals.decide', 'ALL'],
+      ['payroll.read', 'ALL'],
+      ['payroll.prepare', 'ALL'],
+      ['payroll.sensitive.read', 'ALL'],
+      ['procurement.read', 'ALL'],
+      ['procurement.manage', 'ALL'],
+      ['budget.read', 'ALL'],
+      ['budget.manage', 'ALL'],
+      ['funding.read', 'ALL'],
+      ['funding.manage', 'ALL'],
+      ['contracts.read', 'ALL'],
+      ['verification.read', 'ALL'],
     ]),
   },
   {
     key: 'LIBRARIAN',
     name: 'Librarian',
     description: 'Manages the school library catalog and lending',
-    grants: grants([
+    grants: merge([
+      // School platform completion.
+      ['tasks.read', 'OWN'],
+      ['tasks.manage', 'OWN'],
+      ['staffleave.apply', 'OWN'],
+      ['digest.read', 'ALL'],
+      ['ai.drafts.use', 'OWN'],
       ['library.read', 'ALL'],
       ['library.manage', 'ALL'],
       ['students.read', 'ALL'],
@@ -420,13 +837,21 @@ export const SYSTEM_ROLES = [
       ['tickets.respond', 'ALL'],
       ['ai.copilot.use', 'ALL'],
       ['academics.read', 'ALL'],
-    ]),
+    ], STAFF_OPERATIONS),
   },
   {
     key: 'WARDEN',
     name: 'Warden',
     description: 'Manages hostel facilities and student welfare',
-    grants: grants([
+    grants: merge([
+      // School platform completion.
+      ['tasks.read', 'OWN'],
+      ['tasks.manage', 'OWN'],
+      ['staffleave.apply', 'OWN'],
+      ['hostel.outpass.manage', 'ALL'],
+      ['checkpoints.read', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['ai.drafts.use', 'OWN'],
       ['hostel.read', 'ALL'],
       ['hostel.manage', 'ALL'],
       ['medical.read', 'ALL'],
@@ -438,6 +863,169 @@ export const SYSTEM_ROLES = [
       ['tickets.respond', 'ALL'],
       ['ai.copilot.use', 'ALL'],
       ['academics.read', 'ALL'],
+    ], STAFF_OPERATIONS),
+  },
+  // ── Part 3: school nurse ───────────────────────────────────────────────
+  // No existing role fits: the warden's medical.read is for hostel residents and
+  // carries hostel management with it. Minimum grants: the health room itself,
+  // the existing medical record (allergies, emergency contact) to read, the
+  // student list to find a child, and the shared staff surfaces.
+  {
+    key: 'NURSE',
+    name: 'School Nurse',
+    description: 'Health room: visits, medication, first-aid stock, immunisations and screenings',
+    grants: merge(STAFF_OPERATIONS, [
+      ['health.read', 'ALL'],
+      ['health.manage', 'ALL'],
+      ['health.witness', 'ALL'],
+      ['health.summary.read', 'ALL'],
+      ['medical.read', 'ALL'],
+      ['students.read', 'ALL'],
+      ['academics.read', 'ALL'],
+      ['tasks.read', 'OWN'],
+      ['tasks.manage', 'OWN'],
+      ['staffleave.apply', 'OWN'],
+      ['announcements.read', 'ALL'],
+      ['calendar.read', 'ALL'],
+      ['ai.copilot.use', 'ALL'],
+    ]),
+  },
+  // ── Institution operations roles ───────────────────────────────────────
+  {
+    key: 'HR',
+    name: 'HR & Payroll',
+    description: 'Recruitment, staff records, verification and payroll preparation',
+    grants: merge(STAFF_OPERATIONS, [
+      // School platform completion.
+      ['analytics.workspace.read', 'OWN'],
+      ['reports.quarterly.read', 'OWN'],
+      ['tasks.read', 'OWN'],
+      ['tasks.manage', 'OWN'],
+      ['staffleave.apply', 'OWN'],
+      ['staffleave.manage', 'ALL'],
+      ['cover.manage', 'ALL'],
+      ['alumni.manage', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['ai.drafts.use', 'OWN'],
+      ['users.read', 'ALL'],
+      ['org.manage', 'ALL'],
+      ['payroll.read', 'ALL'],
+      ['payroll.prepare', 'ALL'],
+      ['payroll.sensitive.read', 'ALL'],
+      ['verification.read', 'ALL'],
+      ['verification.manage', 'ALL'],
+      ['approvals.decide', 'ALL'],
+      ['compliance.read', 'ALL'],
+      ['announcements.read', 'ALL'],
+      ['calendar.read', 'ALL'],
+      ['ai.copilot.use', 'ALL'],
+    ]),
+  },
+  {
+    key: 'MARKETING',
+    name: 'Marketing & Admissions',
+    description: 'Campaigns, creative assets, enquiries, counselling and enrolment',
+    grants: merge(STAFF_OPERATIONS, [
+      // School platform completion.
+      ['analytics.workspace.read', 'OWN'],
+      ['tasks.read', 'OWN'],
+      ['tasks.manage', 'OWN'],
+      ['staffleave.apply', 'OWN'],
+      ['showcase.publish', 'ALL'],
+      ['social.publish', 'ALL'],
+      ['alumni.directory.read', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['ai.drafts.use', 'OWN'],
+      ['admissions.read', 'ALL'],
+      ['admissions.manage', 'ALL'],
+      ['marketing.read', 'ALL'],
+      ['marketing.manage', 'ALL'],
+      ['announcements.read', 'ALL'],
+      ['calendar.read', 'ALL'],
+      ['academics.read', 'ALL'],
+      ['ai.copilot.use', 'ALL'],
+    ]),
+  },
+  {
+    key: 'COMPLIANCE',
+    name: 'Compliance & Safeguarding Officer',
+    description: 'Designated officer for safeguarding, statutory compliance, policies and training',
+    grants: merge(STAFF_OPERATIONS, [
+      // Part 2 gaps.
+      ['supportplans.referral.view', 'ALL'],
+      // School platform completion.
+      ['analytics.workspace.read', 'OWN'],
+      ['reports.quarterly.read', 'OWN'],
+      ['tasks.read', 'ALL'],
+      ['tasks.manage', 'ALL'],
+      ['bills.read', 'ALL'],
+      ['staffleave.apply', 'OWN'],
+      ['visitors.manage', 'ALL'],
+      ['checkpoints.read', 'ALL'],
+      ['camera.devices.manage', 'ALL'],
+      ['camera.events.review', 'ALL'],
+      ['camera.live.view', 'ALL'],
+      ['sustainability.read', 'ALL'],
+      ['sustainability.manage', 'ALL'],
+      ['sustainability.verify', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['ai.drafts.use', 'OWN'],
+      ['users.read', 'ALL'],
+      ['compliance.read', 'ALL'],
+      ['compliance.manage', 'ALL'],
+      ['safeguarding.manage', 'ALL'],
+      // Newsroom reports and photo-consent flags are sent to the safeguarding
+      // officer, who must be able to act on them.
+      ['community.moderate', 'ALL'],
+      ['correspondence.read', 'ALL'],
+      ['contracts.read', 'ALL'],
+      ['verification.read', 'ALL'],
+      ['announcements.read', 'ALL'],
+      ['calendar.read', 'ALL'],
+      ['ai.copilot.use', 'ALL'],
+    ]),
+  },
+  {
+    key: 'TRUSTEE',
+    name: 'Trustee / Governing Body Member',
+    description: 'Governance: meetings, resolutions, board-level approvals and institution health',
+    grants: grants([
+      // Part 2 gaps.
+      ['scenarios.read', 'ALL'],
+      // School platform completion.
+      ['analytics.workspace.read', 'ALL'],
+      ['reports.quarterly.read', 'OWN'],
+      ['digest.read', 'ALL'],
+      ['lectures.read', 'OWN'],
+      ['governance.read', 'OWN'],
+      ['approvals.read', 'OWN'],
+      ['approvals.decide', 'OWN'],
+      ['institution.read', 'ALL'],
+      ['org.read', 'ALL'],
+      ['budget.read', 'ALL'],
+      ['funding.read', 'ALL'],
+      ['compliance.read', 'ALL'],
+      ['community.read', 'ALL'],
+      ['campus.map.read', 'OWN'],
+      ['announcements.read', 'ALL'],
+      ['calendar.read', 'ALL'],
+      ['ai.copilot.use', 'OWN'],
+      // Every adult in the school can raise a concern; they see only their own reports.
+      ['safeguarding.report', 'OWN'],
+    ]),
+  },
+  {
+    key: 'ALUMNUS',
+    name: 'Alumnus',
+    description: 'Verified former student: newsroom, alumni circles and mentoring',
+    grants: merge(FAMILY_COMMUNITY, [
+      // School platform completion.
+      ['alumni.directory.read', 'ALL'],
+      ['digest.read', 'ALL'],
+      ['clubs.read', 'OWN'],
+      ['community.post', 'OWN'],
+      ['mentoring.participate', 'OWN'],
+      ['ai.copilot.use', 'OWN'],
     ]),
   },
 ];

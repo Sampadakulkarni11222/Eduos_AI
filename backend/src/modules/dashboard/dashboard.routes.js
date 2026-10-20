@@ -2,11 +2,16 @@ import { Router } from 'express';
 import { authenticate } from '../../middleware/auth.js';
 import { requirePermission, requireRole } from '../../middleware/permission.js';
 import * as ctrl from './dashboard.controller.js';
+import { cacheGetResponses, DASHBOARD_CACHE_MS } from '../../utils/shortCache.js';
 
 const router = Router();
 
 // All dashboard routes require authentication
 router.use(authenticate);
+// Each dashboard is 20-30 queries and is reopened constantly; a person's own
+// answer is reused for a few seconds (the key includes who is asking and the
+// full address, so nothing is shared between people or views).
+router.use(cacheGetResponses((req) => req.actor?.profileId && `dash:${req.actor.tenantId}:${req.actor.profileId}:${req.originalUrl}`, DASHBOARD_CACHE_MS));
 
 /**
  * The school-wide dashboards below list SUPER_ADMIN alongside the school-level

@@ -2,21 +2,28 @@
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Card, EmptyState, SkeletonRows, cx } from '@/components/ui';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import type { GrowthScore, StudentListItem } from '@/lib/types';
+import { formatDate } from '../../student/_lib/format';
 
 export default function StudentView() {
   const [kids, setKids] = useState<StudentListItem[] | null>(null);
   const [active, setActive] = useState(0);
   const [gs, setGs] = useState<GrowthScore | null>(null);
   const [loading, setLoading] = useState(false);
+  // Why there is no score, so the page explains itself instead of going blank.
+  const [failure, setFailure] = useState<'forbidden' | 'error' | null>(null);
 
   useEffect(() => { api.students().then((r) => setKids(r.items)).catch(() => setKids([])); }, []);
   const kid = kids?.[active];
   useEffect(() => {
-    if (!kid?.enrollment) { setGs(null); return; }
+    if (!kid?.enrollment) { setGs(null); setFailure(null); return; }
     setLoading(true);
-    api.growthScore(kid.enrollment.id).then(setGs).catch(() => setGs(null)).finally(() => setLoading(false));
+    setFailure(null);
+    api.growthScore(kid.enrollment.id)
+      .then((g) => setGs(g && typeof g.score === 'number' && Array.isArray(g.components) ? g : null))
+      .catch((e) => { setGs(null); setFailure(e instanceof ApiError && e.status === 403 ? 'forbidden' : 'error'); })
+      .finally(() => setLoading(false));
   // Intentionally narrower than the rule wants: this effect reads only the
   // enrollment id, so widening the dependency to the whole `kid` object would
   // refetch on unrelated changes to the selected child.
@@ -29,7 +36,7 @@ export default function StudentView() {
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {kids.map((k, i) => (
             <button key={k.id} onClick={() => setActive(i)} className="chip-tab"
-              style={{ background: i === active ? 'var(--accent)' : '#fff', color: i === active ? 'var(--on-accent)' : 'var(--text-2)', borderColor: i === active ? 'var(--accent)' : 'var(--input-border)' }}>
+              style={{ background: i === active ? 'var(--accent)' : 'var(--card-bg)', color: i === active ? 'var(--on-accent)' : 'var(--text-2)', borderColor: i === active ? 'var(--accent)' : 'var(--input-border)' }}>
               {k.name.split(' ')[0]}
             </button>
           ))}
@@ -37,15 +44,28 @@ export default function StudentView() {
       )}
       {(kids === null || loading) && <Card><SkeletonRows rows={4} /></Card>}
       {kids?.length === 0 && <EmptyState title="No children linked" sub="Ask the office to link your wards to this number." />}
+      {kid && !kid.enrollment && (
+        <EmptyState title={`${kid.name.split(' ')[0]} is not enrolled in a class this year`} sub="The growth view appears once the school enrols them in a class." />
+      )}
+      {kid?.enrollment && !loading && !gs && (
+        <EmptyState
+          title={failure === 'error' ? "Couldn't load the growth view" : `The growth view isn't available for ${kid.name.split(' ')[0]} yet`}
+          sub={failure === 'error'
+            ? 'Check your connection and reload the page.'
+            : failure === 'forbidden'
+              ? 'Your school has not turned on the growth score for parents. Attendance and marks are on the Attendance and Performance pages.'
+              : 'It is built from published marks and attendance, so it appears once the school has published some results. Attendance and marks are on the Attendance and Performance pages.'}
+        />
+      )}
       {!loading && gs && (
-        <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
           <Card style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
             <GrowthRing score={gs.score} band={gs.band} />
             <div style={{ marginTop: 14 }}>
               <span className="xp-pill">★ {Math.round(gs.score * 12)} XP</span>
             </div>
             <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 10 }}>
-              Updated {new Date(gs.computedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+              Updated {formatDate(gs.computedAt)}
             </p>
           </Card>
           <Card>

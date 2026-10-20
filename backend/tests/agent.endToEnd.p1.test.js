@@ -10,7 +10,11 @@ import { buildPermissionMap } from '../src/utils/buildPermissionMap.js';
 import { runWithTenant } from '../src/tenancy/tenantContext.js';
 import { runAgentSafely, confirmAction } from '../src/modules/ai/agent/orchestrator.js';
 import { toolsAvailableTo } from '../src/modules/ai/agent/tools.js';
+import { mcpToolsFor } from '../src/modules/ai/mcp/registry.js';
 import '../src/models/profile.model.js';
+
+/** Roles the assistant serves: those holding ai.copilot.use (see tests/mcp.roleCoverage.test.js). */
+const servedByAssistant = (key) => SYSTEM_ROLES.find((r) => r.key === key).grants.some((g) => g.key === 'ai.copilot.use');
 
 /**
  * The agent, driven the way the QA report says it could not be.
@@ -95,10 +99,14 @@ describe('a turn completes without a model configured', () => {
   });
 
   it('offers every role a toolset, so no role opens the assistant to nothing', () => {
-    for (const role of SYSTEM_ROLES.map((r) => r.key)) {
+    // The catalogue the assistant works from is the MCP registry; the older
+    // agent tools are the subset it wraps. A role is offered something as long
+    // as either holds a tool for it (an alumnus has only registry tools).
+    for (const role of SYSTEM_ROLES.map((r) => r.key).filter((k) => k === 'SUPER_ADMIN' || servedByAssistant(k))) {
       const tools = toolsAvailableTo(actorFor(role));
       expect(Array.isArray(tools), role).toBe(true);
-      expect(tools.length, `${role} has no agent tools at all`).toBeGreaterThan(0);
+      const offered = tools.length + mcpToolsFor(actorFor(role)).length;
+      expect(offered, `${role} has no agent tools at all`).toBeGreaterThan(0);
     }
   });
 });

@@ -214,25 +214,18 @@ describe('Website: POST /ai/agent → shared agent → MCP → EduOS', () => {
     expect(await mcpAudit('mark_attendance', 'WEB', 'EXECUTED')).not.toBeNull();
   });
 
-  it('FINANCIAL — finance records a payment, an admin approves it', async () => {
+  it('FINANCIAL — recording or approving a payment is handed back to the Payments screen; nothing is written', async () => {
     const res = await ask(school.people.FINANCE, 'Record a payment of ₹5,000 against invoice INV-1001 in cash');
-    expect(res.action.tool).toBe('record_payment');
-    expect(res.action.summary).toBe('Record a ₹5,000 CASH payment against invoice INV-1001');
+    expect(res.status).toBe(200);
+    expect(res.action ?? null).toBeNull();
+    expect(res.refused).toBe('HUMAN_DECISION');
+    expect(res.reply).toMatch(/Payments screen/);
+
+    const approval = await ask(school.people.ADMIN, 'Approve the pending payment for INV-1001');
+    expect(approval.action ?? null).toBeNull();
+    expect(approval.refused).toBe('HUMAN_DECISION');
     expect(await inSchool(OAK, () => Payment.countDocuments())).toBe(0);
-
-    const done = await confirmWeb(school.people.FINANCE, res.action.confirmToken);
-    expect(done.reply).toMatch(/pending admin approval/);
-    const payment = await inSchool(OAK, () => Payment.findOne({ invoiceId: school.inv1._id }).lean());
-    expect(payment.amountPaise).toBe(500000);
-    expect(payment.recordStatus).toBe('PENDING_ADMIN_APPROVAL');
-
-    const approveMessage = `Approve ${payment._id}`;
-    script.plans.set(approveMessage, [{ name: 'approve_payment', args: { paymentId: String(payment._id) } }]);
-    const approval = await ask(school.people.ADMIN, approveMessage);
-    expect(approval.action.tool).toBe('approve_payment');
-    await confirmWeb(school.people.ADMIN, approval.action.confirmToken);
-    expect((await inSchool(OAK, () => Payment.findById(payment._id).lean())).recordStatus).toBe('PUBLISHED');
-    expect(await mcpAudit('approve_payment', 'WEB', 'EXECUTED')).not.toBeNull();
+    expect(await inSchool(OAK, () => AgentAction.countDocuments())).toBe(0);
   });
 
   it('DELETE — a planned archive deactivates the student and withdraws the enrolment', async () => {
@@ -261,17 +254,20 @@ describe('Website: POST /ai/agent → shared agent → MCP → EduOS', () => {
     expect((await inSchool(OAK, () => AgentAction.findById(res.action.id).lean())).status).toBe('REJECTED');
   });
 
-  it('UNAUTHORIZED — a teacher asking to record a payment is refused with 403 and nothing is written', async () => {
+  it('UNAUTHORIZED — a teacher asking to record a payment is told it is not theirs, and nothing is written', async () => {
     const res = await ask(school.people.TEACHER, 'Record a payment of ₹500 against invoice INV-1001');
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
+    expect(res.refused).toBe('NOT_PERMITTED');
+    expect(res.action ?? null).toBeNull();
     expect(await inSchool(OAK, () => Payment.countDocuments())).toBe(0);
-    expect(await mcpAudit('record_payment', 'WEB', 'FORBIDDEN')).not.toBeNull();
   });
 
-  it('INVALID INPUT — a nonexistent invoice is named in the reply, and no proposal is made', async () => {
-    const res = await ask(school.people.FINANCE, 'Record a payment of ₹500 against invoice NOPE-999');
+  it('INVALID INPUT — a nonexistent record is named in the reply, and no proposal is made', async () => {
+    const message = 'Deactivate the student record of Nobody Nowhere';
+    script.plans.set(message, [{ name: 'archive_student', args: { studentName: 'Nobody Nowhere' } }]);
+    const res = await ask(school.people.ADMIN, message);
     expect(res.status).toBe(200);
-    expect(res.reply).toBe('No invoice numbered "NOPE-999".');
+    expect(res.reply).toMatch(/Nobody Nowhere/);
     expect(res.action ?? null).toBeNull();
     expect(await inSchool(OAK, () => AgentAction.countDocuments())).toBe(0);
   });
@@ -322,52 +318,45 @@ describe('WhatsApp: signed webhook → phone identity → shared agent → MCP �
     expect(await mcpAudit('get_pending_fees', 'WHATSAPP', 'READ')).not.toBeNull();
   });
 
-  it('ACTION — "Mark Rahul Sharma present", then YES', async () => {
+  it('ACTION — "Mark Rahul Sharma present" is sent to the website, and a YES writes nothing', async () => {
     const proposal = await whatsapp(school.people.TEACHER, 'Mark Rahul Sharma present');
-    expect(proposal.reply).toMatch(/Rahul Sharma → PRESENT/);
-    expect(proposal.reply).toMatch(/Reply YES to confirm/);
+    expect(proposal.reply).toMatch(/EduOS website/);
     expect((await rahulToday()).status).toBe('ABSENT');
 
-    const yes = await whatsapp(school.people.TEACHER, 'YES');
-    expect(yes.reply).toMatch(/Attendance recorded/);
-    expect((await rahulToday()).status).toBe('PRESENT');
-    expect((await mcpAudit('mark_attendance', 'WHATSAPP', 'EXECUTED')).after.confirmed).toBe(true);
+    await whatsapp(school.people.TEACHER, 'YES');
+    expect((await rahulToday()).status).toBe('ABSENT');
+    expect(await mcpAudit('mark_attendance', 'WHATSAPP', 'CONFIRM_ON_WEB')).not.toBeNull();
+    expect(await mcpAudit('mark_attendance', 'WHATSAPP', 'EXECUTED')).toBeNull();
   });
 
-  it('FINANCIAL — "Record this payment", then yes', async () => {
+  it('FINANCIAL — "Record this payment" is a decision made on the website', async () => {
     const proposal = await whatsapp(school.people.FINANCE, 'Record a payment of ₹5,000 against invoice INV-1001 in cash');
-    expect(proposal.reply).toMatch(/Record a ₹5,000 CASH payment against invoice INV-1001/);
-    const yes = await whatsapp(school.people.FINANCE, 'yes');
-    expect(yes.reply).toMatch(/pending admin approval/);
-    expect(await inSchool(OAK, () => Payment.countDocuments({ invoiceId: school.inv1._id }))).toBe(1);
-    expect(await mcpAudit('record_payment', 'WHATSAPP', 'EXECUTED')).not.toBeNull();
+    expect(proposal.reply).toMatch(/website/);
+    await whatsapp(school.people.FINANCE, 'yes');
+    expect(await inSchool(OAK, () => Payment.countDocuments({ invoiceId: school.inv1._id }))).toBe(0);
   });
 
-  it('CREATE — "Send this announcement" asks first, then publishes', async () => {
+  it('CREATE — "Send this announcement" is sent to the website, and nothing is published', async () => {
     const proposal = await whatsapp(school.people.ADMIN, 'send an announcement "Holiday tomorrow"');
-    expect(proposal.reply).toMatch(/Holiday tomorrow/);
-    expect(await inSchool(OAK, () => Announcement.countDocuments({ title: 'Holiday tomorrow' }))).toBe(0);
+    expect(proposal.reply).toMatch(/EduOS website/);
     await whatsapp(school.people.ADMIN, 'YES');
-    expect(await inSchool(OAK, () => Announcement.countDocuments({ title: 'Holiday tomorrow' }))).toBe(1);
+    expect(await inSchool(OAK, () => Announcement.countDocuments({ title: 'Holiday tomorrow' }))).toBe(0);
   });
 
-  it('UPDATE and DELETE — a "no" leaves the record alone; a "yes" performs it', async () => {
+  it('UPDATE and DELETE — a change to somebody else\'s record is confirmed on the website only', async () => {
     const message = "Deactivate Aman Gupta's student record";
     script.plans.set(message, [{ name: 'archive_student', args: { studentName: 'Aman Gupta' } }]);
 
-    await whatsapp(school.people.ADMIN, message);
-    await whatsapp(school.people.ADMIN, 'no');
-    expect((await inSchool(OAK, () => Student.findById(school.aman.student._id).lean())).deletedAt).toBeNull();
-
-    await whatsapp(school.people.ADMIN, message);
+    const proposal = await whatsapp(school.people.ADMIN, message);
+    expect(proposal.reply).toMatch(/EduOS website/);
     await whatsapp(school.people.ADMIN, 'yes');
-    expect((await inSchool(OAK, () => Student.findById(school.aman.student._id).lean())).deletedAt).not.toBeNull();
-    expect(await mcpAudit('archive_student', 'WHATSAPP', 'EXECUTED')).not.toBeNull();
+    expect((await inSchool(OAK, () => Student.findById(school.aman.student._id).lean())).deletedAt).toBeNull();
+    expect(await mcpAudit('archive_student', 'WHATSAPP', 'EXECUTED')).toBeNull();
   });
 
   it('UNAUTHORIZED — a teacher is refused a payment on WhatsApp exactly as on the website', async () => {
     const res = await whatsapp(school.people.TEACHER, 'Record a payment of ₹500 against invoice INV-1001');
-    expect(res.reply).toMatch(/not authorized/i);
+    expect(res.reply).toMatch(/can't approve, record or refund payments/i);
     expect(await inSchool(OAK, () => Payment.countDocuments())).toBe(0);
   });
 
@@ -395,15 +384,16 @@ describe('WhatsApp: signed webhook → phone identity → shared agent → MCP �
     // and the sender is as before.
     script.plans.set('mark him late', [{ name: 'mark_attendance', args: { students: [{ studentName: 'Rahul Sharma', status: 'LATE' }] } }]);
     const proposal = await whatsapp(school.people.ADMIN, 'mark him late');
-    expect(proposal.reply).toMatch(/Rahul Sharma → LATE/);
+    // Marking somebody else's attendance is confirmed on the website only.
+    expect(proposal.reply).toMatch(/EduOS website/);
 
     // The model was given the earlier turn to resolve "him" — as transcript.
     const routed = script.routing.find((r) => r.message === 'mark him late');
     expect(routed.system).toMatch(/Earlier turns of this conversation/);
     expect(routed.system).toMatch(/Rahul Sharma/);
 
-    await whatsapp(school.people.ADMIN, 'YES');
-    const audit = await mcpAudit('mark_attendance', 'WHATSAPP', 'EXECUTED');
+    // Authorized as the sender: the refusal is recorded against them.
+    const audit = await mcpAudit('mark_attendance', 'WHATSAPP', 'CONFIRM_ON_WEB');
     expect(String(audit.actorProfileId)).toBe(school.people.ADMIN.actor.profileId);
   });
 });
@@ -414,7 +404,10 @@ describe('the website and WhatsApp share one MCP client, server, registry and se
   it('gives the same answer, from the same tool, to the same person on both channels', async () => {
     const web = await ask(school.people.ADMIN, 'Which students have pending fees?');
     const wa = await whatsapp(school.people.ADMIN, 'Which students have pending fees?');
-    expect(wa.reply).toBe(web.reply);
+    // WhatsApp carries the "Based on" evidence as a closing line; the website shows it as a footer.
+    const basedOn = /\n\n_Based on: [^\n]*_$/;
+    expect(wa.reply.replace(basedOn, '')).toBe(web.reply);
+    expect(basedOn.test(wa.reply)).toBe(Boolean(web.modelWritten && web.evidence?.length));
     const channels = await inSchool(OAK, () => AuditLog.distinct('channel', { action: 'agent.get_pending_fees', 'after.via': 'MCP' }));
     expect(channels.sort()).toEqual(['WEB', 'WHATSAPP']);
   });

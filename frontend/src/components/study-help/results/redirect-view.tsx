@@ -1,6 +1,7 @@
 'use client';
 import type { LearnResult } from '@/lib/types';
 import { Box, Text, bodyStyle } from './shared';
+import { SafetyHelp } from './safety-help';
 
 type Redirect = Extract<LearnResult, { type: 'redirect' }>;
 
@@ -18,6 +19,7 @@ export function RedirectView({ result }: { result: Redirect }) {
         <Box tone="soft" style={{ borderColor: 'var(--amber)' }}>
           <Text>{result.message}</Text>
         </Box>
+        <SafetyHelp />
       </div>
     );
   }

@@ -10,22 +10,42 @@ import { useSchoolHref } from '@/lib/school-path';
 import { useAuth } from '@/lib/auth';
 import { rupees } from '@/components/ui';
 import type { CalendarEventDto, ParentDashboardDto, StudentListItem } from '@/lib/types';
+import { PulseBoard } from '@/components/ops/pulse-board';
+import { RoleDashboard } from '@/components/ops/role-dashboard';
+import { ShowcaseCard } from '@/components/ops/showcase-view';
+import { ChildTeachersCard } from '@/components/ops/p3-campus-views';
+import { FamilyToday } from '@/components/family/family-today';
+import { formatDate, formatDayMonth, formatTime12, greeting, greetingName, humanizeLabel } from '../student/_lib/format';
+
+/**
+ * The dashboard payload with the per-child tags the API now returns, so the
+ * tiles follow the child selected in the chips. Optional, so an older API
+ * (without them) still renders, falling back to the family-wide figures.
+ */
+type ChildTags = { enrollmentId?: string | null; sectionId?: string | null; pendingFeesPaise?: number; pendingAssignments?: number };
+type ParentDashboard = Omit<ParentDashboardDto, 'linkedChildren' | 'upcomingExams' | 'recentResults'> & {
+  linkedChildren: Array<ParentDashboardDto['linkedChildren'][number] & ChildTags>;
+  upcomingExams: Array<ParentDashboardDto['upcomingExams'][number] & { sectionId?: string | null }>;
+  recentResults: Array<ParentDashboardDto['recentResults'][number] & { studentId?: string | null }>;
+};
 
 export default function ParentDashboard() {
   // Links are written school-less; this adds the school in the URL.
   const link = useSchoolHref();
   const { me } = useAuth();
   const router = useRouter();
-  const first = me?.profile?.displayName?.split(' ')[0];
+  // "Parent of Diya" is a placeholder, not a name: greet without one rather
+  // than "Good afternoon, Parent!".
+  const first = greetingName(me?.profile?.displayName);
   const [kids, setKids] = useState<StudentListItem[] | null>(null);
   const [activeKid, setActiveKid] = useState(0);
-  const [data, setData] = useState<ParentDashboardDto | null>(null);
+  const [data, setData] = useState<ParentDashboard | null>(null);
   const [err, setErr] = useState(false);
 
   const [events, setEvents] = useState<CalendarEventDto[] | null>(null);
 
   useEffect(() => { api.students().then((r) => setKids(r.items)).catch(() => { setErr(true); setKids([]); }); }, []);
-  useEffect(() => { api.parentDashboard().then(setData).catch(() => setData(null)); }, []);
+  useEffect(() => { api.parentDashboard().then((d) => setData(d as ParentDashboard)).catch(() => setData(null)); }, []);
 
   // Real events from the same calendar endpoint the Calendar page uses —
   // parents hold calendar.read, so this needs no new permission.
@@ -41,6 +61,13 @@ export default function ParentDashboard() {
   const kidStats = data?.linkedChildren.find((c) => c.studentId === kid?.id);
   const announcements = data?.announcements ?? null;
   const kidTimetable = data?.timetable.filter((t) => t.sectionId === kid?.enrollment?.sectionId) ?? [];
+  // Per-child figures where the API tags them; family-wide otherwise.
+  const kidSectionId = kidStats?.sectionId ?? kid?.enrollment?.sectionId ?? null;
+  const kidExams = data
+    ? data.upcomingExams.filter((e) => !e.sectionId || !kidSectionId || e.sectionId === kidSectionId)
+    : null;
+  const kidPendingPaise = kidStats?.pendingFeesPaise ?? data?.pendingFeesPaise ?? null;
+  const kidHomework = kidStats?.pendingAssignments ?? null;
 
   // The endpoint returns a window that can include today's earlier entries;
   // only events that have not finished are "upcoming".
@@ -51,13 +78,21 @@ export default function ParentDashboard() {
 
   // Latest published result for the Performance tile — real data from the
   // dashboard payload, not a recomputed or invented figure.
-  const latestResult = data?.recentResults?.[0] ?? null;
+  const latestResult = data?.recentResults?.find((r) => !r.studentId || r.studentId === kid?.id) ?? null;
   const latestResultPct = latestResult && latestResult.maxMarks
     ? Math.round((latestResult.marks / latestResult.maxMarks) * 100)
     : null;
 
   return (
     <PortalShell expectedSlug="parent" topbar={{ title: 'My Children', desc: "Your family's school life in one place" }}>
+      {/* Every child at once and what is waiting for the parent, before the school-wide board. */}
+      <FamilyToday />
+      {/* The interactive board: briefing, departments, campus, charts and live activity. */}
+      <PulseBoard />
+      {/* Per-child charts and analysis, following the child chosen below. */}
+      {kids !== null && <RoleDashboard childId={kid?.id ?? null} onChildChange={(id) => { const i = kids.findIndex((k) => k.id === id); if (i >= 0) setActiveKid(i); }} />}
+      <div style={{ marginTop: 16 }}><ShowcaseCard /></div>
+
       {kids === null && !err && <Card><SkeletonRows rows={3} /></Card>}
       {err && <EmptyState title="Couldn't load your children" sub="Check your connection and reload the page." />}
       {kids && kids.length === 0 && <EmptyState title="No children linked yet" sub="Ask the school office to link your wards to this phone number." />}
@@ -70,7 +105,7 @@ export default function ParentDashboard() {
               {kids.map((k, i) => (
                 <button key={k.id} onClick={() => setActiveKid(i)}
                   className="chip-tab" style={{
-                    background: i === activeKid ? 'var(--accent)' : '#fff',
+                    background: i === activeKid ? 'var(--accent)' : 'var(--card-bg)',
                     color: i === activeKid ? 'var(--on-accent)' : 'var(--text-2)',
                     borderColor: i === activeKid ? 'var(--accent)' : 'var(--input-border)',
                   }}>
@@ -81,7 +116,7 @@ export default function ParentDashboard() {
           </div>
 
           <div className="card card-pad" style={{ background: 'var(--accent)', color: 'var(--on-accent)', marginBottom: 16 }}>
-            <div style={{ fontFamily: 'Newsreader, serif', fontSize: 23, fontWeight: 600 }}>{greeting()}, {first ?? 'there'}!</div>
+            <div style={{ fontFamily: 'Newsreader, serif', fontSize: 23, fontWeight: 600 }}>{greeting()}{first ? `, ${first}` : ''}!</div>
             <div style={{ fontSize: 13, opacity: 0.85, marginTop: 3 }}>
               Here&apos;s how {kid?.name} ({kid?.enrollment?.class}) is doing today · {today()}
             </div>
@@ -109,14 +144,30 @@ export default function ParentDashboard() {
             />
             <StatCard
               label="Fees Pending"
-              value={data ? rupees(data.pendingFeesPaise) : '—'}
-              delta={data && data.pendingFeesPaise > 0 ? 'pay from Payments' : 'all settled'}
-              deltaDir={data && data.pendingFeesPaise > 0 ? 'down' : 'flat'}
+              value={kidPendingPaise != null ? rupees(kidPendingPaise) : '—'}
+              delta={kidPendingPaise != null && kidPendingPaise > 0 ? 'pay from Payments' : 'all settled'}
+              deltaDir={kidPendingPaise != null && kidPendingPaise > 0 ? 'down' : 'flat'}
               href={link('/parent/payments')}
               hint="View invoices and pay outstanding fees"
             />
-            <StatCard label="Upcoming Exams" value={data ? data.upcomingExams.length : '—'} delta="scheduled" deltaDir="flat" />
-            <StatCard label="Announcements" value={announcements ? announcements.length : '—'} delta="recent notices" deltaDir="flat" />
+            <StatCard
+              label="Upcoming Exams"
+              value={kidExams ? kidExams.length : '—'}
+              delta={kidExams && kidExams[0] ? `next: ${kidExams[0].subject} · ${formatDayMonth(kidExams[0].examDate)}` : 'none scheduled'}
+              deltaDir="flat"
+            />
+            {kidHomework != null ? (
+              <StatCard
+                label="Homework Due"
+                value={kidHomework}
+                delta={kidHomework > 0 ? 'not yet handed in' : 'all handed in'}
+                deltaDir={kidHomework > 0 ? 'down' : 'flat'}
+                href={link('/parent/assignments')}
+                hint="View assignments and due dates"
+              />
+            ) : (
+              <StatCard label="Announcements" value={announcements ? announcements.length : '—'} delta="recent notices" deltaDir="flat" />
+            )}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
@@ -133,8 +184,8 @@ export default function ParentDashboard() {
                         <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>Period {t.periodNo}</div>
                       </div>
                       <div style={{ fontSize: 12, color: 'var(--text-2)', textAlign: 'right' }}>
-                        <div>{t.startTime}</div>
-                        <div style={{ color: 'var(--text-faint)' }}>to {t.endTime}</div>
+                        <div>{formatTime12(t.startTime)}</div>
+                        <div style={{ color: 'var(--text-faint)' }}>to {formatTime12(t.endTime)}</div>
                       </div>
                     </div>
                   ))}
@@ -160,6 +211,9 @@ export default function ParentDashboard() {
                   )}
                 </div>
                 
+                {/* The child's teachers, with only what each chose to share with families. */}
+                <ChildTeachersCard studentId={kid?.id ?? null} />
+
                 <div>
                   <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-faint)', letterSpacing: '0.05em', marginBottom: 4 }}>CLASS REPRESENTATIVE</div>
                   {kidStats?.classRepresentative ? (
@@ -198,7 +252,7 @@ export default function ParentDashboard() {
 
               {upcomingEvents.slice(0, 4).map((e, idx) => (
                 <div
-                  key={e.id}
+                  key={`${e.id ?? 'ev'}-${e.startsAt}-${idx}`}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 12,
                     padding: '9px 0', borderTop: idx ? '1px solid var(--hairline)' : 'none',
@@ -216,7 +270,7 @@ export default function ParentDashboard() {
                     <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text-1)' }}>{e.title}</div>
                     <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>{fmtEventWhen(e)}</div>
                   </div>
-                  <Pill tone={EVENT_TONE[e.type] ?? 'gray'}>{e.type.toLowerCase()}</Pill>
+                  <Pill tone={EVENT_TONE[e.type] ?? 'gray'}>{humanizeLabel(e.type)}</Pill>
                 </div>
               ))}
 
@@ -242,7 +296,7 @@ export default function ParentDashboard() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                     <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text-1)' }}>{a.title}</div>
                     <span style={{ fontSize: 11.5, color: 'var(--text-faint)', marginLeft: 8, flexShrink: 0 }}>
-                      {new Date(a.publishedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                      {formatDate(a.publishedAt)}
                     </span>
                   </div>
                   {/* Was clipped to a single nowrap line, so a long notice was
@@ -262,23 +316,22 @@ const EVENT_TONE: Record<string, 'green' | 'amber' | 'red' | 'blue' | 'maroon' |
   HOLIDAY: 'amber', EXAM: 'maroon', PTM: 'blue', SPORTS: 'green', EVENT: 'gray',
 };
 
-/** "Tomorrow", "Mon, 18 Aug", or a range when the event spans several days. */
+/** "Tomorrow", "Mon, 18 Aug 2026", or a range when the event spans several days. */
 function fmtEventWhen(e: CalendarEventDto): string {
   const start = new Date(e.startsAt);
   const end = e.endsAt ? new Date(e.endsAt) : null;
-  const dayFmt: Intl.DateTimeFormatOptions = { weekday: 'short', day: 'numeric', month: 'short' };
+  const fmt = (d: Date) => `${d.toLocaleDateString('en-IN', { weekday: 'short' })}, ${formatDate(d)}`;
 
   const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const dayDiff = Math.round((startOfDay(start) - startOfDay(new Date())) / 86_400_000);
 
   const spansDays = end && startOfDay(end) > startOfDay(start);
   if (spansDays) {
-    return `${start.toLocaleDateString('en-IN', dayFmt)} – ${end!.toLocaleDateString('en-IN', dayFmt)}`;
+    return `${fmt(start)} – ${fmt(end!)}`;
   }
   if (dayDiff === 0) return 'Today';
   if (dayDiff === 1) return 'Tomorrow';
-  return start.toLocaleDateString('en-IN', dayFmt);
+  return fmt(start);
 }
 
-function greeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
-function today() { return new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
+function today() { return `${new Date().toLocaleDateString('en-IN', { weekday: 'long' })}, ${formatDate(new Date())}`; }

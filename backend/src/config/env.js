@@ -46,6 +46,18 @@ if (process.env.SCHOOL_TIMEZONE && !process.env.TZ) {
  * Anything non-numeric or negative falls back, since those are typos rather
  * than intent.
  */
+/**
+ * TRUST_PROXY as Express wants it: false when unset/'false'/'0', a hop count
+ * for a number, true for 'true', otherwise the string (an IP/subnet list).
+ */
+export function parseTrustProxy(raw) {
+  const v = String(raw ?? '').trim();
+  if (v === '' || /^(false|off|no|0)$/i.test(v)) return false;
+  if (/^true$/i.test(v)) return true;
+  if (/^\d+$/.test(v)) return Number(v);
+  return v;
+}
+
 export function numFromEnv(name, fallback) {
   const raw = process.env[name];
   if (raw === undefined || raw === '') return fallback;
@@ -106,6 +118,9 @@ const mongo = resolveMongoUri();
 
 export const env = {
   NODE_ENV: process.env.NODE_ENV ?? 'development',
+  // The in-process scheduler (reminders, held messages, expiry checks). Turn it
+  // off on all but one process if you would rather run it in a dedicated worker.
+  SCHEDULER_ENABLED: (process.env.SCHEDULER_ENABLED ?? (process.env.NODE_ENV === 'test' ? 'false' : 'true')) === 'true',
   PORT: Number(process.env.PORT) || 5000,
   HOST: process.env.HOST ?? '0.0.0.0',
   MONGO_URI: mongo.uri,
@@ -119,6 +134,16 @@ export const env = {
   RATE_LIMIT_MAX: Number(process.env.RATE_LIMIT_MAX) || 2000,
   // Stricter limit for credential endpoints (login / OTP request+verify).
   RATE_LIMIT_AUTH_MAX: Number(process.env.RATE_LIMIT_AUTH_MAX) || 30,
+  // Credential requests are limited per address + email/phone (the limit
+  // above); this is the looser ceiling for one address across all accounts,
+  // sized for a whole staff room behind one school NAT signing in at once.
+  RATE_LIMIT_AUTH_IP_MAX: numFromEnv('RATE_LIMIT_AUTH_IP_MAX', 300),
+  // Express 'trust proxy'. Off by default: with it on and no proxy in front,
+  // a client can forge X-Forwarded-For and get a fresh rate-limit bucket per
+  // request. A deployment behind exactly one reverse proxy (Render, a load
+  // balancer, nginx) sets TRUST_PROXY=1; behind two, 2; or a subnet/IP list
+  // such as 'loopback, 10.0.0.0/8'. 'true'/'false' are accepted as well.
+  TRUST_PROXY: parseTrustProxy(process.env.TRUST_PROXY),
   // Defaults to the local frontend rather than '*' so development exercises the
   // same cross-origin rules as production — a wildcard default hides CORS
   // mistakes until deploy, where the boot check then refuses to start on them.
@@ -334,6 +359,16 @@ export const env = {
    * assistant comes to look broken.
    */
   AI_TIMEOUT_MS: Number(process.env.AI_TIMEOUT_MS) || 10_000,
+  // p7: speech-to-text for WhatsApp voice notes (modules/ai/speech/stt.js).
+  // STT_PROVIDER=auto (default) uses OpenAI Whisper when OPENAI_API_KEY (or
+  // OPENAI_STT_API_KEY) is set, else Google Speech-to-Text when
+  // GOOGLE_STT_API_KEY is set; with neither, voice notes are answered with
+  // "needs a speech service configured". Never faked.
+  STT_PROVIDER: String(process.env.STT_PROVIDER ?? 'auto').trim().toLowerCase(),
+  OPENAI_STT_API_KEY: process.env.OPENAI_STT_API_KEY ?? null,
+  OPENAI_STT_MODEL: process.env.OPENAI_STT_MODEL || 'whisper-1',
+  GOOGLE_STT_API_KEY: process.env.GOOGLE_STT_API_KEY ?? null,
+  STT_TIMEOUT_MS: Number(process.env.STT_TIMEOUT_MS) || 30_000,
   isDev: (process.env.NODE_ENV ?? 'development') === 'development',
   isProd: process.env.NODE_ENV === 'production',
 };

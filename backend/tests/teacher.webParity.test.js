@@ -16,6 +16,11 @@ import { parseIntent } from '../src/modules/ai/agent/intent.js';
 import { mcpToolsFor } from '../src/modules/ai/mcp/registry.js';
 import { startApi } from './support/mcpHttp.js';
 import { seedSchool, seedPerson, inSchool, actorForRole, mcp, proposeAndConfirm, todayKey, OAK } from './support/mcpSchool.js';
+import { pinClock } from './support/clock.js';
+
+// Built around "today" and "yesterday": runs on a school day (next Wednesday morning IST), so
+// "yesterday" is never a Sunday, when attendance is closed and the correction is rightly refused.
+pinClock();
 
 /**
  * Teacher: the Web ERP is the source of truth, and the assistant is the same
@@ -72,7 +77,8 @@ async function seedTeacherWorld() {
     const homework = await Assignment.create({ subjectOfferingId: mathsA._id, title: 'Fractions worksheet', type: 'HOMEWORK', dueAt: new Date(Date.now() + 5 * 864e5) });
     await Assignment.create({ subjectOfferingId: scienceB._id, title: 'Plant cell diagram', dueAt: new Date(Date.now() + 3 * 864e5) });
     await Submission.create({ assignmentId: homework._id, enrollmentId: school.priya.enrollment._id, status: 'SUBMITTED', submittedAt: new Date() });
-    const exam = await Exam.create({ termId: term._id, name: 'Unit Test 2', startsOn: new Date(Date.now() + 10 * 864e5), endsOn: new Date(Date.now() + 14 * 864e5) });
+    // Already held: marks can be entered only from the day a paper is held.
+    const exam = await Exam.create({ termId: term._id, name: 'Unit Test 2', startsOn: new Date(Date.now() - 4 * 864e5), endsOn: new Date(Date.now() - 1 * 864e5) });
     const paper = await ExamSubject.create({ examId: exam._id, subjectOfferingId: mathsA._id, maxMarks: 50 });
     const sciencePaper = await ExamSubject.create({ examId: exam._id, subjectOfferingId: scienceB._id, maxMarks: 50 });
     await Mark.create({ examSubjectId: paper._id, enrollmentId: school.rahul.enrollment._id, marks: 41, status: 'DRAFT' });
@@ -137,12 +143,17 @@ describe('1. a teacher is offered what the Web offers a teacher', () => {
       'get_announcements', 'get_calendar_events', 'list_documents', 'get_leave_requests', 'list_notifications',
       'get_medical_record', 'list_tickets', 'get_ticket', 'get_registration_reviews', 'get_student_requests',
       // writes the Web offers a teacher
-      'mark_attendance', 'bulk_mark_attendance', 'enter_marks', 'publish_marks', 'create_assignment',
+      'mark_attendance', 'bulk_mark_attendance', 'enter_marks', 'create_assignment',
       'grade_submission', 'create_announcement', 'create_course_material', 'update_course_material',
-      'delete_document', 'review_leave', 'decide_registration', 'decide_cocurricular', 'decide_profile_edit',
-      'reply_to_ticket',
+      'delete_document', 'reply_to_ticket', 'get_pending_items_for_me',
     ]) {
       expect(offered.has(tool), `${tool} is on the Teacher Web but not offered`).toBe(true);
+    }
+    // Publishing marks and deciding leave, registrations and student requests
+    // are on the Teacher Web too, but they are decisions the teacher makes
+    // there: the assistant never performs them (mcp/decisions.js).
+    for (const tool of ['publish_marks', 'review_leave', 'decide_registration', 'decide_cocurricular', 'decide_profile_edit']) {
+      expect(offered.has(tool), `${tool} is a decision and must not be offered`).toBe(false);
     }
   });
 
@@ -241,11 +252,8 @@ describe('2. natural-language requests reach the same capability on the website 
 
 describe('3. an act the Web does not offer a teacher is declined, and nothing runs', () => {
   const DECLINED = [
-    ['Update the homework deadline.', /can't update homework/],
-    ['Change the assignment details.', /can't change homework/],
-    ['Delete the test homework.', /can't delete homework/],
-    ['Delete the test assignment.', /can't delete homework/],
-    ['Delete all assignments.', /can't delete homework/],
+    // Bulk deletion is refused before anything is chosen, whatever the Web allows one at a time.
+    ['Delete all assignments.', /can't delete all assignments at once/],
     ['Delete the test announcement.', /can't delete an announcement/],
     ['Update an announcement.', /can't update an announcement|not .*available/],
     ['Schedule a calendar event for sports day on 10 October 2026.', /can't schedule the calendar/],
@@ -267,6 +275,35 @@ describe('3. an act the Web does not offer a teacher is declined, and nothing ru
       expect(waTool).toBeNull();
       expect(web.action ?? null).toBeNull();
       expect(await inSchool(OAK, () => Assignment.countDocuments())).toBe(assignmentsBefore);
+    }, 60000);
+  }
+});
+
+/* ── 3b. Homework a teacher set: the Web lets them change or withdraw it ─ */
+
+describe("3b. changing or withdrawing one's own homework is a draft or a question, never a guess", () => {
+  // PATCH/DELETE /assignments/:id (assignments.manage, the teacher's own
+  // homework only) are on the Teacher Web, so the assistant offers them too
+  // (update_assignment, delete_assignment), always proposed first.
+  const SENTENCES = [
+    ['Update the homework deadline.', 'update_assignment'],
+    ['Change the assignment details.', 'update_assignment'],
+    ['Delete the test homework.', 'delete_assignment'],
+    ['Delete the test assignment.', 'delete_assignment'],
+    ['Deleting or updating homework', 'delete_assignment'],
+  ];
+  for (const [message, tool] of SENTENCES) {
+    it(`"${message}"`, async () => {
+      const before = await inSchool(OAK, () => Assignment.find({ deletedAt: null }).lean());
+      const { web, wa, webTool } = await bothChannels(message);
+      expect(web.reply).not.toMatch(/not sure what you need/i);
+      expect(wa.reply).not.toMatch(/not sure what you need/i);
+      expect(webTool).toBe(tool);
+      // A draft to confirm, or a question about which homework or what to change.
+      const asked = web.action?.tool === tool || /which homework|what should change/i.test(String(web.reply));
+      expect(asked, String(web.reply)).toBe(true);
+      const after = await inSchool(OAK, () => Assignment.find({ deletedAt: null }).lean());
+      expect(after.map((a) => [String(a._id), String(a.dueAt), a.title])).toEqual(before.map((a) => [String(a._id), String(a.dueAt), a.title]));
     }, 60000);
   }
 });
@@ -323,15 +360,26 @@ describe('4. another teacher\'s class and another school stay out of reach', () 
     expect(await inSchool(OAK, () => Document.countDocuments({ _id: world.otherNotes._id }))).toBe(1);
   });
 
-  it('another teacher\'s exam paper cannot be published or marked', async () => {
-    const pub = await mcp(OAK, teacher().actor, 'publish_marks', { className: 'Class 6-B', subject: 'Science' });
-    expect(pub.success ?? false).toBe(false);
-    const byId = await proposeAndConfirm(OAK, teacher().actor, 'publish_marks', { examSubjectId: String(world.sciencePaper._id) });
-    expect(byId.done?.success ?? byId.proposal?.success ?? false).toBe(false);
+  it('another teacher\'s exam paper cannot be marked, and no paper is published through the assistant', async () => {
+    const marked = await mcp(OAK, teacher().actor, 'enter_marks', { examSubjectId: String(world.sciencePaper._id), students: [{ studentName: 'Riya Kapoor', marks: 1 }] });
+    expect(marked.success ?? false).toBe(false);
+    const pub = await mcp(OAK, teacher().actor, 'publish_marks', { examSubjectId: String(world.sciencePaper._id) });
+    expect(pub.error.code).toBe('UNKNOWN_TOOL');
   });
 });
 
 /* ── 5. Writes ────────────────────────────────────────────── */
+
+/** A due date a week ahead, and yesterday in the school's time zone, so the suite does not expire with the calendar. */
+// Read when a test runs, not when the file loads: the pinned clock starts in beforeAll.
+const ahead = () => new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10);
+const yesterday = () => {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' })
+    .formatToParts(new Date(Date.now() - 864e5)).map((p) => [p.type, p.value]));
+  const month = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].indexOf(parts.month);
+  const key = new Date(Date.UTC(Number(parts.year), month, Number(parts.day)));
+  return { words: `${parts.day} ${parts.month} ${parts.year}`, key, iso: key.toISOString().slice(0, 10) };
+};
 
 const auditOf = (tool, status) => inSchool(OAK, () => AuditLog.findOne({ action: `agent.${tool}`, 'after.status': status }).lean());
 
@@ -355,7 +403,7 @@ describe('5. writes are proposed, confirmed, re-authorized, written and audited'
   }, 90000);
 
   it('homework: proposed on the website, written only on confirmation, audited', async () => {
-    const message = 'Create Mathematics homework for Class 6-A on fractions due 2026-10-05';
+    const message = `Create Mathematics homework for Class 6-A on fractions due ${ahead()}`;
     const res = await api.ask(teacher(), message);
     expect(res.action).toMatchObject({ tool: 'create_assignment' });
     expect(await inSchool(OAK, () => Assignment.countDocuments({ title: 'fractions' }))).toBe(0);
@@ -368,13 +416,14 @@ describe('5. writes are proposed, confirmed, re-authorized, written and audited'
     expect((await auditOf('create_assignment', 'EXECUTED')).after.confirmed).toBe(true);
   }, 60000);
 
-  it('homework on WhatsApp: the same capability, confirmed with YES', async () => {
-    const proposal = await api.whatsapp(teacher(), 'Create Mathematics homework for Class 6-A on decimals due 2026-10-06');
-    expect(proposal.reply).toMatch(/Reply YES/);
-    expect(await inSchool(OAK, () => Assignment.countDocuments({ title: 'decimals' }))).toBe(0);
+  it('homework on WhatsApp: the same capability, but a class homework is confirmed on the website', async () => {
+    // Setting work for a class lands on other people, which WhatsApp does not
+    // confirm (registry.js confirmableOn): the teacher is sent to the website.
+    const proposal = await api.whatsapp(teacher(), `Create Mathematics homework for Class 6-A on decimals due ${ahead()}`);
+    expect(proposal.reply).toMatch(/EduOS website/);
     await api.whatsapp(teacher(), 'YES');
-    expect(await inSchool(OAK, () => Assignment.countDocuments({ title: 'decimals' }))).toBe(1);
-    expect(await auditOf('create_assignment', 'EXECUTED')).not.toBeNull();
+    expect(await inSchool(OAK, () => Assignment.countDocuments({ title: 'decimals' }))).toBe(0);
+    expect(await auditOf('create_assignment', 'CONFIRM_ON_WEB')).not.toBeNull();
   }, 60000);
 
   it('an announcement to one class names that class in the proposal and addresses only it', async () => {
@@ -393,7 +442,7 @@ describe('5. writes are proposed, confirmed, re-authorized, written and audited'
     expect(await inSchool(OAK, () => Announcement.countDocuments({ title: 'Trip cancelled' }))).toBe(0);
   }, 60000);
 
-  it('marks by name: the paper and the pupils are resolved, confirmed, written as drafts, then published', async () => {
+  it('marks by name: the paper and the pupils are resolved, confirmed and written as drafts; publishing is the teacher\'s own act', async () => {
     const res = await api.ask(teacher(), 'Enter Mathematics marks for Class 6-A Unit Test 2: Priya Verma 38, Aman Gupta 29');
     expect(res.action.tool).toBe('enter_marks');
     expect(res.action.summary).toMatch(/Mathematics \(Unit Test 2\) for Class 6 A: Priya Verma 38, Aman Gupta 29/);
@@ -404,11 +453,10 @@ describe('5. writes are proposed, confirmed, re-authorized, written and audited'
     expect(byEnrolment[String(school.aman.enrollment._id)]).toMatchObject({ marks: 29, status: 'DRAFT' });
 
     const publish = await api.ask(teacher(), 'Publish marks for Mathematics.');
-    expect(publish.action.summary).toMatch(/Mathematics \(Unit Test 2\) for Class 6 A/);
-    await api.confirm(teacher(), publish.action.confirmToken);
+    expect(publish.action ?? null).toBeNull();
+    expect(publish.refused).toBe('HUMAN_DECISION');
     const after = await inSchool(OAK, () => Mark.find({ examSubjectId: world.paper._id }).lean());
-    expect(after.every((m) => m.status === 'PUBLISHED')).toBe(true);
-    expect(await auditOf('publish_marks', 'EXECUTED')).not.toBeNull();
+    expect(after.every((m) => m.status === 'DRAFT')).toBe(true);
   }, 90000);
 
   it('a pupil outside the paper\'s class is refused before anything is proposed', async () => {
@@ -451,14 +499,17 @@ describe('5. writes are proposed, confirmed, re-authorized, written and audited'
 
 describe('6. gaps closed after the first pass', () => {
   it('a correction for an earlier day re-marks that day, not today', async () => {
-    const step = parseIntent('Change attendance of Rahul Sharma to absent on 5 August 2026', teacher().actor);
-    expect(step).toMatchObject({ tool: 'mark_attendance', args: { date: '2026-08-05', students: [{ studentName: 'Rahul Sharma', status: 'ABSENT' }] } });
+    // Yesterday: inside the back-dating window a teacher may correct without
+    // attendance.regularize (attendance.service assertMarkableDate).
+    const YESTERDAY = yesterday();
+    const message = `Change attendance of Rahul Sharma to absent on ${YESTERDAY.words}`;
+    const step = parseIntent(message, teacher().actor);
+    expect(step).toMatchObject({ tool: 'mark_attendance', args: { date: YESTERDAY.iso, students: [{ studentName: 'Rahul Sharma', status: 'ABSENT' }] } });
 
-    const res = await api.ask(teacher(), 'Change attendance of Rahul Sharma to absent on 5 August 2026');
+    const res = await api.ask(teacher(), message);
     expect(res.action.tool).toBe('mark_attendance');
     await api.confirm(teacher(), res.action.confirmToken);
-    const aug5 = new Date(Date.UTC(2026, 7, 5));
-    const record = await inSchool(OAK, () => AttendanceRecord.findOne({ enrollmentId: school.rahul.enrollment._id, date: aug5 }).lean());
+    const record = await inSchool(OAK, () => AttendanceRecord.findOne({ enrollmentId: school.rahul.enrollment._id, date: YESTERDAY.key }).lean());
     expect(record.status).toBe('ABSENT');
     // Today's register is untouched.
     const today = await inSchool(OAK, () => AttendanceRecord.findOne({ enrollmentId: school.rahul.enrollment._id, date: todayKey() }).lean());

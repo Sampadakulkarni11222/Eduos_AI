@@ -62,7 +62,16 @@ function apiCompressionMiddleware(req, res, next) {
         return res.end(buffer, encoding, callback);
       }
 
-      zlib.brotliCompress(buffer, (err, compressed) => {
+      // Quality 5, not the library default of 11: 11 spent ~250 ms of CPU on
+      // a 50 KB JSON body (a fifth of a page switch) to save a few hundred
+      // bytes over quality 5, which takes ~2 ms. API bodies are compressed per
+      // request, so the cheap setting is the right one here.
+      zlib.brotliCompress(buffer, {
+        params: {
+          [zlib.constants.BROTLI_PARAM_QUALITY]: 5,
+          [zlib.constants.BROTLI_PARAM_SIZE_HINT]: buffer.length,
+        },
+      }, (err, compressed) => {
         res.write = originalWrite;
         res.end = originalEnd;
         if (err) {
@@ -87,19 +96,22 @@ import { connectDB } from './config/db.js';
 import { swaggerSpec } from './config/swagger.js';
 import { logger } from './utils/logger.js';
 import { requestLogger } from './middleware/requestLogger.js';
+import { stripOperators } from './middleware/stripOperators.js';
 import { rateLimiter } from './middleware/rateLimiter.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { sendError } from './utils/response.js';
 import apiRoutes from './routes/index.js';
 import { corsOrigin } from './modules/domains/domain.cors.js';
 import { requireSignedUploadUrl } from './modules/uploads/signedUrls.js';
+import { startScheduler } from './jobs/scheduler.js';
 
 const app = express();
 
-// Render/any reverse proxy terminates TLS and forwards the real client IP in
-// X-Forwarded-For. Without this, req.ip is the proxy's address, so every user
-// shares a single rate-limit bucket (one noisy client locks out the school).
-app.set('trust proxy', 1);
+// Behind a reverse proxy (Render, a load balancer) the real client IP arrives
+// in X-Forwarded-For, and TRUST_PROXY=1 (one proxy hop) makes req.ip use it.
+// Off by default: trusting that header with no proxy in front lets a client
+// forge it and dodge every per-IP rate limit. See TRUST_PROXY in config/env.js.
+app.set('trust proxy', env.TRUST_PROXY);
 
 // ─── Security headers ─────────────────────────────────────
 // Must be mounted BEFORE any static handler, or uploaded files and the status
@@ -178,6 +190,8 @@ app.use(
   })
 );
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Query operators such as ?id[$ne]=x never reach a handler (see the middleware).
+app.use(stripOperators);
 
 // ─── Request Logging ──────────────────────────────────────
 app.use(requestLogger);
@@ -360,6 +374,8 @@ async function bootstrap() {
     }
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     logger.info('  Server is ready to accept connections  🚀');
+    if (env.SCHEDULER_ENABLED) startScheduler();
+    else logger.warn('✘  Scheduler disabled  →  set SCHEDULER_ENABLED=true to enable');
     logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   });
 

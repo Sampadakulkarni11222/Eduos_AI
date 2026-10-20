@@ -87,6 +87,13 @@ const bookIssueSchema = new Schema(
       default: 'ACTIVE',
     },
     fineAmount: { type: Number, default: 0 }, // in rupees
+    // Part 4 (library desk): renewals and how a fine was settled. Optional; older rows unaffected.
+    renewCount: { type: Number, default: 0 },
+    renewals: [{ _id: false, at: Date, fromDue: Date, toDue: Date, byProfileId: { type: Schema.Types.ObjectId, ref: 'Profile' } }],
+    fineStatus: { type: String, enum: ['NONE', 'DUE', 'PAID', 'WAIVED'], default: undefined },
+    fineSettledAt: { type: Date, default: null },
+    fineNote: { type: String, default: null },
+    remindedOn: { type: String, default: null }, // YYYY-MM-DD of the last overdue reminder
   },
   { timestamps: true }
 );

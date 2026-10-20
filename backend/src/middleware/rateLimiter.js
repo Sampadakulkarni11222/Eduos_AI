@@ -12,7 +12,8 @@ export const rateLimiter = rateLimit({
   // Session refreshes all arrive from the frontend server's address, so a
   // per-IP budget is a platform-wide one for them; they have their own
   // per-session limiter instead (refreshRateLimiter below).
-  skip: (req) => req.method === 'POST' && /^\/(api\/)?v1\/auth\/refresh\/?$/.test(req.path),
+  // Live CCTV playback (a playlist and a segment every few seconds) has its own per-viewing limiter.
+  skip: (req) => (req.method === 'POST' && /^\/(api\/)?v1\/auth\/refresh\/?$/.test(req.path)) || /^\/(api\/)?v1\/cctv\/play\//.test(req.path),
   handler: (_req, res) =>
     sendError(res, 'Too many requests, please try again later.', 429, [], 'RATE_LIMITED'),
 });
@@ -64,15 +65,69 @@ export const uploadRateLimiter = rateLimit({
     sendError(res, 'Too many uploads, please wait a moment and try again.', 429, [], 'RATE_LIMITED'),
 });
 
-/** Strict limiter for credential endpoints (login, OTP request/verify). */
-export const authRateLimiter = rateLimit({
+/**
+ * The account a credential request is about: the email or phone it submits.
+ * Normalised (trimmed, lower-cased, phone digits only) so "A@x.com " and
+ * "a@x.com" share a bucket. Null when the request names no account (Google
+ * sign-in sends an opaque token), in which case only the address is used.
+ */
+export function authIdentifier(body) {
+  const b = body && typeof body === 'object' ? body : {};
+  const email = typeof b.email === 'string' ? b.email.trim().toLowerCase() : '';
+  if (email) return `e:${email}`;
+  const phone = typeof b.phone === 'string' || typeof b.phone === 'number' ? String(b.phone).replace(/[^\d]/g, '') : '';
+  if (phone) return `p:${phone}`;
+  return null;
+}
+
+const authLimited = (_req, res) =>
+  sendError(res, 'Too many sign-in attempts, please try again later.', 429, [], 'RATE_LIMITED');
+
+/**
+ * Credential limiter, part 1: per address AND account.
+ *
+ * A school's staff usually share one public IP (one NAT, one office router).
+ * Keyed on the address alone, thirty sign-ins from that IP in fifteen minutes
+ * locked the whole school out at 8 am. Keyed on address + the email/phone
+ * being tried, each person has their own RATE_LIMIT_AUTH_MAX budget, and
+ * guessing one account's password is still bounded just as tightly.
+ * (The per-phone OTP throttle in the auth service is separate and unchanged.)
+ */
+const authIdentityLimiter = rateLimit({
   windowMs: env.RATE_LIMIT_WINDOW_MS,
   max: env.RATE_LIMIT_AUTH_MAX,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (_req, res) =>
-    sendError(res, 'Too many sign-in attempts, please try again later.', 429, [], 'RATE_LIMITED'),
+  keyGenerator: (req) => {
+    const id = authIdentifier(req.body);
+    return id ? `ai:${req.ip}|${id}` : `ai:${req.ip}`;
+  },
+  handler: authLimited,
 });
+
+/**
+ * Credential limiter, part 2: a looser ceiling per address.
+ *
+ * Without it, one address could try a few passwords against every account in
+ * turn (a fresh identity bucket each time). RATE_LIMIT_AUTH_IP_MAX (default
+ * 300 per window) comfortably covers a whole staff room signing in together.
+ */
+const authAddressLimiter = rateLimit({
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  max: env.RATE_LIMIT_AUTH_IP_MAX,
+  standardHeaders: false,
+  legacyHeaders: false,
+  keyGenerator: (req) => `aip:${req.ip}`,
+  handler: authLimited,
+});
+
+/** Limiter for credential endpoints (login, OTP request/verify, Google): both parts, address ceiling first. */
+export function authRateLimiter(req, res, next) {
+  authAddressLimiter(req, res, (err) => {
+    if (err) return next(err);
+    return authIdentityLimiter(req, res, next);
+  });
+}
 
 /**
  * Limiter for POST /auth/refresh, keyed on the session rather than the IP.

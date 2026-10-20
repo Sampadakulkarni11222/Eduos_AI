@@ -5,6 +5,7 @@ import { StatCard, Card, EmptyState, Pill, SkeletonRows, rupees } from '@/compon
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import type { FinanceDashboardDto } from '@/lib/types';
+import { PulseBoard } from '@/components/ops/pulse-board';
 
 export default function FinanceDashboard() {
   // One scoped call instead of /fees/invoices + /fees/summary. It also fixes
@@ -26,6 +27,9 @@ export default function FinanceDashboard() {
         desc: 'Payments, fees, and financial health.',
       }}
     >
+      {/* The interactive board: briefing, departments, campus, charts and live activity. */}
+      <PulseBoard />
+
       <div className="card-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 18 }}>
         <StatCard
           label="Pending Amount"

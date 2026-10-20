@@ -7,7 +7,7 @@ export default function Announcements() {
   const canPublish = ['ADMIN','PRINCIPAL','TEACHER'].includes(me?.profile?.role ?? '');
   return (
     <PortalShell expectedSlug="parent" topbar={{ title: 'Announcements', desc: 'School notices and circulars.' }}>
-      <AnnouncementsView canPublish={canPublish} />
+      <AnnouncementsView canPublish={canPublish} translatable />
     </PortalShell>
   );
 }

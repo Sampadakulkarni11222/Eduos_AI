@@ -1,5 +1,6 @@
 import type { RoleGuide } from './types';
 import { askAgentTopic, notificationsTopic, accessTip, signInTopic } from './shared';
+import { opsTopics } from './ops';
 
 export const teacherGuide: RoleGuide = {
   slug: 'teacher',
@@ -193,6 +194,7 @@ export const teacherGuide: RoleGuide = {
       examples: ['Which classes do I teach today?', 'Mark everyone in 6 A present for period 2', 'Show pending submissions for my algebra worksheet'],
       notYet: ['quizzes'],
     }),
+    ...opsTopics('teacher'),
     signInTopic(),
     { ...notificationsTopic, tips: [accessTip] },
   ],

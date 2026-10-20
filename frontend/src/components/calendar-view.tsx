@@ -53,7 +53,9 @@ export function CalendarView() {
       {events !== null && events.length > 0 && (
         <Card pad={false}>
           {events.map((e, i) => (
-            <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
+            // Events merged from other sources (exam papers, PTM rounds) can share or lack an id; a past
+            // event is dimmed so the next one stands out.
+            <div key={`${e.id ?? 'ev'}-${e.startsAt}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderTop: i ? '1px solid var(--hairline)' : 'none', opacity: new Date(e.endsAt || e.startsAt).getTime() < Date.now() ? 0.55 : 1 }}>
               <div style={{ width: 52, textAlign: 'center' }}>
                 <div style={{ fontFamily: 'Newsreader, serif', fontSize: 20, fontWeight: 600, color: 'var(--text-1b)' }}>{new Date(e.startsAt).getDate()}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-faint)', textTransform: 'uppercase' }}>{new Date(e.startsAt).toLocaleDateString('en-IN', { month: 'short' })}</div>

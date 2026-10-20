@@ -1,0 +1,142 @@
+/* ===== Responsive and touch pass (part 3, perf-mobile) ======================
+   Loaded last, after design-system.css and operations.css, so these shared
+   fixes win over component defaults at the widths they target. Each rule is
+   scoped to a breakpoint or pointer type and changes nothing on a desktop. */
+
+/* --- Dialogs never taller than the screen ---------------------------------
+   .modal had no max-height: a long form on a phone (or a laptop at 800px)
+   pushed its own title and buttons off-screen with no way to scroll to them. */
+.modal-overlay{padding:16px}
+.modal{max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain}
+
+/* --- Grid and fieldset children may shrink ----------------------------------
+   A <fieldset> defaults to min-width:min-content, so a form group inside a
+   one-column grid pushed the whole card past the right edge on phones
+   (Scenario Planning's assumptions). */
+fieldset{min-width:0}
+/* Grid columns sized 1fr default to min-width:auto, so one long unbreakable
+   line widened the only column past the screen (Scenario Planning: 562px in
+   a 328px column). */
+.sc-layout > *,.pb-grid-main > *,.ops-grid-main > *,.ops-grid-2 > *,.console-split > *,.an-focus-grid > *,.rd-charts > *,.rd-lists > *{min-width:0}
+@media (max-width:760px){.sc-layout{grid-template-columns:minmax(0,1fr)}}
+
+/* --- Phone and tablet topbar ------------------------------------------------
+   Four round controls beside the page title left it ~90px, and the title's
+   overflow-wrap:anywhere then broke words mid-letter ("Scenari / o Plannin /
+   g") over four lines, so the header filled a third of a phone screen. */
+@media (max-width:768px){
+  .topbar{padding:10px 16px;gap:8px}
+  .topbar-headrow{gap:8px}
+  .topbar-headrow > div:first-child{flex:1 1 auto;gap:8px!important}
+  .topbar-title{font-size:19px;line-height:1.15;overflow-wrap:break-word;hyphens:auto}
+  .topbar-ask{gap:6px!important}
+  .topbar-ask > *{flex:none}
+  .topbar-ask .btn,.topbar-ask .notif-bell{min-width:40px;min-height:40px;justify-content:center;padding-left:10px;padding-right:10px}
+  .hamburger-btn{min-width:40px;min-height:40px;margin-left:-8px;padding:0}
+  .sidebar-close-btn{min-width:40px;min-height:40px}
+  .topbar-actions{justify-content:flex-start}
+  /* The closed drawer's shadow used to show as a dark band down the left edge. */
+  .sidebar:not(.mobile-open){box-shadow:none}
+}
+@media (max-width:420px){
+  /* The campus shortcut stays in the menu; on a narrow phone its slot goes to the title. */
+  .topbar-campus{display:none!important}
+  .topbar-title{font-size:18px}
+}
+
+/* --- Figures that do not fit their tile --------------------------------------
+   Rupee totals in two-column KPI tiles broke mid-number ("₹3,24,00,0 / 00"). */
+@media (max-width:560px){
+  .kpi-value{font-size:clamp(16px,4.8vw,22px)}
+  .stat-value{font-size:clamp(20px,6vw,26px);overflow-wrap:normal}
+}
+
+/* --- Campus world on narrow screens ------------------------------------------
+   A later `.cw-kpi{min-width:150px}` beat the phone rule's min-width:0, so the
+   three live figures (450px) ran off a 360px screen. */
+@media (max-width:760px){
+  .cw-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .cw-kpi,.cw-left .cw-kpi{min-width:0}
+  .cw-kpi b{font-size:18px}
+  /* The replay slider row: date, play and the range share one line. */
+  .cw-time{flex-wrap:wrap}
+  .cw-time input[type=range]{min-width:0;flex:1 1 100%;order:9}
+}
+
+/* --- Touch targets (coarse pointers: phones and tablets) ---------------------
+   Every control a finger has to hit is at least 40x40. Inline links inside a
+   row of text keep their look and get a taller hit area through padding that
+   a negative margin cancels, so no layout moves. */
+@media (pointer:coarse){
+  .main button:not(.nav-item),
+  .main [role=button],
+  .main [role=tab],
+  .main summary,
+  .main select,
+  .main a.btn,
+  .main input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=hidden]){min-height:40px}
+  .main input[type=color]{min-width:48px}
+  .main button:not(.nav-item),.main a.btn,.main [role=button]{min-width:40px}
+  .main button,.main a.btn,.main [role=button]{touch-action:manipulation}
+  .main input[type=checkbox],.main input[type=radio]{width:20px;height:20px}
+  .main label:has(> input[type=checkbox]),.main label:has(> input[type=radio]),.ops-chip{min-height:40px}
+  .ops-tab,.seg-btn,.rd-seg-btn{min-height:40px}
+  .cw-controls button{width:44px;height:44px}
+  .cwc-fold{width:40px;height:40px}
+  .kpi-info{width:40px;height:40px;top:2px;right:2px}
+  .cw-time input[type=range]{min-height:40px}
+  .pb-feed-item,.rd-item-link{min-height:40px}
+  /* Links that sit in a line of text or a row title. */
+  .pb-chart-title,.ops-row-title,.showcase-card-link,.an-drill,.tk-title,.expandable-toggle,.cw-crumbs button,
+  .dc-hbar,.ops-row-link,.stat-card-link .stat-label a{padding-block:10px;margin-block:-10px}
+  a.pb-chart-title,a.ops-row-title,a.showcase-card-link,a.an-drill{display:inline-block}
+}
+
+/* --- Nothing under 12px on a phone -------------------------------------------
+   Pills, counts, table headings, chart notes and the many inline 10-11.5px
+   labels were 10-11.5px. On a phone they are lifted to 12px; desktop is
+   unchanged. SVG chart text is sized by its own viewBox and is left alone. */
+@media (max-width:560px){
+  .topbar-search-kbd{display:none}
+  .notif-badge{font-size:12px;min-width:21px;height:21px}
+  .main .pill,.main .ops-tab-count,.main table th,.main dt,.main small,.main .ops-tl-meta,.main .pb-def,.main .pb-feed-time,
+  .main .pb-live,.main .stat-delta,.main .stat-label,.main .ops-flag-overdue,.main .showcase-cat,.main .clubs-card-cat,
+  .main .clubs-seats-text,.main .cw-legend span,.main .cw-depts-title,.main .cw-dept-num,.main .kpi-info,.main .rd-badge,
+  .main .an-note,.main .an-dept-sub,.main .dc-legend-row span,.main .kpi-label,.main .ops-row-sub,.main .ops-kv dt,.main .muted,
+  .main .ops-decision-meta,.main .sc-bar-val,.main .sc-bar-label,.main .cwl-note,.main .cw-kpi span,.main .cw-kpi small,
+  .main .cw-row-sub,.main .cw-pill,.main .cw-row span,
+  .main .kanban-col-title,.main .kanban-count,.main .date-range-sep,.main .rd-count,.main .ops-muted,.main .att-context b,
+  .main .ops-step-label,.main .pf-kind,.main .lib-note-body,.main .cw-eyebrow,.main .cwlv-upd,.main .ptm-slot span,
+  .main .cw-metric span,.main .cw-module-next span,.main .cwl-cover span,.main .clubs-date span,.main .cwmy-now span,
+  .main .cw-site-sub,.main .cw-legend,.main .cw-module-head,.main .cw-pace,.main .cw-module-sub,.main .cw-source,
+  .main .cwl-note,.main .cwc-badge{font-size:12px}
+  .sidebar .nav-group-label{font-size:12px}
+  .main [style*="font-size: 9px"],.main [style*="font-size: 9.5px"],.main [style*="font-size: 10px"],
+  .main [style*="font-size: 10.5px"],.main [style*="font-size: 11px"],.main [style*="font-size: 11.5px"]{font-size:12px!important}
+}
+
+/* --- Filter rows on a phone ---------------------------------------------------
+   Two or three filter selects in one inline row were squeezed to ~105px each.
+   They now take at least 140px and wrap, so at most two share a line. */
+@media (max-width:560px){
+  .main div[style*="display: flex"] > select.input,
+  .main div[style*="display:flex"] > select.input,
+  .main .ops-inline > select.input,
+  .main div[style*="display: flex"] > .filter-field,
+  .main div[style*="display:flex"] > .filter-field{flex:1 1 140px;min-width:0}
+  .main div[style*="display: flex"] > .filter-field > select,
+  .main div[style*="display:flex"] > .filter-field > select{width:100%}
+  /* A search box leading a filter row gets the row to itself. */
+  .main div[style*="display: flex"] > input.input:first-child,
+  .main div[style*="display:flex"] > input.input:first-child{flex:1 1 100%;min-width:0}
+}
+
+/* --- Form fields use the full width on a phone ------------------------------
+   A labelled field's input kept its intrinsic ~180px width, leaving a ragged
+   column of narrow boxes in dialogs and forms. */
+@media (max-width:560px){
+  label.field-label + .input,
+  label.field-label + select.input,
+  label.field-label + textarea.input,
+  label.field-label + .field-input{width:100%;max-width:100%}
+}

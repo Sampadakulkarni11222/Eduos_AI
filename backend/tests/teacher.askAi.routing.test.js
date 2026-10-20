@@ -459,7 +459,7 @@ describe('6. homework CREATE goes through the confirmation flow', () => {
   it('refuses the AI drafting capability to a teacher at the server', async () => {
     const before = await inSchool(OAK, () => Assignment.countDocuments());
     const res = await mcp(OAK, teacher().actor, 'generate_homework', {
-      subject: 'Mathematics', className: 'Class 5-A', topic: 'Linear equations', dueAt: '2026-10-02',
+      subject: 'Mathematics', className: 'Class 5-A', topic: 'Linear equations', dueAt: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10),
     });
     expect(res.success).toBe(false);
     // FORBIDDEN_SCOPE: the permission is held, at a scope the capability does not accept.
@@ -477,7 +477,7 @@ describe('6. homework CREATE goes through the confirmation flow', () => {
   it('proposes before writing, and writes only after confirmation', async () => {
     const before = await inSchool(OAK, () => Assignment.countDocuments());
     const proposal = await mcp(OAK, teacher().actor, 'create_assignment', {
-      subject: 'Mathematics', className: 'Class 5-A', title: 'Solve the linear equations examples', dueAt: '2026-10-02',
+      subject: 'Mathematics', className: 'Class 5-A', title: 'Solve the linear equations examples', dueAt: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10),
     });
     expect(proposal.action?.status).toBe('confirmation_required');
     expect(await inSchool(OAK, () => Assignment.countDocuments())).toBe(before);
@@ -494,7 +494,7 @@ describe('6. homework CREATE goes through the confirmation flow', () => {
   it('resolves the class canonically before finding the offering', async () => {
     for (const className of ['Class 5-A', 'class 5a', '5-A']) {
       const res = await mcp(OAK, teacher().actor, 'create_assignment', {
-        subject: 'Mathematics', className, title: 'Practice sums', dueAt: '2026-10-03',
+        subject: 'Mathematics', className, title: 'Practice sums', dueAt: new Date(Date.now() + 8 * 864e5).toISOString().slice(0, 10),
       });
       expect(res.action?.status, className).toBe('confirmation_required');
     }

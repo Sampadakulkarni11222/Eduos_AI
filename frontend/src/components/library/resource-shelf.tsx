@@ -6,6 +6,35 @@ import type {
   AcademicYearDto, BookDto, GradeDto, LibraryResourceKind, SubjectDto,
 } from '@/lib/types';
 
+type Option = { value: string; label: string };
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "14 Oct 2026", matching the student and parent portals. */
+function formatShelfDate(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  return `${String(d.getDate()).padStart(2, '0')} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+/**
+ * The distinct (id, name) pairs a list of resources is filed under, sorted by
+ * name. Used for the filter pickers when the viewer may not read the school's
+ * class/subject/year lists (/academics/* is staff-only): the options are then
+ * exactly the classes, subjects and years something has been published for,
+ * which is also what a filter is useful for.
+ */
+export function facetOptions(rows: BookDto[] | null, idKey: 'gradeId' | 'subjectId' | 'academicYearId', nameKey: 'grade' | 'subject' | 'academicYear'): Option[] {
+  const seen = new Map<string, string>();
+  for (const r of rows ?? []) {
+    const id = r[idKey];
+    const name = r[nameKey];
+    if (id && name && !seen.has(id)) seen.set(id, name);
+  }
+  return [...seen.entries()]
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+}
+
 /**
  * One shelf of the library catalogue — notes, or question papers.
  *
@@ -39,6 +68,9 @@ export function LibraryResourceShelf({
   const [subjects, setSubjects] = useState<SubjectDto[]>([]);
   const [years, setYears] = useState<AcademicYearDto[]>([]);
   const [examTypes, setExamTypes] = useState<string[]>([]);
+  // Everything on this shelf, unfiltered: the source of the filter options
+  // for viewers who cannot read the academics lists.
+  const [shelf, setShelf] = useState<BookDto[] | null>(null);
 
   const load = useCallback(async () => {
     setRows(null);
@@ -61,11 +93,23 @@ export function LibraryResourceShelf({
   useEffect(() => {
     // The filing vocabulary. Failures are swallowed per-list: a missing
     // academic-year read should not empty the class picker beside it.
-    api.listGrades().then(setGrades).catch(() => {});
-    api.listSubjects().then(setSubjects).catch(() => {});
-    api.academicYears().then(setYears).catch(() => {});
+    //
+    // Only staff may read /academics/grades, /subjects and /years; for a
+    // student those calls were 403s and the pickers stayed empty. A viewer
+    // without manage rights gets the options from the shelf itself instead.
+    if (canManage) {
+      api.listGrades().then(setGrades).catch(() => {});
+      api.listSubjects().then(setSubjects).catch(() => {});
+      api.academicYears().then(setYears).catch(() => {});
+    } else {
+      api.listBooks({ resourceKind: kind }).then(setShelf).catch(() => setShelf([]));
+    }
     api.bookFacets().then((f) => setExamTypes(f.examTypes ?? [])).catch(() => {});
-  }, []);
+  }, [canManage, kind]);
+
+  const gradeOptions: Option[] = canManage ? grades.map((g) => ({ value: g.id, label: g.name })) : facetOptions(shelf, 'gradeId', 'grade');
+  const subjectOptions: Option[] = canManage ? subjects.map((s) => ({ value: s.id, label: s.name })) : facetOptions(shelf, 'subjectId', 'subject');
+  const yearOptions: Option[] = canManage ? years.map((y) => ({ value: y._id, label: y.name })) : facetOptions(shelf, 'academicYearId', 'academicYear');
 
   const remove = async (row: BookDto) => {
     try {
@@ -89,15 +133,15 @@ export function LibraryResourceShelf({
         />
         <Select
           label="Class" hideLabel value={gradeId} onChange={setGradeId}
-          options={[{ value: '', label: 'All classes' }, ...grades.map((g) => ({ value: g.id, label: g.name }))]}
+          options={[{ value: '', label: 'All classes' }, ...gradeOptions]}
         />
         <Select
           label="Subject" hideLabel value={subjectId} onChange={setSubjectId}
-          options={[{ value: '', label: 'All subjects' }, ...subjects.map((s) => ({ value: s.id, label: s.name }))]}
+          options={[{ value: '', label: 'All subjects' }, ...subjectOptions]}
         />
         <Select
           label="Academic year" hideLabel value={academicYearId} onChange={setAcademicYearId}
-          options={[{ value: '', label: 'All years' }, ...years.map((y) => ({ value: y._id, label: y.name }))]}
+          options={[{ value: '', label: 'All years' }, ...yearOptions]}
         />
         {kind === 'QUESTION_PAPER' && examTypes.length > 0 && (
           <Select
@@ -160,7 +204,7 @@ export function LibraryResourceShelf({
                     {r.uploadedBy ?? '—'}
                     {r.uploadedAt && (
                       <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>
-                        {new Date(r.uploadedAt).toLocaleDateString('en-IN')}
+                        {formatShelfDate(r.uploadedAt)}
                       </div>
                     )}
                   </td>

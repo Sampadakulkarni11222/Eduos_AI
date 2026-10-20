@@ -13,7 +13,7 @@ import type { PermissionDto, RoleDto } from '@/lib/types';
  * backend route via requirePermission — no client-side-only state.
  */
 
-const EDITABLE_ROLES = ['ADMIN', 'PRINCIPAL', 'TEACHER', 'FINANCE', 'LIBRARIAN', 'WARDEN', 'PARENT', 'STUDENT'];
+const EDITABLE_ROLES = ['ADMIN', 'PRINCIPAL', 'TEACHER', 'FINANCE', 'LIBRARIAN', 'WARDEN', 'HR', 'MARKETING', 'COMPLIANCE', 'TRUSTEE', 'NURSE', 'PARENT', 'STUDENT', 'ALUMNUS'];
 
 /**
  * Platform-tier keys. They belong to SUPER_ADMIN, which is not one of the roles
@@ -25,6 +25,7 @@ const PLATFORM_ONLY_PERMISSIONS = ['schools.read', 'schools.manage'];
 const ROLE_COLORS: Record<string, string> = {
   ADMIN: '#1e3a5f', PRINCIPAL: '#065f46', TEACHER: '#7c2d12',
   FINANCE: '#4b5563', LIBRARIAN: '#4a5e8c', WARDEN: '#946312', PARENT: '#8a2f3a', STUDENT: '#43434c',
+  HR: '#5c3d7a', MARKETING: '#a8432a', COMPLIANCE: '#1f5c66', TRUSTEE: '#3b3b2a', ALUMNUS: '#6a4a1f',
 };
 
 function Toggle({ value, scope, disabled, onToggle, onScope }: {

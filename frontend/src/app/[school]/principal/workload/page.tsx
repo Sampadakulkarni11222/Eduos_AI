@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Card, EmptyState, SkeletonRows } from '@/components/ui';
+import { TeacherWorkloadView } from '@/components/leadership/teacher-workload';
 import { api } from '@/lib/api';
 import type { OfferingDto, SectionDto } from '@/lib/types';
 
@@ -15,7 +16,6 @@ export default function PrincipalWorkload() {
   }, []);
 
   const loading = sections === null || offerings === null;
-  const sectionByName = new Map((sections ?? []).map((s) => [s.id, s.name]));
 
   const byGrade = new Map<string, { grade: string; sections: SectionDto[]; totalOfferings: number }>();
   sections?.forEach((s) => {
@@ -23,28 +23,30 @@ export default function PrincipalWorkload() {
     byGrade.get(s.gradeName)!.sections.push(s);
   });
   offerings?.forEach((o) => {
-    const secName = sectionByName.get(o.sectionId) ?? '';
     for (const rec of byGrade.values()) {
       if (rec.sections.some((s) => s.id === o.sectionId)) { rec.totalOfferings++; break; }
     }
   });
 
-  const rows = [...byGrade.values()].sort((a, b) => a.grade.localeCompare(b.grade));
+  // Numeric order: "Class 5" before "Class 10".
+  const rows = [...byGrade.values()].sort((a, b) => a.grade.localeCompare(b.grade, 'en', { numeric: true }));
 
   const totalSections = sections?.length ?? 0;
   const totalOfferings = offerings?.length ?? 0;
 
   return (
-    <PortalShell expectedSlug="principal" topbar={{ title: 'Teacher Workload', desc: 'Section and subject offering distribution across grades.' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 18 }}>
+    <PortalShell expectedSlug="principal" topbar={{ title: 'Teacher Workload', desc: 'Periods a week per teacher from the timetable, cover and leave, and how classes and subjects are spread.' }}>
+      <TeacherWorkloadView />
+      <h2 className="lead-subhead">Classes and subject offerings</h2>
+      <div className="lead-tiles">
         {[
           { label: 'Total Grades', value: rows.length },
           { label: 'Total Sections', value: totalSections },
           { label: 'Total Offerings', value: totalOfferings },
         ].map((s) => (
-          <div key={s.label} style={{ background: '#fff', border: '1px solid var(--hairline)', borderRadius: 10, padding: '14px 16px' }}>
-            <div style={{ fontSize: 24, fontWeight: 700 }}>{s.value}</div>
-            <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>{s.label}</div>
+          <div key={s.label} className="lead-tile">
+            <div className="lead-tile-value">{s.value}</div>
+            <div className="lead-tile-label">{s.label}</div>
           </div>
         ))}
       </div>

@@ -67,6 +67,8 @@ const RETIRED_INDEXES = [
   ['academicyears', 'name_1'],
   ['feeheads', 'name_1'],
   ['hostelrooms', 'roomNo_1'],
+  // Invoice numbers come from a per-school series (INV/<FY>/000001) since 2026-10.
+  ['invoices', 'invoiceNo_1'],
 ];
 
 // Importing the models must not build indexes here: this script drops the

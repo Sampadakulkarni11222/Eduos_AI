@@ -16,6 +16,7 @@ import { SESSION_MARKER } from './session-cookie';
 import type { Me, Paged, PageResult, LeadDetailDto, RiskScanParams, ProfileSummary, StudentListItem, StudentOverviewDto, SectionDto, OfferingDto, GradeDto, SubjectDto, TermDto, StaffAccountDto, AttendanceRoster, AttStatus, AssignmentDto, TimetableDto, PerformanceDto, ExamDto, ExamSubjectDto, MarksGrid, CalendarEventDto, InvoiceDto, FeeSummary, AnnouncementDto, TicketDto, TicketThread, MedicalDto, Pipeline, GrowthScore, RiskScan, WaSimReply, TransportRouteDto, TransportStopDto, MyBusDto, BookDto, BookIssueDto, DocumentDto, AuditLogDto, PaymentReceiptDto, UserDto, CreateUserDto, SchoolDto, SchoolAdminDto, CreateSchoolAdminDto, PublicSchoolDto, SchoolThemeDto, SchoolDropdownDto, SchoolCustomizationDto, SchoolCustomizationSummaryDto, SchoolCustomizationInput, DomainListDto, SchoolDomainDetailDto, DomainChangeDto, DomainCheckDto, SeatSummaryDto, SeatRequestDto, SeatHistoryEntryDto, SeatPaymentStartDto, SeatPriceListDto, SeatPriceDto, SchoolSeatPriceDto, UploadResult, PayOnlineResult, SubmissionRoster, HostelRoomDto, HostelAllocationDto, HostelSummaryDto, PermissionDto, RoleDto, AdminDashboardDto, StudentDashboardDto, TeacherDashboardDto, ParentDashboardDto, WardenDashboardDto, LibrarianDashboardDto, FinanceDashboardDto, BulkImportResult, AttendanceCalendarDto, AttendanceTrendPointDto, LeaveApplicationDto, InvoiceDetailDto, NotificationDto, NotificationPage, ReportCardDto, FeeHeadDto, FeeStructureDto, GenerateInvoicesResult, AcademicYearDto, AgentReply, AgentTool, AgentTurn, AiCreditStatusDto, AiCreditOrderDto, AiCreditPurchaseDto, SubjectAttendanceDto, WhatsappAssistantLink, TutorStatusDto, TutorSyllabusDto, TutorReplyDto, LearnStatusDto, LearnReplyDto, LearnModeKey,AvailableElectiveDto, SubjectRegistrationDto, RegistrationStatus, LectureAttendanceDto, PerformanceHistoryDto, BookFacetsDto, CoCurricularActivityDto, ProfileEditFieldDto, ProfileEditRequestDto, StudentRequestStatus, PaymentAcademicYearDto, PaymentOverviewDto, FeePlanDto, FeePlanDetailDto, FeePlanMode, PaymentChangeRequestDto, PaymentHistoryDto, AnnouncementDraft, AnnouncementPreviewDto, TransportRosterRow, LibraryResourceKind, LeaveRequestDto, LeaveStatus, BookRequestDto, TransportRequestDto, AvailableRoutesDto, RequestStatus } from './types';
 import type { QuizListItem, QuizDetail, QuizInput, QuizQuestionInput, QuizResults, QuizOverview, QuizPaper, QuizResult, QuizMyAttempt } from './quiz-types';
 import type { RequestableDocumentType, DocumentTypeDto, DocumentTypeInput, DocumentRequestDto, AdminDocumentRequestDto, NewDocumentRequest, DocumentRequestFilters } from './document-request-types';
+import type { AgentDownload, ImportUpload } from './types';
 
 /**
  * A document exactly as the API returns it, before this layer normalises it.
@@ -66,6 +67,11 @@ export async function clearSession() {
   localStorage.removeItem(SESSION_MARKER);
   // Best-effort: a failure here must not stop the caller completing sign-out.
   await fetch('/api/session', { method: 'DELETE' }).catch(() => {});
+}
+
+/** The in-memory access token, for authenticated downloads (never persisted). */
+export function getAccessToken(): string | null {
+  return accessToken;
 }
 
 export function hasSession(): boolean {
@@ -129,7 +135,35 @@ export function renewSession(): Promise<boolean> {
   return refresh();
 }
 
-async function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
+/**
+ * Identical GETs in flight at the same moment share one network request: the
+ * shell, the page and a widget asking for the same thing as a page mounts no
+ * longer fire it two or three times. Only plain GETs with no caller-supplied
+ * options are shared, and only while the request is pending; nothing is cached.
+ */
+const getsInFlight = new Map<string, Promise<unknown>>();
+
+export function request<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
+  const shareable = !retried && Object.keys(init).length === 0;
+  if (!shareable) return send<T>(path, init, retried);
+  const key = `${getActingSchool()?.slug ?? ''} ${path}`;
+  const pending = getsInFlight.get(key) as Promise<T> | undefined;
+  if (pending) return pending;
+  const p = send<T>(path, init, retried).finally(() => { getsInFlight.delete(key); });
+  getsInFlight.set(key, p);
+  return p;
+}
+
+async function send<T>(path: string, init: RequestInit = {}, retried = false): Promise<T> {
+  // A page that loads before the session has been renewed used to send its
+  // first requests with no token, get 401 on each and send them all again.
+  // When a session exists but no token is held yet, wait for the one shared
+  // renewal first. Sign-in calls themselves never wait.
+  // `/auth/me` is a read like any other and waits too: sent without a token it
+  // came back 401 on every cold load and was sent a second time.
+  if (!accessToken && !retried && (!path.startsWith('/auth/') || path === '/auth/me') && hasSession()) {
+    await refresh();
+  }
   const res = await fetch(`${BACKEND_URL}/api/v1${path}`, {
     ...init,
     headers: {
@@ -139,7 +173,7 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
     },
   });
   if (res.status === 401 && !retried && (await refresh())) {
-    return request<T>(path, init, true);
+    return send<T>(path, init, true);
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -153,7 +187,8 @@ async function request<T>(path: string, init: RequestInit = {}, retried = false)
   // mutation. Blunt on purpose: a needless refetch costs one request, whereas
   // a missed invalidation shows the user a stale record.
   const method = (init.method ?? 'GET').toUpperCase();
-  if (method !== 'GET') invalidateCache();
+  // A read already in flight may predate this change, so later reads must not join it.
+  if (method !== 'GET') { invalidateCache(); getsInFlight.clear(); }
   if (res.status === 204) return undefined as T;
   const json = await res.json();
   // Backend wraps all success responses in { success: true, message: string, data: T }
@@ -190,6 +225,46 @@ async function uploadFile(file: File): Promise<UploadResult> {
   const json = await res.json();
   invalidateCache();
   return (json?.data ?? json) as UploadResult;
+}
+
+/**
+ * A spreadsheet for a bulk import through Ask AI (p7). The raw bytes go to
+ * /imports/files, which keeps them for at most 24 hours; only the returned id
+ * is attached to the chat message.
+ */
+async function importUpload(file: File): Promise<ImportUpload> {
+  const res = await fetch(`${BACKEND_URL}/api/v1/imports/files`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'x-filename': encodeURIComponent(file.name),
+      ...authHeaders(),
+    },
+    body: file,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body?.error?.code ?? 'UPLOAD_FAILED', body?.message ?? 'Upload failed');
+  }
+  const json = await res.json();
+  return (json?.data ?? json) as ImportUpload;
+}
+
+/** Downloads a protected file (an error report, a sample sheet) under its own name. */
+async function downloadProtectedFile(path: string, filename: string): Promise<void> {
+  const res = await fetch(`${BACKEND_URL}/api/v1${path}`, { headers: authHeaders() });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body?.error?.code ?? 'FILE_ERROR', body?.message ?? 'Could not download this file.');
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 /** Multipart CSV upload (bulk imports). Extra non-file fields go alongside the file. */
@@ -573,7 +648,7 @@ export const api = {
     const raw = await cachedRequest<RawDoc<SubjectDto>[]>('/academics/subjects');
     return raw.map((s) => ({ id: s._id ?? s.id ?? '', name: s.name ?? '', code: s.code ?? null }));
   },
-  createSubject: (body: { name: string; code?: string }) =>
+  createSubject: (body: { name: string; code?: string; credits?: number }) =>
     request<{ id: string }>('/academics/subjects', { method: 'POST', body: JSON.stringify(body) }),
   bulkCreateSubjects: (file: File) => uploadCsv('/academics/subjects/bulk', file),
   listTerms: async (academicYearId?: string) => {
@@ -894,18 +969,26 @@ export const api = {
    * from the session on every turn, and sends these only to work out what a
    * follow-up ("what about last month?") refers to.
    */
-  agentAsk: (message: string, lang?: string, history?: AgentTurn[]) =>
-    request<AgentReply>('/ai/agent', { method: 'POST', body: JSON.stringify({ message, source: 'WEB', lang, history }) }),
+  /**
+   * One turn. `conversationId` names the server-side conversation (kept for
+   * 24 hours), so a follow-up resolves even after a page change or a reload;
+   * `history` is the fallback for a conversation the server has not seen.
+   */
+  agentAsk: (message: string, lang?: string, history?: AgentTurn[], conversationId?: string, attachment?: { fileId: string }, opts?: { inputMode?: 'voice' }) =>
+    request<AgentReply>('/ai/agent', { method: 'POST', body: JSON.stringify({ message, source: 'WEB', lang, history, ...(conversationId && { conversationId }), ...(attachment && { attachment }), ...(opts?.inputMode && { inputMode: opts.inputMode }) }) }),
+  /** p7 bulk import: upload a sheet for Ask AI to check, and download its reports and templates. */
+  importUpload,
+  downloadProtectedFile,
   /** The next window of a long answer ("Load more"). */
   agentContinue: (continuationToken: string, lang?: string) =>
     request<AgentReply>('/ai/agent/continue', {
       method: 'POST',
       body: JSON.stringify({ continuationToken, source: 'WEB', lang }),
     }),
-  agentConfirm: (confirmToken: string, accept: boolean, lang?: string) =>
-    request<{ reply: string; executed?: boolean }>('/ai/agent/confirm', {
+  agentConfirm: (confirmToken: string, accept: boolean, lang?: string, conversationId?: string) =>
+    request<{ reply: string; executed?: boolean; data?: { downloads?: AgentDownload[]; link?: string | null } | null }>('/ai/agent/confirm', {
       method: 'POST',
-      body: JSON.stringify({ confirmToken, accept, source: 'WEB', lang }),
+      body: JSON.stringify({ confirmToken, accept, source: 'WEB', lang, ...(conversationId && { conversationId }) }),
     }),
   agentCapabilities: () => request<{ tools: AgentTool[] }>('/ai/agent/capabilities'),
 

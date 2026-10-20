@@ -1,0 +1,212 @@
+import type { GuideTopic, RoleGuide } from './types';
+import { askAgentTopic, notificationsTopic, accessTip, signInTopic } from './shared';
+import { opsTopics } from './ops';
+
+/** Guides for the department portals: HR, marketing, compliance, trustees and alumni. */
+const common: GuideTopic[] = [signInTopic(), { ...notificationsTopic, tips: [accessTip] }];
+
+export const hrGuide: RoleGuide = {
+  slug: 'hr',
+  hubTitle: 'HR & Payroll Hub',
+  hubDesc: 'How to run verification, payroll, people records and training in EduOS.',
+  heroText: 'Verify new staff, run payroll, keep the organisation map current and track mandatory training.',
+  quickActions: ['today', 'ops-payroll', 'ops-verification', 'ops-organization'],
+  help: {
+    title: 'Waiting on a decision?',
+    text: 'Approvals shows where each of your requests is and who has it now.',
+    label: 'Open Approvals',
+    href: '/hr/approvals',
+  },
+  topics: [
+    {
+      id: 'today', title: 'Today', category: 'Workspace', icon: '☀', isNew: true,
+      href: '/hr', openLabel: 'Open Today',
+      summary: 'What needs you now: verifications in progress, the payroll run for this month, people not yet placed in the structure and trainings coming up.',
+      steps: ['Start here each day.', 'Click a card to open the record behind it.'],
+      tips: ['A figure shows "Not available" when its data has not been entered yet.'],
+    },
+    ...opsTopics('hr'),
+    askAgentTopic({
+      askAbout: ['what is waiting on you today', 'approvals waiting on you', 'background verification counts', 'payroll runs and their totals', 'the organisation and its vacancies', 'compliance deadlines, licences and trainings', 'staff and users', 'announcements and the calendar'],
+      canDo: [],
+      examples: ['How many verifications are awaiting the principal?', 'What is the status of the latest payroll run?', 'How many positions are vacant?'],
+      notYet: ['safeguarding', 'individual pay', 'approving or deciding anything'],
+    }),
+    ...common,
+  ],
+};
+
+export const marketingGuide: RoleGuide = {
+  slug: 'marketing',
+  hubTitle: 'Marketing & Admissions Hub',
+  hubDesc: 'How to grow enquiries and turn them into admissions in EduOS.',
+  heroText: 'Follow every enquiry, run campaigns, get posters and posts approved, and keep the newsroom alive.',
+  quickActions: ['today', 'admissions', 'ops-marketing', 'ops-newsroom'],
+  help: {
+    title: 'Need a poster or post approved?',
+    text: 'Creative goes for approval before it is used. Approvals shows where it is.',
+    label: 'Open Approvals',
+    href: '/marketing/approvals',
+  },
+  topics: [
+    {
+      id: 'today', title: 'Today', category: 'Workspace', icon: '☀', isNew: true,
+      href: '/marketing', openLabel: 'Open Today',
+      summary: 'What needs you now: new enquiries, follow-ups due, counselling appointments, campaigns running and posts waiting for review.',
+      steps: ['Start here each day.', 'Click a card to open the record behind it.'],
+    },
+    {
+      id: 'admissions', title: 'Admission CRM', category: 'Growth', icon: '◌', isNew: true,
+      href: '/marketing/admissions', openLabel: 'Open Admission CRM',
+      summary: 'Every enquiry from first contact to admission.',
+      steps: [
+        'Add an enquiry with the parent\'s contact details, the class sought and where they heard about you.',
+        'Move it through the stages as you follow up, and add a note each time.',
+        'Mark it admitted or lost with the reason, so the funnel stays accurate.',
+      ],
+    },
+    ...opsTopics('marketing'),
+    askAgentTopic({
+      askAbout: ['what is waiting on you today', 'the admissions funnel and enquiry sources', 'approvals waiting on you', 'events being planned', 'newsroom posts', 'classes and subjects', 'announcements and the calendar'],
+      canDo: [],
+      examples: ['How many enquiries enrolled this year?', 'Which source brings the most enquiries?', 'What events are coming up?'],
+      notYet: ['safeguarding', 'individual pay', 'approving or deciding anything'],
+    }),
+    ...common,
+  ],
+};
+
+export const complianceGuide: RoleGuide = {
+  slug: 'compliance',
+  hubTitle: 'Compliance & Safeguarding Hub',
+  hubDesc: 'How to keep the institution compliant and its children safe in EduOS.',
+  heroText: 'Track every obligation, return and licence, and handle safeguarding concerns in confidence.',
+  quickActions: ['today', 'ops-safeguarding', 'ops-compliance', 'ops-correspondence'],
+  help: {
+    title: 'A deadline is close?',
+    text: 'The Compliance Centre lists every return, licence and notice with its due date.',
+    label: 'Open Compliance Centre',
+    href: '/compliance/compliance',
+  },
+  topics: [
+    {
+      id: 'today', title: 'Today', category: 'Workspace', icon: '☀', isNew: true,
+      href: '/compliance', openLabel: 'Open Today',
+      summary: 'What needs you now: open safeguarding cases, returns due, licences about to expire, notices to act on and letters awaiting a reply.',
+      steps: ['Start here each day.', 'Click a card to open the record behind it.'],
+    },
+    {
+      id: 'safeguarding-cases', title: 'Handling safeguarding cases', category: 'Safety', icon: '🛡', isNew: true,
+      summary: 'As the designated officer, you see every concern raised and manage it to closure on the Safeguarding page.',
+      steps: [
+        'Open a case to read the concern and who raised it.',
+        'Record each action taken, including any report made to the police or child welfare authorities, with the date.',
+        'Close the case with the outcome once every action is complete.',
+      ],
+      tips: [
+        'Where the law requires a report to the authorities, make it without waiting for anyone\'s approval. EduOS records the report; it does not make it for you.',
+        'Case details are encrypted and are never shown in the audit log.',
+      ],
+    },
+    ...opsTopics('compliance'),
+    askAgentTopic({
+      askAbout: ['what is waiting on you today', 'compliance deadlines, returns and licences', 'open letters from boards and government', 'background verification counts', 'approvals waiting on you', 'staff and users', 'announcements and the calendar'],
+      canDo: [],
+      examples: ['What compliance items are overdue?', 'Which licences expire in the next 60 days?', 'Which letters are past their reply date?'],
+      notYet: ['safeguarding', 'individual pay', 'approving or deciding anything'],
+    }),
+    ...common,
+  ],
+};
+
+export const trusteeGuide: RoleGuide = {
+  slug: 'trustee',
+  hubTitle: 'Governing Body Hub',
+  hubDesc: 'How trustees and board members follow the institution in EduOS.',
+  heroText: 'See the institution\'s health, prepare for meetings and decide what is waiting for the board.',
+  quickActions: ['overview', 'ops-governance', 'ops-approvals', 'ops-budgets'],
+  help: {
+    title: 'Preparing for a meeting?',
+    text: 'Board & Committees has the agenda, past minutes and open actions.',
+    label: 'Open Board & Committees',
+    href: '/trustee/governance',
+  },
+  topics: [
+    {
+      id: 'overview', title: 'Overview', category: 'Workspace', icon: '☀', isNew: true,
+      href: '/trustee', openLabel: 'Open Overview',
+      summary: 'The institution at a glance: enrolment, finances, compliance standing, the next meeting and decisions waiting for the board.',
+      tips: ['You see summaries, not individual students\' or staff members\' records.', 'A figure shows "Not available" when its data has not been entered yet.'],
+    },
+    ...opsTopics('trustee'),
+    askAgentTopic({
+      askAbout: ['what is waiting on you today', 'approvals waiting on the board', 'board and committee meetings', 'budgets: planned, committed and spent', 'compliance deadlines and licences', 'the organisation in numbers', 'the campus right now', 'announcements and the calendar'],
+      canDo: [],
+      examples: ['What is waiting for the board?', 'How much of the budget is spent?', 'When is the next meeting?'],
+      notYet: ['safeguarding', 'individual pay', 'approving or deciding anything'],
+    }),
+    ...common,
+  ],
+};
+
+export const alumnusGuide: RoleGuide = {
+  slug: 'alumnus',
+  hubTitle: 'Alumni Hub',
+  hubDesc: 'How to stay in touch with your institution in EduOS.',
+  heroText: 'Read the news, join your batch\'s circle and offer to mentor current students.',
+  quickActions: ['home', 'ops-mentoring', 'ops-campus'],
+  help: {
+    title: 'Want to give back?',
+    text: 'Offer to mentor current students in studies, careers or college choices.',
+    label: 'Open Mentoring',
+    href: '/alumnus/mentoring',
+  },
+  topics: [
+    {
+      id: 'home', title: 'Home', category: 'Workspace', icon: '☀', isNew: true,
+      href: '/alumnus', openLabel: 'Open Home',
+      summary: 'News from your institution, alumni circles and mentoring in one place.',
+      steps: ['Read and react to stories.', 'Join the circle for your batch.'],
+    },
+    ...opsTopics('alumnus'),
+    askAgentTopic({
+      askAbout: ['recent newsroom posts', 'the campus right now'],
+      canDo: [],
+      examples: ['What is new at the school?', 'What events are on today?'],
+      notYet: ['mentoring requests'],
+    }),
+    ...common,
+  ],
+};
+
+// Part 3: the school nurse.
+export const nurseGuide: RoleGuide = {
+  slug: 'nurse',
+  hubTitle: 'Health Room Hub',
+  hubDesc: 'How the school nurse runs the health room in EduOS.',
+  heroText: 'Record visits, give medicines with the parents’ consent, keep stock in date and keep each child’s health card.',
+  quickActions: ['health-room'],
+  help: {
+    title: 'A dose is due?',
+    text: 'Today on the Health room page lists every dose due, with what has been given.',
+    label: 'Open the Health room',
+    href: '/nurse',
+  },
+  topics: [
+    {
+      id: 'health-room', title: 'Health room', category: 'Workspace', icon: '✚', isNew: true,
+      href: '/nurse', openLabel: 'Open the Health room',
+      summary: 'Today’s visits and doses, the medication record, first-aid stock with expiry reminders, care notes, health cards and who is told when.',
+      steps: ['Record each visit as it happens and mark "Left now" when the child leaves.', 'Mark each dose due as given, missed or refused. A controlled medicine needs a second person to countersign.', 'Keep stock expiry dates current; they become reminders in Tasks.'],
+      tips: ['Clinical details are encrypted, and every read of a child’s record is audited.', 'Parents are told only that there is an update; the details stay behind their sign-in.'],
+    },
+    ...opsTopics('nurse'),
+    askAgentTopic({
+      askAbout: ['today’s visits and the doses due', 'a child’s medication log', 'your tasks and staff leave'],
+      canDo: ['record a health-room visit (you confirm the draft)', 'record a dose as given, missed or refused (confirmed on the website)'],
+      examples: ['What visits do we have today?', 'Record a visit for Rahul Sharma: headache, rested, returned to class', 'Mark Rahul’s 12:30 dose as given'],
+      notYet: ['countersigning a controlled medicine', 'care notes', 'consent and prescriptions'],
+    }),
+    ...common,
+  ],
+};

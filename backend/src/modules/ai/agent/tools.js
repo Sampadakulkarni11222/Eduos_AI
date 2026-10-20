@@ -5,7 +5,6 @@ import * as announcements from '../../announcements/announcement.service.js';
 import * as homework from '../../assignments/homework.service.js';
 import * as assignments from '../../assignments/assignment.service.js';
 import * as academics from '../../academics/academics.service.js';
-import * as dashboard from '../../dashboard/dashboard.service.js';
 import * as exams from '../../exams/exam.service.js';
 import * as hostel from '../../hostel/hostel.service.js';
 import * as library from '../../library/library.service.js';

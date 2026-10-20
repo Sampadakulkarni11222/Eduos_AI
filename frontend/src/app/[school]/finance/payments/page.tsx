@@ -1,10 +1,11 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { PortalShell } from '@/components/shell';
 import { Button, Card, EmptyState, Pill, SkeletonRows, StatCard, rupees, useToast } from '@/components/ui';
 import { Pagination } from '@/components/pagination';
 import { api, fileHref } from '@/lib/api';
 import { RecordPaymentModal, PaymentRecordedNotice } from '@/components/fees/record-payment-modal';
+import { fmtDate } from '@/components/ops/kit';
 import { PaymentChangeRequestModal } from '@/components/fees/change-request-modal';
 import { PaymentMethod, PaymentVerification } from '@/components/fees/payment-verification';
 import { FeePlanModal } from '@/components/fees/fee-plan-modal';
@@ -21,7 +22,7 @@ export default function FinancePayments() {
   const [invoices, setInvoices] = useState<InvoiceDto[] | null>(null);
   const [receipts, setReceipts] = useState<PaymentReceiptDto[] | null>(null);
   const [paying, setPaying] = useState<InvoiceDto | null>(null);
-  const [recorded, setRecorded] = useState<{ receiptNo: string; awaitingApproval: boolean } | null>(null);
+  const [recorded, setRecorded] = useState<{ receiptNo: string | null; awaitingApproval: boolean; warnings?: string[] } | null>(null);
   const [changing, setChanging] = useState<PaymentReceiptDto | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
   const [plans, setPlans] = useState<FeePlanDto[] | null>(null);
@@ -35,6 +36,18 @@ export default function FinancePayments() {
   const [invoicePage, setInvoicePage] = useState(1);
   const [invoicePageSize, setInvoicePageSize] = useState(25);
   const [statusFilter, setStatusFilter] = useState('');
+  // Search by student name, admission number or invoice number — done by the
+  // server (GET /fees/invoices?search=), so the counter finds one family
+  // without scrolling hundreds of rows. Debounced so typing is one request.
+  const [invoiceSearch, setInvoiceSearch] = useState('');
+  const [appliedInvoiceSearch, setAppliedInvoiceSearch] = useState('');
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onInvoiceSearch = (q: string) => {
+    setInvoiceSearch(q);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => setAppliedInvoiceSearch(q.trim()), 300);
+  };
+  useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current); }, []);
   const [invoiceTotal, setInvoiceTotal] = useState(0);
   const [invoiceTotalPages, setInvoiceTotalPages] = useState(1);
   const [receiptPage, setReceiptPage] = useState(1);
@@ -70,7 +83,7 @@ export default function FinancePayments() {
 
   // Server-side paging for the invoice tab.
   useEffect(() => {
-    api.invoicesPage({ status: statusFilter || undefined, page: invoicePage, pageSize: invoicePageSize })
+    api.invoicesPage({ status: statusFilter || undefined, search: appliedInvoiceSearch || undefined, page: invoicePage, pageSize: invoicePageSize })
       .then((r) => {
         setInvoices(r.items);
         setInvoiceTotal(r.total);
@@ -78,12 +91,12 @@ export default function FinancePayments() {
         if (r.page !== invoicePage) setInvoicePage(r.page);
       })
       .catch(() => { setInvoices([]); setInvoiceTotal(0); setInvoiceTotalPages(1); });
-  }, [statusFilter, invoicePage, invoicePageSize]);
+  }, [statusFilter, appliedInvoiceSearch, invoicePage, invoicePageSize]);
 
   useEffect(() => { loadReceipts(); }, [loadReceipts]);
   useEffect(() => { loadPlans(); }, [loadPlans]);
 
-  useEffect(() => { setInvoicePage(1); }, [statusFilter, invoicePageSize]);
+  useEffect(() => { setInvoicePage(1); }, [statusFilter, appliedInvoiceSearch, invoicePageSize]);
 
   const { me } = useAuth();
   const { hasAccess } = usePermissions();
@@ -131,9 +144,17 @@ export default function FinancePayments() {
 
       {activeTab === 'invoices' && (
         <>
-          {invoices && invoices.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-              {['', 'PENDING', 'OVERDUE', 'PARTIAL', 'PAID'].map((s) => (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              className="field-input"
+              type="search"
+              placeholder="Search student, admission no. or invoice no."
+              value={invoiceSearch}
+              onChange={(e) => onInvoiceSearch(e.target.value)}
+              aria-label="Search invoices"
+              style={{ maxWidth: 340, margin: 0 }}
+            />
+              {['', 'PENDING', 'OVERDUE', 'PARTIAL', 'PAID', 'CANCELLED'].map((s) => (
                 <button
                   key={s} onClick={() => setStatusFilter(s)} className="chip-tab"
                   aria-pressed={statusFilter === s}
@@ -146,10 +167,11 @@ export default function FinancePayments() {
                   {s ? s.charAt(0) + s.slice(1).toLowerCase() : 'All'}
                 </button>
               ))}
-            </div>
-          )}
+          </div>
           {invoices === null && <Card><SkeletonRows rows={5} /></Card>}
-          {invoices?.length === 0 && <EmptyState title="No invoices yet" sub="Fee invoices appear here once fee structures are assigned." />}
+          {invoices?.length === 0 && (statusFilter || appliedInvoiceSearch
+            ? <EmptyState title="No matching invoices" sub="No invoices match the current search or status." />
+            : <EmptyState title="No invoices yet" sub="Fee invoices appear here once fee structures are assigned." />)}
           {invoices && invoices.length > 0 && filteredInvoices.length === 0 && (
             <EmptyState title="No matching invoices" sub="No invoices have this status." />
           )}
@@ -165,7 +187,7 @@ export default function FinancePayments() {
                       <td data-label="Class">{i.class}</td>
                       <td data-label="Total">{rupees(i.totalPaise)}</td>
                       <td data-label="Paid">{rupees(i.paidPaise)}</td>
-                      <td data-label="Due On">{i.dueOn}</td>
+                      <td data-label="Due On">{fmtDate(i.dueOn)}</td>
                       <td data-label="Status"><Pill tone={STATUS_TONE[i.status] ?? 'gray'}>{i.status.toLowerCase()}</Pill></td>
                       <td data-label="Actions">{i.status !== 'PAID' && i.status !== 'CANCELLED' && canRecord && <Button small variant="soft" onClick={() => setPaying(i)}>Record</Button>}</td>
                     </tr>
@@ -221,7 +243,7 @@ export default function FinancePayments() {
                             question from whether the transaction succeeded. */}
                         <td data-label="Verification"><PaymentVerification payment={r} /></td>
                         <td style={{ color: 'var(--text-faint)' }} data-label="Date">
-                          {new Date(r.paidOn ?? r.createdAt).toLocaleDateString('en-IN')}
+                          {fmtDate(r.paidOn ?? r.createdAt)}
                         </td>
                         <td data-label="Actions">
                           {/* A published payment can no longer be edited here,
@@ -333,6 +355,7 @@ export default function FinancePayments() {
         <PaymentRecordedNotice
           receiptNo={recorded.receiptNo}
           awaitingApproval={recorded.awaitingApproval}
+          warnings={recorded.warnings}
           onClose={() => setRecorded(null)}
         />
       )}

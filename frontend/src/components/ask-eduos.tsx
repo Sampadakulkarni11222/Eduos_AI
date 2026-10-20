@@ -4,9 +4,23 @@ import { createPortal } from 'react-dom';
 import { api, ApiError } from '@/lib/api';
 import { Button, Spinner, cx } from './ui';
 import { useAuth } from '@/lib/auth';
-import type { AgentContinuation, AgentProposedAction, WhatsappAssistantLink } from '@/lib/types';
-import { SPEECH_LANGUAGES, isSpeechSupported, startDictation } from '@/lib/speech';
+import type { AgentContinuation, AgentDownload, AgentProposedAction, WhatsappAssistantLink } from '@/lib/types';
+import { SPEECH_LANGUAGES, isSpeechSupported, startDictation, isSynthesisSupported, speak, stopSpeaking, speechLanguageFor } from '@/lib/speech';
+import { familyApi } from '@/lib/family-api';
 import { ChatMarkdown } from './chat-markdown';
+import { EvidenceFooter } from './evidence-footer';
+import dynamic from 'next/dynamic';
+import { ASK_EVENT } from './genui/ask-event';
+import type { GenUi } from './genui/genui';
+
+/**
+ * The generated-UI renderer (with its schema library and charts) is only
+ * needed once the assistant answers with a panel, but this component sits on
+ * every page; loaded on demand it no longer adds ~35 kB to every route. The
+ * chunk is fetched as soon as the assistant is opened, ahead of any answer.
+ */
+const loadGenUi = () => import('./genui/genui');
+const GenUiPanel = dynamic(() => loadGenUi().then((m) => m.GenUiPanel), { ssr: false });
 
 /**
  * Turns of this conversation sent with each message, so a follow-up resolves
@@ -15,6 +29,49 @@ import { ChatMarkdown } from './chat-markdown';
  * "what about last month?" any clearer.
  */
 const HISTORY_TURNS = 10;
+
+/**
+ * The conversation survives page changes and reloads.
+ *
+ * Every page renders its own shell, and the shell renders this component, so
+ * a conversation held only in component state was lost on every navigation --
+ * reproduced in the browser: after following a sidebar link the next message
+ * went out with no history at all. The server now keeps the conversation
+ * (agent/memory.js) under the id it hands back; this tab keeps that id and the
+ * messages on screen in sessionStorage, per signed-in profile, so the panel
+ * reopens where it was and the next question is understood in context.
+ * sessionStorage, not localStorage: it ends with the tab and is never shared
+ * with another one. Nothing here is authority -- the server finds the
+ * conversation only for this same person in this same school.
+ */
+const STORE_PREFIX = 'eduos.ask.v1';
+const MAX_STORED = 40;
+
+interface StoredChat { conversationId?: string; msgs: Msg[] }
+
+const storeKey = (profileId?: string | null) => (profileId ? `${STORE_PREFIX}.${profileId}` : null);
+
+function readStored(key: string | null): StoredChat | null {
+  if (!key || typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredChat;
+    return Array.isArray(parsed?.msgs) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string | null, value: StoredChat | null) {
+  if (!key || typeof window === 'undefined') return;
+  try {
+    if (!value) window.sessionStorage.removeItem(key);
+    else window.sessionStorage.setItem(key, JSON.stringify({ ...value, msgs: value.msgs.slice(-MAX_STORED) }));
+  } catch {
+    /* storage full or blocked: the conversation still works for this page */
+  }
+}
 
 interface Msg {
   role: 'user' | 'assistant';
@@ -26,7 +83,42 @@ interface Msg {
   resolved?: 'done' | 'cancelled';
   /** Set when this answer holds part of a longer list: loads the next rows. */
   continuation?: AgentContinuation | null;
+  /** The records the answer used, shown under it as "Based on". */
+  evidence?: Array<{ text: string; link: string | null }>;
+  /** A generated panel (OpenUI Lang) for an answer with data; the text stays as the fallback. */
+  ui?: GenUi | null;
+  /** The person chose the text over the panel for this answer. */
+  showText?: boolean;
+  /** p7 bulk import: the spreadsheet sent with this message (its name only). */
+  attachment?: { name: string } | null;
+  /** p7 bulk import: sheets the answer offers (error report, sample template). */
+  downloads?: AgentDownload[];
+  /** p7 automation: suggested next questions for this answer (sent when tapped; a write still comes back as a draft). */
+  nextSteps?: Array<{ label: string; ask: string }>;
 }
+
+/** The suggested next steps on a reply, when the server sent any. */
+const nextStepsOf = (res: unknown): Array<{ label: string; ask: string }> => {
+  const steps = (res as { nextSteps?: unknown })?.nextSteps;
+  return Array.isArray(steps)
+    ? steps.filter((s): s is { label: string; ask: string } => typeof s?.label === 'string' && typeof s?.ask === 'string').slice(0, 3)
+    : [];
+};
+
+/** Spreadsheets Ask AI can import: the bulk importers' own types and limit. */
+const SHEET_TYPES = '.csv,.xlsx,.xls';
+const SHEET_MAX_BYTES = 2 * 1024 * 1024;
+const downloadsOf = (res: unknown): AgentDownload[] => {
+  const r = res as { downloads?: AgentDownload[]; data?: { downloads?: AgentDownload[] } | null };
+  const list = r?.downloads ?? r?.data?.downloads ?? [];
+  return Array.isArray(list) ? list.filter((d) => d && typeof d.path === 'string' && d.path.startsWith('/imports/')) : [];
+};
+
+/** The generated panel on a reply, when the server sent one. */
+const uiOf = (res: unknown): GenUi | null => {
+  const ui = (res as { ui?: GenUi | null })?.ui;
+  return ui && ui.format === 'openui-lang' && typeof ui.program === 'string' ? ui : null;
+};
 
 export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   const [open, setOpen] = useState(false);
@@ -57,8 +149,43 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   const msgsRef = useRef<Msg[]>([]);
   const convIdRef = useRef<string | undefined>();
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  const profileId = me?.profile?.id ?? null;
+  // Set once this profile's stored conversation has been read back, so the
+  // first (empty) render never overwrites it.
+  const restoredFor = useRef<string | null>(null);
+
+  // Restore this profile's conversation after a page change or reload; a
+  // different profile starts with its own (or a fresh) one.
+  useEffect(() => {
+    if (!profileId || restoredFor.current === profileId) return;
+    const stored = readStored(storeKey(profileId));
+    msgsRef.current = stored?.msgs ?? [];
+    convIdRef.current = stored?.conversationId;
+    restoredFor.current = profileId;
+    setMsgs([...msgsRef.current]);
+  }, [profileId]);
+
+  // Keep it as it changes.
+  useEffect(() => {
+    if (!profileId || restoredFor.current !== profileId) return;
+    writeStored(storeKey(profileId), { conversationId: convIdRef.current, msgs: msgsRef.current });
+  }, [msgs, profileId]);
+
+  /** "New chat": forget this conversation here and on the server's side of it. */
+  const newChat = () => {
+    if (busy) return;
+    msgsRef.current = [];
+    convIdRef.current = undefined;
+    writeStored(storeKey(profileId), null);
+    setMsgs([]);
+    setInput('');
+  };
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
+  // p7 bulk import: the sheet attached to the next message (uploaded already; only its id is sent).
+  const [attached, setAttached] = useState<{ fileId: string; name: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Voice input. `speechLang` drives both the recogniser and the language the
@@ -73,8 +200,45 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   // direct check would desync the server and client markup.
   useEffect(() => { setVoiceAvailable(isSpeechSupported()); }, []);
 
+  // p7: the language starts as the one this person chose for school messages
+  // (Settings → language), so a Tamil-speaking parent is heard and answered in
+  // Tamil without picking it again here. They can still change it below.
+  useEffect(() => {
+    if (!profileId) return;
+    familyApi.preferences()
+      .then((p) => { const pref = speechLanguageFor(p?.language); if (pref) setSpeechLang(pref); })
+      .catch(() => { /* no preference readable: English until chosen */ });
+  }, [profileId]);
+
+  // The words the microphone produced, so a message sent unchanged is marked
+  // as spoken and the server shows back what it heard ("I heard: …").
+  const dictatedRef = useRef<string | null>(null);
+
+  // Read-aloud (SpeechSynthesis): a per-message "Listen" button, and an
+  // optional switch that reads each new answer. Remembered for this browser.
+  const [canSpeak, setCanSpeak] = useState(false);
+  const [readAloud, setReadAloud] = useState(false);
+  const spokenUpTo = useRef(0);
+  useEffect(() => {
+    setCanSpeak(isSynthesisSupported());
+    try { setReadAloud(window.localStorage.getItem('eduos.ask.readAloud') === '1'); } catch { /* storage blocked */ }
+  }, []);
+  const toggleReadAloud = () => {
+    const next = !readAloud;
+    setReadAloud(next);
+    if (!next) stopSpeaking();
+    try { window.localStorage.setItem('eduos.ask.readAloud', next ? '1' : '0'); } catch { /* storage blocked */ }
+  };
+  useEffect(() => {
+    if (!readAloud || !canSpeak) { spokenUpTo.current = msgs.length; return; }
+    const last = msgs[msgs.length - 1];
+    if (msgs.length > spokenUpTo.current && last?.role === 'assistant') speak(last.text, speechLang.code);
+    spokenUpTo.current = msgs.length;
+  }, [msgs, readAloud, canSpeak, speechLang.code]);
+
   // Sync ref → state on open so the panel renders persisted history
   const handleOpen = () => {
+    void loadGenUi();
     setMsgs([...msgsRef.current]);
     setMinimized(false);
     setOpen(true);
@@ -126,6 +290,23 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
     void api.trackWhatsappAssistantClick(device).catch(() => {});
   };
 
+  // An action card on a generated panel (here or on a dashboard) opens the
+  // assistant with its question typed in -- never sent. The person sends it,
+  // and anything that writes still comes back as a draft to confirm.
+  useEffect(() => {
+    const onAsk = (e: Event) => {
+      const text = (e as CustomEvent<{ text?: unknown }>).detail?.text;
+      if (typeof text !== 'string' || !text.trim()) return;
+      setInput(text.slice(0, 300));
+      setMsgs([...msgsRef.current]);
+      setMinimized(false);
+      setOpen(true);
+      setTimeout(() => inputRef.current?.focus(), 0);
+    };
+    window.addEventListener(ASK_EVENT, onAsk);
+    return () => window.removeEventListener(ASK_EVENT, onAsk);
+  }, []);
+
   // Close on Escape
   useEffect(() => {
     if (!open) return;
@@ -134,8 +315,87 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
+  /** Uploads a chosen spreadsheet; it is attached to the next message sent. */
+  const attachSheet = async (file: File | undefined) => {
+    if (!file || busy || uploading) return;
+    if (!/\.(csv|xlsx|xls)$/i.test(file.name)) {
+      setVoiceNote('Only spreadsheets can be attached: .csv, .xlsx or .xls.');
+      return;
+    }
+    if (file.size > SHEET_MAX_BYTES) {
+      setVoiceNote('That file is larger than 2 MB. Split it into smaller sheets.');
+      return;
+    }
+    setUploading(true); setVoiceNote(null);
+    try {
+      const up = await api.importUpload(file);
+      setAttached({ fileId: up.fileId, name: up.name });
+      setTimeout(() => inputRef.current?.focus(), 0);
+    } catch (err) {
+      setVoiceNote(err instanceof ApiError ? err.message : 'The file could not be uploaded.');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  /** Downloads a sheet an answer offers (with the session; a plain link would be refused). */
+  const download = async (d: AgentDownload) => {
+    try { await api.downloadProtectedFile(d.path, d.filename); } catch (err) {
+      setVoiceNote(err instanceof ApiError ? err.message : 'That file could not be downloaded.');
+    }
+  };
+
+  /**
+   * Sends one message (typed, or a sheet with or without words). Shared by the
+   * form and by the website hand-off of a WhatsApp import (?import=<file id>).
+   */
+  const sendMessage = async (typed: string, sheet: { fileId: string; name: string } | null) => {
+    const text = typed.trim() || (sheet ? 'Check this file' : '');
+    if (!text || busy) return;
+    const userMsg: Msg = { role: 'user', text, ...(sheet && { attachment: { name: sheet.name } }) };
+    msgsRef.current = [...msgsRef.current, userMsg];
+    setInput(''); setAttached(null); setMsgs([...msgsRef.current]); setBusy(true);
+    try {
+      const history = msgsRef.current
+        .slice(0, -1)
+        .slice(-HISTORY_TURNS)
+        .map((m) => ({ role: m.role, text: m.text }));
+      const res = await api.agentAsk(text, speechLang.lang, history, convIdRef.current, sheet ? { fileId: sheet.fileId } : undefined);
+      if (res.conversationId) convIdRef.current = res.conversationId;
+      const aiMsg: Msg = { role: 'assistant', text: res.reply, action: res.action, continuation: res.continuation ?? null, evidence: res.evidence ?? [], ui: uiOf(res), downloads: downloadsOf(res), nextSteps: nextStepsOf(res) };
+      msgsRef.current = [...msgsRef.current, aiMsg];
+      setMsgs([...msgsRef.current]);
+    } catch (err) {
+      const reason = err instanceof ApiError && err.status === 403
+        ? err.message
+        : 'Sorry — I could not reach the assistant just now.';
+      msgsRef.current = [...msgsRef.current, { role: 'assistant', text: reason }];
+      setMsgs([...msgsRef.current]);
+    } finally { setBusy(false); }
+  };
+
+  // A WhatsApp import is confirmed here: its link opens the assistant with the
+  // file attached (?import=<file id>), and the preview comes back as a draft.
+  const importHandled = useRef(false);
+  useEffect(() => {
+    if (importHandled.current || !profileId || restoredFor.current !== profileId || typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const fileId = params.get('import');
+    if (!fileId || !/^[a-f0-9]{24}$/.test(fileId)) return;
+    importHandled.current = true;
+    params.delete('import');
+    const rest = params.toString();
+    window.history.replaceState(null, '', `${window.location.pathname}${rest ? `?${rest}` : ''}${window.location.hash}`);
+    setMinimized(false);
+    setOpen(true);
+    void sendMessage('Review the file I sent on WhatsApp', { fileId, name: 'file from WhatsApp' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileId, msgs]);
+
   const send = async (e: FormEvent) => {
     e.preventDefault();
+    if (attached) { await sendMessage(input, attached); return; }
     const text = input.trim();
     if (!text || busy) return;
     const userMsg: Msg = { role: 'user', text };
@@ -154,8 +414,12 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
         .slice(0, -1)
         .slice(-HISTORY_TURNS)
         .map((m) => ({ role: m.role, text: m.text }));
-      const res = await api.agentAsk(text, speechLang.lang, history);
-      const aiMsg: Msg = { role: 'assistant', text: res.reply, action: res.action, continuation: res.continuation ?? null };
+      // Sent exactly as the microphone heard it: marked as spoken (p7).
+      const spoken = dictatedRef.current !== null && dictatedRef.current === text;
+      dictatedRef.current = null;
+      const res = await api.agentAsk(text, speechLang.lang, history, convIdRef.current, undefined, spoken ? { inputMode: 'voice' } : undefined);
+      if (res.conversationId) convIdRef.current = res.conversationId;
+      const aiMsg: Msg = { role: 'assistant', text: res.reply, action: res.action, continuation: res.continuation ?? null, evidence: res.evidence ?? [], ui: uiOf(res), nextSteps: nextStepsOf(res) };
       msgsRef.current = [...msgsRef.current, aiMsg];
       setMsgs([...msgsRef.current]);
     } catch (err) {
@@ -184,7 +448,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
     try {
       const res = await api.agentContinue(msg.continuation.token, speechLang.lang);
       msgsRef.current = msgsRef.current.map((m, i) => (i === idx ? { ...m, continuation: null } : m));
-      msgsRef.current = [...msgsRef.current, { role: 'assistant', text: res.reply, continuation: res.continuation ?? null }];
+      msgsRef.current = [...msgsRef.current, { role: 'assistant', text: res.reply, continuation: res.continuation ?? null, evidence: res.evidence ?? [], ui: uiOf(res) }];
       setMsgs([...msgsRef.current]);
     } catch (err) {
       const text = err instanceof ApiError ? err.message : 'Sorry — I could not load the rest just now.';
@@ -199,11 +463,11 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
     if (!msg?.action || busy) return;
     setBusy(true);
     try {
-      const res = await api.agentConfirm(msg.action.confirmToken, accept, speechLang.lang);
+      const res = await api.agentConfirm(msg.action.confirmToken, accept, speechLang.lang, convIdRef.current);
       msgsRef.current = msgsRef.current.map((m, i) =>
         i === idx ? { ...m, action: null, resolved: accept ? 'done' : 'cancelled' } : m
       );
-      msgsRef.current = [...msgsRef.current, { role: 'assistant', text: res.reply }];
+      msgsRef.current = [...msgsRef.current, { role: 'assistant', text: res.reply, downloads: downloadsOf(res) }];
       setMsgs([...msgsRef.current]);
     } catch (err) {
       const text = err instanceof ApiError ? err.message : 'That could not be completed.';
@@ -216,13 +480,15 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   const toggleDictation = () => {
     if (listening) { stopRef.current?.(); return; }
     setVoiceNote(null);
+    stopSpeaking();
     const stop = startDictation(speechLang.code, {
       onPartial: (t) => setInput(t),
-      onFinal: (t) => setInput(t),
+      // Placed in the box, not sent: the person sees what was heard and sends it (or corrects it).
+      onFinal: (t) => { setInput(t); dictatedRef.current = t.trim(); },
       onError: (m) => { setVoiceNote(m); setListening(false); },
       onEnd: () => { setListening(false); stopRef.current = null; },
     });
-    if (!stop) { setVoiceNote('Voice input is not available in this browser.'); return; }
+    if (!stop) { setVoiceNote('Voice input is not available in this browser. Try Chrome, Edge or Safari, or type your question — you can still choose the reply language here.'); return; }
     stopRef.current = stop;
     setListening(true);
   };
@@ -285,6 +551,9 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
     ];
   }
 
+  // p7: every role can start from "what needs me today" (tasks, decisions, registers, drafts, reminders).
+  suggestions = ['What needs me today?', ...suggestions].slice(0, 4);
+
   const handleSuggestionClick = (sText: string) => {
     setInput(sText);
   };
@@ -292,7 +561,7 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
   return (
     <>
       <Button onClick={handleOpen} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 14 }}>✨</span> {label}
+        <span style={{ fontSize: 14 }} aria-hidden="true">✨</span> <span className="ask-label">{label}</span>
       </Button>
       {open && minimized && portal(
         <button
@@ -316,6 +585,18 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                 <div className="ai-sub">Answers from your school data</div>
               </div>
               <div className="ai-header-actions">
+                {msgs.length > 0 && (
+                  <button
+                    type="button"
+                    className="ai-minimize ai-new-chat"
+                    onClick={newChat}
+                    disabled={busy}
+                    aria-label="Start a new chat"
+                    title="New chat"
+                  >
+                    ＋
+                  </button>
+                )}
                 <button
                   type="button"
                   className="ai-minimize"
@@ -381,8 +662,41 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                       as React elements, never as HTML. The person's own words
                       are shown exactly as typed. */}
                   <div className="ai-bubble">
-                    {m.role === 'assistant' ? <ChatMarkdown text={m.text} /> : m.text}
+                    {m.role === 'assistant'
+                      ? (m.ui && !m.showText
+                        ? <GenUiPanel compact ui={m.ui} fallback={<ChatMarkdown text={m.text} />} onAsk={(t) => { setInput(t.slice(0, 300)); inputRef.current?.focus(); }} />
+                        : <ChatMarkdown text={m.text} />)
+                      : (<>{m.attachment && <span className="ai-attachment-chip" aria-label={`Attached ${m.attachment.name}`}>📎 {m.attachment.name}</span>}{m.text}</>)}
                   </div>
+                  {m.role === 'assistant' && !!m.downloads?.length && (
+                    <div className="ai-downloads" role="group" aria-label="Files to download">
+                      {m.downloads.map((d) => (
+                        <button key={d.path} type="button" className="ai-read-more ai-download" onClick={() => void download(d)}>
+                          ⬇ {d.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {m.role === 'assistant' && canSpeak && m.text && (
+                    <button
+                      type="button"
+                      className="ai-read-more"
+                      onClick={() => speak(m.text, speechLang.code)}
+                      aria-label={`Read this answer aloud in ${speechLang.label}`}
+                    >
+                      🔈 Listen
+                    </button>
+                  )}
+                  {m.role === 'assistant' && m.ui && (
+                    <button
+                      type="button"
+                      className="ai-read-more genui-toggle"
+                      aria-pressed={!!m.showText}
+                      onClick={() => { msgsRef.current = msgsRef.current.map((x, j) => (j === i ? { ...x, showText: !x.showText } : x)); setMsgs([...msgsRef.current]); }}
+                    >
+                      {m.showText ? 'Show as panel' : 'Show as text'}
+                    </button>
+                  )}
                   {m.tools && m.tools.length > 0 && <div className="ai-tools">used: {Array.from(new Set(m.tools)).join(', ')}</div>}
 
                   {/* Nothing is written until this is confirmed. The summary
@@ -405,6 +719,8 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                       <div className="ai-confirm-expiry">Expires in {m.action.expiresInMinutes} min</div>
                     </div>
                   )}
+                  {/* A generated panel carries its own "Based on" footer. */}
+                  {m.role === 'assistant' && !!m.evidence?.length && (!m.ui || m.showText) && <EvidenceFooter items={m.evidence} />}
                   {m.continuation && (
                     <button
                       type="button"
@@ -422,15 +738,53 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                   {m.resolved && (
                     <div className="ai-tools">{m.resolved === 'done' ? '✓ confirmed' : '✕ cancelled'}</div>
                   )}
+                  {/* p7: suggested next steps, on the latest answer only. Tapping sends the question; nothing runs without its own draft. */}
+                  {m.role === 'assistant' && i === msgs.length - 1 && !!m.nextSteps?.length && (
+                    <div className="ai-next-steps" role="group" aria-label="Suggested next steps">
+                      {m.nextSteps.map((s) => (
+                        <button key={s.ask} type="button" className="ai-next-step" disabled={busy} onClick={() => void sendMessage(s.ask, null)}>
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
               {busy && <div className="ai-msg assistant"><div className="ai-bubble ai-typing"><Spinner /><span className="sr-only">Assistant is replying</span></div></div>}
             </div>
             {voiceNote && <div className="ai-voice-note" role="status">{voiceNote}</div>}
+            {attached && (
+              <div className="ai-attached" role="status">
+                <span>📎 {attached.name} — say what it is, or just send</span>
+                <button type="button" className="ai-attached-remove" aria-label={`Remove ${attached.name}`} onClick={() => setAttached(null)}>×</button>
+              </div>
+            )}
             <form className="ai-input" onSubmit={send}>
-              {voiceAvailable && (
+              <input
+                ref={fileRef}
+                type="file"
+                accept={SHEET_TYPES}
+                hidden
+                aria-hidden="true"
+                tabIndex={-1}
+                onChange={(e) => void attachSheet(e.target.files?.[0])}
+              />
+              <button
+                type="button"
+                className="ai-mic ai-attach"
+                onClick={() => fileRef.current?.click()}
+                disabled={busy || uploading}
+                aria-label={uploading ? 'Uploading the spreadsheet' : 'Attach a spreadsheet to import (CSV or Excel)'}
+                title="Attach a spreadsheet (CSV or Excel) to import"
+              >
+                {uploading ? '…' : '📎'}
+              </button>
+              {/* p7: always offered -- the language also decides the reply
+                  language; where the browser has no speech recognition the
+                  microphone explains that instead of disappearing. */}
+              {(
                 <>
-                  <label className="sr-only" htmlFor="ai-speech-lang">Voice language</label>
+                  <label className="sr-only" htmlFor="ai-speech-lang">Voice and reply language</label>
                   <select
                     id="ai-speech-lang"
                     className="ai-lang"
@@ -449,22 +803,35 @@ export function AskEduOS({ label = 'Ask Agent' }: { label?: string }) {
                     className={cx('ai-mic', listening && 'listening')}
                     onClick={toggleDictation}
                     disabled={busy}
-                    aria-label={listening ? 'Stop dictation' : `Speak your question in ${speechLang.label}`}
+                    aria-label={!voiceAvailable ? 'Voice input is not supported in this browser' : listening ? 'Stop dictation' : `Speak your question in ${speechLang.label}`}
+                    title={!voiceAvailable ? 'Voice input is not supported in this browser' : undefined}
                     aria-pressed={listening}
                   >
                     {listening ? '■' : '🎤'}
                   </button>
+                  {canSpeak && (
+                    <button
+                      type="button"
+                      className={cx('ai-mic', readAloud && 'listening')}
+                      onClick={toggleReadAloud}
+                      aria-pressed={readAloud}
+                      aria-label={readAloud ? 'Stop reading answers aloud' : `Read answers aloud in ${speechLang.label}`}
+                      title={readAloud ? 'Reading answers aloud' : 'Read answers aloud'}
+                    >
+                      {readAloud ? '🔊' : '🔈'}
+                    </button>
+                  )}
                 </>
               )}
               <input
                 ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder={listening ? 'Listening…' : 'Ask anything…'}
+                placeholder={listening ? 'Listening…' : attached ? 'What is this sheet? (optional)' : 'Ask anything…'}
                 disabled={busy}
                 aria-label="Message input"
               />
-              <Button type="submit" disabled={busy || !input.trim()}>Send</Button>
+              <Button type="submit" disabled={busy || uploading || (!input.trim() && !attached)}>Send</Button>
             </form>
           </div>
         </aside>

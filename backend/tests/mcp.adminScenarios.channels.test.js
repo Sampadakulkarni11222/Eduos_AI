@@ -199,8 +199,10 @@ describe('attendance', () => {
     for (const [channel, ask] of [['web', () => web(person, message)], ['whatsapp', () => whatsapp(person, message)]]) {
       const res = await ask();
       expect(res.status, channel).toBe(200);
-      // A question, not a refusal and not a write.
-      expect(replyOf(res), `${channel} did not ask who to mark`).toMatch(/which students|who|status|present or absent/i);
+      // A question, not a write. On WhatsApp a register change is not proposed
+      // at all: it is confirmed on the website (registry.js confirmableOn).
+      const expected = channel === 'whatsapp' ? /EduOS website|which students|who|status|present or absent/i : /which students|who|status|present or absent/i;
+      expect(replyOf(res), `${channel} did not ask who to mark`).toMatch(expected);
     }
     expect(await inSchool(OAK, () => AttendanceRecord.countDocuments()), 'a register was written').toBe(before);
   }, 180000);
@@ -226,17 +228,17 @@ describe('attendance', () => {
     expect((await mark())?.status).toBe('PRESENT');
     expect(await lastCall('WEB')).toMatchObject({ tool: 'mark_attendance', status: 'EXECUTED' });
 
-    // WhatsApp: the same chain, from a fresh register.
+    // WhatsApp: marking somebody else's attendance is confirmed on the website
+    // only, so it is not proposed there and a YES writes nothing.
     await inSchool(OAK, () => AttendanceRecord.deleteOne({ enrollmentId: fixture.testStud.enrollment._id, date: todayKey() }));
     expect(await mark()).toBeNull();
 
     const proposed = await whatsapp(school.people.ADMIN, message);
     expect(proposed.status).toBe(200);
-    expect(await mark(), 'WhatsApp wrote without confirmation').toBeNull();
-
+    expect(replyOf(proposed)).toMatch(/EduOS website/);
     await whatsapp(school.people.ADMIN, 'YES');
-    expect((await mark())?.status).toBe('PRESENT');
-    expect(await lastCall('WHATSAPP')).toMatchObject({ tool: 'mark_attendance', status: 'EXECUTED' });
+    expect(await mark(), 'WhatsApp wrote a register').toBeNull();
+    expect(await lastCall('WHATSAPP')).toMatchObject({ tool: 'mark_attendance', status: 'CONFIRM_ON_WEB' });
   }, 240000);
 });
 
@@ -280,7 +282,8 @@ describe('homework', () => {
     expect(await count()).toBe(0);
 
     const { proposal, done } = await proposeAndConfirm(OAK, person.actor, 'create_assignment', {
-      ...step.args, dueAt: '2026-10-02',
+      // A date ahead of today, whenever the suite runs.
+      ...step.args, dueAt: new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10),
     });
     expect(proposal.action?.status, 'homework was set without asking').toBe('confirmation_required');
     expect(done, 'the confirmation never ran').toBeTruthy();

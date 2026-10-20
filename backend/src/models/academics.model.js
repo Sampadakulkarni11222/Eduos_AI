@@ -47,6 +47,9 @@ const subjectSchema = new Schema(
   {
     name: { type: String, required: true, trim: true }, // unique per school
     code: { type: String, trim: true },
+    // Credit value of the course, for colleges and credit-based school
+    // programmes. Null where the institution does not use credits.
+    credits: { type: Number, min: 0, max: 40, default: null },
   },
   { timestamps: true }
 );

@@ -1,5 +1,6 @@
 import type { RoleGuide } from './types';
 import { askAgentTopic, notificationsTopic, accessTip, signInTopic } from './shared';
+import { opsTopics } from './ops';
 
 export const adminGuide: RoleGuide = {
   slug: 'admin',
@@ -303,6 +304,7 @@ export const adminGuide: RoleGuide = {
       examples: ['Who is absent today?', 'Show all overdue invoices', 'How many students are enrolled in Class 6?'],
       notYet: ['quizzes', 'document requests and document types'],
     }),
+    ...opsTopics('admin'),
     signInTopic(),
     { ...notificationsTopic, tips: [accessTip] },
   ],

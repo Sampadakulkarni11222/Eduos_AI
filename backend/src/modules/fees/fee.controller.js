@@ -63,7 +63,8 @@ export const getInvoicePdf = asyncHandler(async (req, res) => {
 export const getReceiptPdf = asyncHandler(async (req, res) => {
   const receipt = await service.getPaymentReceipt(req.actor, req.scope, req.params.id);
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="Receipt-${receipt.receiptNo}.pdf"`);
+  // Series numbers contain slashes (RCPT/2026-27/000123), which a filename cannot.
+  res.setHeader('Content-Disposition', `inline; filename="Receipt-${String(receipt.receiptNo).replace(/[^\w.-]+/g, '-')}.pdf"`);
   renderReceiptPdf(res, receipt);
 });
 
@@ -236,8 +237,10 @@ export const razorpayWebhook = asyncHandler(async (req, res) => {
   return sendSuccess(res, result, result.handled ? 'Webhook processed' : `Webhook acknowledged: ${result.reason}`);
 });
 
+// A refund is a request: the money moves only once the FEE_REFUND approval is
+// granted by someone other than the requester (see fee.service.js).
 export const refundPayment = asyncHandler(async (req, res) => {
-  sendSuccess(res, await service.refundPayment(req.params.id), 'Payment refunded');
+  sendSuccess(res, await service.requestRefund(req.actor, req.params.id, req.body ?? {}), 'Refund sent for approval', 202);
 });
 
 export const getSummary = asyncHandler(async (req, res) => {

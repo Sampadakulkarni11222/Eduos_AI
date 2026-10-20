@@ -692,7 +692,16 @@ export function theNamed(rows, term, { label, nameOf, describe = nameOf } = {}) 
   const exact = list.filter((r) => named(r) === wanted);
   const matched = exact.length ? exact : list.filter((r) => named(r).includes(wanted));
 
-  if (!matched.length) throw new AppError(`I could not find a ${label} matching "${String(term).trim()}".`, 404, [], 'NOT_FOUND');
+  if (!matched.length) {
+    // p7: a misspelt book, route, room or title ("Clean Cod", "Wings of Fyre") is
+    // OFFERED, never chosen -- the person says which, and a write still shows its draft.
+    const near = nameCandidates(wanted, list.map((row) => ({ name: String(nameOf(row) ?? ''), row })), { threshold: 0.75, max: 3 })
+      .map((x) => x.candidate.name).filter(Boolean);
+    throw new AppError(
+      `I could not find a ${label} matching "${String(term).trim()}".${near.length ? ` Did you mean: ${near.join(', ')}?` : ''}`,
+      404, [], 'NOT_FOUND',
+    );
+  }
   if (matched.length > 1) {
     throw new AppError(
       `More than one ${label} matches "${String(term).trim()}": ${matched.slice(0, 5).map(describe).join(', ')}. Which one?`,

@@ -153,7 +153,11 @@ export async function buildBriefing({ actor, lang = 'en' }) {
   // Pre-filtered on the permission so the obviously-forbidden reads are not
   // attempted at all. The MCP server checks again on each call — this only
   // saves nine refusals per greeting, it does not decide anything.
-  const available = BRIEFING_TOOLS.filter((name) => {
+  // A parent's opener is the family summary: every child at once and what is
+  // waiting for them, instead of per-child reads that must ask "which child?"
+  // when there are two (and so were dropped from the briefing).
+  const family = actor?.roleKey === 'PARENT' && getMcpTool('get_family_today') ? ['get_family_today', 'get_announcements'] : null;
+  const available = (family ?? BRIEFING_TOOLS).filter((name) => {
     const tool = getMcpTool(name);
     return tool && actor?.permissions?.[tool.permission];
   });

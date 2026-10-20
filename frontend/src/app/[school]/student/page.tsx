@@ -8,13 +8,17 @@ import { api } from '@/lib/api';
 import { useSchoolHref } from '@/lib/school-path';
 import { useAuth } from '@/lib/auth';
 import type { StudentDashboardDto, StudentListItem } from '@/lib/types';
+import { PulseBoard } from '@/components/ops/pulse-board';
+import { RoleDashboard } from '@/components/ops/role-dashboard';
+import { ShowcaseCard } from '@/components/ops/showcase-view';
+import { formatDate, formatTime12, greeting, greetingName } from './_lib/format';
 
 export default function StudentDashboard() {
   // Links are written school-less; this adds the school in the URL.
   const link = useSchoolHref();
   const { me } = useAuth();
   const router = useRouter();
-  const first = me?.profile?.displayName?.split(' ')[0];
+  const first = greetingName(me?.profile?.displayName);
   const [student, setStudent] = useState<StudentListItem | null>(null);
   const [data, setData] = useState<StudentDashboardDto | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,6 +34,12 @@ export default function StudentDashboard() {
 
   return (
     <PortalShell expectedSlug="student" topbar={{ title: 'Student Portal', desc: 'Your school day at a glance' }}>
+      {/* The interactive board: briefing, departments, campus, charts and live activity. */}
+      <PulseBoard />
+      {/* My own charts: attendance, marks by subject, assignments, clubs, eco points, digest. */}
+      <RoleDashboard />
+      <div style={{ marginTop: 16 }}><ShowcaseCard /></div>
+
       {loading && <Card><SkeletonRows rows={4} /></Card>}
       {!loading && !student && (
         <EmptyState title="No student record linked" sub="Contact the administration office to link your student profile." />
@@ -38,7 +48,7 @@ export default function StudentDashboard() {
       {student && (
         <>
           <div className="card card-pad" style={{ background: 'var(--accent)', color: 'var(--on-accent)', marginBottom: 16 }}>
-            <div style={{ fontFamily: 'Newsreader, serif', fontSize: 23, fontWeight: 600 }}>{greeting()}, {first ?? 'there'}!</div>
+            <div style={{ fontFamily: 'Newsreader, serif', fontSize: 23, fontWeight: 600 }}>{greeting()}{first ? `, ${first}` : ''}!</div>
             <div style={{ fontSize: 13, opacity: 0.85, marginTop: 3 }}>
               Class: {student.enrollment?.class ?? '—'} · Roll No: {student.enrollment?.rollNo ?? '—'} · {today()}
             </div>
@@ -66,7 +76,7 @@ export default function StudentDashboard() {
               <StatCard
                 label="Fees Pending"
                 value={data ? rupees(Math.round(data.feeStatus.pendingFees * 100)) : '—'}
-                delta={data ? `${data.feeStatus.pendingInvoices} open invoice(s)` : undefined}
+                delta={data ? (data.feeStatus.pendingInvoices === 1 ? '1 open invoice' : `${data.feeStatus.pendingInvoices} open invoices`) : undefined}
                 deltaDir="flat"
               />
             </div>
@@ -95,7 +105,7 @@ export default function StudentDashboard() {
                 const color = subjectColor(sl.subject);
                 return (
                   <div key={sl.periodNo} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
-                    <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12.5, color: 'var(--text-2)', width: 44 }}>{sl.startTime}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12.5, color: 'var(--text-2)', width: 64, flexShrink: 0 }}>{formatTime12(sl.startTime)}</span>
                     <span style={{ width: 3, height: 26, borderRadius: 3, background: color.dot, flexShrink: 0 }} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-1)' }}>{sl.subject}</div>
@@ -133,7 +143,7 @@ export default function StudentDashboard() {
                 const color = subjectColor(sl.subject);
                 return (
                   <div key={sl.periodNo} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
-                    <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12.5, color: 'var(--text-2)', width: 44 }}>{sl.startTime}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12.5, color: 'var(--text-2)', width: 64, flexShrink: 0 }}>{formatTime12(sl.startTime)}</span>
                     <span style={{ width: 3, height: 26, borderRadius: 3, background: color.dot, flexShrink: 0 }} />
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-1)' }}>{sl.subject}</div>
@@ -167,23 +177,35 @@ export default function StudentDashboard() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                     <div style={{ fontWeight: 600, fontSize: 13.5, color: 'var(--text-1)' }}>{a.title}</div>
                     <span style={{ fontSize: 11.5, color: 'var(--text-faint)', marginLeft: 8, flexShrink: 0 }}>
-                      {new Date(a.publishedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                      {formatDate(a.publishedAt)}
                     </span>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-2b)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.content}</div>
                 </div>
               ))}
+            </Card>
+          </div>
 
-              {data && data.examSchedule.length > 0 && (
-                <>
-                  <div style={{ fontWeight: 700, fontSize: 13.5, marginTop: 14, marginBottom: 6, color: 'var(--text-1)' }}>Upcoming exams</div>
-                  {data.examSchedule.slice(0, 3).map((e, i) => (
-                    <div key={i} style={{ fontSize: 12.5, color: 'var(--text-2b)', padding: '4px 0' }}>
-                      {e.examName} — {e.subject} · {new Date(e.examDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                    </div>
-                  ))}
-                </>
-              )}
+          {/* Exams used to be tucked inside the announcements card; they are
+              their own card now, so neither reads as part of the other. */}
+          <div style={{ marginTop: 16 }}>
+            <Card>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>Upcoming Exams</strong>
+                <button
+                  onClick={() => router.push(link('/student/performance'))}
+                  style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
+                  Performance →
+                </button>
+              </div>
+              {data === null && <SkeletonRows rows={2} />}
+              {data && data.examSchedule.length === 0 && <p style={{ fontSize: 12.5, color: 'var(--text-2b)' }}>No exams scheduled yet.</p>}
+              {data?.examSchedule.slice(0, 5).map((e, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 13, padding: '8px 0', borderTop: i ? '1px solid var(--hairline)' : 'none' }}>
+                  <span style={{ color: 'var(--text-1)' }}><strong>{e.subject}</strong> · {e.examName}</span>
+                  <span style={{ color: 'var(--text-2)', flexShrink: 0 }}>{formatDate(e.examDate)}</span>
+                </div>
+              ))}
             </Card>
           </div>
         </>
@@ -192,8 +214,7 @@ export default function StudentDashboard() {
   );
 }
 
-function greeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; }
-function today() { return new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); }
+function today() { return `${new Date().toLocaleDateString('en-IN', { weekday: 'long' })}, ${formatDate(new Date())}`; }
 
 function attendanceStatusLabel(status: string | undefined) {
   return ({

@@ -785,8 +785,9 @@ export const facilityTools = {
     module: 'Hostel',
     operation: 'CREATE',
     risk: RISK.MEDIUM,
+    confirm: true,
     description:
-      'Raise a hostel enquiry — a subject and optional description, optionally about one student. It is recorded as raised by the caller. Low impact, so it runs without confirmation.',
+      'Raise a hostel enquiry — a subject and optional description, optionally about one student. It is recorded as raised by the caller. It is filed in the name of the caller, so it needs confirmation.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -999,8 +1000,10 @@ export const facilityTools = {
     risk: RISK.LOW,
     description: 'Which students travel on which route, optionally for one section. Read-only.',
     inputSchema: { type: 'object', properties: { sectionId: objectId() }, additionalProperties: false },
-    permission: 'transport.read',
-    minScope: 'ALL',
+    // GET /transport/roster has no permission guard: the service scopes it (a
+    // teacher's own sections, a family's own children, everything only with
+    // transport.read), so any signed-in assistant user may ask.
+    permission: 'ai.copilot.use',
     service: 'transport.service.listTransportRoster()',
     async run(ctx, args) {
       const items = asList(await transport.listTransportRoster(ctx.actor, { sectionId: args.sectionId }));

@@ -7,7 +7,7 @@ import { Student } from '../src/models/student.model.js';
 import { authenticate } from '../src/middleware/auth.js';
 import { signAccessToken } from '../src/utils/jwt.js';
 import { runWithTenant, currentTenantId } from '../src/tenancy/tenantContext.js';
-import { PERMISSION_CATALOG, SYSTEM_ROLES, AI_ASSISTANT_PERMISSION } from '../src/constants/permissions.js';
+import { PERMISSION_CATALOG, SYSTEM_ROLES, AI_ASSISTANT_PERMISSION, PLATFORM_WITHHELD } from '../src/constants/permissions.js';
 
 /**
  * What a platform administrator sees when they open one school.
@@ -114,7 +114,8 @@ describe('a platform administrator opening one school', () => {
     const { actor } = await actAs(superAdminToken, { 'x-school-id': 'oakridge' });
     for (const p of PERMISSION_CATALOG) {
       if (p.key === AI_ASSISTANT_PERMISSION) continue;
-      expect(actor.permissions[p.key], p.key).toBe('ALL');
+      // Safeguarding cases and individual pay stay with the school.
+      expect(actor.permissions[p.key], p.key).toBe(PLATFORM_WITHHELD.includes(p.key) ? undefined : 'ALL');
     }
     // The one exception, and the whole of the platform role's exclusion from
     // the AI assistant: opening a school gives it that school's data, not a

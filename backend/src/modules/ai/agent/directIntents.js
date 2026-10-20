@@ -235,7 +235,10 @@ export function directStep(message, actor, now = new Date()) {
         args: { ...periodArgs(text, now), order: highest ? 'HIGHEST' : 'LOWEST', ...(count && { limit: Number(count) }) },
       };
     }
-    if (staffView && OVERALL_ATTENDANCE.test(text) && !spokenClass && !refersToOwnClasses(text) && !named.self) {
+    // "The school attendance overview" asks for leadership's overview (today, the week, chronic absence),
+    // which the leadership capability answers; the per-class summary stays the answer to the rest.
+    const asksLeadershipOverview = /\battendance\s+overview\b/i.test(text) && holds('get_school_attendance_overview');
+    if (staffView && OVERALL_ATTENDANCE.test(text) && !spokenClass && !refersToOwnClasses(text) && !named.self && !asksLeadershipOverview) {
       return { tool: 'get_class_attendance_summary', args: { ...periodArgs(text, now) } };
     }
   }
@@ -261,7 +264,10 @@ export function directStep(message, actor, now = new Date()) {
     && holds('get_attendance_roster')
     && refersToOwnClasses(text)
     && (actor?.roleKey === 'TEACHER' || scopeOf(actor, 'attendance.read') === 'ALL')
-    && !CLASS_ATTENDANCE_RANKING.test(text)) {
+    && !CLASS_ATTENDANCE_RANKING.test(text)
+    // "Students with low attendance in my classes" is a list across every
+    // class (get_low_attendance_students), not one register asked "which class?".
+    && !/\b(?:low|poor|bad|short|weak)\s+attendance\b|\battendance\b[^?]*\b(?:below|under|less\s+than)\b/i.test(text)) {
     const period = periodArgs(text, now);
     return { tool: 'get_attendance_roster', args: { ...(period.date && { date: period.date }), ...(period.month && { month: period.month }) } };
   }
@@ -367,7 +373,10 @@ export function directStep(message, actor, now = new Date()) {
   const STAFF_WORD = String.raw`(teachers?|principals?|librarians?|wardens?|parents?|administrators?|admins?|finance\s+staff|accountants?)`;
   const headcount = new RegExp(String.raw`\bhow\s+many\s+${STAFF_WORD}\b`, 'i').exec(text)?.[1]
     ?? new RegExp(String.raw`^\s*(?:please\s+)?(?:show|list|display)\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?${STAFF_WORD}\s*[?.!]*$`, 'i').exec(text)?.[1];
-  if (headcount && holds('list_users') && !WRITE_LEAD.test(text)) {
+  // ...but "how many teachers are absent / on leave today?" is not a headcount
+  // of the directory: answering it with the number of teachers stated a
+  // figure for a different question.
+  if (headcount && holds('list_users') && !WRITE_LEAD.test(text) && !/\b(?:absent|on\s+leave|away|off\s+today|present|late)\b/i.test(text)) {
     const word = headcount.toLowerCase();
     const ofRole = /^teacher/.test(word) ? 'TEACHER' : /^principal/.test(word) ? 'PRINCIPAL' : /^librarian/.test(word) ? 'LIBRARIAN'
       : /^warden/.test(word) ? 'WARDEN' : /^parent/.test(word) ? 'PARENT' : /^admin/.test(word) ? 'ADMIN' : 'FINANCE';
@@ -779,6 +788,10 @@ const APPLY_LEAVE = /\bapply\b[^?.!]*\bleave\b|\bleave\b[^?.!]*\bapplication\b|\
  */
 export function asksLeaveWithoutPermission(message, actor) {
   if (actor?.permissions?.['leave.apply'] || !actor?.permissions?.['leave.read']) return false;
+  // Part 3: a member of staff (anyone holding staffleave.apply) asking to apply
+  // for leave is asking for their OWN staff leave, which they may apply for
+  // (apply_staff_leave), whatever words they use. See staffLeaveStep() below.
+  if (actor?.permissions?.['staffleave.apply']) return false;
   const text = String(message ?? '');
   return APPLY_LEAVE.test(text) && !/\b(?:status|history|list|show|view|approve|reject|pending|requests?|applications|review)\b/i.test(text);
 }
@@ -797,3 +810,80 @@ export function namesOnlyAPronoun(message) {
 
 /** "attendance" / "marks" / "exam" on its own: the answer to "which percentage?". */
 export const PERCENTAGE_QUESTION = /^\s*(?:(?:what(?:'s|\s+is)|show|tell\s+me|give\s+me)\s+)?(?:my|his|her|(?:my\s+)?(?:child|son|daughter)(?:'s|’s)?)?\s*(?:overall\s+|total\s+|current\s+)?(?:percentage|percent|%)\s*[?.!]*\s*$/i;
+
+
+/* ── Part 3: a member of staff applying for leave means their own staff leave ── */
+
+/** The staff leave type a sentence names, or null. Codes as staffLeave.service uses them. */
+const STAFF_LEAVE_TYPE_WORDS = [
+  [/\bcasual\b|\bCL\b/, 'CL'],
+  [/\b(?:sick|medical|fever|unwell|ill(?:ness)?)\b|\bSL\b/i, 'SL'],
+  [/\b(?:earned|privilege)\b|\bEL\b/, 'EL'],
+  [/\bduty\b|\bDL\b/, 'DL'],
+  [/\bmaternity\b/i, 'ML'],
+  [/\bpaternity\b/i, 'PL'],
+  [/\bwithout\s+pay\b|\bunpaid\b|\bLWP\b/i, 'LWP'],
+];
+export function staffLeaveTypeFrom(text) {
+  const t = String(text ?? '');
+  for (const [re, code] of STAFF_LEAVE_TYPE_WORDS) if (re.test(t)) return code;
+  return null;
+}
+
+/**
+ * The student-leave step turned into the caller's own staff leave.
+ *
+ * "Apply for leave", "apply for leave tomorrow", "I need leave on Monday",
+ * "take casual leave on 20 Oct": the rule parser (and a model) read these as
+ * apply_for_leave, a STUDENT's leave of absence. A member of staff holds
+ * staffleave.apply and means their own leave, so the step becomes
+ * apply_staff_leave with the same dates and reason, and the leave type read
+ * from the sentence. Anything missing (the date, the type, the reason) is left
+ * out, so the tool's own schema check asks for it; nothing is guessed.
+ *
+ * Students and parents do not hold staffleave.apply: their step is returned
+ * untouched and keeps the student-leave behaviour.
+ */
+export function staffLeaveStep(step, message, actor, now = new Date(), { said = [] } = {}) {
+  if (step?.tool !== 'apply_for_leave' || !actor?.permissions?.['staffleave.apply']) return step;
+  const text = String(message ?? '');
+  const refinedArgs = refineStep(step, text, actor, now)?.args ?? step.args ?? {};
+  // The kind of leave may have been given in an earlier answer of the same
+  // request ("apply for leave" / "tomorrow" / "casual" / "family function").
+  const type = staffLeaveTypeFrom(text) ?? [...said].reverse().map(staffLeaveTypeFrom).find(Boolean) ?? null;
+  const halfDay = /\bhalf[-\s]?day\b/i.test(text) ? (/\b(?:afternoon|second half|post[-\s]?lunch)\b/i.test(text) ? 'SECOND_HALF' : 'FIRST_HALF') : null;
+  let reason = typeof refinedArgs.reason === 'string' ? refinedArgs.reason.trim() : '';
+  // A reason that is only the leave type ("casual leave") is not a reason.
+  if (/^(?:a\s+)?(?:casual|sick|medical|earned|duty|maternity|paternity|staff|half[-\s]?day)?\s*leaves?$/i.test(reason)) reason = '';
+  // A sick-leave sentence's illness is its reason ("leave tomorrow because of fever" already has one).
+  const args = {
+    ...(type && { type }),
+    ...(refinedArgs.fromDate && { fromDate: refinedArgs.fromDate }),
+    ...(refinedArgs.toDate && refinedArgs.toDate !== refinedArgs.fromDate && { toDate: refinedArgs.toDate }),
+    ...(halfDay && { halfDay }),
+    ...(reason && { reason: reason.slice(0, 1000) }),
+  };
+  return { ...step, tool: 'apply_staff_leave', args };
+}
+
+/**
+ * What to ask when a staff leave request is missing something, in the order a
+ * person would answer: the day first, then the kind of leave, then why.
+ * Null when nothing is missing.
+ */
+export function staffLeaveQuestion(args = {}) {
+  if (!args.fromDate) return 'Which day (or days) do you want leave for? For example "tomorrow", "Monday", or "20 to 22 October".';
+  if (!args.type) return 'Which kind of leave is it: casual, sick, earned, duty, or leave without pay?';
+  if (!args.reason) return 'What is the reason for the leave? A few words are enough.';
+  return null;
+}
+
+/**
+ * True when a member of staff is asking to apply for leave (their own staff
+ * leave), as opposed to reading, reviewing or cancelling leave.
+ */
+export function isStaffLeaveApplication(message, actor) {
+  if (!actor?.permissions?.['staffleave.apply']) return false;
+  const text = String(message ?? '');
+  return APPLY_LEAVE.test(text) && !/\b(?:status|history|list|show|view|approve|reject|pending|balance|requests|applications|review|cancel|withdraw|how\s+many)\b/i.test(text);
+}

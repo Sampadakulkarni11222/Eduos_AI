@@ -19,6 +19,9 @@ import { resetAgentThrottle } from '../src/modules/ai/agent/throttle.js';
 import { isBareFollowUp } from '../src/modules/ai/agent/intent.js';
 import { env } from '../src/config/env.js';
 
+/** Roles the assistant serves: those holding ai.copilot.use (see tests/mcp.roleCoverage.test.js). */
+const servedByAssistant = (key) => SYSTEM_ROLES.find((r) => r.key === key).grants.some((g) => g.key === 'ai.copilot.use');
+
 /**
  * The WhatsApp surface, held to the same rules as the portal.
  *
@@ -82,7 +85,8 @@ describe('WhatsApp account identification', () => {
 
     for (const roleKey of ALL_ROLES) {
       const r = resolved[roleKey];
-      if (roleKey === 'SUPER_ADMIN') {
+      // Roles the assistant does not serve yet are refused the same way.
+      if (!servedByAssistant(roleKey)) {
         // The platform role is excluded from the assistant by not holding
         // ai.copilot.use, and this path re-checks that same key — so the
         // WhatsApp entry point closes in the same breath as the web one.
@@ -606,7 +610,10 @@ describe('the hand-off from the app', () => {
       // holds the permission for -- the briefing opens no new data path.
       const { TOOLS } = await import('../src/modules/ai/agent/tools.js');
       for (const name of briefing.tools) {
-        expect(resolved.actor.permissions[TOOLS[name].permission], `${roleKey} may run ${name}`).toBeTruthy();
+        // A briefing tool is an agent tool or an MCP-native one (a parent's get_family_today).
+        const { getMcpTool } = await import('../src/modules/ai/mcp/registry.js');
+        const tool = TOOLS[name] ?? getMcpTool(name);
+        expect(resolved.actor.permissions[tool.permission], `${roleKey} may run ${name}`).toBeTruthy();
       }
     }
   });

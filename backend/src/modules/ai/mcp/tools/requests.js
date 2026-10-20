@@ -3,9 +3,10 @@ import * as transport from '../../../transport/transport.service.js';
 import * as cocurricular from '../../../studentRequests/cocurricular.service.js';
 import * as profileEdit from '../../../studentRequests/profileEdit.service.js';
 import { AppError } from '../../../../utils/AppError.js';
+import { childrenOf } from '../../../ptm/relations.js';
 import { ok, action } from '../protocol.js';
 import {
-  RISK, objectId, dateStr, noArgs, summarise, decidableSchema, thePendingRequest, raisedBy,
+  RISK, objectId, noArgs, summarise,
   limitSchema, resultWindow, rangeOf, collectPages,
 } from './_shared.js';
 
@@ -23,8 +24,6 @@ import {
  * a studentId in the arguments is neither read nor honoured; the review and
  * decision tools are gated on the managing permission at school-wide scope.
  */
-
-const DECISIONS = ['APPROVED', 'REJECTED'];
 
 /**
  * A route, stop or book named the way a person names it.
@@ -130,6 +129,27 @@ const pendingNamed = (rows, term, nameOf) => {
 const asList = (rows) => (Array.isArray(rows) ? rows : (rows?.items ?? []));
 const rupees = (paise) => `₹${(Number(paise ?? 0) / 100).toLocaleString('en-IN')}`;
 
+/**
+ * Part 4: a parent asks for a book or a bus place for one of their own
+ * children. Null for a student (the service uses their own record); for a
+ * parent, the named child among their own, or their only child, or a question.
+ */
+async function forChild(ctx, childName) {
+  if (ctx.actor?.roleKey !== 'PARENT') return null;
+  const kids = await childrenOf(ctx.actor.profileId);
+  if (!kids.length) throw new AppError('No child is linked to your account.', 404, [], 'STUDENT_NOT_LINKED');
+  if (!childName) {
+    if (kids.length === 1) return { id: kids[0].studentId, name: kids[0].name };
+    throw new AppError(`Which child is this for? ${kids.map((k) => k.name).join(' or ')}.`, 400, [], 'AGENT_NEEDS_INPUT');
+  }
+  const term = String(childName).trim().toLowerCase();
+  const hits = kids.filter((k) => k.name.toLowerCase() === term || k.name.toLowerCase().split(' ')[0] === term);
+  const found = hits.length ? hits : kids.filter((k) => k.name.toLowerCase().includes(term));
+  if (found.length !== 1) throw new AppError(`Which child is this for? ${kids.map((k) => k.name).join(' or ')}.`, 400, [], 'AGENT_NEEDS_INPUT');
+  return { id: found[0].studentId, name: found[0].name };
+}
+const childNameArg = { type: 'string', maxLength: 80, description: 'A parent: which of your children this is for, e.g. "Riya" (leave out with one child)' };
+
 export const requestTools = {
   /* ── Library: asking for a book ──────────────────────── */
 
@@ -137,22 +157,25 @@ export const requestTools = {
     module: 'Library',
     operation: 'CREATE',
     risk: RISK.LOW,
+    confirm: true,
     description:
-      "Ask the library to issue a book to the caller. Name it by title or by id. The book must be a physical copy in this school's catalogue — an online resource is read where it lives and cannot be issued. The request goes to the librarian and changes nothing until it is approved, so it runs without confirmation.",
+      "Ask the library to issue a book to the caller. Name it by title or by id. The book must be a physical copy in this school's catalogue — an online resource is read where it lives and cannot be issued. The request goes to the librarian and changes nothing until it is approved. It files a request in the name of the caller, so it needs confirmation.",
     inputSchema: {
       type: 'object',
       properties: {
         bookId: objectId('From list_books'),
         title: { type: 'string', maxLength: 300, description: 'The book as a person names it, e.g. "Introduction to Algorithms". An ambiguous title is refused, never guessed.' },
+        childName: childNameArg,
       },
       additionalProperties: false,
     },
     permission: 'library.request',
     service: 'library.service.listBooks() + requestBook()',
     summarise: (args, _actor, prepared) =>
-      `Ask the library to issue "${prepared?.title ?? args.title ?? args.bookId}" to you`,
-    async prepare(_ctx, args) {
-      if (args.bookId) return { bookId: String(args.bookId) };
+      `Ask the library to issue "${prepared?.title ?? args.title ?? args.bookId}" to ${prepared?.child?.name ?? 'you'}`,
+    async prepare(ctx, args) {
+      const child = await forChild(ctx, args.childName);
+      if (args.bookId) return { bookId: String(args.bookId), child };
       const term = String(args.title ?? '').trim();
       if (!term) throw new AppError('Which book? Give its title.', 400, [], 'AGENT_NEEDS_INPUT');
       const rows = asList(await library.listBooks({ search: term }));
@@ -161,11 +184,11 @@ export const requestTools = {
         term,
         describe: (b) => `"${b.title}"${b.author ? ` by ${b.author}` : ''}`,
       });
-      return { bookId: String(book.id ?? book._id), title: book.title };
+      return { bookId: String(book.id ?? book._id), title: book.title, child };
     },
     async run(ctx, args, prepared) {
       const plan = prepared ?? (await this.prepare(ctx, args));
-      const request = await library.requestBook(ctx.actor, plan.bookId);
+      const request = await library.requestBook(ctx.actor, plan.bookId, plan.child?.id ?? null);
       return action({
         type: 'book_requested',
         id: request.id,
@@ -232,72 +255,8 @@ export const requestTools = {
     },
   },
 
-  decide_book_request: {
-    module: 'Library',
-    operation: 'ACTION',
-    risk: RISK.MEDIUM,
-    confirm: true,
-    description:
-      'Approve or reject a book request. Name the request by the student who made it, by the book, or by id. Approving issues the book to the student and takes a copy off the shelf; if no copy is free the approval is refused and the request stays waiting. Needs confirmation.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        requestId: objectId('From get_book_requests'),
-        studentName: { type: 'string', maxLength: 80, description: 'The student who asked, e.g. "Rahul". More than one pending request matching is refused, never guessed.' },
-        title: { type: 'string', maxLength: 300, description: 'The book that was asked for' },
-        status: { type: 'string', enum: DECISIONS },
-        note: { type: 'string', maxLength: 500, description: 'Shown to the student with the decision' },
-        dueAt: dateStr('When the book is due back; defaults to a fortnight from today'),
-      },
-      required: ['status'],
-      additionalProperties: false,
-    },
-    permission: 'library.manage',
-    minScope: 'ALL',
-    affectsOthers: true,
-    service: 'library.service.listBookRequestsForReview() + decideBookRequest()',
-    summarise: (args, _actor, prepared) =>
-      `${args.status === 'APPROVED' ? 'Approve' : 'Reject'} ` +
-      `${prepared?.label ?? `book request ${args.requestId}`}` +
-      `${args.status === 'APPROVED' ? ' — this issues the book' : ''}`,
-    async prepare(ctx, args) {
-      if (args.requestId) return { requestId: String(args.requestId) };
-
-      const term = args.studentName ?? args.title;
-      if (!term) throw new AppError('Whose book request? Name the student or the book.', 400, [], 'AGENT_NEEDS_INPUT');
-
-      // The pending queue, read exactly as the review screen reads it, then
-      // narrowed by what was said. Only PENDING requests are decidable, so a
-      // request already decided is never silently decided again.
-      const queue = asList(await library.listBookRequestsForReview(ctx.actor, ctx.scope, { status: 'PENDING' }));
-      const field = args.studentName ? 'studentName' : 'bookTitle';
-      const matched = uniquely(preferExact(queue, term, field), {
-        what: 'a pending book request',
-        term,
-        describe: (r) => `${r.studentName ?? 'a student'} — "${r.bookTitle ?? 'a book'}"`,
-      });
-      return {
-        requestId: String(matched.id ?? matched._id),
-        label: `${matched.studentName ?? 'the student'}'s request for "${matched.bookTitle ?? 'a book'}"`,
-      };
-    },
-    async run(ctx, args, prepared) {
-      const plan = prepared ?? (await this.prepare(ctx, args));
-      const result = await library.decideBookRequest(ctx.actor, plan.requestId, {
-        status: args.status,
-        note: args.note ?? null,
-        dueAt: args.dueAt ?? null,
-      });
-      return action({
-        type: args.status === 'APPROVED' ? 'book_request_approved' : 'book_request_rejected',
-        id: result.id,
-        data: result,
-        speak: args.status === 'APPROVED'
-          ? `"${result.bookTitle}" has been issued to ${result.studentName ?? 'the student'}.`
-          : `The request for "${result.bookTitle}" has been rejected.`,
-      });
-    },
-  },
+  // decide_book_request is deliberately absent: deciding is done by a person on the
+  // screen, never by the assistant. See HUMAN_DECISIONS in ../decisions.js.
 
   /* ── Transport: asking for a place on a route ────────── */
 
@@ -307,12 +266,13 @@ export const requestTools = {
     risk: RISK.LOW,
     description:
       "The bus routes the caller can ask for, with each route's stops and what a place on it costs for the year. Also says whether the caller already has a request or a place. Read-only.",
-    inputSchema: noArgs,
+    inputSchema: { type: 'object', properties: { childName: childNameArg }, additionalProperties: false },
     permission: 'transport.request',
     service: 'transport.service.listRoutesForStudent()',
     resultShape: 'LIST',
-    async run(ctx) {
-      const view = await transport.listRoutesForStudent(ctx.actor);
+    async run(ctx, args = {}) {
+      const child = await forChild(ctx, args.childName);
+      const view = await transport.listRoutesForStudent(ctx.actor, { studentId: child?.id ?? null });
       const list = summarise(
         view.routes,
         (r) => `${r.name}${r.fareAmountPaise ? ` (${rupees(r.fareAmountPaise)} a year)` : ''}`,
@@ -332,8 +292,9 @@ export const requestTools = {
     module: 'Transport',
     operation: 'CREATE',
     risk: RISK.LOW,
+    confirm: true,
     description:
-      'Ask for a place on a bus route, from a particular stop. Name the route the way it is written ("Route 2") and, where the route has more than one stop, name the stop too. The stop must be one on that route. The request goes to the school office and changes nothing until it is approved — the fare is only charged once a place is granted, so it runs without confirmation.',
+      'Ask for a place on a bus route, from a particular stop. Name the route the way it is written ("Route 2") and, where the route has more than one stop, name the stop too. The stop must be one on that route. The request goes to the school office and changes nothing until it is approved — the fare is only charged once a place is granted. It files a request in the name of the caller, so it needs confirmation.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -346,6 +307,7 @@ export const requestTools = {
           enum: ['BOTH', 'PICKUP', 'DROP'],
           description: 'Both ways by default',
         },
+        childName: childNameArg,
       },
       additionalProperties: false,
     },
@@ -353,16 +315,17 @@ export const requestTools = {
     service: 'transport.service.listRoutesForStudent() + requestRoute()',
     summarise: (args, _actor, prepared) =>
       `Ask for a place on ${prepared?.routeName ?? args.routeName ?? `route ${args.routeId}`}` +
-      `${prepared?.stopName ? ` from ${prepared.stopName}` : ''}`,
+      `${prepared?.stopName ? ` from ${prepared.stopName}` : ''}${prepared?.child ? ` for ${prepared.child.name}` : ''}`,
     async prepare(ctx, args) {
+      const child = await forChild(ctx, args.childName);
       if (args.routeId && args.stopId) {
-        return { routeId: String(args.routeId), stopId: String(args.stopId) };
+        return { routeId: String(args.routeId), stopId: String(args.stopId), child };
       }
 
       // The routes this caller may ask for, read from the same service their
       // own screen reads -- so a route they cannot request is not a candidate
       // here either.
-      const view = await transport.listRoutesForStudent(ctx.actor);
+      const view = await transport.listRoutesForStudent(ctx.actor, { studentId: child?.id ?? null });
       const routes = view.routes ?? [];
       if (!routes.length) throw new AppError('No bus routes are running at the moment.', 404, [], 'NO_ROUTES');
 
@@ -406,6 +369,7 @@ export const requestTools = {
         stopId: String(stop.id ?? stop._id),
         routeName: route.name,
         stopName: stop.name,
+        child,
       };
     },
     async run(ctx, args, prepared) {
@@ -414,6 +378,7 @@ export const requestTools = {
         routeId: plan.routeId,
         stopId: plan.stopId,
         direction: args.direction ?? 'BOTH',
+        studentId: plan.child?.id ?? null,
       });
       return action({
         type: 'transport_requested',
@@ -481,56 +446,8 @@ export const requestTools = {
     },
   },
 
-  decide_transport_request: {
-    module: 'Transport',
-    operation: 'ACTION',
-    risk: RISK.MEDIUM,
-    confirm: true,
-    description:
-      "Approve or reject a request for a place on a bus route. Approving puts the student on the route and, when the route carries a fare, raises an invoice for it against their fees. Use get_transport_requests to find the request id. Needs confirmation.",
-    inputSchema: {
-      type: 'object',
-      properties: {
-        ...decidableSchema('get_transport_requests'),
-        status: { type: 'string', enum: DECISIONS },
-        note: { type: 'string', maxLength: 500, description: 'Shown to the student with the decision' },
-      },
-      required: ['status'],
-      additionalProperties: false,
-    },
-    permission: 'transport.manage',
-    minScope: 'ALL',
-    affectsOthers: true,
-    service: 'transport.service.listTransportRequestsForReview() + decideTransportRequest()',
-    summarise: (args, _actor, prepared) =>
-      `${args.status === 'APPROVED' ? 'Approve' : 'Reject'} the transport request ` +
-      `${prepared?.who ? `from ${prepared.who}` : `${args.requestId ?? ''}`}`.trimEnd() +
-      `${args.status === 'APPROVED' ? ' — this grants the place and bills the fare' : ''}`,
-    async prepare(ctx, args) {
-      if (args.requestId) return { id: String(args.requestId) };
-      const chosen = thePendingRequest(
-        await transport.listTransportRequestsForReview(ctx.actor, ctx.scope, { status: 'PENDING' }),
-        { studentName: args.studentName, label: 'transport request' },
-      );
-      return { id: String(chosen.id ?? chosen._id), who: raisedBy(chosen) };
-    },
-    async run(ctx, args, prepared) {
-      const plan = prepared ?? (await this.prepare(ctx, args));
-      const result = await transport.decideTransportRequest(ctx.actor, plan.id, {
-        status: args.status,
-        note: args.note ?? null,
-      });
-      const billed = result.invoiceId ? ` ${rupees(result.fareAmountPaise)} has been added to their fees.` : '';
-      return action({
-        type: args.status === 'APPROVED' ? 'transport_request_approved' : 'transport_request_rejected',
-        id: result.id,
-        data: result,
-        speak: args.status === 'APPROVED'
-          ? `${result.studentName ?? 'The student'} now has a place on ${result.routeName}.${billed}`
-          : `The transport request for ${result.routeName} has been rejected.`,
-      });
-    },
-  },
+  // decide_transport_request is deliberately absent: deciding is done by a person on the
+  // screen, never by the assistant. See HUMAN_DECISIONS in ../decisions.js.
 
   /* ── Withdrawing a request that has not been decided ─── */
 

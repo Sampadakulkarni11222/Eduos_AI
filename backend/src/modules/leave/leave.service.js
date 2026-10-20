@@ -2,7 +2,8 @@ import { LeaveApplication } from '../../models/leaveApplication.model.js';
 import { Student, Enrollment } from '../../models/student.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { paginate, mapPage } from '../../utils/paginate.js';
-import { getTeacherSectionIds } from '../../utils/scope.js';
+import { getTeacherSectionIds, getGuardianStudentIds } from '../../utils/scope.js';
+import { recordAudit } from '../../utils/auditTrail.js';
 
 /**
  * Parses a calendar date to UTC midnight, ignoring any time or offset supplied.
@@ -44,13 +45,40 @@ function utcToday() {
 // still rejecting anything genuinely historical.
 const PAST_DATE_GRACE_DAYS = 1;
 
-async function resolveOwnActiveEnrollmentId(actor) {
+async function resolveOwnActiveEnrollmentId(actor, studentId) {
+  if (actor.roleKey === 'PARENT') return resolveChildActiveEnrollmentId(actor, studentId);
+
   const student = await Student.findOne({ profileId: actor.profileId, deletedAt: null }).select('_id').lean();
   if (!student) throw new AppError('No student record linked to this account', 404);
 
   const enrollment = await Enrollment.findOne({ studentId: student._id, status: 'ACTIVE' }).select('_id').lean();
   if (!enrollment) throw new AppError('No active enrollment found', 404);
 
+  return enrollment._id.toString();
+}
+
+/**
+ * The active enrollment of a child linked to this parent.
+ *
+ * The child comes from the request, so it is checked against the parent's
+ * StudentGuardian links and never trusted. A parent with exactly one linked
+ * child may leave it out. A child who is not theirs gets the same 404 as a
+ * child who does not exist, so the endpoint cannot be used to probe who is
+ * enrolled.
+ */
+async function resolveChildActiveEnrollmentId(actor, studentId) {
+  const children = await getGuardianStudentIds(actor.profileId);
+  let target = studentId ? String(studentId) : null;
+  if (!target) {
+    if (children.length !== 1) {
+      throw new AppError('Choose which child this leave is for', 400, [], 'LEAVE_CHILD_REQUIRED');
+    }
+    [target] = children;
+  }
+  if (!children.includes(target)) throw new AppError('No linked child found', 404, [], 'LEAVE_CHILD_NOT_LINKED');
+
+  const enrollment = await Enrollment.findOne({ studentId: target, status: 'ACTIVE' }).select('_id').lean();
+  if (!enrollment) throw new AppError('No active enrollment found', 404);
   return enrollment._id.toString();
 }
 
@@ -71,7 +99,7 @@ function normaliseAttachment(documentUrl, documentName) {
   return { documentUrl: url.slice(0, 600), documentName: name ? name.slice(0, 160) : null };
 }
 
-export async function apply(actor, { fromDate, toDate, reason, documentUrl, documentName }) {
+export async function apply(actor, { fromDate, toDate, reason, documentUrl, documentName, studentId }) {
   if (!fromDate || !toDate) throw new AppError('fromDate and toDate are required', 400);
   if (!reason || !reason.trim()) throw new AppError('reason is required', 400);
 
@@ -89,7 +117,7 @@ export async function apply(actor, { fromDate, toDate, reason, documentUrl, docu
   }
 
   const attachment = normaliseAttachment(documentUrl, documentName);
-  const enrollmentId = await resolveOwnActiveEnrollmentId(actor);
+  const enrollmentId = await resolveOwnActiveEnrollmentId(actor, studentId);
 
   // One application per set of days. Nothing stopped the same leave being
   // filed twice -- a double-tapped Submit, a retried request, a "yes" delivered
@@ -114,10 +142,22 @@ export async function apply(actor, { fromDate, toDate, reason, documentUrl, docu
     ...attachment,
   });
 
+  // Who applied. The application itself has no "applied by" field, so a
+  // parent applying for a child is recorded here, where reviewers and audits
+  // can see it.
+  await recordAudit({
+    actor,
+    action: 'leave.apply',
+    entityType: 'LeaveApplication',
+    entityId: application._id,
+    after: { enrollmentId, byRole: actor.roleKey ?? null, onBehalfOfChild: actor.roleKey === 'PARENT' },
+  });
+
   return application;
 }
 
 export async function listMine(actor, opts = {}) {
+  if (actor.roleKey === 'PARENT') return listForChildren(actor, opts);
   const enrollmentId = await resolveOwnActiveEnrollmentId(actor);
   const filter = { enrollmentId };
   return paginate(
@@ -126,6 +166,40 @@ export async function listMine(actor, opts = {}) {
     filter,
     { page: opts.page, pageSize: opts.pageSize, label: 'leave.listMine' }
   );
+}
+
+/**
+ * A parent's view of /leave/mine: applications for their linked children —
+ * one child when ?studentId= names a linked child, all of them otherwise.
+ * Each row carries the child's id and name so a family list is readable.
+ */
+async function listForChildren(actor, opts = {}) {
+  const children = await getGuardianStudentIds(actor.profileId);
+  let studentIds = children;
+  if (opts.studentId) {
+    if (!children.includes(String(opts.studentId))) throw new AppError('No linked child found', 404, [], 'LEAVE_CHILD_NOT_LINKED');
+    studentIds = [String(opts.studentId)];
+  }
+  const enrollments = await Enrollment.find({ studentId: { $in: studentIds } })
+    .populate('studentId', 'firstName lastName')
+    .select('_id studentId')
+    .lean();
+  const childByEnrollment = new Map(enrollments.map((e) => [String(e._id), e.studentId]));
+  const filter = { enrollmentId: { $in: enrollments.map((e) => e._id) } };
+  const result = await paginate(
+    LeaveApplication.find(filter).sort({ createdAt: -1 }).lean(),
+    LeaveApplication,
+    filter,
+    { page: opts.page, pageSize: opts.pageSize, label: 'leave.listMine' }
+  );
+  return mapPage(result, (a) => {
+    const child = childByEnrollment.get(String(a.enrollmentId));
+    return {
+      ...a,
+      studentId: child?._id ? String(child._id) : null,
+      studentName: child ? `${child.firstName} ${child.lastName ?? ''}`.trim() : null,
+    };
+  });
 }
 
 /**

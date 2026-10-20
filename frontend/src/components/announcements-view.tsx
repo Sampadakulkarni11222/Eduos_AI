@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Card, EmptyState, Pill, SkeletonRows } from './ui';
 import { ExpandableText } from './expandable-text';
 import { AnnouncementPreview } from './announcement-preview';
+import { NoticeTranslate } from './family/notice-translate';
 import { api, ApiError, fileHref } from '@/lib/api';
 import { useCachedResource } from '@/lib/cache';
 import { useAuth } from '@/lib/auth';
@@ -10,7 +11,8 @@ import type {
   AnnouncementDraft, AnnouncementDto, AnnouncementPreviewDto, GradeDto, SectionDto, SubjectDto,
 } from '@/lib/types';
 
-export function AnnouncementsView({ canPublish }: { canPublish: boolean }) {
+/** `translatable` adds "Read in my language" under each notice (the family portals). */
+export function AnnouncementsView({ canPublish, translatable = false }: { canPublish: boolean; translatable?: boolean }) {
   const [showForm, setShowForm] = useState(false);
   // This view is mounted in every portal, so returning to it should show the
   // notices already fetched rather than a skeleton over a fresh request.
@@ -46,6 +48,7 @@ export function AnnouncementsView({ canPublish }: { canPublish: boolean }) {
                 {a.channels?.email && <Pill tone="amber">Email</Pill>}
                 {a.channels?.whatsapp && <Pill tone="green">WhatsApp</Pill>}
               </div>
+              {translatable && <NoticeTranslate announcementId={a.id} />}
             </Card>
           ))}
         </div>

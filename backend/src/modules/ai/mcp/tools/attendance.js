@@ -206,9 +206,13 @@ export const attendanceTools = {
       // yesterday until 05:30 in India, so an early-morning "who is absent in
       // Class 5 A?" was answered from the previous day's register.
       const day = args.date ?? today();
-      const roster = await attendance.getRoster(ctx.actor, ctx.scope, section.sectionId, day, args.periodNo ?? null);
+      const full = await attendance.getRoster(ctx.actor, ctx.scope, section.sectionId, day, args.periodNo ?? null);
       // getRoster() returns its rows under `roster`, beside section and period details.
-      const rows = Array.isArray(roster) ? roster : (roster?.roster ?? []);
+      // The photo is for the marking screen's flashcards; an upload path is not
+      // something the assistant passes on.
+      const withoutPhoto = ({ photoUrl: _photoUrl, ...row }) => row;
+      const rows = (Array.isArray(full) ? full : (full?.roster ?? [])).map(withoutPhoto);
+      const roster = Array.isArray(full) ? rows : { ...full, roster: rows };
       const marked = rows.filter((r) => r.status).length;
       // The roster rows carry the name differently depending on how the service
       // populated them, so each shape is tried in turn. Parenthesised because
@@ -806,8 +810,22 @@ export const attendanceTools = {
     permission: 'attendance.mark',
     affectsOthers: true,
     service: 'attendance.service.markAttendanceBulk()',
-    summarise: (args) => `Mark attendance for ${args.rows.length} student(s) in section ${args.sectionId} on ${args.date ?? 'today'} in one go`,
-    async run(ctx, args) {
+    summarise: (args, _actor, prepared) =>
+      `Mark attendance for ${args.rows.length} student(s) in ${prepared?.label ?? `section ${args.sectionId}`} on ${args.date ?? 'today'} in one go`,
+    /**
+     * The section, resolved at the caller's own scope BEFORE anything is
+     * proposed -- as mark_attendance does. Without it a teacher was offered a
+     * proposal for a class they do not teach, and the service's answer on
+     * confirm told apart admission numbers that sit in that class from ones
+     * that do not.
+     */
+    async prepare(ctx, args) {
+      const section = await resolveSection(ctx, { sectionId: args.sectionId });
+      if (!section) throw new AppError('Which class should I mark?', 400, [], 'AGENT_NEEDS_INPUT');
+      return { sectionId: section.sectionId, label: section.label };
+    },
+    async run(ctx, args, prepared) {
+      const plan = prepared ?? (await this.prepare(ctx, args));
       // markAttendanceBulk() takes rows as its CSV importer parses them —
       // lower-case keys, string values. It used to be handed the tool's own
       // shape ({ rollNo: 3 }), matched nothing, and refused every call with
@@ -818,7 +836,7 @@ export const attendanceTools = {
         status: r.status,
       }));
       const result = await attendance.markAttendanceBulk(ctx.actor, ctx.scope, {
-        sectionId: args.sectionId,
+        sectionId: plan.sectionId,
         date: args.date ?? today(),
         periodNo: args.periodNo ?? null,
         rows,

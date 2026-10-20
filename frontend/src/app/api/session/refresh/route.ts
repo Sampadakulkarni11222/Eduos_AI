@@ -5,7 +5,7 @@ import { clientAddress, overFailureBudget, recordFailure } from '@/lib/refresh-f
 
 // API_URL first, as main's handler and next.config.mjs read it: the server-side
 // address of the backend in a deployment, where the public URL may differ.
-const BACKEND_URL = process.env.API_URL ?? process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://localhost:5000';
+const BACKEND_URL = process.env.API_URL ?? process.env.NEXT_PUBLIC_BACKEND_URL ?? 'http://127.0.0.1:5000';
 
 
 /**

@@ -5,6 +5,8 @@ import { Card, EmptyState, SkeletonRows, Pill, useToast } from '@/components/ui'
 import { IdCardPanel } from '@/components/id-card-action';
 import { api, ApiError } from '@/lib/api';
 import type { DocumentDto, StudentListItem } from '@/lib/types';
+import { formatDate, humanizeLabel } from '../../student/_lib/format';
+import { ChildCertificates } from '../_components/child-certificates';
 
 const DOC_TYPES = ['ALL', 'REPORT_CARD', 'TC', 'LETTER', 'CUSTOM'];
 
@@ -58,7 +60,7 @@ export default function ParentDocuments() {
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {kids.map((k, i) => (
             <button key={k.id} onClick={() => setActive(i)} className="chip-tab"
-              style={{ background: i === active ? 'var(--accent)' : '#fff', color: i === active ? 'var(--on-accent)' : 'var(--text-2)', borderColor: i === active ? 'var(--accent)' : 'var(--input-border)' }}>
+              style={{ background: i === active ? 'var(--accent)' : 'var(--card-bg)', color: i === active ? 'var(--on-accent)' : 'var(--text-2)', borderColor: i === active ? 'var(--accent)' : 'var(--input-border)' }}>
               {k.name.split(' ')[0]}
             </button>
           ))}
@@ -72,10 +74,12 @@ export default function ParentDocuments() {
         <>
           <IdCardPanel studentId={kid.id} />
 
+          <ChildCertificates studentId={kid.id} childName={kid.name.split(' ')[0]} />
+
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
             {DOC_TYPES.map((t) => (
               <button key={t} className={`chip-tab ${activeTypeFilter === t ? 'active' : ''}`} onClick={() => setActiveTypeFilter(t)}>
-                {t === 'ALL' ? 'All Files' : t.replace('_', ' ')}
+                {t === 'ALL' ? 'All files' : humanizeLabel(t)}
               </button>
             ))}
           </div>
@@ -99,8 +103,8 @@ export default function ParentDocuments() {
                   {filteredDocs.map((d) => (
                     <tr key={d.id}>
                       <td className="cell-primary" data-label="Document Name">{d.title}</td>
-                      <td data-label="Type"><Pill tone="blue">{d.type}</Pill></td>
-                      <td data-label="Issued Date">{new Date(d.issuedAt).toLocaleDateString('en-IN')}</td>
+                      <td data-label="Type"><Pill tone="blue">{humanizeLabel(d.type)}</Pill></td>
+                      <td data-label="Issued Date">{formatDate(d.issuedAt)}</td>
                       <td data-label="Action">
                         <button className="btn btn-soft btn-sm" onClick={() => openDoc(d)} disabled={openingId === d.id}>
                           {openingId === d.id ? 'Opening…' : 'Download / View'}

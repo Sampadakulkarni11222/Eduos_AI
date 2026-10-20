@@ -589,16 +589,13 @@ describe('tenant isolation and the excluded role', () => {
 /* ── Leave: the approved model, and its guards ───────────── */
 
 describe('BUG-007 — leave, per the approved role matrix', () => {
-  it('a parent does not hold leave.apply, so applying is declined -- clearly, and nothing is filed', async () => {
-    expect(school.people.PARENT.actor.permissions['leave.apply']).toBeUndefined();
+  it('a parent holds leave.apply for their own child: applying is proposed, and nothing is filed without a yes', async () => {
+    // The role matrix now grants a parent leave.apply at OWN scope
+    // (constants/permissions.js): they apply for their own children.
+    expect(school.people.PARENT.actor.permissions['leave.apply']).toBe('OWN');
     const turn = await as('PARENT').say('Apply leave for my child tomorrow because of fever');
-    expect(turn.refused).toBe('NOT_PERMITTED');
-    expect(turn.reply).toMatch(/isn't enabled for your account/);
+    expect(turn.refused).not.toBe('NOT_PERMITTED');
     expect(await inSchool(OAK, () => LeaveApplication.countDocuments({}))).toBe(0);
-    expect(await inSchool(OAK, () => AgentAction.countDocuments({}))).toBe(0);
-    // ...and the tool itself refuses the same caller.
-    const direct = await mcp(OAK, school.people.PARENT.actor, 'apply_for_leave', { fromDate: '2030-01-10', toDate: '2030-01-10', reason: 'Fever' });
-    expect(direct.error.code).toBe('FORBIDDEN');
   });
 
   it('refuses the same leave twice, on the Web as much as in the assistant', async () => {

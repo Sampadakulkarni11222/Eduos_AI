@@ -10,6 +10,40 @@ import { runWithTenant, runAcrossSchools } from '../tenancy/tenantContext.js';
 const SUPER_ADMIN_ROLE_KEY = 'SUPER_ADMIN';
 
 /**
+ * Every request used to read the account, the profile and its role afresh:
+ * three queries before any work, repeated for each of the dozen calls a page
+ * makes. They are kept for a few seconds (AUTH_CACHE_MS, default 5000; 0 turns
+ * the cache off and tests run without it), so a deactivated account or a
+ * changed role takes effect within that window. forgetIdentity() drops an
+ * entry at once, for sign-out and changes made through this process.
+ */
+const CACHE_MS = Number(process.env.AUTH_CACHE_MS ?? (process.env.NODE_ENV === 'test' ? 0 : 5000));
+const CACHE_MAX = 5000;
+const identityCache = new Map();
+
+async function loadIdentity(accountId, profileId) {
+  const key = `${accountId}:${profileId ?? ''}`;
+  const hit = CACHE_MS > 0 ? identityCache.get(key) : null;
+  if (hit && hit.until > Date.now()) return hit.value;
+  const [account, profile] = await Promise.all([
+    Account.findById(accountId).select('_id status phoneE164 email').lean(),
+    profileId ? Profile.findOne({ _id: profileId, deletedAt: null }).populate('roleId').lean() : null,
+  ]);
+  const value = { account, profile };
+  if (CACHE_MS > 0) {
+    if (identityCache.size >= CACHE_MAX) identityCache.delete(identityCache.keys().next().value);
+    identityCache.set(key, { value, until: Date.now() + CACHE_MS });
+  }
+  return value;
+}
+
+/** Drops cached identities for an account (all its profiles), e.g. on sign-out or deactivation. */
+export function forgetIdentity(accountId) {
+  const prefix = `${accountId}:`;
+  for (const key of identityCache.keys()) if (key.startsWith(prefix)) identityCache.delete(key);
+}
+
+/**
  * Resolves which school the rest of the request runs against.
  *
  * A school-level actor gets exactly one answer: the school on their own
@@ -73,17 +107,12 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
     throw new AppError('Invalid or expired token', 401);
   }
 
-  const account = await Account.findById(payload.accountId);
+  const { account, profile } = await loadIdentity(payload.accountId, payload.profileId ?? null);
   if (!account || account.status !== 'ACTIVE') {
     throw new AppError('Account not found or inactive', 401);
   }
-
-  let profile = null;
-  if (payload.profileId) {
-    profile = await Profile.findOne({ _id: payload.profileId, deletedAt: null }).populate('roleId');
-    if (!profile || profile.status !== 'ACTIVE') {
-      throw new AppError('Profile not found or inactive', 401);
-    }
+  if (payload.profileId && (!profile || profile.status !== 'ACTIVE')) {
+    throw new AppError('Profile not found or inactive', 401);
   }
 
   req.actor = {

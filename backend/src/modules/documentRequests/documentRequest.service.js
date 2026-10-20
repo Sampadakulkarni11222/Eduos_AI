@@ -4,7 +4,9 @@ import { DocumentType, DocumentRequest } from '../../models/documentRequest.mode
 import { Upload } from '../../models/upload.model.js';
 import { Role } from '../../models/role.model.js';
 import { Profile } from '../../models/profile.model.js';
-import { Student } from '../../models/student.model.js';
+import { Student, Enrollment } from '../../models/student.model.js';
+import { AlumniProfile } from '../../models/alumni.model.js';
+import { getGuardianStudentIds } from '../../utils/scope.js';
 import { Section } from '../../models/academics.model.js';
 import { AppError } from '../../utils/AppError.js';
 import { env } from '../../config/env.js';
@@ -108,9 +110,63 @@ function toDto(r, { admin = false } = {}) {
 
 /* ── Helpers ─────────────────────────────────────────────────── */
 
-async function studentContext(actor) {
-  if (actor.roleKey !== 'STUDENT') throw new AppError('Only students can request documents', 403, [], 'ROLE_NOT_PERMITTED');
+/**
+ * The student a request is for.
+ *
+ * A student acts for themselves. A parent acts for a child linked to them
+ * through StudentGuardian: `studentId` names the child (optional when there is
+ * only one), and a child who is not theirs is a 404 — the same answer as a
+ * child who does not exist, so the endpoint reveals nothing about other
+ * students.
+ */
+async function studentContext(actor, studentId = null) {
+  if (actor.roleKey === 'PARENT') return childContext(actor, studentId);
+  if (actor.roleKey === 'ALUMNUS') return alumnusContext(actor);
+  if (actor.roleKey !== 'STUDENT') throw new AppError('Only students and parents can request documents', 403, [], 'ROLE_NOT_PERMITTED');
   return resolveStudentContext(actor);
+}
+
+async function childContext(actor, studentId) {
+  const children = await getGuardianStudentIds(actor.profileId);
+  let target = studentId ? String(studentId) : null;
+  if (!target) {
+    if (children.length !== 1) throw new AppError('Choose which child this request is for', 400, [], 'DOCUMENT_REQUEST_CHILD_REQUIRED');
+    [target] = children;
+  }
+  if (!children.includes(target)) throw new AppError('No linked child found', 404, [], 'STUDENT_NOT_LINKED');
+  const student = await Student.findOne({ _id: assertObjectId(target, 'student id'), deletedAt: null })
+    .select('_id firstName lastName dob gender address admissionNo')
+    .lean();
+  if (!student) throw new AppError('No linked child found', 404, [], 'STUDENT_NOT_LINKED');
+  const enrollment = await Enrollment.findOne({ studentId: student._id, status: 'ACTIVE' })
+    .sort({ createdAt: -1 })
+    .select('_id sectionId academicYearId')
+    .lean();
+  return { student, enrollment: enrollment ?? null };
+}
+
+/**
+ * A former student asking for a document from their own archived record
+ * (a duplicate leaving certificate, a character or study certificate). The
+ * record is found through their alumni profile, never through an id they send;
+ * former staff have no student record and are refused.
+ */
+async function alumnusContext(actor) {
+  const a = await AlumniProfile.findOne({ profileId: actor.profileId }).select('kind studentId status').lean();
+  if (!a || a.kind !== 'FORMER_STUDENT' || !a.studentId) throw new AppError('Document requests here are for former students. Former staff can ask HR for a service certificate.', 403, [], 'ROLE_NOT_PERMITTED');
+  if (a.status !== 'ACTIVE') throw new AppError('Your alumni membership is suspended. Contact the school.', 403, [], 'ALUMNUS_SUSPENDED');
+  const student = await Student.findOne({ _id: a.studentId, deletedAt: null }).select('_id firstName lastName dob gender address admissionNo').lean();
+  if (!student) throw new AppError('Your school record could not be found. Contact the school office.', 404, [], 'STUDENT_NOT_LINKED');
+  // The last class they were in, whatever its status now (graduated, withdrawn).
+  const enrollment = await Enrollment.findOne({ studentId: student._id }).sort({ createdAt: -1 }).select('_id sectionId academicYearId').lean();
+  return { student, enrollment: enrollment ?? null };
+}
+
+/** Every student whose requests this actor may see: themselves, or their linked children. */
+async function ownStudentIds(actor) {
+  if (actor.roleKey === 'PARENT') return getGuardianStudentIds(actor.profileId);
+  const ctx = await studentContext(actor);
+  return [String(ctx.student._id)];
 }
 
 async function classNameFor(sectionId) {
@@ -133,10 +189,13 @@ async function studentProfileId(studentId) {
 }
 
 async function notifyStudent(request, title, body) {
+  // The student, and whoever raised the request when that was someone else
+  // (a parent asking on the child's behalf).
   const profileId = await studentProfileId(request.studentId);
-  if (!profileId) return;
+  const recipients = [...new Set([profileId, request.requestedByProfileId].filter(Boolean).map(String))];
+  if (!recipients.length) return;
   await notify({
-    recipientProfileIds: [profileId],
+    recipientProfileIds: recipients,
     type: 'SYSTEM',
     title,
     body,
@@ -168,7 +227,7 @@ async function transition(id, from, set, extraFilter = {}) {
 
 export async function createRequest(actor, body = {}) {
   const tenantId = assertSchoolContext();
-  const ctx = await studentContext(actor);
+  const ctx = await studentContext(actor, body.studentId);
 
   const type = await DocumentType.findOne({
     _id: assertObjectId(body.documentTypeId, 'document type'), isActive: true, requestEnabled: true,
@@ -201,7 +260,7 @@ export async function createRequest(actor, body = {}) {
   } catch (err) {
     if (err?.code === 11000) {
       throw new AppError(
-        `You already have an open request for a ${type.name}. Wait for it to be decided, or cancel it.`,
+        `${actor.roleKey === 'PARENT' ? 'There is already an open request' : 'You already have an open request'} for a ${type.name}. Wait for it to be decided, or cancel it.`,
         409, [], 'DOCUMENT_REQUEST_ALREADY_OPEN',
       );
     }
@@ -210,31 +269,39 @@ export async function createRequest(actor, body = {}) {
 
   await recordAudit({
     actor, action: 'document_request.create', entityType: 'DocumentRequest', entityId: request._id,
-    after: { documentType: type.name, status: 'PENDING' },
+    after: { documentType: type.name, status: 'PENDING', byRole: actor.roleKey ?? null, onBehalfOfChild: actor.roleKey === 'PARENT' },
   });
   await notifyStudent(request, `Your ${type.name} request has been received`, 'The school office will review it shortly.');
   await notify({
     recipientProfileIds: await schoolAdminProfileIds(tenantId),
     type: 'SYSTEM',
     title: `New document request: ${type.name}`,
-    body: `${request.studentName}${request.className ? ` (${request.className})` : ''} requested a ${type.name}.`,
+    body: `${request.studentName}${request.className ? ` (${request.className})` : ''}${actor.roleKey === 'PARENT' ? "'s parent" : ''} requested a ${type.name}.`,
     link: '/admin/document-requests',
     meta: { documentRequestId: String(request._id) },
   });
   return toDto(request);
 }
 
-export async function listMine(actor) {
-  const ctx = await studentContext(actor);
-  const requests = await DocumentRequest.find({ studentId: ctx.student._id }).sort({ createdAt: -1 }).limit(200).lean();
-  return requests.map((r) => toDto(r));
+export async function listMine(actor, { studentId } = {}) {
+  let ids = await ownStudentIds(actor);
+  if (studentId && actor.roleKey === 'PARENT') {
+    if (!ids.includes(String(studentId))) throw new AppError('No linked child found', 404, [], 'STUDENT_NOT_LINKED');
+    ids = [String(studentId)];
+  }
+  if (!ids.length) return [];
+  const requests = await DocumentRequest.find({ studentId: { $in: ids } }).sort({ createdAt: -1 }).limit(200).lean();
+  // A parent's list can span children, so it says whose each request is.
+  return requests.map((r) => (actor.roleKey === 'PARENT'
+    ? { ...toDto(r), studentId: String(r.studentId), studentName: r.studentName ?? null }
+    : toDto(r)));
 }
 
 async function loadOwn(actor, id) {
-  const ctx = await studentContext(actor);
-  const request = await DocumentRequest.findOne({ _id: assertObjectId(id, 'request id'), studentId: ctx.student._id });
+  const ids = await ownStudentIds(actor);
+  const request = await DocumentRequest.findOne({ _id: assertObjectId(id, 'request id'), studentId: { $in: ids } });
   if (!request) throw notFound();
-  return { ctx, request };
+  return { ctx: { student: { _id: request.studentId } }, request };
 }
 
 export async function getMine(actor, id) {

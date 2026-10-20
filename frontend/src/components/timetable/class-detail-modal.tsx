@@ -15,6 +15,8 @@ export function ClassDetailModal({
   const rows: Array<[string, string]> = [
     ['Teacher', slot.teacher ?? '—'],
     ['Room Number', slot.room ?? 'Not assigned'],
+    // Part 8: a room shift this week (the base timetable is unchanged).
+    ...(slot.roomShift ? [['This week', `${slot.roomShift.room ?? 'Another room'} on ${slot.roomShift.date} (${slot.roomShift.reason})`] as [string, string]] : []),
     ['Start Time', slot.startTime],
     ['End Time', slot.endTime],
     ['Duration', formatDuration(slot.startTime, slot.endTime)],

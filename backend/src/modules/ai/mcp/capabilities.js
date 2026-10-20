@@ -55,6 +55,66 @@ const ENTITY_OF_MODULE = {
   Seats: 'seat',
   Customization: 'customization',
   Domains: 'domain',
+  Operations: 'myDay',
+  Approvals: 'approval',
+  Compliance: 'compliance',
+  Correspondence: 'correspondence',
+  Governance: 'governance',
+  Events: 'institutionEvent',
+  Facilities: 'maintenance',
+  Verification: 'verification',
+  Procurement: 'procurement',
+  Budgets: 'budget',
+  Payroll: 'payroll',
+  Marketing: 'marketing',
+  Organisation: 'organisation',
+  Newsroom: 'newsroom',
+  Campus: 'campus',
+  Lectures: 'digitalLecture',
+  Syllabus: 'syllabus',
+  // School-platform operations (tools/platformOps.js).
+  Tasks: 'dueItem',
+  Bills: 'bill',
+  Labs: 'lab',
+  Safety: 'safety',
+  'Staff leave': 'staffLeave',
+  Cover: 'cover',
+  // School-platform people modules (tools/platformPeople.js).
+  PTM: 'ptm',
+  'Review calls': 'reviewCall',
+  Conversations: 'conversation',
+  'Report cards': 'termReport',
+  Clubs: 'club',
+  Showcase: 'showcase',
+  Alumni: 'alumni',
+  Social: 'socialPost',
+  Digest: 'digest',
+  Sustainability: 'sustainability',
+  'AI drafts': 'aiDraft',
+  // Older-module gaps (tools/platformGaps.js).
+  Certificates: 'certificate',
+  Quizzes: 'quiz',
+  // Teachers' professional profiles (tools/p3Campus.js).
+  'Staff profiles': 'staffProfile',
+  // Part 4, teacher planning (tools/p4Teacher.js): named so they can carry vocabulary of their own.
+  'Lesson plans': 'lessonPlan',
+  'Question bank': 'questionBank',
+  CPD: 'cpd',
+  // Part 5 gaps (tools/p5Gaps.js): the policies and trainings addressed to the caller.
+  Policies: 'policy',
+  // Part 6 coverage (tools/p6/*.js): modules whose own name is not the word a person uses.
+  'Support plans': 'supportPlan',
+  Portfolios: 'portfolio',
+  'Health room': 'healthRoom',
+  Exits: 'staffExit',
+  Recruitment: 'recruitment',
+  'Finance reports': 'financeReport',
+  Safeguarding: 'safeguarding',
+  // Part 7: bulk import from a spreadsheet attached in Ask AI (tools/p7BulkImport.js).
+  Imports: 'bulkImport',
+  // Part 8: exam halls and Rooms & Classes (tools/p8ExamRooms.js).
+  'Exam halls': 'examHall',
+  'Room allocation': 'roomAllocation',
 };
 
 /**
@@ -85,6 +145,24 @@ const ENTITY_OF_TOOL = {
   // about something the sentence never mentions.
   get_at_risk_students: 'student',
   list_notifications: 'notification',
+  // Everything waiting on the caller to decide, across every queue.
+  get_pending_items_for_me: 'approval',
+  // Part 4 reachability: the planner and the board-registration check are their own questions, not
+  // questions about a class ("show my planner" tied with the electives list and was asked back).
+  get_my_planner: 'planner',
+  get_board_registration_details: 'boardRegistration',
+  // Part 6: capabilities whose module is broader than the question they answer.
+  list_school_shifts: 'shift',
+  create_school_shift: 'shift',
+  update_school_shift: 'shift',
+  retire_school_shift: 'shift',
+  get_paper_results: 'questionBank',
+  list_my_class_check_ins: 'classCheckIn',
+  get_class_presence_board: 'classCheckIn',
+  check_in_to_class: 'classCheckIn',
+  search_everything: 'search',
+  get_role_dashboard: 'analytics',
+  get_announcement_preview: 'announcementPreview',
 };
 
 /** Argument names that name WHAT the request is about. */
@@ -312,22 +390,45 @@ export function entitiesFor(actor) {
  * drew. Stems and plurals are matched, so inflections need no new entries.
  */
 export const ENTITY_VOCABULARY = [
-  ['attendance', /\battendance\b|\babsent|\bpresent\b|\bregister\b|\broll\s*call\b|उपस्थिति/i],
+  // Part 8 (tools/p8ExamRooms.js), first so a tie at the same word goes to them; each by its own phrase only.
+  // Where a paper is sat, who invigilates, seating -- not marks, and not the calendar.
+  ['examHall', /\bexam(?:ination)?\s+(?:halls?|rooms?|venues?|seat(?:s|ing)?|time\s*tables?|duty|duties)\b|\bseating\s+(?:plans?|charts?)\b|\binvigilat\w*|\bclass\s+tests?\b|\bmy\s+exams\b|\bwhere\s+(?:is|are)\s+(?:the\s+|my\s+)?(?:class\s+)?[\w\s]{0,25}?\b(?:exams?|papers?)\b(?!\s+(?:marks?|results?))|\bexam\s+hall\s+status\b|\bdoor\s+lists?\b/i],
+  // A class's room: home rooms, room shifts, "which room is 7B in", free classrooms. Hostel rooms stay hostel.
+  ['roomAllocation', /\bhome\s+rooms?\b|\brooms?\s+(?:(?:and|&)\s+)?class(?:es)?\b|\broom\s+(?:shifts?|allocations?|swaps?)\b|\bsection\s+rooms?\b|\bwhich\s+room\s+(?:is|will)\s+(?:class\s+)?\d{1,2}\s*-?\s*[a-z]\b|\bwhere\s+is\s+(?:class\s+)?\d{1,2}\s*-?\s*[a-z]\s+(?:today|now|tomorrow|sitting)\b|\b(?:free|empty|available)\s+(?:class)?rooms?\b(?![^?.]*\bhostel)|\b(?:move|shift)\s+(?:class\s+)?\d{1,2}\s*-?\s*[a-z]\b[^?.]*\bto\b|\bassign\s+(?:room\s+\w+|the\s+[\w\s]{1,20}?(?:lab|room|hall|library))\s+to\b/i],
+  // "Register" is the attendance register, not the verb: "register me for
+  // the robotics elective" is an elective registration, and reading it as
+  // attendance answered with a register nobody asked for.
+  ['attendance', /\battendance\b|\babsent|\bpresent\b|\b(?:the|attendance|class|daily|today'?s)\s+register\b|\bregister\b(?!\s+(?:me|myself|him|her|them|us|my|for|to|in|on|with)\b)|\broll\s*call\b|उपस्थिति/i],
   // One stem for the whole family: score, scores, scored, scorer, scorers,
   // scoring. Listing the inflections one at a time is how "the highest
   // Mathematics SCORERS in Class 5-A" fell out of the marks vocabulary
   // altogether and was answered with a list of classes.
-  ['marks', /\bmarks?\b|\bresults?\b|\bgrades?\b|\bscor(?:e|es|ed|er|ers|ing)\b|\breport\s*card\b|\bgpa\b|\bexams?\b|\bexamination|अंक|परिणाम/i],
+  //
+  // Not "class grades" / "school grades" (the grade LEVELS, a class question),
+  // and not an exam's schedule or dates (the calendar): "show the exam
+  // schedule" was answered with marks.
+  ['marks', /\bmarks?\b|\bresults?\b|(?<!\b(?:class|classes|school)\s+)\bgrades?\b|\bscor(?:e|es|ed|er|ers|ing)\b|\breport\s*card\b|\bgpa\b|\bexams?\b(?!\s+(?:schedules?|dates?|calendar|time.?table|datesheet)\b)|\bexamination|अंक|परिणाम/i],
   // "Task", "pending work", "submitted work": what a teacher calls homework
   // without the word. Bare "work" is not here -- "does the bus work today?" is
   // no question about homework -- only work qualified by a state homework is in.
   ['homework', /\bhomework\b|\bassignments?\b|\bworksheets?\b|\bsubmissions?\b|\btasks?\b|\bclasswork\b|\b(?:pending|submitted|unsubmitted|overdue|completed)\s+work\b|गृहकार्य|होमवर्क/i],
   // "Notify" is announcing to named people: the verb is the entity's own word.
-  ['announcement', /\bannouncement|\bnotice|\bcircular|\bnews\b|\bnotify(?:ing)?\b/i],
-  ['material', /\bmaterial|\bcourse\s*material|\bnotes\b|\bhandout|\bdocument|\bresource/i],
+  // Part 6: who an announcement WOULD reach, before it is posted -- its own question, declared ahead of
+  // 'announcement' so "announcement preview" is this and every other sentence about announcements is not.
+  ['announcementPreview', /\bannouncement\s+preview\b|\bpreview\s+(?:the\s+|an?\s+|my\s+)?(?:announcement|notice|circular)\b/i],
+  ['announcement', /\bannouncement|\bnotice(?!\s+sourc)|\bcircular|\bnews\b|\bnotify(?:ing)?\b/i],
+  // "Document" stays here: list_documents answers report cards, certificates
+  // and letters as well as course material, so "which documents are due" is
+  // rightly its question. (Generating an official document has no tool.)
+  ['material', /\bmaterial|\bcourse\s*material|\bnotes\b|\bhandout|\bdocument(?!\s+(?:typ(?:e|es)?|requests?)\b)|\bresource/i],
   // "What class do I have next?" asks for a period -- which is the timetable,
   // not the caller's section.
-  ['timetable', /\btime.?table\b|\bperiods?\b|\bschedule\b|\blesson|\bnext\s+(?:class|lecture)\b|\bclass\b[^?.]*\b(?:next|right\s+now)\b/i],
+  // Not bare "schedule": that is the calendar's word ("the exam schedule",
+  // "what is scheduled for Friday"). A CLASS schedule is the timetable.
+  ['timetable', /\btime.?table\b|\bperiods?\b|\bclass\s+schedules?\b|\blesson(?!s?\s+(?:plans?|taught)\b)|\bnext\s+(?:class|lecture)\b|\bclass\b[^?.]*\b(?:next|right\s+now)\b/i],
+  // A member of staff's own leave, named by its type or its balance; listed
+  // before the student-leave entry so "casual leave" is read as staff leave.
+  ['staffLeave', /\bstaff\s+leave\b|\bleave\s+balance\b|\b(?:casual|earned|duty|maternity|paternity)\s+leave\b|\bleave\s+without\s+pay\b/i],
   ['leave', /\bleave\b|\bday\s*off\b|\bchutti\b|छुट्टी/i],
   ['elective', /\belective|\bsubject\s*registration|\bregistration/i],
   ['studentRequest', /\bco.?curricular|\bachievement|\bactivit(y|ies)\b|\bprofile[\s-]*(?:correction|edit|change)|\bstudent\s*request|\beditable\b|\bfields?\b[^?.]*\bcan\s+i\s+(?:change|edit|correct)/i],
@@ -343,23 +444,109 @@ export const ENTITY_VOCABULARY = [
   // "growth" before the marks vocabulary can claim "growth SCORE": a growth
   // score is an analytics figure that happens to share a word with marks, and
   // whichever entity is spoken first is the subject.
-  ['analytics', /\bdashboard|\banalytics|\bsummary\b|\boverview\b|\bgrowth\b/i],
+  ['analytics', /\bdashboard|\banalytics|\bsummary\b|\boverview\b|\bgrowth\b|\bquarterly\s+reports?\b|\banalytics\s+workspace\b/i],
   // "What is scheduled for Friday?" asks the calendar. The word was in no
   // vocabulary at all, so a question that named a real day named no entity,
   // scored below the floor on every capability and was answered with the list
   // of things the assistant can help with. A timetable question says so --
   // "timetable", "period", "lecture" -- and is matched by its own entry.
   ['calendar', /\bcalendar|\bevent|\bholiday|\bschedul(?:e|es|ed|ing)\b|\bagenda\b/i],
-  ['fee', /\bfees?\b|\binvoice|\bpayment|\breceipt|\binstallment|फीस/i],
+  ['fee', /\bfees?\b(?!\s+tax\s+statements?)|\binvoice|\bpayment|\breceipt|\binstallment|फीस|\bconcessions?\b|\bcredit\s+notes?\b|\bgst\b|\bfee\s+adjustments?\b/i],
   // Seats a school buys, requested from the platform: "request 25 extra seats".
   ['seat', /\bseats?\b/i],
   ['library', /\blibrar|\bbooks?\b/i],
-  ['hostel', /\bhostel|\bdorm|\broom\b|\bbeds?\b|\bwarden\b/i],
-  ['transport', /\btransport|\bbus\b|\broute\b|\bpick[\s-]?up\b|\bdrop[\s-]?off\b|\bbus\s*stop/i],
+  ['hostel', /\bhostel|\bdorm|\broom\b|\bbeds?\b|\bwarden\b|\bout[\s-]?pass(?:es)?\b/i],
+  ['transport', /\btransport|\bbus\b|\broute\b|\bpick[\s-]?up\b(?!\s+(?:delegat\w*|people|persons?|adults?)\b)|\bdrop[\s-]?off\b|\bbus\s*stop|\bvehicles?\b|\btrips?\b|\bboard(?:ed|ing)\b|\bfleet\b/i],
   // Admissions, but NOT the words "admission number" -- that is how a STUDENT
   // is identified, and reading it as the admissions pipeline would answer a
   // question about a pupil with a list of enquiries.
-  ['admission', /\badmissions?\b(?!\s*(?:number|no\b))|\benquir(y|ies)\b|\bapplicants?\b|\badmission\s+leads?\b/i],
+  ['admission', /\badmissions?\b(?!\s*(?:number|no\b))|\benquir(y|ies)\b|\bapplicants?\b|\badmission\s+leads?\b/i],  // ── Institution operations ──
+  // Each of these is named by its own word and nothing looser, so none of
+  // them takes a sentence away from the entities above: "approve the pending
+  // payment" is still a fee, "the event on Friday" is still the calendar,
+  // "attendance summary" is still analytics.
+  ['myDay', /\bmy\s+day\b|\bwaiting\s+(?:on|for)\s+me\b|\bneeds?\s+me\s+today\b|\bbrief\s+me\b/i],
+  // Singular too: "what is pending my approval" named no entity at all.
+  // "Pending for me" / "waiting for my decision" are the same question.
+  // ("payments pending approval" stays a fee question: only MY approval is.)
+  ['approval', /\bapproval\s+(?:polic(?:y|ies)|routes?|chains?|delegations?|summary)\b|\bdelegat(?:e|ed|ion|ions)\s+(?:my\s+)?approvals?\b|\bapprovals\b|\b(?:my|your)\s+approval\b|\bapproval\s+(?:inbox|requests?)\b|\bpending\s+(?:for|on)\s+me\b|\bmy\s+decision\b/i],
+  ['compliance', /\bcompliance\b|\blicen[cs]es?\b|\bregulatory\s+(?:returns?|notices?)\b|\bnotice\s+sourc\w*|\bdata\s+protection\b|\bpolicy\s+versions?\b|\bsend\s+(?:the\s+)?policy\b|\btraining\s+attendance\b/i],
+  ['correspondence', /\bcorrespondence\b|\bofficial\s+letters?\b/i],
+  ['governance', /\bboard\s+meetings?\b|\btrustee\s+meetings?\b|\bgoverning\s+body\b|\bcommittee\s+meetings?\b|\bboard\s+agendas?\b|\bboard\s+packs?\b|\bboard\s+actions?\b/i],
+  ['institutionEvent', /\bfests?\b|\binstitution\s+events?\b/i],
+  ['maintenance', /\bmaintenance\b|\bfacilit(?:y|ies)\b|\brepairs?\b|\bwork\s+orders?\b/i],
+  ['verification', /\bbackground\s+(?:verification|checks?)\b|\bverification\s+(?:decisions?|cases?|clearance)\b|\bverification\s+counts?\b/i],
+  ['procurement', /\bprocurement\b|\bpurchase\s+(?:requests?|orders?)\b/i],
+  ['budget', /\bbudgets?\b/i],
+  ['payroll', /\bpayroll\b/i],
+  ['marketing', /\bmarketing\b|\bmarket\s+(?:settings?|attribution)\b|\bmarket\s+funnel\b|\bcampaigns?\b/i],
+  ['organisation', /\borgani[sz]ation\b|\bvacanc(?:y|ies)\b/i],
+  ['newsroom', /\bnewsroom\b(?!\s+(?:social|stor))|\bcircles?\b|\btaggable\b|\bmedia\s+consents?\b/i],
+  ['campus', /\bcampus\b/i],
+  // Word boundaries written as \b: the pattern used to hold literal
+  // backspace characters, so "syllabus progress" matched nothing at all.
+  ['syllabus', /\bsyllab(?:us|u)\b|\bmodule\s+(?:plan|progress)\b|\bportion\s+(?:covered|completed)\b/i],
+  ['digitalLecture', /\bdigital\s+lectures?\b|\bonline\s+class(?:es)?\b|\blive\s+class(?:es)?\b|\bwebinars?\b/i],
+  // ── School-platform operations (tools/platformOps.js) ──
+  // Named by their own words only, so none takes a sentence from the entities
+  // above: "tasks" stays homework, "fees" stays fees.
+  ['dueItem', /\bdue\s+items?\b|\breminders?\b|\bsnooz(?:e|ed|ing)\b|\bto-?do\s+list\b/i],
+  ['bill', /\bbills?\b|\bamc\b|\bservice\s+(?:visits?|contracts?)\b|\brenewals?\b|\butility\s+bills?\b/i],
+  ['lab', /\blabs?\b|\blaborator(?:y|ies)\b|\bchemicals?\b|\breagents?\b|\bbeakers?\b|\bglassware\b|\bpracticals?\b|\bcalibrat(?:e|ed|ion|ions)\b/i],
+  ['safety', /\bsafety\s+(?:alerts?|settings?|devices?)\b|\b(?:pick[\s-]?up|gate)\s+releas\w*|\bvisitors?\b|\bcontractors?\b|\bid\s+cards?\b|\bcheckpoints?\b|\bemergency\s+roster\b|\bcamera\b|\bpick[\s-]?up\s+(?:delegat\w*|people|persons?|adults?)\b|\bdelegat\w*/i],
+  ['cover', /\bcover(?:s|ing|ed)?\b|\bsubstitut(?:e|es|ion)\b|\bproxy\s+(?:teacher|period)s?\b|\bstaff\s+absen(?:t|ce)\b/i],
+  // ── School-platform people modules (tools/platformPeople.js) ──
+  // Each named by its own words, so "report card" alone stays marks and
+  // "message" alone stays an announcement; only the term card, a conversation
+  // and the rest are claimed here.
+  ['ptm', /\bptms?\b|\bparent[\s-]+teacher\s+meetings?\b|\bmeeting\s+slots?\b/i],
+  ['reviewCall', /\breview\s+calls?\b/i],
+  ['conversation', /\bconversations?\b|\bunread\s+messages?\b|\bmessages?\s+(?:to|from)\s+(?:my\s+|the\s+)?(?:child'?s?\s+)?(?:class\s+|subject\s+)?teachers?\b/i],
+  ['termReport', /\bterm\s+reports?(?:\s+cards?)?\b|\bcbse\s+(?:report|card)s?\b|\breport[\s-]*card\s+remarks?\b/i],
+  ['club', /\bclubs?\b|\bhous(?:e|es)?\b(?!\s*(?:keeping|hold|rent))|\bsports?\s+teams?\b/i],
+  ['showcase', /\bshowcase\b/i],
+  ['alumni', /\balumn(?:i|us|a|ae)\b|\bprofile\s+links?\b|\breunions?\b/i],
+  ['socialPost', /\bnewsroom\s+(?:social|stor(?:y|ies))\b|\bshareable\s+(?:newsroom\s+)?stor(?:y|ies)\b|\bsocial(?:\s+media)?\s+posts?\b|\bsocial\s+media\b|\bfacebook\b|\binstagram\b|\blinkedin\b/i],
+  ['digest', /\bdigest\b|\bheadlines\b/i],
+  ['sustainability', /\beco\b|\beco[\s-]?points?\b|\bsustainab\w*|\bwaste\b|\bmeter\s+readings?\b|\bplant\s+checks?\b|\bcompost\w*|\bsanitation\b/i],
+  ['certificate', /\bdocument\s+(?:typ(?:e|es)?|requests?)\b|\bcertificates?\b|\bbonafide\b|\bcertificate\s+requests?\b/i],
+  ['quiz', /\bquiz(?:zes)?\b/i],
+  // Teachers' professional profiles (tools/p3Campus.js).
+  ['staffProfile', /\bqualifications?\b|\bcertifications?\b|\bctet\b|\bteach(?:er|ing)\s+experience\b|\bteacher'?s?\s+(?:profil(?:e|es)?|bio)\b/i],
+  // ── Part 4 reachability (agent: p4 support-roles) ──
+  ['lessonPlan', /\blesson\s+plans?\b|\blessons?\s+taught\b/i],
+  ['questionBank', /\bquestion\s+bank\b|\bquestion\s+papers?\b|\bpaper\s+results?\b|\bbank\s+questions?\b|\b(?:build|check|set)\s+(?:a\s+|the\s+)?question\s+papers?\b|\bblueprint\b/i],
+  ['cpd', /\bcpd\b|\bprofessional\s+development\b/i],
+  // Each by its own phrase, so none takes a sentence from the entities above. They sort by POSITION
+  // (entitiesInTextByPosition), so "school attendance overview" is leadership because "school" comes
+  // before "attendance", and "child growth view" is the family view, not analytics.
+  ['leadership', /\bschool\s+attendance\s+overview\b|\b(?:teacher|staff)\s+workloads?\b/i],
+  ['family', /\bfamily\s+today\b|\bfee\s+tax\s+statements?\b|\btax\s+statements?\b|\btranslat(?:e|es|ed|ing|ion)\b|\bmessage\s+preferences?\b|\bchild\s+growth\b|\bgrowth\s+view\b/i],
+  // The school's opportunities newsletter. Not bare "opportunity": the alumni board's opportunities
+  // (list_alumni_opportunities, offer_opportunity) share the word and keep it.
+  ['newsletter', /\bnewsletters?\b|\bsuggest(?:s|ed|ing)?\s+(?:an?\s+)?opportunit(?:y|ies)\b|\bfind\s+opportunit(?:y|ies)\b|\bsaved\s+opportunit(?:y|ies)\b|\bopportunity\s+eligibility\b/i],
+  ['planner', /\bplanner\b|\bstudy\s+(?:plan|week|schedule)s?\b/i],
+  ['boardRegistration', /\bboard\s+registrations?\b|\blist\s+of\s+candidates\b/i],
+  // Part 5 gaps (tools/p5Gaps.js): a person's own policies and trainings to acknowledge.
+  ['policy', /\bpolic(?:y|ies)\b|\bmy\s+trainings?\b/i],
+  // Part 6 coverage (tools/p6/*.js), each by its own phrase so none takes an older entity's sentence.
+  ['supportPlan', /\bsupport\s+plans?\b|\bintervention\s+plans?\b|\b(?:iep|ilp)s?\b/i],
+  ['portfolio', /\bportfolios?\b/i],
+  ['healthRoom', /\bhealth\s+(?:room|card|visits?|entries|settings|stock)\b|\bmedication\s+plans?\b|\bcare\s+not(?:e|es)?\b|\bmedicine\s+doses?\b/i],
+  ['staffExit', /\bstaff\s+exits?\b|\bexit\s+(?:interviews?|letters?|cases?)\b|\bresignations?\b/i],
+  ['recruitment', /\brecruitment\b|\bvacanc(?:y|ies)\b|(?<!\bof\s)\bcandidates?\b/i],
+  ['financeReport', /\bcash\s+closes?\b|\bday\s*book\b|\breminder\s+preview\b/i],
+  ['customization', /\bschool\s+(?:features?|modules?|theme)\b|\bmodule\s+switch\w*|\bsingle[\s-]approver\b|\bdropdown\s+(?:options|lists?)\b/i],
+  ['user', /\buser\s+accounts?\b|\blogin\s+accounts?\b/i],
+  ['shift', /\bschool\s+shifts?\b|\bshift\s+timings?\b|\bbell\s+schedules?\b/i],
+  ['classCheckIn', /\bclass\s+check[\s-]?ins?\b|\bpresence\s+board\b|\bcheck[\s-]?in\s+to\s+(?:a\s+|the\s+|my\s+)?class\b/i],
+  ['search', /\bsearch\s+(?:everything|everywhere|the\s+school|school\s+records?)\b|\buniversal\s+search\b/i],
+  ['safeguarding', /\bsafeguarding\b|\bchild\s+protection\b/i],
+  // Part 7: bulk import -- named by its own words only ("import", a sheet, a template), so it takes no older sentence.
+  ['bulkImport', /\bbulk\s+imports?\b|\bimports?\s+(?:formats?|templates?|results?|files?|sheets?)\b|\b(?:preview|run|check)\s+(?:the\s+|my\s+|this\s+)?(?:import|upload)\b|\b(?:sample|template)\s+(?:sheets?|files?|csv|excel)\b|\b(?:import|upload)\s+(?:this|the|my|a)\s+(?:sheet|spreadsheet|excel|csv|file)\b/i],
+  // Part 7: automations and personal reminders (tools/p7Automation.js) -- their own words only.
+  ['automations', /\bautomations?\b|\bmy\s+(?:personal\s+)?reminders?\b|\bscheduled\s+reports?\b|\bwhat\s+needs\s+(?:me|my\s+attention)\b/i],
+  ['aiDraft', /\bai\s+drafts?\b|\bdraft(?:s|ing)?\s+(?:me\s+)?(?:a\s+|an\s+|the\s+)?(?:letter|circular|minutes|lesson\s+plan|documents?)\b/i],
 ];
 
 /**

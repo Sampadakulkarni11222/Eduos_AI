@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi, afterEach } from 'vitest';
 
 /**
  * The same guarantees, with a language model switched ON.
@@ -39,6 +39,7 @@ vi.mock('../src/providers/ai.provider.js', async (importOriginal) => {
 const { AgentAction } = await import('../src/models/agentAction.model.js');
 const { AttendanceRecord } = await import('../src/models/attendanceRecord.model.js');
 const { Payment } = await import('../src/models/fee.model.js');
+const { Ticket } = await import('../src/models/ticket.model.js');
 const { resetMcpClient } = await import('../src/modules/ai/mcp/client.js');
 const { resetAgentThrottle } = await import('../src/modules/ai/agent/throttle.js');
 const { env } = await import('../src/config/env.js');
@@ -200,6 +201,10 @@ describe('what the model returns is validated by trusted code', () => {
 });
 
 describe('the deterministic guards run BEFORE the model, so it is never asked', () => {
+  // Staff leave counts school days: on a weekend "tomorrow" would be a Sunday and
+  // nothing could be applied for, so these run on a fixed Wednesday (after the seed).
+  beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-14T04:30:00Z')); });
+  afterEach(() => { vi.useRealTimers(); });
   it('an impossible date is asked about without consulting the model', async () => {
     const message = 'Mark Aman Gupta absent on 31 February';
     // Even a model eager to "fix" it for today is never given the chance.
@@ -218,10 +223,13 @@ describe('the deterministic guards run BEFORE the model, so it is never asked', 
     expect(turn.calls).toEqual([]);
   });
 
-  it('a leave application from staff is explained without consulting the model', async () => {
+  it('a leave application from staff is drafted as their own staff leave without consulting the model', async () => {
+    // Changed deliberately in part 3: a member of staff (staffleave.apply) asking to apply for leave
+    // means their OWN staff leave, so it reaches apply_staff_leave as a draft (or a question for the
+    // day, kind and reason) instead of the old "isn't enabled for your account" refusal.
     const turn = await as('TEACHER').say('Apply for leave tomorrow because of fever');
-    expect(turn.refused).toBe('NOT_PERMITTED');
-    expect(turn.reply).toMatch(/staff leave is not handled here/);
+    expect(turn.refused).toBeNull();
+    expect(turn.action?.tool).toBe('apply_staff_leave');
     expect(script.routing).toEqual([]);
   });
 });
@@ -303,31 +311,44 @@ describe('WhatsApp with a model configured: one confirmation, one write', () => 
     return { status: res.status, body: await res.json() };
   }
 
+  // The write is a parent raising a ticket in their own name: low impact and on
+  // nobody else's record, so it is one WhatsApp may confirm. Changes on other
+  // people's records are confirmed on the website only (registry.js).
   it('a model-planned write is proposed, a redelivered YES and a second YES write once', async () => {
-    const teacher = school.people.TEACHER;
-    script.plans.set(VAGUE, [{ name: 'mark_attendance', args: { students: [{ studentName: 'Aman Gupta', status: 'ABSENT' }] } }]);
-    const proposal = await wa(teacher, VAGUE);
-    expect(proposal.reply).toMatch(/Aman Gupta → ABSENT/);
+    const parent = school.people.PARENT;
+    const message = 'kindly do the needful: Bus was late today';
+    script.plans.set(message, [{ name: 'create_ticket', args: { subject: 'Bus was late today' } }]);
+    const proposal = await wa(parent, message);
+    expect(proposal.reply).toMatch(/Bus was late today/);
     expect(proposal.reply).toMatch(/Reply YES to confirm or NO to cancel/);
-    expect(await recordsOf(school.aman)).toHaveLength(0);
+    expect(await count(Ticket)).toBe(0);
 
     const id = `wamid.model.${Date.now()}`;
-    await deliver(teacher, 'YES', id);
-    await deliver(teacher, 'YES', id);
-    await wa(teacher, 'YES');
-    const records = await recordsOf(school.aman);
-    expect(records).toHaveLength(1);
-    expect(records[0].status).toBe('ABSENT');
+    await deliver(parent, 'YES', id);
+    await deliver(parent, 'YES', id);
+    await wa(parent, 'YES');
+    expect(await count(Ticket, { subject: 'Bus was late today' })).toBe(1);
     expect(await count(AgentAction, { status: 'PENDING' })).toBe(0);
   }, 120_000);
 
   it('the same request delivered twice is proposed once', async () => {
-    const teacher = school.people.TEACHER;
+    const parent = school.people.PARENT;
+    script.plans.set('raise a ticket: bus was late', [{ name: 'create_ticket', args: { subject: 'Bus was late' } }]);
     const id = `wamid.dup.${Date.now()}`;
-    await deliver(teacher, 'Mark Aman Gupta absent today', id);
-    await deliver(teacher, 'Mark Aman Gupta absent today', id);
+    await deliver(parent, 'raise a ticket: bus was late', id);
+    await deliver(parent, 'raise a ticket: bus was late', id);
     expect(await count(AgentAction, { status: 'PENDING' })).toBe(1);
+    expect(await count(Ticket)).toBe(0);
+  }, 120_000);
+
+  it('a model-planned change to somebody else\'s record is sent to the website, not proposed', async () => {
+    const teacher = school.people.TEACHER;
+    script.plans.set(VAGUE, [{ name: 'mark_attendance', args: { students: [{ studentName: 'Aman Gupta', status: 'ABSENT' }] } }]);
+    const reply = await wa(teacher, VAGUE);
+    expect(reply.reply).toMatch(/EduOS website/);
+    await wa(teacher, 'YES');
     expect(await recordsOf(school.aman)).toHaveLength(0);
+    expect(await count(AgentAction)).toBe(0);
   }, 120_000);
 
   it('NO cancels a model-planned write; an unsigned webhook is rejected and runs nothing', async () => {

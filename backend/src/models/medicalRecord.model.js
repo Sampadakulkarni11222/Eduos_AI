@@ -14,6 +14,9 @@ const medicalRecordSchema = new Schema(
     medicationsEnc: { type: String },
     historyEnc: { type: String },
     attachmentsEnc: { type: String }, // encrypted array of { name, fileUrl }
+    // Removal is a soft delete: the record may be needed in an emergency, so it is kept and audited.
+    deletedAt: { type: Date, default: null },
+    deletedByProfileId: { type: Schema.Types.ObjectId, ref: 'Profile', default: null },
   },
   { timestamps: true }
 );

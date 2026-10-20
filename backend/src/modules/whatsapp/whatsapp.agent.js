@@ -1,3 +1,4 @@
+import { evidenceLine } from '../ai/agent/evidence.js';
 import { Account } from '../../models/account.model.js';
 import { Profile } from '../../models/profile.model.js';
 import { AgentAction } from '../../models/agentAction.model.js';
@@ -5,12 +6,22 @@ import { buildPermissionMap } from '../../utils/buildPermissionMap.js';
 import { logger } from '../../utils/logger.js';
 import { runAgentSafely, confirmAction, continueAnswer } from '../ai/agent/orchestrator.js';
 import { hasOpenWrite } from '../ai/agent/intent.js';
+import { loadMemory, historyFrom, rememberTurn } from '../ai/agent/memory.js';
+import { lastTurnProposed } from '../ai/agent/context.js';
 import { toWhatsAppText } from '../ai/agent/present.js';
 import { latestPendingFor, reissueToken } from '../ai/mcp/confirm.js';
-import { detectLanguage, t } from '../../utils/language.js';
+import { detectLanguage, t, LANGUAGE_NAMES } from '../../utils/language.js';
+import { getPreferences } from '../messaging/messaging.service.js';
 import { runWithTenant, runAcrossSchools } from '../../tenancy/tenantContext.js';
 import { normalisePhone, buildHistory, latestContinuation } from './whatsapp.session.js';
 import { isOpeningMessage, buildBriefing } from './whatsapp.briefing.js';
+import { downloadWhatsappDocument, downloadMetaMedia, downloadChatflowMedia } from './whatsapp.media.js';
+import { transcribe, isSttConfigured } from '../ai/speech/stt.js';
+import { nativeToEnglish, indicLanguageOf } from '../ai/agent/language/translate.js';
+import { label as replyLabel } from '../ai/agent/language/replies.js';
+import { isWhatsappLive } from '../../config/env.js';
+import { storeFile } from '../imports/imports.service.js';
+import { schemasFor } from '../imports/schemas.js';
 
 /**
  * WhatsApp -> agent bridge.
@@ -208,7 +219,7 @@ async function latestPending(actor) {
  * the recent turns that let a follow-up like "what about last month?" resolve,
  * and nothing else: it is never consulted for who the sender is.
  */
-export async function handleInboundMessage({ from, text, conversation = null, inboundMessageId = null }) {
+export async function handleInboundMessage({ from, text, conversation = null, inboundMessageId = null, document = null, voice = null }) {
   const lang = detectLanguage(text).lang;
   const resolved = await resolveActorByPhone(from);
 
@@ -235,7 +246,24 @@ export async function handleInboundMessage({ from, text, conversation = null, in
   // The continuation of the last long list, if the last reply offered one.
   const continuationToken = await latestContinuation(conversation);
 
-  return runInActorScope(resolved, () => converse({ ...resolved, text, history, continuationToken }));
+  // The session id names the server-side conversation memory (agent/memory.js):
+  // what the turns were about -- the draft under discussion, the students the
+  // last answer listed -- kept for this person on this channel.
+  // p7: a spreadsheet sent as a document goes through the bulk-import pipeline.
+  if (document) {
+    return runInActorScope(resolved, () => converseWithDocument({ ...resolved, text, document, history, conversationId: conversation?.sessionId ?? null }));
+  }
+  // p7: a voice note, transcribed through the speech adapter (ai/speech/stt.js)
+  // -- only for a sender we know -- and then answered as the words it says,
+  // with what was heard shown back. Never a made-up transcript.
+  if (voice) {
+    return runInActorScope(resolved, async () => {
+      const heard = await voiceNoteText(voice, resolved.actor);
+      if (heard.reply) return { reply: heard.reply, lang: heard.lang, reason: heard.reason };
+      return converse({ ...resolved, text: heard.text, heard: true, history, continuationToken, conversationId: conversation?.sessionId ?? null });
+    });
+  }
+  return runInActorScope(resolved, () => converse({ ...resolved, text, history, continuationToken, conversationId: conversation?.sessionId ?? null }));
 }
 
 /**
@@ -245,10 +273,27 @@ export async function handleInboundMessage({ from, text, conversation = null, in
  * in-app simulator (actor from the session), so the simulator is a true
  * preview rather than a lookalike.
  */
-export async function converse({ actor, multipleProfiles = false, roleLabel = '', text, history = [], continuationToken = null }) {
-  const message = String(text ?? '').trim();
-  const lang = detectLanguage(message).lang;
+export async function converse({ actor, multipleProfiles = false, roleLabel = '', text, history: sentHistory = [], continuationToken = null, conversationId = null, heard = false }) {
+  const spoken = String(text ?? '').trim();
+  // p7: "हाँ", "ஆம்", "होय" are YES and "नहीं", "இல்லை" NO, to the confirmation below.
+  const nativeYesNo = nativeToEnglish(spoken)?.text;
+  const message = nativeYesNo === 'yes' || nativeYesNo === 'no' ? nativeYesNo : spoken;
+  // What was heard in a voice note, shown back above the answer.
+  const heardLine = (lang) => (heard ? `_${replyLabel(lang, 'heard')}: “${spoken}”_\n\n` : '');
+  const lang = await replyLanguage(message, actor);
   if (!message) return { reply: t('agent.sendText', lang), lang };
+
+  // The conversation as the server remembers it (agent/memory.js) -- the same
+  // 24 turns and structured context the website uses -- with the WhatsApp
+  // thread's own last messages only as the fallback for a session the memory
+  // does not hold yet. The turns answered here without the shared agent (the
+  // briefing, MORE, a YES/NO) are written into it too, so the next turn reads
+  // the conversation exactly as it happened.
+  const memory = conversationId ? await loadMemory({ actor, source: 'WHATSAPP', conversationId }) : null;
+  const history = memory ? historyFrom(memory, sentHistory) : sentHistory;
+  const remember = async (reply, extra = {}) => {
+    if (memory) await rememberTurn({ actor, source: 'WHATSAPP', conversationId: memory.conversationId, message, result: { reply, ...extra } });
+  };
 
   // Arrival. Someone who has just tapped through from the app says "Hi", and
   // the useful answer to that is not "what would you like?" -- it is their own
@@ -263,6 +308,7 @@ export async function converse({ actor, multipleProfiles = false, roleLabel = ''
     if (multipleProfiles) reply += `
 
 ${t('agent.actingAs', lang, { role: roleLabel })}`;
+    await remember(reply, { tools: briefing.tools });
     return { reply, lang, briefing: true, tools: briefing.tools };
   }
 
@@ -270,6 +316,7 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
   if (MORE.test(message) && continuationToken) {
     try {
       const next = await continueAnswer({ token: continuationToken, actor, source: 'WHATSAPP', lang });
+      await remember(next.reply, { tool: next.tool, continuation: next.continuation });
       return {
         reply: toWhatsAppText(next.reply) + moreLine(next.continuation),
         lang,
@@ -288,9 +335,22 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
   // request, so it goes to the shared agent, which asks for the dates again.
   const yesNo = YES.test(message) || NO.test(message);
   const pending = yesNo ? await latestPending(actor) : null;
-  if (yesNo && (pending || !hasOpenWrite(history, message, actor))) {
+  // With nothing pending and no draft just shown, "ok" / "no" is said to an
+  // answer: the shared agent acknowledges it, exactly as on the website. A
+  // plain YES still hears that there is nothing to confirm.
+  const saidYes = /^(y|yes|yeah|yep|confirm|confirmed|go ahead|do it|haan|haa|ha|ji)$/i.test(message);
+  // A spoken "yes" never confirms a change: speech can be misheard, so the
+  // confirmation must be typed (the draft stays pending until it is).
+  if (heard && yesNo && pending) {
+    const typeIt = `${heardLine(lang)}${replyLabel(lang, 'voiceTypeToConfirm')}`;
+    await remember(typeIt);
+    return { reply: typeIt, lang, awaitingConfirmation: true };
+  }
+  if (yesNo && (pending || (!hasOpenWrite(history, message, actor) && (saidYes || lastTurnProposed(history))))) {
     if (!pending) {
-      return { reply: t('agent.nothingPending', lang), lang };
+      const nothing = t('agent.nothingPending', lang);
+      await remember(nothing);
+      return { reply: nothing, lang };
     }
     // The stored token is hashed, so re-issuing is not possible; confirm via
     // the action id path instead.
@@ -300,17 +360,27 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
       accept: YES.test(message),
       lang,
     });
-    return { reply: toWhatsAppText(result.reply), lang, executed: result.executed };
+    await remember(result.reply, { executed: result.executed });
+    // p7: more drafts of a multi-part message are waiting, one at a time.
+    const queued = Array.isArray(memory?.context?.queuedWrites) ? memory.context.queuedWrites.length : 0;
+    const next = queued ? `\n\n${queued} more draft(s) waiting — reply NEXT for the next one.` : '';
+    return { reply: `${toWhatsAppText(result.reply)}${next}`, lang, executed: result.executed };
   }
 
   // The safe variant, for the same reason the web route uses it: a provider
   // outage should degrade to a rule-based answer, not to silence on someone's
   // phone.
-  const result = await runAgentSafely({ message, actor, source: 'WHATSAPP', lang, history });
+  const result = await runAgentSafely({ message, actor, source: 'WHATSAPP', lang, history, conversationId, heard });
 
   // The assistant answers in Markdown (agent/present.js); WhatsApp shows
   // `**` and table pipes literally, so the reply is put in its own dialect.
   let reply = toWhatsAppText(result.reply) + moreLine(result.continuation);
+  // "Based on": when the model wrote the answer, the records it used, so no
+  // AI statement arrives without its evidence. An answer laid out from the
+  // records themselves is the evidence, and stays identical to the website's.
+  if (!result.action && result.modelWritten && result.evidence?.length) reply += `
+
+_${evidenceLine(result.evidence)}_`;
   if (result.action) {
     // WhatsApp cannot carry a hidden token, so the reply asks for a plain
     // yes/no and the pending action is matched from the actor's own queue.
@@ -326,16 +396,105 @@ ${t('agent.actingAs', lang, { role: roleLabel })}`;
   if (multipleProfiles) {
     reply += `\n\n${t('agent.actingAs', lang, { role: roleLabel })}`;
   }
+  reply = heardLine(lang) + reply;
 
   return {
     reply,
     lang,
+    ...(heard && { heard: spoken }),
     awaitingConfirmation: Boolean(result.action),
     flagged: result.flagged ?? null,
     tool: result.tool ?? null,
     degraded: Boolean(result.degraded),
     continuationToken: result.continuation?.token ?? null,
   };
+}
+
+/**
+ * A spreadsheet sent on WhatsApp (p7 bulk import): downloaded through the
+ * provider adapter, kept like a website upload (24 hours at most), and checked
+ * by the same Ask AI turn the website's attach button runs. The preview and its
+ * problems come back as text; the import itself is confirmed on the website
+ * (the reply carries the link), because it writes many records at once.
+ */
+export async function converseWithDocument({ actor, multipleProfiles = false, roleLabel = '', text = '', document, history = [], conversationId = null }) {
+  const message = String(text ?? '').trim();
+  const lang = await replyLanguage(message, actor);
+  const memory = conversationId ? await loadMemory({ actor, source: 'WHATSAPP', conversationId }) : null;
+  const said = message || `[sent a document: ${document?.filename ?? 'file'}]`;
+  const remember = async (reply, extra = {}) => {
+    if (memory) await rememberTurn({ actor, source: 'WHATSAPP', conversationId: memory.conversationId, message: said, result: { reply, ...extra } });
+  };
+
+  if (!schemasFor(actor).length) {
+    const reply = 'Your account cannot import spreadsheets. Send your question as a text message instead.';
+    await remember(reply);
+    return { reply, lang };
+  }
+  const got = await downloadWhatsappDocument(document);
+  if (got.error) {
+    await remember(got.message);
+    return { reply: got.message, lang, reason: `DOCUMENT_${got.error}` };
+  }
+  let stored;
+  try {
+    stored = await storeFile({ actor, channel: 'WHATSAPP', name: got.filename, buffer: got.buffer });
+  } catch (err) {
+    const reply = err?.statusCode >= 400 && err?.statusCode < 500 ? err.message : t('agent.failed', lang);
+    await remember(reply);
+    return { reply, lang, reason: 'DOCUMENT_UNREADABLE' };
+  }
+
+  const history2 = memory ? historyFrom(memory, history) : history;
+  const result = await runAgentSafely({
+    message: message || 'Check this file', actor, source: 'WHATSAPP', lang, history: history2, conversationId,
+    attachment: { fileId: stored.fileId },
+  });
+  let reply = toWhatsAppText(result.reply);
+  if (multipleProfiles) reply += `\n\n${t('agent.actingAs', lang, { role: roleLabel })}`;
+  return { reply, lang, tool: result.tool ?? null, importFileId: stored.fileId, ...(result.link && { link: result.link }), simulated: Boolean(got.simulated) };
+}
+
+/**
+ * The words of a voice note, or the reply that says why there are none.
+ *
+ *   - the in-app simulator / a test webhook (never a live number) may carry a
+ *     stand-in transcript, labelled simulated;
+ *   - otherwise the audio is downloaded through the provider it came from
+ *     (whatsapp.media.js) and transcribed by the speech adapter (ai/speech/stt.js);
+ *   - no speech service configured -> said plainly, never guessed.
+ */
+async function voiceNoteText(voice, actor) {
+  const lang = await replyLanguage('', actor);
+  if (voice?.simulatedTranscript && !isWhatsappLive()) {
+    const text = String(voice.simulatedTranscript).trim().slice(0, 1000);
+    return text ? { text, simulated: true } : { reply: replyLabel(lang, 'voiceUnclear'), lang, reason: 'VOICE_EMPTY' };
+  }
+  if (!isSttConfigured()) return { reply: replyLabel(lang, 'voiceNeedsService'), lang, reason: 'VOICE_NOT_CONFIGURED' };
+  const media = voice?.chatflowMedia ? await downloadChatflowMedia(voice.chatflowMedia) : await downloadMetaMedia(voice?.id);
+  if (!media) return { reply: replyLabel(lang, 'voiceUnclear'), lang, reason: 'VOICE_DOWNLOAD_FAILED' };
+  const out = await transcribe({ audio: media.audio, mimeType: media.mimeType, lang: lang === 'en' ? null : lang });
+  if (!out.text) return { reply: replyLabel(lang, 'voiceUnclear'), lang, reason: out.error ?? 'VOICE_EMPTY' };
+  return { text: out.text, provider: out.provider };
+}
+
+/**
+ * The language to answer in. What the person wrote decides when it is clear
+ * (Devanagari, Tamil, Hinglish...). A message that says nothing about language
+ * ("Hi", "ok", a number) is answered in the language they chose for school
+ * messages, so a parent who set Hindi is not greeted in English.
+ */
+async function replyLanguage(message, actor) {
+  // p7: Devanagari is Hindi or Marathi -- told apart by their words.
+  const indic = indicLanguageOf(message);
+  if (indic) return indic;
+  const detected = detectLanguage(message);
+  if (detected.confident) return detected.lang;
+  try {
+    const pref = actor?.profileId ? await getPreferences(actor) : null;
+    if (pref?.language && LANGUAGE_NAMES[pref.language]) return pref.language;
+  } catch { /* preference unreadable: answer in what was detected */ }
+  return detected.lang;
 }
 
 /**

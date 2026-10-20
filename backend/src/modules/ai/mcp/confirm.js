@@ -23,8 +23,7 @@ export const CONFIRM_TTL_MINUTES = 10;
  * Names the pre-MCP agent used, mapped to the MCP tool that does the same job.
  *
  * Both call the same service with compatible arguments (`apply_leave` and
- * `apply_for_leave` both front leave.service.apply(); `record_fee_payment` and
- * `record_payment` both front fee.service.recordPayment()), so a proposal made
+ * `apply_for_leave` both front leave.service.apply()), so a proposal made
  * under the old name is redeemed by the MCP tool rather than by a second
  * execution path.
  *
@@ -36,7 +35,9 @@ export const CONFIRM_TTL_MINUTES = 10;
  */
 export const LEGACY_TOOL_ALIASES = Object.freeze({
   apply_leave: 'apply_for_leave',
-  record_fee_payment: 'record_payment',
+  // record_fee_payment is deliberately NOT mapped any more: recording money is
+  // a decision made on the Payments screen, and there is no MCP tool for it
+  // (see decisions.js). A stored legacy row for it can no longer be redeemed.
 });
 
 export function canonicalToolName(name) {
@@ -161,11 +162,20 @@ export async function markFailed(pending, error) {
   );
 }
 
-/** The newest still-valid proposal for this actor — how WhatsApp's "yes" finds its target. */
-export function latestPendingFor(actor) {
+/**
+ * The newest still-valid proposal for this actor on one channel — how
+ * WhatsApp's "yes" finds its target.
+ *
+ * Bound to the channel the proposal was MADE on (WhatsApp by default, the only
+ * caller). Without it a bare "yes" on the phone redeemed whatever was pending,
+ * including a proposal made on the website -- so whoever held the handset
+ * could approve what the person had only started at their desk.
+ */
+export function latestPendingFor(actor, { source = 'WHATSAPP' } = {}) {
   return AgentAction.findOne({
     actorProfileId: actor.profileId,
     status: 'PENDING',
+    source: source === 'WEB' ? 'WEB' : 'WHATSAPP',
     expiresAt: { $gt: new Date() },
   }).sort({ createdAt: -1 });
 }

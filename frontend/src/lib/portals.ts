@@ -1,4 +1,5 @@
 import type { RoleKey } from './types';
+import opsRoutes from './ops-routes.json';
 
 export interface NavItem {
   label: string;
@@ -25,7 +26,13 @@ export interface Portal {
     | 'role-student'
     | 'role-super-admin'
     | 'role-librarian'
-    | 'role-warden';
+    | 'role-warden'
+    | 'role-hr'
+    | 'role-marketing'
+    | 'role-compliance'
+    | 'role-trustee'
+    | 'role-alumnus'
+    | 'role-nurse';
   label: string;
   sublabel: string;
   icon: string;
@@ -44,6 +51,8 @@ export const ROLE_TO_SLUG: Record<RoleKey, string> = {
   PARENT: 'parent', STUDENT: 'student',
   PRINCIPAL: 'principal',
   FINANCE: 'finance', LIBRARIAN: 'librarian', WARDEN: 'warden',
+  HR: 'hr', MARKETING: 'marketing', COMPLIANCE: 'compliance', TRUSTEE: 'trustee', ALUMNUS: 'alumnus',
+  NURSE: 'nurse',
 };
 
 export const PORTALS: Record<string, Portal> = {
@@ -304,6 +313,74 @@ export const PORTALS: Record<string, Portal> = {
     ],
   },
 };
+
+// ── Institution-operations portals and navigation ────────────────────────
+// The new roles get their own portals; every portal gets its operations pages
+// from ops-routes.json, grouped, after its WORKSPACE group. A page whose route
+// carries a permission is hidden from anyone without it (ROUTE_PERMISSIONS).
+
+PORTALS.hr = {
+  role: 'HR', slug: 'hr', themeClass: 'role-hr',
+  label: 'HR & Payroll', sublabel: 'People Operations', icon: '🧑‍💼',
+  nav: [{ title: 'WORKSPACE', items: [item('Today', '☀', '/hr', { ready: true })] }, { title: 'HELP & SUPPORT', items: [item('User Guide', '📖', '/hr/guide', { ready: true })] }],
+};
+PORTALS.marketing = {
+  role: 'MARKETING', slug: 'marketing', themeClass: 'role-marketing',
+  label: 'Marketing & Admissions', sublabel: 'Growth', icon: '📣',
+  nav: [{ title: 'WORKSPACE', items: [item('Today', '☀', '/marketing', { ready: true }), item('Admission CRM', '◌', '/marketing/admissions', { ready: true })] }, { title: 'HELP & SUPPORT', items: [item('User Guide', '📖', '/marketing/guide', { ready: true })] }],
+};
+PORTALS.compliance = {
+  role: 'COMPLIANCE', slug: 'compliance', themeClass: 'role-compliance',
+  label: 'Compliance & Safeguarding', sublabel: 'Designated Officer', icon: '🛡',
+  nav: [{ title: 'WORKSPACE', items: [item('Today', '☀', '/compliance', { ready: true })] }, { title: 'HELP & SUPPORT', items: [item('User Guide', '📖', '/compliance/guide', { ready: true })] }],
+};
+PORTALS.trustee = {
+  role: 'TRUSTEE', slug: 'trustee', themeClass: 'role-trustee',
+  label: 'Governing Body', sublabel: 'Trustee', icon: '🏛',
+  nav: [{ title: 'WORKSPACE', items: [item('Overview', '☀', '/trustee', { ready: true })] }, { title: 'HELP & SUPPORT', items: [item('User Guide', '📖', '/trustee/guide', { ready: true })] }],
+};
+PORTALS.alumnus = {
+  role: 'ALUMNUS', slug: 'alumnus', themeClass: 'role-alumnus',
+  label: 'Alumni', sublabel: 'Alumni Network', icon: '🎓',
+  nav: [{ title: 'WORKSPACE', items: [item('Home', '☀', '/alumnus', { ready: true })] }, { title: 'HELP & SUPPORT', items: [item('User Guide', '📖', '/alumnus/guide', { ready: true })] }],
+};
+
+// Part 3: the school nurse. Home is the health room itself.
+PORTALS.nurse = {
+  role: 'NURSE', slug: 'nurse', themeClass: 'role-nurse',
+  label: 'Health Room', sublabel: 'School Nurse', icon: '✚',
+  nav: [{ title: 'WORKSPACE', items: [item('Health room', '✚', '/nurse', { ready: true })] }, { title: 'HELP & SUPPORT', items: [item('User Guide', '📖', '/nurse/guide', { ready: true })] }],
+};
+
+type OpsPageDef = { title: string; icon: string; permission: string | null; group: string; hidden?: boolean };
+const OPS_PAGES = opsRoutes.pages as Record<string, OpsPageDef>;
+const OPS_GROUPS = opsRoutes.groups as Record<string, string>;
+
+for (const [slug, keys] of Object.entries(opsRoutes.portals as Record<string, string[]>)) {
+  const portal = PORTALS[slug];
+  if (!portal) continue;
+  const groups = new Map<string, NavItem[]>();
+  for (const key of keys) {
+    const page = OPS_PAGES[key];
+    if (!page || page.hidden) continue;
+    // The new portals' own home already is "Today".
+    if (key === 'today' && ['hr', 'marketing', 'compliance', 'trustee'].includes(slug)) continue;
+    // Literal /<portal>/<page> paths: notification links are stored portal-
+    // relative ("/compliance?tab=returns") and prefixed with the portal on open.
+    const href = `/${slug}/${key}`;
+    const title = OPS_GROUPS[page.group] ?? page.group;
+    if (!groups.has(title)) groups.set(title, []);
+    groups.get(title)!.push(item(key === 'today' && slug === 'principal' ? 'Command Centre' : page.title, page.icon, href, { ready: true }));
+  }
+  // A teacher's own classes come first: the operations groups go after TEACHING
+  // so Attendance, Assignments and Exams are not pushed below the fold.
+  const teaching = slug === 'teacher' ? portal.nav.findIndex((g) => g.title === 'TEACHING') : -1;
+  // A parent's own pages (their child, school life, payments) come first; the
+  // shared school pages follow them, just before Help.
+  const parentHelp = slug === 'parent' ? portal.nav.findIndex((g) => g.title === 'HELP & SUPPORT') : -1;
+  const insertAt = parentHelp > 0 ? parentHelp : teaching >= 0 ? teaching + 1 : portal.nav.findIndex((g) => g.title === 'WORKSPACE' || g.title === 'OVERVIEW') + 1;
+  portal.nav.splice(insertAt, 0, ...[...groups.entries()].map(([title, items]) => ({ title, items })));
+}
 
 export function portalForRole(role: RoleKey): Portal {
   return PORTALS[ROLE_TO_SLUG[role]];

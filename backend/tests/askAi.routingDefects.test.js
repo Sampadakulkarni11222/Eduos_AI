@@ -5,6 +5,7 @@ import { BookIssue } from '../src/models/library.model.js';
 import { resetMcpClient } from '../src/modules/ai/mcp/client.js';
 import { resetAgentThrottle } from '../src/modules/ai/agent/throttle.js';
 import { parseIntent, parsePlan } from '../src/modules/ai/agent/intent.js';
+import { confirmAction } from '../src/modules/ai/agent/orchestrator.js';
 import * as library from '../src/modules/library/library.service.js';
 import * as dashboard from '../src/modules/dashboard/dashboard.service.js';
 import * as attendance from '../src/modules/attendance/attendance.service.js';
@@ -33,6 +34,13 @@ afterEach(() => { vi.useRealTimers(); });
 afterAll(async () => { await resetMcpClient(); });
 
 const as = (role, opts) => conversationAs(school, role, opts);
+
+/** A CREATE is proposed first (registry.js); this is the person saying yes. */
+async function confirmTurn(role, turn) {
+  expect(turn.action?.confirmToken, `nothing was proposed: ${turn.reply}`).toBeTruthy();
+  resetAgentThrottle();
+  return inSchool(OAK, () => confirmAction({ confirmToken: turn.action.confirmToken, actor: school.people[role].actor }));
+}
 const expectNoLeak = (reply) => {
   for (const leak of INTERNAL_LEAKS) expect(reply, `leaked: ${leak}`).not.toMatch(leak);
 };
@@ -632,6 +640,7 @@ describe('D — admission leads and hostel inquiries', () => {
     expect(made.tool).toBe('create_hostel_inquiry');
     expect(made.args).toEqual({ subject: 'Broken fan in room H-101' });
     expect(made.tools).not.toContain('list_hostel_rooms');
+    await confirmTurn('WARDEN', made);
     const stored = await inSchool(OAK, () => HostelInquiry.find({}).lean());
     expect(stored.map((i) => i.subject)).toEqual(['Broken fan in room H-101']);
     expect(String(stored[0].raisedByProfileId)).toBe(String(school.people.WARDEN.profile._id));
@@ -646,23 +655,30 @@ describe('D — admission leads and hostel inquiries', () => {
   });
 });
 
-describe('E — payment changes keep the action that was asked for', () => {
+describe('E — payment decisions are handed back to the Payments screen', () => {
   it.each([
-    ['Reject the payment change request', 'decide_payment_change_request', { approve: false }],
-    ['Approve the payment change request', 'decide_payment_change_request', { approve: true }],
-    ['Approve the payment', 'approve_payment', {}],
-    ['Show payment change requests', 'get_payment_change_requests', {}],
-  ])('%j reaches %s', async (message, tool, args) => {
+    'Reject the payment change request',
+    'Approve the payment change request',
+    'Approve the payment',
+  ])('%j runs no capability and says where it is decided', async (message) => {
     const turn = await as('ADMIN').say(message);
-    expect(turn.tool).toBe(tool);
-    expect(turn.args).toMatchObject(args);
+    expect(turn.action).toBeNull();
+    expect(turn.calls).toEqual([]);
+    expect(turn.refused).toBe('HUMAN_DECISION');
+    expect(turn.reply).toMatch(/Payments screen/);
   });
 
-  it('none of them is available to a role that may not decide payments', async () => {
+  it('reading the change requests is unaffected', async () => {
+    const turn = await as('ADMIN').say('Show payment change requests');
+    expect(turn.tool).toBe('get_payment_change_requests');
+  });
+
+  it('a role that may not decide payments is told so, and nothing runs', async () => {
     for (const message of ['Reject the payment change request', 'Approve the payment']) {
       const turn = await as('TEACHER').say(message);
       expect(turn.action).toBeNull();
-      expect(turn.calls.every((c) => c.status === 'FORBIDDEN'), message).toBe(true);
+      expect(turn.calls).toEqual([]);
+      expect(turn.refused, message).toBe('NOT_PERMITTED');
     }
   });
 });
@@ -675,6 +691,7 @@ describe('G — a ticket keeps its whole title', () => {
     expect(turn.tool).toBe('create_ticket');
     expect(turn.tools).not.toContain('create_hostel_room');
     expect(turn.args).toEqual({ subject: LONG });
+    await confirmTurn('ADMIN', turn);
     const stored = await inSchool(OAK, () => Ticket.find({}).lean());
     expect(stored.map((t) => t.subject)).toEqual([LONG]);
   });
@@ -705,15 +722,16 @@ describe('G — a ticket keeps its whole title', () => {
 describe('A — a sentence that asks two things is answered twice', () => {
   it('answers both halves of two questions', async () => {
     const turn = await as('ADMIN').say("Show today's absent students and fee collection");
-    expect(turn.tools).toEqual(['get_absent_students', 'get_fee_statistics']);
+    // p7: independent reads run in parallel, so the audit order is not the order asked.
+    expect([...turn.tools].sort()).toEqual(['get_absent_students', 'get_fee_statistics']);
     expect(turn.reply).toMatch(/absent today/);
     expect(turn.reply).toMatch(/collected of ₹13,000 billed/);
   });
 
   it('carries the person the first half named into the second', async () => {
     const turn = await as('ADMIN').say("Show Rahul Sharma's attendance and fees");
-    expect(turn.tools).toEqual(['get_student_attendance', 'get_pending_fees']);
-    expect(turn.calls[1].args).toEqual({ search: 'Rahul Sharma' });
+    expect([...turn.tools].sort()).toEqual(['get_pending_fees', 'get_student_attendance']);
+    expect(turn.calls.find((c) => c.tool === 'get_pending_fees').args).toEqual({ search: 'Rahul Sharma' });
     expect(turn.reply).toMatch(/Rahul Sharma — Attendance Summary/);
     expect(turn.reply).toMatch(/8,000/);
   });
@@ -721,29 +739,30 @@ describe('A — a sentence that asks two things is answered twice', () => {
   it('gives every part the person or the class the sentence names, wherever it names them', async () => {
     // Named at the END: it is still who both halves are about.
     const pupil = await as('TEACHER').say('Show attendance and marks of Aarav Mishra');
-    expect(pupil.calls.map((c) => [c.tool, c.args])).toEqual([
-      ['get_student_attendance', { studentName: 'Aarav Mishra' }],
+    const byTool = (turn) => turn.calls.map((c) => [c.tool, c.args]).sort((a, b) => a[0].localeCompare(b[0]));
+    expect(byTool(pupil)).toEqual([
       ['get_report_card', { studentName: 'Aarav Mishra' }],
+      ['get_student_attendance', { studentName: 'Aarav Mishra' }],
     ]);
     expect(pupil.reply).toMatch(/Aarav Mishra — Attendance Summary/);
     expect(pupil.reply).toMatch(/Aarav Mishra scored 90%/);
 
     const klass = await as('TEACHER').say('Show attendance and marks for Class 5 A');
-    expect(klass.calls.map((c) => [c.tool, c.args])).toEqual([
+    expect(byTool(klass)).toEqual([
       ['get_attendance_roster', { className: 'Class 5 A' }],
       ['get_class_marks', { className: 'Class 5 A' }],
     ]);
 
     // A pronoun in the second half is the person named in the first.
     const pronoun = await as('ADMIN').say("What is Rahul Sharma's attendance and what are his fees?");
-    expect(pronoun.calls.map((c) => c.tool)).toEqual(['get_student_attendance', 'get_pending_fees']);
-    expect(pronoun.calls[1].args).toEqual({ search: 'Rahul Sharma' });
+    expect(pronoun.calls.map((c) => c.tool).sort()).toEqual(['get_pending_fees', 'get_student_attendance']);
+    expect(pronoun.calls.find((c) => c.tool === 'get_pending_fees').args).toEqual({ search: 'Rahul Sharma' });
   });
 
   it('counts both populations of "how many students and how many teachers"', async () => {
     const turn = await as('ADMIN').say('How many students are there and how many teachers?');
-    expect(turn.tools).toEqual(['search_students', 'list_users']);
-    expect(turn.calls[1].args).toEqual({ ofRole: 'TEACHER' });
+    expect([...turn.tools].sort()).toEqual(['list_users', 'search_students']);
+    expect(turn.calls.find((c) => c.tool === 'list_users').args).toEqual({ ofRole: 'TEACHER' });
     expect(turn.reply).toMatch(/11 students/);
     expect(turn.reply).toMatch(/1 user\(s\) with the teacher role/);
   });

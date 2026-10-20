@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { readCache, writeCache } from './cache';
 import { api } from './api';
 import type { SchoolDropdownOptionDto, SchoolThemeDto } from './types';
 
@@ -35,6 +36,16 @@ const UNTHEMED: SchoolThemeDto = {
 };
 
 /**
+ * Themes already fetched in this tab, per school, in the shared read cache:
+ * any saved change anywhere (and sign-out) drops them, like every cached read.
+ */
+const themeCache = {
+  get: (school: string) => readCache<SchoolThemeDto>(`theme:${school}`) as { data: SchoolThemeDto; at: number } | undefined,
+  set: (school: string, theme: SchoolThemeDto) => writeCache(`theme:${school}`, theme),
+};
+const THEME_FRESH_MS = 60_000;
+
+/**
  * The acting school's theme.
  *
  * `enabled` is false on the platform console, which belongs to no school: it
@@ -47,8 +58,14 @@ export function useSchoolTheme(
   // fetch on the school is what stops A's colours surviving into B.
   schoolKey: string | null = null,
 ): { theme: SchoolThemeDto; ready: boolean } {
-  const [theme, setTheme] = useState<SchoolThemeDto>(UNTHEMED);
-  const [ready, setReady] = useState(false);
+  // Every page renders its own shell, so this hook mounts on every navigation.
+  // The theme is kept per school for the tab: a page after the first paints in
+  // the school's colours on its first frame instead of flashing unthemed and
+  // asking the server again. It is re-read in the background once it is a
+  // minute old, so a change made in customization still arrives.
+  const cached = enabled ? themeCache.get(schoolKey ?? '') : undefined;
+  const [theme, setTheme] = useState<SchoolThemeDto>(cached?.data ?? UNTHEMED);
+  const [ready, setReady] = useState(Boolean(cached) || !enabled);
 
   useEffect(() => {
     if (!enabled) {
@@ -57,15 +74,23 @@ export function useSchoolTheme(
       return;
     }
     let cancelled = false;
-    // Drop the previous school's theme at once rather than when the next one
-    // arrives, so there is no moment where one school is painted in another's.
-    setTheme(UNTHEMED);
-    setReady(false);
+    const key = schoolKey ?? '';
+    const hit = themeCache.get(key);
+    if (hit) {
+      setTheme(hit.data);
+      setReady(true);
+      if (Date.now() - hit.at < THEME_FRESH_MS) return;
+    } else {
+      // Drop the previous school's theme at once rather than when the next one
+      // arrives, so there is no moment where one school is painted in another's.
+      setTheme(UNTHEMED);
+      setReady(false);
+    }
     api.schoolTheme()
-      .then((next) => { if (!cancelled) setTheme(next); })
+      .then((next) => { themeCache.set(key, next); if (!cancelled) setTheme(next); })
       // A school that cannot be themed is a school that renders as it always
       // did. Branding is not worth a broken portal.
-      .catch(() => { if (!cancelled) setTheme(UNTHEMED); })
+      .catch(() => { if (!cancelled && !hit) setTheme(UNTHEMED); })
       .finally(() => { if (!cancelled) setReady(true); });
     return () => { cancelled = true; };
   }, [enabled, schoolKey]);

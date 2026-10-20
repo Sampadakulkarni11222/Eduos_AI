@@ -37,7 +37,7 @@ async function getOwnSectionIds(studentIds) {
  * Shared by the list endpoint and the file-download endpoint so a document
  * that isn't listable can never be fetched directly by id either.
  */
-async function buildVisibilityFilter(actor, scope, studentId, categories = {}) {
+export async function buildVisibilityFilter(actor, scope, studentId, categories = {}) {
   const role = actor?.roleKey;
   const profileId = actor?.profileId;
   const query = {};
