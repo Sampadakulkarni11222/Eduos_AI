@@ -3,6 +3,10 @@ import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
+import { pinClock } from './support/clock.js';
+
+// Built around "today": runs on a school day (next Wednesday morning IST), not on whatever day CI runs.
+pinClock();
 
 // Certificates are written where uploads live: a throwaway directory, set before any module reads it.
 const UPLOAD_DIR = mkdtempSync(join(tmpdir(), 'eduos-leadership-'));

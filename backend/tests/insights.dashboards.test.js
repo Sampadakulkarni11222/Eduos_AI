@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterAll, beforeAll } from 'vitest';
 import { seedSchool, inSchool, OAK, todayKey } from './support/mcpSchool.js';
+import { pinClock } from './support/clock.js';
+
+// Built around "today": runs on a school day (next Wednesday morning IST), not on whatever day CI runs.
+pinClock();
 import express from 'express';
 import { insightsRouter } from '../src/modules/campus/campus.routes.js';
 import { errorHandler, notFoundHandler } from '../src/middleware/errorHandler.js';

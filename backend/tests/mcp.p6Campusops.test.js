@@ -17,6 +17,10 @@ import * as safety from '../src/modules/safety/shared.js';
 import * as desk from '../src/modules/library/library.desk.js';
 import { inSchool, mcp, actorForRole, OAK } from './support/mcpSchool.js';
 import { seedFamilySchool, ymdIn } from './support/familySchool.js';
+import { pinClock } from './support/clock.js';
+
+// Built around "today": runs on a school day (next Wednesday morning IST), not on whatever day CI runs.
+pinClock();
 
 /**
  * Part-6 campus-operations tools (tools/p6/campusops.js): labs, fleet and
