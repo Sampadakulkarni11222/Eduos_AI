@@ -14,6 +14,8 @@ import { DEFAULT_TZ } from '../../utils/periods.js';
 import { startOfDayUtc } from '../ops/common.js';
 import { liveBySection } from './live.service.js';
 import { loadOptional } from './layers.service.js';
+import { campusDayExtras } from '../examRooms/campus.js';
+import { shiftFor } from '../examRooms/occupancy.js';
 import {
   addDaysYmd, bannerFor, bellsFromSlots, dayKindFor, dowOfYmd, hhmm, instantOf, isOutdoorSubject, localParts, nextOpening, phaseOf, toMin,
 } from './day-plan.js';
@@ -109,7 +111,9 @@ async function loadDay(ymd, tz) {
       sectionIds: shifts.length ? ids.map(String) : null, implied: true,
     });
   }
-  return { ymd, dow, tz, shifts, events, sections, slots, facilities, counts: new Map(counts.map((c) => [String(c._id), c.n])), examSections, teachers: teacherIds.length, trips, clubs };
+  // Part 8: papers with their rooms and invigilators, and room shifts applied for the day.
+  const examRooms = await campusDayExtras(ymd).catch((err) => { logger.warn(`Campus moment exam rooms unavailable: ${err.message}`); return { sittings: [], shifts: [] }; });
+  return { ymd, dow, tz, shifts, events, sections, slots, facilities, counts: new Map(counts.map((c) => [String(c._id), c.n])), examSections, teachers: teacherIds.length, trips, clubs, examRooms };
 }
 
 const labelOf = (sec) => `${sec?.gradeId?.name ?? ''} ${sec?.name ?? ''}`.trim();
@@ -167,6 +171,13 @@ export async function campusMoment({ at = new Date(), now = new Date(), viewer =
   const sectionsOut = [];
   let teaching = 0;
   let onCampus = 0;
+  // Part 8: a paper with a sitting runs on its own times and rooms (with any delay); a class
+  // moved by a room shift is in its new room. Papers without a sitting keep the old estimate.
+  const examRooms = day.examRooms ?? { sittings: [], shifts: [] };
+  const examNow = kind.open ? examRooms.sittings.filter((x) => x.start <= minutes && x.end > minutes) : [];
+  const examBySection = new Map();
+  for (const x of examNow) for (const id of x.sectionIds) examBySection.set(id, x);
+  const sittingToday = new Set(examRooms.sittings.flatMap((x) => x.sectionIds));
   for (const sec of day.sections) {
     const sid = String(sec._id);
     const shift = sectionShift.get(sid) ?? fallback;
@@ -179,10 +190,14 @@ export async function campusMoment({ at = new Date(), now = new Date(), viewer =
     // Families: anonymous groups everywhere, a number only for their own class.
     const shown = viewer.family && !own ? null : n;
     const label = viewer.family && !own ? null : labelOf(sec);
-    let activity = null; let place = null; let slot = null;
-    if (kind.open && p && !['BEFORE', 'AFTER'].includes(p.phase)) {
+    let activity = null; let place = null; let slot = null; let moved = null;
+    const examHere = examBySection.get(sid) ?? null;
+    if (examHere) {
+      activity = 'EXAM';
+      place = facilities.find((f) => String(f._id) === examHere.venues[0]?.facilityId) ?? homeOf.get(sid) ?? null;
+    } else if (kind.open && p && !['BEFORE', 'AFTER'].includes(p.phase)) {
       const examOnly = kind.kind === 'EXAM_ONLY';
-      const sitting = day.examSections.has(sid);
+      const sitting = day.examSections.has(sid) && !sittingToday.has(sid);
       if (examOnly && !sitting) activity = null;
       else if (p.phase === 'PERIOD' || p.phase === 'PASSING') {
         const no = p.phase === 'PERIOD' ? p.periodNo : (p.nextPeriodNo ?? p.prevPeriodNo);
@@ -192,6 +207,10 @@ export async function campusMoment({ at = new Date(), now = new Date(), viewer =
         else if (slot?.subjectOfferingId && isOutdoorSubject(slot.subjectOfferingId.subjectId?.name)) { activity = 'SPORTS'; place = ground; }
         else if (slot?.subjectOfferingId) { activity = p.phase === 'PASSING' ? 'CHANGEOVER' : 'CLASS'; place = (slot.room && byCode.get(slot.room)) || homeOf.get(sid); }
         else { activity = 'STUDY'; place = homeOf.get(sid); }
+        if (['CLASS', 'CHANGEOVER', 'STUDY'].includes(activity) && no) {
+          moved = shiftFor(examRooms.shifts, sid, no);
+          if (moved) place = facilities.find((f) => String(f._id) === String(moved.toFacilityId)) ?? place;
+        }
       } else if (p.phase === 'ASSEMBLY') { activity = 'ASSEMBLY'; place = ground ?? hall; }
       else if (p.phase === 'BREAK') { activity = 'BREAK'; place = ground; }
       else if (p.phase === 'LUNCH') { activity = 'LUNCH'; place = canteen ?? ground; }
@@ -199,7 +218,11 @@ export async function campusMoment({ at = new Date(), now = new Date(), viewer =
       else if (p.phase === 'DISPERSAL') { activity = 'DISPERSAL'; place = bay ?? gate; }
       else if (p.phase === 'CLUBS') { activity = null; }
     }
-    if (activity) {
+    const shownLabel = moved && label ? `${label} (moved here: ${moved.reason})` : label;
+    if (activity === 'EXAM' && examHere) {
+      // Counted per exam room below, with the seats and the invigilators.
+      onCampus += n;
+    } else if (activity) {
       onCampus += n;
       const teacherHere = ['CLASS', 'EXAM', 'SPORTS'].includes(activity) ? 1 : 0;
       teaching += teacherHere;
@@ -212,7 +235,7 @@ export async function campusMoment({ at = new Date(), now = new Date(), viewer =
         const byBus = Math.round(n * 0.5);
         add(bay, shown === null ? null : byBus, activity, label);
         add(gate, shown === null ? null : n - byBus, activity, label);
-      } else add(place, shown, activity, label, teacherHere);
+      } else add(place, shown, activity, shownLabel, teacherHere);
     }
     if (!viewer.family || own) {
       const subj = slot?.subjectOfferingId?.subjectId?.name ?? null;
@@ -225,7 +248,18 @@ export async function campusMoment({ at = new Date(), now = new Date(), viewer =
         teacher: !viewer.family && (activity === 'CLASS' || activity === 'SPORTS') ? slot?.subjectOfferingId?.teacherId?.displayName ?? null : null,
         teacherProfileId: !viewer.family && (activity === 'CLASS' || activity === 'SPORTS') && slot?.subjectOfferingId?.teacherId?._id ? String(slot.subjectOfferingId.teacherId._id) : null,
         until: p?.until ?? null,
+        exam: examHere ? { title: examHere.title, subject: examHere.subject, rooms: examHere.venues.map((v) => facilities.find((f) => String(f._id) === v.facilityId)?.name).filter(Boolean) } : null,
+        movedTo: moved ? { room: place?.name ?? null, reason: moved.reason } : null,
       });
+    }
+  }
+  // Exam rooms: the seats taken and the invigilators, per room. Families get a number for their own class only.
+  for (const x of examNow) {
+    for (const v of x.venues) {
+      const f = facilities.find((ff) => String(ff._id) === v.facilityId);
+      const own = Object.entries(v.bySection).filter(([id]) => viewer.ownSectionIds?.has(id)).reduce((t, [, c]) => t + c, 0);
+      add(f, viewer.family ? (own || null) : v.seated, 'EXAM', viewer.family ? null : v.label, viewer.family ? 0 : v.invigilators.length);
+      teaching += v.invigilators.length;
     }
   }
   // Club sessions running now, at their venues.

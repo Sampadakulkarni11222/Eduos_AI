@@ -47,6 +47,12 @@ const VIEWS = {
   'OutpassView:mine': ["import { OutpassView } from '@/components/ops/outpass-view';", '<OutpassView mode="mine" />'],
   CameraView: ["import { CameraView } from '@/components/ops/camera-view';", '<CameraView />'],
   CheckInView: ["import { CheckInView } from '@/components/ops/camera-view';", '<CheckInView />'],
+  // Live CCTV (feature cctvLive): view-only live cameras for authorised staff.
+  // Part 8: exam timetable and halls, Rooms & Classes with room shifts, a family's own exam timetable.
+  ExamScheduleView: ["import { ExamScheduleView } from '@/components/ops/exam-rooms-views';", '<ExamScheduleView />'],
+  RoomsClassesView: ["import { RoomsClassesView } from '@/components/ops/exam-rooms-views';", '<RoomsClassesView />'],
+  MyExamsView: ["import { MyExamsView } from '@/components/ops/exam-rooms-views';", '<MyExamsView />'],
+  CctvView: ["import { CctvView } from '@/components/ops/cctv-view';", '<CctvView />'],
   AnalyticsView: ["import { AnalyticsView } from '@/components/ops/analytics-view';", '<AnalyticsView />'],
   QuarterlyReportsView: ["import { QuarterlyReportsView } from '@/components/ops/analytics-view';", '<QuarterlyReportsView />'],
   TasksView: ["import { TasksView } from '@/components/ops/tasks-view';", '<TasksView />'],

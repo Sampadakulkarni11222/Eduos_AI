@@ -4,11 +4,11 @@
 > Regenerate with `node backend/scripts/mcp-catalog.js --write`.
 > The source of truth is `backend/src/modules/ai/mcp/registry.js`.
 
-**1108 tools** — 508 GET, 196 CREATE, 160 UPDATE, 40 DELETE, 204 ACTION.
+**1124 tools** — 519 GET, 198 CREATE, 163 UPDATE, 40 DELETE, 204 ACTION.
 
-Risk mix: 669 LOW, 128 HIGH, 310 MEDIUM, 1 CRITICAL.
+Risk mix: 680 LOW, 128 HIGH, 315 MEDIUM, 1 CRITICAL.
 
-Status: 1106 AVAILABLE, 2 PARTIAL (see below). 1 compatibility aliases, 1 deprecated implementation entry, 15 capabilities deliberately blocked.
+Status: 1122 AVAILABLE, 2 PARTIAL (see below). 1 compatibility aliases, 1 deprecated implementation entry, 15 capabilities deliberately blocked.
 
 ## What each column means
 
@@ -28,18 +28,18 @@ Computed from each role's grants in `backend/src/constants/permissions.js`, the 
 | Role | Tools | GET | CREATE | UPDATE | ACTION | DELETE | High-risk actions | Need confirmation |
 |---|---|---|---|---|---|---|---|---|
 | `SUPER_ADMIN` | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
-| `ADMIN` | 1035 | 475 | 181 | 151 | 192 | 36 | 121 | 560 |
-| `PRINCIPAL` | 686 | 386 | 88 | 77 | 117 | 18 | 67 | 300 |
-| `TEACHER` | 454 | 239 | 62 | 52 | 83 | 18 | 23 | 215 |
-| `PARENT` | 257 | 185 | 22 | 15 | 25 | 10 | 10 | 72 |
-| `STUDENT` | 245 | 174 | 23 | 14 | 25 | 9 | 5 | 71 |
-| `FINANCE` | 291 | 168 | 41 | 29 | 46 | 7 | 32 | 123 |
-| `LIBRARIAN` | 229 | 135 | 27 | 22 | 38 | 7 | 10 | 94 |
-| `WARDEN` | 238 | 140 | 28 | 27 | 38 | 5 | 11 | 98 |
-| `NURSE` | 177 | 105 | 23 | 17 | 27 | 5 | 10 | 72 |
-| `HR` | 281 | 153 | 38 | 32 | 50 | 8 | 26 | 128 |
-| `MARKETING` | 264 | 151 | 33 | 31 | 43 | 6 | 21 | 113 |
-| `COMPLIANCE` | 314 | 176 | 48 | 34 | 50 | 6 | 19 | 138 |
+| `ADMIN` | 1047 | 482 | 183 | 154 | 192 | 36 | 121 | 565 |
+| `PRINCIPAL` | 701 | 396 | 90 | 80 | 117 | 18 | 67 | 305 |
+| `TEACHER` | 465 | 246 | 64 | 54 | 83 | 18 | 23 | 219 |
+| `PARENT` | 264 | 192 | 22 | 15 | 25 | 10 | 10 | 72 |
+| `STUDENT` | 252 | 181 | 23 | 14 | 25 | 9 | 5 | 71 |
+| `FINANCE` | 293 | 169 | 42 | 29 | 46 | 7 | 32 | 124 |
+| `LIBRARIAN` | 231 | 136 | 28 | 22 | 38 | 7 | 10 | 95 |
+| `WARDEN` | 240 | 141 | 29 | 27 | 38 | 5 | 11 | 99 |
+| `NURSE` | 179 | 106 | 24 | 17 | 27 | 5 | 10 | 73 |
+| `HR` | 283 | 154 | 39 | 32 | 50 | 8 | 26 | 129 |
+| `MARKETING` | 266 | 152 | 34 | 31 | 43 | 6 | 21 | 114 |
+| `COMPLIANCE` | 319 | 180 | 49 | 34 | 50 | 6 | 19 | 139 |
 | `TRUSTEE` | 161 | 109 | 11 | 15 | 23 | 3 | 8 | 52 |
 | `ALUMNUS` | 134 | 83 | 14 | 15 | 20 | 2 | 4 | 51 |
 | `COUNSELLOR (custom, example)` | 56 | 44 | 2 | 5 | 4 | 1 | 0 | 12 |
@@ -136,6 +136,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `ask_teacher_about_opportunity` | Newsletter | CREATE | `digest.read` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `assign_correspondence` | Correspondence | ACTION | `correspondence.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `assign_cover` | Cover | CREATE | `cover.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `assign_home_room` | Room allocation | UPDATE | any of `facilities.manage` (ALL) / `timetable.manage` (ALL) | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `assign_students_to_house` | Clubs | ACTION | `clubs.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `assign_teacher_to_subject` | Academics | ACTION | `academics.structure.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `block_id_card` | Safety | ACTION | `checkpoints.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -169,6 +170,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `cancel_staff_leave` | Staff leave | ACTION | `staffleave.apply` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `cancel_transport_request` | Transport | DELETE | `transport.request` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `change_bill_status` | Bills | UPDATE | `bills.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `change_exam_hall` | Exam halls | UPDATE | any of `exams.schedule` / `exams.manage` (ALL) | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `change_family_ptm_booking` | PTM | ACTION | `ptm.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `change_my_newsroom_comment` | Newsroom | UPDATE | `community.read` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `check_certificate_code` | Certificates | GET | `students.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -208,6 +210,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `create_assignment` | Assignments | CREATE | `assignments.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_book` | Library | CREATE | `library.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_calendar_event` | Communication | CREATE | `calendar.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
+| `create_class_test` | Exam halls | CREATE | any of `exams.schedule` / `exams.manage` (ALL) | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_club` | Clubs | CREATE | `clubs.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_community_circle` | Newsroom | CREATE | `community.post` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_compliance_policy` | Compliance | CREATE | `compliance.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -241,6 +244,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `create_quiz_draft` | Quizzes | CREATE | `assignments.manage` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
 | `create_reading_challenge` | Library | CREATE | `library.manage` | ALL | LOW | REQUIRED | AVAILABLE |
 | `create_report_card_template` | Report cards | CREATE | `reportcards.manage` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
+| `create_room_shift` | Room allocation | CREATE | any of `facilities.request` / `facilities.manage` (ALL) / `timetable.manage` (ALL) | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_sample_campus` | Facilities | CREATE | `facilities.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_scenario` | Budgets | CREATE | `scenarios.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `create_school_shift` | Academics | CREATE | `timetable.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
@@ -347,6 +351,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_campus_status` | Campus | GET | `campus.map.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_candidate` | Recruitment | GET | `org.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_cash_position` | Finance reports | GET | `fees.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_cctv_view_log` | Safety | GET | `camera.live.view` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_certificate_clearance` | Certificates | GET | `students.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_certificate_preview` | Certificates | GET | `students.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_checkpoint_attendance_suggestions` | Safety | GET | any of `checkpoints.read` (ALL) / `attendance.mark` (ALL) / `attendance.read` (ALL) | ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -381,6 +386,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_enquiry_score` | Admissions | GET | `admissions.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_enrolment_details` | Students | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_evidence_pack` | Sustainability | GET | `sustainability.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_exam_hall` | Exam halls | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_exit_letters` | Exits | GET | `org.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_facility_detail` | Campus | GET | `campus.map.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_facility_stats` | Facilities | GET | `facilities.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -461,6 +467,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_my_digest_interests` | Digest | GET | `digest.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_document_request` | Certificates | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_electives` | Registrations | GET | `registrations.apply` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_my_exam_timetable` | Exam halls | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_hostel_room` | Hostel | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_message_preferences` | Notifications | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_my_newsletter_preferences` | Newsletter | GET | `digest.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -553,6 +560,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `get_seat_request` | Seats | GET | `seats.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_seat_requests` | Seats | GET | `seats.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_seat_summary` | Seats | GET | `seats.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `get_section_room` | Room allocation | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_section_shift` | Academics | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_service_bill` | Bills | GET | `bills.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `get_showcase` | Showcase | GET | `institution.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -643,6 +651,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `list_candidates` | Recruitment | GET | `org.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_care_notes` | Health room | GET | `health.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_cash_closes` | Finance reports | GET | `fees.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `list_cctv_cameras` | Safety | GET | `camera.live.view` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_certificate_requests` | Certificates | GET | `students.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_certificate_types` | Certificates | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_child_health_entries` | Health room | GET | `health.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -677,11 +686,13 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `list_eco_teams` | Sustainability | GET | `sustainability.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_enrollments` | Students | GET | `students.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_evidence_packs` | Sustainability | GET | `sustainability.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `list_exam_timetable` | Exam halls | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_exams` | Exams | GET | `marks.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_facility_bookings` | Facilities | GET | `facilities.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_fee_academic_years` | Fees | GET | `fees.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_fee_adjustments` | Fees | GET | `fees.concessions.manage` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_fest_plans` | Events | GET | `events.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `list_free_rooms` | Room allocation | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_funding_proposals` | Budgets | GET | `funding.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_gate_releases` | Safety | GET | `visitors.manage` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_gst_rates` | Fees | GET | `accounts.export` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -720,6 +731,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `list_my_child_teacher_profiles` | Staff profiles | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_my_class_check_ins` | Cover | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_my_hosted_visitors` | Safety | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `list_my_invigilation_duties` | Exam halls | GET | `facilities.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_my_maintenance_reports` | Facilities | GET | `facilities.request` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_my_mentoring` | Newsroom | GET | `community.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_my_newsletter_challenges` | Newsletter | GET | `digest.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -764,6 +776,8 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `list_renewals` | Bills | GET | `bills.read` | ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_report_card_templates` | Report cards | GET | `reportcards.manage` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_review_calls` | Review calls | GET | `reviewcalls.manage` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `list_room_shifts` | Room allocation | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
+| `list_rooms_and_classes` | Room allocation | GET | `timetable.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_safety_alerts` | Safety | GET | `ai.copilot.use` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_safety_devices` | Safety | GET | any of `transport.fleet.manage` / `checkpoints.manage` / `visitors.manage` / `hostel.outpass.manage` / `camera.devices.manage` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `list_sanitation_checks` | Sustainability | GET | `sustainability.read` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
@@ -855,6 +869,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `note_bill_flag` | Bills | UPDATE | `bills.manage` | ALL | LOW | REQUIRED | AVAILABLE |
 | `notify_users` | Communication | ACTION | `announcements.publish` | ALL | HIGH | REQUIRED | AVAILABLE |
 | `offer_opportunity` | Alumni | CREATE | `alumni.directory.read` | OWN or ALL | LOW | REQUIRED | AVAILABLE |
+| `open_cctv_camera` | Safety | GET | `camera.live.view` | OWN or ALL | LOW | NOT_REQUIRED | AVAILABLE |
 | `open_review_call` | Review calls | CREATE | `reviewcalls.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `open_support_plan` | Support plans | CREATE | `supportplans.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `open_vacancy` | Recruitment | CREATE | `org.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
@@ -1097,6 +1112,7 @@ Custom roles are database rows, created per school, so none can be listed here i
 | `update_eco_team` | Sustainability | UPDATE | `sustainability.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_enquiry_marketing_details` | Admissions | UPDATE | `admissions.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_enrollment_status` | Students | UPDATE | `enrollments.manage` | ALL | HIGH | REQUIRED | AVAILABLE |
+| `update_exam_hall_status` | Exam halls | UPDATE | any of `exams.schedule` / `exams.manage` (ALL) | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_exit_clearance` | Exits | UPDATE | `org.manage` | ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_facility` | Facilities | UPDATE | `facilities.manage` | OWN or ALL | MEDIUM | REQUIRED | AVAILABLE |
 | `update_fee_plan` | Fees | UPDATE | `fees.plan.request` | OWN or ALL | HIGH | REQUIRED | AVAILABLE |
@@ -10070,6 +10086,176 @@ Move an approved event along: IN_PREPARATION, LIVE, CANCELLED (with the reason; 
 **Input**
 
 `event`: string **(required)** — Its reference (EVT-...) or title<br>`step`: string **(required)** — one of: IN_PREPARATION, LIVE, CANCELLED, COMPLETED<br>`note`: string — Reason (cancel) or the outcome summary (complete)<br>`attendance`: integer<br>`highlights`: array<br>`spentRupees`: number
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+## Exam halls
+
+### `get_exam_hall`
+
+Where and when a paper is sat: its exam hall or rooms, time (with any delay), status, seats used and invigilators. Use for "where is the class 10 maths exam?", "which room is the class 9 science paper in", "exam hall for 8A English". Parents and students get their own child's room and seat only. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `timetable.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `examRooms/examHalls.service.findSittings()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_exam_hall` |
+
+**Input**
+
+`className`: string — The class or grade, e.g. "10" or "10A"<br>`subject`: string — The subject, e.g. "maths"<br>`exam`: string — The exam, e.g. "Midterm"<br>`date`: string — The day: "today", "tomorrow", a weekday, or YYYY-MM-DD<br>`studentName`: string — A parent's child
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `list_exam_timetable`
+
+The exam timetable: each paper's date, time, classes, exam rooms with seats used, invigilators and status. Staff see the papers of their classes (the exam office: the school); optionally from a date or for a class. Parents and students get their own exam timetable. Use for "show the exam timetable", "exam timetable for class 10", "exams next week". Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `timetable.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `examRooms/examHalls.service.listSittings()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.list_exam_timetable` |
+
+**Input**
+
+`from`: string — The day: "today", "tomorrow", a weekday, or YYYY-MM-DD<br>`className`: string — A class, e.g. "10A"
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `get_my_exam_timetable`
+
+A student's or parent's own exam timetable: each paper's date, time, room and the child's own seat number, with any change announced on the day. A parent with several children may name one. Use for "show my exam timetable", "my exams", "where do I sit for maths", "my child's exam schedule". Never shows another pupil's seat. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `timetable.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `examRooms/examHalls.service.myExams()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_my_exam_timetable` |
+
+**Input**
+
+`studentName`: string — A parent's child<br>`subject`: string — Only this subject
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `list_my_invigilation_duties`
+
+The caller's own invigilation duties: date, time, paper, room, classes, seats and who else invigilates there. Use for "my invigilation duties", "when am I invigilating", "my exam duty". Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `facilities.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `examRooms/examHalls.service.duties()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.list_my_invigilation_duties` |
+
+**Input**
+
+`from`: string — The day: "today", "tomorrow", a weekday, or YYYY-MM-DD
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `create_class_test`
+
+Schedule a class test (a teacher, for a subject they teach, in a free room; they invigilate) or, for the exam office, any paper: class, subject, day, start and end time, and room (default: the class's home room if free). The room and invigilator are checked for clashes and the class is seated by roll number. Use for "schedule a maths class test for 7B tomorrow at 10 to 10:40 in room 204", "create class test". Needs confirmation.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | any of `exams.schedule` / `exams.manage` (ALL) |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `examRooms/examHalls.service.createSitting()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_class_test` |
+
+**Input**
+
+`className`: string **(required)** — The class, e.g. "7B"<br>`subject`: string **(required)** — The subject<br>`date`: string — The day: "today", "tomorrow", a weekday, or YYYY-MM-DD<br>`startTime`: string — Start, e.g. "10:00"<br>`endTime`: string — End, e.g. "10:40"<br>`room`: string — The room, e.g. "204"<br>`title`: string — A title, e.g. "Fractions test"
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `change_exam_hall`
+
+Move a paper to another exam hall or room (or replace one of its rooms): the room is checked for clashes, the candidates are re-seated, and the students, their parents and the invigilators are told, with a banner on the day. Use for "change the exam hall for class 9 science to the auditorium", "move the class 10 maths exam to room 204". Needs confirmation on the website.
+
+| | |
+|---|---|
+| **Operation** | UPDATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | any of `exams.schedule` / `exams.manage` (ALL) |
+| **Scope** | OWN or ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `examRooms/examHalls.service.changeVenue()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.change_exam_hall` |
+
+**Input**
+
+`className`: string — The class or grade<br>`subject`: string — The subject<br>`exam`: string — The exam name<br>`date`: string — The day: "today", "tomorrow", a weekday, or YYYY-MM-DD<br>`toRoom`: string **(required)** — The new room or hall, e.g. "auditorium"<br>`fromRoom`: string — Only this one of its rooms<br>`reason`: string — Why (told to families)
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `update_exam_hall_status`
+
+Change a paper on the day: delay it by some minutes, postpone it (optionally to a new date), cancel it, or mark it started or finished. Delays are checked for room and invigilator clashes; students, parents and invigilators are told. Use for "delay the class 10 maths exam by 30 minutes", "postpone the class 9 science paper to Monday because of rain". Needs confirmation on the website.
+
+| | |
+|---|---|
+| **Operation** | UPDATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | any of `exams.schedule` / `exams.manage` (ALL) |
+| **Scope** | OWN or ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `examRooms/examHalls.service.setStatus()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.update_exam_hall_status` |
+
+**Input**
+
+`className`: string — The class or grade<br>`subject`: string — The subject<br>`exam`: string — The exam name<br>`date`: string — The day: "today", "tomorrow", a weekday, or YYYY-MM-DD<br>`change`: string **(required)** — one of: DELAY, POSTPONE, CANCEL, START, FINISH, RESUME — What to do<br>`delayMinutes`: integer<br>`newDate`: string — The day: "today", "tomorrow", a weekday, or YYYY-MM-DD<br>`reason`: string — Why (told to families)
 
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
@@ -22649,6 +22835,152 @@ Before a review call: the pupil's briefing — attendance this year, recent publ
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
 
+## Room allocation
+
+### `get_section_room`
+
+Which room a class is in on a day: each period with its room (a room shift shows the room it moved to and why), its home room, and any paper it sits. Use for "which room is 7B in today?", "where is class 8A now", "7B room tomorrow". Parents and students may ask about their own child's class. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `timetable.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `examRooms/rooms.service.sectionRoomOn()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_section_room` |
+
+**Input**
+
+`className`: string **(required)** — The class, e.g. "7B"<br>`date`: string — The day: "today", "tomorrow", a weekday, or YYYY-MM-DD
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `list_rooms_and_classes`
+
+Rooms & Classes: each class's home room against its strength (over capacity flagged), classes without a room, free classrooms, each room's occupant, and today's room shifts. Use for "show rooms and classes", "home rooms", "which classes have no room", "free classrooms". Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `timetable.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `examRooms/rooms.service.roomsAndClasses()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.list_rooms_and_classes` |
+
+**Input**
+
+`date`: string — The day: "today", "tomorrow", a weekday, or YYYY-MM-DD
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `list_free_rooms`
+
+Rooms free on a day for a time window, or for a class's periods (big enough for the class): no lesson, paper, booking or maintenance then. Use for "free rooms for 7B period 3 tomorrow", "which rooms are free at 11 today", "empty classrooms now". Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `timetable.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `examRooms/rooms.service.freeRooms()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.list_free_rooms` |
+
+**Input**
+
+`date`: string — The day: "today", "tomorrow", a weekday, or YYYY-MM-DD<br>`startTime`: string — From, e.g. "11:00"<br>`endTime`: string — To<br>`className`: string — A class (its size and periods)<br>`periods`: array — Periods, e.g. [3]. Leave out for the whole day.<br>`minCapacity`: integer
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `list_room_shifts`
+
+Room shifts: classes moved to another room (temporary or permanent), with dates, periods, reason and status, including teachers' requests waiting for the administrator or principal. Use for "show room shifts", "room changes this week", "pending room shift requests". Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `timetable.read` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `examRooms/rooms.service.listShifts()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.list_room_shifts` |
+
+**Input**
+
+`status`: string — one of: REQUESTED, APPLIED, REJECTED, CANCELLED, ALL<br>`from`: string — The day: "today", "tomorrow", a weekday, or YYYY-MM-DD
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `create_room_shift`
+
+Move a class to another room for some periods, a day, a date range, or permanently, with a reason. Checked against the timetable, exams, bookings and maintenance; a busy room is refused with free rooms that fit. The administrator or principal applies it; a teacher's request (their own class or the periods they teach) goes to them for approval, or is applied at once for one period when the school allows teachers to self-shift. The class teacher, subject teachers, students and parents are told. Use for "move 7B to the science lab for period 3 tomorrow because of painting", "shift 8A to room 204 from Monday to Friday", "move 6C to room 110 permanently". Needs confirmation on the website.
+
+| | |
+|---|---|
+| **Operation** | CREATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | any of `facilities.request` / `facilities.manage` (ALL) / `timetable.manage` (ALL) |
+| **Scope** | OWN or ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `examRooms/rooms.service.createShift()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.create_room_shift` |
+
+**Input**
+
+`className`: string **(required)** — The class, e.g. "7B"<br>`toRoom`: string **(required)** — The room, e.g. "science lab", "204"<br>`date`: string — The day: "today", "tomorrow", a weekday, or YYYY-MM-DD<br>`endDate`: string — The day: "today", "tomorrow", a weekday, or YYYY-MM-DD<br>`periods`: array — Periods, e.g. [3]. Leave out for the whole day.<br>`kind`: string — one of: TEMPORARY, PERMANENT<br>`reason`: string — Why, e.g. "painting"
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `assign_home_room`
+
+Make a room a class's home room (kept in the room history; the timetable periods that named the old room follow). A room another class calls home is refused unless "move them out" is said. Administrator or principal. Use for "assign room 204 to 8A", "make the science lab 9B's home room", "give room 110 to 6C". Needs confirmation on the website.
+
+| | |
+|---|---|
+| **Operation** | UPDATE |
+| **Risk** | MEDIUM |
+| **Confirmation** | REQUIRED |
+| **Permission** | any of `facilities.manage` (ALL) / `timetable.manage` (ALL) |
+| **Scope** | ALL |
+| **Affects others** | Yes |
+| **EduOS service** | `examRooms/rooms.service.assignHomeRoom()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.assign_home_room` |
+
+**Input**
+
+`className`: string **(required)** — The class, e.g. "8A"<br>`room`: string **(required)** — The room, e.g. "204"<br>`reason`: string — Why<br>`displace`: boolean — Move the class that has it now out
+
+**Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
 ## Safeguarding
 
 ### `get_safeguarding_guidance`
@@ -23372,6 +23704,78 @@ Disable a GPS tracker or card reader (its readings are then refused, e.g. when l
 **Output** — `{ success: true, data: { … } }`, plus `action: { type, id, status: "completed" }` once performed.
 
 **Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`. `CONFIRMATION_INVALID` when the token is wrong, expired, reused or belongs to somebody else.
+
+### `list_cctv_cameras`
+
+Live CCTV cameras the caller is allowed to watch, by zone, each with whether it is online, offline or not connected (from the school's video gateway). Use for "which cameras are online", "list the CCTV cameras", "is the main gate camera working", "are any cameras offline". Status only, never video. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `camera.live.view` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `cctv.service.listStreams()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.list_cctv_cameras` |
+
+**Input**
+
+`status`: string — one of: ONLINE, OFFLINE, ALL — Only online or offline cameras (default all)
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `get_cctv_view_log`
+
+The live CCTV view log for a day: who opened which camera, when, for how long and the reason given. The principal and the safety officer see everyone's viewings; anyone else only their own. Use for "show me the CCTV view log for today", "who watched the cameras today", "who opened the hostel camera yesterday". Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `camera.live.view` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `cctv.service.viewLog()` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.get_cctv_view_log` |
+
+**Input**
+
+`date`: string — YYYY-MM-DD (default today)
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
+
+### `open_cctv_camera`
+
+A link that opens one camera on the Live CCTV page ("open the main gate camera", "show me the bus bay camera", "live view of the hostel corridor"). Returns the link only: the video plays on the page, watermarked and logged, never in chat or WhatsApp. Read-only.
+
+| | |
+|---|---|
+| **Operation** | GET |
+| **Risk** | LOW |
+| **Confirmation** | NOT_REQUIRED |
+| **Permission** | `camera.live.view` |
+| **Scope** | OWN or ALL |
+| **Affects others** | No |
+| **EduOS service** | `cctv.service.listStreams() → link` |
+| **Status** | AVAILABLE |
+| **Audited** | Yes — `agent.open_cctv_camera` |
+
+**Input**
+
+`camera`: string **(required)** — Camera or zone name, e.g. "main gate"
+
+**Output** — `{ success: true, data: { … } }`.
+
+**Errors** — `FORBIDDEN` / `FORBIDDEN_SCOPE` (not permitted), `INVALID_INPUT` (arguments), `NOT_FOUND` (no such record), `CONFLICT` (business rule), `SCHOOL_REQUIRED` (no school chosen), `TIMEOUT`, `DATABASE_ERROR`, `INTERNAL`.
 
 ## Seats
 
@@ -27969,7 +28373,7 @@ For the principal: resolve an open dispute on a background-verification decision
 
 ## Permission coverage
 
-161 of the 189 permissions in the catalog are reachable through MCP.
+163 of the 191 permissions in the catalog are reachable through MCP.
 
 Permissions **not** reachable through any tool:
 

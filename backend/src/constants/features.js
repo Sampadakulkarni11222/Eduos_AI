@@ -21,6 +21,8 @@ export const FEATURES = {
   idCheckpoints: { label: 'ID card checkpoints (gate, bus, lab, library)', default: false, needs: 'QR or RFID readers, or staff scanning with a phone' },
   visitors: { label: 'Visitors, contractors and authorised pickup', default: true },
   camera: { label: 'Camera event review (optional pilot)', default: false, needs: 'Cameras, an approved purpose and locations, a retention period and trained reviewers' },
+  // Live CCTV viewing through the school's own NVR/gateway (MediaMTX, go2rtc). View-only, every view logged.
+  cctvLive: { label: 'Live CCTV viewing (authorised staff)', default: false, needs: 'An NVR/VMS or a gateway (MediaMTX, go2rtc) publishing HLS or WebRTC (WHEP) over https, cameras registered at allowed places, and signage' },
   ptm: { label: 'PTM booking and parent review calls', default: true },
   conversations: { label: 'Parent–teacher messages', default: true },
   staffCover: { label: 'Staff leave balances and substitute cover', default: true },

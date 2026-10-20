@@ -99,6 +99,9 @@ export const PERMISSION_CATALOG = [
 
   // exams & marks
   { key: 'exams.manage', group: 'academics', description: 'Create/update exams and exam subjects' },
+  // Part 8: the exam timetable and halls (times, rooms, seating, invigilators). ALL: every paper;
+  // OWN: a teacher's class tests for subjects they teach, in a free room.
+  { key: 'exams.schedule', group: 'academics', description: 'Schedule papers: time, exam rooms, seating and invigilators' },
   { key: 'marks.read', group: 'academics', description: 'View marks' },
   { key: 'marks.enter', group: 'academics', description: 'Enter marks' },
   { key: 'marks.publish', group: 'academics', description: 'Publish marks / report cards' },
@@ -280,6 +283,7 @@ export const PERMISSION_CATALOG = [
   // Optional camera event review (off until a school configures it).
   { key: 'camera.devices.manage', group: 'safety', description: 'Register cameras, approved locations and purposes, retention and health' },
   { key: 'camera.events.review', group: 'sensitive', description: 'Review unverified camera observations and decide on them (trained staff only)' },
+  { key: 'camera.live.view', group: 'sensitive', description: 'Watch live CCTV through the school gateway, view-only and logged (OWN: only the camera groups granted to your role). Never parents, students or alumni' },
   // PTM, review calls and parent–teacher conversations.
   { key: 'ptm.read', group: 'engagement', description: 'See PTM rounds and slots (OWN: your own bookings or your own slots)' },
   { key: 'ptm.manage', group: 'engagement', description: 'Create PTM rounds, set availability and run meetings (OWN: your own slots)' },
@@ -383,6 +387,8 @@ export const RESTRICTED_BY_DEFAULT = [
   'payroll.approve',
   // Camera observations about children are reviewed only by named, trained staff.
   'camera.events.review',
+  // Live CCTV is watched only by people the school names (principal and safety officer by default).
+  'camera.live.view',
   // Preparing pay (structures, inputs, adjustments) belongs to finance and HR. An administrator
   // holding it could add an adjustment to their own line and send the run for approval.
   'payroll.prepare',
@@ -443,7 +449,7 @@ const ALL_EXCEPT = (...excluded) =>
  * catalogue: child-protection case files and individual salary and bank
  * details belong to the school, not to the platform operator.
  */
-export const PLATFORM_WITHHELD = ['safeguarding.manage', 'payroll.sensitive.read', 'camera.events.review',
+export const PLATFORM_WITHHELD = ['safeguarding.manage', 'payroll.sensitive.read', 'camera.events.review', 'camera.live.view',
   // A child's health record belongs to the school and the family, not to the platform operator.
   'health.read', 'health.manage', 'health.witness', 'health.carenotes.read'];
 
@@ -511,6 +517,7 @@ export const SYSTEM_ROLES = [
       ['hostel.outpass.manage', 'ALL'],
       ['ai.drafts.use', 'ALL'],
       ['camera.events.review', 'ALL'],
+      ['camera.live.view', 'ALL'],
       ['users.read', 'ALL'],
       ['students.read', 'ALL'],
       ['attendance.read', 'ALL'],
@@ -573,6 +580,8 @@ export const SYSTEM_ROLES = [
       ['lectures.manage', 'ALL'],
       ['syllabus.read', 'ALL'],
       ['syllabus.manage', 'ALL'],
+      // Part 8: the exam timetable, halls, seating and invigilators.
+      ['exams.schedule', 'ALL'],
     ]),
   },
   {
@@ -621,6 +630,8 @@ export const SYSTEM_ROLES = [
       ['marks.read', 'OWN'],
       ['marks.enter', 'OWN'],
       ['marks.publish', 'OWN'],
+      // Part 8: class tests for the subjects they teach, in a free room.
+      ['exams.schedule', 'OWN'],
       // Scoped OWN: the review queue and every decision are filtered to
       // electives in sections this teacher actually teaches.
       ['registrations.review', 'OWN'],
@@ -953,6 +964,7 @@ export const SYSTEM_ROLES = [
       ['checkpoints.read', 'ALL'],
       ['camera.devices.manage', 'ALL'],
       ['camera.events.review', 'ALL'],
+      ['camera.live.view', 'ALL'],
       ['sustainability.read', 'ALL'],
       ['sustainability.manage', 'ALL'],
       ['sustainability.verify', 'ALL'],

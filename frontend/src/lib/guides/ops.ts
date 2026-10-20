@@ -471,6 +471,22 @@ const CONTENT: Record<string, OpsContent> = {
       'Observations never appear in feeds, the campus map, ordinary analytics or parent views.',
     ],
   },
+  cctv: {
+    category: 'Transport & Safety',
+    summary: 'Optional, switched off by default. Authorised staff watch approved school cameras live through the school NVR or video gateway. View-only, watermarked with your name and the time, and every viewing is logged.',
+    workflow: ['Gateway connected', 'Cameras registered', 'Viewing (logged)'],
+    steps: [
+      'Open Live: cameras you may watch are grouped by zone with their status. Choose one to watch; give a reason when asked.',
+      'Use Fullscreen for a closer look. Confirm "Still watching?" when asked, or the viewing stops.',
+      'The principal and the safety officer see the View log: who watched which camera, when and why.',
+      'Setup (safety officer): enter the gateway address and read credentials, Test connection, then register each camera with its place, purpose, group and path on the gateway.',
+    ],
+    tips: [
+      'Never for parents, students or alumni. Cameras are never allowed in toilets, washrooms, changing rooms, dormitory rooms, the health room or staff private areas.',
+      'No recording, download or snapshot is offered. Without a connected gateway the page says so; it never shows sample footage.',
+      'A school can let another role (for example the warden) watch only its own camera groups (hostel corridors).',
+    ],
+  },
   'class-check-in': {
     category: 'Transport & Safety',
     summary: 'Mark yourself in class at the start of each period you teach or cover. It is the school\'s record that the class was attended.',
@@ -963,6 +979,37 @@ const CONTENT: Record<string, OpsContent> = {
       'Download the register for a date range when it is asked for.',
     ],
     tips: ['These are prompts, not diagnoses. Nothing is sent from this page, and every read is logged.'],
+  },
+  'exam-schedule': {
+    category: 'Learning',
+    summary: 'The exam timetable: each paper\'s date and time, its exam rooms with the seating plan, the invigilators in each room and its status. Changes on the day reach the students, their parents and the invigilators.',
+    workflow: ['Paper scheduled', 'Rooms and invigilators checked', 'Seated by roll number', 'Changes announced'],
+    steps: [
+      'Schedule a paper: class, subject, date, times and one or more rooms. The exam office schedules every paper; a teacher schedules class tests for the subjects they teach.',
+      'Show who is free to pick invigilators: a teacher teaching, covering, invigilating elsewhere, on leave or absent is not offered.',
+      'Open Seating for the chart and the door list; print it or download the CSV. Move a candidate by tapping their seat.',
+      'On the day use Change room, Delay, Postpone or Cancel: everyone affected is told once and a banner shows.',
+      'My invigilation duties lists your own; the duty roster shows everyone\'s.',
+    ],
+    tips: ['A room cannot hold two papers, or a paper and a timetabled class, at the same time.', 'Ask AI: "where is the class 10 maths exam?" or "my invigilation duties".'],
+  },
+  'rooms-classes': {
+    category: 'Administration',
+    summary: 'Which room each class calls home, its strength against the room\'s seats, who uses each room, the room history, and room shifts when a class has to move.',
+    workflow: ['Home room assigned', 'Shift requested or applied', 'Conflicts checked', 'Class, teachers and families told'],
+    steps: [
+      'Classes lists each class with its home room; the administrator or principal changes it (kept in the history).',
+      'Move a class: choose the room, the days and periods (or permanently) and a reason, then Check: clashes with lessons, exams, bookings and maintenance are listed with free rooms that fit.',
+      'Teachers request a move for their own class or the periods they teach; the administrator or principal approves it here. With the school setting on, a teacher can move one period into a free room straight away.',
+      'Applying tells the class teacher, the subject teachers, the students and the parents; the timetable and Campus World show the new room.',
+    ],
+    tips: ['A temporary move never rewrites the timetable; cancelling it puts the class back.', 'Ask AI: "which room is 7B in today?" or "move 7B to the science lab for period 3 tomorrow because of painting".'],
+  },
+  'my-exams': {
+    category: 'Learning',
+    summary: 'Your own exam timetable: each paper\'s date, time, room and your seat number, with any change made on the day.',
+    steps: ['Check the room and seat for each paper.', 'A banner shows a change of room or time on the day.'],
+    tips: ['Only your own seat is shown. Ask AI: "show my exam timetable".'],
   },
   'teacher-presence': {
     category: 'Transport & Safety',

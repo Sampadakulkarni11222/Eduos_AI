@@ -19,6 +19,9 @@ import { liveBySection, departments as departmentsLive } from './live.service.js
 import { campusLayers, layerAccess, loadOptional, adaptClubs } from './layers.service.js';
 import { publicViews } from '../staff/credentials.service.js';
 import { StaffCredential } from '../../models/staffCredential.model.js';
+import { withEffectiveRooms, roomActivityAt } from '../examRooms/rooms.service.js';
+import { sectionExamAt } from '../examRooms/campus.js';
+import { shiftFor } from '../examRooms/occupancy.js';
 
 /**
  * A teacher's professional profile as a page section: for families only the parts the
@@ -78,6 +81,7 @@ const atTime = (now, hhmm) => {
   const p = istParts(now);
   return new Date(Date.UTC(p.y, p.m, p.d) + toMin(hhmm) * 60_000 - IST_MS);
 };
+const istYmdOf = (now) => new Date(now.getTime() + IST_MS).toISOString().slice(0, 10);
 const sectionLabel = (sec) => `${sec?.gradeId?.name ?? ''} ${sec?.name ?? ''}`.trim();
 const initialOf = (name) => String(name ?? '?').trim().charAt(0).toUpperCase() || '?';
 const SLOT_POPULATE = [
@@ -123,6 +127,8 @@ async function canSeeRoster(v, sectionId, periodNo, now) {
 async function classDay(sectionId, now) {
   const { dow, minutes } = istParts(now);
   const slots = await TimetableSlot.find({ sectionId, dayOfWeek: dow }).populate(SLOT_POPULATE).sort({ startTime: 1 }).lean();
+  // Part 8: a room shift applied for today puts the period in its new room.
+  await withEffectiveRooms(slots, istYmdOf(now)).catch((err) => logger.warn(`Live room shifts unavailable: ${err.message}`));
   const taught = slots.filter((s) => s.subjectOfferingId);
   const current = taught.find((s) => toMin(s.startTime) <= minutes && toMin(s.endTime) > minutes) ?? null;
   const upcoming = taught.filter((s) => toMin(s.startTime) > minutes);
@@ -176,6 +182,8 @@ async function classNow(rawSectionId, now, { day = null } = {}) {
       source: "Today's attendance register; it changes as soon as a teacher marks or corrects it.",
     },
     exam: head?.exam ?? null,
+    // Part 8: the paper the class is sitting right now, with its rooms (no seat numbers here).
+    examNow: await sectionExamAt(sectionId, now).then((x) => (x ? { title: x.title, subject: x.subject, until: `${String(Math.floor(x.end / 60)).padStart(2, '0')}:${String(x.end % 60).padStart(2, '0')}`, venues: x.venues.map((v) => ({ facilityId: v.facilityId, seated: v.bySection[String(sectionId)] ?? 0 })) } : null)).catch(() => null),
   };
 }
 
@@ -270,6 +278,10 @@ async function classSections(v, sectionId, now, { includeRoster = true } = {}) {
   const sections = [periodSection(now, cls), attendanceFacts(cls, v.family)];
   const about = credentialSection(await credentialFor(cls.period?.teacherProfileId, v.family).catch(() => null), { family: v.family });
   if (about) sections.splice(1, 0, { ...about, title: v.family ? `About ${cls.period.teacher ?? 'the teacher'}` : about.title });
+  if (cls.examNow) {
+    const names = new Map((await Facility.find({ _id: { $in: cls.examNow.venues.map((x) => x.facilityId) } }).select('name').lean()).map((f) => [String(f._id), f.name]));
+    sections.splice(1, 0, { key: 'examNow', title: 'Exam in progress', type: 'facts', rows: [{ label: 'Paper', value: cls.examNow.title }, { label: 'Room', value: cls.examNow.venues.map((x) => `${names.get(x.facilityId) ?? 'Room'} (${x.seated})`).join(', ') }, { label: 'Until', value: cls.examNow.until }], link: link(v.family ? 'my-exams' : 'exam-schedule', v.family ? 'My exams' : 'Exam timetable') });
+  }
   if (cls.exam?.paperToday) sections.push({ key: 'exam', title: 'Exam today', type: 'facts', rows: [{ label: cls.exam.name, value: cls.exam.subject ?? 'Paper today' }], link: link('exams', 'Exams') });
   if (includeRoster) {
     if (await canSeeRoster(v, sectionId, cls.period?.periodNo, now)) {
@@ -299,9 +311,16 @@ async function roomDetail(v, id, now) {
   const names = [f.code, f.name].filter(Boolean);
   const or = [{ room: { $in: names } }];
   if (f.sectionId) or.push({ sectionId: f.sectionId, $or: [{ room: null }, { room: '' }] });
-  const slots = (await TimetableSlot.find({ dayOfWeek: dow, $or: or }).populate(SLOT_POPULATE).sort({ startTime: 1 }).lean()).filter((s) => s.subjectOfferingId);
+  // Part 8: a period moved out by a room shift is not here; one moved in is; a paper in progress is.
+  const act = await roomActivityAt(f._id, now).catch(() => null);
+  const slots = (await TimetableSlot.find({ dayOfWeek: dow, $or: or }).populate(SLOT_POPULATE).sort({ startTime: 1 }).lean())
+    .filter((s) => s.subjectOfferingId)
+    .filter((s) => { const sh = act ? shiftFor(act.day.shifts, s.sectionId?._id ?? s.sectionId, s.periodNo) : null; return !sh || String(sh.toFacilityId) === String(f._id); });
+  const movedIn = act?.movedIn?.[0] ?? null;
+  const examHere = act?.exams?.[0] ?? null;
   const current = slots.find((s) => toMin(s.startTime) <= minutes && toMin(s.endTime) > minutes) ?? null;
-  const sectionId = current?.sectionId?._id ?? f.sectionId ?? null;
+  const examSection = examHere ? ((examHere.sectionIds ?? []).find((id) => !v.family || v.ownSections.has(String(id))) ?? examHere.sectionIds?.[0]) : null;
+  const sectionId = examSection ?? current?.sectionId?._id ?? (movedIn ? movedIn.sectionId : null) ?? f.sectionId ?? null;
   const features = await featuresFor();
   const about = { key: 'about', title: 'The room', type: 'facts', rows: [
     { label: 'Kind', value: f.kind.replace(/_/g, ' ').toLowerCase() },
@@ -310,7 +329,8 @@ async function roomDetail(v, id, now) {
   ], link: v.actor.permissions?.['facilities.read'] ? link('facilities', 'Facilities', '?tab=spaces') : null };
 
   // Families: their own child's class only.
-  if (v.family && (!sectionId || !v.ownSections.has(String(sectionId)))) {
+  const ownExam = examHere && v.family && (examHere.sectionIds ?? []).some((id) => v.ownSections.has(String(id)));
+  if (v.family && !ownExam && (!sectionId || !v.ownSections.has(String(sectionId)))) {
     return { ...head, live: null, sections: [about, { key: 'live', title: 'Live now', type: 'note', text: 'Live details are shown for your own class only.' }] };
   }
   const acts = v.family ? { practical: null, club: null } : await roomActivities(v.actor, f, now, features);
@@ -326,6 +346,23 @@ async function roomDetail(v, id, now) {
     if (away) sections.splice(1, 0, { key: 'away', title: 'Where the class is', type: 'note', text: `${cls.className} is in ${cls.period.room} this period.` });
   } else if (acts.practical || acts.club) {
     live = { practical: acts.practical, club: acts.club, updatedAt: now.toISOString() };
+  }
+  if (movedIn && !examHere) sections.splice(1, 0, { key: 'movedIn', title: 'Moved here', type: 'note', text: `${sectionLabel(act.day.sectionById.get(movedIn.sectionId))} is in this room for period ${movedIn.periodNo}: ${movedIn.shift.reason} (${movedIn.shift.refNo}).` });
+  if (examHere) {
+    const w = { start: toMin(examHere.startTime) + (examHere.delayMinutes ?? 0), end: toMin(examHere.endTime) + (examHere.delayMinutes ?? 0) };
+    const venue = (examHere.venues ?? []).find((x) => String(x.facilityId) === String(f._id));
+    const seatedOwn = (venue?.seats ?? []).filter((x) => v.ownSections.has(String(x.sectionId))).length;
+    const classes = (examHere.sectionIds ?? []).map((id) => sectionLabel(act.day.sectionById.get(String(id)))).join(', ');
+    const invNames = v.family ? [] : [...(await Profile.find({ _id: { $in: venue?.invigilatorProfileIds ?? [] } }).select('displayName').lean())].map((p) => p.displayName);
+    const hh = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    sections = sections.filter((x) => x.key !== 'examNow');
+    sections.splice(1, 0, {
+      key: 'exam', title: `Exam in progress: ${v.family ? examHere.subjectName ?? examHere.title : `${classes} ${examHere.subjectName ?? examHere.title}`}`, type: 'facts',
+      rows: v.family
+        ? [{ label: 'Paper', value: examHere.title }, { label: 'Your class here', value: `${seatedOwn} students` }, { label: 'Until', value: hh(w.end) }]
+        : [{ label: 'Paper', value: examHere.title }, { label: 'Classes', value: classes }, { label: 'Students seated', value: `${venue?.seats?.length ?? 0}${venue?.capacity ? ` of ${venue.capacity}` : ''}` }, { label: 'Invigilators', value: invNames.length ? invNames.join(', ') : 'None assigned' }, { label: 'Time', value: `${hh(w.start)}–${hh(w.end)}` }],
+      link: link(v.family ? 'my-exams' : 'exam-schedule', v.family ? 'My exams' : 'Exam timetable'),
+    });
   }
   if (acts.practical) sections.splice(1, 0, { key: 'practical', title: 'Practical in session', type: 'facts', rows: [{ label: 'Practical', value: acts.practical.title }, ...(acts.practical.className ? [{ label: 'Class', value: acts.practical.className }] : []), ...(acts.practical.teacher ? [{ label: 'Teacher', value: acts.practical.teacher }] : []), ...(acts.practical.until ? [{ label: 'Until', value: new Date(acts.practical.until).toISOString(), format: 'time' }] : [])], link: link('labs', 'Labs') });
   if (acts.club) sections.splice(1, 0, { key: 'club', title: 'Club session now', type: 'facts', rows: [{ label: 'Club', value: acts.club.title }, ...(acts.club.activity ? [{ label: 'Activity', value: acts.club.activity }] : []), ...(acts.club.startTime ? [{ label: 'Time', value: `${acts.club.startTime}–${acts.club.endTime ?? ''}` }] : [])], link: link('clubs', 'Clubs & Teams') });

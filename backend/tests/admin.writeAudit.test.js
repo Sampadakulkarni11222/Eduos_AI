@@ -147,11 +147,11 @@ describe('0. the no-model fallback path', () => {
     expect(isLlmEnabled()).toBe(false);
   });
 
-  it('Admin is offered 1035 capabilities, 560 of them writes -- and none that decides', () => {
+  it('Admin is offered 1047 capabilities, 565 of them writes -- and none that decides', () => {
     const offered = mcpToolsFor(actorForRole('ADMIN')).map((t) => t.name);
     const writes = offered.filter((n) => index()[n].operation !== 'GET');
-    expect(offered).toHaveLength(1035); // part 6: every route an administrator can call has its tool (tools/p6Coverage.js); part 7: +20 (multi-ask reads, bulk import, automations)
-    expect(writes).toHaveLength(560); // part 7: +8 (run_import, create/stop_my_reminder, set_school_automation, run_school_automation_now, confirm/dismiss_automation_draft, set_my_automation_optin)
+    expect(offered).toHaveLength(1047); // part 8: +12 (exam rooms, live CCTV reads) // part 6: every route an administrator can call has its tool (tools/p6Coverage.js); part 7: +20 (multi-ask reads, bulk import, automations)
+    expect(writes).toHaveLength(565); // part 8: +5 exam-room writes // part 7: +8 (run_import, create/stop_my_reminder, set_school_automation, run_school_automation_now, confirm/dismiss_automation_draft, set_my_automation_optin)
     expect(offered.filter((n) => /^(?:approve|reject|decide|review|publish|refund)_|^record_payment$/.test(n))).toEqual([]);
   });
 });

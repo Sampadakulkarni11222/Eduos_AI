@@ -69,6 +69,8 @@ import tasksRoutes from '../modules/tasks/tasks.routes.js';
 import fleetRoutes from '../modules/fleet/fleet.routes.js';
 import outpassRoutes from '../modules/hostel/outpass.routes.js';
 import { checkpointsRouter, visitorsRouter, pickupRouter, cameraRouter, classCheckInRouter, safetyRouter } from '../modules/safety/safety.routes.js';
+// Optional live CCTV viewing (feature cctvLive): staff API and token-authenticated playback proxy.
+import { cctvRouter, cctvPlayRouter } from '../modules/cctv/cctv.routes.js';
 // PTM, review calls, conversations, staff leave/cover, term report cards.
 import { ptmRouter, reviewCallsRouter } from '../modules/ptm/ptm.routes.js';
 import conversationRoutes from '../modules/conversations/conversations.routes.js';
@@ -111,6 +113,8 @@ import portfolioRoutes from '../modules/portfolios/portfolios.routes.js';
 import scenarioRoutes from '../modules/scenarios/scenarios.routes.js';
 // Part 4 (leadership): attendance overview, teacher workload, board packs, certificates.
 import leadershipRoutes from '../modules/leadership/leadership.routes.js';
+// Part 8: exam halls, Rooms & Classes and room shifts.
+import examRoomsRoutes from '../modules/examRooms/examRooms.routes.js';
 import { offlineIdempotency } from '../middleware/idempotency.js';
 // Universal search; newsroom social sharing; offline marketing, ad connectors and attribution.
 import searchRoutes from '../modules/search/search.routes.js';
@@ -253,6 +257,8 @@ router.use('/visitors', visitorsRouter);
 router.use('/pickup', pickupRouter);
 router.use('/outpass', outpassRoutes);
 router.use('/camera', cameraRouter);
+router.use('/cctv/play', cctvPlayRouter);
+router.use('/cctv', cctvRouter);
 router.use('/class-check-ins', classCheckInRouter);
 router.use('/safety', safetyRouter);
 router.use('/ptm', ptmRouter);
@@ -294,6 +300,7 @@ router.use('/marketing-growth', growthRouter);
 router.use('/integrations', integrationsRouter);
 router.use('/family', familyRoutes);
 router.use('/leadership', leadershipRoutes);
+router.use('/exam-rooms', examRoomsRoutes);
 
 // NOTE — a public GET /admin-seed endpoint used to live here, gated only by a
 // hardcoded default secret ('eduos-seed-2026'). Anyone who could reach the API
