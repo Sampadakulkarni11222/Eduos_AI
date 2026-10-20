@@ -35,6 +35,7 @@ export default function FinancePayments() {
   const [invoicePage, setInvoicePage] = useState(1);
   const [invoicePageSize, setInvoicePageSize] = useState(25);
   const [statusFilter, setStatusFilter] = useState('');
+  const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoiceTotal, setInvoiceTotal] = useState(0);
   const [invoiceTotalPages, setInvoiceTotalPages] = useState(1);
   const [receiptPage, setReceiptPage] = useState(1);
@@ -70,7 +71,12 @@ export default function FinancePayments() {
 
   // Server-side paging for the invoice tab.
   useEffect(() => {
-    api.invoicesPage({ status: statusFilter || undefined, page: invoicePage, pageSize: invoicePageSize })
+    api.invoicesPage({
+      status: statusFilter || undefined,
+      search: invoiceSearch.trim() || undefined,
+      page: invoicePage,
+      pageSize: invoicePageSize,
+    })
       .then((r) => {
         setInvoices(r.items);
         setInvoiceTotal(r.total);
@@ -78,12 +84,12 @@ export default function FinancePayments() {
         if (r.page !== invoicePage) setInvoicePage(r.page);
       })
       .catch(() => { setInvoices([]); setInvoiceTotal(0); setInvoiceTotalPages(1); });
-  }, [statusFilter, invoicePage, invoicePageSize]);
+  }, [statusFilter, invoiceSearch, invoicePage, invoicePageSize]);
 
   useEffect(() => { loadReceipts(); }, [loadReceipts]);
   useEffect(() => { loadPlans(); }, [loadPlans]);
 
-  useEffect(() => { setInvoicePage(1); }, [statusFilter, invoicePageSize]);
+  useEffect(() => { setInvoicePage(1); }, [statusFilter, invoiceSearch, invoicePageSize]);
 
   const { me } = useAuth();
   const { hasAccess } = usePermissions();
@@ -131,8 +137,15 @@ export default function FinancePayments() {
 
       {activeTab === 'invoices' && (
         <>
-          {invoices && invoices.length > 0 && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+          {invoices !== null && (
+            <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+              <input
+                value={invoiceSearch}
+                onChange={(e) => setInvoiceSearch(e.target.value)}
+                placeholder="Invoice no. or student..."
+                aria-label="Search invoices"
+                style={{ width: 280, maxWidth: '100%' }}
+              />
               {['', 'PENDING', 'OVERDUE', 'PARTIAL', 'PAID'].map((s) => (
                 <button
                   key={s} onClick={() => setStatusFilter(s)} className="chip-tab"
@@ -146,12 +159,17 @@ export default function FinancePayments() {
                   {s ? s.charAt(0) + s.slice(1).toLowerCase() : 'All'}
                 </button>
               ))}
+              {(invoiceSearch || statusFilter) && (
+                <Button small variant="soft" onClick={() => { setInvoiceSearch(''); setStatusFilter(''); }}>
+                  Clear filters
+                </Button>
+              )}
             </div>
           )}
           {invoices === null && <Card><SkeletonRows rows={5} /></Card>}
-          {invoices?.length === 0 && <EmptyState title="No invoices yet" sub="Fee invoices appear here once fee structures are assigned." />}
-          {invoices && invoices.length > 0 && filteredInvoices.length === 0 && (
-            <EmptyState title="No matching invoices" sub="No invoices have this status." />
+          {invoices?.length === 0 && !invoiceSearch && !statusFilter && <EmptyState title="No invoices yet" sub="Fee invoices appear here once fee structures are assigned." />}
+          {invoices && invoices.length === 0 && (invoiceSearch || statusFilter) && (
+            <EmptyState title="No matching invoices" sub="Try another invoice number, student name, or status." />
           )}
           {filteredInvoices.length > 0 && (
             <Card pad={false}>

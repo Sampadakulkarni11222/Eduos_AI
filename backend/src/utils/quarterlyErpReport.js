@@ -1,71 +1,120 @@
 import PDFDocument from 'pdfkit';
 
+const INK = '#24120f';
+const MUTED = '#786e65';
+const WINE = '#671520';
+const GOLD = '#bf8b2c';
+const RULE = '#e9dfd2';
+const PAPER = '#fcfaf6';
+
 const money = (paise) => `Rs. ${((Number(paise) || 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
-const label = (key) => String(key).replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+const count = (items) => Array.isArray(items) ? items.length : 0;
+const total = (items, key = 'count') => (Array.isArray(items) ? items : []).reduce((sum, item) => sum + (Number(item?.[key]) || 0), 0);
 
-function scalarRows(value, prefix = '', rows = []) {
-  if (value === null || value === undefined) return rows;
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => scalarRows(item, `${prefix}${prefix ? '.' : ''}${index + 1}`, rows));
-  } else if (typeof value === 'object') {
-    Object.entries(value).forEach(([key, item]) => scalarRows(item, `${prefix}${prefix ? '.' : ''}${key}`, rows));
-  } else {
-    rows.push([prefix || 'value', String(value)]);
-  }
-  return rows;
-}
-
-function addPageHeader(doc, title, generatedAt) {
-  doc.font('Helvetica-Bold').fontSize(19).fillColor('#24120f').text('EduOS AI — Quarterly ERP Report', 50, 48);
-  doc.font('Helvetica').fontSize(9).fillColor('#6b625b').text(`${title}  |  Generated ${new Date(generatedAt).toLocaleString('en-IN')}`, 50, 75);
-  doc.moveTo(50, 94).lineTo(545, 94).strokeColor('#e5ddd3').stroke();
-}
-
-function ensureSpace(doc, y, needed = 32) {
-  if (y + needed < 755) return y;
-  doc.addPage();
-  addPageHeader(doc, 'Continued', new Date());
-  return 116;
-}
-
-/** Streams a concise, printable executive PDF while the companion CSV retains
- * every scalar returned from each segment dashboard. */
-export function renderQuarterlyErpPdf(res, report) {
-  const doc = new PDFDocument({ size: 'A4', margin: 50 });
-  doc.pipe(res);
-  addPageHeader(doc, 'All segments', report.generatedAt);
-  let y = 120;
-
+/** A curated management-report contract. Dashboard responses include recent
+ * records with internal IDs; management reports must contain readable KPIs,
+ * never implementation details such as Mongo ObjectId buffers. */
+function sections(report) {
   const finance = report.finance ?? {};
-  const financeRows = [
-    ['Invoices', finance.invoiceCount], ['Collection rate', `${finance.collectionRate ?? 0}%`],
-    ['Billed', money(finance.billedPaise)], ['Collected', money(finance.collectedPaise)],
-    ['Outstanding', money(finance.outstandingPaise)], ['Overdue / leakage risk', money(finance.overduePaise)],
-    ['Recorded costs', money(finance.totalExpensePaise)], ['Net position', money(finance.netPositionPaise)],
+  const operations = report.operations ?? {};
+  const hostel = report.hostel ?? {};
+  const library = report.library ?? {};
+  return [
+    { name: 'Finance', rows: [
+      ['Invoices raised', finance.invoiceCount ?? 0], ['Collection rate', `${finance.collectionRate ?? 0}%`],
+      ['Total billed', money(finance.billedPaise)], ['Collections received', money(finance.collectedPaise)],
+      ['Outstanding balance', money(finance.outstandingPaise)], ['Overdue / leakage risk', money(finance.overduePaise)],
+      ['Recorded operating costs', money(finance.totalExpensePaise)], ['Net position', money(finance.netPositionPaise)],
+    ] },
+    { name: 'Operations', rows: [
+      ['Active students', operations.totalStudents ?? 0], ['Open support tickets', operations.openTickets ?? 0],
+      ['Published announcements', operations.announcementsCount ?? 0], ['Admissions in pipeline', total(operations.admissionsPipeline)],
+      ['Recent admissions shown', count(operations.recentStudents)],
+    ] },
+    { name: 'Hostel', rows: [
+      ['Resident students', hostel.hostelStudents ?? 0], ['Total bed capacity', hostel.totalCapacity ?? 0],
+      ['Vacant beds', hostel.vacantBeds ?? 0], ['Occupancy rate', `${hostel.occupancyRate ?? 0}%`],
+      ['Maintenance rooms', hostel.maintenanceRooms ?? 0], ['Open hostel tickets', count(hostel.openTickets)],
+      ['Pending resident leave requests', hostel.pendingLeaveCount ?? 0],
+    ] },
+    { name: 'Library', rows: [
+      ['Book titles', library.totalBooks ?? 0], ['Total copies', library.totalCopies ?? 0],
+      ['Available copies', library.availableBooks ?? 0], ['Books currently issued', library.issuedBooks ?? 0],
+      ['Overdue issues', library.overdueBooks ?? 0], ['Issued today', library.booksIssuedToday ?? 0],
+      ['Returned today', library.booksReturnedToday ?? 0],
+    ] },
   ];
-  doc.font('Helvetica-Bold').fontSize(14).fillColor('#24120f').text('Finance summary', 50, y); y += 27;
-  for (const [name, value] of financeRows) {
-    doc.font('Helvetica').fontSize(10).fillColor('#5f5750').text(name, 55, y);
-    doc.font('Helvetica-Bold').fillColor('#24120f').text(String(value ?? '—'), 340, y, { width: 195, align: 'right' });
-    y += 20;
-  }
+}
 
-  for (const [name, data] of [['Operations', report.operations], ['Hostel', report.hostel], ['Library', report.library]]) {
-    y = ensureSpace(doc, y, 70);
-    y += 10;
-    doc.font('Helvetica-Bold').fontSize(14).fillColor('#24120f').text(`${name} summary`, 50, y); y += 24;
-    const rows = scalarRows(data).slice(0, 18);
-    if (!rows.length) {
-      doc.font('Helvetica').fontSize(10).fillColor('#6b625b').text('No segment data available.', 55, y); y += 20;
-    }
-    for (const [metric, value] of rows) {
-      y = ensureSpace(doc, y);
-      doc.font('Helvetica').fontSize(9).fillColor('#5f5750').text(label(metric), 55, y, { width: 300 });
-      doc.font('Helvetica-Bold').fillColor('#24120f').text(value, 360, y, { width: 175, align: 'right' });
-      y += 17;
-    }
+function header(doc, report, continued = false) {
+  doc.rect(0, 0, 595, 112).fill(WINE);
+  doc.font('Helvetica-Bold').fontSize(21).fillColor('#ffffff')
+    .text(continued ? 'Quarterly ERP Report — Continued' : 'EduOS AI', 50, 35);
+  if (!continued) doc.font('Helvetica').fontSize(11).fillColor('#f2dca7').text('Quarterly management review', 50, 62);
+  doc.font('Helvetica').fontSize(8.5).fillColor('#ffffff')
+    .text(`Generated ${new Date(report.generatedAt).toLocaleString('en-IN')}`, 50, 87)
+    .text('CONFIDENTIAL • SCHOOL ADMINISTRATION', 350, 87, { width: 195, align: 'right' });
+}
+
+function footer(doc, page) {
+  // Keep footer inside PDFKit's bottom margin. Drawing at y=798 with a
+  // 50-point margin makes PDFKit silently add a new blank page.
+  doc.moveTo(50, 760).lineTo(545, 760).strokeColor(RULE).stroke();
+  doc.font('Helvetica').fontSize(7.5).fillColor(MUTED)
+    .text('System-generated, access-controlled management report.', 50, 770)
+    .text(`Page ${page}`, 465, 770, { width: 80, align: 'right' });
+}
+
+function sectionTitle(doc, title, y) {
+  doc.rect(50, y, 5, 24).fill(GOLD);
+  doc.font('Helvetica-Bold').fontSize(14).fillColor(INK).text(`${title} overview`, 66, y + 4);
+}
+
+function drawRows(doc, rows, y) {
+  for (let index = 0; index < rows.length; index += 1) {
+    const [metric, value] = rows[index];
+    if (index % 2 === 0) doc.rect(50, y - 4, 495, 22).fill(PAPER);
+    doc.font('Helvetica').fontSize(9.5).fillColor(MUTED).text(metric, 62, y);
+    doc.font('Helvetica-Bold').fillColor(INK).text(String(value ?? '—'), 335, y, { width: 195, align: 'right' });
+    y += 22;
   }
-  doc.font('Helvetica-Oblique').fontSize(8).fillColor('#8c837b').text('System-generated, access-controlled quarterly ERP report.', 50, 775, { width: 495, align: 'center' });
+  return y;
+}
+
+function executiveCards(doc, report) {
+  const finance = report.finance ?? {};
+  const cards = [
+    ['Collection rate', `${finance.collectionRate ?? 0}%`, '#2d6b4f'],
+    ['Net position', money(finance.netPositionPaise), WINE],
+    ['Leakage risk', money(finance.overduePaise), '#a22f2f'],
+  ];
+  let x = 50;
+  for (const [title, value, color] of cards) {
+    doc.roundedRect(x, 133, 157, 67, 7).fillAndStroke('#ffffff', RULE);
+    doc.font('Helvetica').fontSize(8.5).fillColor(MUTED).text(title, x + 12, 146);
+    doc.font('Helvetica-Bold').fontSize(15).fillColor(color).text(value, x + 12, 165, { width: 133, ellipsis: true });
+    x += 169;
+  }
+}
+
+/** Streams a polished, printable executive PDF. */
+export function renderQuarterlyErpPdf(res, report) {
+  const doc = new PDFDocument({ size: 'A4', margin: 50, info: { Title: 'Quarterly ERP Report', Author: 'EduOS AI' } });
+  doc.pipe(res);
+  let page = 1;
+  header(doc, report);
+  executiveCards(doc, report);
+  let y = 228;
+  for (const section of sections(report)) {
+    const needed = 44 + section.rows.length * 22;
+    if (y + needed > 750) {
+      footer(doc, page);
+      doc.addPage(); page += 1; header(doc, report, true); y = 137;
+    }
+    sectionTitle(doc, section.name, y); y += 36;
+    y = drawRows(doc, section.rows, y) + 14;
+  }
+  footer(doc, page);
   doc.end();
 }
 
@@ -73,9 +122,6 @@ export function renderQuarterlyErpPdf(res, report) {
 export function quarterlyErpCsv(report) {
   const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
   const lines = [['Segment', 'Metric', 'Value']];
-  for (const [segment, data] of Object.entries(report)) {
-    if (segment === 'generatedAt') continue;
-    for (const [metric, value] of scalarRows(data)) lines.push([segment, metric, value]);
-  }
+  for (const section of sections(report)) for (const [metric, value] of section.rows) lines.push([section.name, metric, value]);
   return `\uFEFF${lines.map((row) => row.map(escape).join(',')).join('\r\n')}`;
 }

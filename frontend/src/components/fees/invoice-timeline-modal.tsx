@@ -43,7 +43,8 @@ export function InvoiceTimelineModal({ invoiceId, onClose }: { invoiceId: string
         action: isSuccess ? { label: 'Download Receipt PDF', onClick: () => api.downloadReceiptPdf(p.id) } : undefined,
       });
     }
-    const overdue = new Date(detail.dueOn) < new Date() && detail.status !== 'PAID' && detail.status !== 'CANCELLED';
+    const now = new Date();
+    const overdue = new Date(detail.dueOn) < new Date(now.getFullYear(), now.getMonth(), now.getDate()) && detail.status !== 'PAID' && detail.status !== 'CANCELLED';
     events.push({
       at: detail.dueOn,
       title: 'Due date',

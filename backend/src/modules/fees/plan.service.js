@@ -421,7 +421,7 @@ async function decoratePlans(plans) {
             ? 'PAID'
             : paidPaise > 0
               ? 'PARTIALLY_PAID'
-              : new Date(inst.dueOn) < new Date()
+              : new Date(inst.dueOn) < new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())
                 ? 'OVERDUE'
                 : 'DUE',
       };

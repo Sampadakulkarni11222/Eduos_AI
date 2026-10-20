@@ -37,6 +37,12 @@ const formatRupees = (paise) => new Intl.NumberFormat('en-IN', {
   style: 'currency', currency: 'INR', maximumFractionDigits: 0,
 }).format(Math.ceil((Number(paise) || 0) / 100));
 
+// A due date is a school calendar day, not midnight at the start of that day.
+// It stays payable through its date and becomes overdue on the next school day.
+const startOfSchoolDay = (now = new Date()) => new Date(now.getFullYear(), now.getMonth(), now.getDate());
+const isOverdue = (dueOn, now = new Date()) => new Date(dueOn) < startOfSchoolDay(now);
+const schoolDateKey = (date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+
 /**
  * What each manual payment mode has to carry.
  *
@@ -323,7 +329,7 @@ export async function listInvoices(actor, scope, query = {}) {
   // a background job. This keeps the list correct immediately after midnight
   // and after a scheduler outage, while paid/cancelled invoices stay excluded.
   if (query.status === 'OVERDUE') {
-    filter.dueOn = { $lt: new Date() };
+    filter.dueOn = { $lt: startOfSchoolDay() };
     filter.status = { $nin: ['PAID', 'CANCELLED'] };
   } else if (query.status) {
     filter.status = query.status;
@@ -412,7 +418,7 @@ export async function listInvoices(actor, scope, query = {}) {
     const obj = inv.toObject();
     obj.id = obj._id; // frontend keys on `id`
     if (
-      new Date(obj.dueOn) < new Date() &&
+      isOverdue(obj.dueOn) &&
       !['PAID', 'CANCELLED'].includes(obj.status) &&
       obj.paidPaise < obj.totalPaise
     ) {
@@ -1978,7 +1984,7 @@ export async function getSummary(actor, scope, query = {}) {
   }
 
   // Aggregate in the DB instead of loading every invoice into memory.
-  const now = new Date();
+  const overdueCutoff = startOfSchoolDay();
   const [agg] = await Invoice.aggregate([
     { $match: Object.keys(filter).length ? filter : {} },
     {
@@ -1991,7 +1997,7 @@ export async function getSummary(actor, scope, query = {}) {
         overduePaise: {
           $sum: {
             $cond: [
-              { $and: [{ $lt: ['$dueOn', now] }, { $not: [{ $in: ['$status', ['PAID', 'CANCELLED']] }] }] },
+              { $and: [{ $lt: ['$dueOn', overdueCutoff] }, { $not: [{ $in: ['$status', ['PAID', 'CANCELLED']] }] }] },
               { $subtract: ['$totalPaise', '$paidPaise'] },
               0,
             ],
@@ -2000,7 +2006,7 @@ export async function getSummary(actor, scope, query = {}) {
         overdueCount: {
           $sum: {
             $cond: [
-              { $and: [{ $lt: ['$dueOn', now] }, { $not: [{ $in: ['$status', ['PAID', 'CANCELLED']] }] }] },
+              { $and: [{ $lt: ['$dueOn', overdueCutoff] }, { $not: [{ $in: ['$status', ['PAID', 'CANCELLED']] }] }] },
               1,
               0,
             ],
@@ -2060,7 +2066,7 @@ export async function getFinancialReport() {
     acc.collectedPaise += invoice.paidPaise;
     const due = Math.max(0, invoice.totalPaise - invoice.paidPaise);
     acc.outstandingPaise += due;
-    if (due > 0 && new Date(invoice.dueOn) < now && !['PAID', 'CANCELLED'].includes(invoice.status)) {
+    if (due > 0 && isOverdue(invoice.dueOn, now) && !['PAID', 'CANCELLED'].includes(invoice.status)) {
       acc.overduePaise += due;
       acc.overdueCount += 1;
     }
@@ -2084,14 +2090,13 @@ export async function getFinancialReport() {
 /** Sends in-app due/overdue reminders. Safe to run repeatedly: FeeReminder's
  * unique index is the idempotency boundary, including in multi-worker deploys. */
 export async function dispatchFeeReminders({ dueSoonDays = 7 } = {}) {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const today = startOfSchoolDay();
   const until = new Date(today);
-  until.setUTCDate(until.getUTCDate() + Math.max(0, Math.min(Number(dueSoonDays) || 0, 30)));
+  until.setDate(until.getDate() + Math.max(0, Math.min(Number(dueSoonDays) || 0, 30)));
   const invoices = await Invoice.find({
     status: { $in: ['PENDING', 'PARTIAL', 'OVERDUE'] }, dueOn: { $lte: until },
   }).populate({ path: 'enrollmentId', select: 'studentId' }).lean();
-  const sentOn = today.toISOString().slice(0, 10);
+  const sentOn = schoolDateKey(today);
   const studentIds = [...new Set(invoices.map((i) => i.enrollmentId?.studentId?.toString()).filter(Boolean))];
   const [students, guardianLinks] = await Promise.all([
     Student.find({ _id: { $in: studentIds } }).select('_id profileId').lean(),
@@ -2110,7 +2115,7 @@ export async function dispatchFeeReminders({ dueSoonDays = 7 } = {}) {
     if (!due || !invoice.enrollmentId?.studentId) continue;
     const studentId = String(invoice.enrollmentId.studentId);
     const recipients = [studentProfiles.get(studentId), ...(guardianProfiles.get(studentId) ?? [])].filter(Boolean);
-    const overdue = new Date(invoice.dueOn) < today;
+    const overdue = isOverdue(invoice.dueOn, today);
     const kind = overdue ? 'OVERDUE' : 'DUE_SOON';
     for (const recipientProfileId of recipients) {
       deliveries.push({ invoice, recipientProfileId, due, overdue, kind });

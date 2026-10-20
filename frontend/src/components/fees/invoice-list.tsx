@@ -11,7 +11,8 @@ const TONE: Record<string, 'green' | 'amber' | 'red' | 'gray'> = {
  * this is a derived display flag (past due date, not yet fully paid/cancelled). */
 function isLate(inv: InvoiceDto) {
   if (inv.status === 'PAID' || inv.status === 'CANCELLED') return false;
-  return new Date(inv.dueOn) < new Date();
+  const now = new Date();
+  return new Date(inv.dueOn) < new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
 function fmtDate(iso: string) {

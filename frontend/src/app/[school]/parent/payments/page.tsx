@@ -7,6 +7,11 @@ import { runCheckout, PaymentCancelled } from '@/lib/razorpay';
 import type { InvoiceDto } from '@/lib/types';
 
 const TONE: Record<string, 'green' | 'amber' | 'red' | 'gray'> = { PAID: 'green', PARTIAL: 'amber', PENDING: 'gray', OVERDUE: 'red' };
+const isPastDue = (dueOn: string) => {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return new Date(dueOn).getTime() < today.getTime();
+};
 
 export default function ParentPayments() {
   const [invoices, setInvoices] = useState<InvoiceDto[] | null>(null);
@@ -36,7 +41,7 @@ export default function ParentPayments() {
     .sort((a, b) => new Date(a.dueOn).getTime() - new Date(b.dueOn).getTime());
   const settled = (invoices ?? []).filter((i) => !isPayable(i));
   const outstandingTotalPaise = outstanding.reduce((sum, i) => sum + dueOf(i), 0);
-  const overdueCount = outstanding.filter((i) => new Date(i.dueOn).getTime() < Date.now()).length;
+  const overdueCount = outstanding.filter((i) => isPastDue(i.dueOn)).length;
 
   const invoiceTable = (rows: InvoiceDto[], withActions: boolean) => (
     <Card pad={false}>
@@ -56,7 +61,7 @@ export default function ParentPayments() {
                 <td data-label="Total">{rupees(i.totalPaise)}</td><td data-label="Paid">{rupees(i.paidPaise)}</td>
                 <td
                   data-label="Due Date"
-                  style={withActions && new Date(i.dueOn).getTime() < Date.now() ? { color: 'var(--red)', fontWeight: 600 } : undefined}
+                  style={withActions && isPastDue(i.dueOn) ? { color: 'var(--red)', fontWeight: 600 } : undefined}
                 >
                   {fmtDate(i.dueOn)}
                 </td>
