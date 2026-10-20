@@ -24,6 +24,18 @@ import { TransportRoute } from '../src/models/transport.model.js';
 import { inSchool, mcp, actorForRole, OAK } from './support/mcpSchool.js';
 
 /**
+ * The register date for the import: the most recent weekday in the school's
+ * time zone. A teacher may back-date only ATTENDANCE_BACKDATE_DAYS (3), so a
+ * fixed date goes stale within days; the latest weekday is never more than two
+ * days back and never a Sunday, when attendance is closed.
+ */
+const lastWeekdayIST = () => {
+  const d = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) + 'T00:00:00.000Z');
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+};
+
+/**
  * Bulk import through Ask AI (p7): a sheet attached on the website or sent on
  * WhatsApp is recognised, its columns mapped, every row checked, and -- after
  * one confirmation on the website -- imported through the module's own bulk
@@ -280,19 +292,20 @@ describe('a bulk import against a real school', () => {
   });
 
   it('a teacher imports attendance for their own class; another class is refused row by row', async () => {
+    const day = lastWeekdayIST();
     const file = await upload(teacher(), 'register.csv', csv([['Roll', 'Student', 'P/A'], ['1', 'Aarav Mishra', 'P'], ['2', 'Ananya Mishra', 'A']]));
-    const preview = await mcp(OAK, teacher(), 'preview_import', { fileId: file.fileId, hint: 'attendance of Class 5 A', date: '2026-10-16' });
+    const preview = await mcp(OAK, teacher(), 'preview_import', { fileId: file.fileId, hint: 'attendance of Class 5 A', date: day });
     expect(preview.data.target.key).toBe('attendance');
     expect(preview.data.counts).toMatchObject({ ready: 2, problems: 0 });
-    const done = await confirm(teacher(), await mcp(OAK, teacher(), 'run_import', { fileId: file.fileId, date: '2026-10-16' }));
+    const done = await confirm(teacher(), await mcp(OAK, teacher(), 'run_import', { fileId: file.fileId, date: day }));
     expect(done.data.imported).toBe(2);
     await inSchool(OAK, async () => {
-      const r = await AttendanceRecord.findOne({ enrollmentId: school.ananya.enrollment._id, date: new Date('2026-10-16T00:00:00.000Z'), periodNo: null }).lean();
+      const r = await AttendanceRecord.findOne({ enrollmentId: school.ananya.enrollment._id, date: new Date(`${day}T00:00:00.000Z`), periodNo: null }).lean();
       expect(r?.status).toBe('ABSENT');
     });
 
     const theirs = await upload(teacher(), 'register-9b.csv', csv([['Roll', 'Status'], ['1', 'P']]));
-    const p2 = await mcp(OAK, teacher(), 'preview_import', { fileId: theirs.fileId, target: 'attendance', className: 'Class 9 B', date: '2026-10-16' });
+    const p2 = await mcp(OAK, teacher(), 'preview_import', { fileId: theirs.fileId, target: 'attendance', className: 'Class 9 B', date: day });
     expect(p2.data.problems[0].problem).toMatch(/not one of your classes/);
   });
 
