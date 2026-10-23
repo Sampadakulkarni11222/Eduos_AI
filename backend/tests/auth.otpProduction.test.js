@@ -5,9 +5,9 @@ import { Profile } from '../src/models/profile.model.js';
 import { Role } from '../src/models/role.model.js';
 import { School } from '../src/models/school.model.js';
 import { env, productionConfigProblems } from '../src/config/env.js';
-import { mayEchoOtp } from '../src/providers/notification.provider.js';
+import { mayEchoOtp, sendOtpSms } from '../src/providers/notification.provider.js';
 import {
-  requestOtp, requestEmailOtp, verifyEmailOtp, login,
+  requestOtp, verifyOtp, requestEmailOtp, verifyEmailOtp, login,
 } from '../src/modules/auth/auth.service.js';
 
 /**
@@ -28,11 +28,17 @@ const SCHOOL = 'eduos-demo-tenant';
 
 // The settings these tests override, restored after each one.
 const OVERRIDDEN = ['NODE_ENV', 'isProd', 'isDev', 'ALLOW_DEV_OTP_IN_PRODUCTION', 'SHOW_OTP_ON_SCREEN', 'SMS_PROVIDER', 'EMAIL_PROVIDER',
-  'RESEND_API_KEY', 'EMAIL_FROM', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM_NUMBER'];
+  'RESEND_API_KEY', 'EMAIL_FROM', 'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_FROM_NUMBER',
+  'CHATFLOW_API_URL', 'CHATFLOW_API_KEY', 'CHATFLOW_WA_NUMBER_ID', 'CHATFLOW_MAX_RETRIES'];
 let saved;
 
+// A phone sign-in code is delivered as a WhatsApp template through Chatflow-Pro.
+// Blank unless a test configures it, so a developer's shell never makes a test send.
+const CHATFLOW_OFF = { CHATFLOW_API_URL: '', CHATFLOW_API_KEY: '', CHATFLOW_WA_NUMBER_ID: '' };
+const CHATFLOW_ON = { CHATFLOW_API_URL: 'https://chatflow.example.test/api/v1/public', CHATFLOW_API_KEY: 'cfp_test_key', CHATFLOW_WA_NUMBER_ID: '', CHATFLOW_MAX_RETRIES: 0 };
+
 // The demo opt-in is OFF unless a test turns it on: everything below pins the default.
-const asProduction = (extra = {}) => Object.assign(env, { NODE_ENV: 'production', isProd: true, isDev: false, SHOW_OTP_ON_SCREEN: false, ...extra });
+const asProduction = (extra = {}) => Object.assign(env, { NODE_ENV: 'production', isProd: true, isDev: false, SHOW_OTP_ON_SCREEN: false, ...CHATFLOW_OFF, ...extra });
 
 beforeEach(async () => {
   saved = Object.fromEntries(OVERRIDDEN.map((k) => [k, env[k]]));
@@ -67,7 +73,7 @@ describe('production never returns a one-time code', () => {
   });
 
   it('answers a phone OTP request with 503 and no code when no provider is configured', async () => {
-    asProduction({ SMS_PROVIDER: 'console' });
+    asProduction();
     await expect(requestOtp({ phone: PHONE, schoolId: SCHOOL }))
       .rejects.toMatchObject({ statusCode: 503, code: 'OTP_DELIVERY_UNAVAILABLE' });
   });
@@ -107,13 +113,43 @@ describe('sign-in still works with a production configuration', () => {
     expect(session.accessToken).toBeTruthy();
   });
 
-  it('delivers a phone code through Twilio without echoing it', async () => {
+  it('delivers a phone code as a WhatsApp template through Chatflow-Pro, never in the response, and the delivered code signs in', async () => {
+    const fetchMock = vi.fn(async () => new Response('{"messages":[{"id":"wamid.1"}]}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    asProduction(CHATFLOW_ON);
+
+    const result = await requestOtp({ phone: PHONE, schoolId: SCHOOL });
+    expect(result.devOtp).toBeUndefined();
+    expect(JSON.stringify(result)).not.toMatch(/\d{6}/);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('https://chatflow.example.test/api/v1/public/messages');
+    expect(init.headers['x-api-key']).toBe('cfp_test_key');
+    // The payload shape is Meta's template format, which Chatflow forwards
+    // unchanged: verified against the real service on 2026-10-23.
+    const sent = JSON.parse(init.body);
+    expect(sent).toMatchObject({
+      to: PHONE,
+      type: 'template',
+      template: { name: 'eduos_login_otp', language: { code: 'en' } },
+    });
+    const body = sent.template.components.find((c) => c.type === 'body');
+    const code = body.parameters[0].text;
+    expect(code).toMatch(/^\d{6}$/);
+    expect(sent.template.components.find((c) => c.type === 'button').parameters[0].text).toBe(code);
+
+    const session = await verifyOtp({ phone: PHONE, code, schoolId: SCHOOL }, {});
+    expect(session.accessToken).toBeTruthy();
+  });
+
+  it('still delivers through the SMS provider for flows that remain on SMS (pickup, admissions)', async () => {
     const fetchMock = vi.fn(async () => new Response('{"sid":"SM1"}', { status: 201 }));
     vi.stubGlobal('fetch', fetchMock);
     asProduction({ SMS_PROVIDER: 'twilio', TWILIO_ACCOUNT_SID: 'AC123', TWILIO_AUTH_TOKEN: 'tok', TWILIO_FROM_NUMBER: '+15550001111' });
 
-    const result = await requestOtp({ phone: PHONE, schoolId: SCHOOL });
-    expect(result.devOtp).toBeUndefined();
+    const result = await sendOtpSms(PHONE, '123456');
+    expect(result).toEqual({ delivered: true, devOtp: undefined });
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toContain('/Accounts/AC123/Messages.json');
     expect(String(init.body)).toContain(encodeURIComponent(PHONE));
@@ -128,9 +164,16 @@ describe('sign-in still works with a production configuration', () => {
 
   it('answers 503 when the provider is unreachable', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('ECONNREFUSED'); }));
-    asProduction({ SMS_PROVIDER: 'twilio', TWILIO_ACCOUNT_SID: 'AC1', TWILIO_AUTH_TOKEN: 't', TWILIO_FROM_NUMBER: '+15550001111' });
+    asProduction(CHATFLOW_ON);
     await expect(requestOtp({ phone: PHONE, schoolId: SCHOOL }))
-      .rejects.toMatchObject({ statusCode: 503 });
+      .rejects.toMatchObject({ statusCode: 503, code: 'OTP_DELIVERY_UNAVAILABLE' });
+  });
+
+  it('answers 503 when Chatflow rejects the template, and the message names WhatsApp', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"template not accepted"}', { status: 400 })));
+    asProduction(CHATFLOW_ON);
+    await expect(requestOtp({ phone: PHONE, schoolId: SCHOOL }))
+      .rejects.toMatchObject({ statusCode: 503, code: 'OTP_DELIVERY_UNAVAILABLE', message: expect.stringMatching(/WhatsApp/) });
   });
 
   it('keeps password sign-in working with no OTP provider at all', async () => {
@@ -166,6 +209,15 @@ describe('demo opt-in: SHOW_OTP_ON_SCREEN', () => {
       EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 'test-key', EMAIL_FROM: 'EduOS <no-reply@example.test>', SHOW_OTP_ON_SCREEN: true,
     });
     const result = await requestEmailOtp({ email: EMAIL, schoolId: SCHOOL });
+    expect(result.devOtp).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('never shows a phone code that WhatsApp delivers', async () => {
+    const fetchMock = vi.fn(async () => new Response('{"messages":[{"id":"wamid.2"}]}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    asProduction({ ...CHATFLOW_ON, SHOW_OTP_ON_SCREEN: true });
+    const result = await requestOtp({ phone: PHONE, schoolId: SCHOOL });
     expect(result.devOtp).toBeUndefined();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

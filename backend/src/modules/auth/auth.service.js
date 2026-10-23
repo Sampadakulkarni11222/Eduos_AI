@@ -15,7 +15,7 @@ import { buildPermissionMap } from '../../utils/buildPermissionMap.js';
 import { logger } from '../../utils/logger.js';
 import { env } from '../../config/env.js';
 import { currentTenantId } from '../../tenancy/tenantContext.js';
-import { sendOtpSms, sendOtpEmail } from '../../providers/notification.provider.js';
+import { sendOtpWhatsapp, sendOtpEmail } from '../../providers/notification.provider.js';
 import { CircuitBreaker } from '../../utils/circuitBreaker.js';
 
 
@@ -241,9 +241,9 @@ export async function requestOtp({ phone, schoolId }) {
   await assertDoorAdmits(account, door);
 
   const code = await issueOtpForAccount(account);
-  const { delivered, devOtp } = await sendOtpSms(phone, code);
+  const { delivered, devOtp } = await sendOtpWhatsapp(phone, code);
   if (!delivered) {
-    throw new AppError('Sign-in codes cannot be sent by SMS right now. Sign in with your password or Google, or contact your administrator.', 503, [], 'OTP_DELIVERY_UNAVAILABLE');
+    throw new AppError('Sign-in codes cannot be sent by WhatsApp right now. Sign in with your password or Google, or contact your administrator.', 503, [], 'OTP_DELIVERY_UNAVAILABLE');
   }
 
   return { message: 'OTP sent', devOtp };

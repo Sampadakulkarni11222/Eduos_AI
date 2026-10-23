@@ -1,11 +1,12 @@
-import { env } from '../config/env.js';
+import { env, isChatflowLive } from '../config/env.js';
 import { logger } from '../utils/logger.js';
+import { sendTemplate } from '../modules/whatsapp/chatflow.client.js';
 
 /**
  * OTP / notification delivery abstraction.
  *
- * The rest of the codebase only ever calls sendOtpSms / sendOtpEmail and
- * inspects the returned { delivered, devOtp }:
+ * The rest of the codebase only ever calls sendOtpSms / sendOtpWhatsapp /
+ * sendOtpEmail and inspects the returned { delivered, devOtp }:
  *
  *   SMS_PROVIDER=console (default)   → logs the code; devOtp returned in development/test only
  *   SMS_PROVIDER=twilio              → Twilio Messages API (TWILIO_ACCOUNT_SID / _AUTH_TOKEN / _FROM_NUMBER)
@@ -153,6 +154,38 @@ export async function sendOtpSms(phone, code) {
       // anywhere else it must not quietly fall back to echoing codes.
       return failed('sms', env.SMS_PROVIDER, 'unknown SMS_PROVIDER');
   }
+}
+
+/** The Meta-approved authentication template that carries a login code. */
+export const LOGIN_OTP_TEMPLATE = 'eduos_login_otp';
+
+/**
+ * Phone sign-in code over WhatsApp, through Chatflow-Pro's template send.
+ *
+ * Same contract as sendOtpSms: `{ delivered, devOtp }`, so the caller's
+ * handling of a failed delivery does not change. With Chatflow unconfigured it
+ * falls back to the console behaviour (code echoed in development/test or
+ * under SHOW_OTP_ON_SCREEN, refused in production), so local runs and the demo
+ * phone numbers work as before. A live send never returns the code.
+ *
+ * The code goes to Meta twice because an authentication template has a body
+ * parameter and a copy-code button; both components are part of the payload
+ * shape verified on 2026-10-23 (see sendTemplate()).
+ */
+export async function sendOtpWhatsapp(phone, code) {
+  if (!isChatflowLive()) return deliverLocally('whatsapp', phone, code);
+
+  const out = await sendTemplate({
+    to: phone,
+    template: LOGIN_OTP_TEMPLATE,
+    language: 'en',
+    components: [
+      { type: 'body', parameters: [{ type: 'text', text: code }] },
+      { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: code }] },
+    ],
+  });
+  if (!out.sent) return failed('whatsapp', 'chatflow', out.error ?? out.code ?? 'send failed');
+  return { delivered: true, devOtp: undefined };
 }
 
 export async function sendOtpEmail(email, code) {

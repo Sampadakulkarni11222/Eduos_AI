@@ -183,6 +183,57 @@ export async function sendText({ to, text, correlationId = null }) {
   return { sent: true, messageIds, parts: parts.length };
 }
 
+/**
+ * Sends one approved template message (business-initiated, so it works outside
+ * WhatsApp's 24-hour window, unlike sendText).
+ *
+ * PAYLOAD SHAPE VERIFIED as of 2026-10-23: Chatflow's POST /messages was only
+ * documented for `type: 'text'`, but it forwards Meta's own template shape
+ * (`type: 'template'`, `template: { name, language, components }`) unchanged.
+ * Confirmed by two real sends: template accepted by Chatflow and Meta, and the
+ * body and button components both work (code shown, copy-code button copies it).
+ *
+ * `components` is Meta's array; it is passed through untouched and never logged,
+ * because for a login code it carries the code itself. Never throws, for the
+ * same reason sendText does not.
+ *
+ * @returns {{ sent: boolean, simulated?: boolean, messageIds?: string[], error?: string, code?: string, status?: number }}
+ */
+export async function sendTemplate({ to, template, language = 'en', components = [], correlationId = null }) {
+  const masked = maskPhone(to);
+  if (!template) return { sent: false, error: 'TEMPLATE_REQUIRED', code: 'TEMPLATE_REQUIRED' };
+
+  if (!isChatflowLive()) {
+    logger.info(`[Chatflow SIMULATION] template ${template} → ${masked}`, { correlationId });
+    return { sent: false, simulated: true };
+  }
+
+  const payload = {
+    to: String(to),
+    type: 'template',
+    template: { name: template, language: { code: language }, components },
+  };
+  if (env.CHATFLOW_WA_NUMBER_ID) payload.waNumberId = env.CHATFLOW_WA_NUMBER_ID;
+
+  try {
+    const { data, attempts } = await sendOne(payload, env.CHATFLOW_MAX_RETRIES);
+    const id = data?.messages?.[0]?.id ?? null;
+    logger.info('Chatflow template send ok', { to: masked, template, correlationId, attempts, providerMessageId: id });
+    return { sent: true, messageIds: id ? [id] : [] };
+  } catch (err) {
+    logger.error('Chatflow template send failed', {
+      to: masked,
+      template,
+      correlationId,
+      status: err.status ?? null,
+      code: err.code ?? 'CHATFLOW_ERROR',
+      attempts: err.attempts ?? 1,
+      error: err.message,
+    });
+    return { sent: false, error: err.message, code: err.code, status: err.status ?? null };
+  }
+}
+
 /** GET /me — which workspace this key belongs to and the numbers it can send from. */
 export function getIdentity() {
   return request('GET', '/me');
