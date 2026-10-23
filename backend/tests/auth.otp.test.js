@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Account } from '../src/models/account.model.js';
 import { Profile } from '../src/models/profile.model.js';
 import { Role } from '../src/models/role.model.js';
@@ -23,13 +23,21 @@ const EMAIL = 'otp@example.test';
 const SCHOOL = 'eduos-demo-tenant';
 let accountId;
 
+// Phone codes go out over WhatsApp via Chatflow-Pro. Blank here so a developer's
+// shell can never make these tests send; the dev/test console fallback is what
+// they exercise (the live-provider cases are in auth.otpProduction.test.js).
+let savedChatflow;
 beforeEach(async () => {
+  savedChatflow = { CHATFLOW_API_URL: env.CHATFLOW_API_URL, CHATFLOW_API_KEY: env.CHATFLOW_API_KEY };
+  Object.assign(env, { CHATFLOW_API_URL: '', CHATFLOW_API_KEY: '' });
   await School.create({ slug: SCHOOL, name: 'Demo School' });
   const role = await Role.create({ key: 'PARENT', name: 'Parent', permissions: [] });
   const account = await Account.create({ phoneE164: PHONE, email: EMAIL });
   accountId = account._id;
   await Profile.create({ accountId: account._id, roleId: role._id, displayName: 'OTP Parent' });
 });
+
+afterEach(() => { Object.assign(env, savedChatflow); });
 
 /** The console provider hands the code back so a dev flow can complete. */
 const issue = async () => (await requestOtp({ phone: PHONE, schoolId: SCHOOL })).devOtp;
