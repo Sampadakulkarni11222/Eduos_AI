@@ -380,6 +380,8 @@ body.role-alumnus{--accent:#4d3416;--accent-2:#6b4a22;--sidebar-text:#EFE3CF;--s
 .pb-brief{display:flex;gap:14px;align-items:center;justify-content:space-between;padding:16px 18px;border-radius:16px;background:linear-gradient(110deg,var(--card-bg),#F3ECDC);border:1px solid var(--card-border)}
 .pb-brief-hello{font-family:Newsreader,Georgia,serif;font-size:20px;font-weight:600;margin-bottom:2px}
 .pb-brief-text{font-size:14px;line-height:1.5}
+.pb-brief-lines{display:flex;flex-direction:column;gap:6px}
+.pb-brief-lines p{margin:0}
 .pb-depts{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
 .pb-dept{display:block;padding:12px 14px;color:inherit;text-decoration:none;border:1px solid var(--card-border);transition:transform .15s ease,border-color .15s ease}
 .pb-dept:hover,.pb-dept:focus-visible{transform:translateY(-2px);border-color:var(--accent)}
@@ -1112,7 +1114,7 @@ a.dc-legend-item:hover,a.dc-legend-item:focus-visible{background:var(--hairline,
 .offline-notice.tone-ok{border-color:var(--green)}
 .offline-notice>span{flex:1;min-width:0;overflow-wrap:anywhere}
 .offline-x{border:0;background:none;font-size:18px;line-height:1;cursor:pointer;color:var(--text-2)}
-.evidence-footer{margin-top:8px;padding:8px 10px;border-left:3px solid var(--accent);background:color-mix(in srgb,var(--accent) 5%,transparent);border-radius:6px;font-size:12.5px;color:var(--text-2)}
+.evidence-footer{margin-top:12px;padding:8px 10px;border-left:3px solid var(--accent);background:color-mix(in srgb,var(--accent) 5%,transparent);border-radius:6px;font-size:12.5px;color:var(--text-2)}
 .evidence-title{font-weight:700;color:var(--text-1)}
 .evidence-list{margin:4px 0 0;padding-left:18px}
 .evidence-list li{margin:2px 0;overflow-wrap:anywhere}
