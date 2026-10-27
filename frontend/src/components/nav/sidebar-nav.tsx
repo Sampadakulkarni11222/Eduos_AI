@@ -327,11 +327,19 @@ export function SidebarNav({
 
   // Bring the page on screen into view inside its open space: shortcuts and
   // recent pages can push it below the fold of a short sidebar or the drawer.
+  //
+  // This nav remounts fresh on every navigation (no shared layout wraps the
+  // portals), so on mount only the active space is open at first; any other
+  // spaces the user had open get restored a moment later from storage. That
+  // second reopen can shift everything below it, undoing a scroll we already
+  // made. Re-running this once the restored set of open spaces settles (via
+  // the `prefs.open` dependency) re-aims the scroll at the final layout
+  // instead of a stale one, without changing routing or layout structure.
   const navRef = useRef<HTMLElement>(null);
   useEffect(() => {
     const el = navRef.current?.querySelector<HTMLElement>('.snav-panel a[aria-current="page"]');
     el?.scrollIntoView?.({ block: 'nearest' });
-  }, [currentHref, rail]);
+  }, [currentHref, rail, prefs.open]);
 
   if (rail) {
     const railButton = (id: string, icon: string, label: string, extra?: string) => (

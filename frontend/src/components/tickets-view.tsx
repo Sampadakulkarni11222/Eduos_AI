@@ -32,16 +32,16 @@ export function TicketsView({
   useEffect(() => { void reload(); }, []);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: openId ? '1fr 1.2fr' : '1fr', gap: 16 }}>
-      <div>
-        {canCreate && <div style={{ marginBottom: 14 }}><Button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Close' : '+ New ticket'}</Button></div>}
-        {showForm && <NewTicket allowAttachment={allowAttachment} onDone={() => { setShowForm(false); void reload(); }} />}
-        {items === null && <Card><SkeletonRows rows={4} /></Card>}
-        {items?.length === 0 && <EmptyState title="No tickets" sub="Support requests appear here." />}
-        {items && items.length > 0 && (
-          <Card pad={false}>
-            {items.map((t, i) => (
-              <button key={t.id} onClick={() => setOpenId(t.id)}
+    <div>
+      {canCreate && <div style={{ marginBottom: 14 }}><Button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Close' : '+ New ticket'}</Button></div>}
+      {showForm && <NewTicket allowAttachment={allowAttachment} onDone={() => { setShowForm(false); void reload(); }} />}
+      {items === null && <Card><SkeletonRows rows={4} /></Card>}
+      {items?.length === 0 && <EmptyState title="No tickets" sub="Support requests appear here." />}
+      {items && items.length > 0 && (
+        <Card pad={false}>
+          {items.map((t, i) => (
+            <div key={t.id}>
+              <button onClick={() => setOpenId(openId === t.id ? null : t.id)}
                 style={{ width: '100%', textAlign: 'left', background: openId === t.id ? 'var(--panel-bg)' : 'transparent', border: 'none', borderTop: i ? '1px solid var(--hairline)' : 'none', padding: '14px 18px', cursor: 'pointer' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontWeight: 600, color: 'var(--text-1)', fontSize: 13.5 }}>{t.subject}</span>
@@ -52,11 +52,19 @@ export function TicketsView({
                   {t.routedToRoleKey ? `Routed to ${t.routedToRoleKey.replace('_', ' ').toLowerCase()}` : ''} · {t.messageCount} message{t.messageCount === 1 ? '' : 's'}
                 </div>
               </button>
-            ))}
-          </Card>
-        )}
-      </div>
-      {openId && <ThreadPanel ticketId={openId} canRespond={canRespond} onChanged={reload} />}
+              {/* The reply thread opens directly under the ticket you clicked,
+                  instead of in a separate panel elsewhere on the page — so on
+                  any screen width the conversation stays attached to the
+                  ticket it belongs to. */}
+              {openId === t.id && (
+                <div style={{ borderTop: '1px solid var(--hairline)' }}>
+                  <ThreadPanel ticketId={t.id} canRespond={canRespond} onChanged={reload} />
+                </div>
+              )}
+            </div>
+          ))}
+        </Card>
+      )}
     </div>
   );
 }
@@ -110,7 +118,7 @@ function ThreadPanel({ ticketId, canRespond, onChanged }: { ticketId: string; ca
 
   if (!thread) return <Card><SkeletonRows rows={5} /></Card>;
   return (
-    <Card pad={false} style={{ display: 'flex', flexDirection: 'column', maxHeight: '70vh' }}>
+    <Card pad={false} style={{ display: 'flex', flexDirection: 'column', maxHeight: 480, border: 'none', borderRadius: 0 }}>
       <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--hairline)' }}>
         <strong style={{ fontFamily: 'Newsreader, serif', fontSize: 17 }}>{thread.subject}</strong>
         {thread.studentName && <div style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 2 }}>Re: {thread.studentName}</div>}

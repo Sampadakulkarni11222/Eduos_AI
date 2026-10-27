@@ -192,7 +192,10 @@ function Briefing({ lines, greet, sources }: { lines: string[]; greet: boolean; 
     <div className="pb-brief">
       <div className="pb-brief-text">
         {greet && <div className="pb-brief-hello">{lines[0]}</div>}
-        <div>{lines.slice(1).join(' ')}</div>
+        {/* Each line is its own fact (e.g. an attendance figure, a finance
+            figure) — stacking them instead of joining with a space stops
+            unrelated facts from reading as one run-on sentence. */}
+        <div className="pb-brief-lines">{lines.slice(1).map((line, i) => <p key={i}>{line}</p>)}</div>
         {!!sources?.length && <EvidenceFooter items={sources} />}
       </div>
       {canSpeak && <button type="button" className="btn btn-accent btn-sm" onClick={toggle} aria-pressed={speaking}>{speaking ? '■ Stop' : '▶ Brief me'}</button>}
