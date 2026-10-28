@@ -33,6 +33,10 @@ import { sendTemplate } from '../whatsapp/whatsapp.service.js';
 
 // Mirrors the enum on paymentSchema in models/fee.model.js.
 const PAYMENT_MODES = ['GATEWAY', 'CASH', 'CHEQUE', 'DD', 'BANK'];
+// Razorpay refuses orders below ₹1. Tiny residuals can arise when a prior
+// partial payment is rounded to paise, so they need an auditable close-out
+// workflow rather than a gateway error or an untracked write-off.
+const RAZORPAY_MINIMUM_ORDER_PAISE = 100;
 const formatRupees = (paise) => new Intl.NumberFormat('en-IN', {
   style: 'currency', currency: 'INR', maximumFractionDigits: 0,
 }).format(Math.ceil((Number(paise) || 0) / 100));
@@ -1327,8 +1331,54 @@ export async function payOnline(actor, scope, { invoiceId, amountPaise }) {
   if (duePaise <= 0) throw new AppError('This invoice is already fully paid', 409);
 
   const amount = Number(amountPaise ?? duePaise);
-  if (!Number.isFinite(amount) || amount <= 0) throw new AppError('amountPaise must be a positive number', 400);
+  if (!Number.isInteger(amount) || amount <= 0) throw new AppError('amountPaise must be a positive whole number of paise', 400);
   if (amount > duePaise) throw new AppError('Amount exceeds the outstanding balance', 400);
+
+  // A gateway cannot take a one-paise order. The family may request a tiny
+  // rounding adjustment, but an administrator must approve it before it
+  // affects the invoice. This prevents inventing a gateway payment or letting
+  // a parent write off a meaningful balance.
+  if (paymentMode() === 'razorpay' && amount < RAZORPAY_MINIMUM_ORDER_PAISE) {
+    let adjustment = await Payment.findOne({
+      invoiceId,
+      amountPaise: amount,
+      mode: 'ROUNDING_ADJUSTMENT',
+      recordStatus: 'PENDING_ADMIN_APPROVAL',
+    });
+
+    if (!adjustment) {
+      adjustment = await Payment.create({
+        invoiceId,
+        amountPaise: amount,
+        mode: 'ROUNDING_ADJUSTMENT',
+        status: 'SUCCESS',
+        recordStatus: 'PENDING_ADMIN_APPROVAL',
+        receiptNo: `ADJ-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+        notes: `Parent requested rounding adjustment because the gateway minimum is ₹1; outstanding balance is ${amount} paise.`,
+        createdByProfileId: actor?.profileId ?? null,
+        createdByRole: actor?.roleKey ?? null,
+      });
+
+      await recordAudit({
+        actor,
+        action: 'fees.payment.rounding_adjustment.request',
+        entityType: 'Payment',
+        entityId: adjustment._id,
+        after: { invoiceId: String(invoiceId), amountPaise: amount, recordStatus: 'PENDING_ADMIN_APPROVAL' },
+      });
+    }
+
+    return {
+      receiptNo: adjustment.receiptNo,
+      gatewayRef: '',
+      provider: 'internal',
+      sandbox: false,
+      status: invoice.status,
+      paidPaise: invoice.paidPaise,
+      awaitingApproval: true,
+      message: 'Your ₹0.01 rounding adjustment request was sent to the administrator for approval.',
+    };
+  }
 
   const charge = await chargeOnline({ amountPaise: amount, invoiceNo: invoice.invoiceNo, payerProfileId: actor.profileId });
 

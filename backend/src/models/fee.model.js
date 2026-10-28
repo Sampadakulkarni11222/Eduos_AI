@@ -111,7 +111,7 @@ const paymentSchema = new Schema(
   {
     invoiceId: { type: Schema.Types.ObjectId, ref: 'Invoice', required: true },
     amountPaise: { type: Number, required: true },
-    mode: { type: String, enum: ['GATEWAY', 'CASH', 'CHEQUE', 'DD', 'BANK'], required: true },
+    mode: { type: String, enum: ['GATEWAY', 'CASH', 'CHEQUE', 'DD', 'BANK', 'ROUNDING_ADJUSTMENT'], required: true },
     gatewayRef: { type: String },
     // The gateway's *order* id, kept separately from gatewayRef (which ends up
     // holding the payment id once captured). Webhooks identify the payment by

@@ -14,14 +14,21 @@ export function PayInvoiceModal({ invoice, onClose, onPaid }: {
   const [amount, setAmount] = useState(String(duePaise / 100));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const pay = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setErr(null);
+    setNotice(null);
     try {
       const amountPaise = Math.round(Number(amount) * 100);
       const res = await api.payOnline({ invoiceId: invoice.id, amountPaise });
+      if (res.awaitingApproval) {
+        setNotice(res.message ?? 'Your rounding adjustment request is awaiting administrator approval.');
+        setBusy(false);
+        return;
+      }
 
       // A real gateway returns an order, not a receipt — the money has not
       // moved yet, and the payer completes it in Razorpay's own modal.
@@ -64,13 +71,15 @@ export function PayInvoiceModal({ invoice, onClose, onPaid }: {
           <input
             className="field-input"
             type="number"
-            min={1}
+            min={0.01}
             max={duePaise / 100}
             step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
           />
         </Field>
+
+        {notice && <div style={{ marginTop: 10, fontSize: 12.5, color: '#8a5a00' }}>{notice}</div>}
 
         <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
           <Button type="submit" disabled={busy || !amount || Number(amount) <= 0}>

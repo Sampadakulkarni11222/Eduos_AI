@@ -1194,6 +1194,8 @@ export interface BulkImportResult {
  */
 export interface PayOnlineResult {
   requiresClientAction?: boolean;
+  awaitingApproval?: boolean;
+  message?: string;
   orderId?: string; keyId?: string; currency?: string; amountPaise?: number;
   receiptNo: string; gatewayRef: string; provider: string; sandbox: boolean; status: string; paidPaise: number;
 }
